@@ -1,5 +1,11 @@
-// STUB — real browser Supabase client implementation lands in F006.
-// This file exists so the `lib/supabase/` module path is stable for later
-// imports and so `@supabase/ssr` usage compiles once F006 fills it in.
+// Browser Supabase client (Client Components only).
+// Uses the new sb_publishable_* key format per tech-decisions.md.
 
-export {};
+import { createBrowserClient } from "@supabase/ssr";
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+  );
+}
