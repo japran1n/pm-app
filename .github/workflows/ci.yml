@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.9"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Unit tests
+        # NOTE: unit test suite (vitest) arrives in F091. Until then, npm run
+        # test is a placeholder that tolerates an empty/missing suite so this
+        # workflow stays green as a skeleton. See tech-decisions.md "How to
+        # run tests" — this is the same command the local pre-worker-exit
+        # hook runs, kept in sync intentionally.
+        run: npm run test
+
+      - name: End-to-end tests (Playwright)
+        # NOTE: Playwright/e2e suite arrives in F090. Guarded so CI does not
+        # fail on the currently-missing @playwright/test dependency and
+        # tests/e2e directory. This step is a known temporary no-op and must
+        # be tightened (remove the guard) once F090 lands.
+        run: |
+          if npm ls @playwright/test >/dev/null 2>&1 && [ -d tests/e2e ] && [ -n "$(find tests/e2e -type f 2>/dev/null)" ]; then
+            npx playwright install --with-deps
+            npx playwright test
+          else
+            echo "No Playwright suite yet (@playwright/test / tests/e2e arrive in F090) - skipping, exit 0"
+          fi
