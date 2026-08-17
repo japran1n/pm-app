@@ -36,3 +36,4 @@ __pycache__/
 # NOTE: do NOT ignore `missions/` in general — mission state IS the project's
 # documentation. Only the verify/ subdirectory is excluded.
 *.tsbuildinfo
+supabase/.temp/
