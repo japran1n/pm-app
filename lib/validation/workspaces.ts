@@ -12,6 +12,19 @@ export const createWorkspaceSchema = z.object({
 
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 
+// Validates invite-member input (AS-007).
+export const inviteMemberSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, "Email is required.")
+    .email("Enter a valid email address."),
+});
+
+export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).
