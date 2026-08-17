@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createWorkspaceSchema,
   inviteMemberSchema,
+  revokeInviteSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -19,6 +20,10 @@ export type CreateWorkspaceResult =
 
 export type InviteMemberResult =
   | { ok: true; invitedEmail: string }
+  | { ok: false; error: string };
+
+export type RevokeInviteResult =
+  | { ok: true }
   | { ok: false; error: string };
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
@@ -294,4 +299,126 @@ export async function inviteMember(
   }
 
   return { ok: true, invitedEmail: parsed.data.email };
+}
+
+// Revokes a pending invite (AS-024). Only an active owner/admin member of
+// the workspace may revoke; re-verified server-side (AS-143 convention) via
+// the same `requireWorkspaceAdmin` helper `inviteMember` uses above, rather
+// than trusting that the UI only renders the revoke button for owners/
+// admins.
+//
+// Deliberately scoped to status = 'invited' rows only: this action must
+// never be usable to delete an *active* member's row (that's a distinct,
+// not-yet-built feature, F020 — "remove member"). The target row is looked
+// up by id + workspace_id first so a non-matching or already-non-invited
+// row is rejected/no-ops cleanly rather than the DELETE silently matching
+// zero rows for an ambiguous reason.
+export async function revokeInvite(
+  workspaceId: string,
+  workspaceMemberId: string,
+): Promise<RevokeInviteResult> {
+  const parsed = revokeInviteSchema.safeParse({
+    workspaceId,
+    workspaceMemberId,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to revoke an invite." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143): re-check the caller is an active owner/admin
+  // of this exact workspace, server-side, rather than trusting that the UI
+  // only shows the revoke button to owners/admins.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to revoke invites in this workspace.",
+    };
+  }
+
+  const { data: targetRow, error: lookupError } = await admin
+    .from("workspace_members")
+    .select("id, status")
+    .eq("id", parsed.data.workspaceMemberId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("revokeInvite: target lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!targetRow) {
+    return { ok: false, error: "This invite no longer exists." };
+  }
+
+  // Guard: never allow this action to delete a row that isn't a pending
+  // invite (e.g. an already-active member) — that is out of scope (F020).
+  if (targetRow.status !== "invited") {
+    return {
+      ok: false,
+      error: "Only pending invites can be revoked.",
+    };
+  }
+
+  const { error: deleteError } = await admin
+    .from("workspace_members")
+    .delete()
+    .eq("id", parsed.data.workspaceMemberId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .eq("status", "invited");
+
+  if (deleteError) {
+    console.error("revokeInvite: delete failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}/settings/members`);
+    } catch (revalidateError) {
+      // Same non-fatal cache-freshness rationale as inviteMember above:
+      // revalidatePath throws outside an active request/render context
+      // (e.g. this action invoked from a test harness). The revoke itself
+      // already succeeded, so this is not an action failure.
+      console.error(
+        "revokeInvite: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true };
 }

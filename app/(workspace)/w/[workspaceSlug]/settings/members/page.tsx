@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { InviteMemberForm } from "@/components/invite-member-form";
+import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -169,6 +170,11 @@ export default async function MembersPage({
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  {canInvite && (
+                    <TableHead className="w-px">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -183,6 +189,15 @@ export default async function MembersPage({
                     <TableCell>
                       <Badge variant="outline">Invited</Badge>
                     </TableCell>
+                    {canInvite && (
+                      <TableCell>
+                        <RevokeInviteButton
+                          workspaceId={workspace.id}
+                          workspaceMemberId={invite.id}
+                          invitedEmail={invite.invitedEmail}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

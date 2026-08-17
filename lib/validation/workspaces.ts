@@ -25,6 +25,14 @@ export const inviteMemberSchema = z.object({
 
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 
+// Validates revoke-invite input (AS-024).
+export const revokeInviteSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  workspaceMemberId: z.string().uuid("Invalid invite."),
+});
+
+export type RevokeInviteInput = z.infer<typeof revokeInviteSchema>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).
