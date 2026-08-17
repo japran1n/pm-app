@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -6,20 +6,19 @@ import { signOut } from "@/lib/actions/auth";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { Button } from "@/components/ui/button";
 
-// Server Component layout (AS-012, AS-013, AS-042): resolves the active
-// workspace from the URL slug, verifies the caller has an active
+// Server Component layout (AS-012, AS-013, AS-042, AS-144): resolves the
+// active workspace from the URL slug, verifies the caller has an active
 // membership, and fetches every active-membership workspace for the
 // switcher. Next.js 16: `params` is a Promise and must be awaited.
 //
-// Membership/not-found handling here is intentionally minimal. F023 owns
-// the real "workspace not found / not a member" experience (dedicated
-// not-found UI, distinguishing "doesn't exist" from "you were removed").
-// For this feature, an unresolvable slug (workspace doesn't exist, is
-// soft-deleted, or the caller isn't an active member — RLS's
-// `workspaces_select_active_members` policy collapses all three cases to
-// "no row returned", which is exactly the behavior AS-138/AS-139 want) just
-// redirects to `/onboarding`, which is a safe landing spot for any
-// authenticated user. TODO(F023): replace with a proper not-found page.
+// AS-144: a nonexistent workspace slug and an existing-but-not-a-member
+// slug MUST be indistinguishable from the outside — otherwise a
+// permission-denied response would itself leak that the workspace exists.
+// RLS's `workspaces_select_active_members` policy already collapses both
+// cases (plus soft-deleted) to "no row returned" from the query below, so
+// both paths call the same `notFound()` — Next's generic 404 — rather than
+// a redirect to a "you don't have access" page or `/onboarding`, either of
+// which would confirm existence to a non-member.
 export default async function WorkspaceLayout({
   children,
   params,
@@ -57,8 +56,9 @@ export default async function WorkspaceLayout({
   }
 
   if (!activeWorkspace) {
-    // Placeholder for THIS feature only — see F023 TODO above.
-    redirect("/onboarding");
+    // AS-144: generic 404, not a redirect to /onboarding or any page that
+    // would signal "you don't have access" — see file-header comment.
+    notFound();
   }
 
   // All of the caller's active memberships, for the switcher list
