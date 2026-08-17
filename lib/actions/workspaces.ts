@@ -45,21 +45,29 @@ export type DeleteWorkspaceResult =
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
 //
-// Ordering / rollback strategy: `workspace_members` has no client-facing
-// INSERT policy (see supabase/migrations/20260817222822_rls_workspaces.sql —
-// intentionally left to whichever feature bootstraps the first owner row),
-// so both inserts here go through the secret-key admin client, which
-// bypasses RLS by design (AS-140: never exposed to the browser — this file
-// only runs on the server as a Server Action).
+// F095 hardening: this used to be a two-step admin-client insert (workspace,
+// then membership) with a manual compensating-delete rollback if the second
+// insert failed. Scrutiny (M2-scrutiny.md AS-006) found two problems with
+// that: (1) the rollback delete itself could fail, silently leaving an
+// orphaned, ownerless workspace that squats its slug forever; (2) more
+// fundamentally, the permissive `workspaces_insert_authenticated` RLS
+// policy (`with check (true)`) let *any* authenticated client bypass this
+// Server Action entirely via a direct `.from("workspaces").insert(...)`
+// call, producing the exact same kind of orphan with no server-side
+// involvement at all.
 //
-// Because there's no real multi-table transaction available through the
-// Supabase client libraries (no client-side `BEGIN`/`COMMIT`, and adding a
-// Postgres RPC function for a two-insert bootstrap was judged more
-// machinery than this flow needs), the approach chosen is: insert the
-// workspace, then insert the membership row; if the membership insert fails,
-// explicitly delete the just-created workspace row (manual compensating
-// action) so no orphaned, memberless workspace is left behind. This is
-// documented here rather than silently caught, per the handoff.
+// Fix (supabase/migrations/20260817234323_workspace_create_rpc.sql): both
+// inserts now happen inside a single SECURITY DEFINER Postgres function,
+// `create_workspace_with_owner`, invoked here as an RPC through the
+// user-session client (not the admin client — the function reads the owner
+// id from `auth.uid()`, so it must run with the caller's session). A single
+// function body runs in one implicit transaction, so if the membership
+// insert fails, Postgres rolls back the workspace insert too — atomic with
+// no manual rollback step. The migration also drops the old permissive
+// INSERT policy and revokes the `authenticated` role's table-level INSERT
+// grant on `workspaces`, so a bare client-side insert is now rejected
+// before any policy even runs — the RPC is the only path that can create a
+// workspace.
 export async function createWorkspace(
   _prevState: CreateWorkspaceResult | null,
   formData: FormData,
@@ -89,44 +97,28 @@ export async function createWorkspace(
   const baseSlug = slugify(parsed.data.name);
   const slug = await findAvailableSlug(admin, baseSlug);
 
-  const { data: workspace, error: workspaceError } = await admin
-    .from("workspaces")
-    .insert({ name: parsed.data.name, slug })
-    .select("id, slug")
-    .single();
+  const { data: created, error: createError } = await supabase.rpc(
+    "create_workspace_with_owner",
+    { p_name: parsed.data.name, p_slug: slug },
+  );
 
-  if (workspaceError || !workspace) {
-    console.error("createWorkspace: workspace insert failed:", workspaceError);
+  if (createError) {
+    console.error(
+      "createWorkspace: create_workspace_with_owner RPC failed:",
+      createError,
+    );
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
 
-  const { error: memberError } = await admin.from("workspace_members").insert({
-    workspace_id: workspace.id,
-    user_id: user.id,
-    role: "owner",
-    status: "active",
-  });
+  const workspace = Array.isArray(created) ? created[0] : created;
 
-  if (memberError) {
+  if (!workspace) {
     console.error(
-      "createWorkspace: owner membership insert failed, rolling back workspace:",
-      memberError,
+      "createWorkspace: create_workspace_with_owner RPC returned no row",
     );
-    // Compensating delete: avoid leaving an orphaned, memberless workspace.
-    const { error: rollbackError } = await admin
-      .from("workspaces")
-      .delete()
-      .eq("id", workspace.id);
-    if (rollbackError) {
-      console.error(
-        "createWorkspace: rollback delete also failed — orphaned workspace",
-        workspace.id,
-        rollbackError,
-      );
-    }
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

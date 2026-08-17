@@ -81,7 +81,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_workspace_with_owner: {
+        Args: { p_name: string; p_slug: string }
+        Returns: {
+          id: string
+          slug: string
+        }[]
+      }
+      is_active_workspace_member: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      is_workspace_admin: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
