@@ -1,0 +1,16 @@
+{
+  "$schema_note": "Verified 2026-08-17 against https://code.claude.com/docs/en/hooks — SubagentStop matcher filters on agent type (\"worker\" is correct), and the hook must exit 0 with hookSpecificOutput.decision/reason (not exit 2 + bare decision/reason on stdout, which is stale).",
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "worker",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-worker-exit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
