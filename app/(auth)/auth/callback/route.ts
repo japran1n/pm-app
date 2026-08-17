@@ -15,6 +15,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
+import { activateInvitedMemberships } from "@/lib/actions/invites";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -43,6 +44,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       new URL("/sign-in?error=auth_failed", requestUrl.origin),
     );
+  }
+
+  // F016 (AS-008, AS-009): before routing by membership count, claim any
+  // pending invites for this user's email so they're counted as active
+  // below. A user invited to multiple workspaces gets all of them
+  // activated here.
+  if (user.email) {
+    await activateInvitedMemberships(user.id, user.email);
   }
 
   const { data: membership, error: membershipError } = await supabase
