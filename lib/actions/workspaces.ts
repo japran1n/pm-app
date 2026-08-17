@@ -10,6 +10,7 @@ import {
   inviteMemberSchema,
   revokeInviteSchema,
   changeMemberRoleSchema,
+  removeMemberSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -31,6 +32,10 @@ export type RevokeInviteResult =
   | { ok: false; error: string };
 
 export type ChangeMemberRoleResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export type RemoveMemberResult =
   | { ok: true }
   | { ok: false; error: string };
 
@@ -563,6 +568,155 @@ export async function changeMemberRole(
       // not an action failure.
       console.error(
         "changeMemberRole: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true };
+}
+
+// Removes an active member from a workspace (AS-016). Owner or admin may
+// perform this — deliberately the broader owner/admin line
+// (`requireWorkspaceAdmin`), unlike AS-014's owner-only `changeMemberRole`,
+// because AS-016 does not restrict this to the owner.
+//
+// AS-018 sole-owner guard: before deleting the membership row, count how
+// many active owner-role members this workspace currently has. If the
+// target is an owner and is the only one, reject — a workspace can never
+// be left without an owner via this action.
+export async function removeMember(
+  workspaceId: string,
+  targetMembershipId: string,
+): Promise<RemoveMemberResult> {
+  const parsed = removeMemberSchema.safeParse({
+    workspaceId,
+    targetMembershipId,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to remove a member." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143): re-check the caller is an active owner/admin
+  // of this exact workspace, server-side, rather than trusting that the UI
+  // only shows the remove control to owners/admins.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to remove members from this workspace.",
+    };
+  }
+
+  const { data: targetRow, error: lookupError } = await admin
+    .from("workspace_members")
+    .select("id, status, role")
+    .eq("id", parsed.data.targetMembershipId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("removeMember: target lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!targetRow) {
+    return { ok: false, error: "This member no longer exists." };
+  }
+
+  if (targetRow.status !== "active") {
+    return {
+      ok: false,
+      error: "Only active members can be removed.",
+    };
+  }
+
+  // AS-018: never remove the sole owner. Count active owners in this
+  // workspace; only reject when the target is an owner AND is the only
+  // one — a workspace with multiple owners may still have one of them
+  // removed.
+  if (targetRow.role === "owner") {
+    const { count: activeOwnerCount, error: ownerCountError } = await admin
+      .from("workspace_members")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", parsed.data.workspaceId)
+      .eq("status", "active")
+      .eq("role", "owner");
+
+    if (ownerCountError) {
+      console.error(
+        "removeMember: owner count lookup failed:",
+        ownerCountError,
+      );
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    if ((activeOwnerCount ?? 0) <= 1) {
+      return {
+        ok: false,
+        error: "You cannot remove the sole owner of a workspace.",
+      };
+    }
+  }
+
+  const { error: deleteError } = await admin
+    .from("workspace_members")
+    .delete()
+    .eq("id", parsed.data.targetMembershipId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .eq("status", "active");
+
+  if (deleteError) {
+    console.error("removeMember: delete failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}/settings/members`);
+    } catch (revalidateError) {
+      // Same non-fatal cache-freshness rationale as the other actions in
+      // this file: revalidatePath throws outside an active request/render
+      // context (e.g. this action invoked from a test harness). The
+      // removal itself already succeeded, so this is not an action
+      // failure.
+      console.error(
+        "removeMember: revalidatePath failed (non-fatal):",
         revalidateError,
       );
     }

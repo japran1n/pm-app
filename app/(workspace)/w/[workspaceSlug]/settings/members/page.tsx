@@ -5,6 +5,7 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { MemberRoleSelect } from "@/components/member-role-select";
+import { RemoveMemberButton } from "@/components/remove-member-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -128,6 +129,11 @@ export default async function MembersPage({
                 <TableRow>
                   <TableHead>Member</TableHead>
                   <TableHead>Role</TableHead>
+                  {canInvite && (
+                    <TableHead className="w-px">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -159,6 +165,19 @@ export default async function MembersPage({
                         </Badge>
                       )}
                     </TableCell>
+                    {canInvite && (
+                      <TableCell>
+                        {/* AS-016/AS-018: owner/admin can remove any active
+                            member; the sole owner is rejected server-side
+                            by `removeMember` regardless of what's rendered
+                            here. */}
+                        <RemoveMemberButton
+                          workspaceId={workspace.id}
+                          workspaceMemberId={member.id}
+                          memberLabel={member.name ?? member.email ?? "this member"}
+                        />
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
