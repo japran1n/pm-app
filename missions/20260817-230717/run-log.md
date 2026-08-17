@@ -16,3 +16,6 @@ Remaining: F015-F093 (79 features) across M2 tail (members/roles/invites), M3 (p
 
 ## 2026-08-17T23:32:11Z — Milestone 2 (Auth & Workspace) complete
 F006-F023 all COMPLETE (18/18). 84 tests passing, all integration tests run against the real linked Supabase project. Spawning scrutiny-validator for M2 before proceeding to M3, per mission-run.md milestone-boundary rule — this is the security-critical milestone (RLS isolation, role checks, sole-owner guard).
+
+## 2026-08-17T23:41:35Z — M2 scrutiny FAIL, follow-ups created
+scrutiny-validator found 3 blockers (AS-006 orphan workspace, AS-018 TOCTOU race, AS-001 untested guard) and 3 majors (AS-005 onboarding gate, AS-007 unpaginated listUsers, AS-022 bfcache). Created F094-F099 to fix each, inheriting parent feature's clarification per task-clarification skill. Not proceeding to M3/ux-validator until these are GREEN.

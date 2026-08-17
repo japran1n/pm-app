@@ -127,3 +127,12 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 ## Coverage check
 
 160/160 assertions (AS-001–AS-160) each appear in at least one feature above.
+
+## M2 follow-ups (from M2 scrutiny — see milestones/M2-scrutiny.md)
+
+- F094 sole-owner-atomic-guard — AS-018 [CLARIFIED-AUTO]
+- F095 workspace-insert-rls-hardening — AS-006 [CLARIFIED-AUTO]
+- F096 proxy-guard-integration-test — AS-001 [CLARIFIED-AUTO]
+- F097 onboarding-membership-gate — AS-005 [CLARIFIED-AUTO]
+- F098 signout-cache-headers — AS-022 [CLARIFIED-AUTO]
+- F099 invite-listusers-pagination — AS-007 [CLARIFIED-AUTO]
