@@ -33,6 +33,24 @@ export const revokeInviteSchema = z.object({
 
 export type RevokeInviteInput = z.infer<typeof revokeInviteSchema>;
 
+// Validates change-member-role input (AS-014/AS-015/AS-019). `newRole` is
+// deliberately restricted to "member" | "admin" — "owner" is never an
+// accepted value here: this action changes an *existing* member's role,
+// and granting ownership isn't supported through it (a workspace must
+// always have exactly the ownership it already has resolved elsewhere;
+// see AS-018's sole-owner protection, which a generic "promote to owner"
+// path would need to coordinate with and which is out of this feature's
+// scope).
+export const changeMemberRoleSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  targetMembershipId: z.string().uuid("Invalid member."),
+  newRole: z.enum(["member", "admin"], {
+    message: "Role must be member or admin.",
+  }),
+});
+
+export type ChangeMemberRoleInput = z.infer<typeof changeMemberRoleSchema>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).

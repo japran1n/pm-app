@@ -9,10 +9,14 @@ import {
   createWorkspaceSchema,
   inviteMemberSchema,
   revokeInviteSchema,
+  changeMemberRoleSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
-import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
+import {
+  requireWorkspaceAdmin,
+  requireWorkspaceOwner,
+} from "@/lib/auth/require-membership";
 
 export type CreateWorkspaceResult =
   | { ok: true; slug: string }
@@ -23,6 +27,10 @@ export type InviteMemberResult =
   | { ok: false; error: string };
 
 export type RevokeInviteResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export type ChangeMemberRoleResult =
   | { ok: true }
   | { ok: false; error: string };
 
@@ -415,6 +423,146 @@ export async function revokeInvite(
       // already succeeded, so this is not an action failure.
       console.error(
         "revokeInvite: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true };
+}
+
+// Changes an existing active member's role between "member" and "admin"
+// (AS-014). Only the workspace owner may perform this — deliberately
+// re-checked as owner-specifically here, not the broader owner/admin check
+// `requireWorkspaceAdmin` uses for invite/revoke, because AS-014/AS-015/
+// AS-019 draw the line at owner only: an admin can invite and remove
+// members (AS-019) but does not get to reassign roles. `newRole` is
+// restricted by `changeMemberRoleSchema` to "member" | "admin" — this
+// action can never grant "owner" through it; see that schema for why.
+export async function changeMemberRole(
+  workspaceId: string,
+  targetMembershipId: string,
+  newRole: "member" | "admin",
+): Promise<ChangeMemberRoleResult> {
+  const parsed = changeMemberRoleSchema.safeParse({
+    workspaceId,
+    targetMembershipId,
+    newRole,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to change a member's role.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention, tightened per AS-014/AS-015/
+  // AS-019): re-check the caller is specifically the active *owner* of
+  // this exact workspace, server-side — an admin calling this action
+  // directly (bypassing the UI, which only renders the control for
+  // owners) must be rejected just as a plain member would be.
+  const membership = await requireWorkspaceOwner(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only the workspace owner can change member roles.",
+    };
+  }
+
+  const { data: targetRow, error: lookupError } = await admin
+    .from("workspace_members")
+    .select("id, status, role")
+    .eq("id", parsed.data.targetMembershipId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("changeMemberRole: target lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!targetRow) {
+    return { ok: false, error: "This member no longer exists." };
+  }
+
+  // Only active members have a meaningful role to change; a pending
+  // invite's role is changed by revoking and re-inviting (out of scope
+  // here), and an owner's own row is never touched by this action (no
+  // "become owner" path, and demoting the sole owner is AS-018's guard,
+  // not this feature's).
+  if (targetRow.status !== "active") {
+    return {
+      ok: false,
+      error: "Only active members can have their role changed.",
+    };
+  }
+
+  if (targetRow.role === "owner") {
+    return {
+      ok: false,
+      error: "The workspace owner's role cannot be changed here.",
+    };
+  }
+
+  if (targetRow.role === parsed.data.newRole) {
+    return { ok: true };
+  }
+
+  const { error: updateError } = await admin
+    .from("workspace_members")
+    .update({ role: parsed.data.newRole })
+    .eq("id", parsed.data.targetMembershipId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .eq("status", "active");
+
+  if (updateError) {
+    console.error("changeMemberRole: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}/settings/members`);
+    } catch (revalidateError) {
+      // Same non-fatal cache-freshness rationale as inviteMember/
+      // revokeInvite above: revalidatePath throws outside an active
+      // request/render context (e.g. this action invoked from a test
+      // harness). The role change itself already succeeded, so this is
+      // not an action failure.
+      console.error(
+        "changeMemberRole: revalidatePath failed (non-fatal):",
         revalidateError,
       );
     }

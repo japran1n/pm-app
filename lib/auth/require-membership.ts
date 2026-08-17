@@ -49,3 +49,22 @@ export async function requireWorkspaceAdmin(
   }
   return result;
 }
+
+// Active membership restricted to the owner role only. Used by actions
+// that AS-014/AS-015/AS-019 say only the owner may perform (e.g. changing
+// another member's role) — deliberately stricter than
+// `requireWorkspaceAdmin`, since "admin" is explicitly not enough here
+// (AS-019: an admin can invite/remove members but is not granted every
+// owner-only capability).
+export async function requireWorkspaceOwner(
+  admin: ReturnType<typeof createAdminClient>,
+  workspaceId: string,
+  userId: string,
+): Promise<MembershipCheckResult> {
+  const result = await requireActiveMembership(admin, workspaceId, userId);
+  if (!result.ok) return result;
+  if (result.role !== "owner") {
+    return { ok: false };
+  }
+  return result;
+}

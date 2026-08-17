@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
+import { MemberRoleSelect } from "@/components/member-role-select";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -81,6 +82,9 @@ export default async function MembersPage({
 
   const canInvite =
     ownMembership?.role === "owner" || ownMembership?.role === "admin";
+  // AS-014/AS-015: only the owner may change another member's role — a
+  // stricter gate than `canInvite` (which also allows admins).
+  const canChangeRoles = ownMembership?.role === "owner";
 
   return (
     <div className="flex flex-col gap-8 p-6">
@@ -142,9 +146,18 @@ export default async function MembersPage({
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {member.role}
-                      </Badge>
+                      {canChangeRoles && member.role !== "owner" ? (
+                        <MemberRoleSelect
+                          workspaceId={workspace.id}
+                          workspaceMemberId={member.id}
+                          role={member.role}
+                          memberLabel={member.name ?? member.email ?? "This member"}
+                        />
+                      ) : (
+                        <Badge variant="secondary" className="capitalize">
+                          {member.role}
+                        </Badge>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
