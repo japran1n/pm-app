@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { signInSchema } from "@/lib/validation/auth";
@@ -58,4 +59,28 @@ export async function signInWithMagicLink(
   }
 
   return { ok: true };
+}
+
+// Signs the current user out (AS-022): calling supabase.auth.signOut()
+// against the server client instructs @supabase/ssr to clear the
+// sb-*-auth-token session cookies from the response, fully ending the
+// server-side session (not just local client state). After the cookies are
+// cleared, redirect to /sign-in — combined with proxy.ts's `requiresAuth`
+// guard (AS-001), any subsequent request to a /w/* route (including via
+// back-navigation, since Next.js Server Components re-fetch on every
+// request rather than serving from a client-side bfcache) is redirected to
+// /sign-in instead of rendering cached workspace data.
+export async function signOut(): Promise<never> {
+  const supabase = await createClient();
+
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    // Log detail server-side only; the session cookies are cleared by
+    // Supabase's signOut call regardless of this error in practice, but log
+    // for visibility rather than silently swallowing it.
+    console.error("signOut failed:", error);
+  }
+
+  redirect("/sign-in");
 }

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import { signOut } from "@/lib/actions/auth";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
+import { Button } from "@/components/ui/button";
 
 // Server Component layout (AS-012, AS-013, AS-042): resolves the active
 // workspace from the URL slug, verifies the caller has an active
@@ -111,6 +114,12 @@ export default async function WorkspaceLayout({
           workspaces={switcherWorkspaces}
           currentWorkspaceId={activeWorkspace.id}
         />
+        <form action={signOut} className="ml-auto">
+          <Button type="submit" variant="ghost" size="sm" className="gap-1.5">
+            <LogOut className="size-4" aria-hidden="true" />
+            Sign out
+          </Button>
+        </form>
       </header>
       <main className="flex flex-1 flex-col">{children}</main>
     </div>
