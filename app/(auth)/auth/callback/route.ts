@@ -3,12 +3,11 @@
 // We exchange it for a session (sets the auth cookies via the server
 // client) and redirect onward.
 //
-// Temporary redirect target: workspaces/workspace_members tables don't
-// exist yet (F011/F012 land later in this milestone), so "redirect to the
-// user's default workspace" (per the draft scope) cannot be implemented
-// against real data yet. We redirect to '/' on success for now. Once
-// F011-F013 land, this should be revisited to redirect to the user's
-// default workspace or '/onboarding' if they have none (see handoff).
+// F013: workspaces/workspace_members now exist (F011/F012), so the
+// "temporary redirect to '/'" this route shipped with is resolved here —
+// AS-005: zero memberships -> /onboarding; AS-006-adjacent: at least one
+// membership -> that workspace's /w/[slug] (first active membership, most
+// recently created).
 //
 // Next.js 16: searchParams-equivalent (the request URL) is read via
 // `request.url`; no awaited params needed for Route Handlers.
@@ -36,7 +35,51 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // TODO(F011-F013): redirect to the user's default workspace, or
-  // '/onboarding' if they have none, once workspace tables exist.
-  return NextResponse.redirect(new URL("/", requestUrl.origin));
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.redirect(
+      new URL("/sign-in?error=auth_failed", requestUrl.origin),
+    );
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("workspace_members")
+    .select("workspace_id, created_at")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError) {
+    console.error(
+      "auth callback: failed to look up workspace memberships:",
+      membershipError,
+    );
+  }
+
+  let slug: string | undefined;
+  if (membership) {
+    const { data: workspace, error: workspaceError } = await supabase
+      .from("workspaces")
+      .select("slug")
+      .eq("id", membership.workspace_id)
+      .maybeSingle();
+    if (workspaceError) {
+      console.error(
+        "auth callback: failed to look up workspace slug:",
+        workspaceError,
+      );
+    }
+    slug = workspace?.slug;
+  }
+
+  if (slug) {
+    return NextResponse.redirect(new URL(`/w/${slug}`, requestUrl.origin));
+  }
+
+  return NextResponse.redirect(new URL("/onboarding", requestUrl.origin));
 }
