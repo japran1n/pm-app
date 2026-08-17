@@ -59,6 +59,13 @@ export const removeMemberSchema = z.object({
 
 export type RemoveMemberInput = z.infer<typeof removeMemberSchema>;
 
+// Validates delete-workspace input (AS-020/AS-021).
+export const deleteWorkspaceSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+});
+
+export type DeleteWorkspaceInput = z.infer<typeof deleteWorkspaceSchema>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).

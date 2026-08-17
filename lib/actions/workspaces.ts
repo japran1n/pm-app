@@ -11,6 +11,7 @@ import {
   revokeInviteSchema,
   changeMemberRoleSchema,
   removeMemberSchema,
+  deleteWorkspaceSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -37,6 +38,9 @@ export type ChangeMemberRoleResult =
 
 export type RemoveMemberResult =
   | { ok: true }
+  | { ok: false; error: string };
+
+export type DeleteWorkspaceResult =
   | { ok: false; error: string };
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
@@ -723,4 +727,140 @@ export async function removeMember(
   }
 
   return { ok: true };
+}
+
+// Soft-deletes a workspace (AS-020, AS-021). Owner-only — deliberately the
+// strict `requireWorkspaceOwner` check (not `requireWorkspaceAdmin`), since
+// AS-020 says "only the owner", unlike AS-016's broader owner-or-admin line
+// for member removal.
+//
+// AS-021: sets `deleted_at = now()` rather than deleting the row (tech-
+// decisions.md convention — never hard-delete). F012's
+// `workspaces_select_active_members` RLS policy already filters
+// `deleted_at IS NULL`, so once this succeeds the workspace stops appearing
+// in the switcher and every other membership-scoped query immediately, with
+// no separate follow-up change needed there.
+//
+// Cascade scope: `projects` and `tasks` tables don't exist yet (M3/M4,
+// later milestones), so this cannot cascade a soft-delete to them today —
+// only the workspace row itself is soft-deleted here.
+export async function deleteWorkspace(
+  workspaceId: string,
+): Promise<DeleteWorkspaceResult> {
+  const parsed = deleteWorkspaceSchema.safeParse({ workspaceId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete a workspace." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention, tightened per AS-020): re-check the
+  // caller is specifically the active *owner* of this exact workspace,
+  // server-side — an admin or member calling this action directly
+  // (bypassing the UI, which only renders the control for owners) must be
+  // rejected.
+  const membership = await requireWorkspaceOwner(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only the workspace owner can delete a workspace.",
+    };
+  }
+
+  const { data: workspaceRow, error: lookupError } = await admin
+    .from("workspaces")
+    .select("id, deleted_at")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("deleteWorkspace: workspace lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!workspaceRow || workspaceRow.deleted_at) {
+    return { ok: false, error: "This workspace no longer exists." };
+  }
+
+  // TODO(F029/F038 or later): cascade soft-delete to projects/tasks once
+  // those tables exist. Until then, only the workspace row itself is
+  // soft-deleted — a known-incomplete cascade, tracked here rather than
+  // silently missing (see this feature's handoff for the full rationale).
+  const { error: updateError } = await admin
+    .from("workspaces")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", parsed.data.workspaceId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    console.error("deleteWorkspace: soft-delete update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath(`/w/${parsed.data.workspaceId}`, "layout");
+  } catch (revalidateError) {
+    // Same non-fatal cache-freshness rationale as the other actions in this
+    // file: revalidatePath throws outside an active request/render context
+    // (e.g. this action invoked from a test harness). The soft-delete
+    // itself already succeeded, so this is not an action failure.
+    console.error(
+      "deleteWorkspace: revalidatePath failed (non-fatal):",
+      revalidateError,
+    );
+  }
+
+  // Find the caller's next remaining active workspace membership (if any)
+  // to redirect to, so deleting a workspace never strands the caller on a
+  // now-inaccessible page. Falls back to /onboarding when none remain,
+  // matching every other "no workspace" redirect in this app (see
+  // app/(auth)/auth/callback/route.ts and the [workspaceSlug] layout/page
+  // guards).
+  const { data: nextMembership } = await admin
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .neq("workspace_id", parsed.data.workspaceId)
+    .limit(1)
+    .maybeSingle();
+
+  if (nextMembership?.workspace_id) {
+    const { data: nextWorkspace } = await admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", nextMembership.workspace_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (nextWorkspace?.slug) {
+      redirect(`/w/${nextWorkspace.slug}`);
+    }
+  }
+
+  redirect("/onboarding");
 }
