@@ -9,11 +9,11 @@ Tag legend: (no tag) draft · `[CLARIFIED]` / `[CLARIFIED-AUTO]` · `[SKIPPED]` 
 
 Skeleton only. No business logic, no assertions assigned — this milestone proves the app boots, builds, and CI is green.
 
-- F001 project-skeleton-nextjs [CLARIFIED-AUTO]
-- F002 shadcn-init [CLARIFIED-AUTO]
-- F003 supabase-project-link [CLARIFIED-AUTO]
-- F004 ci-pipeline [CLARIFIED-AUTO]
-- F005 base-layout-shell [CLARIFIED-AUTO]
+- F001 project-skeleton-nextjs [CLARIFIED-AUTO] [COMPLETE]
+- F002 shadcn-init [CLARIFIED-AUTO] [COMPLETE]
+- F003 supabase-project-link [CLARIFIED-AUTO] [COMPLETE]
+- F004 ci-pipeline [CLARIFIED-AUTO] [COMPLETE]
+- F005 base-layout-shell [CLARIFIED-AUTO] [COMPLETE]
 
 ## M2 — Auth & Workspace
 
