@@ -53,8 +53,12 @@ export function BoardColumn({
       data-status={status}
     >
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-sm font-medium">{COLUMN_LABELS[status]}</h2>
-        <span className="text-xs text-muted-foreground">{tasks.length}</span>
+        <h2 className="text-sm font-medium">
+          {COLUMN_LABELS[status]}{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            ({tasks.length})
+          </span>
+        </h2>
       </div>
 
       <SortableContext
