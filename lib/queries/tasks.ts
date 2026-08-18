@@ -52,3 +52,46 @@ export async function getProjectBoardTasks(
     updatedAt: task.updated_at,
   }));
 }
+
+// Data-fetching for the project List view (F053: AS-085).
+//
+// Same RLS-backed, `deleted_at is null`, `project_id`-scoped shape as
+// `getProjectBoardTasks` above (see that function's comment for the full
+// rationale — the RLS policy `tasks_select_active_members` plus this
+// explicit filter is what makes the query workspace- and project-scoped
+// by construction). The difference from the board query is ordering: the
+// board buckets rows into 4 fixed status columns and needs `position`
+// ascending *within* each column, but the list view is one flat table, so
+// there's no meaningful use for the board's fractional `position` here.
+// Ordered by `created_at` ascending instead (oldest first, a stable and
+// predictable default) — AS-091's due-date sort is a client-side/UI
+// concern layered on top of this fetch, not this query's job.
+export async function getProjectListTasks(
+  projectId: string,
+): Promise<TaskCardTask[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select(
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at",
+    )
+    .eq("project_id", projectId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status as TaskCardTask["status"],
+    priority: task.priority as TaskCardTask["priority"],
+    assigneeId: task.assignee_id,
+    dueDate: task.due_date,
+    position: task.position,
+    updatedAt: task.updated_at,
+  }));
+}
