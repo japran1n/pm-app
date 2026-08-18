@@ -1,0 +1,147 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+
+import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceProjects } from "@/lib/queries/projects";
+import { NewProjectDialog } from "@/components/new-project-dialog";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+// F027 (AS-027, AS-034, AS-042): lists every non-deleted project in the
+// active workspace. Server Component — primary content is rendered into
+// the initial HTML (AS-155); the only interactive part ("New Project") is
+// its own small Client Component (components/new-project-dialog.tsx).
+//
+// Access: relies on the workspace-membership layout guard above this route
+// (app/(workspace)/w/[workspaceSlug]/layout.tsx, F010/F023) — reaching this
+// page at all already means the caller is an active member of this
+// workspace, per the clarified spec ("no duplicate page-level gate unless
+// the assigned assertion specifically requires role-gating beyond
+// membership" — neither AS-027 nor AS-034 nor AS-042 do).
+//
+// AS-042: the project list is scoped to the active workspace because
+// `workspace.id` below is resolved fresh from the URL's `workspaceSlug`
+// param on every request — switching workspaces via F014's switcher
+// navigates to a new slug, which re-runs this Server Component with a
+// different `workspace.id`, which changes the `getWorkspaceProjects(...)`
+// query's `workspace_id` filter. There is no client-cached project list
+// that could go stale across a switch.
+export default async function ProjectsPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+}) {
+  const { workspaceSlug } = await params;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id, name")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  // Defensive fallback only — the layout guard above already redirects
+  // away (via notFound()) when the workspace can't be resolved for this
+  // caller.
+  if (!workspace) {
+    redirect("/onboarding");
+  }
+
+  let projects: Awaited<ReturnType<typeof getWorkspaceProjects>> | null = null;
+  let loadError = false;
+
+  try {
+    projects = await getWorkspaceProjects(workspace.id);
+  } catch (error) {
+    // Same console.error-to-Sentry convention as MembersPage — this repo
+    // has no separate logging library, per tech-decisions.md.
+    console.error("ProjectsPage: failed to load projects:", error);
+    loadError = true;
+  }
+
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-lg font-semibold">Projects</h1>
+          <p className="text-sm text-muted-foreground">
+            All projects in {workspace.name}.
+          </p>
+        </div>
+        <NewProjectDialog workspaceId={workspace.id} />
+      </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+        >
+          <p>Something went wrong loading projects. Please try again.</p>
+          <a href={`/w/${workspaceSlug}/projects`} className="underline">
+            Retry
+          </a>
+        </div>
+      )}
+
+      {projects && projects.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
+          <p className="text-sm font-medium">No projects yet</p>
+          <p className="text-sm text-muted-foreground">
+            Create your first project to start organizing work.
+          </p>
+        </div>
+      )}
+
+      {projects && projects.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Card key={project.id}>
+              <CardHeader>
+                <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                <CardDescription className="line-clamp-2">
+                  {project.description || "No description."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* AS-034: open task count. The `tasks` table doesn't exist
+                    yet (lands M4, F033+), so this is an explicit "pending"
+                    badge rather than a hardcoded 0 — see the TODO in
+                    lib/queries/projects.ts. */}
+                {project.openTaskCount === null ? (
+                  <Badge variant="outline" title="Task counts arrive in a later milestone">
+                    Open tasks: pending
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">
+                    {project.openTaskCount} open task
+                    {project.openTaskCount === 1 ? "" : "s"}
+                  </Badge>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <p className="text-sm text-muted-foreground">
+        <Link href={`/w/${workspaceSlug}`} className="underline">
+          Back to workspace home
+        </Link>
+      </p>
+    </div>
+  );
+}

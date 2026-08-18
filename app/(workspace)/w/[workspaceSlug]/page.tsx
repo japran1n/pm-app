@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,8 +26,15 @@ export default async function WorkspacePage({
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-6">
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
       <h1 className="text-lg font-semibold">Welcome to {workspace.name}</h1>
+      {/* F027: natural next stop from the workspace home placeholder. */}
+      <Link
+        href={`/w/${workspaceSlug}/projects`}
+        className="text-sm text-muted-foreground underline"
+      >
+        View projects
+      </Link>
     </div>
   );
 }
