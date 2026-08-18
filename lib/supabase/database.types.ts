@@ -284,6 +284,13 @@ export type Database = {
           priority: string
         }[]
       }
+      get_status_counts: {
+        Args: { p_workspace_id: string }
+        Returns: {
+          count: number
+          status: string
+        }[]
+      }
       is_active_workspace_member: {
         Args: { target_workspace_id: string }
         Returns: boolean
