@@ -61,6 +61,71 @@ export type Database = {
           },
         ]
       }
+      tasks: {
+        Row: {
+          assignee_id: string | null
+          author_id: string
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          points: number | null
+          position: number
+          priority: string | null
+          project_id: string
+          start_date: string | null
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assignee_id?: string | null
+          author_id: string
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          points?: number | null
+          position?: number
+          priority?: string | null
+          project_id: string
+          start_date?: string | null
+          status?: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assignee_id?: string | null
+          author_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          points?: number | null
+          position?: number
+          priority?: string | null
+          project_id?: string
+          start_date?: string | null
+          status?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           created_at: string
