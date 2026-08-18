@@ -416,6 +416,28 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      start_timer_atomic: {
+        Args: { p_task_id: string }
+        Returns: {
+          id: string
+          started_at: string
+          task_id: string
+          user_id: string
+        }[]
+      }
+      stop_timer_atomic: {
+        Args: never
+        Returns: {
+          billable: boolean
+          created_at: string
+          entry_date: string
+          id: string
+          minutes: number
+          note: string
+          task_id: string
+          user_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

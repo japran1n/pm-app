@@ -163,3 +163,188 @@ export async function logTimeEntry(
     },
   };
 }
+
+export type StartTimerResult =
+  | {
+      ok: true;
+      data: { id: string; taskId: string; userId: string; startedAt: string };
+    }
+  | { ok: false; error: string };
+
+export type StopTimerResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        taskId: string;
+        userId: string;
+        minutes: number;
+        billable: boolean;
+        entryDate: string;
+        note: string | null;
+        createdAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// startTimer (F111: AS-164, AS-165, AS-166, AS-168): starts a live timer on
+// `taskId` for the caller. Membership is re-checked server-side the same
+// way as logTimeEntry (F110) — the task's owning workspace is looked up
+// and requireActiveMembership re-verified — before ever touching
+// active_timers.
+//
+// AS-165/AS-166: a caller can have at most one active timer at a time
+// (enforced at the DB level by the UNIQUE constraint on
+// active_timers.user_id — supabase/migrations/20260818151845_create_active_timers.sql).
+// If the caller already has a running timer (on any task — the constraint
+// is per-user, not per-task), starting a new one must first auto-stop the
+// old one: compute its elapsed minutes, log it as a completed time_entries
+// row, delete the old active_timers row, THEN insert the new one. That
+// whole sequence runs inside a single Postgres function
+// (start_timer_atomic, supabase/migrations/20260818153433_create_stop_and_start_timer_rpc.sql)
+// rather than as three separate round trips from this action, so a crash
+// mid-sequence can never leave two active timers or silently lose the old
+// timer's elapsed time — same atomicity pattern as
+// create_workspace_with_owner (F013/F095).
+//
+// The RPC is invoked through the request-scoped (RLS-respecting) client,
+// not the admin client: start_timer_atomic is SECURITY DEFINER and sources
+// the caller's id from auth.uid() itself, so it must run under the
+// caller's own session, never under the service role (which has no
+// auth.uid()).
+export async function startTimer(taskId: string): Promise<StartTimerResult> {
+  if (!taskId || typeof taskId !== "string") {
+    return { ok: false, error: "A task is required to start a timer." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to start a timer." };
+  }
+
+  const admin = createAdminClient();
+
+  // Same task -> project -> workspace lookup as logTimeEntry, so
+  // membership is checked against the task's real owning workspace, never
+  // one supplied (or omitted) by the client. Soft-deleted tasks are
+  // treated as not found, same convention as logTimeEntry.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects(workspace_id)")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side, before starting a timer on it.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to start a timer on this task.",
+    };
+  }
+
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    "start_timer_atomic",
+    { p_task_id: taskId },
+  );
+
+  const started = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (rpcError || !started) {
+    console.error("startTimer: start_timer_atomic failed:", rpcError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: started.id,
+      taskId: started.task_id,
+      userId: started.user_id,
+      startedAt: started.started_at,
+    },
+  };
+}
+
+// stopTimer (F111: AS-167, AS-168): stops the caller's own active timer,
+// if any, and logs it as a completed time_entries row. Elapsed minutes are
+// computed server-side inside stop_timer_atomic from the active_timers
+// row's own `started_at` against the database's `now()` — never from any
+// client-supplied timestamp, which is what makes this resistant to
+// clock-skew or client tampering (AS-168's anti-tampering angle).
+//
+// If the caller has no active timer, this returns a clean `ok: false`
+// rather than throwing — stopping a timer that was already stopped (e.g. a
+// stale UI, or a duplicate double-click) is an expected, non-exceptional
+// case, not a crash.
+export async function stopTimer(): Promise<StopTimerResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to stop a timer." };
+  }
+
+  const { data: rpcRows, error: rpcError } =
+    await supabase.rpc("stop_timer_atomic");
+
+  if (rpcError) {
+    console.error("stopTimer: stop_timer_atomic failed:", rpcError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const stopped = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (!stopped) {
+    return { ok: false, error: "You don't have an active timer running." };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: stopped.id,
+      taskId: stopped.task_id,
+      userId: stopped.user_id,
+      minutes: stopped.minutes,
+      billable: stopped.billable,
+      entryDate: stopped.entry_date,
+      note: stopped.note,
+      createdAt: stopped.created_at,
+    },
+  };
+}
