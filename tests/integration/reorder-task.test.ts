@@ -318,6 +318,27 @@ describe.skipIf(!haveAdminCreds)(
       expect(result.data.position).toBeGreaterThan(firstRow!.position);
     });
 
+    it("AS-084: a caller with only the 'member' role (not owner/admin) CAN successfully reorder a task — board interaction is not permission-gated beyond workspace membership", async () => {
+      const { reorderTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask("todo", 1000);
+
+      // memberUserId was seeded above with role: "member" (never owner/admin).
+      currentTestUserId = memberUserId;
+
+      const result = await reorderTask(taskId, 750);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.position).toBe(750);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("position")
+        .eq("id", taskId)
+        .single();
+      expect(row?.position).toBe(750);
+    });
+
     it("a caller who is not a member of the task's workspace cannot reorder the task", async () => {
       const { reorderTask } = await import("@/lib/actions/tasks");
       const taskId = await makeTask("todo", 1000);

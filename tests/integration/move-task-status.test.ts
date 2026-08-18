@@ -239,6 +239,27 @@ describe.skipIf(!haveAdminCreds)("moveTaskStatus (F045: AS-069)", () => {
     expect(row?.status).toBe("in_progress");
   });
 
+  it("AS-084: a caller with only the 'member' role (not owner/admin) CAN successfully move a task's status — board interaction is not permission-gated beyond workspace membership", async () => {
+    const { moveTaskStatus } = await import("@/lib/actions/tasks");
+    const taskId = await makeTask("todo");
+
+    // memberUserId was seeded above with role: "member" (never owner/admin).
+    currentTestUserId = memberUserId;
+
+    const result = await moveTaskStatus(taskId, "in_review");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.status).toBe("in_review");
+
+    const { data: row } = await adminClient
+      .from("tasks")
+      .select("status")
+      .eq("id", taskId)
+      .single();
+    expect(row?.status).toBe("in_review");
+  });
+
   it("AS-069: a caller who is not a member of the task's workspace cannot move the task", async () => {
     const { moveTaskStatus } = await import("@/lib/actions/tasks");
     const taskId = await makeTask("todo");
