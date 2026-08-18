@@ -151,3 +151,16 @@ export const moveTaskStatusSchema = z.object({
 });
 
 export type MoveTaskStatusInput = z.infer<typeof moveTaskStatusSchema>;
+
+// Validates reorderTask input (F046: AS-070, AS-078, AS-079). `position` is
+// the already-computed fractional-index value (lib/board/position.ts's
+// calculatePosition) — this schema only guards against a non-finite number
+// reaching the DB (NaN/Infinity would corrupt AS-078's ascending order and
+// violate AS-082's "never NaN" guarantee at the boundary where client input
+// enters the server).
+export const reorderTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  position: z.number().finite("Invalid position."),
+});
+
+export type ReorderTaskInput = z.infer<typeof reorderTaskSchema>;

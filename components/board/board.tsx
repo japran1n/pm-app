@@ -2,11 +2,12 @@
 // the whole board — sensors, drag state, and the DragOverlay — and hands
 // each BoardColumn its slice of tasks plus a SortableContext.
 //
-// Scope per the clarified spec: dragging may visually move cards around
-// client-side (dnd-kit's default sortable reordering) but does NOT persist
-// to the server yet. That's F045 (status-change Server Action) and F046
-// (position-persist Server Action) — see the TODO markers in onDragEnd
-// below for exactly where those calls plug in.
+// Scope per the clarified spec: dragging visually moves cards around
+// client-side (dnd-kit's default sortable reordering) and persists both
+// halves of a drop via onDragEnd below — F045's moveTaskStatus (status,
+// only called when the column actually changed) and F046's reorderTask
+// (position, always called, computed via lib/board/position.ts's
+// calculatePosition from the dropped card's new neighbors).
 //
 // Sensors: PointerSensor (mouse/touch drag) AND KeyboardSensor are both
 // configured — the keyboard sensor is required, not optional, per this
@@ -36,7 +37,8 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
-import { moveTaskStatus } from "@/lib/actions/tasks";
+import { moveTaskStatus, reorderTask } from "@/lib/actions/tasks";
+import { calculatePosition } from "@/lib/board/position";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 
@@ -54,11 +56,9 @@ export function Board({
   initialTasks: TaskCardTask[];
   onCardClick?: (taskId: string) => void;
 }) {
-  // Local, client-side-only copy of the board's tasks. F043 is explicitly
-  // "visual move only" — this state is never written back to the server.
-  // F045/F046 will replace (or wrap) this with Server Action calls that
-  // persist status/position, most likely via optimistic updates layered
-  // on top of this same local state.
+  // Local, client-side-only copy of the board's tasks, optimistically
+  // updated on drop by onDragEnd below (F045's moveTaskStatus + F046's
+  // reorderTask, both rolled back to the pre-drop snapshot on failure).
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
 
@@ -99,18 +99,50 @@ export function Board({
       const activeIndex = current.findIndex((t) => t.id === active.id);
       if (activeIndex === -1) return current;
 
-      const movedTask = { ...current[activeIndex], status: targetStatus };
-      const withoutActive = current.filter((t) => t.id !== active.id);
-
       let insertAt: number;
       if (overTask) {
-        insertAt = withoutActive.findIndex((t) => t.id === overTask.id);
-        if (insertAt === -1) insertAt = withoutActive.length;
+        const withoutActiveForIndex = current.filter(
+          (t) => t.id !== active.id,
+        );
+        insertAt = withoutActiveForIndex.findIndex(
+          (t) => t.id === overTask.id,
+        );
+        if (insertAt === -1) insertAt = withoutActiveForIndex.length;
       } else {
         // Dropped on an empty/column-level target: append to the end of
         // that column's tasks.
-        insertAt = withoutActive.length;
+        insertAt = current.filter(
+          (t) => t.id !== active.id && t.status === targetStatus,
+        ).length;
       }
+
+      // F046 (AS-070, AS-072, AS-073, AS-079): compute the moved card's new
+      // `position` from its new neighbors *within the target column*,
+      // using the same ordering the board renders (position-ascending,
+      // per lib/queries/tasks.ts) — not the whole unfiltered `tasks`
+      // array, which also holds every other column's cards.
+      const withoutActive = current.filter((t) => t.id !== active.id);
+      const targetColumnTasks = withoutActive.filter(
+        (t) => t.status === targetStatus,
+      );
+      const targetColumnInsertAt = overTask
+        ? Math.max(
+            0,
+            targetColumnTasks.findIndex((t) => t.id === overTask.id),
+          )
+        : targetColumnTasks.length;
+      const prevNeighbor = targetColumnTasks[targetColumnInsertAt - 1] ?? null;
+      const nextNeighbor = targetColumnTasks[targetColumnInsertAt] ?? null;
+      const newPosition = calculatePosition(
+        prevNeighbor?.position ?? null,
+        nextNeighbor?.position ?? null,
+      );
+
+      const movedTask = {
+        ...current[activeIndex],
+        status: targetStatus,
+        position: newPosition,
+      };
 
       const next = [
         ...withoutActive.slice(0, insertAt),
@@ -129,11 +161,17 @@ export function Board({
         });
       }
 
-      // TODO(F046): regardless of whether the status changed, the new
-      // ordering within `targetStatus` (and the column the task left, if
-      // different) needs its `position` values persisted — call the
-      // position-persist Server Action here with the recomputed order,
-      // again optimistic with rollback to `current` on failure.
+      // F046 (AS-070, AS-078, AS-079, AS-080): regardless of whether the
+      // status also changed, persist the recomputed `position` — this is a
+      // separate UPDATE from moveTaskStatus above (see reorderTask's doc
+      // comment in lib/actions/tasks.ts for why the two aren't merged into
+      // one call). Optimistic, with the same rollback-to-`current` on
+      // failure.
+      void reorderTask(movedTask.id, newPosition).then((result) => {
+        if (!result.ok) {
+          setTasks(current);
+        }
+      });
 
       return next;
     });

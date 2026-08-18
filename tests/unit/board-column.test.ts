@@ -32,12 +32,12 @@ const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
 ];
 
 const ALL_TASKS: TaskCardTask[] = [
-  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null },
-  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null },
-  { id: "t3", title: "In review task", status: "in_review", priority: null, assigneeId: null, dueDate: null },
-  { id: "t4", title: "Done task", status: "done", priority: null, assigneeId: null, dueDate: null },
+  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null, position: 1000 },
+  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null, position: 1000 },
+  { id: "t3", title: "In review task", status: "in_review", priority: null, assigneeId: null, dueDate: null, position: 1000 },
+  { id: "t4", title: "Done task", status: "done", priority: null, assigneeId: null, dueDate: null, position: 1000 },
   // Overdue: due in the past, not done (AS-064).
-  { id: "t5", title: "Overdue todo task", status: "todo", priority: null, assigneeId: null, dueDate: "2000-01-01" },
+  { id: "t5", title: "Overdue todo task", status: "todo", priority: null, assigneeId: null, dueDate: "2000-01-01", position: 1000 },
 ];
 
 describe("BoardColumn (F042: AS-067, AS-068, AS-064)", () => {

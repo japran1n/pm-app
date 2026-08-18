@@ -28,6 +28,10 @@ export type TaskCardTask = {
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
   dueDate: string | null;
+  // F046 (AS-070, AS-078): the task's fractional-index board position.
+  // Carried through the client-side board state so onDragEnd can compute
+  // a dropped card's new neighbors' positions without a round-trip.
+  position: number;
 };
 
 const PRIORITY_LABELS: Record<

@@ -46,5 +46,6 @@ export async function getProjectBoardTasks(
     priority: task.priority as TaskCardTask["priority"],
     assigneeId: task.assignee_id,
     dueDate: task.due_date,
+    position: task.position,
   }));
 }

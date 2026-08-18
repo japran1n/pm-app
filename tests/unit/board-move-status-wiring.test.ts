@@ -1,5 +1,6 @@
-// Component-level check for F045 (AS-069) that a cross-column drop wires
-// into the moveTaskStatus Server Action.
+// Component-level check for F045 (AS-069) + F046 (AS-070, AS-078, AS-079,
+// AS-080) that a drop wires into the moveTaskStatus AND reorderTask Server
+// Actions.
 //
 // This repo has no jsdom/@testing-library setup (vitest.config.ts pins
 // `environment: "node"`, and dnd-kit's sensors only activate on real
@@ -8,12 +9,12 @@
 // testing to F090). Given that constraint, this test mirrors that file's
 // established pattern of a source-level check: it renders the real
 // component tree to prove nothing crashes, and inspects board.tsx's
-// source to confirm the onDragEnd handler (a) imports moveTaskStatus, (b)
-// only calls it when the dropped task's status actually changed (not on a
-// same-column reorder), and (c) rolls back optimistic state on failure —
-// this is the same level of verification board-dnd-setup.test.ts already
-// established as reasonable for interaction code that can't run headless
-// in this repo.
+// source to confirm the onDragEnd handler (a) imports moveTaskStatus and
+// reorderTask, (b) only calls moveTaskStatus when the dropped task's
+// status actually changed (not on a same-column reorder), (c) always
+// calls reorderTask with a calculatePosition-derived value regardless of
+// whether the column changed, and (d) rolls back optimistic state on
+// failure.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -23,14 +24,15 @@ import { createElement } from "react";
 
 vi.mock("@/lib/actions/tasks", () => ({
   moveTaskStatus: vi.fn(async () => ({ ok: true, data: { id: "t1", status: "in_progress" } })),
+  reorderTask: vi.fn(async () => ({ ok: true, data: { id: "t1", position: 1000 } })),
 }));
 
 import { Board } from "@/components/board/board";
 import type { TaskCardTask } from "@/components/task/task-card";
 
 const TASKS: TaskCardTask[] = [
-  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null },
-  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null },
+  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null, position: 1000 },
+  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null, position: 1000 },
 ];
 
 const boardSource = readFileSync(
@@ -47,7 +49,7 @@ describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
 
   it("imports moveTaskStatus from lib/actions/tasks", () => {
     expect(boardSource).toMatch(
-      /import\s*{\s*moveTaskStatus\s*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
+      /import\s*{[^}]*moveTaskStatus[^}]*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
     );
   });
 
@@ -65,7 +67,17 @@ describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
     expect(boardSource).toMatch(/if\s*\(\s*!result\.ok\s*\)\s*{\s*setTasks\(current\);/);
   });
 
-  it("leaves a TODO(F046) marker for the position-persist half of this same handler", () => {
-    expect(boardSource).toContain("TODO(F046)");
+  it("F046: imports reorderTask and calculatePosition", () => {
+    expect(boardSource).toMatch(
+      /import\s*{[^}]*reorderTask[^}]*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
+    );
+    expect(boardSource).toMatch(
+      /import\s*{\s*calculatePosition\s*}\s*from\s*["']@\/lib\/board\/position["']/,
+    );
+  });
+
+  it("F046: calls reorderTask with the moved task's id and a calculatePosition-derived value", () => {
+    expect(boardSource).toMatch(/reorderTask\(\s*movedTask\.id,/);
+    expect(boardSource).toMatch(/calculatePosition\(/);
   });
 });

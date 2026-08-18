@@ -11,9 +11,11 @@ import {
   deleteTaskSchema,
   updateTaskTagsSchema,
   moveTaskStatusSchema,
+  reorderTaskSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { calculatePosition } from "@/lib/board/position";
 
 export type CreateTaskResult =
   | {
@@ -51,11 +53,11 @@ export type CreateTaskResult =
 // membership can be checked against the *real* owning workspace, never a
 // workspace_id supplied (or omitted) by the client.
 //
-// position: F035 assigns a simple default (0) rather than F044's real
-// fractional-index "append to end of column" logic (AS-079) — F044
-// supersedes this once it lands. Documented here rather than silently
-// left unexplained so a future worker doesn't mistake this for the final
-// ordering behaviour.
+// position: F035 originally assigned a simple placeholder default (0).
+// F046 supersedes that here: a newly created task must be appended to the
+// end of its column's position order (AS-079), computed via
+// lib/board/position.ts's calculatePosition against the current last task
+// in that (project, status) column — never a hardcoded constant.
 export async function createTask(
   projectId: string,
   title: string,
@@ -147,8 +149,27 @@ export async function createTask(
   // (supabase/migrations/20260818013434_create_tasks.sql sets `default
   // now()`), also never accepted from the client.
   //
-  // position: simple default of 0 for this feature — F044 owns the real
-  // fractional-index "append to end of column" logic (AS-071, AS-079).
+  // position (AS-079): append to the end of the (project, status) column
+  // this task is being created into — look up the current last task's
+  // position in that column and hand it to calculatePosition as the
+  // `prevPosition` neighbor, with no `nextPosition` (null = "becoming the
+  // last card"). An empty column falls back to calculatePosition's own
+  // DEFAULT_POSITION.
+  const { data: lastInColumn } = await admin
+    .from("tasks")
+    .select("position")
+    .eq("project_id", parsed.data.projectId)
+    .eq("status", parsed.data.status)
+    .is("deleted_at", null)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const newTaskPosition = calculatePosition(
+    lastInColumn?.position ?? null,
+    null,
+  );
+
   const { data: inserted, error: insertError } = await admin
     .from("tasks")
     .insert({
@@ -160,7 +181,7 @@ export async function createTask(
       assignee_id: parsed.data.assigneeId,
       due_date: parsed.data.dueDate,
       author_id: user.id,
-      position: 0,
+      position: newTaskPosition,
     })
     .select(
       "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at",
@@ -937,6 +958,160 @@ export async function moveTaskStatus(
     data: {
       id: updated.id,
       status: updated.status,
+    },
+  };
+}
+
+export type ReorderTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        position: number;
+      };
+    }
+  | { ok: false; error: string };
+
+// Persists a task's new `position` after a drag-and-drop reorder (F046:
+// AS-070, AS-078, AS-079, AS-080). Pattern mirrors moveTaskStatus above:
+// Zod-validated input, membership re-checked server-side (defense in
+// depth, AS-143), admin client used for the actual update, discriminated
+// union return, generic user-facing errors with details only logged
+// server-side (AS-146).
+//
+// AS-070/AS-078: this action updates ONLY the `position` column — it never
+// touches `status`. board.tsx's onDragEnd (F045 + F046, same handler)
+// calls calculatePosition (lib/board/position.ts) to compute the new
+// fractional-index value from the dropped card's new neighbors, then
+// calls this action with that value. If a drag ALSO changed the column,
+// onDragEnd calls moveTaskStatus (F045) alongside this — the two actions
+// are independent UPDATEs against the same row, not merged into one
+// call, matching F045's own doc comment ("F046's responsibility, layered
+// on top of this same onDragEnd handler — not duplicated here").
+//
+// AS-080: dragging must not change updated_at unless status also changed.
+// Investigated the `tasks_set_updated_at` trigger
+// (supabase/migrations/20260818013434_create_tasks.sql) — it originally
+// fired unconditionally on every UPDATE, which would have bumped
+// updated_at on this position-only write too. Fixed at the schema level
+// in supabase/migrations/20260818023746_tasks_updated_at_exclude_position.sql,
+// which adds a WHEN clause so the trigger only fires when a column other
+// than `position` (and `updated_at` itself) actually changed. Nothing
+// further is needed here in application code — the UPDATE below only ever
+// sets `position`, and the trigger now leaves `updated_at` alone for that
+// case.
+//
+// Any active workspace member may reorder any task in that workspace,
+// regardless of authorship/assignment — mirrors moveTaskStatus/editTask/
+// deleteTask: no per-task ownership check, only workspace membership.
+export async function reorderTask(
+  taskId: string,
+  newPosition: number,
+): Promise<ReorderTaskResult> {
+  const parsed = reorderTaskSchema.safeParse({
+    taskId,
+    position: newPosition,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid position.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to reorder a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // moveTaskStatus/editTask/deleteTask's task lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to reorder this task.",
+    };
+  }
+
+  // AS-070/AS-078: position only — status is deliberately absent from this
+  // payload. AS-080: this UPDATE only ever sets `position`, and the
+  // tasks_set_updated_at trigger's WHEN clause (see migration referenced
+  // above) is what actually keeps updated_at untouched for this case.
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ position: parsed.data.position })
+    .eq("id", parsed.data.taskId)
+    .select("id, position")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("reorderTask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "reorderTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      position: updated.position,
     },
   };
 }

@@ -35,8 +35,8 @@ import { Board } from "@/components/board/board";
 import type { TaskCardTask } from "@/components/task/task-card";
 
 const TASKS: TaskCardTask[] = [
-  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null },
-  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null },
+  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null, position: 1000 },
+  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null, position: 1000 },
 ];
 
 const boardSource = readFileSync(
