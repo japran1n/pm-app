@@ -109,131 +109,166 @@ export default async function MembersPage({
       )}
 
       {members && canInvite && (
-        <section className="flex flex-col gap-3">
+        <section className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+          <h2 className="text-sm font-medium">Invite a teammate</h2>
           <InviteMemberForm workspaceId={workspace.id} />
         </section>
       )}
 
       {members && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Active members
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">Active members</h2>
+            <Badge variant="secondary">{members.active.length}</Badge>
+          </div>
           {members.active.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No active members yet.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Role</TableHead>
-                  {canInvite && (
-                    <TableHead className="w-px">
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.active.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {member.name ?? member.email ?? "Unknown member"}
-                        </span>
-                        {member.name && member.email && (
-                          <span className="text-xs text-muted-foreground">
-                            {member.email}
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {canChangeRoles && member.role !== "owner" ? (
-                        <MemberRoleSelect
-                          workspaceId={workspace.id}
-                          workspaceMemberId={member.id}
-                          role={member.role}
-                          memberLabel={member.name ?? member.email ?? "This member"}
-                        />
-                      ) : (
-                        <Badge variant="secondary" className="capitalize">
-                          {member.role}
-                        </Badge>
-                      )}
-                    </TableCell>
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Member</TableHead>
+                    <TableHead>Role</TableHead>
                     {canInvite && (
-                      <TableCell>
-                        {/* AS-016/AS-018: owner/admin can remove any active
-                            member; the sole owner is rejected server-side
-                            by `removeMember` regardless of what's rendered
-                            here. */}
-                        <RemoveMemberButton
-                          workspaceId={workspace.id}
-                          workspaceMemberId={member.id}
-                          memberLabel={member.name ?? member.email ?? "this member"}
-                        />
-                      </TableCell>
+                      <TableHead className="w-px">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
                     )}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {members.active.map((member) => {
+                    const label = member.name ?? member.email ?? "Unknown member";
+                    const initial = label.charAt(0).toUpperCase();
+
+                    return (
+                      <TableRow key={member.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <span
+                              aria-hidden="true"
+                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                            >
+                              {initial}
+                            </span>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{label}</span>
+                              {member.name && member.email && (
+                                <span className="text-xs text-muted-foreground">
+                                  {member.email}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {canChangeRoles && member.role !== "owner" ? (
+                            <MemberRoleSelect
+                              workspaceId={workspace.id}
+                              workspaceMemberId={member.id}
+                              role={member.role}
+                              memberLabel={label}
+                            />
+                          ) : (
+                            <Badge
+                              variant={member.role === "owner" ? "default" : "secondary"}
+                              className="capitalize"
+                            >
+                              {member.role}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        {canInvite && (
+                          <TableCell>
+                            {/* AS-016/AS-018: owner/admin can remove any active
+                                member; the sole owner is rejected server-side
+                                by `removeMember` regardless of what's rendered
+                                here. */}
+                            <RemoveMemberButton
+                              workspaceId={workspace.id}
+                              workspaceMemberId={member.id}
+                              memberLabel={label}
+                            />
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </section>
       )}
 
       {members && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Pending invites
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">Pending invites</h2>
+            <Badge variant="secondary">{members.pending.length}</Badge>
+          </div>
           {members.pending.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No pending invites.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  {canInvite && (
-                    <TableHead className="w-px">
-                      <span className="sr-only">Actions</span>
-                    </TableHead>
-                  )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {members.pending.map((invite) => (
-                  <TableRow key={invite.id}>
-                    <TableCell>{invite.invitedEmail}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {invite.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">Invited</Badge>
-                    </TableCell>
+            <div className="overflow-hidden rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
                     {canInvite && (
-                      <TableCell>
-                        <RevokeInviteButton
-                          workspaceId={workspace.id}
-                          workspaceMemberId={invite.id}
-                          invitedEmail={invite.invitedEmail}
-                        />
-                      </TableCell>
+                      <TableHead className="w-px">
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
                     )}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {members.pending.map((invite) => {
+                    const initial = invite.invitedEmail.charAt(0).toUpperCase();
+
+                    return (
+                      <TableRow key={invite.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <span
+                              aria-hidden="true"
+                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                            >
+                              {initial}
+                            </span>
+                            {invite.invitedEmail}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="capitalize">
+                            {invite.role}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">Invited</Badge>
+                        </TableCell>
+                        {canInvite && (
+                          <TableCell>
+                            <RevokeInviteButton
+                              workspaceId={workspace.id}
+                              workspaceMemberId={invite.id}
+                              invitedEmail={invite.invitedEmail}
+                            />
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </section>
       )}

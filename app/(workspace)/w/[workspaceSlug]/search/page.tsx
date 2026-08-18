@@ -33,6 +33,7 @@ import { createClient } from "@/lib/supabase/server";
 import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-colors";
 
 export default async function SearchPage({
   params,
@@ -93,8 +94,12 @@ export default async function SearchPage({
       <form
         action={`/w/${workspaceSlug}/search`}
         method="get"
-        className="flex max-w-md items-center gap-2"
+        className="relative max-w-md"
       >
+        <SearchIcon
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
         <Input
           type="search"
           name="q"
@@ -102,6 +107,7 @@ export default async function SearchPage({
           placeholder="Search tasks by title or description…"
           aria-label="Search tasks"
           autoFocus
+          className="pl-9"
         />
       </form>
 
@@ -143,26 +149,59 @@ export default async function SearchPage({
       )}
 
       {q && !loadError && results.length > 0 && (
-        <ul className="flex flex-col divide-y rounded-md border">
-          {results.map((task) => (
-            <li key={task.id}>
-              <Link
-                href={`/w/${workspaceSlug}/projects/${task.projectId}/board`}
-                className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium">{task.title}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {task.projectName}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{task.status}</Badge>
-                  <Badge variant="secondary">{task.priority}</Badge>
-                </div>
-              </Link>
-            </li>
-          ))}
+        <ul className="flex flex-col gap-2">
+          {results.map((task) => {
+            const statusColor =
+              STATUS_COLORS[task.status as keyof typeof STATUS_COLORS];
+            const priorityColor =
+              PRIORITY_COLORS[task.priority as keyof typeof PRIORITY_COLORS];
+
+            return (
+              <li key={task.id}>
+                <Link
+                  href={`/w/${workspaceSlug}/projects/${task.projectId}/board`}
+                  className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-4 shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-foreground/20"
+                >
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium">{task.title}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {task.projectName}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 capitalize"
+                      style={statusColor ? { borderColor: statusColor } : undefined}
+                    >
+                      {statusColor && (
+                        <span
+                          aria-hidden="true"
+                          className="size-1.5 rounded-full"
+                          style={{ backgroundColor: statusColor }}
+                        />
+                      )}
+                      {task.status.replace("_", " ")}
+                    </Badge>
+                    <Badge
+                      variant="secondary"
+                      className="gap-1.5 capitalize"
+                      style={priorityColor ? { borderColor: priorityColor } : undefined}
+                    >
+                      {priorityColor && (
+                        <span
+                          aria-hidden="true"
+                          className="size-1.5 rounded-full"
+                          style={{ backgroundColor: priorityColor }}
+                        />
+                      )}
+                      {task.priority}
+                    </Badge>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
