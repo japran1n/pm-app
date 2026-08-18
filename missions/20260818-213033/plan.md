@@ -16,7 +16,7 @@ Brownfield foundation: new dependencies land, new shadcn primitives land, and th
 `profiles` table everything else in this mission depends on (avatars, mentions,
 notifications, timezone) exists. No feature work beyond identity.
 
-- F118 deps-install-v2 [CLARIFIED-AUTO]
+- F118 deps-install-v2 [CLARIFIED-AUTO] [COMPLETE]
 - F119 shadcn-components-v2 [CLARIFIED-AUTO]
 - F120 db-schema-profiles — AS-201, AS-208, AS-209, AS-210 [CLARIFIED-AUTO]
 - F121 avatar-storage-bucket — AS-203, AS-205, AS-206 [CLARIFIED-AUTO]
