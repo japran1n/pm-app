@@ -91,5 +91,12 @@ export async function GET(request: Request) {
     );
   }
 
-  redirect("/");
+  // Redirect to /onboarding rather than "/": the public landing page ("/")
+  // renders identically whether signed in or not (it's a static marketing
+  // page, no session check), so redirecting there after a successful login
+  // looks indistinguishable from a failed one. /onboarding does the real
+  // membership check and forwards to the user's workspace if they have one,
+  // or shows the create-workspace form if they don't — either way, visibly
+  // different from the signed-out state.
+  redirect("/onboarding");
 }
