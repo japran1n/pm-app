@@ -34,10 +34,12 @@
 // than left to crash).
 
 import { useState, useTransition } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, TriangleAlert, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
+import { isOverdue } from "@/lib/tasks/is-overdue";
+import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -388,7 +390,21 @@ export function TaskDetailSheet({
               </div>
 
               <div className="flex flex-col gap-2">
-                <Label htmlFor={`task-due-date-${task.id}`}>Due date</Label>
+                <Label
+                  htmlFor={`task-due-date-${task.id}`}
+                  className={cn(
+                    isOverdue(task.dueDate, task.status) &&
+                      "inline-flex items-center gap-1 text-destructive",
+                  )}
+                >
+                  {isOverdue(task.dueDate, task.status) && (
+                    <TriangleAlert className="size-3" aria-hidden="true" />
+                  )}
+                  Due date
+                  {isOverdue(task.dueDate, task.status) && (
+                    <span className="sr-only">(overdue)</span>
+                  )}
+                </Label>
                 <Input
                   id={`task-due-date-${task.id}`}
                   type="date"
@@ -397,6 +413,10 @@ export function TaskDetailSheet({
                   onChange={(changeEvent) =>
                     handleDueDateChange(changeEvent.target.value)
                   }
+                  className={cn(
+                    isOverdue(task.dueDate, task.status) &&
+                      "border-destructive text-destructive",
+                  )}
                 />
               </div>
             </div>
