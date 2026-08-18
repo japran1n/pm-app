@@ -43,3 +43,6 @@ F042-F052 all COMPLETE (11/11). Fractional-index position logic thoroughly unit-
 
 ## 2026-08-18T03:34:33Z — Milestone 5 GREEN
 F101-F103 verified: position math structurally clamped, cross-column drag now atomic (moveAndReorderTask), Realtime ordering guarded. 290/290 tests, tsc/eslint clean. Total features complete: 61 (M1:5, M2:24, M3:10, M4:9, M5:14). Proceeding to M6 (List, search, comments, attachments) — largest remaining milestone, 18 features.
+
+## 2026-08-18T05:21:12Z — Milestone 6 (List/search/comments/attachments) complete
+F053-F070 all COMPLETE (18/18). Orchestrator manually applied 2 migrations that failed in worker sandboxes due to no network egress (F062, and verified F064's applied cleanly). Spawning scrutiny-validator before M7.
