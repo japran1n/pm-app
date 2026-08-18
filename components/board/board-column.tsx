@@ -25,13 +25,10 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 
 import type { TaskCardTask } from "@/components/task/task-card";
 import { SortableTaskCard } from "@/components/board/sortable-task-card";
-
-const COLUMN_LABELS: Record<TaskCardTask["status"], string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-};
+// F073 (AS-135): status labels/colors now come from the single shared
+// lib/task-colors.ts constant, reused by the dashboard's status pie chart,
+// instead of this component's own local copy.
+import { STATUS_COLORS, STATUS_LABELS as COLUMN_LABELS } from "@/lib/task-colors";
 
 export function BoardColumn({
   status,
@@ -53,7 +50,12 @@ export function BoardColumn({
       data-status={status}
     >
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-sm font-medium">
+        <h2 className="flex items-center gap-1.5 text-sm font-medium">
+          <span
+            aria-hidden="true"
+            className="size-2 rounded-full"
+            style={{ backgroundColor: STATUS_COLORS[status] }}
+          />
           {COLUMN_LABELS[status]}{" "}
           <span className="text-xs font-normal text-muted-foreground">
             ({tasks.length})

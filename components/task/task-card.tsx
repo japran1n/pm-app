@@ -20,6 +20,10 @@ import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+// F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
+// the single shared color-coding source, reused here and by the dashboard
+// charts, instead of this component defining its own local copy.
+import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 
 export type TaskCardTask = {
   id: string;
@@ -39,17 +43,6 @@ export type TaskCardTask = {
   // any given task always applies), but it's populated end-to-end so the
   // guard is live from the first Realtime update onward.
   updatedAt?: string;
-};
-
-const PRIORITY_LABELS: Record<
-  NonNullable<TaskCardTask["priority"]>,
-  string
-> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  backlog: "Backlog",
 };
 
 function formatDueDate(dueDate: string): string {
@@ -99,7 +92,18 @@ export function TaskCard({
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
         {task.priority && (
-          <Badge variant="secondary">{PRIORITY_LABELS[task.priority]}</Badge>
+          <Badge
+            variant="secondary"
+            className="gap-1.5"
+            style={{ borderColor: PRIORITY_COLORS[task.priority] }}
+          >
+            <span
+              aria-hidden="true"
+              className="size-1.5 rounded-full"
+              style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
+            />
+            {PRIORITY_LABELS[task.priority]}
+          </Badge>
         )}
         {task.dueDate && (
           <span
