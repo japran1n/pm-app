@@ -230,16 +230,23 @@ export async function deleteComment(
   }
 
   const task = commentRow.tasks as
-    | { projects: { workspace_id: string } | { workspace_id: string }[] | null }
-    | { projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
   const workspaceId = Array.isArray(project)
     ? project[0]?.workspace_id
     : project?.workspace_id;
+  const commentTaskId = taskRow?.id;
 
-  if (!workspaceId) {
+  if (!workspaceId || !commentTaskId) {
     return { ok: false, error: "Comment not found." };
   }
 
@@ -291,6 +298,48 @@ export async function deleteComment(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F104 (AS-101 fix): notify live viewers via Realtime Broadcast instead
+  // of relying on postgres_changes for this event. postgres_changes
+  // re-evaluates the `comments_select_active_members` SELECT RLS policy
+  // against the row's NEW state for UPDATE events — and this soft-delete's
+  // new state (deleted_at now set) fails that same policy's
+  // `deleted_at is null` clause, so postgres_changes silently drops the
+  // delete event for every subscriber, not just the deleter (this was the
+  // confirmed AS-101 bug: scrutiny-validator M6-scrutiny.md). Broadcast
+  // delivery doesn't depend on the row still passing a read policy, so it
+  // isn't affected by this class of bug.
+  //
+  // Security note: broadcast messages on this channel are NOT gated by
+  // Postgres RLS at the transport level the way postgres_changes is. This
+  // is acceptable here because the channel name embeds task_id
+  // (`comments:<taskId>`) and the only client code that ever subscribes to
+  // it (components/task/use-comments-realtime.ts, invoked from
+  // comment-list.tsx inside task-detail-sheet.tsx) only does so for a task
+  // the current user is already independently authorized to view via the
+  // normal RLS-gated page/data-fetch path — a client never learns a
+  // taskId, and therefore never subscribes to its channel, without having
+  // already passed that check. The payload itself (a bare comment id) also
+  // carries no sensitive data beyond what a subscriber could already infer
+  // from having the task open.
+  try {
+    const broadcastChannel = supabase.channel(`comments:${commentTaskId}`);
+    await broadcastChannel.send({
+      type: "broadcast",
+      event: "comment_deleted",
+      payload: { id: deleted.id },
+    });
+    await supabase.removeChannel(broadcastChannel);
+  } catch (broadcastError) {
+    // Non-fatal: the soft-delete itself already succeeded (this is a
+    // best-effort live-propagation notification, not the source of
+    // truth — AS-102/reload always reflects the real deleted_at state
+    // via RLS regardless of whether this broadcast is delivered).
+    console.error(
+      "deleteComment: broadcast failed (non-fatal):",
+      broadcastError,
+    );
   }
 
   const { data: workspaceRow } = await admin

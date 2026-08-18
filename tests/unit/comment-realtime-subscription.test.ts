@@ -45,7 +45,7 @@ function createMockSupabaseClient() {
   const onCalls: Array<{
     event: string;
     filter: Record<string, unknown>;
-    callback: (payload: CommentRealtimeEvent) => void;
+    callback: (payload: unknown) => void;
   }> = [];
   const channelCalls: string[] = [];
   const removedChannels: unknown[] = [];
@@ -55,7 +55,7 @@ function createMockSupabaseClient() {
       (
         event: string,
         filter: Record<string, unknown>,
-        callback: (payload: CommentRealtimeEvent) => void,
+        callback: (payload: unknown) => void,
       ) => {
         onCalls.push({ event, filter, callback });
         return channelObject;
@@ -77,32 +77,50 @@ function createMockSupabaseClient() {
   return { supabase, onCalls, channelCalls, removedChannels, channelObject };
 }
 
-describe("subscribeToCommentsRealtime (AS-101)", () => {
-  it("subscribes on a per-task channel filtered to the comments table and task_id, for all events", () => {
+describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
+  it("subscribes on a per-task channel with postgres_changes restricted to INSERT only (F104: UPDATE/DELETE no longer relied on, since UPDATE fails its own SELECT RLS on soft-delete)", () => {
     const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
     const onChange = vi.fn();
 
     subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
 
     expect(channelCalls).toEqual(["comments:task-123"]);
-    expect(onCalls).toHaveLength(1);
-    expect(onCalls[0].event).toBe("postgres_changes");
-    expect(onCalls[0].filter).toEqual({
-      event: "*",
+    const postgresChangesCall = onCalls.find(
+      (c) => c.event === "postgres_changes",
+    );
+    expect(postgresChangesCall).toBeDefined();
+    expect(postgresChangesCall?.filter).toEqual({
+      event: "INSERT",
       schema: "public",
       table: "comments",
       filter: "task_id=eq.task-123",
     });
   });
 
-  it("forwards a received payload to onChange unchanged (payload shape)", () => {
+  it("F104: also subscribes to broadcast event comment_deleted on the same channel", () => {
+    const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    expect(channelCalls).toEqual(["comments:task-123"]);
+    const broadcastCall = onCalls.find((c) => c.event === "broadcast");
+    expect(broadcastCall).toBeDefined();
+    expect(broadcastCall?.filter).toEqual({ event: "comment_deleted" });
+  });
+
+  it("forwards a received INSERT payload to onChange unchanged (payload shape)", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onChange = vi.fn();
 
     subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
 
+    const postgresChangesCall = onCalls.find(
+      (c) => c.event === "postgres_changes",
+    )!;
+
     const payload = {
-      eventType: "UPDATE",
+      eventType: "INSERT",
       schema: "public",
       table: "comments",
       new: {
@@ -111,14 +129,59 @@ describe("subscribeToCommentsRealtime (AS-101)", () => {
         user_id: "u1",
         text: "hi",
         created_at: "2026-08-18T00:00:00Z",
-        deleted_at: "2026-08-18T00:05:00Z",
+        deleted_at: null,
       },
-      old: { id: "c1" },
+      old: {},
     } as unknown as CommentRealtimeEvent;
 
-    onCalls[0].callback(payload);
+    postgresChangesCall.callback(payload);
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith(payload);
+  });
+
+  // F104 (AS-101 fix): this is the wiring-level proof that a
+  // `comment_deleted` broadcast message is translated into the same
+  // DELETE-shaped CommentRealtimeEvent reconcileComment already knows how
+  // to handle, so a soft-delete removes the comment from local state via
+  // the broadcast path instead of the now-restricted-to-INSERT
+  // postgres_changes path.
+  it("F104: translates a comment_deleted broadcast message into a DELETE-shaped event carrying the comment id", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    const broadcastCall = onCalls.find((c) => c.event === "broadcast")!;
+
+    broadcastCall.callback({
+      type: "broadcast",
+      event: "comment_deleted",
+      payload: { id: "c1" },
+    });
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        eventType: "DELETE",
+        old: { id: "c1" },
+      }),
+    );
+  });
+
+  it("F104: a broadcast message missing payload.id is ignored (no onChange call)", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    const broadcastCall = onCalls.find((c) => c.event === "broadcast")!;
+
+    broadcastCall.callback({
+      type: "broadcast",
+      event: "comment_deleted",
+      payload: {},
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("returns an unsubscribe function that removes the channel", () => {
