@@ -1,15 +1,34 @@
+import { redirect } from "next/navigation";
+
 import { CreateWorkspaceForm } from "@/components/onboarding/create-workspace-form";
+import { createClient } from "@/lib/supabase/server";
+import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
 
 // Server Component shell (primary content server-rendered, AS-155); the
 // interactive create-workspace form is the sole Client Component boundary.
 //
-// AS-005: shown when the signed-in user has zero workspace memberships —
-// the auth callback route (app/(auth)/auth/callback/route.ts) is what
-// routes them here in the first place. This page itself does not
-// re-check membership count; it is a plain create-first-workspace form,
-// reachable by any authenticated user (creating an additional workspace
-// later is not out of scope for this route to allow).
-export default function OnboardingPage() {
+// AS-005: "no existing workspace membership" is a condition this page
+// enforces itself, not just something the auth callback route happens to
+// route around. A signed-in user who already has an active membership and
+// navigates here directly (bookmark, back button, typed URL) is redirected
+// to their default workspace instead of being shown the create-workspace
+// form again — same "most-recently-created active membership" rule the
+// callback route uses, shared via lib/queries/workspaces.ts so the two
+// call sites can't drift. Only a user with zero active memberships sees
+// the form below.
+export default async function OnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    const slug = await getDefaultWorkspaceSlug(supabase, user.id);
+    if (slug) {
+      redirect(`/w/${slug}`);
+    }
+  }
+
   return (
     <main className="flex min-h-svh flex-1 items-center justify-center p-6">
       <div className="flex w-full max-w-sm flex-col gap-6">

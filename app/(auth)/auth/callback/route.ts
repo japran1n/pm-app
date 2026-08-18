@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 import { activateInvitedMemberships } from "@/lib/actions/invites";
+import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -54,37 +55,7 @@ export async function GET(request: NextRequest) {
     await activateInvitedMemberships(user.id, user.email);
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, created_at")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (membershipError) {
-    console.error(
-      "auth callback: failed to look up workspace memberships:",
-      membershipError,
-    );
-  }
-
-  let slug: string | undefined;
-  if (membership) {
-    const { data: workspace, error: workspaceError } = await supabase
-      .from("workspaces")
-      .select("slug")
-      .eq("id", membership.workspace_id)
-      .maybeSingle();
-    if (workspaceError) {
-      console.error(
-        "auth callback: failed to look up workspace slug:",
-        workspaceError,
-      );
-    }
-    slug = workspace?.slug;
-  }
+  const slug = await getDefaultWorkspaceSlug(supabase, user.id);
 
   if (slug) {
     return NextResponse.redirect(new URL(`/w/${slug}`, requestUrl.origin));
