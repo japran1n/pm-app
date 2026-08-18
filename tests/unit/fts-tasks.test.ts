@@ -23,9 +23,34 @@
 // present, so `npm run test` stays green in environments without DB
 // access (e.g. a bare checkout before `.env` is populated).
 
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+
+// vitest doesn't auto-load .env (unlike Next.js) — mirrors the loadDotEnv
+// pattern established by tests/integration/create-task.test.ts and used
+// across the suite, since this file's original version assumed
+// process.env was already populated, which it isn't under plain vitest.
+function loadDotEnv() {
+  const path = join(process.cwd(), ".env");
+  if (!existsSync(path)) return;
+  const contents = readFileSync(path, "utf8");
+  for (const line of contents.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDotEnv();
 
 const hasSupabaseEnv =
   !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SECRET_KEY;
