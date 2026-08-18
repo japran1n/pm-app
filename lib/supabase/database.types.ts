@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      comments: {
+        Row: {
+          created_at: string
+          deleted_at: string | null
+          id: string
+          task_id: string
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          task_id: string
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          task_id?: string
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -202,6 +237,14 @@ export type Database = {
       }
       is_active_workspace_member: {
         Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      is_project_workspace_member: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
+      is_task_workspace_member: {
+        Args: { target_task_id: string }
         Returns: boolean
       }
       is_workspace_admin: {
