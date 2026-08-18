@@ -67,7 +67,9 @@ export function MemberRoleSelect({
         {isPending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         ) : (
-          <SelectValue />
+          <SelectValue>
+            {(value: string) => (value === "admin" ? "Admin" : "Member")}
+          </SelectValue>
         )}
       </SelectTrigger>
       <SelectContent>

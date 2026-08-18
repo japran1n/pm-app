@@ -97,7 +97,11 @@ export function ListStatusSelect({
             className="size-2 shrink-0 rounded-full"
             style={{ backgroundColor: STATUS_COLORS[localStatus] }}
           />
-          <SelectValue />
+          <SelectValue>
+            {(value: string) =>
+              STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value
+            }
+          </SelectValue>
         </span>
       </SelectTrigger>
       <SelectContent>

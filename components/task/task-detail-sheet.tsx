@@ -347,7 +347,12 @@ export function TaskDetailSheet({
                       aria-label="Status (read-only until status editing ships)"
                       className="w-full"
                     >
-                      <SelectValue />
+                      <SelectValue>
+                        {(value: string) =>
+                          STATUS_LABELS[value as keyof typeof STATUS_LABELS] ??
+                          value
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {Object.entries(STATUS_LABELS).map(([value, label]) => (
@@ -370,7 +375,15 @@ export function TaskDetailSheet({
                       id={`task-priority-${task.id}`}
                       className="w-full"
                     >
-                      <SelectValue />
+                      <SelectValue placeholder="No priority">
+                        {(value: string) =>
+                          value === NO_PRIORITY_VALUE
+                            ? "No priority"
+                            : (PRIORITY_LABELS[
+                                value as keyof typeof PRIORITY_LABELS
+                              ] ?? value)
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NO_PRIORITY_VALUE}>
@@ -403,7 +416,17 @@ export function TaskDetailSheet({
                         aria-hidden="true"
                       />
                     ) : (
-                      <SelectValue />
+                      <SelectValue placeholder="Unassigned">
+                        {(value: string) =>
+                          value === NO_ASSIGNEE_VALUE
+                            ? "Unassigned"
+                            : (members.find((m) => m.userId === value)
+                                ? memberLabel(
+                                    members.find((m) => m.userId === value)!,
+                                  )
+                                : value)
+                        }
+                      </SelectValue>
                     )}
                   </SelectTrigger>
                   <SelectContent>
