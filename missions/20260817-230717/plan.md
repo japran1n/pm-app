@@ -178,7 +178,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 - F107 board-setstate-during-render-fix — (code quality, no assertion) [CLARIFIED-AUTO] [COMPLETE]
 
-## M9 — Time tracking
+## M9 — Time tracking [GREEN]
 
 - F108 db-schema-time-entries — AS-161, AS-162, AS-163 [CLARIFIED-AUTO] [COMPLETE]
 - F109 db-schema-active-timers — AS-164, AS-165, AS-168 [CLARIFIED-AUTO] [COMPLETE]
@@ -189,3 +189,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F114 project-time-totals — AS-172, AS-174 [CLARIFIED-AUTO] [COMPLETE]
 - F115 person-time-report — AS-173, AS-174 [CLARIFIED-AUTO] [COMPLETE]
 - F116 time-tracking-rls-audit — AS-175, AS-176 [CLARIFIED-AUTO] [COMPLETE]
+
+## M9 follow-ups (from M9 scrutiny — see milestones/M9-scrutiny.md)
+
+- F117 timer-rpc-membership-hardening — AS-175, AS-176 [CLARIFIED-AUTO] [COMPLETE]
