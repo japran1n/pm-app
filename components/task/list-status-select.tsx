@@ -32,12 +32,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// F106 (AS-135): status labels/colors come from the single shared
+// lib/task-colors.ts constant (same source as BoardColumn's header dot
+// and the dashboard's status pie chart) instead of this component's own
+// local STATUS_OPTIONS labels, which previously rendered no color at all.
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
 
 const STATUS_OPTIONS: { value: TaskCardTask["status"]; label: string }[] = [
-  { value: "todo", label: "To Do" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "in_review", label: "In Review" },
-  { value: "done", label: "Done" },
+  { value: "todo", label: STATUS_LABELS.todo },
+  { value: "in_progress", label: STATUS_LABELS.in_progress },
+  { value: "in_review", label: STATUS_LABELS.in_review },
+  { value: "done", label: STATUS_LABELS.done },
 ];
 
 export function ListStatusSelect({
@@ -86,12 +91,26 @@ export function ListStatusSelect({
         disabled={isSaving}
         aria-label={`Change status for task ${taskId}`}
       >
-        <SelectValue />
+        <span className="flex items-center gap-1.5 overflow-hidden">
+          <span
+            aria-hidden="true"
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: STATUS_COLORS[localStatus] }}
+          />
+          <SelectValue />
+        </span>
       </SelectTrigger>
       <SelectContent>
         {STATUS_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
-            {option.label}
+            <span className="flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: STATUS_COLORS[option.value] }}
+              />
+              {option.label}
+            </span>
           </SelectItem>
         ))}
       </SelectContent>

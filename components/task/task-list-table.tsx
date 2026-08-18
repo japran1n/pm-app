@@ -31,6 +31,11 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { DueDateSortHeader } from "@/components/task/due-date-sort-header";
 import { ListStatusSelect } from "@/components/task/list-status-select";
+// F106 (AS-135): priority label/color now comes from the single shared
+// lib/task-colors.ts constant (same source as TaskCard's badge and the
+// dashboard charts) instead of this component's own local
+// PRIORITY_LABELS copy, which previously carried no color at all.
+import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import {
   Table,
   TableBody,
@@ -39,14 +44,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const PRIORITY_LABELS: Record<NonNullable<TaskCardTask["priority"]>, string> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  backlog: "Backlog",
-};
 
 function formatDueDate(dueDate: string): string {
   const date = new Date(dueDate);
@@ -140,7 +137,16 @@ export function TaskListTable({
               </TableCell>
               <TableCell>
                 {task.priority ? (
-                  <Badge variant="secondary">
+                  <Badge
+                    variant="secondary"
+                    className="gap-1.5"
+                    style={{ borderColor: PRIORITY_COLORS[task.priority] }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="size-1.5 rounded-full"
+                      style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
+                    />
                     {PRIORITY_LABELS[task.priority]}
                   </Badge>
                 ) : (
