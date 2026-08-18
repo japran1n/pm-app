@@ -66,19 +66,48 @@ export async function getProjectBoardTasks(
 // Ordered by `created_at` ascending instead (oldest first, a stable and
 // predictable default) — AS-091's due-date sort is a client-side/UI
 // concern layered on top of this fetch, not this query's job.
+//
+// F054 (AS-086..090): optional `filters` narrow the result set further.
+// Each provided filter is applied as an additional `.eq()` on top of the
+// existing `project_id` + `deleted_at IS NULL` scoping, so when more than
+// one filter is supplied they combine with SQL's implicit AND semantics
+// (AS-089) — there is no OR path here. Omitting a filter key (or passing
+// the whole `filters` argument) leaves that column unconstrained, which is
+// how "Clear filters" restores the full list (AS-090): the list page just
+// calls this with no filters again.
+export type ProjectListTaskFilters = {
+  status?: TaskCardTask["status"];
+  priority?: NonNullable<TaskCardTask["priority"]>;
+  assigneeId?: string;
+};
+
 export async function getProjectListTasks(
   projectId: string,
+  filters?: ProjectListTaskFilters,
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("tasks")
     .select(
       "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at",
     )
     .eq("project_id", projectId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+    .is("deleted_at", null);
+
+  if (filters?.status) {
+    query = query.eq("status", filters.status);
+  }
+  if (filters?.priority) {
+    query = query.eq("priority", filters.priority);
+  }
+  if (filters?.assigneeId) {
+    query = query.eq("assignee_id", filters.assigneeId);
+  }
+
+  const { data, error } = await query.order("created_at", {
+    ascending: true,
+  });
 
   if (error) {
     throw error;
