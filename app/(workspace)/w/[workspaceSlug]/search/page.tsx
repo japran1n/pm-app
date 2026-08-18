@@ -1,0 +1,170 @@
+// F069 (AS-116, AS-119, AS-120): workspace-wide task search page.
+//
+// Server Component for data-fetching (per the clarified spec) — the search
+// box itself is a thin, unnamed submit form (no client JS needed: a GET
+// form writes `?q=` and Next re-renders this Server Component with the new
+// `searchParams`), keeping the client boundary at zero rather than
+// introducing a Client Component just to control an <input>.
+//
+// Access relies on the workspace-membership layout guard one level up
+// (app/(workspace)/w/[workspaceSlug]/layout.tsx, F010/F023) — no duplicate
+// page-level gate, matching the Projects/List pages' convention.
+//
+// States (per the clarified spec's four explicit states):
+//   - empty query (AS-116's box with nothing typed yet): neutral prompt,
+//     not an error and not a "no results" message.
+//   - populated: ranked results list, each linking to the matching task's
+//     project board (AS-120) — there is no query-param-driven task detail
+//     sheet wired into the board page yet (checked components/board/*.tsx
+//     and board's page — task opening is local client state, not URL
+//     driven), so linking straight to `/w/[slug]/projects/[projectId]/board`
+//     is the simplest correct target; the user finds the task highlighted
+//     among the board's normal columns from there.
+//   - no-match (AS-119): explicit "No tasks match" message, never a blank
+//     screen.
+//   - error: inline message with a retry link, same convention as
+//     ProjectsPage's `loadError` block.
+
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Search as SearchIcon } from "lucide-react";
+
+import { createClient } from "@/lib/supabase/server";
+import { searchWorkspaceTasks } from "@/lib/queries/search";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+
+export default async function SearchPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { workspaceSlug } = await params;
+  const query = await searchParams;
+  const q = (query.q ?? "").trim();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id, name")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  // Defensive fallback only — the layout guard above already redirects
+  // away (via notFound()) when the workspace can't be resolved for this
+  // caller.
+  if (!workspace) {
+    redirect("/onboarding");
+  }
+
+  let results: Awaited<ReturnType<typeof searchWorkspaceTasks>> = [];
+  let loadError = false;
+
+  // AS-116: an empty query renders the neutral prompt state below without
+  // ever calling the search query (no error, no "no results" message).
+  if (q) {
+    try {
+      results = await searchWorkspaceTasks(workspace.id, q);
+    } catch (error) {
+      console.error("SearchPage: failed to search tasks:", error);
+      loadError = true;
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-lg font-semibold">Search</h1>
+        <p className="text-sm text-muted-foreground">
+          Find tasks across every project in {workspace.name}.
+        </p>
+      </div>
+
+      <form
+        action={`/w/${workspaceSlug}/search`}
+        method="get"
+        className="flex max-w-md items-center gap-2"
+      >
+        <Input
+          type="search"
+          name="q"
+          defaultValue={q}
+          placeholder="Search tasks by title or description…"
+          aria-label="Search tasks"
+          autoFocus
+        />
+      </form>
+
+      {!q && (
+        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
+          <SearchIcon
+            className="size-6 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <p className="text-sm font-medium">Search this workspace</p>
+          <p className="text-sm text-muted-foreground">
+            Type a task title or description above to get started.
+          </p>
+        </div>
+      )}
+
+      {q && loadError && (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+        >
+          <p>Something went wrong running your search. Please try again.</p>
+          <a
+            href={`/w/${workspaceSlug}/search?q=${encodeURIComponent(q)}`}
+            className="underline"
+          >
+            Retry
+          </a>
+        </div>
+      )}
+
+      {q && !loadError && results.length === 0 && (
+        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
+          <p className="text-sm font-medium">No results for &quot;{q}&quot;</p>
+          <p className="text-sm text-muted-foreground">
+            Try a different title or keyword from the task description.
+          </p>
+        </div>
+      )}
+
+      {q && !loadError && results.length > 0 && (
+        <ul className="flex flex-col divide-y rounded-md border">
+          {results.map((task) => (
+            <li key={task.id}>
+              <Link
+                href={`/w/${workspaceSlug}/projects/${task.projectId}/board`}
+                className="flex items-center justify-between gap-4 p-4 hover:bg-muted/50"
+              >
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium">{task.title}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {task.projectName}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">{task.status}</Badge>
+                  <Badge variant="secondary">{task.priority}</Badge>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
