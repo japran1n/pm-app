@@ -144,6 +144,7 @@ export type Database = {
           position: number
           priority: string | null
           project_id: string
+          search_vector: unknown
           start_date: string | null
           status: string
           tags: string[]
@@ -162,6 +163,7 @@ export type Database = {
           position?: number
           priority?: string | null
           project_id: string
+          search_vector?: unknown
           start_date?: string | null
           status?: string
           tags?: string[]
@@ -180,6 +182,7 @@ export type Database = {
           position?: number
           priority?: string | null
           project_id?: string
+          search_vector?: unknown
           start_date?: string | null
           status?: string
           tags?: string[]
@@ -296,6 +299,34 @@ export type Database = {
           deleted: boolean
           reason: string
         }[]
+      }
+      search_tasks: {
+        Args: { p_project_id: string; p_query: string }
+        Returns: {
+          assignee_id: string | null
+          author_id: string
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          points: number | null
+          position: number
+          priority: string | null
+          project_id: string
+          search_vector: unknown
+          start_date: string | null
+          status: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
     }
     Enums: {
