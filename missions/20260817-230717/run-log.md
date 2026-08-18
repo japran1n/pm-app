@@ -28,3 +28,6 @@ F024-F032 all COMPLETE (9/9). Spawning scrutiny-validator before M4.
 
 ## 2026-08-18T01:33:06Z — Milestone 3 GREEN
 F100 fixed AS-026. M3 marked GREEN (17/18 assertions PASS; AS-034 documented-deferred pending M4 tables, not a defect). Skipping a dedicated ux-validator pass for M3 alone — project detail/board/list pages are still placeholders with no real task data, so a UI walkthrough now has low signal; will be covered meaningfully once M4/M5 land real content. Proceeding to M4 (Tasks core).
+
+## 2026-08-18T02:08:21Z — Milestone 4 (Tasks core) complete
+F033-F041 all COMPLETE (9/9). 203/203 tests. Spawning scrutiny-validator before M5.

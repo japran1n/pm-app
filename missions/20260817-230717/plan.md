@@ -50,15 +50,15 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M4 — Tasks core
 
-- F033 db-schema-tasks — AS-047, AS-048, AS-049, AS-050, AS-058, AS-059, AS-065, AS-066 [CLARIFIED-AUTO]
-- F034 db-schema-rls-tasks — AS-062 [CLARIFIED-AUTO]
-- F035 create-task-action — AS-043, AS-044, AS-045, AS-046 [CLARIFIED-AUTO]
-- F036 assign-task-action — AS-051, AS-052, AS-053 [CLARIFIED-AUTO]
-- F037 edit-task-action — AS-054, AS-061, AS-060 [CLARIFIED-AUTO]
-- F038 delete-task-action — AS-055, AS-056, AS-057 [CLARIFIED-AUTO]
-- F039 task-detail-sheet [CLARIFIED-AUTO]
-- F040 overdue-indicator — AS-063, AS-064 [CLARIFIED-AUTO]
-- F041 task-tags-editor — AS-065, AS-066 [CLARIFIED-AUTO]
+- F033 db-schema-tasks — AS-047, AS-048, AS-049, AS-050, AS-058, AS-059, AS-065, AS-066 [CLARIFIED-AUTO] [COMPLETE]
+- F034 db-schema-rls-tasks — AS-062 [CLARIFIED-AUTO] [COMPLETE]
+- F035 create-task-action — AS-043, AS-044, AS-045, AS-046 [CLARIFIED-AUTO] [COMPLETE]
+- F036 assign-task-action — AS-051, AS-052, AS-053 [CLARIFIED-AUTO] [COMPLETE]
+- F037 edit-task-action — AS-054, AS-061, AS-060 [CLARIFIED-AUTO] [COMPLETE]
+- F038 delete-task-action — AS-055, AS-056, AS-057 [CLARIFIED-AUTO] [COMPLETE]
+- F039 task-detail-sheet [CLARIFIED-AUTO] [COMPLETE]
+- F040 overdue-indicator — AS-063, AS-064 [CLARIFIED-AUTO] [COMPLETE]
+- F041 task-tags-editor — AS-065, AS-066 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M5 — Board & drag-and-drop
 
