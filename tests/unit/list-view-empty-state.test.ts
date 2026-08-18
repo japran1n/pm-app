@@ -35,6 +35,7 @@ describe("TaskListTable empty states (AS-092)", () => {
         assignees: new Map(),
         hasActiveFilters: true,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
+        timezone: "UTC",
       }),
     );
 
@@ -55,6 +56,7 @@ describe("TaskListTable empty states (AS-092)", () => {
         assignees: new Map(),
         hasActiveFilters: false,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
+        timezone: "UTC",
       }),
     );
 
@@ -84,6 +86,7 @@ describe("TaskListTable empty states (AS-092)", () => {
         assignees: new Map(),
         hasActiveFilters: true,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
+        timezone: "UTC",
       }),
     );
 

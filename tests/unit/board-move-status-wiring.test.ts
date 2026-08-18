@@ -52,7 +52,7 @@ const boardSource = readFileSync(
 
 describe("Board onDragEnd -> moveAndReorderTask/reorderTask wiring (F045: AS-069, F102: AS-077)", () => {
   it("renders with the mocked actions in place without crashing", () => {
-    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS }));
+    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS, timezone: "UTC" }));
     expect(html).toContain("Todo task");
     expect(html).toContain("In progress task");
   });

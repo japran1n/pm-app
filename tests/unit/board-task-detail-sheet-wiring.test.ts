@@ -94,7 +94,7 @@ const useTaskDetailSheetSource = readFileSync(
 describe("Board wires TaskCard clicks to TaskDetailSheet (bugfix)", () => {
   it("renders the board (TaskDetailSheet included) without crashing, with no task open by default", () => {
     const html = renderToStaticMarkup(
-      createElement(Board, { projectId: "project-1", initialTasks: TASKS }),
+      createElement(Board, { projectId: "project-1", initialTasks: TASKS, timezone: "UTC" }),
     );
     expect(html).toContain("Todo task");
     // The sheet is closed by default — its content shouldn't be in the

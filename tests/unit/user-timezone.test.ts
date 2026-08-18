@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   endOfDayInTimeZone,
+  formatDueDate,
   isOverdueInTimeZone,
   isTodayInTimeZone,
   isValidTimeZone,
@@ -186,5 +187,60 @@ describe("AS-207: overdue/today calculations use the caller's timezone, not the 
     expect(startOfDayInTimeZone("not-a-date", "UTC")).toBeNull();
     expect(endOfDayInTimeZone("not-a-date", "UTC")).toBeNull();
     expect(isTodayInTimeZone("not-a-date", "UTC")).toBe(false);
+  });
+
+  // F275: formatDueDate replaces the two local `formatDueDate` copies that
+  // used to live in components/task/task-card.tsx and
+  // components/task/task-list-table.tsx — neither ever passed a
+  // `timeZone` to `Intl.DateTimeFormat`, so a due_date of "2026-08-20"
+  // rendered "Aug 19, 2026" under the ambient runtime zone
+  // `America/New_York` (M10 scrutiny's AS-207 finding, reproduced
+  // end-to-end there). These tests pin the fixed behaviour directly.
+  it("test_AS_207_formats_the_due_date_correctly_for_a_zone_west_of_utc", () => {
+    // The exact reproduction from M10 scrutiny's AS-207 section: due_date
+    // "2026-08-20" must render "Aug 20, 2026" — not "Aug 19, 2026" — for
+    // a viewer in America/New_York (UTC-4 in August), a zone west of UTC.
+    expect(formatDueDate("2026-08-20", "America/New_York")).toBe(
+      "Aug 20, 2026",
+    );
+    // Same for Los Angeles (UTC-7), the other west-of-UTC zone the
+    // scrutiny report's reproduction table names.
+    expect(formatDueDate("2026-08-20", "America/Los_Angeles")).toBe(
+      "Aug 20, 2026",
+    );
+  });
+
+  it("test_AS_207_formats_the_due_date_identically_regardless_of_which_zone_the_viewer_is_in", () => {
+    // The same stored calendar date must render identically for every
+    // zone — UTC, a zone west of UTC, and a zone east of UTC — since
+    // due_date has no time component (this module's own top comment).
+    // This is what makes the due-date text agree with the
+    // isOverdueInTimeZone-driven badge sitting right next to it, instead
+    // of the two contradicting each other on the same card.
+    const expected = "Aug 20, 2026";
+    expect(formatDueDate("2026-08-20", "UTC")).toBe(expected);
+    expect(formatDueDate("2026-08-20", "America/New_York")).toBe(expected);
+    expect(formatDueDate("2026-08-20", "America/Los_Angeles")).toBe(expected);
+    expect(formatDueDate("2026-08-20", "Asia/Tokyo")).toBe(expected);
+    expect(formatDueDate("2026-08-20", "Pacific/Kiritimati")).toBe(expected);
+  });
+
+  it("test_AS_207_formatDueDate_accepts_caller_supplied_Intl_options_e_g_no_year", () => {
+    // components/task/task-card.tsx renders a shorter "Aug 20" (no year)
+    // form, while task-list-table.tsx uses the full "Aug 20, 2026" —
+    // both go through this same helper with different `options`.
+    expect(
+      formatDueDate("2026-08-20", "America/New_York", {
+        month: "short",
+        day: "numeric",
+      }),
+    ).toBe("Aug 20");
+  });
+
+  it("test_AS_207_formatDueDate_returns_the_raw_string_for_a_malformed_date_or_unrecognized_timezone", () => {
+    expect(formatDueDate("not-a-date", "UTC")).toBe("not-a-date");
+    expect(formatDueDate("2026-08-20", "Not/A_Real_Zone")).toBe(
+      "2026-08-20",
+    );
   });
 });

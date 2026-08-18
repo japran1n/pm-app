@@ -289,3 +289,49 @@ export function isOverdueInTimeZone(
 
   return isBefore(dueDateParsed, todayParsed);
 }
+
+/**
+ * F275 (AS-207): the single formatter behind every due-date display in the
+ * app — replaces the two local `formatDueDate` copies that used to live in
+ * components/task/task-card.tsx and components/task/task-list-table.tsx,
+ * neither of which ever received a `timeZone` at all (M10 scrutiny's
+ * AS-207 finding, reproduced there: `due_date "2026-08-20"` rendered
+ * "Aug 19, 2026" under `TZ=America/New_York`, contradicting the very
+ * `isOverdueInTimeZone`-driven badge sitting right next to it).
+ *
+ * `dueDate` is a plain calendar date with no time component (see this
+ * module's top comment) — there is no "instant" to convert between zones,
+ * so the fix is NOT "parse as a UTC instant, then reformat in the
+ * viewer's zone" (`new Date(dueDate)` parses a date-only string as UTC
+ * midnight; reformatting that instant in any zone west of UTC rolls it
+ * back a calendar day, which is the exact bug this replaces — same wrong
+ * answer whether the zone comes from the ambient runtime or is passed
+ * explicitly). Instead this anchors on `startOfDayInTimeZone`: the UTC
+ * instant `timeZone`'s own local midnight begins for `dueDate`, then
+ * formats that SAME instant back through the SAME `timeZone`. Round-
+ * tripping through one consistent zone is what guarantees the displayed
+ * y/m/d always equals the stored `dueDate`, for every IANA zone (-12
+ * through +14) — not just UTC. It is also fully deterministic given
+ * (`dueDate`, `timeZone`) alone, with no dependency on the machine's
+ * ambient zone, so server and client render identically (no hydration
+ * mismatch either).
+ *
+ * Returns `dueDate` unchanged for a malformed date-only string or an
+ * unrecognized timezone — same "never throws" convention as the rest of
+ * this module.
+ */
+export function formatDueDate(
+  dueDate: DateOnly,
+  timeZone: string,
+  options: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  },
+): string {
+  const instant = startOfDayInTimeZone(dueDate, timeZone);
+  if (!instant) return dueDate;
+  return new Intl.DateTimeFormat("en-US", { ...options, timeZone }).format(
+    instant,
+  );
+}

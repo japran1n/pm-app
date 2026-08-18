@@ -50,7 +50,7 @@ const boardSource = readFileSync(
 describe("AS-151: interactive elements reachable and operable via keyboard alone", () => {
   it("TaskCard with an onClick handler renders as a keyboard-focusable, keyboard-activatable element (role=button, tabIndex=0)", () => {
     const html = renderToStaticMarkup(
-      createElement(TaskCard, { task: TASK, onClick: () => {} }),
+      createElement(TaskCard, { task: TASK, onClick: () => {}, timezone: "UTC" }),
     );
 
     expect(html).toContain('role="button"');
@@ -58,7 +58,9 @@ describe("AS-151: interactive elements reachable and operable via keyboard alone
   });
 
   it("TaskCard without an onClick handler (read-only usage, e.g. the DragOverlay ghost) does not fake interactivity", () => {
-    const html = renderToStaticMarkup(createElement(TaskCard, { task: TASK }));
+    const html = renderToStaticMarkup(
+      createElement(TaskCard, { task: TASK, timezone: "UTC" }),
+    );
 
     expect(html).not.toContain('role="button"');
     expect(html).not.toContain('tabindex="0"');

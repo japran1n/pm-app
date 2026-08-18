@@ -53,10 +53,11 @@ export function BoardColumn({
    * `assigneeNames` Map convention. */
   assignees?: Map<string, UserAvatarPerson>;
   onCardClick?: (taskId: string) => void;
-  /** F124 (AS-207): the viewer's timezone, resolved once per request by
-   * the Server Component page and passed straight through to every
-   * SortableTaskCard in this column. */
-  timezone?: string;
+  /** F124/F275 (AS-207): the viewer's timezone, resolved once per request
+   * by the Server Component page and passed straight through to every
+   * SortableTaskCard in this column. REQUIRED since F275 — see board.tsx's
+   * own doc comment on this same prop for why. */
+  timezone: string;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.

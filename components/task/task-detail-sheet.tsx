@@ -139,7 +139,7 @@ export function TaskDetailSheet({
   onDeleted,
   currentUserId,
   currentUserRole,
-  timezone = "UTC",
+  timezone,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -181,13 +181,16 @@ export function TaskDetailSheet({
    * CommentList to show a delete affordance on *any* comment for
    * admin/owner (AS-100). */
   currentUserRole?: "owner" | "admin" | "member";
-  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
-   * by the caller's Server Component page (board/page.tsx, list/page.tsx —
-   * via lib/queries/profile.ts's getCurrentUserTimezone) and passed
-   * through here, never fetched by this Client Component. Defaults to
-   * "UTC" for callers that haven't been updated yet (e.g. tests), same
-   * "safe default" convention as `currentUserId`/`activeTimer` above. */
-  timezone?: string;
+  /** F124/F275 (AS-207): the viewer's IANA timezone, resolved once per
+   * request by the caller's Server Component page (board/page.tsx,
+   * list/page.tsx — via lib/queries/profile.ts's getCurrentUserTimezone)
+   * and passed through here, never fetched by this Client Component.
+   * REQUIRED since F275 — unlike `currentUserId`/`activeTimer` above,
+   * this one drives the overdue badge next to the due-date field, and a
+   * silent "UTC" default is exactly the class of bug M10 scrutiny found
+   * (AS-207): a page that forgets to pass it renders every task as if
+   * the viewer were in UTC with no type error. */
+  timezone: string;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");

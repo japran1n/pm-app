@@ -29,9 +29,10 @@ export function SortableTaskCard({
    * (BoardColumn) from its `assignees` map and passed straight through. */
   assignee?: UserAvatarPerson | null;
   onClick?: (taskId: string) => void;
-  /** F124 (AS-207): passed straight through to TaskCard — see that
-   * component's own doc comment for where this ultimately comes from. */
-  timezone?: string;
+  /** F124/F275 (AS-207): passed straight through to TaskCard — see that
+   * component's own doc comment for where this ultimately comes from.
+   * REQUIRED since F275. */
+  timezone: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });

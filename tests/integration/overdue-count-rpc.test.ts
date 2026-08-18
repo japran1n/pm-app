@@ -40,6 +40,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { isOverdueInTimeZone } from "@/lib/time/user-timezone";
 import {
   createClient as createSupabaseJsClient,
   type SupabaseClient,
@@ -517,6 +518,280 @@ describe.skipIf(!haveAdminCreds)(
       expect(withDefault.error).toBeNull();
       expect(withExplicitUtc.error).toBeNull();
       expect(Number(withDefault.data)).toBe(Number(withExplicitUtc.data));
+    });
+  },
+);
+
+// F275 (AS-207): the "missing cross-layer agreement test" M10 scrutiny
+// called out under AS-207's write-up — "no test pins the RPC's overdue
+// count against the client-side isOverdue verdict for the same task +
+// timezone. The two definitions match on inspection but nothing prevents
+// them drifting; that is the one test that would have to fail before the
+// dashboard and the board disagreed." This seeds a fixed set of tasks,
+// fetches the exact same active-row dataset the RPC's WHERE clause
+// selects from (deleted_at is null on both `tasks` and `projects`), and
+// asserts `get_overdue_count(ws, tz)` equals the count produced by
+// running `isOverdueInTimeZone` (lib/time/user-timezone.ts — the same
+// helper lib/tasks/is-overdue.ts's client-side `isOverdue` wraps) over
+// each row, for a zone on each side of UTC.
+//
+// Own isolated workspace/project (same rationale as the zone-boundary
+// describe block above): a task due exactly "today in Etc/GMT+12" would
+// change the AS-131 baseline's expected count depending on the wall-clock
+// time the suite happens to run at.
+describe.skipIf(!haveAdminCreds)(
+  "get_overdue_count RPC agrees with isOverdueInTimeZone across the client/SQL boundary (F275: AS-207)",
+  () => {
+    let adminClient: SupabaseClient;
+    let memberClient: SupabaseClient;
+    let workspaceId: string;
+    let projectId: string;
+    let memberUserId: string;
+    const createdTaskIds: string[] = [];
+
+    // Two zones on opposite sides of UTC, deliberately the same
+    // 26-hour-apart pair the RPC-parameter describe block above already
+    // verified never share the same "today" at any real-world instant —
+    // reused here so the boundary task below is GUARANTEED to disagree
+    // between the two zones (not overdue in tz_west, overdue in
+    // tz_east), which is what actually exercises each layer's
+    // timezone-sensitivity instead of both sides coincidentally agreeing
+    // by ignoring `p_timezone`/`timeZone` altogether.
+    const tzWest = "Etc/GMT+12";
+    const tzEast = "Pacific/Kiritimati";
+
+    beforeAll(async () => {
+      adminClient = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const memberEmail = `f275-overdue-agreement-member-${uniqueSuffix}@example.com`;
+      const memberPassword = "Test-password-1!";
+
+      const { data: memberAuth, error: memberAuthErr } =
+        await adminClient.auth.admin.createUser({
+          email: memberEmail,
+          password: memberPassword,
+          email_confirm: true,
+        });
+      if (memberAuthErr || !memberAuth.user) {
+        throw new Error(
+          `Failed to create test user: ${memberAuthErr?.message}`,
+        );
+      }
+      memberUserId = memberAuth.user.id;
+
+      const { data: ws, error: wsErr } = await adminClient
+        .from("workspaces")
+        .insert({
+          name: "F275 Overdue Agreement Workspace",
+          slug: `f275-overdue-agreement-${uniqueSuffix}`,
+        })
+        .select("id")
+        .single();
+      if (wsErr || !ws) {
+        throw new Error(`Failed to create workspace: ${wsErr?.message}`);
+      }
+      workspaceId = ws.id;
+
+      const { error: memberErr } = await adminClient
+        .from("workspace_members")
+        .insert({
+          workspace_id: workspaceId,
+          user_id: memberUserId,
+          role: "owner",
+          status: "active",
+        });
+      if (memberErr) {
+        throw new Error(`Failed to seed membership: ${memberErr.message}`);
+      }
+
+      const { data: project, error: projectErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: "F275 Overdue Agreement Project",
+        })
+        .select("id")
+        .single();
+      if (projectErr || !project) {
+        throw new Error(`Failed to seed project: ${projectErr?.message}`);
+      }
+      projectId = project.id;
+
+      const pastDate = isoDateOffset(-5);
+      const futureDate = isoDateOffset(5);
+
+      const seedTask = async (attrs: {
+        title: string;
+        status: string;
+        due_date: string | null;
+        deleted_at?: string;
+      }) => {
+        const { data, error } = await adminClient
+          .from("tasks")
+          .insert({
+            project_id: projectId,
+            title: attrs.title,
+            status: attrs.status,
+            priority: "medium",
+            author_id: memberUserId,
+            due_date: attrs.due_date,
+            deleted_at: attrs.deleted_at,
+          })
+          .select("id")
+          .single();
+        if (error || !data) {
+          throw new Error(
+            `Failed to seed task "${attrs.title}": ${error?.message}`,
+          );
+        }
+        createdTaskIds.push(data.id);
+      };
+
+      // A deliberately varied mix — overdue, done-but-past-due, due today
+      // (UTC), due in the future, and a soft-deleted overdue task (which
+      // must be excluded from BOTH layers' row set, not just the RPC's
+      // count, since a fair agreement test compares the RPC against the
+      // exact same active-row dataset).
+      await seedTask({ title: "Overdue todo", status: "todo", due_date: pastDate });
+      await seedTask({
+        title: "Overdue in_progress",
+        status: "in_progress",
+        due_date: pastDate,
+      });
+      await seedTask({
+        title: "Done but past due",
+        status: "done",
+        due_date: pastDate,
+      });
+      await seedTask({
+        title: "Due today UTC",
+        status: "todo",
+        due_date: isoDateOffset(0),
+      });
+      await seedTask({ title: "Due in the future", status: "todo", due_date: futureDate });
+      await seedTask({
+        title: "Soft-deleted overdue",
+        status: "todo",
+        due_date: pastDate,
+        deleted_at: new Date().toISOString(),
+      });
+      // The zone-boundary task: due exactly "today in tzWest" — not
+      // overdue there, but overdue in tzEast at any real-world instant
+      // (see the module-level comment above for why the 26h spread
+      // guarantees this).
+      await seedTask({
+        title: "Zone boundary task",
+        status: "todo",
+        due_date: todayInZone(tzWest),
+      });
+
+      memberClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+      const { error: signInErr } = await memberClient.auth.signInWithPassword({
+        email: memberEmail,
+        password: memberPassword,
+      });
+      if (signInErr) {
+        throw new Error(`Failed to sign in member: ${signInErr.message}`);
+      }
+    });
+
+    afterAll(async () => {
+      for (const id of createdTaskIds) {
+        await adminClient.from("tasks").delete().eq("id", id);
+      }
+      await adminClient.from("projects").delete().eq("workspace_id", workspaceId);
+      await adminClient
+        .from("workspace_members")
+        .delete()
+        .eq("workspace_id", workspaceId);
+      await adminClient.from("workspaces").delete().eq("id", workspaceId);
+      if (memberUserId) await adminClient.auth.admin.deleteUser(memberUserId);
+    });
+
+    // Fetches the exact active-row dataset get_overdue_count's own WHERE
+    // clause selects from for this workspace: deleted_at is null on
+    // `tasks`, and (by construction here — this fixture's single project
+    // is never soft-deleted) implicitly on `projects` too.
+    async function fetchActiveRows() {
+      const { data, error } = await adminClient
+        .from("tasks")
+        .select("due_date, status")
+        .eq("project_id", projectId)
+        .is("deleted_at", null);
+      if (error) throw new Error(`Failed to fetch active rows: ${error.message}`);
+      return (data ?? []) as { due_date: string | null; status: string }[];
+    }
+
+    it("test_AS_207_get_overdue_count_rpc_matches_isOverdueInTimeZone_over_the_same_rows_for_a_zone_west_of_utc", async () => {
+      const rows = await fetchActiveRows();
+      const expectedCount = rows.filter((row) =>
+        isOverdueInTimeZone(row.due_date, row.status, tzWest),
+      ).length;
+
+      const { data, error } = await memberClient.rpc("get_overdue_count", {
+        p_workspace_id: workspaceId,
+        p_timezone: tzWest,
+      });
+
+      expect(error).toBeNull();
+      expect(Number(data)).toBe(expectedCount);
+    });
+
+    it("test_AS_207_get_overdue_count_rpc_matches_isOverdueInTimeZone_over_the_same_rows_for_a_zone_east_of_utc", async () => {
+      const rows = await fetchActiveRows();
+      const expectedCount = rows.filter((row) =>
+        isOverdueInTimeZone(row.due_date, row.status, tzEast),
+      ).length;
+
+      const { data, error } = await memberClient.rpc("get_overdue_count", {
+        p_workspace_id: workspaceId,
+        p_timezone: tzEast,
+      });
+
+      expect(error).toBeNull();
+      expect(Number(data)).toBe(expectedCount);
+    });
+
+    it("test_AS_207_the_zone_boundary_task_actually_flips_the_count_between_the_two_zones_proving_this_test_exercises_real_timezone_sensitivity", async () => {
+      // Guards against a vacuous pass: if either layer silently ignored
+      // its timezone argument, the two "agreement" tests above could
+      // still both pass by coincidence (RPC and JS could each be wrong
+      // in the SAME zone-blind way and still match each other). This
+      // proves the row set itself is genuinely zone-sensitive — the
+      // west/east expected counts computed straight from
+      // isOverdueInTimeZone must differ (the "due today in tzWest" task
+      // is the deliberate boundary case: not overdue for tzWest, but
+      // overdue for tzEast at any real-world instant, per the 26-hour
+      // spread) — and that BOTH RPC calls land on their respective
+      // client-computed expectation, not just on each other.
+      const rows = await fetchActiveRows();
+      const expectedWest = rows.filter((row) =>
+        isOverdueInTimeZone(row.due_date, row.status, tzWest),
+      ).length;
+      const expectedEast = rows.filter((row) =>
+        isOverdueInTimeZone(row.due_date, row.status, tzEast),
+      ).length;
+      expect(expectedEast).not.toBe(expectedWest);
+
+      const [{ data: westCount, error: westErr }, { data: eastCount, error: eastErr }] =
+        await Promise.all([
+          memberClient.rpc("get_overdue_count", {
+            p_workspace_id: workspaceId,
+            p_timezone: tzWest,
+          }),
+          memberClient.rpc("get_overdue_count", {
+            p_workspace_id: workspaceId,
+            p_timezone: tzEast,
+          }),
+        ]);
+
+      expect(westErr).toBeNull();
+      expect(eastErr).toBeNull();
+      expect(Number(westCount)).toBe(expectedWest);
+      expect(Number(eastCount)).toBe(expectedEast);
     });
   },
 );

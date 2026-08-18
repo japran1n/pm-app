@@ -19,6 +19,11 @@ import { Clock, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { formatDuration } from "@/lib/time/format-duration";
+// F275 (AS-207): the shared due-date formatter (lib/time/user-timezone.ts)
+// replaces this file's own local `formatDueDate` copy — see that
+// function's doc comment for why the fix isn't "just add timeZone to
+// Intl.DateTimeFormat" naively.
+import { formatDueDate } from "@/lib/time/user-timezone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 // F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
@@ -61,21 +66,12 @@ export type TaskCardTask = {
   totalMinutes?: number | null;
 };
 
-function formatDueDate(dueDate: string): string {
-  const date = new Date(dueDate);
-  if (Number.isNaN(date.getTime())) return dueDate;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
-
 export function TaskCard({
   task,
   assignee,
   onClick,
   className,
-  timezone = "UTC",
+  timezone,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee for `task.assigneeId`, or null/
@@ -87,14 +83,19 @@ export function TaskCard({
   /** Opens the task (e.g. TaskDetailSheet) when the card is activated. */
   onClick?: (taskId: string) => void;
   className?: string;
-  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
-   * by the Server Component page (board/page.tsx, list/page.tsx, the
-   * dashboard) and threaded down through Board/BoardColumn/
-   * SortableTaskCard — never fetched here. Optional, defaulting to "UTC",
-   * so callers that only care about non-overdue rendering (most unit
-   * tests) don't need to supply one; every real page in this app passes
-   * the caller's actual timezone. */
-  timezone?: string;
+  /** F124/F275 (AS-207): the viewer's IANA timezone, resolved once per
+   * request by the Server Component page (board/page.tsx, list/page.tsx,
+   * the dashboard) and threaded down through Board/BoardColumn/
+   * SortableTaskCard — never fetched here. REQUIRED (not defaulted to
+   * "UTC") since F275: M10 scrutiny found every real page already passed
+   * it, but the optional-with-a-silent-default type let a future page
+   * forget it and render every task as if the viewer were in UTC with no
+   * type error and no runtime warning — exactly the class of bug that let
+   * AS-207 regress once already (the due-date *text* kept using ambient
+   * time long after the overdue *badge* was fixed). A caller that
+   * genuinely doesn't care (e.g. a unit test) now has to say "UTC" out
+   * loud instead of getting it for free. */
+  timezone: string;
 }) {
   const overdue = isOverdue(task.dueDate, task.status, timezone);
 
@@ -149,7 +150,10 @@ export function TaskCard({
           >
             {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
             <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
-            {formatDueDate(task.dueDate)}
+            {formatDueDate(task.dueDate, timezone, {
+              month: "short",
+              day: "numeric",
+            })}
           </span>
         )}
         {!!task.totalMinutes && task.totalMinutes > 0 && (

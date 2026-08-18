@@ -226,7 +226,7 @@ describe.skipIf(!haveAdminCreds)(
       const [priorityA, statusA, overdueA] = await Promise.all([
         getPriorityCounts(userClient, workspaceAId),
         getStatusCounts(userClient, workspaceAId),
-        getOverdueCount(userClient, workspaceAId),
+        getOverdueCount(userClient, workspaceAId, "UTC"),
       ]);
 
       expect(priorityA.error).toBeNull();
@@ -249,7 +249,7 @@ describe.skipIf(!haveAdminCreds)(
       const [priorityB, statusB, overdueB] = await Promise.all([
         getPriorityCounts(userClient, workspaceBId),
         getStatusCounts(userClient, workspaceBId),
-        getOverdueCount(userClient, workspaceBId),
+        getOverdueCount(userClient, workspaceBId, "UTC"),
       ]);
 
       expect(priorityB.error).toBeNull();

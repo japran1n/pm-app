@@ -53,7 +53,7 @@ const boardSource = readFileSync(
 
 describe("Board dnd-kit setup (F043, no assertions)", () => {
   it("renders the DndContext-wrapped board without crashing, with all columns and tasks present", () => {
-    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS }));
+    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS, timezone: "UTC" }));
 
     // All 4 fixed columns still present (DndContext/SortableContext
     // wiring doesn't disturb F042's column rendering).
@@ -68,7 +68,7 @@ describe("Board dnd-kit setup (F043, no assertions)", () => {
   });
 
   it("renders an empty board (no tasks in any column) without crashing", () => {
-    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: [] }));
+    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: [], timezone: "UTC" }));
 
     expect(html).toContain("No tasks");
   });

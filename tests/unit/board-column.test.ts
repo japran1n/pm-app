@@ -47,6 +47,7 @@ describe("BoardColumn (F042: AS-067, AS-068, AS-064)", () => {
         createElement(BoardColumn, {
           status,
           tasks: ALL_TASKS.filter((t) => t.status === status),
+          timezone: "UTC",
         }),
       ),
     );
@@ -61,7 +62,7 @@ describe("BoardColumn (F042: AS-067, AS-068, AS-064)", () => {
   it("test_AS_068_a_column_only_renders_tasks_matching_its_own_status", () => {
     const todoColumnTasks = ALL_TASKS.filter((t) => t.status === "todo");
     const html = renderToStaticMarkup(
-      createElement(BoardColumn, { status: "todo", tasks: todoColumnTasks }),
+      createElement(BoardColumn, { status: "todo", tasks: todoColumnTasks, timezone: "UTC" }),
     );
 
     expect(html).toContain("Todo task");
@@ -75,7 +76,7 @@ describe("BoardColumn (F042: AS-067, AS-068, AS-064)", () => {
   it("test_AS_064_an_overdue_task_placed_on_a_real_board_column_renders_the_overdue_treatment", () => {
     const todoColumnTasks = ALL_TASKS.filter((t) => t.status === "todo");
     const html = renderToStaticMarkup(
-      createElement(BoardColumn, { status: "todo", tasks: todoColumnTasks }),
+      createElement(BoardColumn, { status: "todo", tasks: todoColumnTasks, timezone: "UTC" }),
     );
 
     // The overdue task's card carries the destructive-colored due-date
@@ -89,7 +90,7 @@ describe("BoardColumn (F042: AS-067, AS-068, AS-064)", () => {
 
   it("a column with zero tasks renders an explicit empty message rather than a blank space", () => {
     const html = renderToStaticMarkup(
-      createElement(BoardColumn, { status: "done", tasks: [] }),
+      createElement(BoardColumn, { status: "done", tasks: [], timezone: "UTC" }),
     );
 
     expect(html).toContain("No tasks");

@@ -52,6 +52,7 @@ describe("List/table view status & priority colors match lib/task-colors.ts (F10
             },
           ],
           assignees: new Map(),
+          timezone: "UTC",
         }),
       );
 

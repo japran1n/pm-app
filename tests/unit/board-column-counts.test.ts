@@ -52,6 +52,7 @@ function countFor(tasks: TaskCardTask[], status: TaskCardTask["status"]) {
     createElement(BoardColumn, {
       status,
       tasks: tasks.filter((t) => t.status === status),
+      timezone: "UTC",
     }),
   );
   return html;
@@ -63,6 +64,7 @@ describe("BoardColumn task count (F051: AS-083)", () => {
       createElement(BoardColumn, {
         status: "todo",
         tasks: INITIAL_TASKS.filter((t) => t.status === "todo"),
+        timezone: "UTC",
       }),
     );
     expect(html).toContain("To Do");

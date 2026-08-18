@@ -31,6 +31,10 @@ import { TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+// F275 (AS-207): the shared due-date formatter — replaces this file's own
+// local `formatDueDate` copy, which (like task-card.tsx's) never received
+// a timeZone. See lib/time/user-timezone.ts's formatDueDate doc comment.
+import { formatDueDate } from "@/lib/time/user-timezone";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { ProjectListTaskSort } from "@/lib/queries/tasks";
 import { Badge } from "@/components/ui/badge";
@@ -61,16 +65,6 @@ import {
 // shared avatar component instead of plain text.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 
-function formatDueDate(dueDate: string): string {
-  const date = new Date(dueDate);
-  if (Number.isNaN(date.getTime())) return dueDate;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
 export function TaskListTable({
   tasks,
   assignees,
@@ -78,7 +72,7 @@ export function TaskListTable({
   hasActiveFilters = false,
   clearFiltersHref,
   members = [],
-  timezone = "UTC",
+  timezone,
 }: {
   tasks: TaskCardTask[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
@@ -112,13 +106,17 @@ export function TaskListTable({
    * `members` prop (components/board/board.tsx).
    */
   members?: TaskDetailSheetMember[];
-  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
-   * by the Server Component page (project list/page.tsx, or the dashboard
-   * page via dashboard-task-table.tsx) via lib/queries/profile.ts's
-   * getCurrentUserTimezone, and passed straight through here — never
-   * fetched by this Client Component, never per row. Defaults to "UTC" so
-   * existing/test callers that don't pass one still render. */
-  timezone?: string;
+  /** F124/F275 (AS-207): the viewer's IANA timezone, resolved once per
+   * request by the Server Component page (project list/page.tsx, or the
+   * dashboard page via dashboard-task-table.tsx) via
+   * lib/queries/profile.ts's getCurrentUserTimezone, and passed straight
+   * through here — never fetched by this Client Component, never per
+   * row. REQUIRED since F275: an optional prop silently defaulting to
+   * "UTC" is exactly what let this table's due-date *text* keep ignoring
+   * the viewer's zone even after the overdue badge was fixed (M10
+   * scrutiny's AS-207 finding) — a caller that truly doesn't care now has
+   * to pass "UTC" explicitly instead of getting it for free. */
+  timezone: string;
 }) {
   const taskDetailSheet = useTaskDetailSheet();
 
@@ -250,7 +248,7 @@ export function TaskListTable({
                       <span className={overdue ? "sr-only" : "hidden"}>
                         Overdue:
                       </span>
-                      {formatDueDate(task.dueDate)}
+                      {formatDueDate(task.dueDate, timezone)}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>

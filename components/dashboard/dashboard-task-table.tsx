@@ -50,12 +50,15 @@ export async function DashboardTaskTable({
     priority?: string;
     assigneeId?: string;
   };
-  /** F124 (AS-207): the viewer's IANA timezone, resolved ONCE per request
-   * by the workspace dashboard page (app/(workspace)/w/[workspaceSlug]/
-   * page.tsx) and passed down here — this component does not call
-   * lib/queries/profile.ts itself, so the same request never resolves the
-   * timezone twice. Forwarded straight through to <TaskListTable>. */
-  timezone?: string;
+  /** F124/F275 (AS-207): the viewer's IANA timezone, resolved ONCE per
+   * request by the workspace dashboard page
+   * (app/(workspace)/w/[workspaceSlug]/page.tsx) and passed down here —
+   * this component does not call lib/queries/profile.ts itself, so the
+   * same request never resolves the timezone twice. Forwarded straight
+   * through to <TaskListTable>. REQUIRED since F275 — see
+   * components/task/task-list-table.tsx's own doc comment on this same
+   * prop for why. */
+  timezone: string;
 }) {
   const filters: {
     status?: "todo" | "in_progress" | "in_review" | "done";

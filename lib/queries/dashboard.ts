@@ -96,15 +96,23 @@ export async function getPriorityCounts(
 // definition, instead of the database server's own clock — this is the
 // "how does the user's timezone reach the RPC" decision the dashboard
 // overdue tile needed (see this feature's handoff Decisions Made).
-// Defaults to "UTC" (matching the RPC's own SQL-side default) so existing
-// callers that haven't been updated to pass a real timezone yet — e.g.
-// tests/integration/dashboard-workspace-switch-refresh.test.ts, which
-// verifies workspace-scoping, not timezone behavior — keep working
-// unchanged.
+//
+// F275: REQUIRED, no longer defaulted to "UTC" here — M10 scrutiny called
+// out this exact silent default (alongside the React prop chain's own
+// optional `timezone?: string` sites) as the "major" finding that a
+// future caller forgetting to pass it renders every task as if the
+// caller were in UTC with no type error. The RPC itself still defaults
+// `p_timezone` to `'UTC'` at the SQL layer (unchanged) so a raw
+// PostgREST/`supabase.rpc` call that bypasses this wrapper entirely still
+// works — only this TypeScript wrapper's own silent default is removed.
+// Every real caller (app/(workspace)/w/[workspaceSlug]/page.tsx) already
+// passes the resolved timezone; tests that only verify workspace-scoping
+// (tests/integration/dashboard-workspace-switch-refresh.test.ts) now pass
+// "UTC" explicitly.
 export async function getOverdueCount(
   supabase: SupabaseClient,
   workspaceId: string,
-  timezone: string = "UTC",
+  timezone: string,
 ): Promise<{ data: number | null; error: string | null }> {
   const { data, error } = await supabase.rpc("get_overdue_count", {
     p_workspace_id: workspaceId,
