@@ -66,10 +66,15 @@ export default async function ProjectDetailLayout({
 
   const project = await getProjectById(workspace.id, projectId);
 
-  // A projectId that doesn't exist, or belongs to a different workspace,
-  // is a genuine 404 — not distinguishing "doesn't exist" from "wrong
-  // workspace" avoids leaking cross-workspace existence, mirroring the
-  // workspace layout's own AS-144 rationale.
+  // F031 (AS-039, AS-040): a projectId that doesn't exist / was purged
+  // (AS-039), or that is real but belongs to a DIFFERENT workspace than
+  // `workspaceSlug` (AS-040), both collapse to `getProjectById` returning
+  // `null` (it filters `.eq("workspace_id", workspace.id)` even though it
+  // reads via the admin client) — so both cases hit the exact same
+  // `notFound()` branch below. Not distinguishing "doesn't exist" from
+  // "wrong workspace" avoids leaking cross-workspace project existence to
+  // an active member of a different workspace, mirroring the workspace
+  // layout's own AS-144 rationale one level down.
   if (!project) {
     notFound();
   }
