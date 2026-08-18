@@ -95,7 +95,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F069 search-page-ui — AS-116, AS-119, AS-120 [CLARIFIED-AUTO] [COMPLETE]
 - F070 search-action — AS-118, AS-121, AS-122 [CLARIFIED-AUTO] [COMPLETE]
 
-## M7 — Dashboard
+## M7 — Dashboard [GREEN]
 
 - F071 db-rpc-priority-counts — AS-125, AS-127, AS-128, AS-129 [CLARIFIED-AUTO] [COMPLETE]
 - F072 db-rpc-status-counts — AS-126, AS-127, AS-128, AS-129 [CLARIFIED-AUTO] [COMPLETE]
@@ -167,8 +167,8 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M7 follow-ups (from M7 scrutiny — see milestones/M7-scrutiny.md)
 
-- F105 dashboard-table-archived-project-exclusion — AS-129, AS-134 [CLARIFIED-AUTO]
-- F106 list-view-status-priority-colors — AS-135 [CLARIFIED-AUTO]
+- F105 dashboard-table-archived-project-exclusion — AS-129, AS-134 [CLARIFIED-AUTO] [COMPLETE]
+- F106 list-view-status-priority-colors — AS-135 [CLARIFIED-AUTO] [COMPLETE]
 
 ## Deferred re-verification (M7)
 

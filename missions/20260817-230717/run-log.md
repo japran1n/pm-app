@@ -58,3 +58,6 @@ F071-F078 all COMPLETE (8/8). All RPCs SECURITY INVOKER, RLS-enforced against pa
 
 ## 2026-08-18T06:32:46Z — M7 scrutiny FAIL (2), follow-ups created
 Found: dashboard table (F078) leaks archived-project tasks while charts correctly exclude them (F105); list-view components reused in dashboard render status/priority with no color, inconsistent with the colored charts above them (F106). AS-136 documented as deferred to F089 (M8), same pattern as prior deferrals.
+
+## 2026-08-18T06:39:42Z — Milestone 7 GREEN
+F105-F106 verified. Total features complete: 99 (M1:5, M2:24, M3:10, M4:9, M5:14, M6:19, M7:10, i.e. 8+2 follow-ups). Proceeding to M8 — the LAST milestone: security/quality/accessibility/docs/polish, 15 features.

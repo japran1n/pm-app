@@ -18,3 +18,6 @@ lib/queries/tasks.ts (getWorkspaceListTasks), tests
 
 ## Notes for clarification
 Source: M7-scrutiny.md, Finding 1. Severity: major (internally inconsistent data on the same page).
+
+## Additional note (from a parallel M7 scrutiny reviewer)
+getWorkspaceListTasks has no dedicated parameter-tampering test (a member of workspace A directly passing workspace B's id), unlike F077's dedicated test for the RPCs. Add one here alongside the archived-project-exclusion fix, for the same reason F077 added its RPC version — this query pattern (`.eq("projects.workspace_id", ...)` + inner-join embed) is less common than a straight RLS-only RPC call and deserves its own explicit proof.
