@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createTaskSchema, assignTaskSchema } from "@/lib/validation/tasks";
+import {
+  createTaskSchema,
+  assignTaskSchema,
+  editTaskSchema,
+  type EditTaskUpdates,
+} from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 
 export type CreateTaskResult =
@@ -348,6 +353,174 @@ export async function assignTask(
     data: {
       id: updated.id,
       assigneeId: updated.assignee_id,
+    },
+  };
+}
+
+export type EditTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        title: string;
+        description: string | null;
+        priority: string | null;
+        dueDate: string | null;
+      };
+    }
+  | { ok: false; error: string };
+
+// Edits a task's title/description/priority/due date (F037: AS-054,
+// AS-061). Pattern mirrors assignTask above: Zod-validated partial input,
+// membership re-checked server-side (defense in depth, AS-143), admin
+// client used for the actual update, discriminated union return, generic
+// user-facing errors with details only logged server-side (AS-146).
+//
+// AS-061: any active workspace member may edit any task in that workspace,
+// regardless of whether they authored it or are assigned to it — there is
+// no per-task ownership check here, only workspace membership.
+//
+// AS-060: `updates` is typed as `EditTaskUpdates`
+// (lib/validation/tasks.ts), which has no `projectId` field. Moving a task
+// between projects is out of scope for v1 — this isn't a runtime check
+// that rejects a projectId, it's the absence of any field that could carry
+// one, so there is no code path here that could move a task between
+// projects even by accident. Do not add a projectId field to
+// `EditTaskUpdates` or to this function's update payload.
+//
+// Only fields actually present in `updates` are applied — an omitted field
+// leaves the existing column value untouched (unlike createTask, which
+// always writes every column).
+export async function editTask(
+  taskId: string,
+  updates: EditTaskUpdates,
+): Promise<EditTaskResult> {
+  const parsed = editTaskSchema.safeParse({ taskId, updates });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter valid task details.",
+    };
+  }
+
+  if (Object.keys(parsed.data.updates).length === 0) {
+    return { ok: false, error: "No changes to save." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // assignTask's task lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side. AS-061: any role, no per-task
+  // ownership/authorship check.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this task.",
+    };
+  }
+
+  // Build the update payload from only the fields present in `updates`.
+  // Never includes project_id (AS-060) — there is no source field for it.
+  const updatePayload: {
+    title?: string;
+    description?: string | null;
+    priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+    due_date?: string | null;
+  } = {};
+  if ("title" in parsed.data.updates) {
+    updatePayload.title = parsed.data.updates.title;
+  }
+  if ("description" in parsed.data.updates) {
+    updatePayload.description = parsed.data.updates.description;
+  }
+  if ("priority" in parsed.data.updates) {
+    updatePayload.priority = parsed.data.updates.priority;
+  }
+  if ("dueDate" in parsed.data.updates) {
+    updatePayload.due_date = parsed.data.updates.dueDate;
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update(updatePayload)
+    .eq("id", parsed.data.taskId)
+    .select("id, title, description, priority, due_date")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("editTask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "editTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      title: updated.title,
+      description: updated.description,
+      priority: updated.priority,
+      dueDate: updated.due_date,
     },
   };
 }

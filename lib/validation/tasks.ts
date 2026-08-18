@@ -63,3 +63,51 @@ export const assignTaskSchema = z.object({
 });
 
 export type AssignTaskInput = z.infer<typeof assignTaskSchema>;
+
+// Validates editTask input (F037: AS-054, AS-061). Partial update — every
+// field besides taskId is optional, and only fields actually present in
+// the update are validated/applied (a field genuinely absent from the
+// input is left untouched on the row; this is why `.partial()` is used
+// rather than `.optional().nullable()` per-field the way createTaskSchema
+// does — createTask always writes every column, editTask must not clobber
+// unspecified columns).
+//
+// AS-060: this type deliberately has no `projectId` field at all. Moving a
+// task between projects is out of scope for v1 — not merely unhandled, but
+// structurally impossible to attempt through this schema/action, since
+// there is no field here that could carry a project id through to the
+// update. Do not add one.
+const editableFields = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(1, "Task title is required.")
+    .max(500, "Task title must be 500 characters or fewer."),
+  description: z
+    .string()
+    .trim()
+    .max(10000, "Description must be 10000 characters or fewer.")
+    .nullable(),
+  // Matches `tasks_priority_check` in the tasks migration. Nullable — a
+  // task may have no priority set at all (mirrors createTaskSchema).
+  priority: z
+    .enum(["urgent", "high", "medium", "low", "backlog"])
+    .nullable(),
+  // Plain YYYY-MM-DD string, matching the `date` column type — same
+  // convention as createTaskSchema's dueDate field.
+  dueDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
+    .nullable(),
+});
+
+const partialEditableFields = editableFields.partial();
+
+export const editTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  updates: partialEditableFields,
+});
+
+export type EditTaskInput = z.infer<typeof editTaskSchema>;
+export type EditTaskUpdates = z.infer<typeof partialEditableFields>;
