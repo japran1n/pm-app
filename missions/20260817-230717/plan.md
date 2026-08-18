@@ -62,17 +62,17 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M5 — Board & drag-and-drop
 
-- F042 board-columns-render — AS-067, AS-068 [CLARIFIED-AUTO]
-- F043 dnd-kit-setup [CLARIFIED-AUTO]
-- F044 position-calc-util — AS-071, AS-072, AS-073, AS-074, AS-082 [CLARIFIED-AUTO]
-- F045 move-task-status-action — AS-069 [CLARIFIED-AUTO]
-- F046 reorder-task-position-action — AS-070, AS-078, AS-079, AS-080 [CLARIFIED-AUTO]
-- F047 board-optimistic-ui — AS-077 [CLARIFIED-AUTO]
-- F048 board-reload-persistence — AS-075 [CLARIFIED-AUTO]
-- F049 board-realtime-subscription — AS-076 [CLARIFIED-AUTO]
-- F050 board-soft-delete-filter — AS-081 [CLARIFIED-AUTO]
-- F051 board-column-counts — AS-083 [CLARIFIED-AUTO]
-- F052 board-permission-check — AS-084 [CLARIFIED-AUTO]
+- F042 board-columns-render — AS-067, AS-068 [CLARIFIED-AUTO] [COMPLETE]
+- F043 dnd-kit-setup [CLARIFIED-AUTO] [COMPLETE]
+- F044 position-calc-util — AS-071, AS-072, AS-073, AS-074, AS-082 [CLARIFIED-AUTO] [COMPLETE]
+- F045 move-task-status-action — AS-069 [CLARIFIED-AUTO] [COMPLETE]
+- F046 reorder-task-position-action — AS-070, AS-078, AS-079, AS-080 [CLARIFIED-AUTO] [COMPLETE]
+- F047 board-optimistic-ui — AS-077 [CLARIFIED-AUTO] [COMPLETE]
+- F048 board-reload-persistence — AS-075 [CLARIFIED-AUTO] [COMPLETE]
+- F049 board-realtime-subscription — AS-076 [CLARIFIED-AUTO] [COMPLETE]
+- F050 board-soft-delete-filter — AS-081 [CLARIFIED-AUTO] [COMPLETE]
+- F051 board-column-counts — AS-083 [CLARIFIED-AUTO] [COMPLETE]
+- F052 board-permission-check — AS-084 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M6 — List, search, comments, attachments
 

@@ -34,3 +34,6 @@ F033-F041 all COMPLETE (9/9). 203/203 tests. Spawning scrutiny-validator before 
 
 ## 2026-08-18T02:16:38Z — Milestone 4 GREEN
 M4-scrutiny.md reported 26 test failures under heavy parallel-agent load against Supabase — re-ran full suite in isolation twice, both times 203/203 clean. Confirmed transient network/rate-limit flakiness under concurrent scrutiny reviewers, not a real regression (AS-062 cross-workspace RLS test genuinely passes). AS-064 documented as structurally deferred pending F042 (same pattern as M3's AS-034). M4 marked GREEN. Proceeding to M5 (Board & drag-and-drop) — the most interaction-heavy milestone.
+
+## 2026-08-18T03:09:53Z — Milestone 5 (Board & drag-and-drop) complete
+F042-F052 all COMPLETE (11/11). Fractional-index position logic thoroughly unit-tested; F046 caught and fixed a real updated_at trigger bug proactively. Spawning scrutiny-validator before M6.
