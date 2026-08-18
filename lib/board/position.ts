@@ -69,12 +69,35 @@ export function calculatePosition(
     midpoint === prev ||
     midpoint === next
   ) {
-    const nudged = prev + Number.EPSILON * Math.max(Math.abs(prev), 1);
-    if (Number.isFinite(nudged) && nudged !== prev) {
-      return nudged;
+    // Scale the nudge off the ACTUAL remaining gap (next - prev), never off
+    // prev's absolute magnitude — nudging by a fraction of prev's magnitude
+    // can overshoot next entirely when prev is large but the gap is small
+    // (e.g. prev=1000, next=1001 after repeated reinsertion collapses the
+    // midpoint). Move a tiny fraction of the gap in from prev toward next.
+    const gap = next - prev;
+    let nudged = prev + gap * Number.EPSILON;
+
+    // If the gap itself is too small for that nudge to land strictly
+    // between prev and next (i.e. we're at or near float64-adjacent
+    // neighbors), try the smallest possible step off of prev directly.
+    if (!Number.isFinite(nudged) || nudged <= prev || nudged >= next) {
+      const stepUp = prev + Number.EPSILON * Math.max(Math.abs(prev), 1);
+      if (Number.isFinite(stepUp) && stepUp > prev && stepUp < next) {
+        nudged = stepUp;
+      } else {
+        // prev and next are float64-adjacent (or effectively so): there is
+        // no representable value strictly between them. True insertion is
+        // impossible without rebalancing (explicitly out of scope for v1
+        // per tech-decisions.md). Falling back to prev is the least-bad
+        // choice — it never escapes the bound.
+        nudged = prev;
+      }
     }
-    // Last-resort fallback: still finite, still deterministic, never NaN.
-    return prev;
+
+    // Hard safety net: whatever computation path produced `nudged`, clamp
+    // it into [prev, next] so the bound is guaranteed structurally, not
+    // just by careful arithmetic.
+    return Math.min(Math.max(nudged, prev), next);
   }
 
   return midpoint;

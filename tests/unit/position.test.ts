@@ -115,6 +115,99 @@ describe("calculatePosition — floating-point precision edge case", () => {
   });
 });
 
+describe("calculatePosition — result is always within [prev, next] bound (AS-072, AS-082, regression for Finding 1)", () => {
+  it("stays within bounds for a normal midpoint case", () => {
+    const prev = 1000;
+    const next = 2000;
+    const result = calculatePosition(prev, next);
+    expect(result).toBeGreaterThanOrEqual(prev);
+    expect(result).toBeLessThanOrEqual(next);
+  });
+
+  it("never exceeds next: the exact precision-collapse repro from the scrutiny report (prev=1000, next=1001, repeated reinsertion)", () => {
+    // Finding 1: prev + Number.EPSILON * Math.max(Math.abs(prev), 1) could
+    // overshoot next when prev's magnitude is large relative to the gap.
+    let prev = 1000;
+    const next = 1001;
+    for (let i = 0; i < 100; i++) {
+      const result = calculatePosition(prev, next);
+      expect(result).toBeGreaterThanOrEqual(prev);
+      expect(result).toBeLessThanOrEqual(next);
+      expect(Number.isNaN(result)).toBe(false);
+      expect(Number.isFinite(result)).toBe(true);
+      // Re-insert between the previous result and `next`, simulating
+      // repeated drags into the same shrinking gap.
+      prev = result;
+    }
+  });
+
+  it("stays within bounds for a very small gap", () => {
+    const prev = 1;
+    const next = 1 + Number.EPSILON;
+    const result = calculatePosition(prev, next);
+    expect(result).toBeGreaterThanOrEqual(prev);
+    expect(result).toBeLessThanOrEqual(next);
+  });
+
+  it("stays within bounds for very large numbers with a small relative gap", () => {
+    const prev = 1e15;
+    const next = prev + 1;
+    const result = calculatePosition(prev, next);
+    expect(result).toBeGreaterThanOrEqual(prev);
+    expect(result).toBeLessThanOrEqual(next);
+  });
+
+  it("stays within bounds for very large numbers with a tiny gap after repeated reinsertion", () => {
+    let prev = 1e10;
+    const next = 1e10 + 1;
+    for (let i = 0; i < 50; i++) {
+      const result = calculatePosition(prev, next);
+      expect(result).toBeGreaterThanOrEqual(prev);
+      expect(result).toBeLessThanOrEqual(next);
+      prev = result;
+    }
+  });
+
+  it("stays within bounds for negative numbers with a small gap", () => {
+    let prev = -1000;
+    const next = -999;
+    for (let i = 0; i < 50; i++) {
+      const result = calculatePosition(prev, next);
+      expect(result).toBeGreaterThanOrEqual(prev);
+      expect(result).toBeLessThanOrEqual(next);
+      prev = result;
+    }
+  });
+
+  it("stays within bounds when neighbors straddle zero with a small gap", () => {
+    let prev = -0.0000001;
+    const next = 0.0000001;
+    for (let i = 0; i < 50; i++) {
+      const result = calculatePosition(prev, next);
+      expect(result).toBeGreaterThanOrEqual(prev);
+      expect(result).toBeLessThanOrEqual(next);
+      prev = result;
+    }
+  });
+
+  it("stays within bounds for already-collapsed/identical neighbors", () => {
+    const result = calculatePosition(5, 5);
+    expect(result).toBeGreaterThanOrEqual(5);
+    expect(result).toBeLessThanOrEqual(5);
+  });
+
+  it("stays within bounds across 200 successive halvings of the same gap", () => {
+    const prev = 0;
+    let next = 1;
+    for (let i = 0; i < 200; i++) {
+      const mid = calculatePosition(prev, next);
+      expect(mid).toBeGreaterThanOrEqual(prev);
+      expect(mid).toBeLessThanOrEqual(next);
+      next = mid;
+    }
+  });
+});
+
 describe("calculatePosition — rapid repeated moves (AS-082)", () => {
   it("produces no NaN and no duplicate positions across a sequence of moves on distinct cards", () => {
     // Simulate dragging several different cards to distinct slots in quick
