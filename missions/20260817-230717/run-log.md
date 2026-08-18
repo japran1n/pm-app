@@ -70,3 +70,6 @@ All 107 features across 8 milestones COMPLETE and GREEN. Final serial-mode test 
 
 ## 2026-08-18T15:14:18Z — M9 (Time tracking) planned
 User requested time tracking (manual + live timer, billable/non-billable) as a strategic next feature. Added AS-161-176 to validation-contract.md, 9 features (F108-F116) to plan.md, self-clarified given standing authorization. Starting execution.
+
+## 2026-08-18T16:04:54Z — Milestone 9 (Time tracking) complete
+F108-F116 all COMPLETE (9/9). Spawning scrutiny-validator before declaring M9 GREEN.
