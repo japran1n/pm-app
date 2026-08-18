@@ -25,6 +25,7 @@ export type BoardRealtimeTaskRow = {
   due_date: string | null;
   position: number;
   deleted_at: string | null;
+  updated_at: string;
 };
 
 export type BoardRealtimeEvent =

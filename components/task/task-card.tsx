@@ -32,6 +32,13 @@ export type TaskCardTask = {
   // Carried through the client-side board state so onDragEnd can compute
   // a dropped card's new neighbors' positions without a round-trip.
   position: number;
+  // F103 (AS-076): the row's `updated_at` timestamp (ISO string), used by
+  // reconcileTask as an ordering guard against out-of-order Realtime
+  // events for the same task. Optional because the initial board fetch
+  // doesn't strictly need to carry it (the very first Realtime event for
+  // any given task always applies), but it's populated end-to-end so the
+  // guard is live from the first Realtime update onward.
+  updatedAt?: string;
 };
 
 const PRIORITY_LABELS: Record<

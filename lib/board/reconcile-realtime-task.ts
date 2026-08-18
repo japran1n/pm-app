@@ -42,6 +42,7 @@ function toTaskCardTask(row: {
   assignee_id: string | null;
   due_date: string | null;
   position: number;
+  updated_at?: string;
 }): TaskCardTask {
   return {
     id: row.id,
@@ -51,6 +52,7 @@ function toTaskCardTask(row: {
     assigneeId: row.assignee_id,
     dueDate: row.due_date,
     position: row.position,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -82,6 +84,25 @@ export function reconcileTask(
     // — e.g. it was created by another viewer moments before this client
     // subscribed): append.
     return [...tasks, incoming];
+  }
+
+  // F103 (AS-076): ordering guard. Two `postgres_changes` events for the
+  // same row can arrive out of commit order (reconnect/replay, or two
+  // independent writes to the same row landing on the wire out of turn).
+  // Only apply the incoming row if it's at least as new as what's
+  // currently held locally, comparing `updated_at`. `>=` (not `>`) so a
+  // same-timestamp retry/correction for the row we already have still
+  // applies — only a strictly *older* incoming row is dropped. If either
+  // side is missing `updated_at` (e.g. the initial fetch didn't carry it,
+  // or a test event omits it), there's nothing to compare against, so the
+  // incoming row is applied as before.
+  const existing = tasks[existingIndex];
+  if (
+    existing.updatedAt !== undefined &&
+    incoming.updatedAt !== undefined &&
+    incoming.updatedAt < existing.updatedAt
+  ) {
+    return tasks;
   }
 
   const next = tasks.slice();

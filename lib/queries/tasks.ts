@@ -30,7 +30,9 @@ export async function getProjectBoardTasks(
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, title, status, priority, assignee_id, due_date, position")
+    .select(
+      "id, title, status, priority, assignee_id, due_date, position, updated_at",
+    )
     .eq("project_id", projectId)
     .is("deleted_at", null)
     .order("position", { ascending: true });
@@ -47,5 +49,6 @@ export async function getProjectBoardTasks(
     assigneeId: task.assignee_id,
     dueDate: task.due_date,
     position: task.position,
+    updatedAt: task.updated_at,
   }));
 }
