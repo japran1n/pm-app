@@ -154,3 +154,13 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F101 position-bound-fix — AS-072, AS-082 [CLARIFIED-AUTO] [COMPLETE]
 - F102 optimistic-rollback-partial-failure — AS-077 [CLARIFIED-AUTO] [COMPLETE]
 - F103 realtime-ordering-guard — AS-076 [CLARIFIED-AUTO] [COMPLETE]
+
+## M6 follow-ups (from M6 scrutiny — see milestones/M6-scrutiny.md)
+
+- F104 comment-delete-realtime-fix — AS-101 [CLARIFIED-AUTO]
+
+## Noted but not spawned as separate features (M6 scrutiny minor gaps)
+
+- CI secret configuration for RLS integration tests (describe.skipIf pattern skips silently without SUPABASE_SECRET_KEY) — to be confirmed as part of M8's CI/quality audit (F093).
+- AS-102's comment read path not yet wired into TaskDetailSheet's initial fetch (comments prop defaults to []) — functional gap, will surface naturally when exercised; low priority, not a security issue.
+- Minor test-assertion-strength gaps (AS-108 TTL not pinned, AS-114 partial-failure branch untested, AS-121 asserts count not id-absence) — acceptable given the underlying code is confirmed correct by direct read; not worth separate features at this project's stated "critical paths only" test-coverage target (discovery Q26).

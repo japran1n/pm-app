@@ -46,3 +46,6 @@ F101-F103 verified: position math structurally clamped, cross-column drag now at
 
 ## 2026-08-18T05:21:12Z — Milestone 6 (List/search/comments/attachments) complete
 F053-F070 all COMPLETE (18/18). Orchestrator manually applied 2 migrations that failed in worker sandboxes due to no network egress (F062, and verified F064's applied cleanly). Spawning scrutiny-validator before M7.
+
+## 2026-08-18T05:35:15Z — M6 scrutiny FAIL (1), follow-up created
+Fixed a real pre-existing test bug (F068's fts-tasks.test.ts missing env loading) before scrutiny ran. scrutiny-validator confirmed a genuine Realtime/RLS interaction bug: soft-deleted comments don't propagate live (AS-101) because the new row fails its own SELECT RLS policy, silently dropping the postgres_changes event. Created F104. 39/40 reviewed assertions PASS; several minor test-coverage gaps noted but not spawned as separate features given "critical paths only" scope.
