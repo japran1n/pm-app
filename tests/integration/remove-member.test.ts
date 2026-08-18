@@ -200,6 +200,67 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.role).toBe("owner");
     });
 
+    it("AS-018: the sole owner cannot remove/demote themselves", async () => {
+      const { removeMember } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+
+      // The sole owner attempts to remove their own membership row.
+      currentTestUserId = owner.userId;
+      const result = await removeMember(workspaceId, owner.membershipId);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/sole owner/i);
+      }
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("id, role, status")
+        .eq("id", owner.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("owner");
+      expect(row?.status).toBe("active");
+    });
+
+    it("AS-018 (concurrency): two simultaneous removeMember calls against a 2-owner workspace leave at least one owner", async () => {
+      const { removeMember } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const ownerA = await seedMember(workspaceId, "owner");
+      const ownerB = await seedMember(workspaceId, "owner");
+      const admin = await seedMember(workspaceId, "admin");
+
+      // A single admin caller fires two removeMember calls at the same
+      // time, targeting the two different owner rows. (The mocked
+      // getUser() reads a single shared `currentTestUserId`, so the two
+      // concurrent calls must share one caller identity — the race being
+      // tested is in the DB-side count-and-delete, not in caller
+      // resolution.) Before the F094 fix (check-then-act with no
+      // atomicity), both calls could read "2 active owners" before either
+      // delete committed, both pass the guard, and both succeed — leaving
+      // zero owners. The atomic `remove_workspace_member` RPC (row-locking
+      // via `SELECT ... FOR UPDATE`) must serialize these so at most one
+      // succeeds.
+      currentTestUserId = admin.userId;
+      const callA = removeMember(workspaceId, ownerA.membershipId);
+      const callB = removeMember(workspaceId, ownerB.membershipId);
+
+      const [resultA, resultB] = await Promise.all([callA, callB]);
+
+      const successCount = [resultA, resultB].filter((r) => r.ok).length;
+      expect(successCount).toBeLessThanOrEqual(1);
+
+      const { data: remainingOwners } = await adminClient
+        .from("workspace_members")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("role", "owner")
+        .eq("status", "active");
+
+      expect((remainingOwners ?? []).length).toBeGreaterThanOrEqual(1);
+    });
+
     it("AS-018: a workspace with multiple owners allows removing one of them", async () => {
       const { removeMember } = await import("@/lib/actions/workspaces");
       const workspaceId = await createWorkspace();

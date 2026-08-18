@@ -650,50 +650,58 @@ export async function removeMember(
     };
   }
 
-  // AS-018: never remove the sole owner. Count active owners in this
-  // workspace; only reject when the target is an owner AND is the only
-  // one — a workspace with multiple owners may still have one of them
-  // removed.
-  if (targetRow.role === "owner") {
-    const { count: activeOwnerCount, error: ownerCountError } = await admin
-      .from("workspace_members")
-      .select("id", { count: "exact", head: true })
-      .eq("workspace_id", parsed.data.workspaceId)
-      .eq("status", "active")
-      .eq("role", "owner");
+  // F094 hardening (AS-018): the old guard here was check-then-act — a
+  // SELECT to count active owners, then a separate conditional DELETE, with
+  // nothing tying the two together. Two concurrent removeMember calls
+  // against a 2-owner workspace could both read count=2, both pass, and
+  // both succeed, leaving zero owners (TOCTOU race). Scrutiny (M2-scrutiny.
+  // md AS-018) flagged this as a blocker.
+  //
+  // Fix (supabase/migrations/20260817234900_remove_member_atomic_owner_
+  // guard.sql): the count-and-delete now happens inside a single SECURITY
+  // DEFINER Postgres function, `remove_workspace_member`, invoked here as
+  // one RPC call. The function locks the relevant rows with `SELECT ...
+  // FOR UPDATE` before counting, so a second concurrent invocation targeting
+  // the same workspace's owners blocks until the first transaction commits
+  // or rolls back, then re-reads the post-delete state — there is no window
+  // where two calls can both observe a stale "safe to delete" count. This
+  // mirrors the atomicity approach F095 used for create_workspace_with_owner
+  // (AS-006).
+  const { data: rpcRows, error: rpcError } = await admin.rpc(
+    "remove_workspace_member",
+    {
+      p_membership_id: parsed.data.targetMembershipId,
+      p_workspace_id: parsed.data.workspaceId,
+    },
+  );
 
-    if (ownerCountError) {
-      console.error(
-        "removeMember: owner count lookup failed:",
-        ownerCountError,
-      );
-      return {
-        ok: false,
-        error: "Something went wrong. Please try again in a moment.",
-      };
-    }
+  if (rpcError) {
+    console.error("removeMember: remove_workspace_member RPC failed:", rpcError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
 
-    if ((activeOwnerCount ?? 0) <= 1) {
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (!rpcResult?.deleted) {
+    if (rpcResult?.reason === "sole_owner") {
       return {
         ok: false,
         error: "You cannot remove the sole owner of a workspace.",
       };
     }
-  }
-
-  const { error: deleteError } = await admin
-    .from("workspace_members")
-    .delete()
-    .eq("id", parsed.data.targetMembershipId)
-    .eq("workspace_id", parsed.data.workspaceId)
-    .eq("status", "active");
-
-  if (deleteError) {
-    console.error("removeMember: delete failed:", deleteError);
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
+    if (rpcResult?.reason === "not_active") {
+      return {
+        ok: false,
+        error: "Only active members can be removed.",
+      };
+    }
+    // "not_found" here would mean the row vanished between the earlier
+    // lookup and this RPC call (e.g. removed by a concurrent request) —
+    // treat it the same as the initial existence check above.
+    return { ok: false, error: "This member no longer exists." };
   }
 
   const { data: workspaceRow } = await admin

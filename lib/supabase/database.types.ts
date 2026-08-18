@@ -96,6 +96,13 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      remove_workspace_member: {
+        Args: { p_membership_id: string; p_workspace_id: string }
+        Returns: {
+          deleted: boolean
+          reason: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
