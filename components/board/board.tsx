@@ -40,8 +40,10 @@ import { toast } from "sonner";
 
 import { moveTaskStatus, reorderTask } from "@/lib/actions/tasks";
 import { calculatePosition } from "@/lib/board/position";
+import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
+import { useBoardRealtime } from "@/components/board/use-board-realtime";
 
 const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
   "todo",
@@ -51,9 +53,15 @@ const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
 ];
 
 export function Board({
+  projectId,
   initialTasks,
   onCardClick,
 }: {
+  // F049 (AS-076): required so useBoardRealtime can scope its Postgres
+  // Realtime subscription to this project only (matches AS-068's
+  // per-project scoping — this client never receives another project's
+  // task events).
+  projectId: string;
   initialTasks: TaskCardTask[];
   onCardClick?: (taskId: string) => void;
 }) {
@@ -62,6 +70,14 @@ export function Board({
   // reorderTask, both rolled back to the pre-drop snapshot on failure).
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
+
+  // F049 (AS-076): reconcile every Realtime event (this client's own
+  // moves included — see reconcileTask's doc comment on why dedup isn't
+  // needed) into local board state, so another viewer's drag shows up
+  // here within a few seconds without a manual refresh.
+  useBoardRealtime(projectId, (event) => {
+    setTasks((current) => reconcileTask(current, event));
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

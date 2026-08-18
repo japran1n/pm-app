@@ -41,5 +41,5 @@ export default async function ProjectBoardPage({
     return <BoardEmptyState />;
   }
 
-  return <Board initialTasks={tasks} />;
+  return <Board projectId={projectId} initialTasks={tasks} />;
 }

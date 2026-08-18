@@ -46,7 +46,7 @@ const boardSource = readFileSync(
 
 describe("Board optimistic drop + rollback + error toast (F047: AS-077)", () => {
   it("renders with both actions mocked to fail, without crashing", () => {
-    const html = renderToStaticMarkup(createElement(Board, { initialTasks: TASKS }));
+    const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS }));
     expect(html).toContain("Todo task");
     expect(html).toContain("In progress task");
   });
