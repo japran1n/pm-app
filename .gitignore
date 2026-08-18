@@ -34,3 +34,10 @@ __pycache__/
 # documentation. Only the verify/ subdirectory is excluded.
 *.tsbuildinfo
 supabase/.temp/
+
+# Playwright (F090) run artifacts — traces/screenshots regenerated per run,
+# never source.
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
