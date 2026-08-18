@@ -1,6 +1,6 @@
 # Plan
 
-_Mission: 20260818-213033 (v2)_ _Milestones: 9 (M10–M18)_ _Features: 155 (F118–F272)_ _Assertions covered: AS-201–AS-530 (330)_
+_Mission: 20260818-213033 (v2)_ _Milestones: 9 (M10–M18)_ _Features: 161 (F118–F278)_ _Assertions covered: AS-201–AS-530 (330)_
 
 Milestone and feature numbering continues from mission `20260817-230717`
 (which ended at M9 / F117 / AS-176) so no ID in this repo is ever ambiguous.
@@ -24,6 +24,15 @@ notifications, timezone) exists. No feature work beyond identity.
 - F123 profile-settings-page — AS-202 [CLARIFIED-AUTO] [COMPLETE]
 - F124 timezone-date-utils — AS-207 [CLARIFIED-AUTO] [COMPLETE]
 - F125 theme-toggle — AS-211, AS-212, AS-213 [CLARIFIED-AUTO] [COMPLETE]
+
+### M10 follow-ups (from the M10 scrutiny report — 7 FAIL)
+
+- F273 profile-page-reachability — AS-202 [CLARIFIED-AUTO]
+- F274 avatar-upload-limits-and-sniffing — AS-203, AS-205, AS-206 [CLARIFIED-AUTO]
+- F275 due-date-display-timezone — AS-207 [CLARIFIED-AUTO]
+- F276 profiles-rls-gaps — AS-208, AS-210 [CLARIFIED-AUTO]
+- F277 dom-test-environment — AS-204, AS-214 [CLARIFIED-AUTO]
+- F278 ci-runs-the-suite — (no assertion; evidence layer) [CLARIFIED-AUTO]
 
 ## M11 — Roles, permissions & project-level access
 
