@@ -358,6 +358,13 @@ export type Database = {
           priority: string
         }[]
       }
+      get_project_time_totals: {
+        Args: { p_project_id: string }
+        Returns: {
+          billable_minutes: number
+          non_billable_minutes: number
+        }[]
+      }
       get_status_counts: {
         Args: { p_workspace_id: string }
         Returns: {

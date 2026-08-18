@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
+import { getProjectTimeTotals } from "@/lib/queries/time-entries";
 import { ProjectTabs } from "@/components/project-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -82,6 +83,18 @@ export default async function ProjectDetailLayout({
 
   const isArchived = Boolean(project.deletedAt);
 
+  // F114 (AS-172): total logged time, split into billable/non-billable,
+  // rendered as a small stat in the project header. AS-174 (excluding a
+  // soft-deleted task's time) is enforced inside the RPC itself
+  // (get_project_time_totals), not here.
+  const timeTotals = await getProjectTimeTotals(project.id);
+  const totalMinutes =
+    timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
+  const formatHours = (minutes: number) => {
+    const hours = minutes / 60;
+    return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <div className="flex flex-col gap-4">
@@ -104,6 +117,13 @@ export default async function ProjectDetailLayout({
             Back to projects
           </Link>
         </div>
+
+        {totalMinutes > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {formatHours(totalMinutes)}h logged (
+            {formatHours(timeTotals.billableMinutes)}h billable)
+          </p>
+        )}
 
         <Separator />
 
