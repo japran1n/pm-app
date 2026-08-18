@@ -1,10 +1,7 @@
 import { notFound, redirect } from "next/navigation";
-import { LogOut } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/lib/actions/auth";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
-import { Button } from "@/components/ui/button";
+import { AppSidebar } from "@/components/nav/app-sidebar";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -121,21 +118,24 @@ export default async function WorkspaceLayout({
     ? (workspaces ?? [])
     : [...(workspaces ?? []), activeWorkspace];
 
+  // Persistent nav shell: AppSidebar renders both the always-on desktop
+  // sidebar (workspace switcher, primary nav, sign-out) and, on narrow
+  // viewports, a slim hamburger bar that opens the same content in a
+  // sheet. No separate topbar component: with the sidebar already showing
+  // which section is active, a second row of nav chrome across the main
+  // content area would be redundant — each page is expected to render its
+  // own heading (e.g. "Projects", "Members") as the page-title convention
+  // instead.
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="flex h-12 items-center gap-3 border-b px-4">
-        <WorkspaceSwitcher
-          workspaces={switcherWorkspaces}
-          currentWorkspaceId={activeWorkspace.id}
-        />
-        <form action={signOut} className="ml-auto">
-          <Button type="submit" variant="ghost" size="sm" className="gap-1.5">
-            <LogOut className="size-4" aria-hidden="true" />
-            Sign out
-          </Button>
-        </form>
-      </header>
-      <main className="flex flex-1 flex-col">{children}</main>
+    <div className="flex min-h-svh">
+      <AppSidebar
+        workspaceSlug={workspaceSlug}
+        workspaces={switcherWorkspaces}
+        currentWorkspaceId={activeWorkspace.id}
+      />
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        {children}
+      </main>
     </div>
   );
 }
