@@ -36,7 +36,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F022 signout-session-clear — AS-022 [CLARIFIED-AUTO] [COMPLETE]
 - F023 not-member-notfound-handling — AS-144 [CLARIFIED-AUTO] [COMPLETE]
 
-## M3 — Projects
+## M3 — Projects [GREEN]
 
 - F024 db-schema-projects [CLARIFIED-AUTO] [COMPLETE]
 - F025 db-schema-rls-projects — AS-028 [CLARIFIED-AUTO] [COMPLETE]
@@ -139,7 +139,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M3 follow-ups (from M3 scrutiny — see milestones/M3-scrutiny.md)
 
-- F100 project-name-check-constraint — AS-026 [CLARIFIED-AUTO]
+- F100 project-name-check-constraint — AS-026 [CLARIFIED-AUTO] [COMPLETE]
 
 ## Deferred re-verification (not a defect — genuinely blocked on later milestone)
 
