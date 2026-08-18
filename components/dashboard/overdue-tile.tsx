@@ -18,7 +18,9 @@ export function OverdueTile({ count }: { count: number }) {
   return (
     <Card data-testid="dashboard-overdue-tile">
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle>Overdue tasks</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          Overdue tasks
+        </CardTitle>
         <AlertTriangle
           className="h-4 w-4 text-muted-foreground"
           aria-hidden="true"

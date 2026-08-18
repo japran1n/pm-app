@@ -30,10 +30,14 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <main className="flex min-h-svh flex-1 items-center justify-center p-6">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="flex flex-col gap-1 text-center">
-          <h1 className="text-lg font-semibold">Create your workspace</h1>
+    <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-10 p-6">
+      <span className="text-xl font-semibold tracking-tight">pm-app</span>
+
+      <div className="flex w-full max-w-sm flex-col gap-8">
+        <div className="flex flex-col gap-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Create your workspace
+          </h1>
           <p className="text-sm text-muted-foreground">
             Give your workspace a name. You can invite teammates after.
           </p>

@@ -106,8 +106,15 @@ export default async function WorkspacePage({
   const isEmpty = !hasError && totalTasks === 0;
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <h1 className="text-lg font-semibold">Welcome to {workspace.name}</h1>
+    <div className="flex flex-1 flex-col gap-6 p-6 md:p-8">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {workspace.name}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          An overview of what&apos;s happening across your workspace.
+        </p>
+      </div>
 
       <DashboardContent
         workspaceSlug={workspaceSlug}
@@ -132,7 +139,7 @@ export default async function WorkspacePage({
       {/* F027: natural next stop from the dashboard. */}
       <Link
         href={`/w/${workspaceSlug}/projects`}
-        className="text-sm text-muted-foreground underline"
+        className="text-sm text-primary underline-offset-4 hover:underline"
       >
         View projects
       </Link>

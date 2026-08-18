@@ -70,7 +70,7 @@ export function DashboardContent({
           </p>
           <Link
             href={`/w/${workspaceSlug}/projects`}
-            className="text-sm underline"
+            className="text-sm text-primary underline-offset-4 hover:underline"
           >
             View projects
           </Link>
@@ -81,21 +81,25 @@ export function DashboardContent({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-6 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <OverdueTile count={overdueCount} />
       </div>
-      <div className="grid gap-6 md:grid-cols-2" data-testid="dashboard-charts">
-        <Card>
+      <div className="grid gap-4 md:grid-cols-2" data-testid="dashboard-charts">
+        <Card className="gap-4">
           <CardHeader>
-            <CardTitle>Tasks by priority</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Tasks by priority
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <PriorityBarChart data={priorityData} />
           </CardContent>
         </Card>
-        <Card>
+        <Card className="gap-4">
           <CardHeader>
-            <CardTitle>Tasks by status</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Tasks by status
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <StatusPieChart data={statusData} />
