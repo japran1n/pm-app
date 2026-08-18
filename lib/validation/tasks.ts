@@ -119,3 +119,24 @@ export const deleteTaskSchema = z.object({
 });
 
 export type DeleteTaskInput = z.infer<typeof deleteTaskSchema>;
+
+// Validates updateTaskTags input (F041: AS-065, AS-066). Mirrors the
+// `tags text[] not null default '{}'` column from
+// supabase/migrations/20260818013434_create_tasks.sql. Each tag must be a
+// non-empty trimmed string. AS-066: an empty array is explicitly allowed
+// (removing all tags results in `[]`, never `null`) — there is no `.min(1)`
+// on the array itself, only on each individual tag string.
+export const updateTaskTagsSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  tags: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1, "Tags cannot be empty.")
+        .max(50, "Tags must be 50 characters or fewer."),
+    )
+    .max(50, "A task can have at most 50 tags."),
+});
+
+export type UpdateTaskTagsInput = z.infer<typeof updateTaskTagsSchema>;

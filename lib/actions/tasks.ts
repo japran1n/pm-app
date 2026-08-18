@@ -9,6 +9,7 @@ import {
   assignTaskSchema,
   editTaskSchema,
   deleteTaskSchema,
+  updateTaskTagsSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -668,6 +669,139 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
     data: {
       id: deleted.id,
       deletedAt: deleted.deleted_at,
+    },
+  };
+}
+
+export type UpdateTaskTagsResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        tags: string[];
+      };
+    }
+  | { ok: false; error: string };
+
+// Updates a task's tag list (F041: AS-065, AS-066). Pattern mirrors
+// editTask/assignTask above: Zod-validated input (array of non-empty
+// trimmed strings), membership re-checked server-side (defense in depth,
+// AS-143), admin client used for the actual update, discriminated union
+// return, generic user-facing errors with details only logged server-side
+// (AS-146).
+//
+// AS-065: `tags` is a plain string array — zero, one, or many tags, all
+// optional in the sense that an empty array is a fully valid task state.
+// AS-066: passing `[]` here writes an empty array to the `tags` column
+// (which is `not null default '{}'`, per
+// supabase/migrations/20260818013434_create_tasks.sql) — never `null`.
+// There is no "omit tags to leave unchanged" branch the way editTask has
+// for its optional fields; `tags` is always a required array argument, so
+// every call is an explicit, full replacement of the tag list.
+export async function updateTaskTags(
+  taskId: string,
+  tags: string[],
+): Promise<UpdateTaskTagsResult> {
+  const parsed = updateTaskTagsSchema.safeParse({ taskId, tags });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter valid tags.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to update tags." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // assignTask/editTask/deleteTask's task lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side. Any role, no per-task ownership
+  // check — mirrors editTask's (AS-061) and deleteTask's membership model.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to update this task's tags.",
+    };
+  }
+
+  // AS-066: `parsed.data.tags` may legitimately be `[]` here — that is
+  // written as-is, never coerced to null.
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ tags: parsed.data.tags })
+    .eq("id", parsed.data.taskId)
+    .select("id, tags")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("updateTaskTags: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "updateTaskTags: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      tags: updated.tags ?? [],
     },
   };
 }

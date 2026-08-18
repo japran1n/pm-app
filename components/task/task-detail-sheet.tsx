@@ -41,6 +41,7 @@ import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
+import { TagsEditor } from "@/components/task/tags-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,6 +71,8 @@ export type TaskDetailSheetTask = {
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
   dueDate: string | null;
+  /** AS-065: may be empty — every task has a tag list, never null. */
+  tags: string[];
 };
 
 export type TaskDetailSheetMember = {
@@ -419,6 +422,8 @@ export function TaskDetailSheet({
                   )}
                 />
               </div>
+
+              <TagsEditor taskId={task.id} tags={task.tags} />
             </div>
 
             <SheetFooter>
