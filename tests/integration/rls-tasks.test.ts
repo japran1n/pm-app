@@ -295,7 +295,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(unchanged?.description).not.toBe("should not be applied");
     });
 
-    it("AS-062: full list query scoped to project A returns zero rows for a non-member, even with a valid session in workspace B", async () => {
+    it("AS-062/AS-139: selecting tasks by project_id without workspace membership returns zero rows, even with a valid session in workspace B", async () => {
       const { data, error } = await nonMemberClient
         .from("tasks")
         .select("*")
