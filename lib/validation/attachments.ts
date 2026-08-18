@@ -71,3 +71,15 @@ export const deleteAttachmentSchema = z.object({
 });
 
 export type DeleteAttachmentInput = z.infer<typeof deleteAttachmentSchema>;
+
+// Validates getAttachmentSignedUrl input (AS-108/AS-146). Same shape as
+// deleteAttachmentSchema's id field — added so this action validates via
+// Zod like every other Server Action in this file, instead of a bespoke
+// `typeof` check.
+export const getAttachmentSignedUrlSchema = z.object({
+  attachmentId: z.string().uuid("Invalid attachment."),
+});
+
+export type GetAttachmentSignedUrlInput = z.infer<
+  typeof getAttachmentSignedUrlSchema
+>;

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deleteAttachmentSchema,
+  getAttachmentSignedUrlSchema,
   uploadAttachmentSchema,
 } from "@/lib/validation/attachments";
 import {
@@ -252,8 +253,13 @@ export type GetAttachmentSignedUrlResult =
 export async function getAttachmentSignedUrl(
   attachmentId: string,
 ): Promise<GetAttachmentSignedUrlResult> {
-  if (typeof attachmentId !== "string" || !attachmentId) {
-    return { ok: false, error: "Invalid attachment." };
+  const parsedInput = getAttachmentSignedUrlSchema.safeParse({ attachmentId });
+
+  if (!parsedInput.success) {
+    return {
+      ok: false,
+      error: parsedInput.error.issues[0]?.message ?? "Invalid attachment.",
+    };
   }
 
   const supabase = await createClient();
