@@ -60,6 +60,7 @@ describe.skipIf(!haveAdminCreds)(
     let adminClient: SupabaseClient;
     let workspaceId: string;
     let otherWorkspaceId: string;
+    let thirdWorkspaceId: string;
     let projectId: string;
     let memberUserId: string;
     const createdTaskIds: string[] = [];
@@ -117,6 +118,27 @@ describe.skipIf(!haveAdminCreds)(
       }
       otherWorkspaceId = otherWs.id;
 
+      // F070 (AS-118/AS-121/AS-122): a THIRD workspace the member DOES
+      // belong to, but which is otherwise unrelated to both the target
+      // workspace and the leaking workspace — proves the isolation isn't
+      // an accident of "the member only belongs to one workspace" but
+      // holds even when the caller is legitimately a member of some other,
+      // unrelated workspace at the same time.
+      const { data: thirdWs, error: thirdWsErr } = await adminClient
+        .from("workspaces")
+        .insert({
+          name: "F070 Unrelated Member Workspace",
+          slug: `f070-unrelated-${uniqueSuffix}`,
+        })
+        .select("id")
+        .single();
+      if (thirdWsErr || !thirdWs) {
+        throw new Error(
+          `Failed to create third workspace: ${thirdWsErr?.message}`,
+        );
+      }
+      thirdWorkspaceId = thirdWs.id;
+
       const { error: memberErr } = await adminClient
         .from("workspace_members")
         .insert({
@@ -127,6 +149,23 @@ describe.skipIf(!haveAdminCreds)(
         });
       if (memberErr) {
         throw new Error(`Failed to seed membership: ${memberErr.message}`);
+      }
+
+      // F070: the member is ALSO an active member of the third, unrelated
+      // workspace — belonging to another real workspace must not open any
+      // door into workspace B's data when searching workspace A.
+      const { error: thirdMemberErr } = await adminClient
+        .from("workspace_members")
+        .insert({
+          workspace_id: thirdWorkspaceId,
+          user_id: memberUserId,
+          role: "owner",
+          status: "active",
+        });
+      if (thirdMemberErr) {
+        throw new Error(
+          `Failed to seed third-workspace membership: ${thirdMemberErr.message}`,
+        );
       }
 
       const { data: project, error: projectErr } = await adminClient
@@ -225,6 +264,30 @@ describe.skipIf(!haveAdminCreds)(
       }
       createdTaskIds.push(leakTask.id);
 
+      // F070 (AS-118/AS-121/AS-122): a term that ONLY ever appears in a
+      // task belonging to workspace B (never seeded anywhere in workspace
+      // A) — the strongest form of the isolation assertion, since it can't
+      // be satisfied by accident the way a shared uniqueTerm could be.
+      const leakOnlyTerm = `zzleakonly${uniqueSuffix.replace(/[^a-z0-9]/gi, "")}`;
+      const { data: leakOnlyTask, error: leakOnlyErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: otherProject.id,
+          title: `Task only findable in workspace B ${leakOnlyTerm}`,
+          status: "todo",
+          author_id: memberUserId,
+        })
+        .select("id")
+        .single();
+      if (leakOnlyErr || !leakOnlyTask) {
+        throw new Error(
+          `Failed to seed leak-only task: ${leakOnlyErr?.message}`,
+        );
+      }
+      createdTaskIds.push(leakOnlyTask.id);
+      (globalThis as { __f070LeakOnlyTerm?: string }).__f070LeakOnlyTerm =
+        leakOnlyTerm;
+
       memberClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await memberClient.auth.signInWithPassword(
         {
@@ -253,7 +316,7 @@ describe.skipIf(!haveAdminCreds)(
         .from("projects")
         .delete()
         .eq("workspace_id", otherWorkspaceId);
-      for (const id of [workspaceId, otherWorkspaceId]) {
+      for (const id of [workspaceId, otherWorkspaceId, thirdWorkspaceId]) {
         await adminClient.from("workspace_members").delete().eq("workspace_id", id);
         await adminClient.from("workspaces").delete().eq("id", id);
       }
@@ -296,6 +359,47 @@ describe.skipIf(!haveAdminCreds)(
 
       const results = await searchWorkspaceTasks(workspaceId, "   ");
 
+      expect(results).toEqual([]);
+    });
+
+    it("F070 AS-118/AS-121/AS-122: a term that only matches a task in workspace B returns ZERO results when searched for in workspace A, even though the searcher is also an active member of an unrelated third workspace", async () => {
+      const { searchWorkspaceTasks } = await import("@/lib/queries/search");
+      const leakOnlyTerm = (globalThis as { __f070LeakOnlyTerm?: string })
+        .__f070LeakOnlyTerm!;
+
+      // Sanity check: the term genuinely exists somewhere the member can't
+      // see — searching workspace A (the active workspace) for a term that
+      // ONLY appears in workspace B's task must come back empty, not error
+      // and not partially leak the other workspace's task.
+      const resultsInWorkspaceA = await searchWorkspaceTasks(
+        workspaceId,
+        leakOnlyTerm,
+      );
+      expect(resultsInWorkspaceA).toEqual([]);
+
+      // AS-122 restated the other direction, using the third (unrelated,
+      // but real) workspace the member also belongs to — proves this
+      // isn't just "the member isn't a member of anything else."
+      const resultsInThirdWorkspace = await searchWorkspaceTasks(
+        thirdWorkspaceId,
+        leakOnlyTerm,
+      );
+      expect(resultsInThirdWorkspace).toEqual([]);
+    });
+
+    it("F070 AS-118: a member of another workspace cannot read workspace A's data by passing its id directly, even without a matching term", async () => {
+      const { searchWorkspaceTasks } = await import("@/lib/queries/search");
+
+      // otherWorkspaceId is a real workspace the member is NOT a member of.
+      // Even a query that would match its own leak-only task must resolve
+      // to empty, since the F070 membership re-check runs before any
+      // project/task data is touched.
+      const leakOnlyTerm = (globalThis as { __f070LeakOnlyTerm?: string })
+        .__f070LeakOnlyTerm!;
+      const results = await searchWorkspaceTasks(
+        otherWorkspaceId,
+        leakOnlyTerm,
+      );
       expect(results).toEqual([]);
     });
   },

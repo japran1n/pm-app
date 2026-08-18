@@ -1,5 +1,6 @@
 // Data-fetching for workspace-wide task search (F069: AS-116, AS-118,
-// AS-119, AS-120, AS-121, AS-122).
+// AS-119, AS-120, AS-121, AS-122; hardened by F070 — AS-118, AS-121,
+// AS-122).
 //
 // F068 (supabase/migrations/20260818050300_fts_tasks_search_fn.sql) exposes
 // a `search_tasks(p_project_id uuid, p_query text)` RPC that already does
@@ -25,8 +26,41 @@
 // F069 is not assigned AS-124 (that's verified against the single-project
 // RPC directly in F068's own test), so this is a simple, not exhaustive,
 // merge order.
+//
+// F070 hardening (AS-118): F069 already relied on two independent layers
+// to keep results scoped to the active workspace — RLS's
+// `projects_select_active_members` (which checks the CALLER's own
+// membership row per project, keyed by that project's own `workspace_id`,
+// never by name/shape) and the explicit `.eq("workspace_id", workspaceId)`
+// filter below. Because both layers filter by `workspace_id` (a foreign
+// key), not by project name or structure, a project in another workspace
+// that happens to share a name or column layout with a project in the
+// active workspace can never satisfy either filter — it has a different
+// `workspace_id`, full stop. F070 adds a third, independent layer: an
+// explicit server-side re-check (via the tech-decisions.md
+// `requireActiveMembership` convention already used by every other
+// Server Action/query in this codebase — see lib/actions/tasks.ts,
+// projects.ts, comments.ts, attachments.ts) that the calling user is
+// actually an active member of `workspaceId` itself, using the admin
+// client so this check cannot be silently defeated by a missing/incomplete
+// RLS policy. This guards the case the assertion calls out explicitly: a
+// caller who is a member of some OTHER, unrelated workspace must not be
+// able to search workspace A's tasks by any means — not just because RLS
+// happens to filter the projects query correctly.
+//
+// F070 hardening (AS-121): confirmed at the SQL layer, not just here —
+// `search_tasks` (20260818050300_fts_tasks_search_fn.sql) is declared
+// `language sql stable` with no `security definer`, so it defaults to
+// `security invoker` and runs under the calling role; its own WHERE clause
+// also has an explicit `deleted_at is null` predicate, independent of RLS.
+// No RPC-side bypass exists to add a redundant filter for, so nothing to
+// change in the RPC; this file adds no additional filtering here since the
+// RPC already guarantees it twice over (invoker-rights RLS + explicit
+// predicate).
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireActiveMembership } from "@/lib/auth/require-membership";
 import type { Database } from "@/lib/supabase/database.types";
 
 type SearchTasksRow = Database["public"]["Tables"]["tasks"]["Row"];
@@ -50,6 +84,27 @@ export async function searchWorkspaceTasks(
   }
 
   const supabase = await createClient();
+
+  // AS-118/AS-122 (F070 hardening): defense-in-depth re-check that the
+  // caller is an active member of the workspace being searched, before
+  // touching any project/task data — independent of RLS, so a caller who
+  // is only a member of some other, unrelated workspace gets an empty
+  // result here rather than relying solely on the projects query below to
+  // filter correctly.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return [];
+  }
+
+  const admin = createAdminClient();
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return [];
+  }
 
   // AS-118/AS-122: RLS (`projects_select_active_members`) already scopes
   // this to projects in workspaces the caller is an active member of, and
