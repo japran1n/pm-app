@@ -138,3 +138,74 @@ export async function getProjectListTasks(
     updatedAt: task.updated_at,
   }));
 }
+
+// F078 (AS-134): the dashboard's task table — same filter shape as the
+// project List view (`ProjectListTaskFilters`/`getProjectListTasks`
+// above), but scoped to an entire workspace instead of a single project,
+// since the dashboard shows tasks across ALL of the workspace's projects.
+//
+// Reuses `ProjectListTaskFilters`'s status/priority/assigneeId shape
+// as-is (aliased as `WorkspaceListTaskFilters` for call-site clarity, but
+// structurally identical) so `<ListFilters>` (F054, components/task/
+// list-filters.tsx) — which only ever writes `status`/`priority`/
+// `assigneeId` into the URL and knows nothing about project vs. workspace
+// scope — is reusable here completely unmodified, exactly as this
+// feature's spec calls for ("reuses the same status/priority filter
+// components as the list view").
+//
+// The project scope in `getProjectListTasks` comes from
+// `.eq("project_id", projectId)`; there is no single-column equivalent
+// for "workspace", so this instead inner-joins to `projects` and filters
+// on `projects.workspace_id` — `tasks -> projects -> workspace_id`, per
+// the feature's own instruction. RLS (`tasks_select_active_members`,
+// same policy `getProjectBoardTasks`/`getProjectListTasks` rely on) still
+// independently scopes every row to projects in workspaces the caller is
+// an active member of; the explicit `.eq("projects.workspace_id", ...)`
+// on top of that narrows the *already-permitted* rows down to this one
+// workspace specifically, mirroring the `project_id` narrowing the
+// project-scoped query does on top of the same RLS policy.
+export type WorkspaceListTaskFilters = ProjectListTaskFilters;
+
+export async function getWorkspaceListTasks(
+  workspaceId: string,
+  filters?: WorkspaceListTaskFilters,
+): Promise<TaskCardTask[]> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("tasks")
+    .select(
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, projects!inner(workspace_id)",
+    )
+    .eq("projects.workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (filters?.status) {
+    query = query.eq("status", filters.status);
+  }
+  if (filters?.priority) {
+    query = query.eq("priority", filters.priority);
+  }
+  if (filters?.assigneeId) {
+    query = query.eq("assignee_id", filters.assigneeId);
+  }
+
+  query = query.order("created_at", { ascending: true });
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status as TaskCardTask["status"],
+    priority: task.priority as TaskCardTask["priority"],
+    assigneeId: task.assignee_id,
+    dueDate: task.due_date,
+    position: task.position,
+    updatedAt: task.updated_at,
+  }));
+}

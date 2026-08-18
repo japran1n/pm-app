@@ -8,6 +8,7 @@ import {
   getOverdueCount,
 } from "@/lib/queries/dashboard";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
+import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
 // the workspace home dashboard — a priority bar chart (F071's
@@ -44,10 +45,17 @@ import { DashboardContent } from "@/components/dashboard/dashboard-content";
 // tests/unit/dashboard-empty-state.test.ts.
 export default async function WorkspacePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
+  searchParams: Promise<{
+    status?: string;
+    priority?: string;
+    assigneeId?: string;
+  }>;
 }) {
   const { workspaceSlug } = await params;
+  const query = await searchParams;
 
   const supabase = await createClient();
   const { data: workspace } = await supabase
@@ -109,6 +117,17 @@ export default async function WorkspacePage({
         statusData={statusData}
         overdueCount={overdueCount}
       />
+
+      {/* F078 (AS-134): workspace-wide task table below the charts, only
+          once there's something to show a table of — the empty/error
+          states above already cover "no tasks"/"charts failed to load". */}
+      {!hasError && !isEmpty && (
+        <DashboardTaskTable
+          workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
+          searchParams={query}
+        />
+      )}
 
       {/* F027: natural next stop from the dashboard. */}
       <Link
