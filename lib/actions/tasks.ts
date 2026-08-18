@@ -8,6 +8,7 @@ import {
   createTaskSchema,
   assignTaskSchema,
   editTaskSchema,
+  deleteTaskSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -521,6 +522,152 @@ export async function editTask(
       description: updated.description,
       priority: updated.priority,
       dueDate: updated.due_date,
+    },
+  };
+}
+
+export type DeleteTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        deletedAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Soft-deletes a task (F038: AS-055, AS-056, AS-057). Pattern mirrors
+// editTask/assignTask above: Zod-validated input, membership re-checked
+// server-side (defense in depth, AS-143), admin client used for the
+// actual update, discriminated union return, generic user-facing errors
+// with details only logged server-side (AS-146).
+//
+// AS-055: any active workspace member may delete a task, matching the same
+// "no per-task ownership restriction, only workspace membership" model
+// already established for editTask (AS-061) and assignTask.
+//
+// This is a soft delete only — sets `deleted_at = now()`, never issues a
+// real DELETE. Deleting is therefore an UPDATE under RLS
+// (supabase/migrations/20260818013805_rls_tasks.sql), consistent with that
+// migration's comment that tasks have no DELETE policy at all and use
+// soft-delete exclusively.
+//
+// AS-056: the tasks_select_active_members RLS policy already filters
+// `deleted_at is null` (confirmed by reading the F034 migration directly,
+// not assumed), so the instant this row's deleted_at is set, every
+// existing SELECT-based view (board, list, search, dashboard) stops
+// returning it — no separate "hide from views" logic is needed here
+// beyond setting the column.
+//
+// AS-057: comments/attachments tables don't exist yet (M6 — F058
+// comments, F064 attachments land later) — there is nothing to
+// individually orphan-hide today. This is a structural deferral, not a
+// gap: once those tables land, their own RLS will be scoped through the
+// (now-deleted) task, and a deleted task's children won't be
+// independently browsable without going through the task itself, which is
+// already gone from every view per AS-056. No code path here needs to
+// pre-emptively guard tables that don't exist.
+export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
+  const parsed = deleteTaskSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // An already-deleted task behaves as "not found", same convention as
+  // assignTask/editTask's task lookup — this also makes deleteTask
+  // naturally idempotent-safe (a second delete call just reports "not
+  // found" rather than re-touching the row).
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side. AS-055: any role, no per-task
+  // ownership check — mirrors editTask's membership check exactly.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to delete this task.",
+    };
+  }
+
+  const { data: deleted, error: deleteError } = await admin
+    .from("tasks")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", parsed.data.taskId)
+    .select("id, deleted_at")
+    .single();
+
+  if (deleteError || !deleted || !deleted.deleted_at) {
+    console.error("deleteTask: update failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "deleteTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: deleted.id,
+      deletedAt: deleted.deleted_at,
     },
   };
 }

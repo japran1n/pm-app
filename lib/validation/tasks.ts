@@ -111,3 +111,11 @@ export const editTaskSchema = z.object({
 
 export type EditTaskInput = z.infer<typeof editTaskSchema>;
 export type EditTaskUpdates = z.infer<typeof partialEditableFields>;
+
+// Validates deleteTask input (F038: AS-055, AS-056, AS-057). Just the task
+// id — soft delete has no other caller-supplied fields.
+export const deleteTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+});
+
+export type DeleteTaskInput = z.infer<typeof deleteTaskSchema>;
