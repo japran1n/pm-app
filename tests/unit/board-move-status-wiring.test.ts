@@ -73,9 +73,9 @@ describe("Board onDragEnd -> moveAndReorderTask/reorderTask wiring (F045: AS-069
     );
   });
 
-  it("rolls back local state to the pre-drop snapshot when either action fails (F047: AS-077 -- rollback funnels through a shared rollback() helper that calls setTasks(current))", () => {
+  it("rolls back local state to the pre-drop snapshot when either action fails (F047: AS-077 -- rollback funnels through a shared rollback() helper that calls setTasks(snapshot))", () => {
     expect(boardSource).toMatch(
-      /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(current\);/,
+      /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(snapshot\);/,
     );
     expect(boardSource).toMatch(/if\s*\(\s*!result\.ok\s*\)\s*{\s*rollback\(/);
   });

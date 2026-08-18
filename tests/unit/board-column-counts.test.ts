@@ -106,8 +106,11 @@ describe("BoardColumn task count (F051: AS-083)", () => {
     expect(boardSource).toMatch(
       /tasks=\{tasks\.filter\(\(task\) => task\.status === status\)\}/,
     );
-    // The optimistic drag-and-drop path updates the same `tasks` state.
-    expect(boardSource).toMatch(/setTasks\(\(current\) => \{/);
+    // The optimistic drag-and-drop path updates the same `tasks` state
+    // (F107: via a plain `setTasks(next)` call in handleDragEnd's own
+    // scope, not a functional updater — see
+    // board-setstate-not-during-render.test.ts for why).
+    expect(boardSource).toMatch(/setTasks\(next\);/);
     // Realtime reconciliation updates the same `tasks` state too.
     expect(boardSource).toMatch(
       /useBoardRealtime\(projectId, \(event\) => \{\s*setTasks\(\(current\) => reconcileTask\(current, event\)\);/,

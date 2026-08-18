@@ -63,32 +63,33 @@ describe("Board optimistic drop + rollback + error toast (F047: AS-077)", () => 
     );
   });
 
-  it("computes and applies the moved card's new status/position synchronously inside the setTasks updater, before either Server Action call", () => {
-    // The `next` array (containing `movedTask` with its final status/
-    // position already applied) must be returned by the setTasks updater
-    // — i.e. committed to local state — and the action calls must appear
-    // textually after that computation, proving the optimistic update
-    // isn't deferred until the actions resolve.
-    const setTasksUpdaterIndex = boardSource.indexOf("setTasks((current) => {");
+  it("computes and applies the moved card's new status/position synchronously in the event handler, before either Server Action call", () => {
+    // F107: the computation, `setTasks(next)`, and the action calls no
+    // longer live inside a setTasks functional updater (that was the
+    // source of a React "setState during render" warning — see
+    // board-setstate-not-during-render.test.ts) — they run directly in
+    // handleDragEnd's body, a genuine event-handler context. `next` (built
+    // from `movedTask`) must still be committed via `setTasks(next)`
+    // before the action calls, proving the optimistic update isn't
+    // deferred until the actions resolve.
     const movedTaskIndex = boardSource.indexOf("const movedTask = {");
+    const setTasksNextIndex = boardSource.indexOf("setTasks(next);");
     const moveAndReorderTaskCallIndex = boardSource.indexOf("void moveAndReorderTask(");
     const reorderTaskCallIndex = boardSource.indexOf("void reorderTask(");
-    const returnNextIndex = boardSource.indexOf("return next;");
 
-    expect(setTasksUpdaterIndex).toBeGreaterThan(-1);
-    expect(movedTaskIndex).toBeGreaterThan(setTasksUpdaterIndex);
-    expect(moveAndReorderTaskCallIndex).toBeGreaterThan(movedTaskIndex);
-    expect(reorderTaskCallIndex).toBeGreaterThan(movedTaskIndex);
-    // The optimistic state (`next`, built from `movedTask`) is returned
-    // from the same synchronous updater pass that kicks off the async
-    // action calls — the UI is already showing the new position while the
-    // network calls below are still in flight.
-    expect(returnNextIndex).toBeGreaterThan(reorderTaskCallIndex);
+    expect(movedTaskIndex).toBeGreaterThan(-1);
+    expect(setTasksNextIndex).toBeGreaterThan(movedTaskIndex);
+    // The optimistic state (`next`) is committed via `setTasks(next)`
+    // before the async action calls are kicked off — the UI is already
+    // showing the new position while the network calls below are still in
+    // flight.
+    expect(moveAndReorderTaskCallIndex).toBeGreaterThan(setTasksNextIndex);
+    expect(reorderTaskCallIndex).toBeGreaterThan(setTasksNextIndex);
   });
 
-  it("defines a shared rollback() helper that restores the pre-drop `current` snapshot and shows an error toast", () => {
+  it("defines a shared rollback() helper that restores the pre-drop `snapshot` and shows an error toast", () => {
     expect(boardSource).toMatch(
-      /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(current\);[\s\S]*?toast\.error\(/,
+      /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(snapshot\);[\s\S]*?toast\.error\(/,
     );
   });
 

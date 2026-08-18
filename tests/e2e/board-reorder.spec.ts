@@ -263,6 +263,41 @@ test.describe("board drag-and-drop reorder (F090: AS-150)", () => {
       timeout: 15_000,
     });
 
+    // F107: regression guard for the "Cannot update a component while
+    // rendering a different component" / setState-during-render warning
+    // that M8-scrutiny.md's Finding 1 caught in board.tsx's onDragEnd path
+    // (the fix moved the Server Action calls and rollback's setTasks out
+    // of the setTasks functional-updater callback and into the handler's
+    // own scope). Collected from here (after the real navigation/auth
+    // noise above) through the end of the test, so a regression in the
+    // drag-and-drop flow below fails this test rather than only showing up
+    // as a silent dev-server log line.
+    //
+    // Scoped to this specific React warning's wording (not "any console
+    // warning/error"), because dnd-kit has a separate, pre-existing,
+    // unrelated SSR-id hydration-mismatch warning on `aria-describedby`
+    // (its `useId`-derived DndDescribedBy id can differ between the
+    // server render and the post-reload client render) that fires on this
+    // test's `page.reload()` regardless of this fix — that's a real but
+    // out-of-scope issue for a different feature, not the setState-during-
+    // render anti-pattern F107 closes out.
+    const setStateDuringRenderWarnings: string[] = [];
+    const SET_STATE_DURING_RENDER_PATTERN =
+      /Cannot update a component.*while rendering a different component/i;
+    page.on("console", (msg) => {
+      if (
+        (msg.type() === "warning" || msg.type() === "error") &&
+        SET_STATE_DURING_RENDER_PATTERN.test(msg.text())
+      ) {
+        setStateDuringRenderWarnings.push(`[${msg.type()}] ${msg.text()}`);
+      }
+    });
+    page.on("pageerror", (err) => {
+      if (SET_STATE_DURING_RENDER_PATTERN.test(err.message)) {
+        setStateDuringRenderWarnings.push(`[pageerror] ${err.message}`);
+      }
+    });
+
     const todoColumn = page.locator('[data-status="todo"]');
     await expect(todoColumn.getByText("F090 Card Alpha")).toBeVisible();
 
@@ -359,5 +394,11 @@ test.describe("board drag-and-drop reorder (F090: AS-150)", () => {
         "F090 Card Charlie",
       ]);
     }).toPass({ timeout: 10_000 });
+
+    // F107: assert no React "setState during render" warning was logged
+    // over the whole drag-and-drop + reload flow above. See the listener
+    // setup earlier in this test for exactly what's being matched and why
+    // it's scoped to this warning rather than every console message.
+    expect(setStateDuringRenderWarnings).toEqual([]);
   });
 });
