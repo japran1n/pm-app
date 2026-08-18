@@ -43,6 +43,10 @@ import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { TagsEditor } from "@/components/task/tags-editor";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
+import {
+  AttachmentList,
+  type TaskAttachment,
+} from "@/components/task/attachment-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -111,6 +115,7 @@ export function TaskDetailSheet({
   task,
   members,
   comments = [],
+  attachments = [],
   open,
   onOpenChange,
   loading = false,
@@ -129,6 +134,10 @@ export function TaskDetailSheet({
    * been updated to fetch comments yet still renders a valid empty state
    * rather than crashing. */
   comments?: TaskComment[];
+  /** F066: task's attachments (from a future getTaskAttachments query).
+   * Defaults to empty — a caller that hasn't been updated yet still
+   * renders a valid empty state rather than crashing. */
+  attachments?: TaskAttachment[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Drives the loading skeleton when a future caller is still fetching. */
@@ -450,6 +459,12 @@ export function TaskDetailSheet({
                 members={members}
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
+              />
+
+              <AttachmentList
+                taskId={task.id}
+                attachments={attachments}
+                members={members}
               />
             </div>
 
