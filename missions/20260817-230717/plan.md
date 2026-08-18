@@ -106,7 +106,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F077 dashboard-rls-verification — AS-133 [CLARIFIED-AUTO] [COMPLETE]
 - F078 dashboard-table-filters — AS-134 [CLARIFIED-AUTO] [COMPLETE]
 
-## M8 — Security, quality, accessibility, docs, polish
+## M8 — Security, quality, accessibility, docs, polish [GREEN]
 
 - F079 rls-audit-all-tables — AS-137, AS-138, AS-139 [CLARIFIED-AUTO] [COMPLETE]
 - F080 env-secrets-audit — AS-140, AS-141, AS-142 [CLARIFIED-AUTO] [COMPLETE]
@@ -176,4 +176,4 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M8 follow-ups (from M8 scrutiny — see milestones/M8-scrutiny.md)
 
-- F107 board-setstate-during-render-fix — (code quality, no assertion) [CLARIFIED-AUTO]
+- F107 board-setstate-during-render-fix — (code quality, no assertion) [CLARIFIED-AUTO] [COMPLETE]
