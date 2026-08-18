@@ -23,6 +23,16 @@
 // not reintroduce a soft-deleted row if a stale/replayed Realtime event
 // for it arrives after a simulated reload (i.e. the reducer itself never
 // re-adds a row whose deleted_at is set, regardless of event ordering).
+//
+// F063 (AS-103): the subscription/reducer plumbing above (subscribe on
+// `event: "*"`, reconcileComment's INSERT-append branch) was already built
+// generically by F062 in anticipation of this feature — confirmed here,
+// not re-implemented. What F062 didn't yet verify is *position*: a new
+// comment from another viewer must land in the correct oldest-first slot
+// once rendered (comment-list.tsx's sortedOldestFirst re-sorts
+// localComments by created_at on every render), not just be present
+// somewhere in the array. The AS-103 tests below add that ordering
+// coverage on top of the existing bare-presence INSERT test.
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -280,6 +290,89 @@ describe("reconcileComment (AS-101, AS-102)", () => {
       text: "Third comment",
       createdAt: "2026-08-18T00:02:00Z",
     });
+  });
+
+  // AS-103: a genuinely new comment from another viewer must not just be
+  // *present* in local state after an INSERT event — it must land in the
+  // correct chronological (oldest-first) position once rendered, matching
+  // comment-list.tsx's sortedOldestFirst pass over localComments. This
+  // reproduces that same sort here (component-local, not exported) to
+  // verify position, not just presence, per F063's clarified DoD.
+  it("AS_103_new_comment_from_another_viewer_lands_in_correct_chronological_position", () => {
+    // Simulates two viewers: comment c2 was already posted by another user
+    // slightly after c1 (baseComments). Now a *third* comment arrives via
+    // Realtime INSERT with a created_at that falls BETWEEN c1 and c2 —
+    // e.g. two users typing concurrently and the slower one's insert lands
+    // second over the wire despite an earlier timestamp being possible in
+    // general. This asserts the reducer's append is re-sorted into the
+    // right slot rather than always trusting arrival order.
+    const event = {
+      eventType: "INSERT",
+      schema: "public",
+      table: "comments",
+      new: {
+        id: "c-mid",
+        task_id: "task-1",
+        user_id: "u4",
+        text: "Arrived over the wire, but timestamped in between",
+        created_at: "2026-08-18T00:00:30Z", // between c1 (00:00:00) and c2 (00:01:00)
+        deleted_at: null,
+      },
+      old: {},
+    } as unknown as CommentRealtimeEvent;
+
+    const reconciled = reconcileComment(baseComments, event);
+
+    // Presence: the new comment is in local state.
+    expect(reconciled.find((c) => c.id === "c-mid")).toBeDefined();
+
+    // Position/order: mirrors comment-list.tsx's sortedOldestFirst, which
+    // re-sorts localComments by createdAt ascending on every render — this
+    // is what actually determines on-screen order for AS-103, not the
+    // reducer's raw array order.
+    const rendered = [...reconciled].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    expect(rendered.map((c) => c.id)).toEqual(["c1", "c-mid", "c2"]);
+  });
+
+  // AS-103 (multiple concurrent inserts): several new comments arriving as
+  // separate INSERT events, each reduced in turn (mirroring the hook
+  // calling setLocalComments once per event), still end up fully ordered
+  // once rendered — not just each individually appended.
+  it("AS_103_multiple_new_comments_arrive_in_correct_order_after_several_inserts", () => {
+    function insertEvent(
+      id: string,
+      created_at: string,
+      user_id: string,
+    ): CommentRealtimeEvent {
+      return {
+        eventType: "INSERT",
+        schema: "public",
+        table: "comments",
+        new: {
+          id,
+          task_id: "task-1",
+          user_id,
+          text: `comment ${id}`,
+          created_at,
+          deleted_at: null,
+        },
+        old: {},
+      } as unknown as CommentRealtimeEvent;
+    }
+
+    let state = baseComments;
+    // Arrive out of chronological order over the wire.
+    state = reconcileComment(state, insertEvent("c-late", "2026-08-18T00:02:00Z", "u5"));
+    state = reconcileComment(state, insertEvent("c-early", "2026-08-17T23:59:00Z", "u6"));
+
+    const rendered = [...state].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+
+    expect(rendered.map((c) => c.id)).toEqual(["c-early", "c1", "c2", "c-late"]);
   });
 
   it("is a no-op when the DELETE payload has no old.id", () => {
