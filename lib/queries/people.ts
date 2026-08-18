@@ -24,6 +24,26 @@
 // resolving a *display value* for already-permitted rows, not widening
 // which rows are visible, mirroring the same justification
 // `getWorkspaceMembers`'s own pre-existing doc comment gives.
+//
+// F123 (AS-202): the "name" this function returns is the single fallback
+// chain every caller renders — `personLabel` (components/user-avatar.tsx)
+// and `resolveAssigneeNames` (lib/queries/assignee-names.ts) both just do
+// `person.name ?? person.email`/`person.name || person.email`, so the
+// chain has to live here, not be re-implemented at each call site (that
+// would be exactly the "second name-resolution path" this feature is
+// told not to build). The chain is: `profiles.display_name` (AS-202's
+// "a user can set their display name") -> `user_metadata.full_name`
+// (pre-existing F122 fallback for an OAuth-supplied name; nothing in this
+// codebase's own sign-up flow sets it today, but a future OAuth provider
+// might) -> the local part of the email (everything before "@") -> the
+// full email as a last resort (only reachable if the local part somehow
+// comes out empty, e.g. an address starting with "@"). Inserting the
+// local-part step is this feature's fix: before it, a user who hadn't
+// set a display name yet was rendered by their full email address
+// app-wide, which reads as "the email wasn't actually replaced by
+// anything nicer" even though AS-202 only requires the *set* case to
+// replace the email. `email` itself is still returned unchanged (full
+// address) for callers that want it verbatim (e.g. a mailto link).
 
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -32,6 +52,17 @@ export type PersonSummary = {
   email: string | null;
   avatarUrl: string | null;
 };
+
+/**
+ * The part of an email address before "@", e.g. "j.smith" from
+ * "j.smith@example.com". Falls back to the full address if it has no "@"
+ * or the local part is empty (defensive — every real email has both).
+ */
+export function emailLocalPart(email: string): string {
+  const atIndex = email.indexOf("@");
+  if (atIndex <= 0) return email;
+  return email.slice(0, atIndex);
+}
 
 export async function resolvePeople(
   ids: string[],
@@ -77,7 +108,10 @@ export async function resolvePeople(
       }
 
       summaries.set(id, {
-        name: profileRow?.display_name ?? metadataName ?? null,
+        name:
+          profileRow?.display_name ??
+          metadataName ??
+          (email ? emailLocalPart(email) : null),
         email,
         avatarUrl: profileRow?.avatar_url ?? null,
       });

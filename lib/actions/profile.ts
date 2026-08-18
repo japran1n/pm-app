@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { uploadAvatarSchema } from "@/lib/validation/profile";
+import { uploadAvatarSchema, updateProfileSchema } from "@/lib/validation/profile";
 
 // Storage bucket + path convention fixed by F121
 // (supabase/migrations/20260818201642_create_avatars_bucket.sql): bucket
@@ -140,4 +140,102 @@ export async function uploadAvatar(
   }
 
   return { ok: true, data: { avatarUrl } };
+}
+
+export type UpdateProfileResult =
+  | {
+      ok: true;
+      data: {
+        displayName: string;
+        timezone: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Sets the signed-in user's display name and timezone (F123: AS-202 —
+// "a user can set their display name, and that name is shown instead of
+// their email everywhere a person is rendered"). The timezone field rides
+// along in the same action because it's the other field this feature's
+// settings page owns; F124 is the feature that actually *consumes*
+// `profiles.timezone` for due-date/overdue math — this action's job is
+// only to validate and persist a real IANA identifier so that later
+// feature has something correct to read.
+//
+// Takes plain arguments (not FormData) — same convention as
+// `inviteMember`/`changeMemberRole` in lib/actions/workspaces.ts, since
+// neither field here is a file upload.
+//
+// AS-208's "a user cannot edit another user's profile, including via a
+// direct API call" is enforced two ways at once, deliberately redundant:
+// (1) this action never accepts a target user id as input at all — the
+// row updated is always `.eq("id", user.id)` from the caller's own
+// server-verified session, so there is no argument a caller could pass to
+// make it touch anyone else's row; (2) even if that guarantee were ever
+// broken by a future edit, `profiles_update_self`'s RLS policy (F120,
+// supabase/migrations/20260818200946_create_profiles.sql) still rejects
+// it at the database layer. AS-208 itself is F120's assertion and already
+// has its own RLS-level test (tests/integration/rls-profiles.test.ts);
+// this feature's own test instead proves guarantee (1) — that calling
+// this action while signed in as one user never changes a different
+// user's row, full stop.
+export async function updateProfile(
+  displayName: string,
+  timezone: string,
+): Promise<UpdateProfileResult> {
+  const parsed = updateProfileSchema.safeParse({ displayName, timezone });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid profile input.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to update your profile." };
+  }
+
+  const admin = createAdminClient();
+
+  const { error: updateError } = await admin
+    .from("profiles")
+    .update({
+      display_name: parsed.data.displayName,
+      timezone: parsed.data.timezone,
+    })
+    .eq("id", user.id);
+
+  if (updateError) {
+    console.error("updateProfile: profiles update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // AS-202: the display name replaces the email everywhere a person is
+  // rendered app-wide (task cards, comments, members list, pickers — see
+  // lib/queries/people.ts's resolvePeople, the single resolver every one
+  // of those surfaces reads through), not just on a single
+  // workspace-scoped path — so, like uploadAvatar, the whole app layout is
+  // revalidated rather than one workspace slug.
+  try {
+    revalidatePath("/", "layout");
+  } catch (revalidateError) {
+    // Non-fatal cache-freshness rationale, same as uploadAvatar.
+    console.error(
+      "updateProfile: revalidatePath failed (non-fatal):",
+      revalidateError,
+    );
+  }
+
+  return {
+    ok: true,
+    data: { displayName: parsed.data.displayName, timezone: parsed.data.timezone },
+  };
 }

@@ -48,3 +48,53 @@ export const uploadAvatarSchema = z.object({
 });
 
 export type UploadAvatarInput = z.infer<typeof uploadAvatarSchema>;
+
+// Validates updateProfile input (F123: AS-202 — set a display name; the
+// timezone field rides along in the same action/form since F124's
+// due-date/overdue math needs a valid IANA identifier stored, and the
+// clarified spec's Draft scope groups both fields into one settings page).
+//
+// Timezone validity is checked by attempting to *construct*
+// `Intl.DateTimeFormat` with the candidate value as `timeZone`, catching
+// the `RangeError` it throws for anything the runtime doesn't recognise —
+// deliberately NOT `Intl.supportedValuesOf("timeZone").includes(value)`.
+// That list (used to populate the select's options — see
+// app/(workspace)/w/[workspaceSlug]/settings/profile/page.tsx) is CLDR's
+// list of canonical IANA zone *names* and does not include the bare
+// string "UTC" (only "Etc/UTC"), even though "UTC" is a value
+// `Intl.DateTimeFormat`/every date library accepts and is F120's own
+// `profiles.timezone` column default
+// (supabase/migrations/20260818200946_create_profiles.sql). A Set-based
+// membership check against `supportedValuesOf` would reject every user's
+// own unchanged default the first time they saved this form with the
+// select's initial value untouched — verified by hand: `node -e
+// "console.log(Intl.supportedValuesOf('timeZone').includes('UTC'))"`
+// prints `false`. The construction-based check accepts "UTC" (and any
+// other alias the runtime legitimately resolves) while still rejecting
+// garbage input, without hand-maintaining a second exceptions list next
+// to the auto-generated one.
+function isValidTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const updateProfileSchema = z.object({
+  // AS-202: "a user can set their display name". Trimmed and required —
+  // an all-whitespace/empty name would either render as blank or fall
+  // through to the initials/email fallback silently, which is worse UX
+  // than a clear validation error explaining why the save didn't take.
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "Display name is required.")
+    .max(80, "Display name must be 80 characters or fewer."),
+  timezone: z.string().refine(isValidTimeZone, {
+    message: "Select a valid timezone.",
+  }),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

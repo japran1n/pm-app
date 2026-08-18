@@ -243,8 +243,20 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks (F053: AS-085)", () => {
     );
     const names = await resolveAssigneeNames([memberUserId, null]);
 
-    // The seeded member has no `full_name` metadata, so
-    // `resolveAssigneeNames` falls back to the auth user's email.
-    expect(names.get(memberUserId)).toBe(memberEmailAddress);
+    // The seeded member has no `display_name`/`full_name` metadata, so
+    // `resolveAssigneeNames` falls back to the local part of the auth
+    // user's email (e.g. "jane.doe" from "jane.doe@example.com"), not the
+    // full address — F123 (AS-202) added this step to
+    // lib/queries/people.ts's `resolvePeople` (display_name ->
+    // user_metadata.full_name -> email local part -> full email), so a
+    // user who hasn't set a display name yet no longer has their whole
+    // email address rendered app-wide. This assertion was previously
+    // "falls back to the full email"; updated to match the corrected
+    // fallback chain rather than the behavior it replaced.
+    const expectedLocalPart = memberEmailAddress.slice(
+      0,
+      memberEmailAddress.indexOf("@"),
+    );
+    expect(names.get(memberUserId)).toBe(expectedLocalPart);
   });
 });
