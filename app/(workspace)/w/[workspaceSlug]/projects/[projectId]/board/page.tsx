@@ -3,6 +3,7 @@ import { getProjectBoardTasks } from "@/lib/queries/tasks";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { Board } from "@/components/board/board";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 // F042 (AS-067, AS-068): the real Board view — supersedes the F030/F032
 // placeholder that always rendered BoardEmptyState. Fetches all non-deleted
@@ -58,6 +59,7 @@ export default async function ProjectBoardPage({
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
+    avatarUrl: member.avatarUrl,
   }));
 
   // BUGFIX: TaskDetailSheet's assignee Select needs the full members list
@@ -68,7 +70,25 @@ export default async function ProjectBoardPage({
     userId: member.userId,
     email: member.email,
     name: member.name,
+    avatarUrl: member.avatarUrl,
   }));
+
+  // F122 (AS-214): every valid assignee is, by construction, an active
+  // workspace member (assignTask/lib/actions/tasks.ts only accepts an
+  // active member's id) — so the board's per-card avatars are built
+  // directly from the `workspaceMembers` fetch already made above,
+  // instead of a second query. taskAssigneeId -> resolved person.
+  const assignees = new Map<string, UserAvatarPerson>(
+    workspaceMembers.active.map((member) => [
+      member.userId,
+      {
+        id: member.userId,
+        name: member.name,
+        email: member.email,
+        avatarUrl: member.avatarUrl,
+      },
+    ]),
+  );
 
   if (tasks.length === 0) {
     return (
@@ -82,6 +102,7 @@ export default async function ProjectBoardPage({
       initialTasks={tasks}
       assigneeOptions={assigneeOptions}
       members={detailSheetMembers}
+      assignees={assignees}
     />
   );
 }

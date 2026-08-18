@@ -56,6 +56,7 @@ import {
   TaskDetailSheet,
   type TaskDetailSheetMember,
 } from "@/components/task/task-detail-sheet";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
   "todo",
@@ -70,6 +71,7 @@ export function Board({
   onCardClick,
   assigneeOptions = [],
   members = [],
+  assignees,
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -94,6 +96,16 @@ export function Board({
   // getWorkspaceMembers and passed down here, since that query needs the
   // Auth Admin client (server-only).
   members?: TaskDetailSheetMember[];
+  /** F122 (AS-214): taskAssigneeId -> resolved person for every task's
+   * avatar (task-card.tsx via SortableTaskCard/BoardColumn) and the drag
+   * ghost below. Resolved once, server-side, by the board page
+   * (resolveAssignees, lib/queries/assignee-names.ts) — not re-resolved
+   * on every Realtime reconcile, so a task whose assignee changes via a
+   * Realtime event from another viewer keeps showing its *previous*
+   * assignee's avatar (or none) until the next full page load, the same
+   * pre-existing limitation `assigneeNames`/`resolveAssigneeNames` already
+   * has elsewhere in the app. */
+  assignees?: Map<string, UserAvatarPerson>;
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -302,13 +314,23 @@ export function Board({
               key={status}
               status={status}
               tasks={tasks.filter((task) => task.status === status)}
+              assignees={assignees}
               onCardClick={handleCardClick}
             />
           ))}
         </div>
 
         <DragOverlay>
-          {activeTask ? <TaskCard task={activeTask} /> : null}
+          {activeTask ? (
+            <TaskCard
+              task={activeTask}
+              assignee={
+                activeTask.assigneeId
+                  ? assignees?.get(activeTask.assigneeId)
+                  : null
+              }
+            />
+          ) : null}
         </DragOverlay>
       </DndContext>
 

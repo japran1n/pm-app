@@ -51,7 +51,7 @@ describe("List/table view status & priority colors match lib/task-colors.ts (F10
               position: 1,
             },
           ],
-          assigneeNames: new Map(),
+          assignees: new Map(),
         }),
       );
 

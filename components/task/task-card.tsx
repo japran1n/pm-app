@@ -25,6 +25,15 @@ import { Badge } from "@/components/ui/badge";
 // the single shared color-coding source, reused here and by the dashboard
 // charts, instead of this component defining its own local copy.
 import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
+// F122 (AS-214): the card never rendered its assignee at all before this
+// feature — the board's TaskCard was the one named surface in AS-214 with
+// no existing person-rendering to replace. `assignee` is resolved
+// server-side (one batched `resolveAssignees` call per page, not a
+// per-card fetch — lib/queries/assignee-names.ts) and passed down through
+// SortableTaskCard/BoardColumn/Board, mirroring the existing
+// `assigneeNames` Map pattern task-list-table.tsx already used before this
+// feature.
+import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 
 export type TaskCardTask = {
   id: string;
@@ -63,10 +72,17 @@ function formatDueDate(dueDate: string): string {
 
 export function TaskCard({
   task,
+  assignee,
   onClick,
   className,
 }: {
   task: TaskCardTask;
+  /** F122 (AS-214): resolved assignee for `task.assigneeId`, or null/
+   * undefined for an unassigned task or a caller that hasn't been updated
+   * to resolve it yet (e.g. tests) — the avatar simply doesn't render in
+   * either case, matching every other optional prop's "safe default"
+   * convention in this file (see `updatedAt`/`totalMinutes` above). */
+  assignee?: UserAvatarPerson | null;
   /** Opens the task (e.g. TaskDetailSheet) when the card is activated. */
   onClick?: (taskId: string) => void;
   className?: string;
@@ -133,6 +149,7 @@ export function TaskCard({
             {formatDuration(task.totalMinutes)}
           </span>
         )}
+        {assignee && <UserAvatar person={assignee} size="sm" className="ml-auto" />}
       </CardContent>
     </Card>
   );

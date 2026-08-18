@@ -73,6 +73,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+// F122 (AS-214): "assignee pickers" includes this Sheet's own assignee
+// Select.
+import { UserAvatar } from "@/components/user-avatar";
 
 export type TaskDetailSheetTask = {
   id: string;
@@ -90,6 +93,10 @@ export type TaskDetailSheetMember = {
   userId: string;
   email: string | null;
   name: string | null;
+  /** F122 (AS-214): optional so existing callers (tests, callers not yet
+   * updated) don't have to pass it — a missing avatarUrl just means the
+   * initials fallback renders instead of an image. */
+  avatarUrl?: string | null;
 };
 
 const STATUS_LABELS: Record<TaskDetailSheetTask["status"], string> = {
@@ -432,15 +439,26 @@ export function TaskDetailSheet({
                       />
                     ) : (
                       <SelectValue placeholder="Unassigned">
-                        {(value: string) =>
-                          value === NO_ASSIGNEE_VALUE
-                            ? "Unassigned"
-                            : (members.find((m) => m.userId === value)
-                                ? memberLabel(
-                                    members.find((m) => m.userId === value)!,
-                                  )
-                                : value)
-                        }
+                        {(value: string) => {
+                          if (value === NO_ASSIGNEE_VALUE) return "Unassigned";
+                          const member = members.find(
+                            (m) => m.userId === value,
+                          );
+                          return (
+                            <span className="flex items-center gap-2">
+                              <UserAvatar
+                                person={{
+                                  id: value,
+                                  name: member?.name ?? null,
+                                  email: member?.email ?? null,
+                                  avatarUrl: member?.avatarUrl ?? null,
+                                }}
+                                size="sm"
+                              />
+                              {member ? memberLabel(member) : value}
+                            </span>
+                          );
+                        }}
                       </SelectValue>
                     )}
                   </SelectTrigger>
@@ -450,7 +468,18 @@ export function TaskDetailSheet({
                     </SelectItem>
                     {members.map((member) => (
                       <SelectItem key={member.userId} value={member.userId}>
-                        {memberLabel(member)}
+                        <span className="flex items-center gap-2">
+                          <UserAvatar
+                            person={{
+                              id: member.userId,
+                              name: member.name,
+                              email: member.email,
+                              avatarUrl: member.avatarUrl,
+                            }}
+                            size="sm"
+                          />
+                          {memberLabel(member)}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

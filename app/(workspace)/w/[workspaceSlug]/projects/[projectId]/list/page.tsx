@@ -6,10 +6,14 @@
 //
 // Server Component per the clarified spec ("Server Component for
 // data-fetching") — the table's primary content is server-rendered in the
-// initial HTML (AS-155). Assignee names are resolved server-side too
-// (resolveAssigneeNames, lib/queries/assignee-names.ts) via the same
-// Admin-API pattern the members page already uses, since there is no
-// public.profiles table in this schema.
+// initial HTML (AS-155). F122 (AS-214): assignee display data (name,
+// email, avatarUrl) for the table/pickers no longer needs its own
+// resolveAssigneeNames() call — every valid assignee is, by construction,
+// an active workspace member (assignTask only accepts one), so the
+// `assignees` map handed to <TaskListTable> is built directly from the
+// `getWorkspaceMembers` fetch already made below for the filter/creation
+// pickers, avoiding a second Admin-API-backed resolution pass over the
+// same set of people.
 //
 // Access relies on the project detail layout's guard one level up
 // (workspace membership, F010/F023) plus getProjectById's cross-workspace
@@ -34,11 +38,11 @@ import {
   type ProjectListTaskFilters,
   type ProjectListTaskSort,
 } from "@/lib/queries/tasks";
-import { resolveAssigneeNames } from "@/lib/queries/assignee-names";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import { NewTaskDialog } from "@/components/task/new-task-dialog";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 const VALID_STATUSES = new Set(["todo", "in_progress", "in_review", "done"]);
 const VALID_PRIORITIES = new Set([
@@ -96,9 +100,6 @@ export default async function ProjectListPage({
   const clearFiltersHref = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
   const tasks = await getProjectListTasks(projectId, filters, sort);
-  const assigneeNames = await resolveAssigneeNames(
-    tasks.map((task) => task.assigneeId),
-  );
 
   // RLS-scoped lookup (workspaces_select_active_members) — same fallback
   // pattern as the project detail layout: reaching this route already
@@ -117,6 +118,7 @@ export default async function ProjectListPage({
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
+    avatarUrl: member.avatarUrl,
   }));
 
   // BUGFIX: TaskDetailSheet's assignee Select needs the full members list
@@ -127,7 +129,23 @@ export default async function ProjectListPage({
     userId: member.userId,
     email: member.email,
     name: member.name,
+    avatarUrl: member.avatarUrl,
   }));
+
+  // F122 (AS-214): taskAssigneeId -> resolved person, built from the same
+  // `workspaceMembers` fetch above (see this file's top comment for why
+  // that's sufficient — no second query needed).
+  const assignees = new Map<string, UserAvatarPerson>(
+    workspaceMembers.active.map((member) => [
+      member.userId,
+      {
+        id: member.userId,
+        name: member.name,
+        email: member.email,
+        avatarUrl: member.avatarUrl,
+      },
+    ]),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,7 +158,7 @@ export default async function ProjectListPage({
       </div>
       <TaskListTable
         tasks={tasks}
-        assigneeNames={assigneeNames}
+        assignees={assignees}
         sort={sort}
         hasActiveFilters={hasActiveFilters}
         clearFiltersHref={clearFiltersHref}

@@ -23,10 +23,10 @@
 // F054's tests/integration/list-view-filters.test.ts.
 
 import { getWorkspaceListTasks } from "@/lib/queries/tasks";
-import { resolveAssigneeNames } from "@/lib/queries/assignee-names";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 const VALID_STATUSES = new Set(["todo", "in_progress", "in_review", "done"]);
 const VALID_PRIORITIES = new Set([
@@ -76,20 +76,35 @@ export async function DashboardTaskTable({
     getWorkspaceListTasks(workspaceId, filters),
     getWorkspaceMembers(workspaceId),
   ]);
-  const assigneeNames = await resolveAssigneeNames(
-    tasks.map((task) => task.assigneeId),
-  );
   const assigneeOptions = members.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
+    avatarUrl: member.avatarUrl,
   }));
+
+  // F122 (AS-214): taskAssigneeId -> resolved person for the table's
+  // Assignee column avatar. Every valid assignee is, by construction, an
+  // active member of the workspace the task belongs to, so this is built
+  // directly from the `getWorkspaceMembers` fetch already made above
+  // instead of a second resolveAssigneeNames()-style Admin API pass.
+  const assignees = new Map<string, UserAvatarPerson>(
+    members.active.map((member) => [
+      member.userId,
+      {
+        id: member.userId,
+        name: member.name,
+        email: member.email,
+        avatarUrl: member.avatarUrl,
+      },
+    ]),
+  );
 
   return (
     <div className="flex flex-col gap-4">
       <ListFilters assigneeOptions={assigneeOptions} />
       <TaskListTable
         tasks={tasks}
-        assigneeNames={assigneeNames}
+        assignees={assignees}
         hasActiveFilters={hasActiveFilters}
         clearFiltersHref={clearFiltersHref}
       />

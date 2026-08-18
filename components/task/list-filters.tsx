@@ -39,6 +39,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// F122 (AS-214): "assignee pickers" includes this filter's assignee
+// Select.
+import { UserAvatar } from "@/components/user-avatar";
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "todo", label: "To Do" },
@@ -59,6 +62,7 @@ export type AssigneeOption = {
   /** auth user id — matches `tasks.assignee_id`. */
   id: string;
   label: string;
+  avatarUrl?: string | null;
 };
 
 const ALL_VALUE = "__all__";
@@ -136,6 +140,14 @@ export function ListFilters({
     return labels;
   }, [assigneeOptions]);
 
+  const assigneeAvatarUrls = useMemo(() => {
+    const urls: Record<string, string | null> = {};
+    for (const option of assigneeOptions) {
+      urls[option.id] = option.avatarUrl ?? null;
+    }
+    return urls;
+  }, [assigneeOptions]);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select
@@ -182,14 +194,38 @@ export function ListFilters({
       >
         <SelectTrigger size="sm" className="w-40" aria-label="Filter by assignee">
           <SelectValue placeholder="Assignee">
-            {(value: string) => assigneeLabels[value] ?? value}
+            {(value: string) => (
+              <span className="flex items-center gap-2">
+                {value !== ALL_VALUE && (
+                  <UserAvatar
+                    person={{
+                      id: value,
+                      name: assigneeLabels[value] ?? value,
+                      avatarUrl: assigneeAvatarUrls[value] ?? null,
+                    }}
+                    size="sm"
+                  />
+                )}
+                {assigneeLabels[value] ?? value}
+              </span>
+            )}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>All assignees</SelectItem>
           {assigneeOptions.map((option) => (
             <SelectItem key={option.id} value={option.id}>
-              {option.label}
+              <span className="flex items-center gap-2">
+                <UserAvatar
+                  person={{
+                    id: option.id,
+                    name: option.label,
+                    avatarUrl: option.avatarUrl,
+                  }}
+                  size="sm"
+                />
+                {option.label}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

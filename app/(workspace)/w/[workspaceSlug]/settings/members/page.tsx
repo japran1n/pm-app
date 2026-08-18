@@ -15,6 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+// F122 (AS-204, AS-214): active members now render through the shared
+// avatar component instead of this page's own inline initials span
+// (pending invites keep the plain email-initial span below — an invite
+// has no user id yet, so there's nothing for AS-204's colour hash to key
+// on until it's accepted and becomes a real member row).
+import { UserAvatar } from "@/components/user-avatar";
 
 // F017 (AS-023): lists a workspace's active members and pending invites in
 // two separate sections. Server Component — primary content is rendered
@@ -142,18 +148,19 @@ export default async function MembersPage({
                 <TableBody>
                   {members.active.map((member) => {
                     const label = member.name ?? member.email ?? "Unknown member";
-                    const initial = label.charAt(0).toUpperCase();
 
                     return (
                       <TableRow key={member.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <span
-                              aria-hidden="true"
-                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
-                            >
-                              {initial}
-                            </span>
+                            <UserAvatar
+                              person={{
+                                id: member.userId,
+                                name: member.name,
+                                email: member.email,
+                                avatarUrl: member.avatarUrl,
+                              }}
+                            />
                             <div className="flex flex-col">
                               <span className="font-medium">{label}</span>
                               {member.name && member.email && (

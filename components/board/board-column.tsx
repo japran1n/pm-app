@@ -35,14 +35,22 @@ import {
   STATUS_COLORS,
   STATUS_LABELS as COLUMN_LABELS,
 } from "@/lib/task-colors";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 
 export function BoardColumn({
   status,
   tasks,
+  assignees,
   onCardClick,
 }: {
   status: TaskCardTask["status"];
   tasks: TaskCardTask[];
+  /** F122 (AS-214): taskAssigneeId -> resolved person, resolved once per
+   * page load (board.tsx receives it from the Server Component page) —
+   * looked up per card below rather than threaded through the whole
+   * `tasks` array, mirroring task-list-table.tsx's pre-existing
+   * `assigneeNames` Map convention. */
+  assignees?: Map<string, UserAvatarPerson>;
   onCardClick?: (taskId: string) => void;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
@@ -83,6 +91,9 @@ export function BoardColumn({
               <SortableTaskCard
                 key={task.id}
                 task={task}
+                assignee={
+                  task.assigneeId ? assignees?.get(task.assigneeId) : null
+                }
                 onClick={onCardClick}
               />
             ))

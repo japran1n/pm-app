@@ -55,6 +55,11 @@ import {
   TaskDetailSheet,
   type TaskDetailSheetMember,
 } from "@/components/task/task-detail-sheet";
+// F122 (AS-214): the Assignee column (shared by the project List view and
+// the workspace dashboard table — components/dashboard/
+// dashboard-task-table.tsx composes this same component) now renders the
+// shared avatar component instead of plain text.
+import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 
 function formatDueDate(dueDate: string): string {
   const date = new Date(dueDate);
@@ -68,15 +73,19 @@ function formatDueDate(dueDate: string): string {
 
 export function TaskListTable({
   tasks,
-  assigneeNames,
+  assignees,
   sort,
   hasActiveFilters = false,
   clearFiltersHref,
   members = [],
 }: {
   tasks: TaskCardTask[];
-  /** taskAssigneeId -> display name, resolved server-side (F053). */
-  assigneeNames: Map<string, string>;
+  /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
+   * avatarUrl), resolved server-side. Renamed from F053's original
+   * `assigneeNames: Map<string, string>` now that the Assignee column
+   * renders an avatar, not just text — every caller (project List page,
+   * the dashboard table) was updated alongside this component. */
+  assignees: Map<string, UserAvatarPerson>;
   /** F055 (AS-091): current due-date sort, drives the header's icon/state. */
   sort?: ProjectListTaskSort;
   /**
@@ -159,8 +168,8 @@ export function TaskListTable({
         <TableBody>
           {tasks.map((task) => {
             const overdue = isOverdue(task.dueDate, task.status);
-            const assigneeName = task.assigneeId
-              ? assigneeNames.get(task.assigneeId)
+            const assignee = task.assigneeId
+              ? assignees.get(task.assigneeId)
               : null;
 
             return (
@@ -206,7 +215,12 @@ export function TaskListTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {assigneeName ?? (
+                  {assignee ? (
+                    <span className="flex items-center gap-2">
+                      <UserAvatar person={assignee} size="sm" />
+                      {assignee.name || assignee.email || assignee.id}
+                    </span>
+                  ) : (
                     <span className="text-xs text-muted-foreground">
                       Unassigned
                     </span>

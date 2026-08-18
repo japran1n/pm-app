@@ -42,10 +42,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+// F122 (AS-214): "assignee pickers" includes this dialog's own assignee
+// Select — `label` is already the resolved display name/email/id (see the
+// callers of this type), so UserAvatar is handed `{ name: label }` rather
+// than duplicating that fallback logic here.
+import { UserAvatar } from "@/components/user-avatar";
 
 export type NewTaskDialogAssigneeOption = {
   id: string;
   label: string;
+  avatarUrl?: string | null;
 };
 
 type Priority = "urgent" | "high" | "medium" | "low" | "backlog";
@@ -96,8 +102,10 @@ export function NewTaskDialog({
   const assigneeLabels: Record<string, string> = {
     [NO_ASSIGNEE_VALUE]: "Unassigned",
   };
+  const assigneeAvatarUrls: Record<string, string | null> = {};
   for (const option of assigneeOptions) {
     assigneeLabels[option.id] = option.label;
+    assigneeAvatarUrls[option.id] = option.avatarUrl ?? null;
   }
 
   function resetForm() {
@@ -229,14 +237,38 @@ export function NewTaskDialog({
               >
                 <SelectTrigger id="task-assignee" className="w-full">
                   <SelectValue>
-                    {(value: string) => assigneeLabels[value] ?? value}
+                    {(value: string) => (
+                      <span className="flex items-center gap-2">
+                        {value !== NO_ASSIGNEE_VALUE && (
+                          <UserAvatar
+                            person={{
+                              id: value,
+                              name: assigneeLabels[value] ?? value,
+                              avatarUrl: assigneeAvatarUrls[value] ?? null,
+                            }}
+                            size="sm"
+                          />
+                        )}
+                        {assigneeLabels[value] ?? value}
+                      </span>
+                    )}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_ASSIGNEE_VALUE}>Unassigned</SelectItem>
                   {assigneeOptions.map((option) => (
                     <SelectItem key={option.id} value={option.id}>
-                      {option.label}
+                      <span className="flex items-center gap-2">
+                        <UserAvatar
+                          person={{
+                            id: option.id,
+                            name: option.label,
+                            avatarUrl: option.avatarUrl,
+                          }}
+                          size="sm"
+                        />
+                        {option.label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

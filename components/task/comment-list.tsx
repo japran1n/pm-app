@@ -53,6 +53,9 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
 import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
+// F122 (AS-214): each comment's author is now rendered via the shared
+// avatar component instead of `authorLabel`'s plain text alone.
+import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 
 export type TaskComment = {
   id: string;
@@ -66,6 +69,9 @@ export type CommentListMember = {
   userId: string;
   email: string | null;
   name: string | null;
+  /** F122 (AS-214): optional — a caller that hasn't been updated to fetch
+   * it yet just gets the initials-avatar fallback. */
+  avatarUrl?: string | null;
 };
 
 function authorLabel(
@@ -74,6 +80,19 @@ function authorLabel(
 ): string {
   const member = members.find((m) => m.userId === userId);
   return member?.name || member?.email || userId;
+}
+
+function authorOf(
+  userId: string,
+  members: CommentListMember[],
+): UserAvatarPerson {
+  const member = members.find((m) => m.userId === userId);
+  return {
+    id: userId,
+    email: member?.email ?? null,
+    name: member?.name ?? null,
+    avatarUrl: member?.avatarUrl ?? null,
+  };
 }
 
 function sortedOldestFirst(comments: TaskComment[]): TaskComment[] {
@@ -221,6 +240,10 @@ export function CommentList({
           {orderedComments.map((comment) => (
             <li key={comment.id} className="flex flex-col gap-0.5">
               <div className="flex items-baseline gap-2">
+                <UserAvatar
+                  person={authorOf(comment.userId, members)}
+                  size="sm"
+                />
                 <span className="text-sm font-medium">
                   {authorLabel(comment.userId, members)}
                 </span>

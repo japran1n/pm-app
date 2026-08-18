@@ -32,7 +32,7 @@ describe("TaskListTable empty states (AS-092)", () => {
     const html = renderToStaticMarkup(
       createElement(TaskListTable, {
         tasks: [],
-        assigneeNames: new Map(),
+        assignees: new Map(),
         hasActiveFilters: true,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
       }),
@@ -52,7 +52,7 @@ describe("TaskListTable empty states (AS-092)", () => {
     const html = renderToStaticMarkup(
       createElement(TaskListTable, {
         tasks: [],
-        assigneeNames: new Map(),
+        assignees: new Map(),
         hasActiveFilters: false,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
       }),
@@ -81,7 +81,7 @@ describe("TaskListTable empty states (AS-092)", () => {
             position: 1,
           },
         ],
-        assigneeNames: new Map(),
+        assignees: new Map(),
         hasActiveFilters: true,
         clearFiltersHref: "/w/acme/projects/proj-1/list",
       }),
