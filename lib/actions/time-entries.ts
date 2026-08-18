@@ -2,8 +2,16 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { logTimeEntrySchema } from "@/lib/validation/time-entries";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
+import {
+  logTimeEntrySchema,
+  editTimeEntrySchema,
+  deleteTimeEntrySchema,
+  type EditTimeEntryUpdates,
+} from "@/lib/validation/time-entries";
+import {
+  requireActiveMembership,
+  requireWorkspaceAdmin,
+} from "@/lib/auth/require-membership";
 
 export type LogTimeEntryResult =
   | {
@@ -347,4 +355,278 @@ export async function stopTimer(): Promise<StopTimerResult> {
       createdAt: stopped.created_at,
     },
   };
+}
+
+export type EditTimeEntryResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        taskId: string;
+        userId: string;
+        minutes: number;
+        billable: boolean;
+        entryDate: string;
+        note: string | null;
+      };
+    }
+  | { ok: false; error: string };
+
+// editTimeEntry (F112: AS-169). ONLY the entry's own author (caller's
+// user_id matches the row's user_id) may edit — not an admin/owner, not
+// anyone else. This is deliberately stricter than editTask (AS-061, any
+// workspace member) or comments' update RLS (author-or-admin) — a logged
+// time entry is a personal record of one's own time; even a workspace
+// admin cleaning up team reporting must go through deleteTimeEntry, not
+// silently rewrite someone else's hours (see Clarified implementation in
+// missions/<id>/features/F112-edit-delete-time-entry-action.md).
+//
+// Pattern otherwise mirrors editTask: Zod-validated partial update (only
+// fields actually present in `updates` are applied — an omitted field
+// leaves the existing column value untouched), admin client used for the
+// actual update once authorization has been independently verified here,
+// discriminated-union return, generic user-facing errors with details only
+// logged server-side (AS-146).
+//
+// Active workspace membership is also re-checked (AS-143 defense in
+// depth) ahead of the author check, so a caller who has been removed from
+// the workspace (but whose old rows still technically match user_id) is
+// rejected the same generic way as a non-author — the error message never
+// distinguishes "not the author" from "not a member" to avoid leaking
+// which reason applied.
+export async function editTimeEntry(
+  entryId: string,
+  updates: EditTimeEntryUpdates,
+): Promise<EditTimeEntryResult> {
+  const parsed = editTimeEntrySchema.safeParse({ entryId, updates });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter a valid time entry.",
+    };
+  }
+
+  if (Object.keys(parsed.data.updates).length === 0) {
+    return { ok: false, error: "No changes to save." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a time entry." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the entry together with its task's owning workspace, so
+  // membership is checked against the real workspace, not one supplied by
+  // the caller.
+  const { data: entryRow, error: entryError } = await admin
+    .from("time_entries")
+    .select("id, user_id, task_id, tasks(deleted_at, projects(workspace_id))")
+    .eq("id", parsed.data.entryId)
+    .maybeSingle();
+
+  if (entryError || !entryRow) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const task = entryRow.tasks as
+    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }
+    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+
+  if (!taskRow || taskRow.deleted_at) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const project = taskRow.projects;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  // AS-169: author-only, no admin/owner override. Checked after (and in
+  // addition to) the active-membership re-check above — both must hold.
+  if (!membership.ok || entryRow.user_id !== user.id) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this time entry.",
+    };
+  }
+
+  const updatePayload: {
+    minutes?: number;
+    billable?: boolean;
+    entry_date?: string;
+    note?: string | null;
+  } = {};
+  if ("minutes" in parsed.data.updates) {
+    updatePayload.minutes = parsed.data.updates.minutes;
+  }
+  if ("billable" in parsed.data.updates) {
+    updatePayload.billable = parsed.data.updates.billable;
+  }
+  if ("entryDate" in parsed.data.updates) {
+    updatePayload.entry_date = parsed.data.updates.entryDate;
+  }
+  if ("note" in parsed.data.updates) {
+    updatePayload.note = parsed.data.updates.note;
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("time_entries")
+    .update(updatePayload)
+    .eq("id", parsed.data.entryId)
+    .select("id, task_id, user_id, minutes, billable, entry_date, note")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("editTimeEntry: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      taskId: updated.task_id,
+      userId: updated.user_id,
+      minutes: updated.minutes,
+      billable: updated.billable,
+      entryDate: updated.entry_date,
+      note: updated.note,
+    },
+  };
+}
+
+export type DeleteTimeEntryResult =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: string };
+
+// deleteTimeEntry (F112: AS-170). The entry's own author OR a workspace
+// admin/owner may delete — unlike editTimeEntry, an admin override is
+// allowed here (correcting mistakes in team reporting is the stated
+// rationale in the feature spec), reusing requireWorkspaceAdmin for the
+// admin/owner half of that check, same helper editTask/deleteTask's
+// siblings elsewhere in this codebase rely on for admin-gated actions.
+//
+// This is a real DELETE, not a soft delete — time_entries has no
+// deleted_at column (supabase/migrations/20260818151501_create_time_entries.sql).
+export async function deleteTimeEntry(
+  entryId: string,
+): Promise<DeleteTimeEntryResult> {
+  const parsed = deleteTimeEntrySchema.safeParse({ entryId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid time entry.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete a time entry." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: entryRow, error: entryError } = await admin
+    .from("time_entries")
+    .select("id, user_id, task_id, tasks(deleted_at, projects(workspace_id))")
+    .eq("id", parsed.data.entryId)
+    .maybeSingle();
+
+  if (entryError || !entryRow) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const task = entryRow.tasks as
+    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }
+    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+
+  if (!taskRow || taskRow.deleted_at) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const project = taskRow.projects;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const isAuthor = entryRow.user_id === user.id;
+
+  // Author check is independent of (and cheaper than) the admin check —
+  // only fall through to requireWorkspaceAdmin (which still re-verifies
+  // active membership itself) when the caller isn't the author.
+  if (!isAuthor) {
+    const adminMembership = await requireWorkspaceAdmin(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!adminMembership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to delete this time entry.",
+      };
+    }
+  } else {
+    // Author still must be an active member of the workspace (AS-143
+    // defense in depth), same convention as editTimeEntry above.
+    const membership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!membership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to delete this time entry.",
+      };
+    }
+  }
+
+  const { error: deleteError } = await admin
+    .from("time_entries")
+    .delete()
+    .eq("id", parsed.data.entryId);
+
+  if (deleteError) {
+    console.error("deleteTimeEntry: delete failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  return { ok: true, data: { id: parsed.data.entryId } };
 }

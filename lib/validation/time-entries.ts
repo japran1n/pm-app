@@ -41,3 +41,56 @@ export const logTimeEntrySchema = z.object({
 });
 
 export type LogTimeEntryInput = z.infer<typeof logTimeEntrySchema>;
+
+// Validates editTimeEntry input (F112: AS-169). Mirrors the
+// editableFields/.partial() pattern established by lib/validation/tasks.ts's
+// editTaskSchema — only fields actually present in `updates` are applied,
+// an omitted field leaves the existing column value untouched. Field-level
+// constraints are identical to logTimeEntrySchema's, since these are the
+// same columns, just optional here.
+const editableTimeEntryFields = z.object({
+  minutes: z
+    .number()
+    .int("Minutes must be a whole number.")
+    .positive("Minutes must be greater than zero."),
+  billable: z.boolean(),
+  entryDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.")
+    .refine((value) => {
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return (
+        !Number.isNaN(parsed.getTime()) &&
+        parsed.toISOString().slice(0, 10) === value
+      );
+    }, "Enter a valid date."),
+  // Unlike logTimeEntrySchema's note (optional, defaults to undefined = "no
+  // value supplied yet"), here `.nullable()` lets a caller explicitly clear
+  // an existing note by passing null, distinct from omitting the field
+  // entirely (which leaves the existing note untouched) — same
+  // optional-vs-null distinction as editTaskSchema's description field.
+  note: z
+    .string()
+    .trim()
+    .max(10000, "Note must be 10000 characters or fewer.")
+    .nullable(),
+});
+
+const partialEditableTimeEntryFields = editableTimeEntryFields.partial();
+
+export const editTimeEntrySchema = z.object({
+  entryId: z.string().uuid("Invalid time entry."),
+  updates: partialEditableTimeEntryFields,
+});
+
+export type EditTimeEntryInput = z.infer<typeof editTimeEntrySchema>;
+export type EditTimeEntryUpdates = z.infer<
+  typeof partialEditableTimeEntryFields
+>;
+
+// Validates deleteTimeEntry input (F112: AS-170). Just the entry id.
+export const deleteTimeEntrySchema = z.object({
+  entryId: z.string().uuid("Invalid time entry."),
+});
+
+export type DeleteTimeEntryInput = z.infer<typeof deleteTimeEntrySchema>;
