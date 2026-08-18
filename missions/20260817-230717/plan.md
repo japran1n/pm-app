@@ -38,15 +38,15 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M3 — Projects
 
-- F024 db-schema-projects [CLARIFIED-AUTO]
-- F025 db-schema-rls-projects — AS-028 [CLARIFIED-AUTO]
-- F026 create-project-action — AS-025, AS-026, AS-035, AS-036 [CLARIFIED-AUTO]
-- F027 project-list-page — AS-027, AS-034, AS-042 [CLARIFIED-AUTO]
-- F028 edit-project-action — AS-029, AS-037 [CLARIFIED-AUTO]
-- F029 archive-project-action — AS-030, AS-031, AS-032, AS-033 [CLARIFIED-AUTO]
-- F030 project-detail-tabs — AS-038 [CLARIFIED-AUTO]
-- F031 project-notfound-handling — AS-039, AS-040 [CLARIFIED-AUTO]
-- F032 project-empty-state — AS-041 [CLARIFIED-AUTO]
+- F024 db-schema-projects [CLARIFIED-AUTO] [COMPLETE]
+- F025 db-schema-rls-projects — AS-028 [CLARIFIED-AUTO] [COMPLETE]
+- F026 create-project-action — AS-025, AS-026, AS-035, AS-036 [CLARIFIED-AUTO] [COMPLETE]
+- F027 project-list-page — AS-027, AS-034, AS-042 [CLARIFIED-AUTO] [COMPLETE]
+- F028 edit-project-action — AS-029, AS-037 [CLARIFIED-AUTO] [COMPLETE]
+- F029 archive-project-action — AS-030, AS-031, AS-032, AS-033 [CLARIFIED-AUTO] [COMPLETE]
+- F030 project-detail-tabs — AS-038 [CLARIFIED-AUTO] [COMPLETE]
+- F031 project-notfound-handling — AS-039, AS-040 [CLARIFIED-AUTO] [COMPLETE]
+- F032 project-empty-state — AS-041 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M4 — Tasks core
 

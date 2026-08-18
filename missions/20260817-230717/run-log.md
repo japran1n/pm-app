@@ -22,3 +22,6 @@ scrutiny-validator found 3 blockers (AS-006 orphan workspace, AS-018 TOCTOU race
 
 ## 2026-08-18T00:42:53Z — Milestone 2 GREEN
 scrutiny-recheck: GREEN (6/6 fixes verified). ux-validator: 4/4 reachable behavioral checks PASS, rest INCONCLUSIVE (require real email inbox, documented limitation). M2 marked GREEN in plan.md. Total features complete: 29 (M1: 5, M2: 18, M2 follow-ups: 6). Proceeding to M3 (Projects).
+
+## 2026-08-18T01:23:56Z — Milestone 3 (Projects) complete
+F024-F032 all COMPLETE (9/9). Spawning scrutiny-validator before M4.
