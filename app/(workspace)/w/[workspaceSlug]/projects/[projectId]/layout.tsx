@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
 import { ProjectTabs } from "@/components/project-tabs";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
 // F030 (AS-038): project detail layout — resolves the project scoped to
 // the active workspace, renders a header (name/description, plus an
@@ -82,12 +83,14 @@ export default async function ProjectDetailLayout({
   const isArchived = Boolean(project.deletedAt);
 
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-6 p-6 md:p-8">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold">{project.name}</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {project.name}
+              </h1>
               {isArchived && <Badge variant="outline">Archived</Badge>}
             </div>
             <p className="text-sm text-muted-foreground">
@@ -96,11 +99,13 @@ export default async function ProjectDetailLayout({
           </div>
           <Link
             href={`/w/${workspaceSlug}/projects`}
-            className="text-sm text-muted-foreground underline"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
             Back to projects
           </Link>
         </div>
+
+        <Separator />
 
         <ProjectTabs workspaceSlug={workspaceSlug} projectId={project.id} />
       </div>

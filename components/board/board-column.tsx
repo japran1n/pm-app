@@ -21,14 +21,20 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 import type { TaskCardTask } from "@/components/task/task-card";
 import { SortableTaskCard } from "@/components/board/sortable-task-card";
 // F073 (AS-135): status labels/colors now come from the single shared
 // lib/task-colors.ts constant, reused by the dashboard's status pie chart,
 // instead of this component's own local copy.
-import { STATUS_COLORS, STATUS_LABELS as COLUMN_LABELS } from "@/lib/task-colors";
+import {
+  STATUS_COLORS,
+  STATUS_LABELS as COLUMN_LABELS,
+} from "@/lib/task-colors";
 
 export function BoardColumn({
   status,
@@ -46,18 +52,18 @@ export function BoardColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg bg-muted/40 p-3"
+      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
       data-status={status}
     >
-      <div className="flex items-center justify-between px-1">
-        <h2 className="flex items-center gap-1.5 text-sm font-medium">
+      <div className="flex items-center justify-between px-1 py-0.5">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
           <span
             aria-hidden="true"
             className="size-2 rounded-full"
             style={{ backgroundColor: STATUS_COLORS[status] }}
           />
-          {COLUMN_LABELS[status]}{" "}
-          <span className="text-xs font-normal text-muted-foreground">
+          {COLUMN_LABELS[status]}
+          <span className="rounded-full bg-background px-1.5 py-0.5 text-xs font-normal text-muted-foreground ring-1 ring-border/60">
             ({tasks.length})
           </span>
         </h2>
@@ -67,14 +73,18 @@ export function BoardColumn({
         items={tasks.map((task) => task.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {tasks.length === 0 ? (
             <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
               No tasks
             </p>
           ) : (
             tasks.map((task) => (
-              <SortableTaskCard key={task.id} task={task} onClick={onCardClick} />
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                onClick={onCardClick}
+              />
             ))
           )}
         </div>

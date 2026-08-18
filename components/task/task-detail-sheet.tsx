@@ -50,6 +50,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -302,16 +303,14 @@ export function TaskDetailSheet({
                 priority, assignee, and due date.
               </SheetDescription>
             </SheetHeader>
-            <div className="flex flex-col gap-4 overflow-y-auto px-4">
+            <div className="flex flex-col gap-6 overflow-y-auto px-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor={`task-title-${task.id}`}>Title</Label>
                 <Input
                   id={`task-title-${task.id}`}
                   value={title}
                   disabled={isSavingField}
-                  onChange={(changeEvent) =>
-                    setTitle(changeEvent.target.value)
-                  }
+                  onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                   onBlur={handleTitleBlur}
                 />
               </div>
@@ -330,6 +329,8 @@ export function TaskDetailSheet({
                   onBlur={handleDescriptionBlur}
                 />
               </div>
+
+              <Separator />
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
@@ -375,13 +376,11 @@ export function TaskDetailSheet({
                       <SelectItem value={NO_PRIORITY_VALUE}>
                         No priority
                       </SelectItem>
-                      {Object.entries(PRIORITY_LABELS).map(
-                        ([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ),
-                      )}
+                      {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -451,7 +450,11 @@ export function TaskDetailSheet({
                 />
               </div>
 
+              <Separator />
+
               <TagsEditor taskId={task.id} tags={task.tags} />
+
+              <Separator />
 
               <CommentList
                 taskId={task.id}
@@ -460,6 +463,8 @@ export function TaskDetailSheet({
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
               />
+
+              <Separator />
 
               <AttachmentList
                 taskId={task.id}

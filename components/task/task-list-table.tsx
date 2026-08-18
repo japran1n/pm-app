@@ -110,82 +110,86 @@ export function TaskListTable({
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Title</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Priority</TableHead>
-          <TableHead>Assignee</TableHead>
-          <TableHead>
-            <DueDateSortHeader sort={sort} />
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {tasks.map((task) => {
-          const overdue = isOverdue(task.dueDate, task.status);
-          const assigneeName = task.assigneeId
-            ? assigneeNames.get(task.assigneeId)
-            : null;
+    <div className="rounded-lg border border-border/60 bg-card">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Title</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Priority</TableHead>
+            <TableHead>Assignee</TableHead>
+            <TableHead>
+              <DueDateSortHeader sort={sort} />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {tasks.map((task) => {
+            const overdue = isOverdue(task.dueDate, task.status);
+            const assigneeName = task.assigneeId
+              ? assigneeNames.get(task.assigneeId)
+              : null;
 
-          return (
-            <TableRow key={task.id} data-task-id={task.id}>
-              <TableCell className="font-medium">{task.title}</TableCell>
-              <TableCell>
-                <ListStatusSelect taskId={task.id} status={task.status} />
-              </TableCell>
-              <TableCell>
-                {task.priority ? (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1.5"
-                    style={{ borderColor: PRIORITY_COLORS[task.priority] }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="size-1.5 rounded-full"
-                      style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
-                    />
-                    {PRIORITY_LABELS[task.priority]}
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {assigneeName ?? (
-                  <span className="text-xs text-muted-foreground">
-                    Unassigned
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {task.dueDate ? (
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1",
-                      overdue
-                        ? "font-medium text-destructive"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    {overdue && (
-                      <TriangleAlert className="size-3" aria-hidden="true" />
-                    )}
-                    <span className={overdue ? "sr-only" : "hidden"}>
-                      Overdue:
+            return (
+              <TableRow key={task.id} data-task-id={task.id}>
+                <TableCell className="font-medium">{task.title}</TableCell>
+                <TableCell>
+                  <ListStatusSelect taskId={task.id} status={task.status} />
+                </TableCell>
+                <TableCell>
+                  {task.priority ? (
+                    <Badge
+                      variant="secondary"
+                      className="gap-1.5"
+                      style={{ borderColor: PRIORITY_COLORS[task.priority] }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="size-1.5 rounded-full"
+                        style={{
+                          backgroundColor: PRIORITY_COLORS[task.priority],
+                        }}
+                      />
+                      {PRIORITY_LABELS[task.priority]}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {assigneeName ?? (
+                    <span className="text-xs text-muted-foreground">
+                      Unassigned
                     </span>
-                    {formatDueDate(task.dueDate)}
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {task.dueDate ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1",
+                        overdue
+                          ? "font-medium text-destructive"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {overdue && (
+                        <TriangleAlert className="size-3" aria-hidden="true" />
+                      )}
+                      <span className={overdue ? "sr-only" : "hidden"}>
+                        Overdue:
+                      </span>
+                      {formatDueDate(task.dueDate)}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

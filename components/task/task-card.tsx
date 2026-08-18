@@ -83,7 +83,8 @@ export function TaskCard({
           : undefined
       }
       className={cn(
-        onClick && "cursor-pointer hover:ring-foreground/20",
+        "border border-border/60 bg-card shadow-sm transition-shadow",
+        onClick && "cursor-pointer hover:shadow-md hover:ring-foreground/20",
         className,
       )}
     >
@@ -109,15 +110,12 @@ export function TaskCard({
           <span
             className={cn(
               "inline-flex items-center gap-1 text-xs",
-              overdue ? "font-medium text-destructive" : "text-muted-foreground",
+              overdue
+                ? "font-medium text-destructive"
+                : "text-muted-foreground",
             )}
           >
-            {overdue && (
-              <TriangleAlert
-                className="size-3"
-                aria-hidden="true"
-              />
-            )}
+            {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
             <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
             {formatDueDate(task.dueDate)}
           </span>
