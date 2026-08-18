@@ -13,7 +13,7 @@ export default function Home() {
           Plan, track, and ship work with your team — without the clutter.
         </p>
       </div>
-      <Button size="lg" render={<Link href="/sign-in">Sign in</Link>} />
+      <Button size="lg" nativeButton={false} render={<Link href="/sign-in">Sign in</Link>} />
     </div>
   );
 }
