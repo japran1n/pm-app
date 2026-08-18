@@ -177,3 +177,15 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 ## M8 follow-ups (from M8 scrutiny — see milestones/M8-scrutiny.md)
 
 - F107 board-setstate-during-render-fix — (code quality, no assertion) [CLARIFIED-AUTO] [COMPLETE]
+
+## M9 — Time tracking
+
+- F108 db-schema-time-entries — AS-161, AS-162, AS-163 [CLARIFIED-AUTO]
+- F109 db-schema-active-timers — AS-164, AS-165, AS-168 [CLARIFIED-AUTO]
+- F110 log-time-entry-action — AS-161, AS-162, AS-163 [CLARIFIED-AUTO]
+- F111 start-stop-timer-action — AS-164, AS-165, AS-166, AS-167, AS-168 [CLARIFIED-AUTO]
+- F112 edit-delete-time-entry-action — AS-169, AS-170 [CLARIFIED-AUTO]
+- F113 task-time-ui — AS-171 [CLARIFIED-AUTO]
+- F114 project-time-totals — AS-172, AS-174 [CLARIFIED-AUTO]
+- F115 person-time-report — AS-173, AS-174 [CLARIFIED-AUTO]
+- F116 time-tracking-rls-audit — AS-175, AS-176 [CLARIFIED-AUTO]

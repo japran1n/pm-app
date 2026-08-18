@@ -67,3 +67,6 @@ F079-F093 all COMPLETE (15/15). All 106 features across 8 milestones now COMPLET
 
 ## 2026-08-18T08:19:46Z — MISSION COMPLETE
 All 107 features across 8 milestones COMPLETE and GREEN. Final serial-mode test run: 440/440 passed, 84/84 files, exit 0. tsc clean, eslint clean (0 errors), build clean, playwright e2e 1/1. Every validation-contract assertion accounted for: either explicitly PASS in a milestone scrutiny report, or fixed-then-reverified after an initial FAIL, or legitimately documented as a sequencing deferral now resolved (AS-034 via F042, AS-064 via F042, AS-136 via F089). Mission done.
+
+## 2026-08-18T15:14:18Z — M9 (Time tracking) planned
+User requested time tracking (manual + live timer, billable/non-billable) as a strategic next feature. Added AS-161-176 to validation-contract.md, 9 features (F108-F116) to plan.md, self-clarified given standing authorization. Starting execution.

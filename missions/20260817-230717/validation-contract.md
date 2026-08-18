@@ -194,3 +194,22 @@ _Mission: 20260817-230717_ _Locked at APPROVED — see rules in the `validation-
 - AS-158: The application has zero ESLint errors (warnings permitted) at every milestone boundary.
 - AS-159: The README documents how to run the app locally, run tests, and the required environment variables (per discovery Q30: README + API docs).
 - AS-160: Every Server Action and exported utility function referenced by an assertion has type-safe input/output (no `any` used to bypass a type error).
+
+## Time tracking (AS-161–AS-176) — M9
+
+- AS-161: A workspace member can log a manual time entry on a task (minutes, date, billable flag, optional note).
+- AS-162: A manual time entry with zero or negative minutes is rejected.
+- AS-163: A member cannot log time on a task outside their own workspace, even via direct API access.
+- AS-164: A member can start a live timer on a task.
+- AS-165: A member has at most one active timer running at any time across the whole workspace.
+- AS-166: Starting a new timer while one is already running stops the previous timer and logs it as a completed time entry before starting the new one.
+- AS-167: Stopping a timer creates a time entry with minutes computed from elapsed duration and billable defaulting to true.
+- AS-168: An active timer's running state survives a page reload or a new browser tab (persisted server-side, not client-only state).
+- AS-169: A time entry's author can edit their own entry (minutes, billable, note, date).
+- AS-170: A time entry's author or a workspace admin/owner can delete a time entry; a different regular member cannot delete someone else's entry.
+- AS-171: A task's total logged time (sum of minutes) is displayed on the task card and in the task detail sheet.
+- AS-172: A project's total logged time, split into billable and non-billable, is displayed on the project header.
+- AS-173: A per-person time report is available, scoped to the current workspace, showing total logged time per member over a selectable date range.
+- AS-174: A soft-deleted task's time entries are excluded from project-level and person-level totals.
+- AS-175: Row Level Security is enabled on time_entries and active_timers, scoped to active membership in the task's workspace, matching the isolation pattern already used for tasks and comments.
+- AS-176: A user who is not a member of a workspace cannot read or write time entries for that workspace's tasks, even via direct API access with a valid session in a different workspace.
