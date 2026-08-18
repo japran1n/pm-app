@@ -1,0 +1,432 @@
+"use client";
+
+// F039: reusable task detail Sheet. Foundation/skeleton feature (no
+// assertions assigned) — the goal is a clean, self-contained component
+// ready to be opened by a real task card once one exists (F042's board,
+// F053's list). There is no board/list rendering real task cards yet, so
+// this file exports the Sheet plus its prop/data types and does not wire
+// itself to any route.
+//
+// Pattern: smallest-possible-client-boundary, matching
+// components/edit-project-dialog.tsx and components/member-role-select.tsx
+// — the caller (a future Server Component page) fetches the task and its
+// workspace's members and passes them down as props; this component only
+// owns the interactive editing surface. `lib/queries/members.ts` (F017)
+// already has the `getWorkspaceMembers` Server-only query used to build
+// the `members` prop — it isn't called from here because this file must
+// stay a Client Component and that query uses the Auth Admin client.
+//
+// Calls the F033-F038 Server Actions directly (editTask, assignTask,
+// deleteTask) — Server Actions are safe to import and call from a Client
+// Component. `status` currently has no Server Action support (editTask's
+// `EditTaskUpdates` covers title/description/priority/dueDate only — see
+// lib/validation/tasks.ts), so the status Select is rendered but disabled
+// with an explanatory label rather than silently no-op persisting a value;
+// this is a documented limitation for a future feature to lift once a
+// changeTaskStatus (or equivalent) action exists, not an oversight.
+//
+// The four states called for by the clarified spec (loading, populated,
+// empty, error) are all handled explicitly even though this component
+// does not fetch its own data: `loading` and `error` are optional props a
+// future data-fetching caller can drive; `task === null` while `open` is
+// true is the empty state (should not normally happen, since a caller
+// should only open the sheet once it has a task, but is handled rather
+// than left to crash).
+
+import { useState, useTransition } from "react";
+import { Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
+import type { EditTaskUpdates } from "@/lib/validation/tasks";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+
+export type TaskDetailSheetTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: "todo" | "in_progress" | "in_review" | "done";
+  priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+  assigneeId: string | null;
+  dueDate: string | null;
+};
+
+export type TaskDetailSheetMember = {
+  userId: string;
+  email: string | null;
+  name: string | null;
+};
+
+const STATUS_LABELS: Record<TaskDetailSheetTask["status"], string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  in_review: "In review",
+  done: "Done",
+};
+
+const PRIORITY_LABELS: Record<
+  NonNullable<TaskDetailSheetTask["priority"]>,
+  string
+> = {
+  urgent: "Urgent",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  backlog: "Backlog",
+};
+
+const NO_PRIORITY_VALUE = "__none__";
+const NO_ASSIGNEE_VALUE = "__unassigned__";
+
+function memberLabel(member: TaskDetailSheetMember): string {
+  return member.name || member.email || member.userId;
+}
+
+export function TaskDetailSheet({
+  task,
+  members,
+  open,
+  onOpenChange,
+  loading = false,
+  error = null,
+  onRetry,
+  onDeleted,
+}: {
+  /** The task to display, or null (empty state) if none is loaded. */
+  task: TaskDetailSheetTask | null;
+  /** Workspace members eligible as assignees (from getWorkspaceMembers). */
+  members: TaskDetailSheetMember[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Drives the loading skeleton when a future caller is still fetching. */
+  loading?: boolean;
+  /** Drives the inline error state when a future caller's fetch failed. */
+  error?: string | null;
+  onRetry?: () => void;
+  /** Called after a successful delete so the caller can close/refresh. */
+  onDeleted?: (taskId: string) => void;
+}) {
+  const [title, setTitle] = useState(task?.title ?? "");
+  const [description, setDescription] = useState(task?.description ?? "");
+  const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  // Tracks which task's fields are currently loaded into local edit state,
+  // so it can be re-synced below without an Effect (React docs: "adjusting
+  // state when a prop changes" is done during render, not in a useEffect,
+  // to avoid the extra cascading render an Effect would cause).
+  const [syncedTaskId, setSyncedTaskId] = useState<string | null>(null);
+  const [isSavingField, startSaveTransition] = useTransition();
+  const [isAssigning, startAssignTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
+
+  // Re-sync local edit state whenever the sheet is opened for a (possibly
+  // different) task, mirroring EditProjectDialog's handleOpenChange reset
+  // convention.
+  if (open && task && task.id !== syncedTaskId) {
+    setSyncedTaskId(task.id);
+    setTitle(task.title);
+    setDescription(task.description ?? "");
+    setDueDate(task.dueDate ?? "");
+  } else if (!open && syncedTaskId !== null) {
+    // Sheet closed — clear the sync marker so reopening the same task
+    // (e.g. after an external update) re-syncs from the latest props.
+    setSyncedTaskId(null);
+  }
+
+  function saveField(updates: EditTaskUpdates, successMessage: string) {
+    if (!task) return;
+    startSaveTransition(async () => {
+      const result = await editTask(task.id, updates);
+      if (result.ok) {
+        toast.success(successMessage);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleTitleBlur() {
+    if (!task) return;
+    const trimmed = title.trim();
+    if (!trimmed || trimmed === task.title) {
+      setTitle(task.title);
+      return;
+    }
+    saveField({ title: trimmed }, "Title updated.");
+  }
+
+  function handleDescriptionBlur() {
+    if (!task) return;
+    const next = description.trim() || null;
+    if (next === (task.description ?? null)) return;
+    saveField({ description: next }, "Description updated.");
+  }
+
+  function handlePriorityChange(value: string | null) {
+    if (!task) return;
+    const next =
+      value && value !== NO_PRIORITY_VALUE
+        ? (value as NonNullable<TaskDetailSheetTask["priority"]>)
+        : null;
+    if (next === task.priority) return;
+    saveField({ priority: next }, "Priority updated.");
+  }
+
+  function handleDueDateChange(value: string) {
+    setDueDate(value);
+    if (!task) return;
+    const next = value || null;
+    if (next === (task.dueDate ?? null)) return;
+    saveField({ dueDate: next }, "Due date updated.");
+  }
+
+  function handleAssigneeChange(value: string | null) {
+    if (!task) return;
+    const next = value && value !== NO_ASSIGNEE_VALUE ? value : null;
+    if (next === task.assigneeId) return;
+    startAssignTransition(async () => {
+      const result = await assignTask(task.id, next);
+      if (result.ok) {
+        toast.success(next ? "Assignee updated." : "Task unassigned.");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleDelete() {
+    if (!task) return;
+    startDeleteTransition(async () => {
+      const result = await deleteTask(task.id);
+      if (result.ok) {
+        toast.success("Task deleted.");
+        onOpenChange(false);
+        onDeleted?.(task.id);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent aria-describedby={undefined}>
+        {loading ? (
+          <div className="flex flex-col gap-4 p-4">
+            <SheetHeader className="p-0">
+              <SheetTitle>Loading task…</SheetTitle>
+            </SheetHeader>
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-8 w-2/3" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col gap-4 p-4">
+            <SheetHeader className="p-0">
+              <SheetTitle>Couldn&apos;t load task</SheetTitle>
+              <SheetDescription>{error}</SheetDescription>
+            </SheetHeader>
+            {onRetry && (
+              <Button variant="outline" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </div>
+        ) : !task ? (
+          <div className="flex flex-col gap-2 p-4">
+            <SheetHeader className="p-0">
+              <SheetTitle>No task selected</SheetTitle>
+              <SheetDescription>
+                Select a task to see its details here.
+              </SheetDescription>
+            </SheetHeader>
+          </div>
+        ) : (
+          <>
+            <SheetHeader>
+              <SheetTitle>Task details</SheetTitle>
+              <SheetDescription className="sr-only">
+                View and edit this task&apos;s title, description, status,
+                priority, assignee, and due date.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col gap-4 overflow-y-auto px-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-title-${task.id}`}>Title</Label>
+                <Input
+                  id={`task-title-${task.id}`}
+                  value={title}
+                  disabled={isSavingField}
+                  onChange={(changeEvent) =>
+                    setTitle(changeEvent.target.value)
+                  }
+                  onBlur={handleTitleBlur}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-description-${task.id}`}>
+                  Description
+                </Label>
+                <Textarea
+                  id={`task-description-${task.id}`}
+                  value={description}
+                  disabled={isSavingField}
+                  onChange={(changeEvent) =>
+                    setDescription(changeEvent.target.value)
+                  }
+                  onBlur={handleDescriptionBlur}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`task-status-${task.id}`}>Status</Label>
+                  {/* No Server Action currently persists task status
+                      changes (editTask covers title/description/priority/
+                      dueDate only — see lib/validation/tasks.ts). Disabled
+                      rather than silently discarding a change the user
+                      thinks was saved; a future feature should add a
+                      changeTaskStatus action and enable this control. */}
+                  <Select value={task.status} disabled>
+                    <SelectTrigger
+                      id={`task-status-${task.id}`}
+                      aria-label="Status (read-only until status editing ships)"
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
+                  <Select
+                    value={task.priority ?? NO_PRIORITY_VALUE}
+                    onValueChange={handlePriorityChange}
+                    disabled={isSavingField}
+                  >
+                    <SelectTrigger
+                      id={`task-priority-${task.id}`}
+                      className="w-full"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PRIORITY_VALUE}>
+                        No priority
+                      </SelectItem>
+                      {Object.entries(PRIORITY_LABELS).map(
+                        ([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-assignee-${task.id}`}>Assignee</Label>
+                <Select
+                  value={task.assigneeId ?? NO_ASSIGNEE_VALUE}
+                  onValueChange={handleAssigneeChange}
+                  disabled={isAssigning}
+                >
+                  <SelectTrigger
+                    id={`task-assignee-${task.id}`}
+                    className="w-full"
+                  >
+                    {isAssigning ? (
+                      <Loader2
+                        className="size-4 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <SelectValue />
+                    )}
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_ASSIGNEE_VALUE}>
+                      Unassigned
+                    </SelectItem>
+                    {members.map((member) => (
+                      <SelectItem key={member.userId} value={member.userId}>
+                        {memberLabel(member)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-due-date-${task.id}`}>Due date</Label>
+                <Input
+                  id={`task-due-date-${task.id}`}
+                  type="date"
+                  value={dueDate ?? ""}
+                  disabled={isSavingField}
+                  onChange={(changeEvent) =>
+                    handleDueDateChange(changeEvent.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <SheetFooter>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isDeleting}
+                onClick={handleDelete}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2
+                      className="size-4 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="size-4" aria-hidden="true" />
+                    Delete task
+                  </>
+                )}
+              </Button>
+            </SheetFooter>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
