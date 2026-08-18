@@ -19,6 +19,7 @@
 // table exists.
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type ProjectListItem = {
   id: string;
@@ -60,4 +61,62 @@ export async function getWorkspaceProjects(
     createdAt: project.created_at,
     openTaskCount: null,
   }));
+}
+
+export type ProjectDetail = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+};
+
+// F030 (AS-038): fetches a single project by id, scoped to the current
+// workspace, for the project detail layout's header/tabs. Deliberately
+// uses the admin client rather than the RLS-backed client: the
+// `projects_select_active_members` policy (supabase/migrations/
+// 20260818004709_rls_projects.sql) filters `deleted_at IS NULL`, which
+// would 404 an archived project. AS-032 (F029) already established that an
+// archived project's row must remain fully readable — "works for both
+// active and archived projects per F029" in this feature's own spec means
+// this query cannot rely on the RLS SELECT policy alone.
+//
+// Callers MUST independently verify the caller is an active member of
+// `workspaceId` before calling this (the admin client bypasses RLS
+// entirely) — the workspace layout guard (F010/F023) already does this for
+// every route under /w/[workspaceSlug], and the `.eq("workspace_id", ...)`
+// filter below additionally prevents a projectId from one workspace being
+// read while impersonating a different workspaceId.
+export async function getProjectById(
+  workspaceId: string,
+  projectId: string,
+): Promise<ProjectDetail | null> {
+  const admin = createAdminClient();
+
+  const { data, error } = await admin
+    .from("projects")
+    .select(
+      "id, workspace_id, name, description, start_date, end_date, created_at, deleted_at",
+    )
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    workspaceId: data.workspace_id,
+    name: data.name,
+    description: data.description,
+    startDate: data.start_date,
+    endDate: data.end_date,
+    createdAt: data.created_at,
+    deletedAt: data.deleted_at,
+  };
 }

@@ -128,12 +128,15 @@ export default async function ProjectsPage({
           {projects.map((project) => (
             <Card key={project.id}>
               <CardHeader className="flex flex-row items-start justify-between gap-2">
-                <div className="flex flex-col gap-1.5">
+                <Link
+                  href={`/w/${workspaceSlug}/projects/${project.id}/board`}
+                  className="flex flex-1 flex-col gap-1.5"
+                >
                   <CardTitle className="line-clamp-1">{project.name}</CardTitle>
                   <CardDescription className="line-clamp-2">
                     {project.description || "No description."}
                   </CardDescription>
-                </div>
+                </Link>
                 <div className="flex items-center gap-2">
                   <EditProjectDialog
                     workspaceId={workspace.id}
