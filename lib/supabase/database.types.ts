@@ -113,6 +113,36 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          color: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          timezone: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          color?: string | null
+          created_at?: string
+          display_name?: string | null
+          id: string
+          timezone?: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          color?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          timezone?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string
@@ -434,6 +464,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      shares_workspace_with: {
+        Args: { target_user_id: string }
+        Returns: boolean
       }
       start_timer_atomic: {
         Args: { p_task_id: string }
