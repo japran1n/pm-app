@@ -32,6 +32,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getProjectListTasks,
   type ProjectListTaskFilters,
+  type ProjectListTaskSort,
 } from "@/lib/queries/tasks";
 import { resolveAssigneeNames } from "@/lib/queries/assignee-names";
 import { getWorkspaceMembers } from "@/lib/queries/members";
@@ -46,6 +47,7 @@ const VALID_PRIORITIES = new Set([
   "low",
   "backlog",
 ]);
+const VALID_SORTS = new Set(["due_date_asc", "due_date_desc"]);
 
 export default async function ProjectListPage({
   params,
@@ -56,6 +58,7 @@ export default async function ProjectListPage({
     status?: string;
     priority?: string;
     assigneeId?: string;
+    sort?: string;
   }>;
 }) {
   const { workspaceSlug, projectId } = await params;
@@ -72,7 +75,15 @@ export default async function ProjectListPage({
     filters.assigneeId = query.assigneeId;
   }
 
-  const tasks = await getProjectListTasks(projectId, filters);
+  // F055 (AS-091): sort is applied on top of the (already-filtered) query
+  // — an invalid/unrecognized `sort` param degrades to the default
+  // created_at-ascending order, same "tampered param = ignored" posture
+  // as the F054 filter validation just above.
+  const sort = query.sort && VALID_SORTS.has(query.sort)
+    ? (query.sort as ProjectListTaskSort)
+    : undefined;
+
+  const tasks = await getProjectListTasks(projectId, filters, sort);
   const assigneeNames = await resolveAssigneeNames(
     tasks.map((task) => task.assigneeId),
   );
@@ -97,7 +108,11 @@ export default async function ProjectListPage({
   return (
     <div className="flex flex-col gap-4">
       <ListFilters assigneeOptions={assigneeOptions} />
-      <TaskListTable tasks={tasks} assigneeNames={assigneeNames} />
+      <TaskListTable
+        tasks={tasks}
+        assigneeNames={assigneeNames}
+        sort={sort}
+      />
     </div>
   );
 }

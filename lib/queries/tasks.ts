@@ -81,9 +81,18 @@ export type ProjectListTaskFilters = {
   assigneeId?: string;
 };
 
+// F055 (AS-091): due-date sort, applied AFTER filtering — same query, just
+// a different `.order()` in place of the default `created_at ascending`.
+// "asc"/"desc" map directly onto Postgres NULLS behaviour; tasks with no
+// due date are pushed to the end regardless of direction (`nullsFirst:
+// false`) so an unset due date never outranks a real one in either sort
+// order — it's neither "earliest" nor "latest", it's unset.
+export type ProjectListTaskSort = "due_date_asc" | "due_date_desc";
+
 export async function getProjectListTasks(
   projectId: string,
   filters?: ProjectListTaskFilters,
+  sort?: ProjectListTaskSort,
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
@@ -105,9 +114,14 @@ export async function getProjectListTasks(
     query = query.eq("assignee_id", filters.assigneeId);
   }
 
-  const { data, error } = await query.order("created_at", {
-    ascending: true,
-  });
+  query =
+    sort === "due_date_asc"
+      ? query.order("due_date", { ascending: true, nullsFirst: false })
+      : sort === "due_date_desc"
+        ? query.order("due_date", { ascending: false, nullsFirst: false })
+        : query.order("created_at", { ascending: true });
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;

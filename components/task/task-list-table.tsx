@@ -20,7 +20,9 @@ import { TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import type { TaskCardTask } from "@/components/task/task-card";
+import type { ProjectListTaskSort } from "@/lib/queries/tasks";
 import { Badge } from "@/components/ui/badge";
+import { DueDateSortHeader } from "@/components/task/due-date-sort-header";
 import {
   Table,
   TableBody,
@@ -58,10 +60,13 @@ function formatDueDate(dueDate: string): string {
 export function TaskListTable({
   tasks,
   assigneeNames,
+  sort,
 }: {
   tasks: TaskCardTask[];
   /** taskAssigneeId -> display name, resolved server-side (F053). */
   assigneeNames: Map<string, string>;
+  /** F055 (AS-091): current due-date sort, drives the header's icon/state. */
+  sort?: ProjectListTaskSort;
 }) {
   if (tasks.length === 0) {
     return (
@@ -79,7 +84,9 @@ export function TaskListTable({
           <TableHead>Status</TableHead>
           <TableHead>Priority</TableHead>
           <TableHead>Assignee</TableHead>
-          <TableHead>Due date</TableHead>
+          <TableHead>
+            <DueDateSortHeader sort={sort} />
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
