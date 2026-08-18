@@ -31,3 +31,6 @@ F100 fixed AS-026. M3 marked GREEN (17/18 assertions PASS; AS-034 documented-def
 
 ## 2026-08-18T02:08:21Z — Milestone 4 (Tasks core) complete
 F033-F041 all COMPLETE (9/9). 203/203 tests. Spawning scrutiny-validator before M5.
+
+## 2026-08-18T02:16:38Z — Milestone 4 GREEN
+M4-scrutiny.md reported 26 test failures under heavy parallel-agent load against Supabase — re-ran full suite in isolation twice, both times 203/203 clean. Confirmed transient network/rate-limit flakiness under concurrent scrutiny reviewers, not a real regression (AS-062 cross-workspace RLS test genuinely passes). AS-064 documented as structurally deferred pending F042 (same pattern as M3's AS-034). M4 marked GREEN. Proceeding to M5 (Board & drag-and-drop) — the most interaction-heavy milestone.

@@ -48,7 +48,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F031 project-notfound-handling — AS-039, AS-040 [CLARIFIED-AUTO] [COMPLETE]
 - F032 project-empty-state — AS-041 [CLARIFIED-AUTO] [COMPLETE]
 
-## M4 — Tasks core
+## M4 — Tasks core [GREEN]
 
 - F033 db-schema-tasks — AS-047, AS-048, AS-049, AS-050, AS-058, AS-059, AS-065, AS-066 [CLARIFIED-AUTO] [COMPLETE]
 - F034 db-schema-rls-tasks — AS-062 [CLARIFIED-AUTO] [COMPLETE]
@@ -144,3 +144,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 ## Deferred re-verification (not a defect — genuinely blocked on later milestone)
 
 - AS-034 (open task count on project list, F027): cannot be genuinely satisfied until the tasks table exists (M4). Currently a documented `null`/pending placeholder, not a fake value. Re-verify AS-034 as part of a feature added once F033 (tasks table) lands — do not spawn a fix now, it would just fail again for the same structural reason.
+
+## Deferred re-verification (M4)
+
+- AS-064 (overdue visual indicator, F040): logic is correct and unit-tested, but no board/list view exists yet to render TaskCard where it would be observable. Re-verify visually once F042 (board-columns-render) lands — not a defect, a sequencing artifact.
