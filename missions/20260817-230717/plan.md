@@ -136,3 +136,11 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F097 onboarding-membership-gate — AS-005 [CLARIFIED-AUTO] [COMPLETE]
 - F098 signout-cache-headers — AS-022 [CLARIFIED-AUTO] [COMPLETE]
 - F099 invite-listusers-pagination — AS-007 [CLARIFIED-AUTO] [COMPLETE]
+
+## M3 follow-ups (from M3 scrutiny — see milestones/M3-scrutiny.md)
+
+- F100 project-name-check-constraint — AS-026 [CLARIFIED-AUTO]
+
+## Deferred re-verification (not a defect — genuinely blocked on later milestone)
+
+- AS-034 (open task count on project list, F027): cannot be genuinely satisfied until the tasks table exists (M4). Currently a documented `null`/pending placeholder, not a fake value. Re-verify AS-034 as part of a feature added once F033 (tasks table) lands — do not spawn a fix now, it would just fail again for the same structural reason.
