@@ -17,6 +17,9 @@ import {
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { calculatePosition } from "@/lib/board/position";
+import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
+import type { TaskComment } from "@/components/task/comment-list";
+import type { TaskAttachment } from "@/components/task/attachment-list";
 
 export type CreateTaskResult =
   | {
@@ -1270,6 +1273,198 @@ export async function moveAndReorderTask(
       id: updated.id,
       status: updated.status,
       position: updated.position,
+    },
+  };
+}
+
+// BUGFIX (TaskDetailSheet was fully built but never rendered anywhere):
+// on-demand fetch of one task's full detail — every field
+// TaskDetailSheet's props interface needs beyond what the board/list's
+// summary queries (getProjectBoardTasks/getProjectListTasks,
+// lib/queries/tasks.ts) already carry, plus its comments and attachments —
+// in a single round trip, called from the client the moment a TaskCard is
+// clicked and the sheet opens. Mirrors this file's other Server Actions:
+// Zod-validated input (deleteTaskSchema's shape — just a task id — is
+// reused since this action takes the identical single-field input),
+// admin client for the reads (RLS would also allow these same reads for an
+// active member, per the same rationale documented on editTask/addComment/
+// etc.), discriminated-union return, generic user-facing errors with
+// details only logged server-side (AS-146).
+//
+// Unlike the mutating actions in this file, this is a pure read — but it
+// still independently re-verifies the caller is an active member of the
+// task's owning workspace (defense in depth, AS-143) before returning any
+// task/comment/attachment data, exactly like every other action here.
+//
+// Comments/attachments are fetched non-deleted-only and ordered the same
+// way their respective components' doc comments already assume:
+// CommentList expects oldest-first (AS-096); AttachmentList has no
+// ordering assertion of its own, so created_at ascending (upload order) is
+// used for the same "oldest/first-uploaded first" consistency.
+//
+// Attachment signed URLs (AS-108: never a permanent public URL) are minted
+// here for every attachment up front, same bucket/TTL convention as
+// lib/actions/attachments.ts's uploadAttachment/getAttachmentSignedUrl —
+// re-exported from that file rather than duplicated. AttachmentList's
+// per-row "Open" click still re-mints its own fresh signed URL on demand
+// (unchanged), so a URL returned here going stale after
+// SIGNED_URL_TTL_SECONDS while the sheet stays open is not a functional
+// problem — it's read once for the initial render's implicit "did this
+// file resolve" info and is not otherwise exercised by this codebase's
+// existing components (both TaskDetailSheet and AttachmentList only ever
+// call getAttachmentSignedUrl for actually opening a file).
+export type GetTaskDetailResult =
+  | {
+      ok: true;
+      data: {
+        task: TaskDetailSheetTask;
+        comments: TaskComment[];
+        attachments: TaskAttachment[];
+        currentUserId: string;
+        currentUserRole: "owner" | "admin" | "member";
+      };
+    }
+  | { ok: false; error: string };
+
+export async function getTaskDetail(
+  taskId: string,
+): Promise<GetTaskDetailResult> {
+  const parsed = deleteTaskSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid task." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to view this task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Same task-scoped -> project -> workspace lookup convention as every
+  // other action in this file (editTask, deleteTask, etc.) — the real
+  // owning workspace is resolved server-side, never trusted from the
+  // client. A soft-deleted task behaves as "not found".
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, title, description, status, priority, assignee_id, due_date, tags, deleted_at, projects!inner(workspace_id)",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to view this task.",
+    };
+  }
+
+  const [commentsResult, attachmentsResult] = await Promise.all([
+    admin
+      .from("comments")
+      .select("id, task_id, user_id, text, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("attachments")
+      .select("id, task_id, file_url, file_name, uploaded_by, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  if (commentsResult.error) {
+    console.error(
+      "getTaskDetail: comments fetch failed:",
+      commentsResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (attachmentsResult.error) {
+    console.error(
+      "getTaskDetail: attachments fetch failed:",
+      attachmentsResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  const attachmentRows = attachmentsResult.data ?? [];
+
+  // AS-106/AS-108: `fileUrl` here is the Storage object path (the same
+  // value uploadAttachment inserts into the `attachments.file_url`
+  // column), never a permanent public URL — this component's "Open"
+  // action (AttachmentList.handleOpen) always mints its own fresh signed
+  // URL on demand via getAttachmentSignedUrl before opening a file, so
+  // this list-population fetch doesn't need to (and per AS-108's "don't
+  // cache a stale one" intent, shouldn't) pre-mint one per row here.
+  const attachments: TaskAttachment[] = attachmentRows.map((row) => ({
+    id: row.id,
+    taskId: row.task_id,
+    fileName: row.file_name,
+    fileUrl: row.file_url,
+    uploadedBy: row.uploaded_by,
+    createdAt: row.created_at,
+  }));
+
+  return {
+    ok: true,
+    data: {
+      task: {
+        id: taskRow.id,
+        title: taskRow.title,
+        description: taskRow.description,
+        status: taskRow.status as TaskDetailSheetTask["status"],
+        priority: taskRow.priority as TaskDetailSheetTask["priority"],
+        assigneeId: taskRow.assignee_id,
+        dueDate: taskRow.due_date,
+        tags: taskRow.tags ?? [],
+      },
+      comments: (commentsResult.data ?? []).map((row) => ({
+        id: row.id,
+        taskId: row.task_id,
+        userId: row.user_id,
+        text: row.text,
+        createdAt: row.created_at,
+      })),
+      attachments,
+      currentUserId: user.id,
+      currentUserRole: membership.role,
     },
   };
 }

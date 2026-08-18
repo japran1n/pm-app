@@ -51,6 +51,11 @@ import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
 } from "@/components/task/new-task-dialog";
+import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
+import {
+  TaskDetailSheet,
+  type TaskDetailSheetMember,
+} from "@/components/task/task-detail-sheet";
 
 const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
   "todo",
@@ -64,6 +69,7 @@ export function Board({
   initialTasks,
   onCardClick,
   assigneeOptions = [],
+  members = [],
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -71,12 +77,23 @@ export function Board({
   // task events).
   projectId: string;
   initialTasks: TaskCardTask[];
+  // Optional override — when omitted (the normal case), the board opens
+  // TaskDetailSheet itself via useTaskDetailSheet below. A caller may
+  // still pass its own handler (e.g. a future alternate use), which
+  // replaces the board's own click behavior entirely.
   onCardClick?: (taskId: string) => void;
   // Task-creation fix: workspace members offered as assignee choices in
   // the toolbar's "New Task" dialog. Defaults to `[]` so existing callers
   // (e.g. tests) that don't pass it don't crash — the dialog itself still
   // works fine with zero assignee options (the field is optional).
   assigneeOptions?: NewTaskDialogAssigneeOption[];
+  // BUGFIX: workspace members offered as assignee choices inside the
+  // opened TaskDetailSheet itself (its own assignee Select, distinct from
+  // the New Task dialog's). Same shape TaskDetailSheet already declares
+  // (TaskDetailSheetMember) — resolved server-side by the board page via
+  // getWorkspaceMembers and passed down here, since that query needs the
+  // Auth Admin client (server-only).
+  members?: TaskDetailSheetMember[];
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -92,6 +109,19 @@ export function Board({
   useBoardRealtime(projectId, (event) => {
     setTasks((current) => reconcileTask(current, event));
   });
+
+  // BUGFIX: TaskDetailSheet was fully built (F039) but nothing ever
+  // rendered it or wired a click handler to open it — see this file's own
+  // former comment on PointerSensor's activation distance, which already
+  // anticipated "opening the task detail sheet via TaskCard's onClick,
+  // once that's wired up". `onCardClick` (an explicit prop) still wins
+  // over this default so an existing/future caller can override it.
+  const taskDetailSheet = useTaskDetailSheet();
+  const handleCardClick = onCardClick ?? taskDetailSheet.openTask;
+
+  function handleTaskDeleted(deletedTaskId: string) {
+    setTasks((current) => current.filter((t) => t.id !== deletedTaskId));
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -272,7 +302,7 @@ export function Board({
               key={status}
               status={status}
               tasks={tasks.filter((task) => task.status === status)}
-              onCardClick={onCardClick}
+              onCardClick={handleCardClick}
             />
           ))}
         </div>
@@ -281,6 +311,28 @@ export function Board({
           {activeTask ? <TaskCard task={activeTask} /> : null}
         </DragOverlay>
       </DndContext>
+
+      {/* BUGFIX: only rendered when the board owns its own click handling
+          (onCardClick not overridden) — a caller supplying its own
+          onCardClick is expected to render/own its own sheet instance,
+          same "caller owns what onClick means" contract TaskCard's own
+          doc comment describes. */}
+      {!onCardClick && (
+        <TaskDetailSheet
+          task={taskDetailSheet.task}
+          members={members}
+          comments={taskDetailSheet.comments}
+          attachments={taskDetailSheet.attachments}
+          open={taskDetailSheet.open}
+          onOpenChange={taskDetailSheet.onOpenChange}
+          loading={taskDetailSheet.loading}
+          error={taskDetailSheet.error}
+          onRetry={taskDetailSheet.retry}
+          onDeleted={handleTaskDeleted}
+          currentUserId={taskDetailSheet.currentUserId}
+          currentUserRole={taskDetailSheet.currentUserRole}
+        />
+      )}
     </div>
   );
 }

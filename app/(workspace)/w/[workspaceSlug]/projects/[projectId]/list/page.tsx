@@ -110,12 +110,24 @@ export default async function ProjectListPage({
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
-  const assigneeOptions = workspace
-    ? (await getWorkspaceMembers(workspace.id)).active.map((member) => ({
-        id: member.userId,
-        label: member.name ?? member.email ?? member.userId,
-      }))
-    : [];
+  const workspaceMembers = workspace
+    ? await getWorkspaceMembers(workspace.id)
+    : { active: [], pending: [] };
+
+  const assigneeOptions = workspaceMembers.active.map((member) => ({
+    id: member.userId,
+    label: member.name ?? member.email ?? member.userId,
+  }));
+
+  // BUGFIX: TaskDetailSheet's assignee Select needs the full members list
+  // (TaskDetailSheetMember shape), not just the New Task dialog's
+  // narrower `{ id, label }` assignee options — same pattern the board
+  // page uses.
+  const detailSheetMembers = workspaceMembers.active.map((member) => ({
+    userId: member.userId,
+    email: member.email,
+    name: member.name,
+  }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -132,6 +144,7 @@ export default async function ProjectListPage({
         sort={sort}
         hasActiveFilters={hasActiveFilters}
         clearFiltersHref={clearFiltersHref}
+        members={detailSheetMembers}
       />
     </div>
   );

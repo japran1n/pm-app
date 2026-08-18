@@ -2,13 +2,17 @@
 // project rendered as a shadcn Table with title, status, priority,
 // assignee, and due date columns.
 //
-// Plain Server Component (no "use client"): rendering a static table from
-// already-fetched rows needs no client interactivity, and the clarified
-// spec's "primary content server-rendered in initial HTML" (AS-155)
-// requirement is satisfied for free by keeping this server-only. Filters
-// (AS-086..090), sort (AS-091), and inline status editing (AS-093) are
-// separate assertions/features layered on top later — this component only
-// covers AS-085's "show the columns" requirement.
+// BUGFIX (TaskDetailSheet was fully built but never rendered anywhere):
+// this component crossed the Client Component boundary (was previously a
+// plain Server Component, per this comment's now-outdated original text)
+// so a row click can open <TaskDetailSheet>, mirroring the Board view's
+// own TaskCard-click wiring (components/board/board.tsx). AS-155's
+// "primary content server-rendered in initial HTML" requirement still
+// holds in practice: the table's own rows are still rendered from the
+// `tasks` prop the Server Component page (list/page.tsx) fetched and
+// passed down — only the *interactivity* (row click, the sheet itself)
+// needs the client boundary, same rationale TaskCard/BoardColumn already
+// establish for the board.
 //
 // Status/priority are shown as Badge (color) + text label together, never
 // color alone, matching AS-153's rule (already followed by BoardColumn's
@@ -16,9 +20,11 @@
 // isn't this feature's assigned assertion — no reason to regress it here.
 //
 // F057 (AS-093): the Status cell renders <ListStatusSelect>, a small
-// Client Component wrapping a shadcn Select, instead of the static Badge
-// used for the other columns. This table stays a Server Component overall
-// (AS-155) — only that one per-row cell crosses the client boundary.
+// Client Component wrapping a shadcn Select. Its cell stops click
+// propagation (see the Status <TableCell> below) so interacting with the
+// status dropdown doesn't also open the detail sheet underneath it.
+
+"use client";
 
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
@@ -44,6 +50,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
+import {
+  TaskDetailSheet,
+  type TaskDetailSheetMember,
+} from "@/components/task/task-detail-sheet";
 
 function formatDueDate(dueDate: string): string {
   const date = new Date(dueDate);
@@ -61,6 +72,7 @@ export function TaskListTable({
   sort,
   hasActiveFilters = false,
   clearFiltersHref,
+  members = [],
 }: {
   tasks: TaskCardTask[];
   /** taskAssigneeId -> display name, resolved server-side (F053). */
@@ -83,7 +95,27 @@ export function TaskListTable({
    * duplicating `<ListFilters>`'s client-side `router.push` logic.
    */
   clearFiltersHref?: string;
+  /**
+   * BUGFIX: workspace members offered as assignee choices inside the
+   * detail sheet opened by a row click (TaskDetailSheet's own assignee
+   * Select) — same TaskDetailSheetMember shape/rationale as Board's own
+   * `members` prop (components/board/board.tsx).
+   */
+  members?: TaskDetailSheetMember[];
 }) {
+  const taskDetailSheet = useTaskDetailSheet();
+
+  function handleTaskDeleted(deletedTaskId: string) {
+    // No local task-list state here (this component receives `tasks` as a
+    // prop from the Server Component page, which re-fetches via
+    // revalidatePath after a mutating Server Action) — a deleted row
+    // disappears once that revalidation lands. In the meantime the sheet
+    // itself has already closed (TaskDetailSheet's own handleDelete calls
+    // onOpenChange(false) before onDeleted), so there's nothing else to
+    // reconcile client-side here.
+    void deletedTaskId;
+  }
+
   if (tasks.length === 0) {
     if (hasActiveFilters) {
       return (
@@ -110,6 +142,7 @@ export function TaskListTable({
   }
 
   return (
+    <>
     <div className="rounded-lg border border-border/60 bg-card">
       <Table>
         <TableHeader>
@@ -131,9 +164,25 @@ export function TaskListTable({
               : null;
 
             return (
-              <TableRow key={task.id} data-task-id={task.id}>
+              <TableRow
+                key={task.id}
+                data-task-id={task.id}
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer"
+                onClick={() => taskDetailSheet.openTask(task.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    taskDetailSheet.openTask(task.id);
+                  }
+                }}
+              >
                 <TableCell className="font-medium">{task.title}</TableCell>
-                <TableCell>
+                {/* stopPropagation: interacting with the status dropdown
+                    should change the status, not also open the detail
+                    sheet underneath it. */}
+                <TableCell onClick={(event) => event.stopPropagation()}>
                   <ListStatusSelect taskId={task.id} status={task.status} />
                 </TableCell>
                 <TableCell>
@@ -191,5 +240,21 @@ export function TaskListTable({
         </TableBody>
       </Table>
     </div>
+
+    <TaskDetailSheet
+      task={taskDetailSheet.task}
+      members={members}
+      comments={taskDetailSheet.comments}
+      attachments={taskDetailSheet.attachments}
+      open={taskDetailSheet.open}
+      onOpenChange={taskDetailSheet.onOpenChange}
+      loading={taskDetailSheet.loading}
+      error={taskDetailSheet.error}
+      onRetry={taskDetailSheet.retry}
+      onDeleted={handleTaskDeleted}
+      currentUserId={taskDetailSheet.currentUserId}
+      currentUserRole={taskDetailSheet.currentUserRole}
+    />
+    </>
   );
 }
