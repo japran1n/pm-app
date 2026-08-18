@@ -164,3 +164,12 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - CI secret configuration for RLS integration tests (describe.skipIf pattern skips silently without SUPABASE_SECRET_KEY) — to be confirmed as part of M8's CI/quality audit (F093).
 - AS-102's comment read path not yet wired into TaskDetailSheet's initial fetch (comments prop defaults to []) — functional gap, will surface naturally when exercised; low priority, not a security issue.
 - Minor test-assertion-strength gaps (AS-108 TTL not pinned, AS-114 partial-failure branch untested, AS-121 asserts count not id-absence) — acceptable given the underlying code is confirmed correct by direct read; not worth separate features at this project's stated "critical paths only" test-coverage target (discovery Q26).
+
+## M7 follow-ups (from M7 scrutiny — see milestones/M7-scrutiny.md)
+
+- F105 dashboard-table-archived-project-exclusion — AS-129, AS-134 [CLARIFIED-AUTO]
+- F106 list-view-status-priority-colors — AS-135 [CLARIFIED-AUTO]
+
+## Deferred re-verification (M7)
+
+- AS-136 (dashboard performance budget): no explicit budget defined in tech-decisions.md yet; F089 (M8) is where this gets a real measurement. Not a defect — a genuine sequencing dependency, same pattern as AS-034/AS-064.

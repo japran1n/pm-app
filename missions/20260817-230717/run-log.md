@@ -55,3 +55,6 @@ F104 verified: AS-101 fixed via Realtime Broadcast for delete-notification, prov
 
 ## 2026-08-18T06:26:57Z — Milestone 7 (Dashboard) complete
 F071-F078 all COMPLETE (8/8). All RPCs SECURITY INVOKER, RLS-enforced against parameter tampering (verified F077). Spawning scrutiny-validator before M8.
+
+## 2026-08-18T06:32:46Z — M7 scrutiny FAIL (2), follow-ups created
+Found: dashboard table (F078) leaks archived-project tasks while charts correctly exclude them (F105); list-view components reused in dashboard render status/priority with no color, inconsistent with the colored charts above them (F106). AS-136 documented as deferred to F089 (M8), same pattern as prior deferrals.
