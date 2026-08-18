@@ -53,3 +53,13 @@ export const createTaskSchema = z.object({
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+
+// Validates assignTask input (AS-051, AS-052, AS-053). assigneeId is
+// nullable — null means "unassign" (AS-053) and is a deliberate, valid
+// input, not an omitted/optional field.
+export const assignTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  assigneeId: z.string().uuid("Invalid assignee.").nullable(),
+});
+
+export type AssignTaskInput = z.infer<typeof assignTaskSchema>;

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createTaskSchema } from "@/lib/validation/tasks";
+import { createTaskSchema, assignTaskSchema } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 
 export type CreateTaskResult =
@@ -203,6 +203,151 @@ export async function createTask(
       authorId: inserted.author_id,
       position: inserted.position,
       createdAt: inserted.created_at,
+    },
+  };
+}
+
+export type AssignTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        assigneeId: string | null;
+      };
+    }
+  | { ok: false; error: string };
+
+// Assigns (or unassigns) a task (F036: AS-051, AS-052, AS-053). Pattern
+// mirrors createTask above: Zod-validated input, membership re-checked
+// server-side (defense in depth, AS-143), admin client used for the
+// actual update (RLS on `tasks` would also allow this same update for an
+// active member; the admin client is used here only because this action
+// has already independently re-verified membership itself), discriminated
+// union return, generic user-facing errors with details only logged
+// server-side (AS-146).
+//
+// assigneeId === null means "unassign" (AS-053) and is a valid, explicit
+// input — never treated as "no change".
+export async function assignTask(
+  taskId: string,
+  assigneeId: string | null,
+): Promise<AssignTaskResult> {
+  const parsed = assignTaskSchema.safeParse({ taskId, assigneeId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter valid assignment details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to assign a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // createTask's project lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, assignee_id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to assign this task.",
+    };
+  }
+
+  // AS-052: a task cannot be assigned to a user who is not a member of the
+  // task's workspace — verified server-side via a real DB query against
+  // the *task's own* workspace, never trusted from client input, and never
+  // skipped when assigneeId is non-null.
+  if (parsed.data.assigneeId !== null) {
+    const assigneeMembership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      parsed.data.assigneeId,
+    );
+    if (!assigneeMembership.ok) {
+      return {
+        ok: false,
+        error: "The selected assignee is not a member of this workspace.",
+      };
+    }
+  }
+
+  // AS-053: assigneeId === null unassigns the task.
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ assignee_id: parsed.data.assigneeId })
+    .eq("id", parsed.data.taskId)
+    .select("id, assignee_id")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("assignTask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "assignTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      assigneeId: updated.assignee_id,
     },
   };
 }
