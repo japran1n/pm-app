@@ -1,10 +1,7 @@
 # --- CREDENTIALS ---
 # Never commit any .env variant. .env.example is the only env file in git.
-.env
-.env.local
-.env.*.local
-.env.development
-.env.production
+.env*
+!.env.example
 
 # --- VERIFICATION SCRIPTS ---
 # Connection verification scripts are temporary; they're deleted on PASS.
