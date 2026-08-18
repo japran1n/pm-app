@@ -53,3 +53,50 @@ export const createProjectSchema = z
   );
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+// Validates edit-project input (AS-029, AS-037). Partial update of the same
+// fields as createProjectSchema minus workspaceId (workspaceId/projectId are
+// passed separately as function args in editProject, not part of the
+// user-editable field set) — name/description/startDate/endDate are all
+// optional here since editProject supports partial updates, but if a field
+// IS provided it must satisfy the same constraints as creation (AS-026's
+// non-empty name constraint still applies if name is being changed).
+export const editProjectSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1, "Project name is required.")
+      .max(200, "Project name must be 200 characters or fewer.")
+      .optional(),
+    description: z
+      .string()
+      .trim()
+      .max(4000, "Description must be 4000 characters or fewer.")
+      .optional()
+      .nullable(),
+    startDate: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid start date (YYYY-MM-DD).")
+      .optional()
+      .nullable(),
+    endDate: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid end date (YYYY-MM-DD).")
+      .optional()
+      .nullable(),
+  })
+  .refine(
+    (data) => {
+      if (!data.startDate || !data.endDate) return true;
+      return data.endDate >= data.startDate;
+    },
+    {
+      message: "End date cannot be earlier than the start date.",
+      path: ["endDate"],
+    },
+  );
+
+export type EditProjectInput = z.infer<typeof editProjectSchema>;

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createProjectSchema } from "@/lib/validation/projects";
+import { createProjectSchema, editProjectSchema } from "@/lib/validation/projects";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 
 export type CreateProjectResult =
@@ -138,6 +138,172 @@ export async function createProject(
       endDate: inserted.end_date,
       createdAt: inserted.created_at,
       createdBy: inserted.created_by,
+    },
+  };
+}
+
+export type EditProjectResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        workspaceId: string;
+        name: string;
+        description: string | null;
+        startDate: string | null;
+        endDate: string | null;
+        updatedAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+export type EditProjectUpdates = {
+  name?: string;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+};
+
+// Edits a project's name/description/start_date/end_date (AS-029). Any
+// active workspace member may edit — no per-project ownership/role
+// restriction beyond membership, mirroring the AS-061 "no per-task
+// ownership restriction" convention already established for tasks; the
+// same principle applies here since AS-029 does not gate this to
+// admin/owner (unlike AS-030's archive action, which is role-gated).
+//
+// updated_at is intentionally never set from application code: the
+// `projects_set_updated_at` trigger (supabase/migrations/
+// 20260818004413_create_projects.sql, `set_updated_at()`) fires on every
+// `before update` and stamps `now()` itself (AS-037). Setting it here too
+// would be redundant and would let a client-influenced value race the
+// trigger's own `now()` read.
+export async function editProject(
+  projectId: string,
+  workspaceId: string,
+  updates: EditProjectUpdates,
+): Promise<EditProjectResult> {
+  const parsed = editProjectSchema.safeParse(updates);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter valid project details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a project." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // this exact workspace, server-side, rather than trusting the UI only
+  // shows the edit affordance to members of the active workspace.
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this project.",
+    };
+  }
+
+  // Load the current row, scoped to this exact workspace, so (a) a
+  // project belonging to a different workspace can never be edited by
+  // supplying an arbitrary projectId + a workspace the caller happens to
+  // be a member of, and (b) a partial update (e.g. only startDate
+  // supplied) can still be checked against the *effective* end date for
+  // AS-035's start/end ordering constraint.
+  const { data: existing, error: fetchError } = await admin
+    .from("projects")
+    .select("id, workspace_id, name, description, start_date, end_date, deleted_at")
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (fetchError || !existing) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const nextStartDate =
+    parsed.data.startDate !== undefined ? parsed.data.startDate : existing.start_date;
+  const nextEndDate =
+    parsed.data.endDate !== undefined ? parsed.data.endDate : existing.end_date;
+
+  if (nextStartDate && nextEndDate && nextEndDate < nextStartDate) {
+    return {
+      ok: false,
+      error: "End date cannot be earlier than the start date.",
+    };
+  }
+
+  const updatePayload: {
+    name?: string;
+    description?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+  } = {};
+  if (parsed.data.name !== undefined) updatePayload.name = parsed.data.name;
+  if (parsed.data.description !== undefined)
+    updatePayload.description = parsed.data.description;
+  if (parsed.data.startDate !== undefined)
+    updatePayload.start_date = parsed.data.startDate;
+  if (parsed.data.endDate !== undefined) updatePayload.end_date = parsed.data.endDate;
+
+  if (Object.keys(updatePayload).length === 0) {
+    return { ok: false, error: "No changes to save." };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("projects")
+    .update(updatePayload)
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .select("id, workspace_id, name, description, start_date, end_date, updated_at")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("editProject: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "editProject: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      workspaceId: updated.workspace_id,
+      name: updated.name,
+      description: updated.description,
+      startDate: updated.start_date,
+      endDate: updated.end_date,
+      updatedAt: updated.updated_at,
     },
   };
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceProjects } from "@/lib/queries/projects";
 import { NewProjectDialog } from "@/components/new-project-dialog";
+import { EditProjectDialog } from "@/components/edit-project-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -110,11 +111,23 @@ export default async function ProjectsPage({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
             <Card key={project.id}>
-              <CardHeader>
-                <CardTitle className="line-clamp-1">{project.name}</CardTitle>
-                <CardDescription className="line-clamp-2">
-                  {project.description || "No description."}
-                </CardDescription>
+              <CardHeader className="flex flex-row items-start justify-between gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                  <CardDescription className="line-clamp-2">
+                    {project.description || "No description."}
+                  </CardDescription>
+                </div>
+                <EditProjectDialog
+                  workspaceId={workspace.id}
+                  project={{
+                    id: project.id,
+                    name: project.name,
+                    description: project.description,
+                    startDate: project.startDate,
+                    endDate: project.endDate,
+                  }}
+                />
               </CardHeader>
               <CardContent>
                 {/* AS-034: open task count. The `tasks` table doesn't exist
