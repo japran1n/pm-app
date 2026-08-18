@@ -175,9 +175,10 @@ export async function getWorkspaceListTasks(
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, projects!inner(workspace_id)",
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, projects!inner(workspace_id, deleted_at)",
     )
     .eq("projects.workspace_id", workspaceId)
+    .is("projects.deleted_at", null)
     .is("deleted_at", null);
 
   if (filters?.status) {

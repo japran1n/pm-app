@@ -59,6 +59,7 @@ describe.skipIf(!haveAdminCreds)(
     let otherWorkspaceId: string;
     let projectAId: string;
     let projectBId: string;
+    let archivedProjectId: string;
     let otherWorkspaceProjectId: string;
     let memberUserId: string;
     let otherMemberUserId: string;
@@ -172,6 +173,28 @@ describe.skipIf(!haveAdminCreds)(
         );
       otherWorkspaceProjectId = otherProject.id;
 
+      // A third project in the SAME workspace, immediately soft-deleted
+      // (archived). F105 (AS-129/AS-134): a task in this project must be
+      // excluded from getWorkspaceListTasks's results, matching the
+      // dashboard RPCs' `p.deleted_at is null` exclusion rule.
+      const { data: archivedProject, error: archivedProjectErr } =
+        await adminClient
+          .from("projects")
+          .insert({ workspace_id: workspaceId, name: "F078 Archived Project" })
+          .select("id")
+          .single();
+      if (archivedProjectErr || !archivedProject)
+        throw new Error(
+          `Failed to seed archived project: ${archivedProjectErr?.message}`,
+        );
+      archivedProjectId = archivedProject.id;
+      const { error: archiveErr } = await adminClient
+        .from("projects")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", archivedProjectId);
+      if (archiveErr)
+        throw new Error(`Failed to archive project: ${archiveErr.message}`);
+
       // Task A: project A / todo / high / assigned to memberUserId
       const { data: taskA, error: taskAErr } = await adminClient
         .from("tasks")
@@ -240,6 +263,23 @@ describe.skipIf(!haveAdminCreds)(
         throw new Error(`Failed to seed task D: ${taskDErr?.message}`);
       createdTaskIds.push(taskD.id);
 
+      // Task E: belongs to the archived project in the SAME workspace —
+      // must never appear in getWorkspaceListTasks's results (F105).
+      const { data: taskE, error: taskEErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: archivedProjectId,
+          title: "Task E (archived project)",
+          status: "todo",
+          priority: "urgent",
+          author_id: memberUserId,
+        })
+        .select("id")
+        .single();
+      if (taskEErr || !taskE)
+        throw new Error(`Failed to seed task E: ${taskEErr?.message}`);
+      createdTaskIds.push(taskE.id);
+
       memberClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await memberClient.auth.signInWithPassword({
         email: memberEmail,
@@ -255,6 +295,8 @@ describe.skipIf(!haveAdminCreds)(
       }
       if (projectAId) await adminClient.from("projects").delete().eq("id", projectAId);
       if (projectBId) await adminClient.from("projects").delete().eq("id", projectBId);
+      if (archivedProjectId)
+        await adminClient.from("projects").delete().eq("id", archivedProjectId);
       if (otherWorkspaceProjectId)
         await adminClient.from("projects").delete().eq("id", otherWorkspaceProjectId);
       if (workspaceId) {
@@ -353,6 +395,19 @@ describe.skipIf(!haveAdminCreds)(
         "Task B",
         "Task C",
       ]);
+    });
+
+    it("AS-129/AS-134 (F105): a task belonging to an archived (soft-deleted) project is excluded from the dashboard table, while non-archived-project tasks remain, matching the charts' exclusion rule", async () => {
+      const { getWorkspaceListTasks } = await import("@/lib/queries/tasks");
+      const tasks = await getWorkspaceListTasks(workspaceId);
+
+      const titles = tasks.map((t) => t.title).sort();
+      // Task E lives in the archived project and must be absent, even
+      // though it is workspace-scoped and not soft-deleted itself.
+      expect(titles).not.toContain("Task E (archived project)");
+      // Non-archived-project tasks are still present — proving this is a
+      // project-archive filter, not an over-broad exclusion.
+      expect(titles).toEqual(["Task A", "Task B", "Task C"]);
     });
   },
 );
