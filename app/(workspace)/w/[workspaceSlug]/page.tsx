@@ -3,15 +3,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { getPriorityCounts, getStatusCounts } from "@/lib/queries/dashboard";
-import { PriorityBarChart } from "@/components/dashboard/priority-bar-chart";
-import { StatusPieChart } from "@/components/dashboard/status-pie-chart";
-import { DashboardRetryButton } from "@/components/dashboard/dashboard-retry-button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { DashboardContent } from "@/components/dashboard/dashboard-content";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
 // the workspace home dashboard — a priority bar chart (F071's
@@ -37,6 +29,15 @@ import {
 // (components/task/task-card.tsx) and the board column header dot
 // (components/board/board-column.tsx), so a chart's colors always match
 // those elements elsewhere in the app.
+//
+// F074 (AS-130): "A workspace with zero tasks shows an empty-state
+// dashboard, not an error or blank chart." Recharts renders awkwardly or
+// blank when handed all-zero series, so `isEmpty` below (computed from
+// the RPC results, not just an absence of props) is checked explicitly
+// before either chart ever mounts. The three-way error/empty/populated
+// branch itself now lives in components/dashboard/dashboard-content.tsx
+// (a pure, props-only component) so it can be unit tested directly — see
+// tests/unit/dashboard-empty-state.test.ts.
 export default async function WorkspacePage({
   params,
 }: {
@@ -87,50 +88,13 @@ export default async function WorkspacePage({
     <div className="flex flex-1 flex-col gap-6 p-6">
       <h1 className="text-lg font-semibold">Welcome to {workspace.name}</h1>
 
-      {hasError ? (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-6">
-            <p className="text-sm text-muted-foreground">
-              We couldn&apos;t load your dashboard charts.
-            </p>
-            <DashboardRetryButton />
-          </CardContent>
-        </Card>
-      ) : isEmpty ? (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 py-6">
-            <p className="text-sm text-muted-foreground">
-              No tasks yet — charts will appear here once this workspace has
-              tasks.
-            </p>
-            <Link
-              href={`/w/${workspaceSlug}/projects`}
-              className="text-sm underline"
-            >
-              View projects
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tasks by priority</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PriorityBarChart data={priorityData} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Tasks by status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <StatusPieChart data={statusData} />
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <DashboardContent
+        workspaceSlug={workspaceSlug}
+        hasError={hasError}
+        isEmpty={isEmpty}
+        priorityData={priorityData}
+        statusData={statusData}
+      />
 
       {/* F027: natural next stop from the dashboard. */}
       <Link
