@@ -108,21 +108,21 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M8 — Security, quality, accessibility, docs, polish
 
-- F079 rls-audit-all-tables — AS-137, AS-138, AS-139 [CLARIFIED-AUTO]
-- F080 env-secrets-audit — AS-140, AS-141, AS-142 [CLARIFIED-AUTO]
-- F081 server-action-membership-reguard — AS-143 [CLARIFIED-AUTO]
-- F082 zod-schemas-all-actions — AS-146, AS-160 [CLARIFIED-AUTO]
-- F083 sanitization-audit — AS-148 [CLARIFIED-AUTO]
-- F084 parameterized-queries-audit — AS-147 [CLARIFIED-AUTO]
-- F085 keyboard-a11y-pass — AS-151 [CLARIFIED-AUTO]
-- F086 aria-labels-pass — AS-152 [CLARIFIED-AUTO]
-- F087 color-contrast-status-labels — AS-153, AS-154 [CLARIFIED-AUTO]
-- F088 ssr-audit — AS-155 [CLARIFIED-AUTO]
-- F089 perf-budget-check — AS-156, AS-136 [CLARIFIED-AUTO]
-- F090 e2e-board-reorder-test — AS-150 [CLARIFIED-AUTO]
-- F091 unit-test-suite — AS-149 [CLARIFIED-AUTO]
-- F092 readme-docs — AS-159 [CLARIFIED-AUTO]
-- F093 typecheck-lint-clean — AS-157, AS-158 [CLARIFIED-AUTO]
+- F079 rls-audit-all-tables — AS-137, AS-138, AS-139 [CLARIFIED-AUTO] [COMPLETE]
+- F080 env-secrets-audit — AS-140, AS-141, AS-142 [CLARIFIED-AUTO] [COMPLETE]
+- F081 server-action-membership-reguard — AS-143 [CLARIFIED-AUTO] [COMPLETE]
+- F082 zod-schemas-all-actions — AS-146, AS-160 [CLARIFIED-AUTO] [COMPLETE]
+- F083 sanitization-audit — AS-148 [CLARIFIED-AUTO] [COMPLETE]
+- F084 parameterized-queries-audit — AS-147 [CLARIFIED-AUTO] [COMPLETE]
+- F085 keyboard-a11y-pass — AS-151 [CLARIFIED-AUTO] [COMPLETE]
+- F086 aria-labels-pass — AS-152 [CLARIFIED-AUTO] [COMPLETE]
+- F087 color-contrast-status-labels — AS-153, AS-154 [CLARIFIED-AUTO] [COMPLETE]
+- F088 ssr-audit — AS-155 [CLARIFIED-AUTO] [COMPLETE]
+- F089 perf-budget-check — AS-156, AS-136 [CLARIFIED-AUTO] [COMPLETE]
+- F090 e2e-board-reorder-test — AS-150 [CLARIFIED-AUTO] [COMPLETE]
+- F091 unit-test-suite — AS-149 [CLARIFIED-AUTO] [COMPLETE]
+- F092 readme-docs — AS-159 [CLARIFIED-AUTO] [COMPLETE]
+- F093 typecheck-lint-clean — AS-157, AS-158 [CLARIFIED-AUTO] [COMPLETE]
 
 ## Coverage check
 
