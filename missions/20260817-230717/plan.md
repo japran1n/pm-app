@@ -148,3 +148,9 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 ## Deferred re-verification (M4)
 
 - AS-064 (overdue visual indicator, F040): logic is correct and unit-tested, but no board/list view exists yet to render TaskCard where it would be observable. Re-verify visually once F042 (board-columns-render) lands — not a defect, a sequencing artifact.
+
+## M5 follow-ups (from M5 scrutiny — see milestones/M5-scrutiny.md)
+
+- F101 position-bound-fix — AS-072, AS-082 [CLARIFIED-AUTO]
+- F102 optimistic-rollback-partial-failure — AS-077 [CLARIFIED-AUTO]
+- F103 realtime-ordering-guard — AS-076 [CLARIFIED-AUTO]
