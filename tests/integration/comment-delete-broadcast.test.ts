@@ -116,9 +116,7 @@ describe.skipIf(!haveAdminCreds)(
     let authorUserId: string;
 
     const ANON_KEY =
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-      SECRET_KEY!;
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? SECRET_KEY!;
 
     beforeAll(async () => {
       adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
