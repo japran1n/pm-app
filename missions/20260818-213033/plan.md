@@ -23,7 +23,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F122 avatar-component — AS-204, AS-214 [CLARIFIED-AUTO] [COMPLETE]
 - F123 profile-settings-page — AS-202 [CLARIFIED-AUTO] [COMPLETE]
 - F124 timezone-date-utils — AS-207 [CLARIFIED-AUTO] [COMPLETE]
-- F125 theme-toggle — AS-211, AS-212, AS-213 [CLARIFIED-AUTO]
+- F125 theme-toggle — AS-211, AS-212, AS-213 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M11 — Roles, permissions & project-level access
 
