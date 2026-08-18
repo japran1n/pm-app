@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { PriorityBarChart } from "@/components/dashboard/priority-bar-chart";
 import { StatusPieChart } from "@/components/dashboard/status-pie-chart";
+import { OverdueTile } from "@/components/dashboard/overdue-tile";
 import { DashboardRetryButton } from "@/components/dashboard/dashboard-retry-button";
 import {
   Card,
@@ -36,6 +37,7 @@ export type DashboardContentProps = {
   isEmpty: boolean;
   priorityData: PriorityCountDatum[];
   statusData: StatusCountDatum[];
+  overdueCount: number;
 };
 
 export function DashboardContent({
@@ -44,6 +46,7 @@ export function DashboardContent({
   isEmpty,
   priorityData,
   statusData,
+  overdueCount,
 }: DashboardContentProps) {
   if (hasError) {
     return (
@@ -77,23 +80,28 @@ export function DashboardContent({
   }
 
   return (
-    <div className="grid gap-6 md:grid-cols-2" data-testid="dashboard-charts">
-      <Card>
-        <CardHeader>
-          <CardTitle>Tasks by priority</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PriorityBarChart data={priorityData} />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Tasks by status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <StatusPieChart data={statusData} />
-        </CardContent>
-      </Card>
+    <div className="flex flex-col gap-6">
+      <div className="grid gap-6 sm:grid-cols-3">
+        <OverdueTile count={overdueCount} />
+      </div>
+      <div className="grid gap-6 md:grid-cols-2" data-testid="dashboard-charts">
+        <Card>
+          <CardHeader>
+            <CardTitle>Tasks by priority</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PriorityBarChart data={priorityData} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Tasks by status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatusPieChart data={statusData} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

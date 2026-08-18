@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import { getPriorityCounts, getStatusCounts } from "@/lib/queries/dashboard";
+import {
+  getPriorityCounts,
+  getStatusCounts,
+  getOverdueCount,
+} from "@/lib/queries/dashboard";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
@@ -58,16 +62,19 @@ export default async function WorkspacePage({
     redirect("/onboarding");
   }
 
-  const [priorityResult, statusResult] = await Promise.all([
+  const [priorityResult, statusResult, overdueResult] = await Promise.all([
     getPriorityCounts(supabase, workspace.id),
     getStatusCounts(supabase, workspace.id),
+    getOverdueCount(supabase, workspace.id),
   ]);
 
   // Error state: log the real error (Sentry-equivalent per this
   // codebase's existing convention — see lib/actions/attachments.ts) and
   // render an inline retry rather than throwing, so one failed RPC doesn't
   // take down the whole workspace home page.
-  const hasError = Boolean(priorityResult.error || statusResult.error);
+  const hasError = Boolean(
+    priorityResult.error || statusResult.error || overdueResult.error,
+  );
   if (priorityResult.error) {
     console.error(
       `[dashboard] get_priority_counts failed for workspace ${workspace.id}: ${priorityResult.error}`,
@@ -78,9 +85,15 @@ export default async function WorkspacePage({
       `[dashboard] get_status_counts failed for workspace ${workspace.id}: ${statusResult.error}`,
     );
   }
+  if (overdueResult.error) {
+    console.error(
+      `[dashboard] get_overdue_count failed for workspace ${workspace.id}: ${overdueResult.error}`,
+    );
+  }
 
   const priorityData = priorityResult.data ?? [];
   const statusData = statusResult.data ?? [];
+  const overdueCount = overdueResult.data ?? 0;
   const totalTasks = statusData.reduce((sum, datum) => sum + datum.count, 0);
   const isEmpty = !hasError && totalTasks === 0;
 
@@ -94,6 +107,7 @@ export default async function WorkspacePage({
         isEmpty={isEmpty}
         priorityData={priorityData}
         statusData={statusData}
+        overdueCount={overdueCount}
       />
 
       {/* F027: natural next stop from the dashboard. */}

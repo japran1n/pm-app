@@ -73,6 +73,7 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         isEmpty: true,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
+        overdueCount: 0,
       }),
     );
 
@@ -99,6 +100,7 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         isEmpty: true,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
+        overdueCount: 0,
       }),
     );
 
@@ -115,6 +117,7 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         isEmpty: false,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: NONZERO_STATUS_DATA,
+        overdueCount: 0,
       }),
     );
 

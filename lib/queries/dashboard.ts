@@ -83,6 +83,26 @@ export async function getPriorityCounts(
   return { data: result, error: null };
 }
 
+// F075 (AS-131): thin data-layer wrapper around the `get_overdue_count`
+// RPC (supabase/migrations/20260818080000_rpc_overdue_count.sql), mirroring
+// getPriorityCounts/getStatusCounts's shape — `{ data, error }`, RPC call,
+// no client-side task-list fetch. Returns a single number rather than an
+// array since the RPC returns one scalar count per workspace.
+export async function getOverdueCount(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<{ data: number | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("get_overdue_count", {
+    p_workspace_id: workspaceId,
+  });
+
+  if (error) {
+    return { data: null, error: error.message };
+  }
+
+  return { data: Number(data ?? 0), error: null };
+}
+
 export async function getStatusCounts(
   supabase: SupabaseClient,
   workspaceId: string,
