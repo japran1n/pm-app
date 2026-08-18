@@ -63,8 +63,11 @@ describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
     expect(boardSource).toMatch(/moveTaskStatus\(\s*movedTask\.id,\s*movedTask\.status\s*\)/);
   });
 
-  it("rolls back local state to the pre-drop snapshot when the action fails", () => {
-    expect(boardSource).toMatch(/if\s*\(\s*!result\.ok\s*\)\s*{\s*setTasks\(current\);/);
+  it("rolls back local state to the pre-drop snapshot when the action fails (F047: AS-077 -- rollback funnels through a shared rollback() helper that calls setTasks(current))", () => {
+    expect(boardSource).toMatch(
+      /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(current\);/,
+    );
+    expect(boardSource).toMatch(/if\s*\(\s*!result\.ok\s*\)\s*{\s*rollback\(/);
   });
 
   it("F046: imports reorderTask and calculatePosition", () => {

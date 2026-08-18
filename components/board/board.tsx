@@ -36,6 +36,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { toast } from "sonner";
 
 import { moveTaskStatus, reorderTask } from "@/lib/actions/tasks";
 import { calculatePosition } from "@/lib/board/position";
@@ -150,15 +151,35 @@ export function Board({
         ...withoutActive.slice(insertAt),
       ];
 
+      // F047 (AS-077): local state above is already updated the instant the
+      // drop happens — the card visually sits in its new column/position
+      // before either Server Action below has resolved. If EITHER call
+      // fails, roll back to the pre-drop `current` snapshot and surface a
+      // single error toast (sonner, matching the pattern used by
+      // edit-project-dialog.tsx / new-project-dialog.tsx / etc.). A
+      // `rolledBack` flag guards against double-rollback/double-toast when
+      // both calls fail, since they resolve independently.
+      let rolledBack = false;
+      function rollback(message: string) {
+        if (rolledBack) return;
+        rolledBack = true;
+        setTasks(current);
+        toast.error(message);
+      }
+
       // F045 (AS-069): the card changed columns — persist the new status.
       // Optimistic: local state is already updated above; on failure, roll
       // back to the pre-drop state.
       if (movedTask.status !== activeTask.status) {
-        void moveTaskStatus(movedTask.id, movedTask.status).then((result) => {
-          if (!result.ok) {
-            setTasks(current);
-          }
-        });
+        void moveTaskStatus(movedTask.id, movedTask.status)
+          .then((result) => {
+            if (!result.ok) {
+              rollback(result.error);
+            }
+          })
+          .catch(() => {
+            rollback("Something went wrong moving that task. Please try again.");
+          });
       }
 
       // F046 (AS-070, AS-078, AS-079, AS-080): regardless of whether the
@@ -167,11 +188,15 @@ export function Board({
       // comment in lib/actions/tasks.ts for why the two aren't merged into
       // one call). Optimistic, with the same rollback-to-`current` on
       // failure.
-      void reorderTask(movedTask.id, newPosition).then((result) => {
-        if (!result.ok) {
-          setTasks(current);
-        }
-      });
+      void reorderTask(movedTask.id, newPosition)
+        .then((result) => {
+          if (!result.ok) {
+            rollback(result.error);
+          }
+        })
+        .catch(() => {
+          rollback("Something went wrong moving that task. Please try again.");
+        });
 
       return next;
     });
