@@ -21,6 +21,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 
 // Persistent left nav shell wrapping every /w/[workspaceSlug]/* page (see
@@ -88,7 +89,15 @@ function SidebarContent({
         })}
       </nav>
 
-      <div className="border-t p-2">
+      <div className="flex flex-col gap-2 border-t p-2">
+        {/* F125 (AS-211): theme toggle, next to sign-out per the feature
+            spec's Files list. */}
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-medium text-sidebar-foreground/70">
+            Theme
+          </span>
+          <ThemeToggle />
+        </div>
         <form action={signOut}>
           <Button
             type="submit"
