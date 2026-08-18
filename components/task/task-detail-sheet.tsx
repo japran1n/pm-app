@@ -42,6 +42,7 @@ import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { TagsEditor } from "@/components/task/tags-editor";
+import { CommentList, type TaskComment } from "@/components/task/comment-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -109,6 +110,7 @@ function memberLabel(member: TaskDetailSheetMember): string {
 export function TaskDetailSheet({
   task,
   members,
+  comments = [],
   open,
   onOpenChange,
   loading = false,
@@ -120,6 +122,11 @@ export function TaskDetailSheet({
   task: TaskDetailSheetTask | null;
   /** Workspace members eligible as assignees (from getWorkspaceMembers). */
   members: TaskDetailSheetMember[];
+  /** F060: task's comments (from lib/queries/comments.ts's getTaskComments),
+   * ideally already oldest-first. Defaults to empty — a caller that hasn't
+   * been updated to fetch comments yet still renders a valid empty state
+   * rather than crashing. */
+  comments?: TaskComment[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Drives the loading skeleton when a future caller is still fetching. */
@@ -424,6 +431,12 @@ export function TaskDetailSheet({
               </div>
 
               <TagsEditor taskId={task.id} tags={task.tags} />
+
+              <CommentList
+                taskId={task.id}
+                comments={comments}
+                members={members}
+              />
             </div>
 
             <SheetFooter>
