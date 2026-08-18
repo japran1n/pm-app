@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProjectBoardTasks } from "@/lib/queries/tasks";
 import { getWorkspaceMembers } from "@/lib/queries/members";
+import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { Board } from "@/components/board/board";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -43,14 +44,18 @@ export default async function ProjectBoardPage({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const tasks = await getProjectBoardTasks(projectId);
-
   const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+
+  // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
+  // (lib/queries/profile.ts's getCurrentUserTimezone) and threaded down to
+  // <Board> as a prop — never re-queried per card. Run alongside the other
+  // independent fetches below rather than sequentially awaited.
+  const [tasks, workspaceResult, timezone] = await Promise.all([
+    getProjectBoardTasks(projectId),
+    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+    getCurrentUserTimezone(supabase),
+  ]);
+  const { data: workspace } = workspaceResult;
 
   const workspaceMembers = workspace
     ? await getWorkspaceMembers(workspace.id)
@@ -103,6 +108,7 @@ export default async function ProjectBoardPage({
       assigneeOptions={assigneeOptions}
       members={detailSheetMembers}
       assignees={assignees}
+      timezone={timezone}
     />
   );
 }

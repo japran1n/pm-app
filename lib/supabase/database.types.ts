@@ -380,7 +380,10 @@ export type Database = {
           slug: string
         }[]
       }
-      get_overdue_count: { Args: { p_workspace_id: string }; Returns: number }
+      get_overdue_count: {
+        Args: { p_timezone?: string; p_workspace_id: string }
+        Returns: number
+      }
       get_priority_counts: {
         Args: { p_workspace_id: string }
         Returns: {

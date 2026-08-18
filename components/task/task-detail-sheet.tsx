@@ -139,6 +139,7 @@ export function TaskDetailSheet({
   onDeleted,
   currentUserId,
   currentUserRole,
+  timezone = "UTC",
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -180,6 +181,13 @@ export function TaskDetailSheet({
    * CommentList to show a delete affordance on *any* comment for
    * admin/owner (AS-100). */
   currentUserRole?: "owner" | "admin" | "member";
+  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
+   * by the caller's Server Component page (board/page.tsx, list/page.tsx —
+   * via lib/queries/profile.ts's getCurrentUserTimezone) and passed
+   * through here, never fetched by this Client Component. Defaults to
+   * "UTC" for callers that haven't been updated yet (e.g. tests), same
+   * "safe default" convention as `currentUserId`/`activeTimer` above. */
+  timezone?: string;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
@@ -490,15 +498,15 @@ export function TaskDetailSheet({
                 <Label
                   htmlFor={`task-due-date-${task.id}`}
                   className={cn(
-                    isOverdue(task.dueDate, task.status) &&
+                    isOverdue(task.dueDate, task.status, timezone) &&
                       "inline-flex items-center gap-1 text-destructive",
                   )}
                 >
-                  {isOverdue(task.dueDate, task.status) && (
+                  {isOverdue(task.dueDate, task.status, timezone) && (
                     <TriangleAlert className="size-3" aria-hidden="true" />
                   )}
                   Due date
-                  {isOverdue(task.dueDate, task.status) && (
+                  {isOverdue(task.dueDate, task.status, timezone) && (
                     <span className="sr-only">(overdue)</span>
                   )}
                 </Label>
@@ -511,7 +519,7 @@ export function TaskDetailSheet({
                     handleDueDateChange(changeEvent.target.value)
                   }
                   className={cn(
-                    isOverdue(task.dueDate, task.status) &&
+                    isOverdue(task.dueDate, task.status, timezone) &&
                       "border-destructive text-destructive",
                   )}
                 />

@@ -1,9 +1,12 @@
 // F075 (AS-131): "The dashboard shows a count of overdue tasks (due date
 // in the past, status not `done`)." Fed by `get_overdue_count`
-// (supabase/migrations/20260818080000_rpc_overdue_count.sql) via
-// lib/queries/dashboard.ts's getOverdueCount, computed in the database
-// (AS-127-style constraint the sibling F071/F072 RPCs were built under),
-// not derived from a client-side task list.
+// (supabase/migrations/20260818080000_rpc_overdue_count.sql, extended by
+// F124's supabase/migrations/20260818210500_rpc_overdue_count_timezone.sql
+// to take the caller's IANA timezone — AS-207) via lib/queries/
+// dashboard.ts's getOverdueCount, computed in the database (AS-127-style
+// constraint the sibling F071/F072 RPCs were built under), not derived
+// from a client-side task list. This component itself only renders the
+// already-computed count — it has no date/timezone logic of its own.
 //
 // Pure, props-only Server Component — no client boundary needed since
 // this is static text, not an interactive chart (unlike

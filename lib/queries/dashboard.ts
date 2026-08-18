@@ -88,12 +88,27 @@ export async function getPriorityCounts(
 // getPriorityCounts/getStatusCounts's shape — `{ data, error }`, RPC call,
 // no client-side task-list fetch. Returns a single number rather than an
 // array since the RPC returns one scalar count per workspace.
+//
+// F124 (AS-207): `timezone` is forwarded as the RPC's `p_timezone`
+// argument (supabase/migrations/20260818210000_rpc_overdue_count_timezone.sql)
+// so the SQL-side "is this task overdue" definition uses the SAME
+// caller-supplied IANA timezone as lib/tasks/is-overdue.ts's client-side
+// definition, instead of the database server's own clock — this is the
+// "how does the user's timezone reach the RPC" decision the dashboard
+// overdue tile needed (see this feature's handoff Decisions Made).
+// Defaults to "UTC" (matching the RPC's own SQL-side default) so existing
+// callers that haven't been updated to pass a real timezone yet — e.g.
+// tests/integration/dashboard-workspace-switch-refresh.test.ts, which
+// verifies workspace-scoping, not timezone behavior — keep working
+// unchanged.
 export async function getOverdueCount(
   supabase: SupabaseClient,
   workspaceId: string,
+  timezone: string = "UTC",
 ): Promise<{ data: number | null; error: string | null }> {
   const { data, error } = await supabase.rpc("get_overdue_count", {
     p_workspace_id: workspaceId,
+    p_timezone: timezone,
   });
 
   if (error) {

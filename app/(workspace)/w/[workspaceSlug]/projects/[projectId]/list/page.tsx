@@ -38,6 +38,7 @@ import {
   type ProjectListTaskFilters,
   type ProjectListTaskSort,
 } from "@/lib/queries/tasks";
+import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
@@ -99,17 +100,21 @@ export default async function ProjectListPage({
   );
   const clearFiltersHref = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
-  const tasks = await getProjectListTasks(projectId, filters, sort);
-
   // RLS-scoped lookup (workspaces_select_active_members) — same fallback
   // pattern as the project detail layout: reaching this route already
   // means the caller is an active member, this just resolves the id.
   const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+
+  // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
+  // (lib/queries/profile.ts's getCurrentUserTimezone) and threaded down to
+  // <TaskListTable> as a prop — never re-queried per row. Run alongside
+  // the other independent fetches below rather than sequentially awaited.
+  const [tasks, workspaceResult, timezone] = await Promise.all([
+    getProjectListTasks(projectId, filters, sort),
+    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+    getCurrentUserTimezone(supabase),
+  ]);
+  const { data: workspace } = workspaceResult;
 
   const workspaceMembers = workspace
     ? await getWorkspaceMembers(workspace.id)
@@ -163,6 +168,7 @@ export default async function ProjectListPage({
         hasActiveFilters={hasActiveFilters}
         clearFiltersHref={clearFiltersHref}
         members={detailSheetMembers}
+        timezone={timezone}
       />
     </div>
   );

@@ -78,6 +78,7 @@ export function TaskListTable({
   hasActiveFilters = false,
   clearFiltersHref,
   members = [],
+  timezone = "UTC",
 }: {
   tasks: TaskCardTask[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
@@ -111,6 +112,13 @@ export function TaskListTable({
    * `members` prop (components/board/board.tsx).
    */
   members?: TaskDetailSheetMember[];
+  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
+   * by the Server Component page (project list/page.tsx, or the dashboard
+   * page via dashboard-task-table.tsx) via lib/queries/profile.ts's
+   * getCurrentUserTimezone, and passed straight through here — never
+   * fetched by this Client Component, never per row. Defaults to "UTC" so
+   * existing/test callers that don't pass one still render. */
+  timezone?: string;
 }) {
   const taskDetailSheet = useTaskDetailSheet();
 
@@ -167,7 +175,7 @@ export function TaskListTable({
         </TableHeader>
         <TableBody>
           {tasks.map((task) => {
-            const overdue = isOverdue(task.dueDate, task.status);
+            const overdue = isOverdue(task.dueDate, task.status, timezone);
             const assignee = task.assigneeId
               ? assignees.get(task.assigneeId)
               : null;
@@ -268,6 +276,7 @@ export function TaskListTable({
       onDeleted={handleTaskDeleted}
       currentUserId={taskDetailSheet.currentUserId}
       currentUserRole={taskDetailSheet.currentUserRole}
+      timezone={timezone}
     />
     </>
   );

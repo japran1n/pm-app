@@ -7,6 +7,7 @@ import {
   getStatusCounts,
   getOverdueCount,
 } from "@/lib/queries/dashboard";
+import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
 
@@ -58,11 +59,20 @@ export default async function WorkspacePage({
   const query = await searchParams;
 
   const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+
+  // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
+  // (lib/queries/profile.ts's getCurrentUserTimezone), run alongside the
+  // independent workspace lookup rather than sequentially awaited, then
+  // threaded through to getOverdueCount (the SQL-side "is this task
+  // overdue" definition) and down to <DashboardTaskTable> as a prop.
+  const [{ data: workspace }, timezone] = await Promise.all([
+    supabase
+      .from("workspaces")
+      .select("id, name")
+      .eq("slug", workspaceSlug)
+      .maybeSingle(),
+    getCurrentUserTimezone(supabase),
+  ]);
 
   // The layout above already redirects away when the workspace can't be
   // resolved, so this is just a defensive fallback, not the primary guard.
@@ -73,7 +83,7 @@ export default async function WorkspacePage({
   const [priorityResult, statusResult, overdueResult] = await Promise.all([
     getPriorityCounts(supabase, workspace.id),
     getStatusCounts(supabase, workspace.id),
-    getOverdueCount(supabase, workspace.id),
+    getOverdueCount(supabase, workspace.id, timezone),
   ]);
 
   // Error state: log the real error (Sentry-equivalent per this
@@ -133,6 +143,7 @@ export default async function WorkspacePage({
           workspaceId={workspace.id}
           workspaceSlug={workspaceSlug}
           searchParams={query}
+          timezone={timezone}
         />
       )}
 

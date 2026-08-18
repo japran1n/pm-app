@@ -22,12 +22,16 @@ export function SortableTaskCard({
   task,
   assignee,
   onClick,
+  timezone,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee, looked up by the caller
    * (BoardColumn) from its `assignees` map and passed straight through. */
   assignee?: UserAvatarPerson | null;
   onClick?: (taskId: string) => void;
+  /** F124 (AS-207): passed straight through to TaskCard — see that
+   * component's own doc comment for where this ultimately comes from. */
+  timezone?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });
@@ -40,7 +44,7 @@ export function SortableTaskCard({
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} onClick={onClick} assignee={assignee} />
+      <TaskCard task={task} onClick={onClick} assignee={assignee} timezone={timezone} />
     </div>
   );
 }

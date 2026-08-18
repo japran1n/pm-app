@@ -75,6 +75,7 @@ export function TaskCard({
   assignee,
   onClick,
   className,
+  timezone = "UTC",
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee for `task.assigneeId`, or null/
@@ -86,8 +87,16 @@ export function TaskCard({
   /** Opens the task (e.g. TaskDetailSheet) when the card is activated. */
   onClick?: (taskId: string) => void;
   className?: string;
+  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
+   * by the Server Component page (board/page.tsx, list/page.tsx, the
+   * dashboard) and threaded down through Board/BoardColumn/
+   * SortableTaskCard — never fetched here. Optional, defaulting to "UTC",
+   * so callers that only care about non-overdue rendering (most unit
+   * tests) don't need to supply one; every real page in this app passes
+   * the caller's actual timezone. */
+  timezone?: string;
 }) {
-  const overdue = isOverdue(task.dueDate, task.status);
+  const overdue = isOverdue(task.dueDate, task.status, timezone);
 
   return (
     <Card

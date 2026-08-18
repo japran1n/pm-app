@@ -42,6 +42,7 @@ export function BoardColumn({
   tasks,
   assignees,
   onCardClick,
+  timezone,
 }: {
   status: TaskCardTask["status"];
   tasks: TaskCardTask[];
@@ -52,6 +53,10 @@ export function BoardColumn({
    * `assigneeNames` Map convention. */
   assignees?: Map<string, UserAvatarPerson>;
   onCardClick?: (taskId: string) => void;
+  /** F124 (AS-207): the viewer's timezone, resolved once per request by
+   * the Server Component page and passed straight through to every
+   * SortableTaskCard in this column. */
+  timezone?: string;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
@@ -95,6 +100,7 @@ export function BoardColumn({
                   task.assigneeId ? assignees?.get(task.assigneeId) : null
                 }
                 onClick={onCardClick}
+                timezone={timezone}
               />
             ))
           )}

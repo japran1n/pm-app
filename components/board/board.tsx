@@ -72,6 +72,7 @@ export function Board({
   assigneeOptions = [],
   members = [],
   assignees,
+  timezone,
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -106,6 +107,15 @@ export function Board({
    * pre-existing limitation `assigneeNames`/`resolveAssigneeNames` already
    * has elsewhere in the app. */
   assignees?: Map<string, UserAvatarPerson>;
+  /** F124 (AS-207): the viewer's IANA timezone, resolved once per request
+   * by the board Server Component page (app/(workspace)/w/[workspaceSlug]/
+   * projects/[projectId]/board/page.tsx) via lib/queries/profile.ts's
+   * getCurrentUserTimezone — never re-fetched here, and never per card.
+   * Threaded to every BoardColumn (-> SortableTaskCard -> TaskCard), the
+   * DragOverlay's own TaskCard, and TaskDetailSheet below, so overdue
+   * styling agrees everywhere on the board regardless of which of those
+   * three renders a given task at a given moment. */
+  timezone?: string;
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -316,6 +326,7 @@ export function Board({
               tasks={tasks.filter((task) => task.status === status)}
               assignees={assignees}
               onCardClick={handleCardClick}
+              timezone={timezone}
             />
           ))}
         </div>
@@ -329,6 +340,7 @@ export function Board({
                   ? assignees?.get(activeTask.assigneeId)
                   : null
               }
+              timezone={timezone}
             />
           ) : null}
         </DragOverlay>
@@ -353,6 +365,7 @@ export function Board({
           onDeleted={handleTaskDeleted}
           currentUserId={taskDetailSheet.currentUserId}
           currentUserRole={taskDetailSheet.currentUserRole}
+          timezone={timezone}
         />
       )}
     </div>
