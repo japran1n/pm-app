@@ -1,0 +1,71 @@
+// Component-level check for F045 (AS-069) that a cross-column drop wires
+// into the moveTaskStatus Server Action.
+//
+// This repo has no jsdom/@testing-library setup (vitest.config.ts pins
+// `environment: "node"`, and dnd-kit's sensors only activate on real
+// browser pointer/keyboard events anyway — see the rationale in
+// tests/unit/board-dnd-setup.test.ts, which defers actual drag-interaction
+// testing to F090). Given that constraint, this test mirrors that file's
+// established pattern of a source-level check: it renders the real
+// component tree to prove nothing crashes, and inspects board.tsx's
+// source to confirm the onDragEnd handler (a) imports moveTaskStatus, (b)
+// only calls it when the dropped task's status actually changed (not on a
+// same-column reorder), and (c) rolls back optimistic state on failure —
+// this is the same level of verification board-dnd-setup.test.ts already
+// established as reasonable for interaction code that can't run headless
+// in this repo.
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createElement } from "react";
+
+vi.mock("@/lib/actions/tasks", () => ({
+  moveTaskStatus: vi.fn(async () => ({ ok: true, data: { id: "t1", status: "in_progress" } })),
+}));
+
+import { Board } from "@/components/board/board";
+import type { TaskCardTask } from "@/components/task/task-card";
+
+const TASKS: TaskCardTask[] = [
+  { id: "t1", title: "Todo task", status: "todo", priority: null, assigneeId: null, dueDate: null },
+  { id: "t2", title: "In progress task", status: "in_progress", priority: null, assigneeId: null, dueDate: null },
+];
+
+const boardSource = readFileSync(
+  fileURLToPath(new URL("../../components/board/board.tsx", import.meta.url)),
+  "utf-8",
+);
+
+describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
+  it("renders with the mocked action in place without crashing", () => {
+    const html = renderToStaticMarkup(createElement(Board, { initialTasks: TASKS }));
+    expect(html).toContain("Todo task");
+    expect(html).toContain("In progress task");
+  });
+
+  it("imports moveTaskStatus from lib/actions/tasks", () => {
+    expect(boardSource).toMatch(
+      /import\s*{\s*moveTaskStatus\s*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
+    );
+  });
+
+  it("calls moveTaskStatus only when movedTask.status differs from the task's original status (AS-069: status change on cross-column drop)", () => {
+    expect(boardSource).toMatch(
+      /if\s*\(\s*movedTask\.status\s*!==\s*activeTask\.status\s*\)\s*{[\s\S]*?moveTaskStatus\(/,
+    );
+  });
+
+  it("passes the moved task's id and its new column status to moveTaskStatus", () => {
+    expect(boardSource).toMatch(/moveTaskStatus\(\s*movedTask\.id,\s*movedTask\.status\s*\)/);
+  });
+
+  it("rolls back local state to the pre-drop snapshot when the action fails", () => {
+    expect(boardSource).toMatch(/if\s*\(\s*!result\.ok\s*\)\s*{\s*setTasks\(current\);/);
+  });
+
+  it("leaves a TODO(F046) marker for the position-persist half of this same handler", () => {
+    expect(boardSource).toContain("TODO(F046)");
+  });
+});

@@ -36,6 +36,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
+import { moveTaskStatus } from "@/lib/actions/tasks";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 
@@ -117,10 +118,17 @@ export function Board({
         ...withoutActive.slice(insertAt),
       ];
 
-      // TODO(F045): if `movedTask.status !== activeTask.status`, call the
-      // status-change Server Action here (e.g. updateTaskStatus(movedTask.id,
-      // movedTask.status)) — ideally optimistic, with rollback to `current`
-      // on failure.
+      // F045 (AS-069): the card changed columns — persist the new status.
+      // Optimistic: local state is already updated above; on failure, roll
+      // back to the pre-drop state.
+      if (movedTask.status !== activeTask.status) {
+        void moveTaskStatus(movedTask.id, movedTask.status).then((result) => {
+          if (!result.ok) {
+            setTasks(current);
+          }
+        });
+      }
+
       // TODO(F046): regardless of whether the status changed, the new
       // ordering within `targetStatus` (and the column the task left, if
       // different) needs its `position` values persisted — call the

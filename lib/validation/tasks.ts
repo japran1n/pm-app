@@ -140,3 +140,14 @@ export const updateTaskTagsSchema = z.object({
 });
 
 export type UpdateTaskTagsInput = z.infer<typeof updateTaskTagsSchema>;
+
+// Validates moveTaskStatus input (F045: AS-069). `status` is restricted to
+// the same fixed 4-value set as createTaskSchema/`tasks_status_check` — the
+// column dropped onto in the board is always one of these four, and any
+// other string is rejected rather than silently coerced.
+export const moveTaskStatusSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  status: z.enum(["todo", "in_progress", "in_review", "done"]),
+});
+
+export type MoveTaskStatusInput = z.infer<typeof moveTaskStatusSchema>;

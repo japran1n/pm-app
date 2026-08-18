@@ -10,6 +10,7 @@ import {
   editTaskSchema,
   deleteTaskSchema,
   updateTaskTagsSchema,
+  moveTaskStatusSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -802,6 +803,140 @@ export async function updateTaskTags(
     data: {
       id: updated.id,
       tags: updated.tags ?? [],
+    },
+  };
+}
+
+export type MoveTaskStatusResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        status: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Updates a task's status when its card is dropped into a different board
+// column (F045: AS-069). Pattern mirrors assignTask/editTask/deleteTask
+// above: Zod-validated input against the fixed 4-value status set,
+// membership re-checked server-side (defense in depth, AS-143), admin
+// client used for the actual update, discriminated union return, generic
+// user-facing errors with details only logged server-side (AS-146).
+//
+// AS-069 covers only the status-column update itself. Recomputing/
+// persisting the task's `position` within its new (or same) column is
+// F046's responsibility, layered on top of this same board.tsx onDragEnd
+// handler — not duplicated here.
+//
+// Any active workspace member may move any task in that workspace,
+// regardless of authorship/assignment — mirrors editTask (AS-061) and
+// deleteTask (AS-055): no per-task ownership check, only workspace
+// membership.
+export async function moveTaskStatus(
+  taskId: string,
+  newStatus: "todo" | "in_progress" | "in_review" | "done",
+): Promise<MoveTaskStatusResult> {
+  const parsed = moveTaskStatusSchema.safeParse({
+    taskId,
+    status: newStatus,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid status.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to move a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // assignTask/editTask/deleteTask's task lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to move this task.",
+    };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ status: parsed.data.status })
+    .eq("id", parsed.data.taskId)
+    .select("id, status")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("moveTaskStatus: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "moveTaskStatus: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      status: updated.status,
     },
   };
 }
