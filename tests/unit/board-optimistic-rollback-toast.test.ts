@@ -3,7 +3,13 @@
 // (dnd-kit's sortable visuals already do this during the drag gesture, but
 // F047 is about the state persisting through the async window after drop),
 // and roll back to the pre-drop snapshot with an error toast if EITHER
-// moveTaskStatus or reorderTask comes back ok:false (or throws).
+// action comes back ok:false (or throws).
+//
+// Updated for F102 (fixing M5-scrutiny.md Finding 2): a cross-column drag
+// no longer calls moveTaskStatus and reorderTask as two independent calls
+// — it calls the single atomic moveAndReorderTask instead, so a failure
+// can never leave the server with a committed status and a stale position.
+// A same-column reorder (status unchanged) still calls reorderTask alone.
 //
 // This repo has no jsdom/@testing-library setup (vitest.config.ts pins
 // `environment: "node"` — see the rationale in tests/unit/board-dnd-setup.
@@ -27,7 +33,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
 vi.mock("@/lib/actions/tasks", () => ({
-  moveTaskStatus: vi.fn(async () => ({ ok: false, error: "Could not move task." })),
+  moveAndReorderTask: vi.fn(async () => ({ ok: false, error: "Could not move task." })),
   reorderTask: vi.fn(async () => ({ ok: false, error: "Could not reorder task." })),
 }));
 
@@ -65,13 +71,13 @@ describe("Board optimistic drop + rollback + error toast (F047: AS-077)", () => 
     // isn't deferred until the actions resolve.
     const setTasksUpdaterIndex = boardSource.indexOf("setTasks((current) => {");
     const movedTaskIndex = boardSource.indexOf("const movedTask = {");
-    const moveTaskStatusCallIndex = boardSource.indexOf("void moveTaskStatus(");
+    const moveAndReorderTaskCallIndex = boardSource.indexOf("void moveAndReorderTask(");
     const reorderTaskCallIndex = boardSource.indexOf("void reorderTask(");
     const returnNextIndex = boardSource.indexOf("return next;");
 
     expect(setTasksUpdaterIndex).toBeGreaterThan(-1);
     expect(movedTaskIndex).toBeGreaterThan(setTasksUpdaterIndex);
-    expect(moveTaskStatusCallIndex).toBeGreaterThan(movedTaskIndex);
+    expect(moveAndReorderTaskCallIndex).toBeGreaterThan(movedTaskIndex);
     expect(reorderTaskCallIndex).toBeGreaterThan(movedTaskIndex);
     // The optimistic state (`next`, built from `movedTask`) is returned
     // from the same synchronous updater pass that kicks off the async
@@ -86,9 +92,9 @@ describe("Board optimistic drop + rollback + error toast (F047: AS-077)", () => 
     );
   });
 
-  it("rolls back via the shared helper when moveTaskStatus resolves ok:false", () => {
+  it("rolls back via the shared helper when moveAndReorderTask resolves ok:false", () => {
     expect(boardSource).toMatch(
-      /void moveTaskStatus\([\s\S]*?if\s*\(\s*!result\.ok\s*\)\s*{\s*rollback\(/,
+      /void moveAndReorderTask\([\s\S]*?if\s*\(\s*!result\.ok\s*\)\s*{\s*rollback\(/,
     );
   });
 

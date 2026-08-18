@@ -3,11 +3,14 @@
 // each BoardColumn its slice of tasks plus a SortableContext.
 //
 // Scope per the clarified spec: dragging visually moves cards around
-// client-side (dnd-kit's default sortable reordering) and persists both
-// halves of a drop via onDragEnd below — F045's moveTaskStatus (status,
-// only called when the column actually changed) and F046's reorderTask
-// (position, always called, computed via lib/board/position.ts's
-// calculatePosition from the dropped card's new neighbors).
+// client-side (dnd-kit's default sortable reordering) and persists the drop
+// via onDragEnd below. Position (lib/board/position.ts's calculatePosition,
+// from the dropped card's new neighbors) is always recomputed; if the
+// column also changed, status and position are persisted together via
+// F102's moveAndReorderTask (a single atomic Server Action — see that
+// action's doc comment in lib/actions/tasks.ts for why status+position
+// can't be two independent calls on a cross-column drag). A same-column
+// reorder (status unchanged) still uses F046's single-purpose reorderTask.
 //
 // Sensors: PointerSensor (mouse/touch drag) AND KeyboardSensor are both
 // configured — the keyboard sensor is required, not optional, per this
@@ -38,7 +41,7 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 
-import { moveTaskStatus, reorderTask } from "@/lib/actions/tasks";
+import { reorderTask, moveAndReorderTask } from "@/lib/actions/tasks";
 import { calculatePosition } from "@/lib/board/position";
 import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
 import { BoardColumn } from "@/components/board/board-column";
@@ -66,8 +69,9 @@ export function Board({
   onCardClick?: (taskId: string) => void;
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
-  // updated on drop by onDragEnd below (F045's moveTaskStatus + F046's
-  // reorderTask, both rolled back to the pre-drop snapshot on failure).
+  // updated on drop by onDragEnd below (F102's moveAndReorderTask for
+  // cross-column drags, F046's reorderTask for same-column reorders — both
+  // rolled back to the pre-drop snapshot on failure).
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
 
@@ -183,11 +187,30 @@ export function Board({
         toast.error(message);
       }
 
-      // F045 (AS-069): the card changed columns — persist the new status.
-      // Optimistic: local state is already updated above; on failure, roll
-      // back to the pre-drop state.
+      // F102 (AS-077, fixing M5-scrutiny.md Finding 2): a drag that changes
+      // BOTH status and position must go through the single atomic
+      // moveAndReorderTask action, not two independent calls — otherwise a
+      // moveTaskStatus success followed by a reorderTask failure leaves the
+      // server with the new status but a stale position, while the client
+      // rolls back to looking like the drag never happened. A drag that
+      // only changes one of the two (same-column reorder, or a status-only
+      // move with no reposition — not currently reachable from this
+      // handler, but kept for other callers) can still use the single-
+      // purpose actions, since there's nothing to coordinate.
       if (movedTask.status !== activeTask.status) {
-        void moveTaskStatus(movedTask.id, movedTask.status)
+        void moveAndReorderTask(movedTask.id, movedTask.status, newPosition)
+          .then((result) => {
+            if (!result.ok) {
+              rollback(result.error);
+            }
+          })
+          .catch(() => {
+            rollback("Something went wrong moving that task. Please try again.");
+          });
+      } else {
+        // F046 (AS-070, AS-078, AS-079, AS-080): same-column reorder —
+        // status is unchanged, so only position needs to be persisted.
+        void reorderTask(movedTask.id, newPosition)
           .then((result) => {
             if (!result.ok) {
               rollback(result.error);
@@ -197,22 +220,6 @@ export function Board({
             rollback("Something went wrong moving that task. Please try again.");
           });
       }
-
-      // F046 (AS-070, AS-078, AS-079, AS-080): regardless of whether the
-      // status also changed, persist the recomputed `position` — this is a
-      // separate UPDATE from moveTaskStatus above (see reorderTask's doc
-      // comment in lib/actions/tasks.ts for why the two aren't merged into
-      // one call). Optimistic, with the same rollback-to-`current` on
-      // failure.
-      void reorderTask(movedTask.id, newPosition)
-        .then((result) => {
-          if (!result.ok) {
-            rollback(result.error);
-          }
-        })
-        .catch(() => {
-          rollback("Something went wrong moving that task. Please try again.");
-        });
 
       return next;
     });

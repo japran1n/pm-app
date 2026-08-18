@@ -1,6 +1,8 @@
 // Component-level check for F045 (AS-069) + F046 (AS-070, AS-078, AS-079,
-// AS-080) that a drop wires into the moveTaskStatus AND reorderTask Server
-// Actions.
+// AS-080), updated by F102 (fixing M5-scrutiny.md Finding 2), that a drop
+// wires into the correct Server Action(s): moveAndReorderTask for a
+// cross-column drag (status changed), reorderTask alone for a same-column
+// reorder (status unchanged).
 //
 // This repo has no jsdom/@testing-library setup (vitest.config.ts pins
 // `environment: "node"`, and dnd-kit's sensors only activate on real
@@ -9,12 +11,12 @@
 // testing to F090). Given that constraint, this test mirrors that file's
 // established pattern of a source-level check: it renders the real
 // component tree to prove nothing crashes, and inspects board.tsx's
-// source to confirm the onDragEnd handler (a) imports moveTaskStatus and
-// reorderTask, (b) only calls moveTaskStatus when the dropped task's
-// status actually changed (not on a same-column reorder), (c) always
-// calls reorderTask with a calculatePosition-derived value regardless of
-// whether the column changed, and (d) rolls back optimistic state on
-// failure.
+// source to confirm the onDragEnd handler (a) imports moveAndReorderTask
+// and reorderTask, (b) only calls moveAndReorderTask when the dropped
+// task's status actually changed (not on a same-column reorder), passing
+// both the new status and the new position together, (c) calls reorderTask
+// alone (no status arg) when the column didn't change, and (d) rolls back
+// optimistic state on failure.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -23,7 +25,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
 vi.mock("@/lib/actions/tasks", () => ({
-  moveTaskStatus: vi.fn(async () => ({ ok: true, data: { id: "t1", status: "in_progress" } })),
+  moveAndReorderTask: vi.fn(async () => ({ ok: true, data: { id: "t1", status: "in_progress", position: 1000 } })),
   reorderTask: vi.fn(async () => ({ ok: true, data: { id: "t1", position: 1000 } })),
 }));
 
@@ -40,30 +42,38 @@ const boardSource = readFileSync(
   "utf-8",
 );
 
-describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
-  it("renders with the mocked action in place without crashing", () => {
+describe("Board onDragEnd -> moveAndReorderTask/reorderTask wiring (F045: AS-069, F102: AS-077)", () => {
+  it("renders with the mocked actions in place without crashing", () => {
     const html = renderToStaticMarkup(createElement(Board, { projectId: "project-1", initialTasks: TASKS }));
     expect(html).toContain("Todo task");
     expect(html).toContain("In progress task");
   });
 
-  it("imports moveTaskStatus from lib/actions/tasks", () => {
+  it("imports moveAndReorderTask from lib/actions/tasks", () => {
     expect(boardSource).toMatch(
-      /import\s*{[^}]*moveTaskStatus[^}]*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
+      /import\s*{[^}]*moveAndReorderTask[^}]*}\s*from\s*["']@\/lib\/actions\/tasks["']/,
     );
   });
 
-  it("calls moveTaskStatus only when movedTask.status differs from the task's original status (AS-069: status change on cross-column drop)", () => {
+  it("calls moveAndReorderTask only when movedTask.status differs from the task's original status (AS-069/AS-077: cross-column drop persists status+position atomically)", () => {
     expect(boardSource).toMatch(
-      /if\s*\(\s*movedTask\.status\s*!==\s*activeTask\.status\s*\)\s*{[\s\S]*?moveTaskStatus\(/,
+      /if\s*\(\s*movedTask\.status\s*!==\s*activeTask\.status\s*\)\s*{[\s\S]*?moveAndReorderTask\(/,
     );
   });
 
-  it("passes the moved task's id and its new column status to moveTaskStatus", () => {
-    expect(boardSource).toMatch(/moveTaskStatus\(\s*movedTask\.id,\s*movedTask\.status\s*\)/);
+  it("passes the moved task's id, its new column status, AND its new position to moveAndReorderTask", () => {
+    expect(boardSource).toMatch(
+      /moveAndReorderTask\(\s*movedTask\.id,\s*movedTask\.status,\s*newPosition\s*\)/,
+    );
   });
 
-  it("rolls back local state to the pre-drop snapshot when the action fails (F047: AS-077 -- rollback funnels through a shared rollback() helper that calls setTasks(current))", () => {
+  it("calls reorderTask (not moveAndReorderTask) when the status did NOT change, i.e. a same-column reorder", () => {
+    expect(boardSource).toMatch(
+      /}\s*else\s*{[\s\S]*?reorderTask\(\s*movedTask\.id,\s*newPosition\s*\)/,
+    );
+  });
+
+  it("rolls back local state to the pre-drop snapshot when either action fails (F047: AS-077 -- rollback funnels through a shared rollback() helper that calls setTasks(current))", () => {
     expect(boardSource).toMatch(
       /function rollback\([^)]*\)\s*{[\s\S]*?setTasks\(current\);/,
     );
@@ -79,8 +89,7 @@ describe("Board onDragEnd -> moveTaskStatus wiring (F045: AS-069)", () => {
     );
   });
 
-  it("F046: calls reorderTask with the moved task's id and a calculatePosition-derived value", () => {
-    expect(boardSource).toMatch(/reorderTask\(\s*movedTask\.id,/);
+  it("computes the moved task's new position via calculatePosition before either action is called", () => {
     expect(boardSource).toMatch(/calculatePosition\(/);
   });
 });

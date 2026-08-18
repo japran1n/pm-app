@@ -164,3 +164,16 @@ export const reorderTaskSchema = z.object({
 });
 
 export type ReorderTaskInput = z.infer<typeof reorderTaskSchema>;
+
+// Validates moveAndReorderTask input (F102: AS-077). Same field-level rules
+// as moveTaskStatusSchema + reorderTaskSchema combined — this is the single
+// atomic action a cross-column drag (status change + reposition) goes
+// through, so both fields are validated together, before either reaches the
+// database.
+export const moveAndReorderTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  status: z.enum(["todo", "in_progress", "in_review", "done"]),
+  position: z.number().finite("Invalid position."),
+});
+
+export type MoveAndReorderTaskInput = z.infer<typeof moveAndReorderTaskSchema>;

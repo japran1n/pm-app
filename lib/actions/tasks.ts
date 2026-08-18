@@ -12,6 +12,7 @@ import {
   updateTaskTagsSchema,
   moveTaskStatusSchema,
   reorderTaskSchema,
+  moveAndReorderTaskSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -982,12 +983,16 @@ export type ReorderTaskResult =
 // AS-070/AS-078: this action updates ONLY the `position` column — it never
 // touches `status`. board.tsx's onDragEnd (F045 + F046, same handler)
 // calls calculatePosition (lib/board/position.ts) to compute the new
-// fractional-index value from the dropped card's new neighbors, then
-// calls this action with that value. If a drag ALSO changed the column,
-// onDragEnd calls moveTaskStatus (F045) alongside this — the two actions
-// are independent UPDATEs against the same row, not merged into one
-// call, matching F045's own doc comment ("F046's responsibility, layered
-// on top of this same onDragEnd handler — not duplicated here").
+// fractional-index value from the dropped card's new neighbors, then calls
+// this action with that value for a same-column reorder. If a drag ALSO
+// changes the column, onDragEnd instead calls moveAndReorderTask (F102) —
+// a single atomic action that sets both columns in one UPDATE — rather
+// than calling this action and moveTaskStatus (F045) independently. Two
+// independent UPDATEs against the same row previously left a window where
+// one could succeed and the other fail, leaving status/position
+// inconsistent with each other and with the client's rolled-back view; see
+// moveAndReorderTask's doc comment (F102, fixing M5-scrutiny.md Finding 2)
+// for the full history.
 //
 // AS-080: dragging must not change updated_at unless status also changed.
 // Investigated the `tasks_set_updated_at` trigger
@@ -1111,6 +1116,159 @@ export async function reorderTask(
     ok: true,
     data: {
       id: updated.id,
+      position: updated.position,
+    },
+  };
+}
+
+export type MoveAndReorderTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        status: string;
+        position: number;
+      };
+    }
+  | { ok: false; error: string };
+
+// Atomically updates both `status` and `position` for a cross-column drag
+// (F102: AS-077, follow-up on scrutiny-validator's M5-scrutiny.md Finding
+// 2). Before this action existed, board.tsx's onDragEnd called
+// moveTaskStatus and reorderTask as two independent, uncoordinated Server
+// Actions on a cross-column drag. If the first succeeded and the second
+// failed, the client rolled back visually but the server kept the
+// already-committed status change with a stale (pre-move) position value —
+// client and server permanently disagreed about what happened.
+//
+// Fix: a single UPDATE statement setting both `status` and `position`
+// together. A single UPDATE against a single row is inherently atomic in
+// Postgres (it either commits both column changes or neither) — there is no
+// intermediate state where one column changed and the other didn't, so the
+// partial-failure class of bug this exists to fix is impossible by
+// construction. Callers that only need to change one of the two fields
+// (same-column reorder, or a status-only change with no reposition) should
+// keep calling reorderTask/moveTaskStatus individually — this action is
+// specifically for drags that change both at once.
+//
+// Pattern otherwise mirrors moveTaskStatus/reorderTask above: Zod-validated
+// input (both fields validated together, before either reaches the
+// database — an invalid status or non-finite position fails validation and
+// the UPDATE never runs), membership re-checked server-side (defense in
+// depth, AS-143), admin client used for the actual update, discriminated
+// union return, generic user-facing errors with details only logged
+// server-side (AS-146). No per-task ownership check, only workspace
+// membership, same as its two single-purpose siblings.
+export async function moveAndReorderTask(
+  taskId: string,
+  newStatus: "todo" | "in_progress" | "in_review" | "done",
+  newPosition: number,
+): Promise<MoveAndReorderTaskResult> {
+  const parsed = moveAndReorderTaskSchema.safeParse({
+    taskId,
+    status: newStatus,
+    position: newPosition,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid status or position.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to move a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as
+  // moveTaskStatus/reorderTask's task lookup.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to move this task.",
+    };
+  }
+
+  // Single UPDATE, both columns set together — atomic by construction. If
+  // this fails (constraint violation, connection drop, etc.), NEITHER
+  // status NOR position changes; there is no partial-commit state for the
+  // client to be inconsistent with.
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ status: parsed.data.status, position: parsed.data.position })
+    .eq("id", parsed.data.taskId)
+    .select("id, status, position")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("moveAndReorderTask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "moveAndReorderTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      status: updated.status,
       position: updated.position,
     },
   };
