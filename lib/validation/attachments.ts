@@ -63,3 +63,11 @@ export const uploadAttachmentSchema = z.object({
 });
 
 export type UploadAttachmentInput = z.infer<typeof uploadAttachmentSchema>;
+
+// Validates deleteAttachment input (F067: AS-110, AS-111, AS-114). Mirrors
+// deleteCommentSchema's shape from lib/validation/comments.ts.
+export const deleteAttachmentSchema = z.object({
+  attachmentId: z.string().uuid("Invalid attachment."),
+});
+
+export type DeleteAttachmentInput = z.infer<typeof deleteAttachmentSchema>;

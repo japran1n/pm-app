@@ -38,10 +38,11 @@
 // one."
 
 import { useState, useTransition } from "react";
-import { Loader2, Paperclip, FileText } from "lucide-react";
+import { Loader2, Paperclip, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
+  deleteAttachment,
   getAttachmentSignedUrl,
   uploadAttachment,
 } from "@/lib/actions/attachments";
@@ -81,6 +82,8 @@ export function AttachmentList({
   loading = false,
   error = null,
   onRetry,
+  currentUserId,
+  currentUserRole,
 }: {
   taskId: string;
   /** Initial attachments for this task. */
@@ -92,6 +95,16 @@ export function AttachmentList({
   /** Drives the inline error state when a future caller's fetch failed. */
   error?: string | null;
   onRetry?: () => void;
+  /** F067 (AS-110, AS-111): the viewer's own user id. An attachment's
+   * delete button is only rendered when this equals the attachment's
+   * uploader, or when `currentUserRole` is "owner"/"admin". Undefined
+   * hides delete everywhere — `deleteAttachment` independently re-checks
+   * authorization regardless, so this prop only controls UI affordance,
+   * never the actual guarantee (same convention as CommentList's
+   * `currentUserId`). */
+  currentUserId?: string;
+  /** F067 (AS-110): the viewer's active role in this task's workspace. */
+  currentUserRole?: "owner" | "admin" | "member";
 }) {
   const [localAttachments, setLocalAttachments] = useState(attachments);
   // Tracks which task's attachments are currently loaded into local state,
@@ -100,6 +113,34 @@ export function AttachmentList({
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [isUploading, startUploadTransition] = useTransition();
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [, startDeleteTransition] = useTransition();
+
+  const isAdminOrOwner =
+    currentUserRole === "owner" || currentUserRole === "admin";
+
+  function canDelete(attachment: TaskAttachment): boolean {
+    if (!currentUserId) return false;
+    return attachment.uploadedBy === currentUserId || isAdminOrOwner;
+  }
+
+  function handleDelete(attachmentId: string) {
+    setDeletingId(attachmentId);
+    startDeleteTransition(async () => {
+      const result = await deleteAttachment(attachmentId);
+      if (result.ok) {
+        // Remove locally so it disappears immediately for this viewer;
+        // the server-side delete plus revalidatePath handles it
+        // disappearing for other viewers/on reload.
+        setLocalAttachments((previous) =>
+          previous.filter((attachment) => attachment.id !== attachmentId),
+        );
+      } else {
+        toast.error(result.error);
+      }
+      setDeletingId(null);
+    });
+  }
 
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
@@ -207,6 +248,23 @@ export function AttachmentList({
                   className="size-3.5 animate-spin text-muted-foreground"
                   aria-hidden="true"
                 />
+              )}
+              {canDelete(attachment) && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto size-6"
+                  disabled={deletingId === attachment.id}
+                  aria-label="Delete attachment"
+                  onClick={() => handleDelete(attachment.id)}
+                >
+                  {deletingId === attachment.id ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Trash2 className="size-3.5" aria-hidden="true" />
+                  )}
+                </Button>
               )}
             </li>
           ))}

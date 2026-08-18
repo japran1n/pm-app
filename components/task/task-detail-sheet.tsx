@@ -465,6 +465,8 @@ export function TaskDetailSheet({
                 taskId={task.id}
                 attachments={attachments}
                 members={members}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
               />
             </div>
 
