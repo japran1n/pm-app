@@ -15,7 +15,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F004 ci-pipeline [CLARIFIED-AUTO] [COMPLETE]
 - F005 base-layout-shell [CLARIFIED-AUTO] [COMPLETE]
 
-## M2 — Auth & Workspace
+## M2 — Auth & Workspace [GREEN]
 
 - F006 supabase-clients [CLARIFIED-AUTO] [COMPLETE]
 - F007 sign-in-page — AS-002 [CLARIFIED-AUTO] [COMPLETE]
@@ -130,9 +130,9 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M2 follow-ups (from M2 scrutiny — see milestones/M2-scrutiny.md)
 
-- F094 sole-owner-atomic-guard — AS-018 [CLARIFIED-AUTO]
-- F095 workspace-insert-rls-hardening — AS-006 [CLARIFIED-AUTO]
-- F096 proxy-guard-integration-test — AS-001 [CLARIFIED-AUTO]
-- F097 onboarding-membership-gate — AS-005 [CLARIFIED-AUTO]
-- F098 signout-cache-headers — AS-022 [CLARIFIED-AUTO]
-- F099 invite-listusers-pagination — AS-007 [CLARIFIED-AUTO]
+- F094 sole-owner-atomic-guard — AS-018 [CLARIFIED-AUTO] [COMPLETE]
+- F095 workspace-insert-rls-hardening — AS-006 [CLARIFIED-AUTO] [COMPLETE]
+- F096 proxy-guard-integration-test — AS-001 [CLARIFIED-AUTO] [COMPLETE]
+- F097 onboarding-membership-gate — AS-005 [CLARIFIED-AUTO] [COMPLETE]
+- F098 signout-cache-headers — AS-022 [CLARIFIED-AUTO] [COMPLETE]
+- F099 invite-listusers-pagination — AS-007 [CLARIFIED-AUTO] [COMPLETE]

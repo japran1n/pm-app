@@ -19,3 +19,6 @@ F006-F023 all COMPLETE (18/18). 84 tests passing, all integration tests run agai
 
 ## 2026-08-17T23:41:35Z — M2 scrutiny FAIL, follow-ups created
 scrutiny-validator found 3 blockers (AS-006 orphan workspace, AS-018 TOCTOU race, AS-001 untested guard) and 3 majors (AS-005 onboarding gate, AS-007 unpaginated listUsers, AS-022 bfcache). Created F094-F099 to fix each, inheriting parent feature's clarification per task-clarification skill. Not proceeding to M3/ux-validator until these are GREEN.
+
+## 2026-08-18T00:42:53Z — Milestone 2 GREEN
+scrutiny-recheck: GREEN (6/6 fixes verified). ux-validator: 4/4 reachable behavioral checks PASS, rest INCONCLUSIVE (require real email inbox, documented limitation). M2 marked GREEN in plan.md. Total features complete: 29 (M1: 5, M2: 18, M2 follow-ups: 6). Proceeding to M3 (Projects).
