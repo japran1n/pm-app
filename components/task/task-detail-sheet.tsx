@@ -47,6 +47,11 @@ import {
   AttachmentList,
   type TaskAttachment,
 } from "@/components/task/attachment-list";
+import {
+  TimeTracking,
+  type TimeEntry,
+  type TimeTrackingActiveTimer,
+} from "@/components/task/time-tracking";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,6 +122,8 @@ export function TaskDetailSheet({
   members,
   comments = [],
   attachments = [],
+  timeEntries = [],
+  activeTimer = null,
   open,
   onOpenChange,
   loading = false,
@@ -139,6 +146,14 @@ export function TaskDetailSheet({
    * Defaults to empty — a caller that hasn't been updated yet still
    * renders a valid empty state rather than crashing. */
   attachments?: TaskAttachment[];
+  /** F113 (AS-171): task's time entries (a future getTaskTimeEntries query
+   * would fetch these). Defaults to empty — a caller that hasn't been
+   * updated yet still renders a valid empty state rather than crashing. */
+  timeEntries?: TimeEntry[];
+  /** F113: the viewer's own active timer, if any, from F111's
+   * getActiveTimer. Defaults to null (no active timer) when the caller
+   * hasn't fetched it yet. */
+  activeTimer?: TimeTrackingActiveTimer | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Drives the loading skeleton when a future caller is still fetching. */
@@ -493,6 +508,17 @@ export function TaskDetailSheet({
                 taskId={task.id}
                 attachments={attachments}
                 members={members}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
+              />
+
+              <Separator />
+
+              <TimeTracking
+                taskId={task.id}
+                timeEntries={timeEntries}
+                members={members}
+                activeTimer={activeTimer}
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
               />

@@ -14,10 +14,11 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { TriangleAlert } from "lucide-react";
+import { Clock, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+import { formatDuration } from "@/lib/time/format-duration";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 // F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
@@ -43,6 +44,12 @@ export type TaskCardTask = {
   // any given task always applies), but it's populated end-to-end so the
   // guard is live from the first Realtime update onward.
   updatedAt?: string;
+  // F113 (AS-171): sum of this task's time_entries.minutes, in minutes.
+  // Optional — a caller that hasn't been updated to fetch/aggregate time
+  // entries yet simply omits the indicator below, same "safe default"
+  // convention as `updatedAt`. Zero/undefined/null all mean "no time
+  // logged yet" and hide the indicator entirely.
+  totalMinutes?: number | null;
 };
 
 function formatDueDate(dueDate: string): string {
@@ -118,6 +125,12 @@ export function TaskCard({
             {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
             <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
             {formatDueDate(task.dueDate)}
+          </span>
+        )}
+        {!!task.totalMinutes && task.totalMinutes > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="size-3" aria-hidden="true" />
+            {formatDuration(task.totalMinutes)}
           </span>
         )}
       </CardContent>
