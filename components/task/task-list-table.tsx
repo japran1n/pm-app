@@ -15,6 +15,7 @@
 // COLUMN_LABELS and TaskCard's PRIORITY_LABELS) even though AS-153 itself
 // isn't this feature's assigned assertion — no reason to regress it here.
 
+import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ import { isOverdue } from "@/lib/tasks/is-overdue";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { ProjectListTaskSort } from "@/lib/queries/tasks";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { DueDateSortHeader } from "@/components/task/due-date-sort-header";
 import {
   Table,
@@ -61,14 +63,49 @@ export function TaskListTable({
   tasks,
   assigneeNames,
   sort,
+  hasActiveFilters = false,
+  clearFiltersHref,
 }: {
   tasks: TaskCardTask[];
   /** taskAssigneeId -> display name, resolved server-side (F053). */
   assigneeNames: Map<string, string>;
   /** F055 (AS-091): current due-date sort, drives the header's icon/state. */
   sort?: ProjectListTaskSort;
+  /**
+   * F056 (AS-092): whether any of F054's filters (status/priority/assignee)
+   * are currently applied. Distinguishes "zero tasks because the project is
+   * genuinely empty" from "zero tasks because the active filters exclude
+   * everything" — the two need different copy so a user who filtered a
+   * populated project into nothing isn't told the project has no tasks.
+   */
+  hasActiveFilters?: boolean;
+  /**
+   * F056: pathname with no filter query params, i.e. the same
+   * "navigate to base pathname" action `<ListFilters>`'s own Clear
+   * filters button performs (F054). Rendered as a plain server-rendered
+   * link here (this component stays a Server Component) rather than
+   * duplicating `<ListFilters>`'s client-side `router.push` logic.
+   */
+  clearFiltersHref?: string;
 }) {
   if (tasks.length === 0) {
+    if (hasActiveFilters) {
+      return (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No tasks match your filters.
+          </p>
+          {clearFiltersHref && (
+            <Link
+              href={clearFiltersHref}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Clear filters
+            </Link>
+          )}
+        </div>
+      );
+    }
     return (
       <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
         No tasks yet in this project.

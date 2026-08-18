@@ -83,6 +83,17 @@ export default async function ProjectListPage({
     ? (query.sort as ProjectListTaskSort)
     : undefined;
 
+  // F056 (AS-092): whether any filter is active, used to pick between the
+  // "no tasks match your filters" empty state and the plain "no tasks yet"
+  // one below. `clearFiltersHref` is the same "base pathname, no query
+  // params" target `<ListFilters>`'s own Clear filters button navigates to
+  // (F054) — reused here as a plain link since <TaskListTable> is a Server
+  // Component and can't call `useRouter` itself.
+  const hasActiveFilters = Boolean(
+    filters.status || filters.priority || filters.assigneeId,
+  );
+  const clearFiltersHref = `/w/${workspaceSlug}/projects/${projectId}/list`;
+
   const tasks = await getProjectListTasks(projectId, filters, sort);
   const assigneeNames = await resolveAssigneeNames(
     tasks.map((task) => task.assigneeId),
@@ -112,6 +123,8 @@ export default async function ProjectListPage({
         tasks={tasks}
         assigneeNames={assigneeNames}
         sort={sort}
+        hasActiveFilters={hasActiveFilters}
+        clearFiltersHref={clearFiltersHref}
       />
     </div>
   );
