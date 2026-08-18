@@ -14,6 +14,11 @@
 // color alone, matching AS-153's rule (already followed by BoardColumn's
 // COLUMN_LABELS and TaskCard's PRIORITY_LABELS) even though AS-153 itself
 // isn't this feature's assigned assertion — no reason to regress it here.
+//
+// F057 (AS-093): the Status cell renders <ListStatusSelect>, a small
+// Client Component wrapping a shadcn Select, instead of the static Badge
+// used for the other columns. This table stays a Server Component overall
+// (AS-155) — only that one per-row cell crosses the client boundary.
 
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
@@ -25,6 +30,7 @@ import type { ProjectListTaskSort } from "@/lib/queries/tasks";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { DueDateSortHeader } from "@/components/task/due-date-sort-header";
+import { ListStatusSelect } from "@/components/task/list-status-select";
 import {
   Table,
   TableBody,
@@ -33,13 +39,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-const STATUS_LABELS: Record<TaskCardTask["status"], string> = {
-  todo: "To Do",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-};
 
 const PRIORITY_LABELS: Record<NonNullable<TaskCardTask["priority"]>, string> = {
   urgent: "Urgent",
@@ -137,7 +136,7 @@ export function TaskListTable({
             <TableRow key={task.id} data-task-id={task.id}>
               <TableCell className="font-medium">{task.title}</TableCell>
               <TableCell>
-                <Badge variant="outline">{STATUS_LABELS[task.status]}</Badge>
+                <ListStatusSelect taskId={task.id} status={task.status} />
               </TableCell>
               <TableCell>
                 {task.priority ? (
