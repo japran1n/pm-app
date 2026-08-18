@@ -4,8 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { addCommentSchema } from "@/lib/validation/comments";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { addCommentSchema, deleteCommentSchema } from "@/lib/validation/comments";
+import {
+  requireActiveMembership,
+  requireWorkspaceAdmin,
+} from "@/lib/auth/require-membership";
 
 export type AddCommentResult =
   | {
@@ -161,6 +164,158 @@ export async function addComment(
       userId: inserted.user_id,
       text: inserted.text,
       createdAt: inserted.created_at,
+    },
+  };
+}
+
+export type DeleteCommentResult =
+  | { ok: true; data: { id: string; deletedAt: string } }
+  | { ok: false; error: string };
+
+// Soft-deletes a comment (F061: AS-098, AS-099, AS-100). Pattern mirrors
+// deleteTask in lib/actions/tasks.ts: Zod-validated input, membership
+// re-checked server-side (defense in depth, AS-143), admin client used for
+// the actual update, discriminated union return, generic user-facing
+// errors with details only logged server-side (AS-146).
+//
+// Unlike deleteTask (any active member may delete), this action is
+// authorization-gated per AS-098/AS-099/AS-100: only the comment's own
+// author OR an admin/owner of the workspace that (transitively) owns the
+// comment's task may delete it. A different regular member is rejected
+// server-side even if they somehow invoke this action directly (AS-099)
+// — the RLS `comments_update_author_or_admin` policy
+// (supabase/migrations/20260818041550_rls_comments_delete_update.sql)
+// backs this up as defense in depth, but this action's own check is the
+// primary enforcement since the admin client bypasses RLS.
+//
+// The comment's owning task/project/workspace is looked up server-side
+// (never trusted from the client) so this authorization check runs
+// against the *real* owning workspace, same convention as addComment.
+export async function deleteComment(
+  commentId: string,
+): Promise<DeleteCommentResult> {
+  const parsed = deleteCommentSchema.safeParse({ commentId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid comment.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete a comment." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the comment's owning task/project/workspace, and its author,
+  // so both the authorization check and "not found" behaviour are based
+  // on real server-side data. An already-deleted comment behaves as "not
+  // found" (idempotent-safe), same convention as deleteTask.
+  const { data: commentRow, error: commentError } = await admin
+    .from("comments")
+    .select("id, user_id, deleted_at, tasks(id, projects(workspace_id))")
+    .eq("id", parsed.data.commentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (commentError || !commentRow) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  const task = commentRow.tasks as
+    | { projects: { workspace_id: string } | { workspace_id: string }[] | null }
+    | { projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+  const project = taskRow?.projects;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  const isAuthor = commentRow.user_id === user.id;
+
+  // AS-098: the comment's own author may always delete it, regardless of
+  // role. AS-100: a workspace admin/owner may delete any comment in their
+  // workspace, regardless of authorship. AS-099: anyone else — a
+  // different regular member — is rejected.
+  if (!isAuthor) {
+    const adminMembership = await requireWorkspaceAdmin(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!adminMembership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to delete this comment.",
+      };
+    }
+  } else {
+    // Even the author must still be an active member (defense in depth —
+    // e.g. a removed member should not retain delete rights on their old
+    // comments).
+    const membership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!membership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to delete this comment.",
+      };
+    }
+  }
+
+  const { data: deleted, error: deleteError } = await admin
+    .from("comments")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", parsed.data.commentId)
+    .select("id, deleted_at")
+    .single();
+
+  if (deleteError || !deleted || !deleted.deleted_at) {
+    console.error("deleteComment: update failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as addComment above.
+      console.error(
+        "deleteComment: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: deleted.id,
+      deletedAt: deleted.deleted_at,
     },
   };
 }

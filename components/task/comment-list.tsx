@@ -43,10 +43,10 @@
 
 import { useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, MessageSquare } from "lucide-react";
+import { Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { addComment } from "@/lib/actions/comments";
+import { addComment, deleteComment } from "@/lib/actions/comments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -87,6 +87,8 @@ export function CommentList({
   loading = false,
   error = null,
   onRetry,
+  currentUserId,
+  currentUserRole,
 }: {
   taskId: string;
   /** Initial comments for this task, ideally already oldest-first. */
@@ -98,6 +100,17 @@ export function CommentList({
   /** Drives the inline error state when a future caller's fetch failed. */
   error?: string | null;
   onRetry?: () => void;
+  /** F061 (AS-098, AS-099, AS-100): the viewer's own user id. A comment's
+   * delete button is only rendered when this equals the comment's author,
+   * or when `currentUserRole` is "owner"/"admin". Undefined hides delete
+   * everywhere — the server (`deleteComment`) independently re-checks
+   * authorization regardless, so this prop only controls UI affordance,
+   * never the actual guarantee (AS-099's "unavailable in the UI *and*
+   * rejected server-side" — hiding the button is the UX half; the Server
+   * Action call is the enforcement half). */
+  currentUserId?: string;
+  /** F061 (AS-100): the viewer's active role in this task's workspace. */
+  currentUserRole?: "owner" | "admin" | "member";
 }) {
   const [localComments, setLocalComments] = useState(comments);
   // Tracks which task's comments are currently loaded into local state, so
@@ -107,6 +120,36 @@ export function CommentList({
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [draft, setDraft] = useState("");
   const [isSubmitting, startSubmitTransition] = useTransition();
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
+    null,
+  );
+  const [, startDeleteTransition] = useTransition();
+
+  const isAdminOrOwner =
+    currentUserRole === "owner" || currentUserRole === "admin";
+
+  function canDelete(comment: TaskComment): boolean {
+    if (!currentUserId) return false;
+    return comment.userId === currentUserId || isAdminOrOwner;
+  }
+
+  function handleDelete(commentId: string) {
+    setDeletingCommentId(commentId);
+    startDeleteTransition(async () => {
+      const result = await deleteComment(commentId);
+      if (result.ok) {
+        // AS-101/AS-102: remove locally so it disappears immediately for
+        // this viewer; the server soft-delete plus revalidatePath handles
+        // it disappearing for other viewers/on reload.
+        setLocalComments((previous) =>
+          previous.filter((comment) => comment.id !== commentId),
+        );
+      } else {
+        toast.error(result.error);
+      }
+      setDeletingCommentId(null);
+    });
+  }
 
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
@@ -173,6 +216,23 @@ export function CommentList({
                     addSuffix: true,
                   })}
                 </span>
+                {canDelete(comment) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="ml-auto size-6"
+                    disabled={deletingCommentId === comment.id}
+                    aria-label="Delete comment"
+                    onClick={() => handleDelete(comment.id)}
+                  >
+                    {deletingCommentId === comment.id ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                    )}
+                  </Button>
+                )}
               </div>
               <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
             </li>

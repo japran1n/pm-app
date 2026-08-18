@@ -117,6 +117,8 @@ export function TaskDetailSheet({
   error = null,
   onRetry,
   onDeleted,
+  currentUserId,
+  currentUserRole,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -136,6 +138,16 @@ export function TaskDetailSheet({
   onRetry?: () => void;
   /** Called after a successful delete so the caller can close/refresh. */
   onDeleted?: (taskId: string) => void;
+  /** F061: the viewer's own user id, used by CommentList to show a delete
+   * affordance on their own comments (AS-098). Undefined (caller hasn't
+   * been updated yet) hides the delete affordance entirely — a safe
+   * default, since the server independently re-checks authorization
+   * regardless (AS-099). */
+  currentUserId?: string;
+  /** F061: the viewer's active role in this task's workspace, used by
+   * CommentList to show a delete affordance on *any* comment for
+   * admin/owner (AS-100). */
+  currentUserRole?: "owner" | "admin" | "member";
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
@@ -436,6 +448,8 @@ export function TaskDetailSheet({
                 taskId={task.id}
                 comments={comments}
                 members={members}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
               />
             </div>
 

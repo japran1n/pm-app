@@ -18,3 +18,11 @@ export const addCommentSchema = z.object({
 });
 
 export type AddCommentInput = z.infer<typeof addCommentSchema>;
+
+// Validates deleteComment input (F061: AS-098, AS-099, AS-100). Mirrors
+// deleteTaskSchema's shape from lib/validation/tasks.ts.
+export const deleteCommentSchema = z.object({
+  commentId: z.string().uuid("Invalid comment."),
+});
+
+export type DeleteCommentInput = z.infer<typeof deleteCommentSchema>;
