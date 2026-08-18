@@ -6,6 +6,20 @@ import { signOut } from "@/lib/actions/auth";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { Button } from "@/components/ui/button";
 
+// AS-022: force every request under /w/* through a real server round-trip
+// instead of allowing the browser to serve a bfcache-restored copy of a
+// previously-authenticated page after sign-out. Without this, hitting the
+// back button after signOut() can repaint the last-rendered workspace DOM
+// straight from bfcache with zero network request — proxy.ts's
+// requiresAuth guard (F010, AS-001) never runs in that path because it
+// only intercepts requests that actually hit the server. Marking this
+// route segment force-dynamic disables static/full route caching and,
+// combined with Next's cache-control behavior for dynamic routes,
+// prevents the browser from treating this page as safe to restore from
+// bfcache, so back-navigation after sign-out always re-invokes this
+// layout's own `!user` -> redirect("/sign-in") check below.
+export const dynamic = "force-dynamic";
+
 // Server Component layout (AS-012, AS-013, AS-042, AS-144): resolves the
 // active workspace from the URL slug, verifies the caller has an active
 // membership, and fetches every active-membership workspace for the

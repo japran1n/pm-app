@@ -1,61 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { describe, expect, it } from "vitest";
 
-// Trace/confirmation test for AS-022's "back-navigation shows no cached
-// workspace data" half of the assertion.
+// AS-022: "navigating back after sign-out does not show cached workspace
+// data."
 //
-// Mechanism being confirmed: proxy.ts's requiresAuth guard (F010, AS-001)
-// runs updateSession() -> supabase.auth.getUser() on *every* request to a
-// /w/* path, including one produced by the browser's back/forward button.
-// Next.js Server Component routes are not cached client-side the way an SPA
-// route would be (no bfcache-served DOM for a server-rendered RSC payload):
-// each navigation — forward, back, or a hard reload — is a fresh request
-// that this proxy intercepts. Once signOut() (lib/actions/auth.ts) clears
-// the sb-*-auth-token cookies, the *next* request's supabase.auth.getUser()
-// call — regardless of whether the browser thinks it's a "back" navigation
-// — has no valid session and returns { user: null }, so requiresAuth's
-// `!user` branch fires and redirects to /sign-in instead of ever reaching
-// the workspace layout / rendering cached data.
+// The bfcache-restoration path this assertion is actually about happens
+// entirely client-side in the browser: hitting back after signOut() can
+// repaint a previously-rendered /w/* page straight from the browser's
+// back-forward cache with *zero* network request. That means proxy.ts's
+// requiresAuth guard (F010, AS-001) — which only runs on requests that hit
+// the server — never gets a chance to fire in that path. A unit/integration
+// test that fabricates a request to proxy() (the previous version of this
+// file) cannot exercise this: it can only prove the guard works when a
+// request is actually made, which was never in question and is not what
+// bfcache restoration does.
 //
-// We simulate the post-sign-out state directly: no session cookie on the
-// request, so the mocked getUser() (standing in for @supabase/ssr reading
-// the now-cleared cookie) returns null, exactly as it would immediately
-// after signOut() ran.
-vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({
-    auth: {
-      getUser: async () => ({ data: { user: null } }),
-    },
-  }),
-}));
-
-describe("proxy() post-sign-out request trace (AS-022)", () => {
-  it("AS-022: a request to a /w/* URL with no session cookie (the state immediately after signOut()) is redirected to /sign-in, not served workspace data — this is what makes back-navigation after sign-out safe", async () => {
-    const { proxy } = await import("@/proxy");
-
-    // No cookies attached: mirrors the browser's request after signOut()
-    // cleared the sb-*-auth-token cookies, whether the navigation is a
-    // fresh click or the back button.
-    const request = new NextRequest(
-      "https://example.com/w/some-workspace/projects/1/board",
+// KNOWN LIMITATION: genuinely reproducing browser bfcache restoration
+// (sign in, load a /w/* page, sign out, press the OS/browser back button,
+// and assert the DOM does NOT show stale workspace data with no network
+// request) requires a real browser context and is exercised at the E2E
+// level (Playwright, AS-150), not here. This file's job is narrower: it
+// verifies the specific server-side mechanism that defeats bfcache
+// restoration is actually in place.
+//
+// The mechanism is `export const dynamic = "force-dynamic"` on the
+// workspace layout module (app/(workspace)/w/[workspaceSlug]/layout.tsx).
+// This is Next.js's supported route-segment config for opting a route out
+// of static rendering and the associated caching, which in turn prevents
+// the browser from treating the page as safe to restore from bfcache —
+// every visit, including a back-navigation, becomes a real request that
+// re-runs this layout's own `!user` -> redirect("/sign-in") check (and
+// proxy.ts's guard ahead of it) rather than repainting stale DOM.
+describe("workspace layout dynamic rendering config (AS-022)", () => {
+  it("AS-022: the workspace layout exports dynamic = \"force-dynamic\", forcing a real server round-trip (and therefore the auth guard) on every visit instead of allowing a bfcache-restored authenticated page after sign-out", async () => {
+    const layoutModule = await import(
+      "@/app/(workspace)/w/[workspaceSlug]/layout"
     );
 
-    const response = await proxy(request);
-
-    expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toBe(
-      "https://example.com/sign-in",
-    );
-  });
-
-  it("AS-022 (control case): a request to a non-workspace route with no session is NOT redirected — confirms the guard is scoped to /w/*, not a blanket cache-buster", async () => {
-    const { proxy } = await import("@/proxy");
-
-    const request = new NextRequest("https://example.com/sign-in");
-
-    const response = await proxy(request);
-
-    // NextResponse.next() carries no redirect status/location.
-    expect(response.headers.get("location")).toBeNull();
+    expect(layoutModule.dynamic).toBe("force-dynamic");
   });
 });
