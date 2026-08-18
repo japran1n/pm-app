@@ -1,11 +1,61 @@
+import { getProjectBoardTasks } from "@/lib/queries/tasks";
+import { BoardColumn } from "@/components/board/board-column";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
+import type { TaskCardTask } from "@/components/task/task-card";
 
-// F030 placeholder, specialized by F032 (AS-041): the real Board view
-// (drag-and-drop task columns) lands in F042+, and tasks themselves don't
-// exist until F035+. Until then, every project has exactly zero tasks, so
-// this page always renders the board's empty state — via the reusable
-// `BoardEmptyState` component that F042 will compose into the real board
-// once it fetches actual task data, rather than duplicating this markup.
-export default function ProjectBoardPage() {
-  return <BoardEmptyState />;
+// F042 (AS-067, AS-068): the real Board view — supersedes the F030/F032
+// placeholder that always rendered BoardEmptyState. Fetches all non-deleted
+// tasks for this project (getProjectBoardTasks, lib/queries/tasks.ts,
+// ordered by position ascending) and buckets them into exactly 4 fixed
+// columns, in a fixed left-to-right order: To Do, In Progress, In Review,
+// Done (AS-067). Each column only shows tasks whose status matches that
+// column, scoped to this project by the query's `project_id` filter
+// (AS-068).
+//
+// Server Component per the clarified spec ("Server Component for
+// data-fetching, thin Client Component only for the interactive part") —
+// this feature is render-only, no drag-and-drop (F043+) and no
+// click-to-open-detail-sheet wiring, so there is no client boundary at all
+// yet. Primary content is server-rendered in the initial HTML (AS-155).
+//
+// Access relies on the project detail layout's guard one level up
+// (workspace membership, F010/F023) plus getProjectById's cross-workspace
+// 404 handling — no duplicate page-level gate here.
+//
+// Whole-board empty state (F032/AS-041): when the project has zero tasks
+// across every status, the page renders the shared BoardEmptyState instead
+// of 4 columns that would each individually say "No tasks" — reusing the
+// component exactly as F032's own comment anticipated, rather than
+// duplicating its markup.
+const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
+  "todo",
+  "in_progress",
+  "in_review",
+  "done",
+];
+
+export default async function ProjectBoardPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string; projectId: string }>;
+}) {
+  const { projectId } = await params;
+
+  const tasks = await getProjectBoardTasks(projectId);
+
+  if (tasks.length === 0) {
+    return <BoardEmptyState />;
+  }
+
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-4">
+      {FIXED_COLUMN_ORDER.map((status) => (
+        <BoardColumn
+          key={status}
+          status={status}
+          tasks={tasks.filter((task) => task.status === status)}
+        />
+      ))}
+    </div>
+  );
 }
