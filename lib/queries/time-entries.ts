@@ -34,6 +34,51 @@ export async function getProjectTimeTotals(
   };
 }
 
+export type WorkspaceTimeByPerson = {
+  userId: string;
+  billableMinutes: number;
+  nonBillableMinutes: number;
+};
+
+// getWorkspaceTimeByPerson (F115, AS-173, AS-174): thin wrapper around the
+// `get_workspace_time_by_person` RPC
+// (supabase/migrations/20260818170000_rpc_workspace_time_by_person.sql),
+// following the same thin-wrapper convention as `getProjectTimeTotals`
+// above. Uses the request-scoped (RLS-respecting) client — the RPC itself
+// is `security invoker`, so a caller who isn't an active member of
+// `workspaceId` gets an empty array back, not an error and not another
+// workspace's data (AS-176). The RPC's own `t.deleted_at is null` filter
+// excludes a soft-deleted task's logged time (AS-174); `startDate`/`endDate`
+// are inclusive on both ends.
+export async function getWorkspaceTimeByPerson(
+  workspaceId: string,
+  startDate: string,
+  endDate: string,
+): Promise<WorkspaceTimeByPerson[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_workspace_time_by_person", {
+    p_workspace_id: workspaceId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+
+  if (error || !data) {
+    if (error) {
+      console.error("getWorkspaceTimeByPerson: rpc failed:", error);
+    }
+    return [];
+  }
+
+  return data.map(
+    (row: { user_id: string; billable_minutes: number; non_billable_minutes: number }) => ({
+      userId: row.user_id,
+      billableMinutes: Number(row.billable_minutes ?? 0),
+      nonBillableMinutes: Number(row.non_billable_minutes ?? 0),
+    }),
+  );
+}
+
 export type ActiveTimer = {
   id: string;
   taskId: string;

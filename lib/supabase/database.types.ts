@@ -372,6 +372,18 @@ export type Database = {
           status: string
         }[]
       }
+      get_workspace_time_by_person: {
+        Args: {
+          p_end_date: string
+          p_start_date: string
+          p_workspace_id: string
+        }
+        Returns: {
+          billable_minutes: number
+          non_billable_minutes: number
+          user_id: string
+        }[]
+      }
       is_active_workspace_member: {
         Args: { target_workspace_id: string }
         Returns: boolean

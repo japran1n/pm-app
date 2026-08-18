@@ -8,6 +8,7 @@ import {
   KanbanSquare,
   Search,
   Users,
+  Clock,
   LogOut,
   Menu,
 } from "lucide-react";
@@ -33,6 +34,7 @@ function navItems(workspaceSlug: string) {
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
+    { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
   ];
 }
