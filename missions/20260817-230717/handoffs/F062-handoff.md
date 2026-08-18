@@ -44,3 +44,6 @@ AUTONOMOUS_DECISION: `npx supabase db push --yes` hung without output in this sa
 - Pattern source: `lib/board/reconcile-realtime-task.ts` (F049/F103) and `components/board/use-board-realtime.ts` (F049) — read those first, this feature is a close structural mirror for the `comments` table instead of `tasks`.
 - If `npx supabase db push` also hangs for you in this sandbox, that's a known environment limitation observed during this run, not a code issue — try from the orchestrator's environment (`/mission-connect`'s already-verified `supabase link` should still be valid) or re-run `npx supabase db push --yes` from a network-enabled shell.
 - MCP: `mcp__supabase__*` tools were not present as callable tools in this worker's session (per `connections/mcp-registry.md`, Supabase MCP is "Optional" and CLI is the primary path) — proceeded via CLI only, per the registry's guidance not to block on MCP approval.
+
+## Orchestrator note (post-handoff)
+The 20260818050000_realtime_comments_publication.sql migration failed to apply from the worker's sandbox (no network egress). Applied by the orchestrator via `supabase db push` at 2026-08-18T06:22Z — confirmed present in `supabase migration list` remote column. No code changes needed; this was purely an apply-step gap, not a logic defect.
