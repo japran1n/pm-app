@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
+import type { User } from "@supabase/supabase-js";
+
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -128,6 +130,60 @@ export async function createWorkspace(
   redirect(`/w/${workspace.slug}`);
 }
 
+// AS-007: Finds an auth user by email via admin.auth.admin.listUsers(),
+// paginating through every page rather than relying on the API's single
+// unpaginated default (50 users/page). Supabase's Admin API has no
+// server-side email filter for listUsers (confirmed against the current
+// @supabase/auth-js PageParams type, which only exposes `page`/`perPage`),
+// so an exhaustive paginated scan is the only correct option today. Returns
+// the matching `User`, `null` if no user has that email, or the sentinel
+// `"lookup_failed"` if any page request errors (caller surfaces a generic
+// error rather than silently treating a failed lookup as "no match").
+async function findAuthUserByEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string,
+): Promise<User | null | "lookup_failed"> {
+  const perPage = 1000;
+  let page = 1;
+
+  // Upper bound purely as a runaway-loop safety net (1000 pages * 1000
+  // users/page = 1,000,000 users) — not expected to ever be hit in
+  // practice, and the loop's own `nextPage === null` check is what
+  // normally ends it.
+  const maxPages = 1000;
+
+  while (page <= maxPages) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) {
+      console.error(
+        "findAuthUserByEmail: listUsers page lookup failed:",
+        error,
+      );
+      return "lookup_failed";
+    }
+
+    const match = data.users.find(
+      (candidate) => candidate.email?.toLowerCase() === email,
+    );
+
+    if (match) {
+      return match;
+    }
+
+    if (data.nextPage === null || data.users.length === 0) {
+      return null;
+    }
+
+    page = data.nextPage;
+  }
+
+  return null;
+}
+
 // Invites a user by email to a workspace (AS-007). Only an active
 // owner/admin member of that workspace may invite; this is re-verified
 // server-side (AS-143 convention) even though workspace_members currently
@@ -211,23 +267,23 @@ export async function inviteMember(
   // auth user who is an active member via a row whose invited_email was
   // never set (e.g. seeded directly, like F013's owner-creation flow) — look
   // the user up by email and check their membership row directly.
-  const { data: usersPage, error: usersLookupError } =
-    await admin.auth.admin.listUsers();
+  //
+  // AS-007 fix: Supabase's admin.auth.admin.listUsers() has no server-side
+  // email filter (checked against the current @supabase/auth-js PageParams
+  // type — it only accepts `page`/`perPage`, no `filter`/`email` option), so
+  // a single unpaginated call only sees the first 50 users (the API
+  // default). In any instance with >50 registered users, an already-active
+  // member past page 1 would be missed and could be silently re-invited.
+  // We paginate through every page until we find a match or run out of
+  // pages.
+  const matchingUser = await findAuthUserByEmail(admin, parsed.data.email);
 
-  if (usersLookupError) {
-    console.error(
-      "inviteMember: auth user lookup failed:",
-      usersLookupError,
-    );
+  if (matchingUser === "lookup_failed") {
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
-
-  const matchingUser = usersPage.users.find(
-    (candidate) => candidate.email?.toLowerCase() === parsed.data.email,
-  );
 
   if (matchingUser) {
     const { data: existingMembership, error: existingMembershipError } =
