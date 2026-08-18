@@ -173,3 +173,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 ## Deferred re-verification (M7)
 
 - AS-136 (dashboard performance budget): no explicit budget defined in tech-decisions.md yet; F089 (M8) is where this gets a real measurement. Not a defect — a genuine sequencing dependency, same pattern as AS-034/AS-064.
+
+## M8 follow-ups (from M8 scrutiny — see milestones/M8-scrutiny.md)
+
+- F107 board-setstate-during-render-fix — (code quality, no assertion) [CLARIFIED-AUTO]
