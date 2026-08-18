@@ -4,8 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createProjectSchema, editProjectSchema } from "@/lib/validation/projects";
-import { requireActiveMembership } from "@/lib/auth/require-membership";
+import {
+  archiveProjectSchema,
+  createProjectSchema,
+  editProjectSchema,
+} from "@/lib/validation/projects";
+import {
+  requireActiveMembership,
+  requireWorkspaceAdmin,
+} from "@/lib/auth/require-membership";
 
 export type CreateProjectResult =
   | {
@@ -304,6 +311,139 @@ export async function editProject(
       startDate: updated.start_date,
       endDate: updated.end_date,
       updatedAt: updated.updated_at,
+    },
+  };
+}
+
+export type ArchiveProjectResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        workspaceId: string;
+        deletedAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Archives (soft-deletes) a project (AS-030, AS-031, AS-032, AS-033).
+// Admin/owner-only — deliberately `requireWorkspaceAdmin`, not
+// `requireActiveMembership`, since AS-030 says "by an admin or owner" and
+// AS-033 says a plain `member` must be rejected server-side even if they
+// call this action directly (mirrors deleteWorkspace's
+// `requireWorkspaceOwner` pattern in lib/actions/workspaces.ts, one role
+// looser here per AS-030's "admin or owner" line).
+//
+// Sets `deleted_at = now()` rather than deleting the row (same soft-delete
+// convention as deleteWorkspace) — AS-031 is satisfied because
+// getWorkspaceProjects (lib/queries/projects.ts) already filters
+// `deleted_at IS NULL`, and AS-032 is satisfied because nothing else about
+// the row (or its would-be tasks once that table exists) is touched: a
+// direct by-id query for this same row, unfiltered by deleted_at, still
+// returns the full row with all its data intact. There is no project
+// detail page yet (lands F030/F031) to wire a "navigate directly" UI
+// affordance into — this action only needs to prove the underlying
+// data-layer guarantee that archiving doesn't hide/destroy the row from a
+// direct-by-id read, which the AS-032 test in
+// tests/integration/archive-project.test.ts verifies directly against the
+// database.
+export async function archiveProject(
+  projectId: string,
+  workspaceId: string,
+): Promise<ArchiveProjectResult> {
+  const parsed = archiveProjectSchema.safeParse({ projectId, workspaceId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to archive a project." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention, tightened per AS-030/AS-033): the
+  // caller must be an active admin or owner of this exact workspace,
+  // re-checked server-side — a plain member calling this action directly
+  // (bypassing the UI, which only renders the control for admin/owner)
+  // must be rejected here, not just hidden client-side.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only a workspace admin or owner can archive a project.",
+    };
+  }
+
+  const { data: existing, error: fetchError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at")
+    .eq("id", parsed.data.projectId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (fetchError || !existing) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  if (existing.deleted_at) {
+    return { ok: false, error: "This project is already archived." };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("projects")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", parsed.data.projectId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .is("deleted_at", null)
+    .select("id, workspace_id, deleted_at")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("archiveProject: soft-delete update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "archiveProject: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      workspaceId: updated.workspace_id,
+      deletedAt: updated.deleted_at as string,
     },
   };
 }

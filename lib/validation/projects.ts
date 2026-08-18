@@ -100,3 +100,13 @@ export const editProjectSchema = z
   );
 
 export type EditProjectInput = z.infer<typeof editProjectSchema>;
+
+// Validates archive-project input (AS-030, AS-033). Same shape as
+// deleteWorkspaceSchema's single-id validation in
+// lib/validation/workspaces.ts.
+export const archiveProjectSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  workspaceId: z.string().uuid("Invalid workspace."),
+});
+
+export type ArchiveProjectInput = z.infer<typeof archiveProjectSchema>;

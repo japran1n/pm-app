@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceProjects } from "@/lib/queries/projects";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { EditProjectDialog } from "@/components/edit-project-dialog";
+import { ArchiveProjectDialog } from "@/components/archive-project-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -62,6 +63,21 @@ export default async function ProjectsPage({
     redirect("/onboarding");
   }
 
+  // F029 (AS-030, AS-033): the caller's own role in this workspace decides
+  // whether the Archive control is even mounted for them — a plain member
+  // must never see it (the server action re-checks independently, this is
+  // just the UI half of defense in depth).
+  const { data: callerMembership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspace.id)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const canArchive =
+    callerMembership?.role === "owner" || callerMembership?.role === "admin";
+
   let projects: Awaited<ReturnType<typeof getWorkspaceProjects>> | null = null;
   let loadError = false;
 
@@ -118,16 +134,24 @@ export default async function ProjectsPage({
                     {project.description || "No description."}
                   </CardDescription>
                 </div>
-                <EditProjectDialog
-                  workspaceId={workspace.id}
-                  project={{
-                    id: project.id,
-                    name: project.name,
-                    description: project.description,
-                    startDate: project.startDate,
-                    endDate: project.endDate,
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  <EditProjectDialog
+                    workspaceId={workspace.id}
+                    project={{
+                      id: project.id,
+                      name: project.name,
+                      description: project.description,
+                      startDate: project.startDate,
+                      endDate: project.endDate,
+                    }}
+                  />
+                  {canArchive && (
+                    <ArchiveProjectDialog
+                      workspaceId={workspace.id}
+                      project={{ id: project.id, name: project.name }}
+                    />
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {/* AS-034: open task count. The `tasks` table doesn't exist
