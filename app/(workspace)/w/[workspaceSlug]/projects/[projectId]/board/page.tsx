@@ -1,4 +1,6 @@
+import { createClient } from "@/lib/supabase/server";
 import { getProjectBoardTasks } from "@/lib/queries/tasks";
+import { getWorkspaceMembers } from "@/lib/queries/members";
 import { Board } from "@/components/board/board";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
 
@@ -27,19 +29,46 @@ import { BoardEmptyState } from "@/components/board/board-empty-state";
 // across every status, the page renders the shared BoardEmptyState instead
 // of an empty <Board> — reusing the component exactly as F032's own
 // comment anticipated, rather than duplicating its markup.
-
+//
+// Task-creation fix: both BoardEmptyState and Board now need a real "New
+// Task" trigger (<NewTaskDialog>), which needs the current workspace's
+// active members as assignee options — resolved here the same way
+// list/page.tsx already does (workspace looked up from `workspaceSlug`,
+// then getWorkspaceMembers, same RLS-scoped pattern as the members page).
 export default async function ProjectBoardPage({
   params,
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
 }) {
-  const { projectId } = await params;
+  const { workspaceSlug, projectId } = await params;
 
   const tasks = await getProjectBoardTasks(projectId);
 
+  const supabase = await createClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  const assigneeOptions = workspace
+    ? (await getWorkspaceMembers(workspace.id)).active.map((member) => ({
+        id: member.userId,
+        label: member.name ?? member.email ?? member.userId,
+      }))
+    : [];
+
   if (tasks.length === 0) {
-    return <BoardEmptyState />;
+    return (
+      <BoardEmptyState projectId={projectId} assigneeOptions={assigneeOptions} />
+    );
   }
 
-  return <Board projectId={projectId} initialTasks={tasks} />;
+  return (
+    <Board
+      projectId={projectId}
+      initialTasks={tasks}
+      assigneeOptions={assigneeOptions}
+    />
+  );
 }

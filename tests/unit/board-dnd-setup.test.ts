@@ -27,9 +27,16 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
+
+// Board now renders <NewTaskDialog>, which calls useRouter — stub it out
+// since this test SSR-renders Board directly with no Next app-router
+// context mounted (this repo's tests use `environment: "node"`, no jsdom).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 import { Board } from "@/components/board/board";
 import type { TaskCardTask } from "@/components/task/task-card";

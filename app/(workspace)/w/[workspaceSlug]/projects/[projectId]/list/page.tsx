@@ -38,6 +38,7 @@ import { resolveAssigneeNames } from "@/lib/queries/assignee-names";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
+import { NewTaskDialog } from "@/components/task/new-task-dialog";
 
 const VALID_STATUSES = new Set(["todo", "in_progress", "in_review", "done"]);
 const VALID_PRIORITIES = new Set([
@@ -118,7 +119,13 @@ export default async function ProjectListPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <ListFilters assigneeOptions={assigneeOptions} />
+      {/* Task-creation fix: a user might land on List first (e.g. via a
+          bookmarked/shared filtered URL), so it needs its own "New Task"
+          entry point rather than relying on the Board view's. */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <ListFilters assigneeOptions={assigneeOptions} />
+        <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+      </div>
       <TaskListTable
         tasks={tasks}
         assigneeNames={assigneeNames}

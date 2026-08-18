@@ -35,6 +35,14 @@ import { createElement } from "react";
 vi.mock("@/lib/actions/tasks", () => ({
   moveAndReorderTask: vi.fn(async () => ({ ok: false, error: "Could not move task." })),
   reorderTask: vi.fn(async () => ({ ok: false, error: "Could not reorder task." })),
+  createTask: vi.fn(async () => ({ ok: true, data: {} })),
+}));
+
+// Board now renders <NewTaskDialog>, which calls useRouter — stub it out
+// since this test SSR-renders Board directly with no Next app-router
+// context mounted (same "no jsdom" constraint noted above).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
 }));
 
 import { Board } from "@/components/board/board";

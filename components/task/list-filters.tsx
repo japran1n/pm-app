@@ -63,6 +63,34 @@ export type AssigneeOption = {
 
 const ALL_VALUE = "__all__";
 
+// Bug fix: base-ui's <Select.Value> only resolves a human-readable label
+// from a matching <SelectItem> that is actually mounted in the DOM — but
+// <SelectContent>'s items live inside a lazily-mounted Portal/Positioner
+// that isn't rendered until the popup is opened. On first paint (and any
+// time the popup hasn't been opened yet), nothing is mounted for it to
+// read a label from, so it falls back to printing the raw `value` string
+// verbatim — visibly showing "__all__" instead of "All statuses" etc. The
+// fix is to give <Select.Value> an explicit children render-function
+// (documented in its own type as the supported way to format the selected
+// value) that maps a value to its label itself, instead of relying on
+// label lookup from mounted item DOM.
+const STATUS_LABELS: Record<string, string> = {
+  [ALL_VALUE]: "All statuses",
+  todo: "To Do",
+  in_progress: "In Progress",
+  in_review: "In Review",
+  done: "Done",
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  [ALL_VALUE]: "All priorities",
+  urgent: "Urgent",
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+  backlog: "Backlog",
+};
+
 export function ListFilters({
   assigneeOptions,
 }: {
@@ -100,6 +128,14 @@ export function ListFilters({
     router.push(pathname);
   }, [pathname, router]);
 
+  const assigneeLabels = useMemo(() => {
+    const labels: Record<string, string> = { [ALL_VALUE]: "All assignees" };
+    for (const option of assigneeOptions) {
+      labels[option.id] = option.label;
+    }
+    return labels;
+  }, [assigneeOptions]);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Select
@@ -107,7 +143,9 @@ export function ListFilters({
         onValueChange={(value) => setParam("status", value)}
       >
         <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
-          <SelectValue placeholder="Status" />
+          <SelectValue placeholder="Status">
+            {(value: string) => STATUS_LABELS[value] ?? value}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
@@ -124,7 +162,9 @@ export function ListFilters({
         onValueChange={(value) => setParam("priority", value)}
       >
         <SelectTrigger size="sm" className="w-36" aria-label="Filter by priority">
-          <SelectValue placeholder="Priority" />
+          <SelectValue placeholder="Priority">
+            {(value: string) => PRIORITY_LABELS[value] ?? value}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>All priorities</SelectItem>
@@ -141,7 +181,9 @@ export function ListFilters({
         onValueChange={(value) => setParam("assigneeId", value)}
       >
         <SelectTrigger size="sm" className="w-40" aria-label="Filter by assignee">
-          <SelectValue placeholder="Assignee" />
+          <SelectValue placeholder="Assignee">
+            {(value: string) => assigneeLabels[value] ?? value}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>All assignees</SelectItem>

@@ -47,6 +47,10 @@ import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 import { useBoardRealtime } from "@/components/board/use-board-realtime";
+import {
+  NewTaskDialog,
+  type NewTaskDialogAssigneeOption,
+} from "@/components/task/new-task-dialog";
 
 const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
   "todo",
@@ -59,6 +63,7 @@ export function Board({
   projectId,
   initialTasks,
   onCardClick,
+  assigneeOptions = [],
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -67,6 +72,11 @@ export function Board({
   projectId: string;
   initialTasks: TaskCardTask[];
   onCardClick?: (taskId: string) => void;
+  // Task-creation fix: workspace members offered as assignee choices in
+  // the toolbar's "New Task" dialog. Defaults to `[]` so existing callers
+  // (e.g. tests) that don't pass it don't crash — the dialog itself still
+  // works fine with zero assignee options (the field is optional).
+  assigneeOptions?: NewTaskDialogAssigneeOption[];
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -241,26 +251,36 @@ export function Board({
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {FIXED_COLUMN_ORDER.map((status) => (
-          <BoardColumn
-            key={status}
-            status={status}
-            tasks={tasks.filter((task) => task.status === status)}
-            onCardClick={onCardClick}
-          />
-        ))}
+    <div className="flex flex-col gap-4">
+      {/* Task-creation fix: a "New Task" trigger visible on the board's
+          own toolbar even once tasks already exist — previously the only
+          create-task entry point was the empty state, which disappears
+          the moment a project has its first task. */}
+      <div className="flex justify-end">
+        <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
       </div>
 
-      <DragOverlay>
-        {activeTask ? <TaskCard task={activeTask} /> : null}
-      </DragOverlay>
-    </DndContext>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {FIXED_COLUMN_ORDER.map((status) => (
+            <BoardColumn
+              key={status}
+              status={status}
+              tasks={tasks.filter((task) => task.status === status)}
+              onCardClick={onCardClick}
+            />
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeTask ? <TaskCard task={activeTask} /> : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
   );
 }
