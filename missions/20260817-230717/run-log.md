@@ -49,3 +49,6 @@ F053-F070 all COMPLETE (18/18). Orchestrator manually applied 2 migrations that 
 
 ## 2026-08-18T05:35:15Z — M6 scrutiny FAIL (1), follow-up created
 Fixed a real pre-existing test bug (F068's fts-tasks.test.ts missing env loading) before scrutiny ran. scrutiny-validator confirmed a genuine Realtime/RLS interaction bug: soft-deleted comments don't propagate live (AS-101) because the new row fails its own SELECT RLS policy, silently dropping the postgres_changes event. Created F104. 39/40 reviewed assertions PASS; several minor test-coverage gaps noted but not spawned as separate features given "critical paths only" scope.
+
+## 2026-08-18T05:47:00Z — Milestone 6 GREEN
+F104 verified: AS-101 fixed via Realtime Broadcast for delete-notification, proven with a real independent-subscriber test. Total features complete: 89 (M1:5, M2:24, M3:10, M4:9, M5:14, M6:19). Proceeding to M7 (Dashboard).

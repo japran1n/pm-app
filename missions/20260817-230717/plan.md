@@ -74,7 +74,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F051 board-column-counts — AS-083 [CLARIFIED-AUTO] [COMPLETE]
 - F052 board-permission-check — AS-084 [CLARIFIED-AUTO] [COMPLETE]
 
-## M6 — List, search, comments, attachments
+## M6 — List, search, comments, attachments [GREEN]
 
 - F053 list-view-table — AS-085 [CLARIFIED-AUTO] [COMPLETE]
 - F054 list-view-filters — AS-086, AS-087, AS-088, AS-089, AS-090 [CLARIFIED-AUTO] [COMPLETE]
@@ -157,7 +157,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M6 follow-ups (from M6 scrutiny — see milestones/M6-scrutiny.md)
 
-- F104 comment-delete-realtime-fix — AS-101 [CLARIFIED-AUTO]
+- F104 comment-delete-realtime-fix — AS-101 [CLARIFIED-AUTO] [COMPLETE]
 
 ## Noted but not spawned as separate features (M6 scrutiny minor gaps)
 
