@@ -51,6 +51,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
+import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
 
 export type TaskComment = {
   id: string;
@@ -124,6 +126,17 @@ export function CommentList({
     null,
   );
   const [, startDeleteTransition] = useTransition();
+
+  // F062 (AS-101, AS-102): reconcile every Realtime postgres_changes event
+  // for this task's comments into local state via the pure
+  // `reconcileComment` reducer. This is what makes a soft-delete performed
+  // by *another* viewer (author, admin, or owner) disappear from this
+  // viewer's already-open task view without a manual refresh — the local
+  // `filter` in handleDelete above only covers the case where *this*
+  // viewer performed the delete themselves.
+  useCommentsRealtime(taskId, (event) => {
+    setLocalComments((previous) => reconcileComment(previous, event));
+  });
 
   const isAdminOrOwner =
     currentUserRole === "owner" || currentUserRole === "admin";
