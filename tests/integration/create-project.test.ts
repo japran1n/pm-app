@@ -196,6 +196,29 @@ describe.skipIf(!haveAdminCreds)(
       expect(rows ?? []).toHaveLength(0);
     });
 
+    it("AS-026: the database CHECK constraint independently rejects an empty-string name even when Zod is bypassed via a direct insert", async () => {
+      const { error } = await adminClient.from("projects").insert({
+        workspace_id: workspaceId,
+        name: "",
+      });
+
+      // The admin client bypasses RLS and the Server Action's Zod layer
+      // entirely — `projects_name_not_empty` (F100's migration) must still
+      // reject this at the schema level. Closes the gap M3 scrutiny found:
+      // the original migration comment implied DB-level rejection of an
+      // empty name, but only `not null` existed, which does not block ''.
+      expect(error).not.toBeNull();
+    });
+
+    it("AS-026: the database CHECK constraint independently rejects a whitespace-only name even when Zod is bypassed via a direct insert", async () => {
+      const { error } = await adminClient.from("projects").insert({
+        workspace_id: workspaceId,
+        name: "   ",
+      });
+
+      expect(error).not.toBeNull();
+    });
+
     it("AS-035: end_date earlier than start_date is rejected by the Server Action's Zod check before reaching the database", async () => {
       const { createProject } = await import("@/lib/actions/projects");
 
