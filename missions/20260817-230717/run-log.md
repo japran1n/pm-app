@@ -40,3 +40,6 @@ F042-F052 all COMPLETE (11/11). Fractional-index position logic thoroughly unit-
 
 ## 2026-08-18T03:16:05Z — M5 scrutiny FAIL, follow-ups created
 2 high-severity bugs directly traced/demonstrated (not just suspected): position math can escape [prev,next] bound (F101), and cross-column drag partial failure leaves client/server state inconsistent (F102). Plus 1 medium architectural gap (F103, Realtime ordering). Created F101-F103.
+
+## 2026-08-18T03:34:33Z — Milestone 5 GREEN
+F101-F103 verified: position math structurally clamped, cross-column drag now atomic (moveAndReorderTask), Realtime ordering guarded. 290/290 tests, tsc/eslint clean. Total features complete: 61 (M1:5, M2:24, M3:10, M4:9, M5:14). Proceeding to M6 (List, search, comments, attachments) — largest remaining milestone, 18 features.

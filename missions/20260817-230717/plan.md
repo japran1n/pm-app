@@ -60,7 +60,7 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 - F040 overdue-indicator — AS-063, AS-064 [CLARIFIED-AUTO] [COMPLETE]
 - F041 task-tags-editor — AS-065, AS-066 [CLARIFIED-AUTO] [COMPLETE]
 
-## M5 — Board & drag-and-drop
+## M5 — Board & drag-and-drop [GREEN]
 
 - F042 board-columns-render — AS-067, AS-068 [CLARIFIED-AUTO] [COMPLETE]
 - F043 dnd-kit-setup [CLARIFIED-AUTO] [COMPLETE]
@@ -151,6 +151,6 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M5 follow-ups (from M5 scrutiny — see milestones/M5-scrutiny.md)
 
-- F101 position-bound-fix — AS-072, AS-082 [CLARIFIED-AUTO]
-- F102 optimistic-rollback-partial-failure — AS-077 [CLARIFIED-AUTO]
-- F103 realtime-ordering-guard — AS-076 [CLARIFIED-AUTO]
+- F101 position-bound-fix — AS-072, AS-082 [CLARIFIED-AUTO] [COMPLETE]
+- F102 optimistic-rollback-partial-failure — AS-077 [CLARIFIED-AUTO] [COMPLETE]
+- F103 realtime-ordering-guard — AS-076 [CLARIFIED-AUTO] [COMPLETE]
