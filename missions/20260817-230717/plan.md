@@ -97,14 +97,14 @@ Skeleton only. No business logic, no assertions assigned — this milestone prov
 
 ## M7 — Dashboard
 
-- F071 db-rpc-priority-counts — AS-125, AS-127, AS-128, AS-129 [CLARIFIED-AUTO]
-- F072 db-rpc-status-counts — AS-126, AS-127, AS-128, AS-129 [CLARIFIED-AUTO]
-- F073 dashboard-charts-render — AS-135 [CLARIFIED-AUTO]
-- F074 dashboard-empty-state — AS-130 [CLARIFIED-AUTO]
-- F075 dashboard-overdue-count — AS-131 [CLARIFIED-AUTO]
-- F076 dashboard-workspace-switch-refresh — AS-132 [CLARIFIED-AUTO]
-- F077 dashboard-rls-verification — AS-133 [CLARIFIED-AUTO]
-- F078 dashboard-table-filters — AS-134 [CLARIFIED-AUTO]
+- F071 db-rpc-priority-counts — AS-125, AS-127, AS-128, AS-129 [CLARIFIED-AUTO] [COMPLETE]
+- F072 db-rpc-status-counts — AS-126, AS-127, AS-128, AS-129 [CLARIFIED-AUTO] [COMPLETE]
+- F073 dashboard-charts-render — AS-135 [CLARIFIED-AUTO] [COMPLETE]
+- F074 dashboard-empty-state — AS-130 [CLARIFIED-AUTO] [COMPLETE]
+- F075 dashboard-overdue-count — AS-131 [CLARIFIED-AUTO] [COMPLETE]
+- F076 dashboard-workspace-switch-refresh — AS-132 [CLARIFIED-AUTO] [COMPLETE]
+- F077 dashboard-rls-verification — AS-133 [CLARIFIED-AUTO] [COMPLETE]
+- F078 dashboard-table-filters — AS-134 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M8 — Security, quality, accessibility, docs, polish
 
