@@ -23,15 +23,13 @@
 import { createClient } from "@/lib/supabase/server";
 import type { TaskCardTask } from "@/components/task/task-card";
 // F154 (AS-272, AS-273): completion percentage combines checklist and
-// child-task counts. The counting logic itself is NOT reimplemented
-// here — `countSubtaskProgress`/`countChecklistProgress` are the same
-// pre-existing pure functions F150/F153 already use for the Subtasks
-// section's "3 of 5 done" count and the Checklist section's own progress
-// bar, so the "done" convention (a child task's status equals the fixed
-// string "done") lives in exactly one place. See that function's doc
-// comment for the F222 sweep note.
-import { countSubtaskProgress } from "@/lib/tasks/subtask-progress";
-import { countChecklistProgress } from "@/lib/tasks/checklist-progress";
+// child-task counts. F279 (AS-156) moved the actual counting server-side
+// into the `get_project_board_tasks` RPC (lateral joins, one round trip)
+// instead of assembling `countSubtaskProgress`/`countChecklistProgress`
+// results here in TypeScript — this file no longer needs those two
+// counters directly, only `computeTaskCompletion`, which still combines
+// the RPC's already-counted totals into the same done/total/percent
+// shape as before.
 import { computeTaskCompletion } from "@/lib/tasks/completion";
 
 // F146 (AS-258): every embedded `projects` relation below can come back
@@ -52,160 +50,59 @@ export async function getProjectBoardTasks(
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
-  // F150 (AS-275): NO filter on `parent_task_id` is applied anywhere in
-  // this query — a child task (subtask) is a completely ordinary row in
-  // `tasks` with the same `project_id`/`deleted_at`/`position` shape as
-  // any top-level task, so it is selected, mapped, and returned here
-  // exactly like every other task in the project. This is what makes
-  // AS-275 ("child tasks still appear as ordinary board cards, not
-  // hidden inside their parent") hold: this feature's own subtask UI
-  // (the parent's Subtasks section in TaskDetailSheet) is additive — it
-  // shows a child task a SECOND time, summarized, inside its parent's
-  // detail view — it does not remove or replace the child's own
-  // independent row here. See
-  // tests/integration/board-tasks-include-subtasks.test.ts for the
-  // regression test that actually seeds a parent+child pair and asserts
-  // both come back from this exact function.
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, number, projects(key)",
-    )
-    .eq("project_id", projectId)
-    .is("deleted_at", null)
-    .order("position", { ascending: true });
+  // F279 (AS-156): F150/F154/F157 originally each added their own
+  // whole-project round trip here (child/subtask rows, checklist rows,
+  // open-blocker rows) on top of the main task select — four separate
+  // network round trips to a remote Supabase project, which is what
+  // pushed AS-156's p95 measurement over the 500ms budget (measured
+  // p95=520.6ms before this change). All four are now folded into one
+  // Postgres RPC, `get_project_board_tasks`
+  // (supabase/migrations/20260819110000_rpc_project_board_tasks.sql),
+  // which computes the same subtask/checklist/blocker counts via lateral
+  // joins server-side and returns one row per task — a single round
+  // trip. The RPC is `security invoker` (not definer), so
+  // `tasks_select_active_members`/`checklist_items`/`task_dependencies`
+  // RLS applies exactly as it would for the four separate SELECTs it
+  // replaces; nothing here bypasses RLS. This function's own return
+  // shape (`TaskCardTask[]`) is unchanged, so callers are unaffected.
+  const { data, error } = await supabase.rpc("get_project_board_tasks", {
+    p_project_id: projectId,
+  });
 
   if (error) {
     throw error;
   }
 
-  // F150 (AS-264/AS-275's board-card indicator): one extra query for the
-  // WHOLE project, grouped client-side into a parentId -> count map —
-  // never a per-card/per-row query. Only rows that actually have a live
-  // parent are selected (`parent_task_id` not null), so an ordinary
-  // top-level task with no subtasks costs nothing extra to compute (it
-  // simply has no entry in the resulting map, and the board card's own
-  // `!!task.subtaskCount` check hides the indicator for it).
-  //
-  // F154 (AS-272): `status` is now selected alongside `parent_task_id` too
-  // (still the SAME one query, still whole-project, still no per-card
-  // round trip) so each parent's children can be run through
-  // `countSubtaskProgress` below to get a done/total pair, not just a
-  // total.
-  const { data: childRows, error: childError } = await supabase
-    .from("tasks")
-    .select("parent_task_id, status")
-    .eq("project_id", projectId)
-    .is("deleted_at", null)
-    .not("parent_task_id", "is", null);
-
-  if (childError) {
-    throw childError;
-  }
-
-  const subtaskCounts = new Map<string, number>();
-  const childrenByParent = new Map<string, { status: string }[]>();
-  for (const row of childRows ?? []) {
-    if (!row.parent_task_id) continue;
-    subtaskCounts.set(
-      row.parent_task_id,
-      (subtaskCounts.get(row.parent_task_id) ?? 0) + 1,
-    );
-    const siblings = childrenByParent.get(row.parent_task_id) ?? [];
-    siblings.push({ status: row.status });
-    childrenByParent.set(row.parent_task_id, siblings);
-  }
-
-  // F154 (AS-272): checklist counts for every task in the project, in one
-  // more whole-project query (never per-card) — `checklist_items` has no
-  // `project_id` column of its own, so this joins through `task_id ->
-  // tasks.project_id` (mirroring the RLS policy's own join shape,
-  // supabase/migrations/20260819075456_create_checklist_items.sql) rather
-  // than fetching every task's items separately.
-  const { data: checklistRows, error: checklistError } = await supabase
-    .from("checklist_items")
-    .select("task_id, is_checked, tasks!inner(project_id, deleted_at)")
-    .eq("tasks.project_id", projectId)
-    .is("tasks.deleted_at", null);
-
-  if (checklistError) {
-    throw checklistError;
-  }
-
-  const checklistByTask = new Map<string, { isChecked: boolean }[]>();
-  for (const row of checklistRows ?? []) {
-    const items = checklistByTask.get(row.task_id) ?? [];
-    items.push({ isChecked: row.is_checked });
-    checklistByTask.set(row.task_id, items);
-  }
-
-  // F157 (AS-283): one more whole-project(-scoped) query for the card's
-  // "blocked" indicator — never a per-card round trip, same convention
-  // as `childRows`/`checklistRows` above. `task_dependencies` has no
-  // `project_id` column, and a dependency's blocking task is only
-  // guaranteed to share this project's WORKSPACE, not its project
-  // (AS-285), so this can't be scoped by `.eq("project_id", projectId)`
-  // the way `childRows`/`checklistRows` are — it's scoped by
-  // `blocked_task_id` being one of THIS project's own task ids instead
-  // (`taskIds`, computed from the main `data` fetch above), which is
-  // still exactly one query for the whole project, not one per row.
-  //
-  // A task counts as "blocked" here only while it has at least one
-  // OPEN blocker (the blocking task's own status isn't "done") —
-  // deliberately not "has ever had any blocking dependency at all",
-  // matching this section's own adjacent AS-281 semantics ("a task
-  // whose blockers are all complete shows no blocked warning"): once
-  // every blocker is done, this card stops calling itself blocked,
-  // rather than carrying a permanently-stuck indicator after the
-  // blocker resolves.
-  const taskIds = (data ?? []).map((task) => task.id);
-
-  type BlockerRow = {
-    blocked_task_id: string;
-    blocking:
-      | { status: string; deleted_at: string | null }
-      | { status: string; deleted_at: string | null }[]
-      | null;
+  type BoardTaskRow = {
+    id: string;
+    title: string;
+    status: string;
+    priority: string | null;
+    assignee_id: string | null;
+    due_date: string | null;
+    position: number;
+    updated_at: string;
+    number: number;
+    project_key: string | null;
+    subtask_count: number;
+    checklist_total: number;
+    checklist_done: number;
+    child_total: number;
+    child_done: number;
+    open_blocker_count: number;
   };
 
-  let blockerRows: BlockerRow[] = [];
-  if (taskIds.length > 0) {
-    const { data: rows, error: blockerError } = await supabase
-      .from("task_dependencies")
-      .select(
-        "blocked_task_id, blocking:tasks!task_dependencies_blocking_task_id_fkey(status, deleted_at)",
-      )
-      .in("blocked_task_id", taskIds);
-
-    if (blockerError) {
-      throw blockerError;
-    }
-
-    blockerRows = rows ?? [];
-  }
-
-  const openBlockerCounts = new Map<string, number>();
-  for (const row of blockerRows) {
-    const blocking = firstRelated(row.blocking);
-    if (!blocking || blocking.deleted_at || blocking.status === "done") {
-      continue;
-    }
-    openBlockerCounts.set(
-      row.blocked_task_id,
-      (openBlockerCounts.get(row.blocked_task_id) ?? 0) + 1,
-    );
-  }
-
-  return (data ?? []).map((task) => {
+  return ((data ?? []) as BoardTaskRow[]).map((task) => {
     // F154 (AS-272, AS-273): checklist and child-task counts for THIS
-    // task, read out of the two whole-project maps built above (no
-    // per-card query) via the same pure counters F153/F150 already use.
-    const checklistProgress = countChecklistProgress(
-      checklistByTask.get(task.id) ?? [],
-    );
-    const childProgress = countSubtaskProgress(
-      childrenByParent.get(task.id) ?? [],
-    );
+    // task, straight off the RPC row (already aggregated server-side —
+    // no per-card query, no client-side grouping), fed through the same
+    // pure `computeTaskCompletion` helper as before.
+    const completion = computeTaskCompletion({
+      checklistTotal: task.checklist_total,
+      checklistDone: task.checklist_done,
+      childTotal: task.child_total,
+      childDone: task.child_done,
+    });
 
     return {
       id: task.id,
@@ -216,30 +113,24 @@ export async function getProjectBoardTasks(
       dueDate: task.due_date,
       position: task.position,
       updatedAt: task.updated_at,
-      // F146 (AS-258): selected via this query's existing project join
-      // (`projects(key)` above), never a per-row fetch — see
-      // lib/tasks/task-key.ts for how these combine into "KEY-NUMBER".
+      // F146 (AS-258): selected via the RPC's own project join — see
+      // supabase/migrations/20260819110000_rpc_project_board_tasks.sql.
       number: task.number,
-      projectKey: firstRelated(task.projects)?.key,
+      projectKey: task.project_key ?? undefined,
       // F150 (AS-275): undefined (not 0) when this task has no children,
       // matching TaskCardTask.subtaskCount's own "undefined/0 both hide
       // the indicator" contract.
-      subtaskCount: subtaskCounts.get(task.id) || undefined,
+      subtaskCount: task.subtask_count || undefined,
       // F157 (AS-283): undefined (not 0) when this task has no open
       // blocker, matching TaskCardTask.openBlockerCount's own
       // "undefined/0 both hide the indicator" contract — same convention
       // as `subtaskCount` immediately above.
-      openBlockerCount: openBlockerCounts.get(task.id) || undefined,
+      openBlockerCount: task.open_blocker_count || undefined,
       // F154 (AS-272, AS-273): combines the checklist and child-task
       // counts above through the shared pure `computeTaskCompletion` —
       // returns `null` when there is nothing to measure (AS-273), never a
       // misleading 0%.
-      completion: computeTaskCompletion({
-        checklistTotal: checklistProgress.total,
-        checklistDone: checklistProgress.checked,
-        childTotal: childProgress.total,
-        childDone: childProgress.done,
-      }),
+      completion,
     };
   });
 }

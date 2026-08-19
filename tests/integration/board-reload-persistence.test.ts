@@ -77,6 +77,14 @@ vi.mock("@/lib/supabase/server", () => ({
       // suite's job is exact ordering after reorder, not RLS.
       return adminClientRef.from(table);
     },
+    // F279: getProjectBoardTasks now reads through the
+    // `get_project_board_tasks` RPC instead of `.from("tasks")` directly
+    // — same "route through the admin client under the hood" rationale
+    // as `.from` above, so this mock still exercises the real RPC (and
+    // real ordering) rather than short-circuiting it.
+    rpc: (fn: string, args?: Record<string, unknown>) => {
+      return adminClientRef.rpc(fn, args);
+    },
   }),
 }));
 
