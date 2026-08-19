@@ -15,6 +15,17 @@
 - Rewrite the projects/tasks/comments/attachments/time_entries SELECT policies to route through `is_project_visible_to()`.
 - RLS integration test: private project invisible to a non-member of that project who is a member of the workspace.
 
+## Added scope (decided 2026-08-19, when section 1 was built before M11)
+
+Milestones M13 and M14 were executed before this feature existed, so the tables they created
+(`checklist_items`, `task_dependencies`, `task_assignees`, `task_watchers`, `task_templates`,
+and any others listed in their handoffs) scope their RLS through the mission-1
+`tasks -> projects -> workspace_members` pattern rather than through `is_project_visible_to()`.
+This feature must sweep every one of those policies too, not only the tables that existed in
+mission 1. Each M13/M14 handoff lists the policies it created — use those lists as the checklist,
+and assert in a test that a private project's rows in EACH of those tables are invisible to a
+workspace member who is not a project member.
+
 ## Files (approximate)
 supabase/migrations/ (new), tests/integration/rls-project-visibility.test.ts (new)
 
