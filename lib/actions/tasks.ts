@@ -13,6 +13,7 @@ import {
   moveTaskStatusSchema,
   reorderTaskSchema,
   moveAndReorderTaskSchema,
+  promoteSubtaskSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -36,6 +37,9 @@ export type CreateTaskResult =
         authorId: string;
         position: number;
         createdAt: string;
+        // F149 (AS-267/AS-268 setup): null for a top-level task, the
+        // parent's id for a subtask.
+        parentTaskId: string | null;
       };
     }
   | { ok: false; error: string };
@@ -61,7 +65,23 @@ export type CreateTaskResult =
 // F046 supersedes that here: a newly created task must be appended to the
 // end of its column's position order (AS-079), computed via
 // lib/board/position.ts's calculatePosition against the current last task
-// in that (project, status) column — never a hardcoded constant.
+// in that (project, status) column — never a hardcoded constant. F149:
+// this applies identically whether or not `parentTaskId` is set — a
+// subtask is appended to the end of its OWN (project, status) column,
+// the same axis every top-level task shares (per this feature's
+// migration doc comment: a subtask is already a normal card).
+//
+// parentTaskId (F149, AS-267/AS-268 setup): optional. When present, this
+// creates a one-level subtask of the given parent task rather than a
+// top-level task — the single entry point for creating a subtask, per
+// this feature's Clarified implementation ("extend the existing task
+// create action ... do not create a parallel create-subtask path"). The
+// parent row is looked up and validated server-side (exists, not
+// deleted, same project, itself top-level) before the insert is
+// attempted, so a bad parentTaskId maps to a specific user-facing error
+// rather than surfacing the database trigger's raw exception text
+// (enforce_task_parent_rules(), F148) — that trigger is still the final
+// enforcement gate for any race between this check and the insert.
 export async function createTask(
   projectId: string,
   title: string,
@@ -70,6 +90,7 @@ export async function createTask(
   priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null,
   assigneeId?: string | null,
   dueDate?: string | null,
+  parentTaskId?: string | null,
 ): Promise<CreateTaskResult> {
   const parsed = createTaskSchema.safeParse({
     projectId,
@@ -79,6 +100,7 @@ export async function createTask(
     priority: priority ?? null,
     assigneeId: assigneeId ?? null,
     dueDate: dueDate ?? null,
+    parentTaskId: parentTaskId ?? null,
   });
 
   if (!parsed.success) {
@@ -148,6 +170,40 @@ export async function createTask(
     }
   }
 
+  // F149 (AS-267/AS-268 setup): validate the proposed parent server-side
+  // before attempting the insert, so a bad parentTaskId maps to a
+  // specific message rather than the database trigger's raw exception
+  // text. Mirrors F148's enforce_task_parent_rules() invariants exactly:
+  // the parent must exist, be live (not soft-deleted), belong to the SAME
+  // project as the new child, and itself be top-level (a child cannot
+  // itself have children — F148's deliberate one-level limit).
+  if (parsed.data.parentTaskId) {
+    const { data: parentRow, error: parentError } = await admin
+      .from("tasks")
+      .select("id, project_id, parent_task_id, deleted_at")
+      .eq("id", parsed.data.parentTaskId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (parentError || !parentRow) {
+      return { ok: false, error: "Parent task not found." };
+    }
+
+    if (parentRow.project_id !== parsed.data.projectId) {
+      return {
+        ok: false,
+        error: "A subtask must be in the same project as its parent.",
+      };
+    }
+
+    if (parentRow.parent_task_id !== null) {
+      return {
+        ok: false,
+        error: "A subtask cannot itself have subtasks.",
+      };
+    }
+  }
+
   // AS-058: author_id is set here from the server-verified caller id, never
   // trusted from client input. created_at is left to the column default
   // (supabase/migrations/20260818013434_create_tasks.sql sets `default
@@ -186,14 +242,32 @@ export async function createTask(
       due_date: parsed.data.dueDate,
       author_id: user.id,
       position: newTaskPosition,
+      parent_task_id: parsed.data.parentTaskId ?? null,
     })
     .select(
-      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at",
+      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id",
     )
     .single();
 
   if (insertError || !inserted) {
     console.error("createTask: insert failed:", insertError);
+    // F149: the app-level parent checks above already cover the common
+    // cases, but a race (parent deleted/re-parented between the check and
+    // this insert) can still hit enforce_task_parent_rules()'s trigger
+    // (F148) directly. That trigger raises a plain-text exception with no
+    // custom error code (see F148's handoff notes), so it's matched here
+    // by message content rather than surfacing the raw database error to
+    // the user (AS-146).
+    if (
+      parsed.data.parentTaskId &&
+      /parent|nesting/i.test(insertError?.message ?? "")
+    ) {
+      return {
+        ok: false,
+        error:
+          "This task can't be added as a subtask right now. Please refresh and try again.",
+      };
+    }
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -236,6 +310,7 @@ export async function createTask(
       authorId: inserted.author_id,
       position: inserted.position,
       createdAt: inserted.created_at,
+      parentTaskId: inserted.parent_task_id,
     },
   };
 }
@@ -563,11 +638,12 @@ export type DeleteTaskResult =
     }
   | { ok: false; error: string };
 
-// Soft-deletes a task (F038: AS-055, AS-056, AS-057). Pattern mirrors
-// editTask/assignTask above: Zod-validated input, membership re-checked
-// server-side (defense in depth, AS-143), admin client used for the
-// actual update, discriminated union return, generic user-facing errors
-// with details only logged server-side (AS-146).
+// Soft-deletes a task (F038: AS-055, AS-056, AS-057; F149: AS-267 —
+// cascades to children). Pattern mirrors editTask/assignTask above:
+// Zod-validated input, membership re-checked server-side (defense in
+// depth, AS-143), admin client used for the actual update, discriminated
+// union return, generic user-facing errors with details only logged
+// server-side (AS-146).
 //
 // AS-055: any active workspace member may delete a task, matching the same
 // "no per-task ownership restriction, only workspace membership" model
@@ -594,6 +670,25 @@ export type DeleteTaskResult =
 // independently browsable without going through the task itself, which is
 // already gone from every view per AS-056. No code path here needs to
 // pre-emptively guard tables that don't exist.
+//
+// AS-267 (F149): if this task has live (one-level) children — F148's
+// `tasks.parent_task_id` — they must be soft-deleted too, in the SAME
+// transaction as the parent, so a crash or partial failure can never
+// leave orphaned children still visible on the board while their parent
+// is gone. Two independent `.update()` calls (parent, then children)
+// would be two separate network round trips with no shared transaction,
+// so this delegates the whole thing to the `cascade_delete_task` Postgres
+// RPC (supabase/migrations/20260819071821_subtask_cascade_delete.sql), a
+// single SECURITY DEFINER PL/pgSQL function body — atomic by
+// construction. That RPC also stamps cascaded children's
+// `deleted_via_task_id`, the provenance F189's future restore feature
+// needs to reverse exactly this cascade without resurrecting a child that
+// was already deleted independently beforehand. This function works
+// identically whether `taskId` is a top-level task with children (cascade
+// fires), a childless task (the RPC's second UPDATE matches zero rows,
+// a harmless no-op), or a child task itself (children can't have their
+// own children per F148, so the cascade branch is always a no-op there
+// too) — no branching needed here on which kind of task this is.
 export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
   const parsed = deleteTaskSchema.safeParse({ taskId });
 
@@ -657,15 +752,17 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
     };
   }
 
-  const { data: deleted, error: deleteError } = await admin
-    .from("tasks")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", parsed.data.taskId)
-    .select("id, deleted_at")
-    .single();
+  // AS-267: single atomic RPC call — soft-deletes this task AND cascades
+  // to any live children in one transaction (see doc comment above).
+  const { data: cascadeRows, error: deleteError } = await admin.rpc(
+    "cascade_delete_task",
+    { p_task_id: parsed.data.taskId },
+  );
+
+  const deleted = cascadeRows?.[0];
 
   if (deleteError || !deleted || !deleted.deleted_at) {
-    console.error("deleteTask: update failed:", deleteError);
+    console.error("deleteTask: cascade_delete_task failed:", deleteError);
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -695,6 +792,151 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
     data: {
       id: deleted.id,
       deletedAt: deleted.deleted_at,
+    },
+  };
+}
+
+export type PromoteSubtaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        parentTaskId: null;
+      };
+    }
+  | { ok: false; error: string };
+
+// Promotes a child task to a top-level task, detaching it from its
+// parent (F149: AS-268). Pattern mirrors deleteTask/editTask above:
+// Zod-validated input, membership re-checked server-side (defense in
+// depth, AS-143), admin client used for the actual update, discriminated
+// union return, generic user-facing errors with details only logged
+// server-side (AS-146). Any active workspace member may promote any
+// subtask in that workspace — no per-task ownership check, same "any
+// role" model as deleteTask (AS-055) and editTask (AS-061).
+//
+// A promoted task's `position` and `status` are left completely
+// untouched. A subtask is created through the same createTask code path
+// as any top-level task (F149's createTask change above) and already
+// carries a normal fractional-index `position` within its (project,
+// status) column — the exact same axis a top-level task's position lives
+// on. There is no separate "subtask position" to reconcile: clearing
+// `parent_task_id` doesn't move the row to a different column or
+// position space, so the row is already a valid, correctly-ordered board
+// card the instant this UPDATE commits. (Verified, not assumed — see
+// tests/integration/promote-subtask.test.ts's AS-268 position assertion.)
+//
+// Zero-state / no-op (per this feature's Clarified implementation,
+// clarification question 6): a task that is already top-level
+// (`parent_task_id` already null) is a no-op — this returns `ok: true`
+// without writing to the database, so the caller doesn't have to special-
+// case "already promoted" as an error.
+export async function promoteSubtask(
+  taskId: string,
+): Promise<PromoteSubtaskResult> {
+  const parsed = promoteSubtaskSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to promote a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // A soft-deleted task behaves as "not found", same convention as every
+  // other action in this file.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, parent_task_id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to promote this task.",
+    };
+  }
+
+  // Zero-state (Clarified implementation Q6): already top-level — no-op,
+  // ok without writing.
+  if (taskRow.parent_task_id === null) {
+    return { ok: true, data: { id: taskRow.id, parentTaskId: null } };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({ parent_task_id: null })
+    .eq("id", parsed.data.taskId)
+    .select("id, parent_task_id")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("promoteSubtask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "promoteSubtask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      parentTaskId: null,
     },
   };
 }

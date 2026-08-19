@@ -202,6 +202,7 @@ export type Database = {
           author_id: string
           created_at: string
           deleted_at: string | null
+          deleted_via_task_id: string | null
           description: string | null
           due_date: string | null
           id: string
@@ -223,6 +224,7 @@ export type Database = {
           author_id: string
           created_at?: string
           deleted_at?: string | null
+          deleted_via_task_id?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -244,6 +246,7 @@ export type Database = {
           author_id?: string
           created_at?: string
           deleted_at?: string | null
+          deleted_via_task_id?: string | null
           description?: string | null
           due_date?: string | null
           id?: string
@@ -261,6 +264,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_deleted_via_task_id_fkey"
+            columns: ["deleted_via_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_parent_task_id_fkey"
             columns: ["parent_task_id"]
@@ -392,6 +402,13 @@ export type Database = {
         Args: { target_comment_id: string }
         Returns: boolean
       }
+      cascade_delete_task: {
+        Args: { p_task_id: string }
+        Returns: {
+          deleted_at: string
+          id: string
+        }[]
+      }
       create_workspace_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: {
@@ -472,6 +489,7 @@ export type Database = {
           author_id: string
           created_at: string
           deleted_at: string | null
+          deleted_via_task_id: string | null
           description: string | null
           due_date: string | null
           id: string

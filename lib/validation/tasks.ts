@@ -50,6 +50,17 @@ export const createTaskSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
     .optional()
     .nullable(),
+  // F149 (AS-267, AS-268 setup): optional parent task id, mirroring
+  // `tasks.parent_task_id` added by F148
+  // (supabase/migrations/20260819071050_subtasks_parent_task_id.sql).
+  // Format-only validation here — the real invariants (self-reference,
+  // one-level nesting, same-project) are re-checked in
+  // lib/actions/tasks.ts's createTask against the live parent row before
+  // insert, with the database's own CHECK constraint/trigger
+  // (enforce_task_parent_rules()) as the final gate. Omitted or null both
+  // mean "top-level task", same as every other optional/nullable field in
+  // this schema.
+  parentTaskId: z.string().uuid("Invalid parent task.").optional().nullable(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -177,3 +188,13 @@ export const moveAndReorderTaskSchema = z.object({
 });
 
 export type MoveAndReorderTaskInput = z.infer<typeof moveAndReorderTaskSchema>;
+
+// Validates promoteSubtask input (F149: AS-268). Just the task id — same
+// shape as deleteTaskSchema, kept as its own named schema (rather than
+// reused) for the same "one schema per action" convention every other
+// action in this file follows.
+export const promoteSubtaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+});
+
+export type PromoteSubtaskInput = z.infer<typeof promoteSubtaskSchema>;
