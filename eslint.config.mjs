@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The extension/ workspace is a separate MV3 build with its own
+    // tsconfig/eslint config (chrome.* globals, no Next runtime) — see
+    // missions/20260818-213033/handoffs/F280-handoff.md Decisions Made.
+    "extension/**",
   ]),
 ]);
 

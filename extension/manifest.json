@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "PM-App QA Feedback",
+  "version": "0.1.0",
+  "description": "Capture QA feedback (screenshot, console logs, page context) and file it as a pm-app task without leaving the page.",
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "PM-App QA Feedback"
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "permissions": ["activeTab"]
+}

@@ -38,6 +38,11 @@ supabase/.temp/
 # Playwright (F090) run artifacts — traces/screenshots regenerated per run,
 # never source.
 /test-results/
+
+# --- EXTENSION (F280) build artifacts ---
+extension/dist.zip
+extension/test-results/
+extension/playwright-report/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
