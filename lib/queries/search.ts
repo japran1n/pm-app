@@ -57,10 +57,27 @@
 // change in the RPC; this file adds no additional filtering here since the
 // RPC already guarantees it twice over (invoker-rights RLS + explicit
 // predicate).
+//
+// F147 (AS-262): "searching for a task key finds that exact task", ranked
+// above full-text hits. lib/tasks/task-key.ts's parseTaskKeyQuery (pure,
+// no DB access) turns the trimmed query into a candidate
+// (projectKey, taskNumber) pair when it looks like a key ("PM-142",
+// "pm142", "pm 142" all parse the same way). This function resolves that
+// candidate against the SAME already-scoped `projects` list used for the
+// full-text loop below — never a second, wider query — so the exact-key
+// path inherits the identical workspace-isolation guarantee as every
+// other result: a key that exists in another workspace's project can
+// never match here, because that project never appears in `projects` in
+// the first place (RLS + the explicit `.eq("workspace_id", workspaceId)`
+// filter above already exclude it). If a match is found it is prepended,
+// de-duplicated against the full-text results (the key is also indexed in
+// tasks.search_vector by 20260819064522_task_key_search_fts.sql, so the
+// same task can legitimately appear in both sets).
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { parseTaskKeyQuery } from "@/lib/tasks/task-key";
 import type { Database } from "@/lib/supabase/database.types";
 
 type SearchTasksRow = Database["public"]["Tables"]["tasks"]["Row"];
@@ -139,6 +156,49 @@ export async function searchWorkspaceTasks(
   // `projectNameById` above — reused rather than a second query.
   const projectKeyById = new Map(projects.map((p) => [p.id, p.key]));
 
+  // AS-262: resolve an exact task-key match, if the query looks like one,
+  // against the workspace-scoped `projects` list already fetched above —
+  // see the file-header comment for why this can never cross a workspace
+  // boundary. `projects.key` is unique per workspace (F145's
+  // `projects_key_unique_per_workspace`), so at most one project can match
+  // the parsed key.
+  let exactMatch: SearchTaskResult | null = null;
+  const parsedKey = parseTaskKeyQuery(trimmed);
+
+  if (parsedKey) {
+    const matchedProject = projects.find(
+      (p) => p.key && p.key.toUpperCase() === parsedKey.projectKey,
+    );
+
+    if (matchedProject) {
+      const { data: keyTask, error: keyTaskError } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("project_id", matchedProject.id)
+        .eq("number", parsedKey.taskNumber)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      // A lookup error (or simply no row for that number) just means no
+      // exact match — it must not abort the rest of the search, which can
+      // still return full-text hits for the same query.
+      if (!keyTaskError && keyTask) {
+        exactMatch = {
+          id: keyTask.id,
+          title: keyTask.title,
+          status: keyTask.status,
+          priority: keyTask.priority,
+          projectId: keyTask.project_id,
+          projectName:
+            projectNameById.get(keyTask.project_id) ?? matchedProject.name,
+          projectKey:
+            projectKeyById.get(keyTask.project_id) ?? matchedProject.key,
+          number: keyTask.number,
+        };
+      }
+    }
+  }
+
   const resultsPerProject = await Promise.all(
     projects.map(async (project) => {
       const { data, error } = await supabase.rpc("search_tasks", {
@@ -166,8 +226,20 @@ export async function searchWorkspaceTasks(
     }),
   );
 
-  return resultsPerProject
+  const fullTextResults = resultsPerProject
     .flat()
     .sort((a, b) => Number(b.titleMatches) - Number(a.titleMatches))
     .map(({ titleMatches: _titleMatches, ...rest }) => rest);
+
+  if (!exactMatch) {
+    return fullTextResults;
+  }
+
+  // AS-262: the exact key match ranks first; drop it from the full-text
+  // set if it also matched there (it legitimately can, since the key is
+  // part of tasks.search_vector too) so it isn't listed twice.
+  return [
+    exactMatch,
+    ...fullTextResults.filter((result) => result.id !== exactMatch.id),
+  ];
 }
