@@ -37,7 +37,12 @@ import { useState, useTransition } from "react";
 import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
+import {
+  assignTask,
+  deleteTask,
+  editTask,
+  moveTaskStatus,
+} from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
@@ -55,6 +60,7 @@ import {
   Dependencies,
   type DependencyRelatedTask,
 } from "@/components/task/dependencies";
+import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
 import {
   AttachmentList,
@@ -286,6 +292,11 @@ export function TaskDetailSheet({
   const [isSavingField, startSaveTransition] = useTransition();
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
+  // blocked-guard.ts's isDoneStatus doc comment for the full list of
+  // callers this same hook is shared with.
+  const { confirmIfMovingToDone, dialog: blockedDoneDialog } =
+    useBlockedDoneGuard();
 
   // Re-sync local edit state whenever the sheet is opened for a (possibly
   // different) task, mirroring EditProjectDialog's handleOpenChange reset
@@ -328,6 +339,35 @@ export function TaskDetailSheet({
     const next = description.trim() || null;
     if (next === (task.description ?? null)) return;
     saveField({ description: next }, "Description updated.");
+  }
+
+  // F158 (AS-280, AS-281): status editing ships with this feature — see
+  // this file's own former comment on the Select below (now removed) for
+  // the prior "no Server Action persists status" limitation. Reuses
+  // `moveTaskStatus` (lib/actions/tasks.ts, F045), the SAME action the
+  // board's drag-and-drop and the list view's inline select already call
+  // — no second status-mutation path. Mirrors handlePriorityChange's own
+  // shape (direct value + onValueChange + toast, no local optimistic
+  // override — this Select's `value` stays bound straight to `task.status`
+  // exactly like priority's own Select does), with one addition: the
+  // shared blocked-done guard is awaited FIRST, before the mutation is
+  // even attempted, exactly like list-status-select.tsx's handleChange.
+  async function handleStatusChange(value: string | null) {
+    if (!task || value === null) return;
+    const next = value as TaskDetailSheetTask["status"];
+    if (next === task.status) return;
+
+    const proceed = await confirmIfMovingToDone(task.id, next);
+    if (!proceed) return;
+
+    startSaveTransition(async () => {
+      const result = await moveTaskStatus(task.id, next);
+      if (result.ok) {
+        toast.success("Status updated.");
+      } else {
+        toast.error(result.error);
+      }
+    });
   }
 
   function handlePriorityChange(value: string | null) {
@@ -511,16 +551,23 @@ export function TaskDetailSheet({
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor={`task-status-${task.id}`}>Status</Label>
-                  {/* No Server Action currently persists task status
-                      changes (editTask covers title/description/priority/
-                      dueDate only — see lib/validation/tasks.ts). Disabled
-                      rather than silently discarding a change the user
-                      thinks was saved; a future feature should add a
-                      changeTaskStatus action and enable this control. */}
-                  <Select value={task.status} disabled>
+                  {/* F158 (AS-280, AS-281): status editing ships with this
+                      feature via moveTaskStatus (see handleStatusChange
+                      above) — the SAME action the board's drag-and-drop
+                      and the list view's inline select already call.
+                      Moving to "done" while this task still has open
+                      blockers routes through the shared
+                      confirmIfMovingToDone guard first. No local
+                      optimistic override, matching the Priority Select
+                      immediately below: `value` stays bound directly to
+                      `task.status`. */}
+                  <Select
+                    value={task.status}
+                    onValueChange={handleStatusChange}
+                    disabled={isSavingField}
+                  >
                     <SelectTrigger
                       id={`task-status-${task.id}`}
-                      aria-label="Status (read-only until status editing ships)"
                       className="w-full"
                     >
                       <SelectValue>
@@ -755,6 +802,16 @@ export function TaskDetailSheet({
             </SheetFooter>
           </>
         )}
+
+        {/* F158 (AS-280, AS-281): the mark-as-done-anyway confirmation
+            dialog — closed/inert unless handleStatusChange's
+            confirmIfMovingToDone call above is currently waiting on a
+            decision. Rendered inside SheetContent (not as a sibling of
+            <Sheet>) so no other markup in this file needs reindenting;
+            AlertDialog portals its own content to the document body
+            regardless of where it sits in the React tree, so this
+            placement has no effect on where it visually renders. */}
+        {blockedDoneDialog}
       </SheetContent>
     </Sheet>
   );

@@ -52,6 +52,7 @@ import {
   type NewTaskDialogAssigneeOption,
 } from "@/components/task/new-task-dialog";
 import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
+import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import {
   TaskDetailSheet,
   type TaskDetailSheetMember,
@@ -147,6 +148,12 @@ export function Board({
   const taskDetailSheet = useTaskDetailSheet();
   const handleCardClick = onCardClick ?? taskDetailSheet.openTask;
 
+  // F158 (AS-280, AS-281): the shared guard used by handleDragEnd below —
+  // see lib/tasks/blocked-guard.ts's isDoneStatus doc comment for the full
+  // list of callers this same hook is shared with.
+  const { confirmIfMovingToDone, dialog: blockedDoneDialog } =
+    useBlockedDoneGuard();
+
   function handleTaskDeleted(deletedTaskId: string) {
     setTasks((current) => current.filter((t) => t.id !== deletedTaskId));
   }
@@ -165,7 +172,7 @@ export function Board({
     setActiveTask(task ?? null);
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveTask(null);
 
@@ -254,6 +261,22 @@ export function Board({
       movedTask,
       ...withoutActive.slice(insertAt),
     ];
+
+    // F158 (AS-280, AS-281): a cross-column drop that lands on the done
+    // column must warn (and let the user cancel) if the moved task still
+    // has open blockers, BEFORE anything is applied optimistically or
+    // sent to the server — a same-column reorder (the `else` branch
+    // below) never changes status, so it never reaches this check.
+    // confirmIfMovingToDone itself short-circuits to `true` with no
+    // network call at all when targetStatus isn't "done", so this await
+    // is a no-op for every other drop.
+    if (movedTask.status !== activeTask.status) {
+      const proceed = await confirmIfMovingToDone(
+        movedTask.id,
+        movedTask.status,
+      );
+      if (!proceed) return;
+    }
 
     // F047 (AS-077): local state above is updated the instant the drop
     // happens — the card visually sits in its new column/position before
@@ -375,6 +398,11 @@ export function Board({
           onOpenTask={taskDetailSheet.openTask}
         />
       )}
+
+      {/* F158 (AS-280, AS-281): the drag-to-done confirmation dialog —
+          closed/inert unless handleDragEnd's confirmIfMovingToDone call
+          above is currently waiting on a decision. */}
+      {blockedDoneDialog}
     </div>
   );
 }

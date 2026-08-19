@@ -198,3 +198,13 @@ export const promoteSubtaskSchema = z.object({
 });
 
 export type PromoteSubtaskInput = z.infer<typeof promoteSubtaskSchema>;
+
+// Validates getOpenBlockers input (F158: AS-280, AS-281). Just the task
+// id — same shape as deleteTaskSchema/promoteSubtaskSchema, kept as its
+// own named schema for the same "one schema per action" convention every
+// other action in this file follows.
+export const getOpenBlockersSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+});
+
+export type GetOpenBlockersInput = z.infer<typeof getOpenBlockersSchema>;

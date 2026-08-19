@@ -14,10 +14,12 @@ import {
   reorderTaskSchema,
   moveAndReorderTaskSchema,
   promoteSubtaskSchema,
+  getOpenBlockersSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { calculatePosition } from "@/lib/board/position";
+import { isDoneStatus } from "@/lib/tasks/blocked-guard";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
@@ -1520,6 +1522,155 @@ export async function moveAndReorderTask(
       position: updated.position,
     },
   };
+}
+
+export type GetOpenBlockersResult =
+  | { ok: true; data: DependencyRelatedTask[] }
+  | { ok: false; error: string };
+
+// F158 (AS-280, AS-281): the ONE server-side source of "which of this
+// task's blockers are still open (not done, not soft-deleted)" — called
+// by components/task/blocked-done-guard.tsx's useBlockedDoneGuard hook
+// (see lib/tasks/blocked-guard.ts's isDoneStatus doc comment for the
+// full list of callers: board drag-and-drop, the list view's inline
+// status select, the task detail sheet's own status Select, and a
+// future bulk update), never re-queried ad hoc from board.tsx/
+// list-status-select.tsx/task-detail-sheet.tsx themselves.
+//
+// Mirrors getTaskDetail's own blockedByQuery below almost exactly (same
+// FK-disambiguated embed via task_dependencies_blocking_task_id_fkey,
+// same soft-delete filter) — deliberately NOT reused as a shared query
+// function between the two. getTaskDetail fetches BOTH directions
+// (blockedBy + blocks) plus seven other sections in a single big
+// Promise.all for the whole task-detail sheet; this action's entire job
+// is one fast lookup at the moment of an actual status-change attempt.
+// Routing every caller of this guard through getTaskDetail's much
+// heavier shape would cost board.tsx/list-status-select.tsx (which have
+// no other use for a task's comments/attachments/checklist/subtasks) an
+// unnecessary fetch of all of that, every single time a user tries to
+// complete a task — the opposite of this feature's own performance
+// budget ("no per-item network call" only holds if this stays a small,
+// single-purpose lookup).
+//
+// "Open" here means the SAME thing lib/queries/tasks.ts's
+// getProjectBoardTasks already established for the board card's AS-283
+// indicator: a blocker whose own status isn't done (isDoneStatus,
+// lib/tasks/blocked-guard.ts — the one place this comparison lives, per
+// that file's F222 sweep note) and that hasn't been soft-deleted.
+//
+// Pattern otherwise mirrors moveTaskStatus/reorderTask above: Zod-
+// validated input, membership re-checked server-side (defense in depth,
+// AS-143), admin client for the read (RLS would also allow this same
+// read for an active member, same rationale as getTaskDetail), generic
+// user-facing errors with details only logged server-side (AS-146). Any
+// active workspace member may check any task's blockers in that
+// workspace — no per-task ownership check, same convention as every
+// other read/write in this file.
+export async function getOpenBlockers(
+  taskId: string,
+): Promise<GetOpenBlockersResult> {
+  const parsed = getOpenBlockersSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to view this task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Same task -> project -> workspace lookup convention as
+  // moveTaskStatus/reorderTask/etc. above — the real owning workspace is
+  // resolved server-side, never trusted from the client. A soft-deleted
+  // task behaves as "not found".
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side.
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to view this task.",
+    };
+  }
+
+  // Same blocked_task_id -> blocking task embed + FK disambiguation as
+  // getTaskDetail's own blockedByQuery below (F155's two same-table FKs,
+  // task_dependencies_blocking_task_id_fkey/_blocked_task_id_fkey).
+  const { data: rows, error: blockersError } = await admin
+    .from("task_dependencies")
+    .select(
+      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+    )
+    .eq("blocked_task_id", parsed.data.taskId);
+
+  if (blockersError) {
+    console.error("getOpenBlockers: dependency fetch failed:", blockersError);
+    return {
+      ok: false,
+      error:
+        "Something went wrong checking this task's blockers. Please try again.",
+    };
+  }
+
+  const openBlockers: DependencyRelatedTask[] = (rows ?? [])
+    .map((row) => {
+      const blocking = Array.isArray(row.blocking)
+        ? row.blocking[0]
+        : row.blocking;
+      if (!blocking || blocking.deleted_at || isDoneStatus(blocking.status)) {
+        return null;
+      }
+      const blockingProject = Array.isArray(blocking.projects)
+        ? blocking.projects[0]
+        : blocking.projects;
+      const related: DependencyRelatedTask = {
+        dependencyId: row.id,
+        taskId: blocking.id,
+        title: blocking.title,
+        status: blocking.status as DependencyRelatedTask["status"],
+        projectKey: blockingProject?.key,
+        number: blocking.number,
+      };
+      return related;
+    })
+    .filter((row): row is DependencyRelatedTask => row !== null);
+
+  return { ok: true, data: openBlockers };
 }
 
 // BUGFIX (TaskDetailSheet was fully built but never rendered anywhere):

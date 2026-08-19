@@ -24,6 +24,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { moveTaskStatus } from "@/lib/actions/tasks";
+import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import type { TaskCardTask } from "@/components/task/task-card";
 import {
   Select,
@@ -59,15 +60,27 @@ export function ListStatusSelect({
   // convention as TagsEditor's syncedTaskId.
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [isSaving, startSaveTransition] = useTransition();
+  // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
+  // blocked-guard.ts's isDoneStatus doc comment for the full list of
+  // callers this same hook is shared with.
+  const { confirmIfMovingToDone, dialog: blockedDoneDialog } =
+    useBlockedDoneGuard();
 
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
     setLocalStatus(status);
   }
 
-  function handleChange(value: TaskCardTask["status"] | null) {
+  async function handleChange(value: TaskCardTask["status"] | null) {
     if (value === null || value === localStatus) return;
     const nextStatus = value;
+
+    // F158: checked BEFORE any optimistic update, so a cancelled
+    // confirmation never has to revert a value the Select already showed
+    // — confirmIfMovingToDone resolves immediately with no network call
+    // at all when nextStatus isn't "done".
+    const proceed = await confirmIfMovingToDone(taskId, nextStatus);
+    if (!proceed) return;
 
     const previousStatus = localStatus;
     setLocalStatus(nextStatus);
@@ -84,40 +97,43 @@ export function ListStatusSelect({
   }
 
   return (
-    <Select value={localStatus} onValueChange={handleChange}>
-      <SelectTrigger
-        size="sm"
-        className="w-36"
-        disabled={isSaving}
-        aria-label={`Change status for task ${taskId}`}
-      >
-        <span className="flex items-center gap-1.5 overflow-hidden">
-          <span
-            aria-hidden="true"
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: STATUS_COLORS[localStatus] }}
-          />
-          <SelectValue>
-            {(value: string) =>
-              STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value
-            }
-          </SelectValue>
-        </span>
-      </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            <span className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: STATUS_COLORS[option.value] }}
-              />
-              {option.label}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <>
+      <Select value={localStatus} onValueChange={handleChange}>
+        <SelectTrigger
+          size="sm"
+          className="w-36"
+          disabled={isSaving}
+          aria-label={`Change status for task ${taskId}`}
+        >
+          <span className="flex items-center gap-1.5 overflow-hidden">
+            <span
+              aria-hidden="true"
+              className="size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: STATUS_COLORS[localStatus] }}
+            />
+            <SelectValue>
+              {(value: string) =>
+                STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value
+              }
+            </SelectValue>
+          </span>
+        </SelectTrigger>
+        <SelectContent>
+          {STATUS_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              <span className="flex items-center gap-1.5">
+                <span
+                  aria-hidden="true"
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: STATUS_COLORS[option.value] }}
+                />
+                {option.label}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {blockedDoneDialog}
+    </>
   );
 }
