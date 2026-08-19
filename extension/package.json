@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && node scripts/zip.mjs",
+    "build": "vite build && node scripts/check-no-secret-key.mjs && node scripts/zip.mjs",
     "dev": "vite build --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "playwright test"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

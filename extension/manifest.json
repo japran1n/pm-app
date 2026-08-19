@@ -11,5 +11,13 @@
     "service_worker": "src/background/service-worker.ts",
     "type": "module"
   },
-  "permissions": ["activeTab"]
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost:3000/*"],
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/extension-connect*"],
+      "js": ["src/content/extension-connect.ts"],
+      "run_at": "document_idle"
+    }
+  ]
 }
