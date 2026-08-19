@@ -18,6 +18,9 @@ import { Clock, ListTree, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+// F154 (AS-272, AS-273): the shared completion-percentage shape — see
+// that file's doc comment for the null-means-nothing-to-measure contract.
+import type { TaskCompletion } from "@/lib/tasks/completion";
 import { formatDuration } from "@/lib/time/format-duration";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
 // comment for why every task-identity surface goes through it instead of
@@ -90,6 +93,17 @@ export type TaskCardTask = {
   // as its own flat row; this field only ever ADDS an indicator to a
   // card that's already there, it never removes or nests one.
   subtaskCount?: number;
+  // F154 (AS-272, AS-273): this task's overall completion — checklist
+  // items and child tasks combined as flat, equal units (see
+  // lib/tasks/completion.ts's doc comment for the weighting rationale).
+  // Selected via the board query's own existing batched queries
+  // (lib/queries/tasks.ts's getProjectBoardTasks), never a per-card
+  // fetch. `null`/`undefined` both mean "nothing to measure" and hide
+  // the indicator entirely (AS-273: no percentage at all, never 0%) —
+  // same "safe default" convention as `subtaskCount`/`totalMinutes`
+  // above; `undefined` additionally covers a caller that hasn't been
+  // updated to fetch it yet (e.g. existing tests), same as those fields.
+  completion?: TaskCompletion | null;
 };
 
 export function TaskCard({
@@ -205,6 +219,33 @@ export function TaskCard({
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <ListTree className="size-3" aria-hidden="true" />
             {task.subtaskCount} {task.subtaskCount === 1 ? "subtask" : "subtasks"}
+          </span>
+        )}
+        {/* F154 (AS-272, AS-273, AS-525): the completion percentage, only
+            rendered when task.completion is non-null — a task with no
+            checklist items and no children (completion is null/undefined)
+            shows nothing here at all, never a "0%" (AS-273). The percent
+            is always present as real text content (`aria-label` carries
+            the same value plus the done/total breakdown), never conveyed
+            by the fill bar's colour alone (AS-525's late-mission
+            colour-alone re-check) — same icon/text-pairing convention
+            this card already follows for overdue and subtask count
+            above, just with a small fill bar standing in for the icon. */}
+        {task.completion && (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
+            aria-label={`${task.completion.percent}% complete, ${task.completion.done} of ${task.completion.total}`}
+          >
+            <span
+              className="relative h-1.5 w-8 overflow-hidden rounded-full bg-muted"
+              aria-hidden="true"
+            >
+              <span
+                className="absolute inset-y-0 left-0 rounded-full bg-foreground/70"
+                style={{ width: `${task.completion.percent}%` }}
+              />
+            </span>
+            {task.completion.percent}%
           </span>
         )}
         {assignee && <UserAvatar person={assignee} size="sm" className="ml-auto" />}

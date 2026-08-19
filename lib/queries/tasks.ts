@@ -22,6 +22,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { TaskCardTask } from "@/components/task/task-card";
+// F154 (AS-272, AS-273): completion percentage combines checklist and
+// child-task counts. The counting logic itself is NOT reimplemented
+// here — `countSubtaskProgress`/`countChecklistProgress` are the same
+// pre-existing pure functions F150/F153 already use for the Subtasks
+// section's "3 of 5 done" count and the Checklist section's own progress
+// bar, so the "done" convention (a child task's status equals the fixed
+// string "done") lives in exactly one place. See that function's doc
+// comment for the F222 sweep note.
+import { countSubtaskProgress } from "@/lib/tasks/subtask-progress";
+import { countChecklistProgress } from "@/lib/tasks/checklist-progress";
+import { computeTaskCompletion } from "@/lib/tasks/completion";
 
 // F146 (AS-258): every embedded `projects` relation below can come back
 // from PostgREST as either a single object or a one-element array
@@ -75,9 +86,15 @@ export async function getProjectBoardTasks(
   // top-level task with no subtasks costs nothing extra to compute (it
   // simply has no entry in the resulting map, and the board card's own
   // `!!task.subtaskCount` check hides the indicator for it).
+  //
+  // F154 (AS-272): `status` is now selected alongside `parent_task_id` too
+  // (still the SAME one query, still whole-project, still no per-card
+  // round trip) so each parent's children can be run through
+  // `countSubtaskProgress` below to get a done/total pair, not just a
+  // total.
   const { data: childRows, error: childError } = await supabase
     .from("tasks")
-    .select("parent_task_id")
+    .select("parent_task_id, status")
     .eq("project_id", projectId)
     .is("deleted_at", null)
     .not("parent_task_id", "is", null);
@@ -87,33 +104,82 @@ export async function getProjectBoardTasks(
   }
 
   const subtaskCounts = new Map<string, number>();
+  const childrenByParent = new Map<string, { status: string }[]>();
   for (const row of childRows ?? []) {
     if (!row.parent_task_id) continue;
     subtaskCounts.set(
       row.parent_task_id,
       (subtaskCounts.get(row.parent_task_id) ?? 0) + 1,
     );
+    const siblings = childrenByParent.get(row.parent_task_id) ?? [];
+    siblings.push({ status: row.status });
+    childrenByParent.set(row.parent_task_id, siblings);
   }
 
-  return (data ?? []).map((task) => ({
-    id: task.id,
-    title: task.title,
-    status: task.status as TaskCardTask["status"],
-    priority: task.priority as TaskCardTask["priority"],
-    assigneeId: task.assignee_id,
-    dueDate: task.due_date,
-    position: task.position,
-    updatedAt: task.updated_at,
-    // F146 (AS-258): selected via this query's existing project join
-    // (`projects(key)` above), never a per-row fetch — see
-    // lib/tasks/task-key.ts for how these combine into "KEY-NUMBER".
-    number: task.number,
-    projectKey: firstRelated(task.projects)?.key,
-    // F150 (AS-275): undefined (not 0) when this task has no children,
-    // matching TaskCardTask.subtaskCount's own "undefined/0 both hide the
-    // indicator" contract.
-    subtaskCount: subtaskCounts.get(task.id) || undefined,
-  }));
+  // F154 (AS-272): checklist counts for every task in the project, in one
+  // more whole-project query (never per-card) — `checklist_items` has no
+  // `project_id` column of its own, so this joins through `task_id ->
+  // tasks.project_id` (mirroring the RLS policy's own join shape,
+  // supabase/migrations/20260819075456_create_checklist_items.sql) rather
+  // than fetching every task's items separately.
+  const { data: checklistRows, error: checklistError } = await supabase
+    .from("checklist_items")
+    .select("task_id, is_checked, tasks!inner(project_id, deleted_at)")
+    .eq("tasks.project_id", projectId)
+    .is("tasks.deleted_at", null);
+
+  if (checklistError) {
+    throw checklistError;
+  }
+
+  const checklistByTask = new Map<string, { isChecked: boolean }[]>();
+  for (const row of checklistRows ?? []) {
+    const items = checklistByTask.get(row.task_id) ?? [];
+    items.push({ isChecked: row.is_checked });
+    checklistByTask.set(row.task_id, items);
+  }
+
+  return (data ?? []).map((task) => {
+    // F154 (AS-272, AS-273): checklist and child-task counts for THIS
+    // task, read out of the two whole-project maps built above (no
+    // per-card query) via the same pure counters F153/F150 already use.
+    const checklistProgress = countChecklistProgress(
+      checklistByTask.get(task.id) ?? [],
+    );
+    const childProgress = countSubtaskProgress(
+      childrenByParent.get(task.id) ?? [],
+    );
+
+    return {
+      id: task.id,
+      title: task.title,
+      status: task.status as TaskCardTask["status"],
+      priority: task.priority as TaskCardTask["priority"],
+      assigneeId: task.assignee_id,
+      dueDate: task.due_date,
+      position: task.position,
+      updatedAt: task.updated_at,
+      // F146 (AS-258): selected via this query's existing project join
+      // (`projects(key)` above), never a per-row fetch — see
+      // lib/tasks/task-key.ts for how these combine into "KEY-NUMBER".
+      number: task.number,
+      projectKey: firstRelated(task.projects)?.key,
+      // F150 (AS-275): undefined (not 0) when this task has no children,
+      // matching TaskCardTask.subtaskCount's own "undefined/0 both hide
+      // the indicator" contract.
+      subtaskCount: subtaskCounts.get(task.id) || undefined,
+      // F154 (AS-272, AS-273): combines the checklist and child-task
+      // counts above through the shared pure `computeTaskCompletion` —
+      // returns `null` when there is nothing to measure (AS-273), never a
+      // misleading 0%.
+      completion: computeTaskCompletion({
+        checklistTotal: checklistProgress.total,
+        checklistDone: checklistProgress.checked,
+        childTotal: childProgress.total,
+        childDone: childProgress.done,
+      }),
+    };
+  });
 }
 
 // Data-fetching for the project List view (F053: AS-085).
