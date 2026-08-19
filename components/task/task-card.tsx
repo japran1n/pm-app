@@ -14,7 +14,7 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { Clock, ListTree, TriangleAlert } from "lucide-react";
+import { Ban, Clock, ListTree, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
@@ -93,6 +93,16 @@ export type TaskCardTask = {
   // as its own flat row; this field only ever ADDS an indicator to a
   // card that's already there, it never removes or nests one.
   subtaskCount?: number;
+  // F157 (AS-283): how many OPEN blockers (blocking tasks whose own
+  // status isn't "done") this task currently has, if any. Selected via
+  // the board query's own single project-scoped query
+  // (lib/queries/tasks.ts's getProjectBoardTasks) — never a per-card
+  // fetch. Undefined/0 both mean "not currently blocked" and hide the
+  // indicator entirely, same "safe default" convention as
+  // `subtaskCount`/`totalMinutes` above — including once every blocker
+  // is later marked done (see that query's own comment for why this
+  // isn't "has ever had any blocking dependency at all").
+  openBlockerCount?: number;
   // F154 (AS-272, AS-273): this task's overall completion — checklist
   // items and child tasks combined as flat, equal units (see
   // lib/tasks/completion.ts's doc comment for the weighting rationale).
@@ -219,6 +229,18 @@ export function TaskCard({
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <ListTree className="size-3" aria-hidden="true" />
             {task.subtaskCount} {task.subtaskCount === 1 ? "subtask" : "subtasks"}
+          </span>
+        )}
+        {/* F157 (AS-283): "blocked" is icon + text, never colour alone —
+            same overdue-indicator pairing this card already establishes
+            above, just with `text-destructive`/TriangleAlert's role
+            played by a plain muted icon+label here (a blocked task is a
+            state to notice, not necessarily a fault, so it doesn't reuse
+            the destructive-red treatment overdue uses). */}
+        {!!task.openBlockerCount && task.openBlockerCount > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Ban className="size-3" aria-hidden="true" />
+            Blocked
           </span>
         )}
         {/* F154 (AS-272, AS-273, AS-525): the completion percentage, only

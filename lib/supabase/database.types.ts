@@ -501,6 +501,18 @@ export type Database = {
         Args: { p_name: string; p_workspace_id: string }
         Returns: string
       }
+      get_dependency_ancestors: {
+        Args: { p_task_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
+      get_dependency_descendants: {
+        Args: { p_task_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
       get_overdue_count: {
         Args: { p_timezone?: string; p_workspace_id: string }
         Returns: number

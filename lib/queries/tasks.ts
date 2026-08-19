@@ -139,6 +139,63 @@ export async function getProjectBoardTasks(
     checklistByTask.set(row.task_id, items);
   }
 
+  // F157 (AS-283): one more whole-project(-scoped) query for the card's
+  // "blocked" indicator — never a per-card round trip, same convention
+  // as `childRows`/`checklistRows` above. `task_dependencies` has no
+  // `project_id` column, and a dependency's blocking task is only
+  // guaranteed to share this project's WORKSPACE, not its project
+  // (AS-285), so this can't be scoped by `.eq("project_id", projectId)`
+  // the way `childRows`/`checklistRows` are — it's scoped by
+  // `blocked_task_id` being one of THIS project's own task ids instead
+  // (`taskIds`, computed from the main `data` fetch above), which is
+  // still exactly one query for the whole project, not one per row.
+  //
+  // A task counts as "blocked" here only while it has at least one
+  // OPEN blocker (the blocking task's own status isn't "done") —
+  // deliberately not "has ever had any blocking dependency at all",
+  // matching this section's own adjacent AS-281 semantics ("a task
+  // whose blockers are all complete shows no blocked warning"): once
+  // every blocker is done, this card stops calling itself blocked,
+  // rather than carrying a permanently-stuck indicator after the
+  // blocker resolves.
+  const taskIds = (data ?? []).map((task) => task.id);
+
+  type BlockerRow = {
+    blocked_task_id: string;
+    blocking:
+      | { status: string; deleted_at: string | null }
+      | { status: string; deleted_at: string | null }[]
+      | null;
+  };
+
+  let blockerRows: BlockerRow[] = [];
+  if (taskIds.length > 0) {
+    const { data: rows, error: blockerError } = await supabase
+      .from("task_dependencies")
+      .select(
+        "blocked_task_id, blocking:tasks!task_dependencies_blocking_task_id_fkey(status, deleted_at)",
+      )
+      .in("blocked_task_id", taskIds);
+
+    if (blockerError) {
+      throw blockerError;
+    }
+
+    blockerRows = rows ?? [];
+  }
+
+  const openBlockerCounts = new Map<string, number>();
+  for (const row of blockerRows) {
+    const blocking = firstRelated(row.blocking);
+    if (!blocking || blocking.deleted_at || blocking.status === "done") {
+      continue;
+    }
+    openBlockerCounts.set(
+      row.blocked_task_id,
+      (openBlockerCounts.get(row.blocked_task_id) ?? 0) + 1,
+    );
+  }
+
   return (data ?? []).map((task) => {
     // F154 (AS-272, AS-273): checklist and child-task counts for THIS
     // task, read out of the two whole-project maps built above (no
@@ -168,6 +225,11 @@ export async function getProjectBoardTasks(
       // matching TaskCardTask.subtaskCount's own "undefined/0 both hide
       // the indicator" contract.
       subtaskCount: subtaskCounts.get(task.id) || undefined,
+      // F157 (AS-283): undefined (not 0) when this task has no open
+      // blocker, matching TaskCardTask.openBlockerCount's own
+      // "undefined/0 both hide the indicator" contract — same convention
+      // as `subtaskCount` immediately above.
+      openBlockerCount: openBlockerCounts.get(task.id) || undefined,
       // F154 (AS-272, AS-273): combines the checklist and child-task
       // counts above through the shared pure `computeTaskCompletion` —
       // returns `null` when there is nothing to measure (AS-273), never a

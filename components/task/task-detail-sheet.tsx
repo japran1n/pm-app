@@ -51,6 +51,10 @@ import {
   type SubtaskListChildTask,
 } from "@/components/task/subtask-list";
 import { Checklist, type ChecklistListItem } from "@/components/task/checklist";
+import {
+  Dependencies,
+  type DependencyRelatedTask,
+} from "@/components/task/dependencies";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
 import {
   AttachmentList,
@@ -144,6 +148,18 @@ export type TaskDetailSheetTask = {
    * same "safe default" convention as every other optional field on this
    * type. */
   checklistItems?: ChecklistListItem[];
+  /** F157 (AS-277): this task's own dependency rows, in BOTH directions,
+   * from getTaskDetail's own query (lib/actions/tasks.ts) — same
+   * "fetched once with the task, no per-section round trip" convention
+   * as `children`/`checklistItems` above. Optional/defaults to empty
+   * arrays via Dependencies' own rendering below so a caller that hasn't
+   * been updated yet (existing tests/fixtures) still renders rather than
+   * crashing, same "safe default" convention as every other optional
+   * field on this type. */
+  dependencies?: {
+    blockedBy: DependencyRelatedTask[];
+    blocks: DependencyRelatedTask[];
+  };
 };
 
 export type TaskDetailSheetMember = {
@@ -672,6 +688,15 @@ export function TaskDetailSheet({
               <Separator />
 
               <Checklist taskId={task.id} items={task.checklistItems ?? []} />
+
+              <Separator />
+
+              <Dependencies
+                taskId={task.id}
+                blockedBy={task.dependencies?.blockedBy ?? []}
+                blocks={task.dependencies?.blocks ?? []}
+                onOpenTask={onOpenTask}
+              />
 
               <Separator />
 

@@ -23,6 +23,7 @@ import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
 import type { SubtaskListChildTask } from "@/components/task/subtask-list";
 import type { ChecklistListItem } from "@/components/task/checklist";
+import type { DependencyRelatedTask } from "@/components/task/dependencies";
 
 export type CreateTaskResult =
   | {
@@ -1681,12 +1682,48 @@ export async function getTaskDetail(
         .maybeSingle()
     : null;
 
+  // F157 (AS-277): this task's own dependency rows, in BOTH directions,
+  // fetched here in getTaskDetail's existing single detail-fetch — same
+  // "one query per section, no per-row round trip" convention as
+  // `childrenQuery`/`checklistQuery` above. `task_dependencies` has TWO
+  // foreign keys to `tasks` (blocking_task_id, blocked_task_id), so each
+  // embedded `tasks` relation below is disambiguated with PostgREST's
+  // `!constraint_name` hint (the auto-generated FK names from F155's
+  // migration: task_dependencies_blocking_task_id_fkey/
+  // _blocked_task_id_fkey — confirmed against
+  // lib/supabase/database.types.ts's own Relationships entries for this
+  // table) and aliased so the result shape is self-describing.
+  //
+  // The related task's OWN project key is fetched via its own nested
+  // `projects(key)` join, NOT assumed to equal this task's projectKey —
+  // unlike a subtask/parent pair (always the same project,
+  // enforce_task_parent_rules()), a dependency's two tasks are only
+  // guaranteed to share a WORKSPACE (AS-285), not a project, so the
+  // related task can carry a different key.
+  const blockedByQuery = admin
+    .from("task_dependencies")
+    .select(
+      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+    )
+    .eq("blocked_task_id", parsed.data.taskId)
+    .order("created_at", { ascending: true });
+
+  const blocksQuery = admin
+    .from("task_dependencies")
+    .select(
+      "id, blocked:tasks!task_dependencies_blocked_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+    )
+    .eq("blocking_task_id", parsed.data.taskId)
+    .order("created_at", { ascending: true });
+
   const [
     commentsResult,
     attachmentsResult,
     childrenResult,
     parentResult,
     checklistResult,
+    blockedByResult,
+    blocksResult,
   ] = await Promise.all([
     admin
       .from("comments")
@@ -1702,6 +1739,8 @@ export async function getTaskDetail(
     childrenQuery,
     parentQuery ?? Promise.resolve({ data: null, error: null }),
     checklistQuery,
+    blockedByQuery,
+    blocksQuery,
   ]);
 
   if (commentsResult.error) {
@@ -1758,6 +1797,78 @@ export async function getTaskDetail(
       error: "Something went wrong loading this task. Please try again.",
     };
   }
+
+  if (blockedByResult.error) {
+    console.error(
+      "getTaskDetail: blocked-by dependencies fetch failed:",
+      blockedByResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (blocksResult.error) {
+    console.error(
+      "getTaskDetail: blocks dependencies fetch failed:",
+      blocksResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  // F157 (AS-277): a soft-deleted related task (deleted_at set, but the
+  // row not physically removed — task_dependencies' `on delete cascade`
+  // only fires on a genuine hard DELETE, per F155's own handoff note)
+  // must not surface as a live-looking row here. Filtered in TypeScript
+  // rather than a PostgREST embedded-resource filter, since this is a
+  // single whole-task query either way (no per-row round trip either
+  // way) and a plain `.filter()` is simpler than an `!inner` join plus
+  // dot-path filter for a two-row-shape (object-or-array) embed.
+  const blockedBy: DependencyRelatedTask[] = (blockedByResult.data ?? [])
+    .map((row) => {
+      const blocking = Array.isArray(row.blocking)
+        ? row.blocking[0]
+        : row.blocking;
+      if (!blocking || blocking.deleted_at) return null;
+      const blockingProject = Array.isArray(blocking.projects)
+        ? blocking.projects[0]
+        : blocking.projects;
+      const related: DependencyRelatedTask = {
+        dependencyId: row.id,
+        taskId: blocking.id,
+        title: blocking.title,
+        status: blocking.status as DependencyRelatedTask["status"],
+        projectKey: blockingProject?.key,
+        number: blocking.number,
+      };
+      return related;
+    })
+    .filter((row): row is DependencyRelatedTask => row !== null);
+
+  const blocks: DependencyRelatedTask[] = (blocksResult.data ?? [])
+    .map((row) => {
+      const blocked = Array.isArray(row.blocked)
+        ? row.blocked[0]
+        : row.blocked;
+      if (!blocked || blocked.deleted_at) return null;
+      const blockedProject = Array.isArray(blocked.projects)
+        ? blocked.projects[0]
+        : blocked.projects;
+      const related: DependencyRelatedTask = {
+        dependencyId: row.id,
+        taskId: blocked.id,
+        title: blocked.title,
+        status: blocked.status as DependencyRelatedTask["status"],
+        projectKey: blockedProject?.key,
+        number: blocked.number,
+      };
+      return related;
+    })
+    .filter((row): row is DependencyRelatedTask => row !== null);
 
   const attachmentRows = attachmentsResult.data ?? [];
 
@@ -1829,6 +1940,10 @@ export async function getTaskDetail(
             position: row.position,
           }),
         ),
+        // F157 (AS-277): see blockedByQuery/blocksQuery above — both
+        // directions, computed once here, never a per-section round trip
+        // from components/task/dependencies.tsx.
+        dependencies: { blockedBy, blocks },
       },
       comments: (commentsResult.data ?? []).map((row) => ({
         id: row.id,
