@@ -1,6 +1,6 @@
 # Plan
 
-_Mission: 20260818-213033 (v2)_ _Milestones: 9 (M10–M18)_ _Features: 161 (F118–F278)_ _Assertions covered: AS-201–AS-530 (330)_
+_Mission: 20260818-213033 (v2)_ _Milestones: 9 (M10–M18)_ _Features: 162 (F118–F279)_ _Assertions covered: AS-201–AS-530 (330)_
 
 Milestone and feature numbering continues from mission `20260817-230717`
 (which ended at M9 / F117 / AS-176) so no ID in this repo is ever ambiguous.
@@ -85,6 +85,10 @@ notifications, timezone) exists. No feature work beyond identity.
 - F166 db-task-estimate-column — AS-298, AS-299, AS-305 [CLARIFIED-AUTO]
 - F167 estimate-vs-actual-ui — AS-300, AS-301, AS-302 [CLARIFIED-AUTO]
 - F168 project-estimate-totals — AS-303, AS-304 [CLARIFIED-AUTO]
+
+### M13 follow-ups
+
+- F279 board-query-perf-regression — AS-156 (mission-1 assertion, regressed) [CLARIFIED-AUTO]
 
 ## M14 — Rich text, recurrence, templates, bulk actions & trash
 
