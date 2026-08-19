@@ -426,3 +426,50 @@ _Locked at APPROVED — never modify or delete an assertion; only append new num
 - AS-528: The whole project passes the linter with no errors.
 - AS-529: The README documents every new feature area, environment variable, and scheduled job added by this mission.
 - AS-530: The full test suite, unit and end-to-end, passes on a clean checkout.
+
+## FF. QA feedback browser extension (AS-531–AS-572) — M19
+
+_Appended 2026-08-19. The contract is append-only; these are new IDs, nothing above was edited._
+
+- AS-531: The extension loads in Chrome as a Manifest V3 extension and shows its popup when the toolbar icon is clicked.
+- AS-532: A user already signed in to the pm-app web app can connect the extension to that session without typing credentials into the extension.
+- AS-533: A user not signed in anywhere is told to sign in and given a link that opens the web app's sign-in page.
+- AS-534: The extension's session survives the browser being closed and reopened.
+- AS-535: The extension's session survives its service worker going idle and restarting.
+- AS-536: An expired session is refreshed silently on open, and if the refresh fails the user is signed out and told why.
+- AS-537: Signing out of the extension clears its stored session, and the next open requires reconnecting.
+- AS-538: The extension never stores or transmits the Supabase secret key; only the publishable key is present in the shipped bundle.
+- AS-539: Clicking the extension's capture control takes a screenshot of the visible area of the current tab.
+- AS-540: The user can capture a selected region instead of the whole visible area.
+- AS-541: A capture on a page the extension has no permission for fails with an explanatory message rather than a silent no-op.
+- AS-542: The captured image can be annotated with at least an arrow, a rectangle, freehand drawing, and text.
+- AS-543: An annotation can be undone and redone.
+- AS-544: A region of the capture can be blurred, so sensitive data can be hidden before the report is sent.
+- AS-545: The annotated image is what gets attached to the task, not the unannotated original.
+- AS-546: The user can point at an element on the page and have the report record which element it was.
+- AS-547: The recorded element reference includes a CSS selector and the element's position and size.
+- AS-548: Every report automatically records the page URL, browser name and version, operating system, viewport size, and device pixel ratio.
+- AS-549: Every report automatically records the reporter's identity and the moment of capture.
+- AS-550: Console errors and warnings produced by the page are captured and attached to the report.
+- AS-551: Console capture is bounded, so a page that logs continuously cannot produce an unbounded payload.
+- AS-552: Console capture states plainly that it only covers messages produced after the capture script was injected.
+- AS-553: Failed network requests visible to the page are captured and attached to the report.
+- AS-554: A user can turn off console and network capture for a given report before sending it.
+- AS-555: The extension's form lets the reporter pick the workspace, project, and status the task will be created in.
+- AS-556: The extension's form lets the reporter set a title, a description, an assignee, a priority, and a due date.
+- AS-557: The workspace, project, assignee, and status choices offered are only those the signed-in user actually has access to.
+- AS-558: Submitting the form creates a real task in pm-app, visible on that project's board.
+- AS-559: The created task carries the annotated screenshot as an attachment.
+- AS-560: The created task's description contains the captured technical metadata in a readable form.
+- AS-561: The created task is attributed to the signed-in reporter as its creator, not to a service account.
+- AS-562: A submission by a user without permission to create tasks in the chosen project is rejected by the server.
+- AS-563: After a successful submission the extension shows the new task's key and a link that opens it in pm-app.
+- AS-564: The extension remembers the last used workspace and project and preselects them on the next report.
+- AS-565: A submission attempted while offline reports the failure and does not lose the user's typed input or annotations.
+- AS-566: A screenshot larger than the accepted upload size is rejected with a message naming the limit, before the task is created.
+- AS-567: A failed attachment upload does not leave a task with a broken or missing image reference.
+- AS-568: The extension requests the narrowest permissions that support its features, and every requested permission is justified in the store listing.
+- AS-569: The extension works on a page it has never been used on before without a prior configuration step.
+- AS-570: The extension's popup is operable by keyboard alone.
+- AS-571: The extension is packaged into a distributable artifact by a repeatable build command.
+- AS-572: The task-creation endpoint rejects a request whose session token is missing, expired, or belongs to a different user than the payload claims.

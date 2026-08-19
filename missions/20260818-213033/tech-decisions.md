@@ -123,3 +123,29 @@ npx tsc --noEmit
 - **Timezone:** all date bucketing that a user sees (overdue, today, calendar cells, digest timing) is computed in the user's profile timezone, not the server's (AS-207, AS-450, AS-400).
 - **Realtime:** any table whose changes must appear live (notifications, comment reactions, board columns) is added to the Realtime publication in its own migration, and its RLS is checked against the mission-1 gotcha where an UPDATE-ed row must still satisfy its own SELECT policy to be delivered.
 - **Commits:** unchanged — `feat(F<NNN>): <summary> [assertions: AS-NNN, AS-NNN]`.
+
+
+## QA feedback extension (added 2026-08-19, M19)
+
+### What was researched
+
+- **ClickUp's own Chrome extension** does screenshot capture (full view or selected area), markup with arrows, shapes, blur and numbered annotations, and attaches the result to a task. <!-- verified against https://help.clickup.com/hc/en-us/articles/6305599755671-Use-the-Chrome-extension as of 2026-08-19 -->
+- **The specialist tools in this category** (Marker.io, BugHerd, Usersnap) go further, and the gap is the part that actually saves developer time: every report carries the page URL, browser and OS, screen resolution, **console logs**, and failed network requests, captured at the moment of the report. <!-- verified against https://marker.io/blog/console-logs and https://marker.io/bug-tracker as of 2026-08-19 --> A screenshot alone produces "it's broken on my machine"; the metadata is what makes a report reproducible.
+- **Manifest V2 is removed from the Chrome Web Store on 31 August 2026**, so this is MV3-only, no migration path to consider. <!-- verified via Chrome for Developers / Manifest V3 migration docs as of 2026-08-19 -->
+- **`chrome.tabs.captureVisibleTab`** requires `activeTab` or `<all_urls>`. `activeTab` is granted by a user gesture on the extension action, which is exactly our flow — so we can avoid `<all_urls>` entirely. Note a documented quirk: the grant works from the action popup but is unreliable from a side panel, so the capture must be triggered from the popup. <!-- verified against https://developer.chrome.com/docs/extensions/reference/api/tabs and chromium-extensions group threads as of 2026-08-19 -->
+- **Supabase auth in MV3** has one real trap: a service worker has no `window`, no `localStorage`, and goes idle after ~30s, so the default session storage does not work. The supported pattern is a custom storage adapter over `chrome.storage.local` passed to `createClient` via `auth.storage`, plus an explicit refresh when the popup opens. <!-- verified against multiple current write-ups incl. https://pustelto.com/blog/supabase-auth/ and https://gourav.io/blog/supabase-auth-chrome-extension as of 2026-08-19 -->
+- **Distribution**: a one-time US$5 developer registration fee per account, review typically days but sometimes weeks, and submissions were running slow as of April 2026. Unlisted distribution is available for internal team use without a public listing. <!-- verified against https://developer.chrome.com/docs/webstore/review-process and current fee write-ups as of 2026-08-19 -->
+
+### Decisions
+
+- **Chrome MV3 extension first, embeddable widget later.** The specialists ship both: an extension for internal QA on any site, and a JS widget the client installs so external reviewers need install nothing. The user asked for the extension; the capture and report pipeline is therefore built as a shared module so a widget can reuse it without a rewrite.
+- **Popup, not side panel**, because `activeTab` capture is reliable from the popup and documented as flaky from the side panel.
+- **`activeTab` only — no `<all_urls>`.** It is granted per user gesture, which matches "click the icon, then capture", and it keeps the store review and the privacy story simple.
+- **Auth by session handoff from the web app**, not a second sign-in inside the extension: the user is already signed in to pm-app, so a short-lived handoff page passes the session to the extension, which stores it through a `chrome.storage.local` adapter. Only the `sb_publishable_*` key is ever shipped in the bundle.
+- **Task creation goes through one narrow authenticated Route Handler**, not a general public API (which the user cut from this mission). It accepts the reporter's Supabase JWT, re-verifies membership server-side, and creates the task through the same code path the web app uses.
+- **The screenshot uploads to the existing attachments bucket with the user's own JWT**, so the existing RLS is the enforcement boundary and no service key leaves the server.
+- **Console capture is a content script hooking `console` and `window.onerror` into a bounded ring buffer.** It can only see what happens after injection — this is a real limitation of every tool in this category and must be stated in the UI rather than implied away.
+
+### New external dependency
+
+- Chrome Web Store developer account (one-time US$5, user action — the orchestrator cannot register or pay). Not needed to build or test: an unpacked extension loads locally, and Playwright can drive it.

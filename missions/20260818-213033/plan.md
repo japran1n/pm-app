@@ -1,6 +1,6 @@
 # Plan
 
-_Mission: 20260818-213033 (v2)_ _Milestones: 9 (M10–M18)_ _Features: 162 (F118–F279)_ _Assertions covered: AS-201–AS-530 (330)_
+_Mission: 20260818-213033 (v2)_ _Milestones: 10 (M10–M19)_ _Features: 183 (F118–F300)_ _Assertions covered: AS-201–AS-572 (372)_
 
 Milestone and feature numbering continues from mission `20260817-230717`
 (which ended at M9 / F117 / AS-176) so no ID in this repo is ever ambiguous.
@@ -208,3 +208,48 @@ notifications, timezone) exists. No feature work beyond identity.
 - F270 typecheck-lint-clean — AS-527, AS-528 [CLARIFIED-AUTO]
 - F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO]
 - F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO]
+
+## M19 — QA feedback browser extension
+
+A second deployable: a Chrome MV3 extension that turns "this looks wrong" into a real pm-app
+task without leaving the page under test. Screenshot, annotate, attach technical context,
+assign, send. Researched against ClickUp's extension and the specialist tools in this category
+(Marker.io, BugHerd) — see tech-decisions.md § QA feedback extension.
+
+Ordering note: this milestone depends on task keys (F145-F147, done), rich-text descriptions
+(F169-F174, M14) for metadata rendering, and task deep links (F246, M17) for the "open task"
+link. It can run before those land if F293 falls back to plain text and F295 falls back to the
+board URL — say so in the handoff if you take a fallback.
+
+### Foundation & auth
+
+- F280 extension-skeleton-mv3 — AS-531 [CLARIFIED-AUTO]
+- F281 extension-auth-session-handoff — AS-532, AS-533, AS-538 [CLARIFIED-AUTO]
+- F282 extension-session-persistence-refresh — AS-534, AS-535, AS-536, AS-537 [CLARIFIED-AUTO]
+
+### Capture
+
+- F283 screenshot-capture-visible-tab — AS-539, AS-541 [CLARIFIED-AUTO]
+- F284 screenshot-region-select — AS-540 [CLARIFIED-AUTO]
+- F285 annotation-canvas — AS-542, AS-543, AS-545 [CLARIFIED-AUTO]
+- F286 annotation-blur-tool — AS-544 [CLARIFIED-AUTO]
+- F287 element-picker-selector — AS-546, AS-547 [CLARIFIED-AUTO]
+- F288 environment-metadata-collector — AS-548, AS-549 [CLARIFIED-AUTO]
+- F289 console-log-capture — AS-550, AS-551, AS-552 [CLARIFIED-AUTO]
+- F290 network-error-capture — AS-553 [CLARIFIED-AUTO]
+- F291 capture-privacy-toggles — AS-554 [CLARIFIED-AUTO]
+
+### Task creation
+
+- F292 api-route-create-task-from-extension — AS-558, AS-561, AS-562, AS-572 [CLARIFIED-AUTO]
+- F293 extension-report-form — AS-555, AS-556, AS-557 [CLARIFIED-AUTO]
+- F294 attachment-upload-from-extension — AS-559, AS-566, AS-567 [CLARIFIED-AUTO]
+- F295 metadata-into-description — AS-560 [CLARIFIED-AUTO]
+- F296 extension-defaults-and-success-state — AS-563, AS-564 [CLARIFIED-AUTO]
+
+### Hardening & shipping
+
+- F297 extension-offline-and-error-states — AS-565 [CLARIFIED-AUTO]
+- F298 extension-permissions-minimisation — AS-568, AS-569 [CLARIFIED-AUTO]
+- F299 extension-a11y-and-keyboard — AS-570 [CLARIFIED-AUTO]
+- F300 extension-build-and-packaging — AS-571 [CLARIFIED-AUTO]
