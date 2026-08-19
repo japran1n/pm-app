@@ -78,6 +78,47 @@ export type Database = {
           },
         ]
       }
+      checklist_items: {
+        Row: {
+          checked_at: string | null
+          checked_by: string | null
+          content: string
+          created_at: string
+          id: string
+          is_checked: boolean
+          position: number
+          task_id: string
+        }
+        Insert: {
+          checked_at?: string | null
+          checked_by?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          is_checked?: boolean
+          position?: number
+          task_id: string
+        }
+        Update: {
+          checked_at?: string | null
+          checked_by?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          is_checked?: boolean
+          position?: number
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checklist_items_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           created_at: string
