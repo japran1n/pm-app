@@ -151,8 +151,10 @@ export type Database = {
           description: string | null
           end_date: string | null
           id: string
+          key: string
           name: string
           start_date: string | null
+          task_counter: number
           updated_at: string
           workspace_id: string
         }
@@ -163,8 +165,10 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           id?: string
+          key?: string
           name: string
           start_date?: string | null
+          task_counter?: number
           updated_at?: string
           workspace_id: string
         }
@@ -175,8 +179,10 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           id?: string
+          key?: string
           name?: string
           start_date?: string | null
+          task_counter?: number
           updated_at?: string
           workspace_id?: string
         }
@@ -199,6 +205,7 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          number: number
           points: number | null
           position: number
           priority: string | null
@@ -218,6 +225,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          number?: number
           points?: number | null
           position?: number
           priority?: string | null
@@ -237,6 +245,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           id?: string
+          number?: number
           points?: number | null
           position?: number
           priority?: string | null
@@ -380,6 +389,11 @@ export type Database = {
           slug: string
         }[]
       }
+      derive_project_key_base: { Args: { p_name: string }; Returns: string }
+      generate_unique_project_key: {
+        Args: { p_name: string; p_workspace_id: string }
+        Returns: string
+      }
       get_overdue_count: {
         Args: { p_timezone?: string; p_workspace_id: string }
         Returns: number
@@ -429,6 +443,7 @@ export type Database = {
         Args: { target_task_id: string }
         Returns: boolean
       }
+      is_valid_timezone: { Args: { tz: string }; Returns: boolean }
       is_workspace_admin: {
         Args: { target_workspace_id: string }
         Returns: boolean
@@ -450,6 +465,7 @@ export type Database = {
           description: string | null
           due_date: string | null
           id: string
+          number: number
           points: number | null
           position: number
           priority: string | null
