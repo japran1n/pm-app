@@ -29,7 +29,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 - F273 profile-page-reachability — AS-202 [CLARIFIED-AUTO]
 - F274 avatar-upload-limits-and-sniffing — AS-203, AS-205, AS-206 [CLARIFIED-AUTO]
-- F275 due-date-display-timezone — AS-207 [CLARIFIED-AUTO]
+- F275 due-date-display-timezone — AS-207 [CLARIFIED-AUTO] [COMPLETE]
 - F276 profiles-rls-gaps — AS-208, AS-210 [CLARIFIED-AUTO]
 - F277 dom-test-environment — AS-204, AS-214 [CLARIFIED-AUTO]
 - F278 ci-runs-the-suite — (no assertion; evidence layer) [CLARIFIED-AUTO]
