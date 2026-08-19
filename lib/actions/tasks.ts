@@ -1353,7 +1353,10 @@ export async function getTaskDetail(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, title, description, status, priority, assignee_id, due_date, tags, deleted_at, projects!inner(workspace_id)",
+      // F146 (AS-258): `number` and the joined `key` are selected here
+      // via this action's existing task+project fetch — no second round
+      // trip for the detail header's task-key badge.
+      "id, title, description, status, priority, assignee_id, due_date, tags, number, deleted_at, projects!inner(key, workspace_id)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -1364,12 +1367,11 @@ export async function getTaskDetail(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { key: string; workspace_id: string }
+    | { key: string; workspace_id: string }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -1454,6 +1456,9 @@ export async function getTaskDetail(
         assigneeId: taskRow.assignee_id,
         dueDate: taskRow.due_date,
         tags: taskRow.tags ?? [],
+        // F146 (AS-258): see this function's task+project select above.
+        number: taskRow.number,
+        projectKey: projectRow?.key,
       },
       comments: (commentsResult.data ?? []).map((row) => ({
         id: row.id,

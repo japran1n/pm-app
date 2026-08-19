@@ -34,12 +34,16 @@
 // than left to crash).
 
 import { useState, useTransition } from "react";
-import { Loader2, TriangleAlert, Trash2 } from "lucide-react";
+import { Copy, Loader2, TriangleAlert, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
+// F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
+// comment for why every task-identity surface goes through it instead of
+// re-concatenating projectKey/number locally.
+import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { TagsEditor } from "@/components/task/tags-editor";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
@@ -87,6 +91,16 @@ export type TaskDetailSheetTask = {
   dueDate: string | null;
   /** AS-065: may be empty — every task has a tag list, never null. */
   tags: string[];
+  /** F146 (AS-258): this task's owning project's key (e.g. "PM") and its
+   * own per-project sequential number (e.g. 142), combined by
+   * formatTaskKey into "PM-142" for the header's click-to-copy badge
+   * below. Both come from getTaskDetail's existing task+project fetch
+   * (lib/actions/tasks.ts) — no second round trip. Optional so a caller
+   * that hasn't been updated (existing tests/fixtures) still renders
+   * without the badge instead of crashing, matching this type's other
+   * optional-by-convention fields elsewhere in this file. */
+  projectKey?: string;
+  number?: number;
 };
 
 export type TaskDetailSheetMember = {
@@ -293,6 +307,23 @@ export function TaskDetailSheet({
     });
   }
 
+  // F146 (AS-258): null when either half is missing (e.g. a caller that
+  // hasn't been updated yet) — formatTaskKey's contract is "null means
+  // don't render the badge," never a malformed partial string.
+  const taskKey = task ? formatTaskKey(task.projectKey, task.number) : null;
+
+  function handleCopyKey() {
+    if (!taskKey) return;
+    navigator.clipboard
+      .writeText(taskKey)
+      .then(() => {
+        toast.success(`Copied ${taskKey} to clipboard.`);
+      })
+      .catch(() => {
+        toast.error("Couldn't copy to clipboard. Please try again.");
+      });
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent aria-describedby={undefined}>
@@ -330,6 +361,25 @@ export function TaskDetailSheet({
         ) : (
           <>
             <SheetHeader>
+              {taskKey && (
+                // F146 (AS-258): click-to-copy task key. A plain <button>
+                // rather than a div/span with an onClick — native buttons
+                // are keyboard-operable by default (Tab to focus, Enter/
+                // Space to activate) with no extra key handling needed,
+                // and the sonner toast below is the "feedback" the
+                // clarified spec's failure-handling answer calls for
+                // (success and failure both surface as a toast, matching
+                // this component's saveField/handleDelete convention).
+                <button
+                  type="button"
+                  onClick={handleCopyKey}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  aria-label={`Copy task key ${taskKey} to clipboard`}
+                >
+                  <Copy className="size-3" aria-hidden="true" />
+                  {taskKey}
+                </button>
+              )}
               <SheetTitle>Task details</SheetTitle>
               <SheetDescription className="sr-only">
                 View and edit this task&apos;s title, description, status,

@@ -19,6 +19,10 @@ import { Clock, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { formatDuration } from "@/lib/time/format-duration";
+// F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
+// comment for why every task-identity surface goes through it instead of
+// re-concatenating projectKey/number locally.
+import { formatTaskKey } from "@/lib/tasks/task-key";
 // F275 (AS-207): the shared due-date formatter (lib/time/user-timezone.ts)
 // replaces this file's own local `formatDueDate` copy — see that
 // function's doc comment for why the fix isn't "just add timeZone to
@@ -64,6 +68,17 @@ export type TaskCardTask = {
   // convention as `updatedAt`. Zero/undefined/null all mean "no time
   // logged yet" and hide the indicator entirely.
   totalMinutes?: number | null;
+  // F146 (AS-258): this task's owning project's key (e.g. "PM") and its
+  // own per-project sequential number (e.g. 142), combined by
+  // formatTaskKey into "PM-142" below. Both selected via the query's
+  // existing project join (lib/queries/tasks.ts), never a per-card fetch.
+  // Optional so a caller that hasn't been updated (existing tests, a
+  // realtime-reconciled row still resolving its project — see
+  // lib/board/reconcile-realtime-task.ts) still renders without the
+  // badge instead of crashing, matching every other optional field's
+  // "safe default" convention in this type.
+  projectKey?: string;
+  number?: number;
 };
 
 export function TaskCard({
@@ -98,6 +113,11 @@ export function TaskCard({
   timezone: string;
 }) {
   const overdue = isOverdue(task.dueDate, task.status, timezone);
+  // F146 (AS-258): null when either half is missing (e.g. a realtime-
+  // reconciled row still resolving its project — see task.projectKey's
+  // doc comment above) — formatTaskKey's contract is "null means don't
+  // render the badge," never a malformed partial string.
+  const taskKey = formatTaskKey(task.projectKey, task.number);
 
   return (
     <Card
@@ -122,6 +142,11 @@ export function TaskCard({
       )}
     >
       <CardHeader>
+        {taskKey && (
+          <span className="font-mono text-xs font-medium text-muted-foreground">
+            {taskKey}
+          </span>
+        )}
         <CardTitle className="line-clamp-2">{task.title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">

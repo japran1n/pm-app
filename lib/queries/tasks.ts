@@ -23,6 +23,19 @@
 import { createClient } from "@/lib/supabase/server";
 import type { TaskCardTask } from "@/components/task/task-card";
 
+// F146 (AS-258): every embedded `projects` relation below can come back
+// from PostgREST as either a single object or a one-element array
+// depending on the generated relationship cardinality — this codebase's
+// existing convention (lib/actions/tasks.ts's assignTask/editTask/etc.,
+// all pre-dating this feature) normalizes it inline with this same
+// `Array.isArray` check at every call site rather than trusting a single
+// shape, so this helper just centralizes that one-line pattern for the
+// three query functions in this file.
+function firstRelated<T>(relation: T | T[] | null | undefined): T | null {
+  if (!relation) return null;
+  return Array.isArray(relation) ? (relation[0] ?? null) : relation;
+}
+
 export async function getProjectBoardTasks(
   projectId: string,
 ): Promise<TaskCardTask[]> {
@@ -31,7 +44,7 @@ export async function getProjectBoardTasks(
   const { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at",
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, number, projects(key)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null)
@@ -50,6 +63,11 @@ export async function getProjectBoardTasks(
     dueDate: task.due_date,
     position: task.position,
     updatedAt: task.updated_at,
+    // F146 (AS-258): selected via this query's existing project join
+    // (`projects(key)` above), never a per-row fetch — see
+    // lib/tasks/task-key.ts for how these combine into "KEY-NUMBER".
+    number: task.number,
+    projectKey: firstRelated(task.projects)?.key,
   }));
 }
 
@@ -99,7 +117,7 @@ export async function getProjectListTasks(
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at",
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, projects(key)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -136,6 +154,10 @@ export async function getProjectListTasks(
     dueDate: task.due_date,
     position: task.position,
     updatedAt: task.updated_at,
+    // F146 (AS-258): see getProjectBoardTasks above for the rationale —
+    // same existing-query-extension approach, same helper.
+    number: task.number,
+    projectKey: firstRelated(task.projects)?.key,
   }));
 }
 
@@ -175,7 +197,7 @@ export async function getWorkspaceListTasks(
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, projects!inner(workspace_id, deleted_at)",
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, projects!inner(key, workspace_id, deleted_at)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -208,5 +230,13 @@ export async function getWorkspaceListTasks(
     dueDate: task.due_date,
     position: task.position,
     updatedAt: task.updated_at,
+    // F146 (AS-258): unlike the two project-scoped queries above, every
+    // row here can belong to a DIFFERENT project (this is the
+    // workspace-wide dashboard query), so `projectKey` genuinely varies
+    // per row rather than being constant across the result set — still
+    // selected via this query's existing `projects!inner(...)` join, no
+    // per-row fetch.
+    number: task.number,
+    projectKey: firstRelated(task.projects)?.key,
   }));
 }

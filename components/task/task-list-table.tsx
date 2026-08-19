@@ -31,6 +31,12 @@ import { TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+// F146 (AS-258): the single "KEY-NUMBER" formatter — reused for the Key
+// column below by both callers of this table (the per-project List view
+// and, via components/dashboard/dashboard-task-table.tsx, the
+// workspace-wide dashboard table), matching this file's existing
+// "one component, two callers" pattern for the rest of its columns.
+import { formatTaskKey } from "@/lib/tasks/task-key";
 // F275 (AS-207): the shared due-date formatter — replaces this file's own
 // local `formatDueDate` copy, which (like task-card.tsx's) never received
 // a timeZone. See lib/time/user-timezone.ts's formatDueDate doc comment.
@@ -162,6 +168,7 @@ export function TaskListTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead>Key</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Priority</TableHead>
@@ -177,6 +184,7 @@ export function TaskListTable({
             const assignee = task.assigneeId
               ? assignees.get(task.assigneeId)
               : null;
+            const taskKey = formatTaskKey(task.projectKey, task.number);
 
             return (
               <TableRow
@@ -193,6 +201,9 @@ export function TaskListTable({
                   }
                 }}
               >
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {taskKey ?? "—"}
+                </TableCell>
                 <TableCell className="font-medium">{task.title}</TableCell>
                 {/* stopPropagation: interacting with the status dropdown
                     should change the status, not also open the detail

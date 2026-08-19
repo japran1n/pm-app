@@ -26,6 +26,12 @@ export type BoardRealtimeTaskRow = {
   position: number;
   deleted_at: string | null;
   updated_at: string;
+  // F146 (AS-258): a plain `tasks` column (F145), so it's already present
+  // in every Realtime payload for this row with no join needed — unlike
+  // a task's project key, which lives on `projects` and never arrives in
+  // a `tasks`-table Realtime event (see reconcile-realtime-task.ts for
+  // how that half is resolved instead).
+  number: number;
 };
 
 export type BoardRealtimeEvent =

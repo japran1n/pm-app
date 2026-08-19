@@ -34,16 +34,27 @@
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { BoardRealtimeEvent } from "@/lib/board/subscribe-board-realtime";
 
-function toTaskCardTask(row: {
-  id: string;
-  title: string;
-  status: TaskCardTask["status"];
-  priority: TaskCardTask["priority"];
-  assignee_id: string | null;
-  due_date: string | null;
-  position: number;
-  updated_at?: string;
-}): TaskCardTask {
+function toTaskCardTask(
+  row: {
+    id: string;
+    title: string;
+    status: TaskCardTask["status"];
+    priority: TaskCardTask["priority"];
+    assignee_id: string | null;
+    due_date: string | null;
+    position: number;
+    updated_at?: string;
+    number?: number;
+  },
+  // F146 (AS-258): `number` is a plain `tasks` column, so it arrives in
+  // every Realtime payload for this row already (see
+  // BoardRealtimeTaskRow) — read straight off `row` below, same as every
+  // other field in this function. A task's PROJECT KEY is not a `tasks`
+  // column, though, so it never arrives in one of these payloads; the
+  // caller (reconcileTask) resolves it once per event from whatever the
+  // board already knows and passes it in here instead.
+  projectKey: string | undefined,
+): TaskCardTask {
   return {
     id: row.id,
     title: row.title,
@@ -53,6 +64,8 @@ function toTaskCardTask(row: {
     dueDate: row.due_date,
     position: row.position,
     updatedAt: row.updated_at,
+    number: row.number,
+    projectKey,
   };
 }
 
@@ -76,8 +89,27 @@ export function reconcileTask(
     return tasks.filter((t) => t.id !== row.id);
   }
 
-  const incoming = toTaskCardTask(row);
-  const existingIndex = tasks.findIndex((t) => t.id === incoming.id);
+  const existingIndex = tasks.findIndex((t) => t.id === row.id);
+
+  // F146 (AS-258): resolve this board's project key once per event,
+  // rather than expecting it in the Realtime payload (it can't be —
+  // `projects.key` isn't a `tasks` column, see toTaskCardTask's doc
+  // comment). Preferred source is the matched existing row (an UPDATE for
+  // a task already on the board); falling back to any other task already
+  // on the board covers a brand-new INSERT, since useBoardRealtime's
+  // subscription filter (`project_id=eq.<projectId>`) guarantees every
+  // task on this board belongs to the same project. Board pages never
+  // render this component for a project with zero tasks (BoardEmptyState
+  // renders instead — see the board page), so in practice there is
+  // always at least one existing task to source the key from; `undefined`
+  // only happens in the theoretical case where every task on the board
+  // has since been soft-deleted within the same session, and just means
+  // the new card's key badge doesn't render until the next full load.
+  const projectKey =
+    (existingIndex !== -1 ? tasks[existingIndex].projectKey : undefined) ??
+    tasks.find((t) => t.projectKey !== undefined)?.projectKey;
+
+  const incoming = toTaskCardTask(row, projectKey);
 
   if (existingIndex === -1) {
     // INSERT (or an UPDATE for a task this client doesn't have locally yet

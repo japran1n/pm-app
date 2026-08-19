@@ -72,6 +72,14 @@ export interface SearchTaskResult {
   priority: string;
   projectId: string;
   projectName: string;
+  // F146 (AS-258): this result's task-key display fields, combined by
+  // lib/tasks/task-key.ts's formatTaskKey into "KEY-NUMBER". `number` is
+  // a plain `tasks` column, already returned by `search_tasks` (it
+  // `returns setof tasks`, so every column comes back for free); the key
+  // is resolved from the same `projects` fetch this function already
+  // makes below (for `projectNameById`), never a second query.
+  projectKey: string | null;
+  number: number;
 }
 
 export async function searchWorkspaceTasks(
@@ -114,7 +122,7 @@ export async function searchWorkspaceTasks(
   // below because its project id never appears in this list.
   const { data: projects, error: projectsError } = await supabase
     .from("projects")
-    .select("id, name")
+    .select("id, name, key")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null);
 
@@ -127,6 +135,9 @@ export async function searchWorkspaceTasks(
   }
 
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
+  // F146 (AS-258): same already-fetched `projects` rows as
+  // `projectNameById` above — reused rather than a second query.
+  const projectKeyById = new Map(projects.map((p) => [p.id, p.key]));
 
   const resultsPerProject = await Promise.all(
     projects.map(async (project) => {
@@ -146,6 +157,8 @@ export async function searchWorkspaceTasks(
         priority: task.priority,
         projectId: task.project_id,
         projectName: projectNameById.get(task.project_id) ?? project.name,
+        projectKey: projectKeyById.get(task.project_id) ?? project.key,
+        number: task.number,
         titleMatches: task.title
           .toLowerCase()
           .includes(trimmed.toLowerCase()),

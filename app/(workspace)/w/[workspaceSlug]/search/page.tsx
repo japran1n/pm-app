@@ -34,6 +34,10 @@ import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-colors";
+// F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
+// comment for why every task-identity surface goes through it instead of
+// re-concatenating projectKey/number locally.
+import { formatTaskKey } from "@/lib/tasks/task-key";
 
 export default async function SearchPage({
   params,
@@ -155,6 +159,7 @@ export default async function SearchPage({
               STATUS_COLORS[task.status as keyof typeof STATUS_COLORS];
             const priorityColor =
               PRIORITY_COLORS[task.priority as keyof typeof PRIORITY_COLORS];
+            const taskKey = formatTaskKey(task.projectKey, task.number);
 
             return (
               <li key={task.id}>
@@ -163,7 +168,14 @@ export default async function SearchPage({
                   className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-4 shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-foreground/20"
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium">{task.title}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      {taskKey && (
+                        <span className="font-mono text-xs font-normal text-muted-foreground">
+                          {taskKey}
+                        </span>
+                      )}
+                      {task.title}
+                    </span>
                     <span className="text-sm text-muted-foreground">
                       {task.projectName}
                     </span>
