@@ -70,7 +70,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F151 db-schema-checklists — AS-269, AS-274 [CLARIFIED-AUTO] [COMPLETE]
 - F152 checklist-actions — AS-270, AS-271 [CLARIFIED-AUTO] [COMPLETE]
 - F153 checklist-ui — AS-269, AS-271 [CLARIFIED-AUTO] [COMPLETE]
-- F154 task-completion-percentage — AS-272, AS-273 [CLARIFIED-AUTO]
+- F154 task-completion-percentage — AS-272, AS-273 [CLARIFIED-AUTO] [COMPLETE]
 - F155 db-schema-task-dependencies — AS-276, AS-279, AS-284, AS-285 [CLARIFIED-AUTO]
 - F156 dependency-cycle-guard — AS-278 [CLARIFIED-AUTO]
 - F157 dependency-ui — AS-277, AS-282, AS-283 [CLARIFIED-AUTO]
