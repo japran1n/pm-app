@@ -73,7 +73,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F154 task-completion-percentage — AS-272, AS-273 [CLARIFIED-AUTO] [COMPLETE]
 - F155 db-schema-task-dependencies — AS-276, AS-279, AS-284, AS-285 [CLARIFIED-AUTO] [COMPLETE]
 - F156 dependency-cycle-guard — AS-278 [CLARIFIED-AUTO] [COMPLETE]
-- F157 dependency-ui — AS-277, AS-282, AS-283 [CLARIFIED-AUTO]
+- F157 dependency-ui — AS-277, AS-282, AS-283 [CLARIFIED-AUTO] [COMPLETE]
 - F158 blocked-done-warning — AS-280, AS-281 [CLARIFIED-AUTO]
 - F159 db-schema-task-assignees — AS-286, AS-292 [CLARIFIED-AUTO]
 - F160 assignee-actions-multi — AS-289, AS-290 [CLARIFIED-AUTO]
