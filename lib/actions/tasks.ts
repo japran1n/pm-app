@@ -22,6 +22,7 @@ import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
 import type { SubtaskListChildTask } from "@/components/task/subtask-list";
+import type { ChecklistListItem } from "@/components/task/checklist";
 
 export type CreateTaskResult =
   | {
@@ -1652,6 +1653,21 @@ export async function getTaskDetail(
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
+  // F153 (AS-269 UI half): this task's own checklist items, fetched here
+  // in getTaskDetail's existing single detail-fetch, same convention as
+  // `childrenQuery` immediately above — the checklist UI (components/
+  // task/checklist.tsx) never queries Supabase directly, it only renders
+  // whatever this Server Action hands it (Clarified implementation's
+  // Data shape answer). Position-ascending, since that's the order
+  // AS-269/AS-271 expect the checklist to render and reorder in — the
+  // same `(task_id, position)` composite index F151's migration created
+  // for exactly this query shape.
+  const checklistQuery = admin
+    .from("checklist_items")
+    .select("id, content, is_checked, position")
+    .eq("task_id", parsed.data.taskId)
+    .order("position", { ascending: true });
+
   // F150 (AS-263): only run the parent lookup when this task actually
   // has one — a top-level task's parent_task_id is null, so there is
   // nothing to look up (`parentQuery` stays null and the resolved
@@ -1665,22 +1681,28 @@ export async function getTaskDetail(
         .maybeSingle()
     : null;
 
-  const [commentsResult, attachmentsResult, childrenResult, parentResult] =
-    await Promise.all([
-      admin
-        .from("comments")
-        .select("id, task_id, user_id, text, created_at")
-        .eq("task_id", parsed.data.taskId)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true }),
-      admin
-        .from("attachments")
-        .select("id, task_id, file_url, file_name, uploaded_by, created_at")
-        .eq("task_id", parsed.data.taskId)
-        .order("created_at", { ascending: true }),
-      childrenQuery,
-      parentQuery ?? Promise.resolve({ data: null, error: null }),
-    ]);
+  const [
+    commentsResult,
+    attachmentsResult,
+    childrenResult,
+    parentResult,
+    checklistResult,
+  ] = await Promise.all([
+    admin
+      .from("comments")
+      .select("id, task_id, user_id, text, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("attachments")
+      .select("id, task_id, file_url, file_name, uploaded_by, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .order("created_at", { ascending: true }),
+    childrenQuery,
+    parentQuery ?? Promise.resolve({ data: null, error: null }),
+    checklistQuery,
+  ]);
 
   if (commentsResult.error) {
     console.error(
@@ -1719,6 +1741,17 @@ export async function getTaskDetail(
     console.error(
       "getTaskDetail: parent fetch failed:",
       parentResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (checklistResult.error) {
+    console.error(
+      "getTaskDetail: checklist fetch failed:",
+      checklistResult.error,
     );
     return {
       ok: false,
@@ -1785,6 +1818,15 @@ export async function getTaskDetail(
             assigneeId: row.assignee_id,
             projectKey: projectRow?.key,
             number: row.number,
+          }),
+        ),
+        // F153 (AS-269 UI half): see checklistQuery above.
+        checklistItems: (checklistResult.data ?? []).map(
+          (row): ChecklistListItem => ({
+            id: row.id,
+            content: row.content,
+            isChecked: row.is_checked,
+            position: row.position,
           }),
         ),
       },

@@ -50,6 +50,7 @@ import {
   SubtaskList,
   type SubtaskListChildTask,
 } from "@/components/task/subtask-list";
+import { Checklist, type ChecklistListItem } from "@/components/task/checklist";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
 import {
   AttachmentList,
@@ -134,6 +135,15 @@ export type TaskDetailSheetTask = {
    * SubtaskList's own prop default so a caller that hasn't been updated
    * yet still renders an empty (not crashing) Subtasks section. */
   children?: SubtaskListChildTask[];
+  /** F153 (AS-269 UI half): this task's own checklist items, from
+   * getTaskDetail's own query (lib/actions/tasks.ts) — same "fetched
+   * once with the task, no per-section round trip" convention as
+   * `children` immediately above. Optional/defaults to [] via
+   * Checklist's own rendering below so a caller that hasn't been updated
+   * yet (existing tests/fixtures) still renders rather than crashing,
+   * same "safe default" convention as every other optional field on this
+   * type. */
+  checklistItems?: ChecklistListItem[];
 };
 
 export type TaskDetailSheetMember = {
@@ -658,6 +668,10 @@ export function TaskDetailSheet({
                 members={members}
                 onOpenTask={onOpenTask}
               />
+
+              <Separator />
+
+              <Checklist taskId={task.id} items={task.checklistItems ?? []} />
 
               <Separator />
 
