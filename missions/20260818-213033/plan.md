@@ -61,7 +61,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ## M13 — Task identity, structure & relations
 
-- F145 db-task-keys — AS-257, AS-259, AS-260, AS-261 [CLARIFIED-AUTO]
+- F145 db-task-keys — AS-257, AS-259, AS-260, AS-261 [CLARIFIED-AUTO] [COMPLETE]
 - F146 task-key-display — AS-258 [CLARIFIED-AUTO]
 - F147 task-key-search — AS-262 [CLARIFIED-AUTO]
 - F148 db-schema-subtasks — AS-265, AS-266 [CLARIFIED-AUTO]
