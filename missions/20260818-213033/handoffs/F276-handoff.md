@@ -1,0 +1,53 @@
+# Handoff: F276 — close the profiles RLS gaps
+
+## Status
+COMPLETE
+
+## Assertions covered
+AS-210: PASS — `soft-delete the shared workspace` and `remove the member` tests both pass after the fix; the soft-delete test independently confirmed to FAIL against pre-fix code (empirically verified — see Notes).
+AS-208: PASS — `update({ id: otherUserId }).eq("id", myUserId)` is rejected (also passed against pre-fix code, since `profiles_update_self`'s pre-existing `with check (id = auth.uid())` already caught it — this test closes a coverage gap, not a live bug; see Decisions made).
+
+## Files changed
+supabase/migrations/20260819065751_close_profiles_rls_gaps.sql
+tests/integration/rls-profiles.test.ts
+
+## Commands run
+`supabase migration new close_profiles_rls_gaps` (0)
+`supabase db push --linked` (0) — applied the migration to project `qcipqonnqajmazdbysow`
+`supabase db query --linked` (0, multiple) — pre-flight schema introspection (FK constraint name, column grants, policy definitions, function `proconfig`) and post-apply verification
+`npx vitest run tests/integration/rls-profiles.test.ts --testTimeout=30000` (0) — 20/20 passed, post-fix
+`supabase db query --linked -f <scratchpad>/revert.sql` (0) — TEMPORARY, non-migration ad-hoc revert of `shares_workspace_with()` and the `profiles` UPDATE grant to their pre-fix definitions, for empirical "fails before / passes after" verification only
+`npx vitest run tests/integration/rls-profiles.test.ts --testTimeout=30000` (1, expected) — 18/20 passed, 2 failed against reverted schema (the AS-210 soft-delete test and the display_name-rejection test), confirming they are real regression tests
+`supabase db query --linked -f <scratchpad>/restore.sql` (0) — restored the exact post-fix function/grant definitions (verified byte-for-byte via `proconfig` and `information_schema.role_column_grants` against the committed migration)
+`npx vitest run tests/integration/rls-profiles.test.ts --testTimeout=30000` (0) — 20/20 passed again, confirming restoration was exact
+`npx tsc --noEmit` (0)
+`npx eslint .` (0 errors; 1 pre-existing unrelated warning in `lib/queries/search.ts`, not touched by this feature)
+`npx vitest run --testTimeout=30000` (0) — full suite, 637/637 tests, 110/110 files, run at 30s timeout per the mission's known 5s-timeout non-determinism against the remote project (not re-tested at the default timeout — this is expected per the worker brief, not a flake being hidden)
+
+## Decisions made
+- **Self-writes hardening: narrowed the UPDATE grant, not a CHECK constraint.** Picked the spec's second option: `revoke update on public.profiles from authenticated; grant update (timezone) on public.profiles to authenticated;`. Both write paths that ever set `display_name`/`avatar_url` (`lib/actions/profile.ts`'s `updateProfile`/`uploadAvatar`) already use `createAdminClient()` (service_role), which this grant change doesn't touch — service_role bypasses table grants the same way it bypasses RLS, matching every other privileged write in this repo. A CHECK-based alternative would need to duplicate the avatars bucket's public-URL shape as a second source of truth in a regex, which could drift from the Storage config independently. Verified via `information_schema.role_column_grants` before and after that only `timezone` remains authenticated-writable, and via `has_function_privilege` that `anon` lost `EXECUTE` on `shares_workspace_with` while `authenticated` kept it.
+- **This changed real behaviour for two pre-existing tests** in `rls-profiles.test.ts`: "a user CAN update their own profile" used to PATCH `display_name` directly and expect success — rewritten to PATCH `timezone` (still allowed) with a new companion test proving a direct `display_name` PATCH is now rejected (42501, permission denied for column, not an RLS filter). The two existing AS-208 cross-user tests were also switched from `display_name` to `timezone` in their `.update(...)` payload — after narrowing the grant, a `display_name` write now fails at the column-privilege layer for *every* row including the caller's own, which would have stopped isolating the row-level ("is this someone else's row?") RLS behaviour those two tests exist to prove. `timezone` stays fully grantable so they still test exactly that.
+- **Avatars bucket SELECT policy: kept for `authenticated`, dropped only for `anon`,** per the spec's explicit fallback instruction. Checked how avatars render first: `components/user-avatar.tsx` uses `<AvatarImage src={person.avatarUrl}>`, a plain `<img>`, and `avatar_url` is already the full public URL from `getPublicUrl()`. Because the `avatars` bucket itself is `public = true`, Storage serves that URL from the unauthenticated `/storage/v1/object/public/...` endpoint regardless of `storage.objects` RLS — the original migration's own comment already said this. So dropping `anon` SELECT cannot break rendering for anyone. Kept `authenticated` SELECT so any in-app `.list()`/`.download()` Storage-API usage via the publishable-key client keeps behaving like a public bucket, per that same comment's stated intent — only the anonymous user-id-enumeration path (`anon` calling `.list()` on the bucket) is closed.
+- **`deleteWorkspace` (`lib/actions/workspaces.ts`) was left untouched.** The fix lives entirely in `shares_workspace_with()`: once it joins `workspaces` and requires `deleted_at is null`, a soft-deleted workspace's members lose profile visibility regardless of their `workspace_members.status`, with no application-code change needed. Confirmed by the AS-210 soft-delete test.
+- **`is_active_workspace_member` / `is_workspace_admin` kept their existing `authenticated, anon` execute grants** — only `shares_workspace_with`'s `anon` grant was named as "pointless" in the scrutiny report; the other three helpers weren't flagged for a grant change, only for the `search_path` sweep.
+- **AS-208's `update({ id: otherUserId })` test passes against both pre-fix and post-fix code** — verified empirically (see Commands run). `profiles_update_self`'s `with check (id = auth.uid())` already existed before this feature and already rejects an `id` reassignment on its own; the scrutiny finding was "no test exercises this path" (a coverage gap), not "this currently succeeds" (a live bug). The narrowed UPDATE grant added by this feature is a second, independent layer (a column-privilege check that runs before RLS is even evaluated) — reported honestly here rather than overclaiming this test as a regression-fix like the AS-210 soft-delete one.
+- **AS-210 "remove the member" test also passes against pre-fix code** — this matches the scrutiny report's own observation that member removal ("which genuinely `delete`s the row, so revocation works there") was already correct; only the soft-delete path was broken. Added for FU-4's explicit "assert the same" coverage requirement, not because it was a live bug.
+
+## Out-of-scope work needed
+- FU-1 (link profile settings into app shell), FU-2 (avatar upload robustness), FU-3 (timezone-aware due dates), FU-5 (DOM test environment), FU-6 (CI env vars / test stability) from `M10-scrutiny.md` are untouched — out of this feature's scope (F276 covers only FU-4's items).
+- The scrutiny report's minor finding that a trigger failure previously aborted sign-up is fixed here (`handle_new_user()` now has an exception handler), but no test exercises "a future NOT NULL/CHECK on profiles no longer breaks sign-up" — doing so would require temporarily adding then removing a failing constraint, which felt too invasive for this migration's blast radius. Documented as a gap rather than silently skipped.
+
+## Blockers
+(none — Status is COMPLETE)
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Chose "narrow the UPDATE grant to timezone" over the CHECK-constraint alternative offered in the spec, for the reasons in Decisions made (avoids a second source of truth for the avatars bucket's URL shape; zero impact on the app's actual admin-client write paths).
+AUTONOMOUS_DECISION: Kept `authenticated` SELECT on the avatars-bucket `storage.objects` policy (dropped only `anon`), per the spec's own fallback instruction, after confirming avatar rendering goes through the public-bucket CDN endpoint rather than the RLS-guarded Storage query API.
+AUTONOMOUS_DECISION: Rewrote two pre-existing AS-208 tests' payload from `display_name` to `timezone` (functionally equivalent row-level coverage) rather than leaving them broken by the grant-narrowing side effect, and added a new dedicated test for the `display_name`-is-now-column-blocked behavior so no coverage was lost.
+
+## Notes for the next worker
+- Migration file: `supabase/migrations/20260819065751_close_profiles_rls_gaps.sql`. Applied via `supabase db push --linked` against the linked project `qcipqonnqajmazdbysow` (no Supabase MCP was connected/approved at run time, per `mcp-registry.md` — used the Supabase CLI directly, which the registry names as the primary path anyway).
+- `supabase db query --linked "<sql>" -o json` is the fastest way to introspect the live schema (constraint defs, `pg_proc.proconfig`, `information_schema.role_column_grants`, `pg_policies`) without writing a throwaway migration — used it extensively before and after the push to confirm exact before/after state.
+- For the empirical "test fails before / passes after" verification, I temporarily reverted `shares_workspace_with()` and the `profiles` UPDATE grant via a non-migration ad-hoc `supabase db query -f` script (not committed, lived only in the scratchpad dir), ran the suite, confirmed 2 failures, then restored the exact post-fix definitions the same way and re-verified 20/20 pass plus byte-for-byte `proconfig`/grant equality with the committed migration's intent. This is safe to repeat for future scrutiny follow-ups on this project since it's the mission's own dev/test Supabase project, not shared production data — but always restore before ending the session, which I did and re-verified.
+- `tests/integration/rls-profiles.test.ts` grew four new self-contained `describe` blocks (own users/workspaces, own `afterAll` cleanup) rather than reusing the file's original workspace-A/member-A fixtures, specifically so the new soft-delete and remove-member tests' destructive mutations can't affect the pre-existing AS-201/AS-209/etc. tests that depend on that fixture staying alive for the whole file.
+- The `profiles.id` FK now has `on delete cascade`, so the existing test file's `afterAll` comment about needing to delete `profiles` before `auth.users` (to dodge an FK violation) is now historical rather than load-bearing — left the extra delete calls in place since they're harmless and still correct, just no longer strictly required.
