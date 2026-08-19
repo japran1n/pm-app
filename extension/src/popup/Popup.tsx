@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
+import { captureVisibleTab } from "../capture/visible-tab";
+import { setLastCapture, type CapturedScreenshot } from "../capture/store";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -47,6 +49,30 @@ export function Popup() {
   // is never relied on to know whether a session exists, so it does not
   // violate the "re-derivable from storage" requirement above.
   const explicitSignOutRef = useRef(false);
+
+  // F283 (AS-539, AS-541): capture state is independent of connection
+  // status — capturing the visible tab needs only `activeTab`, not an
+  // authenticated session (auth only matters once a later feature files
+  // the task). Kept local to this component (not chrome.storage) per the
+  // "simpler/narrower" tie-breaker in the clarification: it only needs to
+  // survive the current popup mount.
+  type CaptureUiState =
+    | { kind: "idle" }
+    | { kind: "capturing" }
+    | { kind: "captured"; capture: CapturedScreenshot }
+    | { kind: "error"; reason: string };
+  const [captureState, setCaptureState] = useState<CaptureUiState>({ kind: "idle" });
+
+  async function handleCapture() {
+    setCaptureState({ kind: "capturing" });
+    const result = await captureVisibleTab();
+    if (result.ok) {
+      setLastCapture(result);
+      setCaptureState({ kind: "captured", capture: result });
+    } else {
+      setCaptureState({ kind: "error", reason: result.reason });
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +209,42 @@ export function Popup() {
             Sign in to connect
           </button>
         </>
+      )}
+
+      {status.kind !== "loading" && (
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+          <button
+            data-testid="capture-button"
+            type="button"
+            onClick={handleCapture}
+            disabled={captureState.kind === "capturing"}
+          >
+            {captureState.kind === "capturing" ? "Capturing…" : "Capture screenshot"}
+          </button>
+
+          {captureState.kind === "captured" && (
+            <div style={{ marginTop: 8 }}>
+              <p data-testid="capture-success" style={{ margin: "0 0 4px", fontSize: 13, color: "#1a7f37" }}>
+                Screenshot captured.
+              </p>
+              <img
+                data-testid="capture-preview"
+                src={captureState.capture.dataUrl}
+                alt="Captured screenshot preview"
+                style={{ maxWidth: "100%", border: "1px solid #ddd" }}
+              />
+            </div>
+          )}
+
+          {captureState.kind === "error" && (
+            <p
+              data-testid="capture-error"
+              style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+            >
+              {captureState.reason}
+            </p>
+          )}
+        </div>
       )}
     </main>
   );
