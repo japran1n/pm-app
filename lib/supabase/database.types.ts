@@ -206,6 +206,7 @@ export type Database = {
           due_date: string | null
           id: string
           number: number
+          parent_task_id: string | null
           points: number | null
           position: number
           priority: string | null
@@ -226,6 +227,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           number?: number
+          parent_task_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
@@ -246,6 +248,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           number?: number
+          parent_task_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
@@ -258,6 +261,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_project_id_fkey"
             columns: ["project_id"]
@@ -466,6 +476,7 @@ export type Database = {
           due_date: string | null
           id: string
           number: number
+          parent_task_id: string | null
           points: number | null
           position: number
           priority: string | null
