@@ -14,7 +14,7 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { Clock, TriangleAlert } from "lucide-react";
+import { Clock, ListTree, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
@@ -79,6 +79,17 @@ export type TaskCardTask = {
   // "safe default" convention in this type.
   projectKey?: string;
   number?: number;
+  // F150 (AS-275): how many live children (subtasks) this task has, if
+  // any. Selected via the board query's own single aggregate query
+  // (lib/queries/tasks.ts's getProjectBoardTasks) — never a per-card
+  // fetch. Undefined/0 both mean "no subtasks" and hide the indicator
+  // entirely, same "safe default" convention as `totalMinutes` above.
+  // AS-275 itself ("child tasks still appear as ordinary cards, not
+  // hidden inside their parent") is a property of the query this field
+  // comes from continuing to return every task — including children —
+  // as its own flat row; this field only ever ADDS an indicator to a
+  // card that's already there, it never removes or nests one.
+  subtaskCount?: number;
 };
 
 export function TaskCard({
@@ -185,6 +196,15 @@ export function TaskCard({
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="size-3" aria-hidden="true" />
             {formatDuration(task.totalMinutes)}
+          </span>
+        )}
+        {/* F150 (AS-275, AS-153 convention): "has subtasks" is icon +
+            text, never colour alone — same pairing this card already
+            uses for the overdue indicator above. */}
+        {!!task.subtaskCount && task.subtaskCount > 0 && (
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <ListTree className="size-3" aria-hidden="true" />
+            {task.subtaskCount} {task.subtaskCount === 1 ? "subtask" : "subtasks"}
           </span>
         )}
         {assignee && <UserAvatar person={assignee} size="sm" className="ml-auto" />}

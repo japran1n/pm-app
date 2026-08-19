@@ -34,7 +34,7 @@
 // than left to crash).
 
 import { useState, useTransition } from "react";
-import { Copy, Loader2, TriangleAlert, Trash2 } from "lucide-react";
+import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { assignTask, deleteTask, editTask } from "@/lib/actions/tasks";
@@ -46,6 +46,10 @@ import { cn } from "@/lib/utils";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { TagsEditor } from "@/components/task/tags-editor";
+import {
+  SubtaskList,
+  type SubtaskListChildTask,
+} from "@/components/task/subtask-list";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
 import {
   AttachmentList,
@@ -101,6 +105,35 @@ export type TaskDetailSheetTask = {
    * optional-by-convention fields elsewhere in this file. */
   projectKey?: string;
   number?: number;
+  /** F150 (AS-263, AS-264): this task's own project id — needed by the
+   * Subtasks section's inline add-subtask form to call createTask
+   * without a second round trip to look it up. Optional so a caller that
+   * hasn't been updated (existing tests/fixtures) still renders; the
+   * add-subtask input is simply disabled when absent (SubtaskList's own
+   * "safe default" convention). */
+  projectId?: string;
+  /** F150 (AS-263): non-null only when THIS task is itself a subtask —
+   * the id of its parent task. Drives whether the "Subtask of ..."
+   * breadcrumb renders at all. null/undefined both mean "top-level task,
+   * no breadcrumb". */
+  parentTaskId?: string | null;
+  /** F150 (AS-263): just enough of the parent task to render and open the
+   * breadcrumb link — populated by getTaskDetail's existing task+project
+   * fetch (one extra lookup only when parentTaskId is set), never a
+   * per-render fetch from this Client Component. */
+  parent?: {
+    id: string;
+    title: string;
+    projectKey?: string;
+    number?: number;
+  } | null;
+  /** F150 (AS-264): this task's own children (subtasks) — just enough of
+   * each to render a status chip + assignee avatar in the Subtasks
+   * section. Fetched by getTaskDetail's existing query (one extra query,
+   * not a per-child round trip). Optional/defaults to [] via
+   * SubtaskList's own prop default so a caller that hasn't been updated
+   * yet still renders an empty (not crashing) Subtasks section. */
+  children?: SubtaskListChildTask[];
 };
 
 export type TaskDetailSheetMember = {
@@ -154,6 +187,7 @@ export function TaskDetailSheet({
   currentUserId,
   currentUserRole,
   timezone,
+  onOpenTask,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -205,6 +239,15 @@ export function TaskDetailSheet({
    * (AS-207): a page that forgets to pass it renders every task as if
    * the viewer were in UTC with no type error. */
   timezone: string;
+  /** F150 (AS-263, AS-264): opens a different task (a subtask row, or
+   * this task's own parent via the breadcrumb below) in this same Sheet.
+   * Undefined hides no UI — the breadcrumb/subtask rows still render,
+   * they just aren't clickable (SubtaskList's own optional-onOpenTask
+   * convention) — matching every other optional-callback field's "safe
+   * default" in this file. Real callers (Board, TaskListTable) wire this
+   * to the SAME `useTaskDetailSheet().openTask` that already opens a
+   * task from a card/row click. */
+  onOpenTask?: (taskId: string) => void;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
@@ -378,6 +421,30 @@ export function TaskDetailSheet({
                 >
                   <Copy className="size-3" aria-hidden="true" />
                   {taskKey}
+                </button>
+              )}
+              {/* F150 (AS-263): a child task shows a link back to its
+                  parent. Rendered only when this task actually has a
+                  resolved parent (getTaskDetail only populates it when
+                  parentTaskId is set AND the parent is still live) — a
+                  top-level task, or a child whose parent was deleted
+                  independently, renders no breadcrumb at all rather than
+                  a dead link. */}
+              {task.parent && (
+                <button
+                  type="button"
+                  onClick={() => onOpenTask?.(task.parent!.id)}
+                  disabled={!onOpenTask}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
+                  aria-label={`Open parent task ${
+                    formatTaskKey(task.parent.projectKey, task.parent.number) ??
+                    task.parent.title
+                  }`}
+                >
+                  <CornerUpLeft className="size-3" aria-hidden="true" />
+                  Subtask of{" "}
+                  {formatTaskKey(task.parent.projectKey, task.parent.number) ??
+                    task.parent.title}
                 </button>
               )}
               <SheetTitle>Task details</SheetTitle>
@@ -581,6 +648,16 @@ export function TaskDetailSheet({
               <Separator />
 
               <TagsEditor taskId={task.id} tags={task.tags} />
+
+              <Separator />
+
+              <SubtaskList
+                taskId={task.id}
+                projectId={task.projectId}
+                childTasks={task.children ?? []}
+                members={members}
+                onOpenTask={onOpenTask}
+              />
 
               <Separator />
 

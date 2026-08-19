@@ -372,6 +372,7 @@ export function Board({
           currentUserId={taskDetailSheet.currentUserId}
           currentUserRole={taskDetailSheet.currentUserRole}
           timezone={timezone}
+          onOpenTask={taskDetailSheet.openTask}
         />
       )}
     </div>

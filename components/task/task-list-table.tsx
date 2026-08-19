@@ -286,6 +286,7 @@ export function TaskListTable({
       currentUserId={taskDetailSheet.currentUserId}
       currentUserRole={taskDetailSheet.currentUserRole}
       timezone={timezone}
+      onOpenTask={taskDetailSheet.openTask}
     />
     </>
   );

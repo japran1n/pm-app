@@ -21,6 +21,7 @@ import { calculatePosition } from "@/lib/board/position";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
+import type { SubtaskListChildTask } from "@/components/task/subtask-list";
 
 export type CreateTaskResult =
   | {
@@ -1598,7 +1599,12 @@ export async function getTaskDetail(
       // F146 (AS-258): `number` and the joined `key` are selected here
       // via this action's existing task+project fetch — no second round
       // trip for the detail header's task-key badge.
-      "id, title, description, status, priority, assignee_id, due_date, tags, number, deleted_at, projects!inner(key, workspace_id)",
+      // F150 (AS-263, AS-264): `project_id` (needed by the Subtasks
+      // section's add-subtask form to call createTask) and
+      // `parent_task_id` (drives whether the parent-lookup query below
+      // runs at all) are selected here for the exact same "one query,
+      // not a second round trip" reason.
+      "id, title, description, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, projects!inner(key, workspace_id)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -1632,19 +1638,49 @@ export async function getTaskDetail(
     };
   }
 
-  const [commentsResult, attachmentsResult] = await Promise.all([
-    admin
-      .from("comments")
-      .select("id, task_id, user_id, text, created_at")
-      .eq("task_id", parsed.data.taskId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
-    admin
-      .from("attachments")
-      .select("id, task_id, file_url, file_name, uploaded_by, created_at")
-      .eq("task_id", parsed.data.taskId)
-      .order("created_at", { ascending: true }),
-  ]);
+  // F150 (AS-264): this task's own live children (subtasks), fetched here
+  // — inside getTaskDetail's existing single detail-fetch — rather than a
+  // per-child round trip once the Subtasks section renders. A task that
+  // is itself a child can never have children of its own (F148's
+  // one-level nesting limit, enforced by enforce_task_parent_rules()), so
+  // this query harmlessly returns zero rows for a child task rather than
+  // needing its own conditional branch.
+  const childrenQuery = admin
+    .from("tasks")
+    .select("id, title, status, assignee_id, number")
+    .eq("parent_task_id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  // F150 (AS-263): only run the parent lookup when this task actually
+  // has one — a top-level task's parent_task_id is null, so there is
+  // nothing to look up (`parentQuery` stays null and the resolved
+  // `parentResult.data` below stays null too).
+  const parentQuery = taskRow.parent_task_id
+    ? admin
+        .from("tasks")
+        .select("id, title, number")
+        .eq("id", taskRow.parent_task_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : null;
+
+  const [commentsResult, attachmentsResult, childrenResult, parentResult] =
+    await Promise.all([
+      admin
+        .from("comments")
+        .select("id, task_id, user_id, text, created_at")
+        .eq("task_id", parsed.data.taskId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true }),
+      admin
+        .from("attachments")
+        .select("id, task_id, file_url, file_name, uploaded_by, created_at")
+        .eq("task_id", parsed.data.taskId)
+        .order("created_at", { ascending: true }),
+      childrenQuery,
+      parentQuery ?? Promise.resolve({ data: null, error: null }),
+    ]);
 
   if (commentsResult.error) {
     console.error(
@@ -1661,6 +1697,28 @@ export async function getTaskDetail(
     console.error(
       "getTaskDetail: attachments fetch failed:",
       attachmentsResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (childrenResult.error) {
+    console.error(
+      "getTaskDetail: children fetch failed:",
+      childrenResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (parentResult.error) {
+    console.error(
+      "getTaskDetail: parent fetch failed:",
+      parentResult.error,
     );
     return {
       ok: false,
@@ -1701,6 +1759,34 @@ export async function getTaskDetail(
         // F146 (AS-258): see this function's task+project select above.
         number: taskRow.number,
         projectKey: projectRow?.key,
+        // F150 (AS-263, AS-264): see this function's task select above —
+        // `projectId` feeds the Subtasks section's add-subtask form,
+        // `parentTaskId`/`parent` feed the "Subtask of ..." breadcrumb,
+        // and `children` feeds the Subtasks section's list + completion
+        // count. A subtask and its parent always share the SAME project
+        // (F148's invariant), so both reuse this task's own
+        // `projectRow?.key` for their task-key badges rather than a
+        // second per-row join.
+        projectId: taskRow.project_id,
+        parentTaskId: taskRow.parent_task_id,
+        parent: parentResult.data
+          ? {
+              id: parentResult.data.id,
+              title: parentResult.data.title,
+              projectKey: projectRow?.key,
+              number: parentResult.data.number,
+            }
+          : null,
+        children: (childrenResult.data ?? []).map(
+          (row): SubtaskListChildTask => ({
+            id: row.id,
+            title: row.title,
+            status: row.status as SubtaskListChildTask["status"],
+            assigneeId: row.assignee_id,
+            projectKey: projectRow?.key,
+            number: row.number,
+          }),
+        ),
       },
       comments: (commentsResult.data ?? []).map((row) => ({
         id: row.id,

@@ -41,6 +41,20 @@ export async function getProjectBoardTasks(
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
+  // F150 (AS-275): NO filter on `parent_task_id` is applied anywhere in
+  // this query — a child task (subtask) is a completely ordinary row in
+  // `tasks` with the same `project_id`/`deleted_at`/`position` shape as
+  // any top-level task, so it is selected, mapped, and returned here
+  // exactly like every other task in the project. This is what makes
+  // AS-275 ("child tasks still appear as ordinary board cards, not
+  // hidden inside their parent") hold: this feature's own subtask UI
+  // (the parent's Subtasks section in TaskDetailSheet) is additive — it
+  // shows a child task a SECOND time, summarized, inside its parent's
+  // detail view — it does not remove or replace the child's own
+  // independent row here. See
+  // tests/integration/board-tasks-include-subtasks.test.ts for the
+  // regression test that actually seeds a parent+child pair and asserts
+  // both come back from this exact function.
   const { data, error } = await supabase
     .from("tasks")
     .select(
@@ -52,6 +66,33 @@ export async function getProjectBoardTasks(
 
   if (error) {
     throw error;
+  }
+
+  // F150 (AS-264/AS-275's board-card indicator): one extra query for the
+  // WHOLE project, grouped client-side into a parentId -> count map —
+  // never a per-card/per-row query. Only rows that actually have a live
+  // parent are selected (`parent_task_id` not null), so an ordinary
+  // top-level task with no subtasks costs nothing extra to compute (it
+  // simply has no entry in the resulting map, and the board card's own
+  // `!!task.subtaskCount` check hides the indicator for it).
+  const { data: childRows, error: childError } = await supabase
+    .from("tasks")
+    .select("parent_task_id")
+    .eq("project_id", projectId)
+    .is("deleted_at", null)
+    .not("parent_task_id", "is", null);
+
+  if (childError) {
+    throw childError;
+  }
+
+  const subtaskCounts = new Map<string, number>();
+  for (const row of childRows ?? []) {
+    if (!row.parent_task_id) continue;
+    subtaskCounts.set(
+      row.parent_task_id,
+      (subtaskCounts.get(row.parent_task_id) ?? 0) + 1,
+    );
   }
 
   return (data ?? []).map((task) => ({
@@ -68,6 +109,10 @@ export async function getProjectBoardTasks(
     // lib/tasks/task-key.ts for how these combine into "KEY-NUMBER".
     number: task.number,
     projectKey: firstRelated(task.projects)?.key,
+    // F150 (AS-275): undefined (not 0) when this task has no children,
+    // matching TaskCardTask.subtaskCount's own "undefined/0 both hide the
+    // indicator" contract.
+    subtaskCount: subtaskCounts.get(task.id) || undefined,
   }));
 }
 
