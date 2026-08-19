@@ -66,7 +66,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F147 task-key-search — AS-262 [CLARIFIED-AUTO] [COMPLETE]
 - F148 db-schema-subtasks — AS-265, AS-266 [CLARIFIED-AUTO] [COMPLETE]
 - F149 subtask-actions — AS-267, AS-268 [CLARIFIED-AUTO] [COMPLETE]
-- F150 subtask-ui — AS-263, AS-264, AS-275 [CLARIFIED-AUTO]
+- F150 subtask-ui — AS-263, AS-264, AS-275 [CLARIFIED-AUTO] [COMPLETE]
 - F151 db-schema-checklists — AS-269, AS-274 [CLARIFIED-AUTO]
 - F152 checklist-actions — AS-270, AS-271 [CLARIFIED-AUTO]
 - F153 checklist-ui — AS-269, AS-271 [CLARIFIED-AUTO]
