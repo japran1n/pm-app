@@ -8,6 +8,11 @@ import type { CropResult } from "../capture/crop";
 import { AnnotationEditor } from "../annotate/canvas";
 import type { FlattenResult } from "../annotate/types";
 import { pickElementOnActiveTab, type PickResult } from "../capture/element-picker";
+import {
+  startConsoleCaptureOnActiveTab,
+  getConsoleCaptureFromActiveTab,
+  type ConsoleLogEntry,
+} from "../capture/console-hook";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -99,6 +104,41 @@ export function Popup() {
     | { kind: "cancelled" }
     | { kind: "error"; reason: string };
   const [pickState, setPickState] = useState<ElementPickUiState>({ kind: "idle" });
+
+  // F289 (AS-550, AS-551, AS-552): console capture is a deliberate,
+  // user-triggered action (not always-on), per the clarification's
+  // "less data, simpler, more private" default and because there is no
+  // toggle from F291 to gate it behind yet (see this feature's handoff
+  // "Out-of-scope work needed" — a future feature can wrap a persistent
+  // on/off preference around this trigger without changing this
+  // component's contract). It only ever sees console activity produced
+  // after the button below is clicked — AS-552's limitation is stated in
+  // the UI text itself, not just in a code comment.
+  type ConsoleCaptureUiState =
+    | { kind: "idle" }
+    | { kind: "starting" }
+    | { kind: "active"; entries: ConsoleLogEntry[] }
+    | { kind: "error"; reason: string };
+  const [consoleCaptureState, setConsoleCaptureState] = useState<ConsoleCaptureUiState>({ kind: "idle" });
+
+  async function handleStartConsoleCapture() {
+    setConsoleCaptureState({ kind: "starting" });
+    const result = await startConsoleCaptureOnActiveTab();
+    if (!result.ok) {
+      setConsoleCaptureState({ kind: "error", reason: result.reason });
+      return;
+    }
+    setConsoleCaptureState({ kind: "active", entries: [] });
+  }
+
+  async function handleRefreshConsoleCapture() {
+    const result = await getConsoleCaptureFromActiveTab();
+    if (!result.ok) {
+      setConsoleCaptureState({ kind: "error", reason: result.reason });
+      return;
+    }
+    setConsoleCaptureState({ kind: "active", entries: result.entries });
+  }
 
   async function handlePickElement() {
     setPickState({ kind: "picking" });
@@ -493,6 +533,65 @@ export function Popup() {
                 style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
               >
                 {pickState.reason}
+              </p>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+            <button
+              data-testid="console-capture-start-button"
+              type="button"
+              onClick={handleStartConsoleCapture}
+              disabled={consoleCaptureState.kind === "starting"}
+            >
+              {consoleCaptureState.kind === "active"
+                ? "Console capture running"
+                : consoleCaptureState.kind === "starting"
+                  ? "Starting…"
+                  : "Start capturing console output"}
+            </button>
+
+            <p
+              data-testid="console-capture-limitation"
+              style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}
+            >
+              Only console messages logged after you start capturing are included. Anything
+              logged before you clicked "Start capturing console output" — including on page
+              load — is not captured.
+            </p>
+
+            {consoleCaptureState.kind === "active" && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  data-testid="console-capture-refresh-button"
+                  type="button"
+                  onClick={handleRefreshConsoleCapture}
+                >
+                  Refresh captured logs
+                </button>
+                <p data-testid="console-capture-count" style={{ margin: "8px 0 4px", fontSize: 13 }}>
+                  {consoleCaptureState.entries.length} message
+                  {consoleCaptureState.entries.length === 1 ? "" : "s"} captured.
+                </p>
+                <ul
+                  data-testid="console-capture-list"
+                  style={{ margin: 0, padding: "0 0 0 16px", fontSize: 12, maxHeight: 160, overflowY: "auto" }}
+                >
+                  {consoleCaptureState.entries.map((entry, i) => (
+                    <li key={i} data-testid="console-capture-entry" data-level={entry.level}>
+                      <strong>{entry.level}</strong> ({entry.source}): {entry.message}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {consoleCaptureState.kind === "error" && (
+              <p
+                data-testid="console-capture-error"
+                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+              >
+                {consoleCaptureState.reason}
               </p>
             )}
           </div>
