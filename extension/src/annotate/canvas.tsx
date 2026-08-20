@@ -93,6 +93,12 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
   const [pendingText, setPendingText] = useState<PendingText | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // F299 (AS-570): true only while the CURRENT `draft` was started by the
+  // keyboard-placement flow below (Enter on the focused canvas), never by
+  // a pointer drag — so arrow-key adjustment can never hijack an
+  // in-progress pointer drag, and a pointer drag can never be finished by
+  // an accidental keypress meant for something else.
+  const [keyboardDraftActive, setKeyboardDraftActive] = useState(false);
 
   const displayWidth = naturalSize ? Math.min(naturalSize.width, 640) : undefined;
   const displayScale = naturalSize && displayWidth ? displayWidth / naturalSize.width : 1;
@@ -183,6 +189,7 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
     }
 
     canvasRef.current?.setPointerCapture(e.pointerId);
+    setKeyboardDraftActive(false);
     if (tool === "freehand") {
       setDraft({ kind: "freehand", points: [point] });
     } else {
@@ -227,6 +234,100 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
       }
     }
     setDraft(null);
+  }
+
+  // F299 (AS-570): commits whatever shape draft (arrow/rectangle/blur) is
+  // currently in progress — shared by both the pointer-up handler above and
+  // the keyboard-confirm handler below, so a keyboard-placed shape is
+  // committed through the exact same code path (and therefore has exactly
+  // the same real effect on `ops`) as a mouse-dragged one.
+  function commitShapeDraft(current: Draft) {
+    if (current.kind === "freehand") return;
+    const moved = current.from.x !== current.to.x || current.from.y !== current.to.y;
+    if (!moved) return;
+    if (current.kind === "blur") {
+      commitOp({ id: newOpId(), kind: "blur", from: current.from, to: current.to, blockSize: BLUR_BLOCK_SIZE });
+    } else {
+      commitOp({ id: newOpId(), kind: current.kind, from: current.from, to: current.to, color, strokeWidth });
+    }
+  }
+
+  // F299 (AS-570): a real, coherent keyboard-only path for the drag-based
+  // shape tools (arrow/rectangle/blur — blur's region-select reuses the
+  // exact same from/to draft the rectangle tool uses). There is no natural
+  // keyboard equivalent for a continuous pointer gesture, so this is NOT a
+  // literal keyboard replay of a mouse drag: it's the same "place at a
+  // default position, then adjust, then confirm" pattern real accessible
+  // diagram/drawing tools use (arrow keys nudge a selected shape). Freehand
+  // has no keyboard path here — see this file's Props comment and the
+  // "Pen" tool button (data-testid annotate-tool-freehand), which has no
+  // keyboard-placement handler at all; this is a disclosed, genuine
+  // limitation (see the F299 handoff), not something silently claimed.
+  //
+  // Enter/Space with no draft in progress: place a shape of a fixed
+  // default size at the canvas centre.
+  // Arrow keys while a keyboard-placed draft is in progress: move the
+  // whole shape. Shift+Arrow: resize (moves only the second corner).
+  // Enter again: confirm/commit. Escape: cancel without committing.
+  function handleCanvasKeyDown(e: ReactKeyboardEvent<HTMLCanvasElement>) {
+    if (tool === "text" || tool === "freehand" || !naturalSize) return;
+
+    if (!draft) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const cx = naturalSize.width / 2;
+        const cy = naturalSize.height / 2;
+        const halfW = Math.min(80, naturalSize.width / 4);
+        const halfH = Math.min(50, naturalSize.height / 4);
+        setDraft({
+          kind: tool,
+          from: { x: cx - halfW, y: cy - halfH },
+          to: { x: cx + halfW, y: cy + halfH },
+        });
+        setKeyboardDraftActive(true);
+      }
+      return;
+    }
+
+    // A pointer drag is currently in progress — never let a stray keypress
+    // interfere with it.
+    if (!keyboardDraftActive || draft.kind === "freehand") return;
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitShapeDraft(draft);
+      setDraft(null);
+      setKeyboardDraftActive(false);
+      return;
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setDraft(null);
+      setKeyboardDraftActive(false);
+      return;
+    }
+
+    const step = 8;
+    let dx = 0;
+    let dy = 0;
+    if (e.key === "ArrowLeft") dx = -step;
+    else if (e.key === "ArrowRight") dx = step;
+    else if (e.key === "ArrowUp") dy = -step;
+    else if (e.key === "ArrowDown") dy = step;
+    else return;
+    e.preventDefault();
+
+    if (e.shiftKey) {
+      // Resize: move only the second corner.
+      setDraft({ ...draft, to: { x: draft.to.x + dx, y: draft.to.y + dy } });
+    } else {
+      // Move: translate the whole shape.
+      setDraft({
+        ...draft,
+        from: { x: draft.from.x + dx, y: draft.from.y + dy },
+        to: { x: draft.to.x + dx, y: draft.to.y + dy },
+      });
+    }
   }
 
   function openTextInputAt(canvasPoint: Point, screenPoint: Point) {
@@ -403,6 +504,15 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
           ref={canvasRef}
           width={naturalSize?.width ?? 1}
           height={naturalSize?.height ?? 1}
+          tabIndex={0}
+          role="application"
+          aria-label={
+            tool === "freehand"
+              ? "Annotation canvas. The freehand pen tool requires a mouse or touch drag and has no keyboard equivalent — choose another tool to draw with the keyboard."
+              : tool === "text"
+                ? "Annotation canvas. Use the Add text button to place text with the keyboard."
+                : `Annotation canvas, ${tool} tool selected. Press Enter to place a ${tool} shape at the centre, then use arrow keys to move it, Shift plus arrow keys to resize it, Enter to confirm, or Escape to cancel.`
+          }
           style={{
             width: displayWidth,
             height: displayHeight,
@@ -414,6 +524,7 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onKeyDown={handleCanvasKeyDown}
         />
 
         {pendingText && (
