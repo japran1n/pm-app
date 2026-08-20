@@ -97,15 +97,60 @@ export async function createTask(
   dueDate?: string | null,
   parentTaskId?: string | null,
 ): Promise<CreateTaskResult> {
-  const parsed = createTaskSchema.safeParse({
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to create a task." };
+  }
+
+  return createTaskForUser(user.id, {
     projectId,
     title,
-    description: description ?? null,
+    description,
     status,
-    priority: priority ?? null,
-    assigneeId: assigneeId ?? null,
-    dueDate: dueDate ?? null,
-    parentTaskId: parentTaskId ?? null,
+    priority,
+    assigneeId,
+    dueDate,
+    parentTaskId,
+  });
+}
+
+// F292 (AS-558, AS-561, AS-562): the shared create-task code path, factored
+// out of createTask() so app/api/extension/tasks/route.ts (the QA feedback
+// extension's task-creation endpoint) can create a task through the exact
+// same validation/defaults/authorization logic the web app's Server Action
+// uses, without a parallel implementation. The only difference from the
+// Server Action above is *how the caller's identity is resolved* — the web
+// app resolves it from the cookie session (createClient().auth.getUser()),
+// the extension route resolves it from a bearer JWT
+// (supabase.auth.getUser(token)) — both hand this function an already-
+// verified userId and nothing else about identity is ever taken from
+// caller-supplied input.
+export async function createTaskForUser(
+  userId: string,
+  input: {
+    projectId: string;
+    title: string;
+    description?: string | null;
+    status?: "todo" | "in_progress" | "in_review" | "done";
+    priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+    assigneeId?: string | null;
+    dueDate?: string | null;
+    parentTaskId?: string | null;
+  },
+): Promise<CreateTaskResult> {
+  const parsed = createTaskSchema.safeParse({
+    projectId: input.projectId,
+    title: input.title,
+    description: input.description ?? null,
+    status: input.status,
+    priority: input.priority ?? null,
+    assigneeId: input.assigneeId ?? null,
+    dueDate: input.dueDate ?? null,
+    parentTaskId: input.parentTaskId ?? null,
   });
 
   if (!parsed.success) {
@@ -115,14 +160,7 @@ export async function createTask(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to create a task." };
-  }
+  const user = { id: userId };
 
   const admin = createAdminClient();
 
