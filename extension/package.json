@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && node scripts/check-no-secret-key.mjs && node scripts/zip.mjs",
+    "build": "node scripts/sync-version.mjs && vite build && node scripts/check-no-secret-key.mjs && node scripts/zip.mjs",
     "dev": "vite build --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

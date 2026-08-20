@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:extension": "cd extension && npm run build",
     "start": "next start",
     "lint": "eslint",
     "test": "if [ -d tests/unit ] && [ -n \"$(find tests/unit -type f 2>/dev/null)\" ]; then vitest run; else echo 'No unit tests yet (vitest/tests/unit arrive in F091) - skipping, exit 0'; fi"
