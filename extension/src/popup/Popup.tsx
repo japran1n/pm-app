@@ -7,6 +7,7 @@ import { RegionSelect } from "../capture/RegionSelect";
 import type { CropResult } from "../capture/crop";
 import { AnnotationEditor } from "../annotate/canvas";
 import type { FlattenResult } from "../annotate/types";
+import { pickElementOnActiveTab, type PickResult } from "../capture/element-picker";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -83,6 +84,35 @@ export function Popup() {
     | { kind: "annotated"; capture: CapturedScreenshot; cropped: CropResult | null; annotated: FlattenResult }
     | { kind: "error"; reason: string };
   const [captureState, setCaptureState] = useState<CaptureUiState>({ kind: "idle" });
+
+  // F287 (AS-546, AS-547): independent of the screenshot capture flow —
+  // the reporter can point at an element on the page whether or not
+  // they've also captured a screenshot. `picking` covers the whole
+  // hover/click/Escape interaction (which runs on the live page via
+  // chrome.scripting.executeScript, not in this popup document), so the
+  // popup itself just shows "waiting" until the injected picker resolves.
+  type ElementPickUiState =
+    | { kind: "idle" }
+    | { kind: "picking" }
+    | { kind: "picked"; result: Extract<PickResult, { ok: true }> }
+    | { kind: "unsupported"; reason: "shadow-dom-unsupported" | "iframe-unsupported" }
+    | { kind: "cancelled" }
+    | { kind: "error"; reason: string };
+  const [pickState, setPickState] = useState<ElementPickUiState>({ kind: "idle" });
+
+  async function handlePickElement() {
+    setPickState({ kind: "picking" });
+    const result = await pickElementOnActiveTab();
+    if (result.ok) {
+      setPickState({ kind: "picked", result });
+    } else if (result.reason === "cancelled") {
+      setPickState({ kind: "cancelled" });
+    } else if (result.reason === "shadow-dom-unsupported" || result.reason === "iframe-unsupported") {
+      setPickState({ kind: "unsupported", reason: result.reason });
+    } else {
+      setPickState({ kind: "error", reason: result.reason });
+    }
+  }
 
   async function handleCapture() {
     setCaptureState({ kind: "capturing" });
@@ -404,6 +434,68 @@ export function Popup() {
               {captureState.reason}
             </p>
           )}
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+            <button
+              data-testid="pick-element-button"
+              type="button"
+              onClick={handlePickElement}
+              disabled={pickState.kind === "picking"}
+            >
+              {pickState.kind === "picking" ? "Point at an element on the page…" : "Pick element…"}
+            </button>
+
+            {pickState.kind === "picking" && (
+              <p data-testid="pick-element-hint" style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}>
+                Hover over the page to highlight, click to select, or press Escape to cancel.
+              </p>
+            )}
+
+            {pickState.kind === "picked" && (
+              <div data-testid="pick-element-result" style={{ marginTop: 8, fontSize: 13 }}>
+                <p style={{ margin: "0 0 4px", color: "#1a7f37" }}>Element recorded.</p>
+                <p style={{ margin: "0 0 2px" }}>
+                  Selector: <code data-testid="pick-element-selector">{pickState.result.selector}</code>
+                </p>
+                <p style={{ margin: "0 0 2px" }}>
+                  Confidence: <span data-testid="pick-element-confidence">{pickState.result.confidence}</span>
+                </p>
+                <p style={{ margin: "0 0 2px" }} data-testid="pick-element-rect">
+                  Position/size: {Math.round(pickState.result.rect.x)}, {Math.round(pickState.result.rect.y)} —{" "}
+                  {Math.round(pickState.result.rect.width)} x {Math.round(pickState.result.rect.height)} px
+                </p>
+                <p style={{ margin: 0 }} data-testid="pick-element-viewport">
+                  Viewport: {pickState.result.viewport.width} x {pickState.result.viewport.height} px
+                </p>
+              </div>
+            )}
+
+            {pickState.kind === "unsupported" && (
+              <p
+                data-testid="pick-element-unsupported"
+                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+              >
+                {pickState.reason === "shadow-dom-unsupported"
+                  ? "That element is inside a shadow DOM boundary, which isn't supported yet. Try picking a different element."
+                  : "That element is inside an iframe, which isn't supported yet. Try picking a different element."}
+              </p>
+            )}
+
+            {pickState.kind === "cancelled" && (
+              <p data-testid="pick-element-cancelled" style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}>
+                Element picking cancelled.
+              </p>
+            )}
+
+            {pickState.kind === "error" && (
+              <p
+                data-testid="pick-element-error"
+                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+              >
+                {pickState.reason}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </main>
