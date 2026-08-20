@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { createTaskForUser } from "@/lib/actions/tasks";
 import { extensionCreateTaskSchema } from "@/lib/validation/extension";
+import { formatTaskKey } from "@/lib/tasks/task-key";
 
 // F292 (AS-558, AS-561, AS-562, AS-572): the ONE narrow authenticated Route
 // Handler the QA feedback browser extension calls to create a real task
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
   const admin = createAdminClient();
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, key")
     .eq("id", parsed.data.projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -201,5 +202,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: 400, headers });
   }
 
-  return NextResponse.json({ task: result.data }, { status: 201, headers });
+  // F296 (AS-563): the success view needs a real, human-readable task key
+  // and a link to open — computed here, server-side, via
+  // lib/tasks/task-key.ts's formatTaskKey(), the ONE place in the codebase
+  // that combines a project key + task number, so the extension never
+  // independently reimplements that format. F246 (a deep-linked
+  // per-task route) has not landed as of this feature, so the link is the
+  // project's board URL instead, per this feature's own explicit
+  // documented fallback — `boardPath` is a relative path (not an absolute
+  // URL); the popup already knows its own APP_URL (extension/src/lib/
+  // supabase.ts) and prefixes it, the same way every other extension->app
+  // link in this codebase is built (see Popup.tsx's openConnectFlow).
+  const taskKey = formatTaskKey(projectRow.key, result.data.number);
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", projectRow.workspace_id)
+    .maybeSingle();
+
+  const boardPath = workspaceRow?.slug
+    ? `/w/${workspaceRow.slug}/projects/${projectRow.id}/board`
+    : null;
+
+  return NextResponse.json(
+    { task: result.data, taskKey, boardPath },
+    { status: 201, headers },
+  );
 }

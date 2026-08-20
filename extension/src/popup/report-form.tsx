@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { APP_URL } from "../lib/supabase";
 import { getAnnotatedResult, getLastCapture } from "../capture/store";
@@ -8,6 +8,8 @@ import type { PickResult } from "../capture/element-picker";
 import type { ConsoleLogEntry } from "../capture/console-hook";
 import type { NetworkFailureEntry } from "../capture/network-hook";
 import { buildTaskDescription } from "../submit/describe";
+import { getLastReportContext, setLastReportContext } from "../state/preferences";
+import { ReportSuccess } from "./success";
 
 // F293 (AS-555, AS-556, AS-557): the actual report form — the piece that
 // turns everything F280-F292 built into a real, submittable task. Populates
@@ -75,7 +77,13 @@ type WorkspaceContextState =
 type SubmitState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "success"; taskId: string; attachmentWarning?: string }
+  | {
+      kind: "success";
+      taskId: string;
+      taskKey: string | null;
+      boardPath: string | null;
+      attachmentWarning?: string;
+    }
   | { kind: "error"; reason: string };
 
 export function ReportForm({
@@ -109,6 +117,31 @@ export function ReportForm({
   const [dueDate, setDueDate] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
 
+  // F296 (AS-564): the last-used workspace/project, read once from
+  // chrome.storage.local via preferences.ts. Applied (at most once each)
+  // once the real, currently-accessible options actually load — a
+  // remembered id that's no longer in the real options (removed
+  // membership, deleted project) is silently never applied rather than
+  // force-selecting an invalid option or crashing (AS-557 still holds:
+  // this never widens what's offered, it only preselects from what the
+  // context endpoint already scoped to the caller's real memberships).
+  const [rememberedContext, setRememberedContext] = useState<{
+    workspaceId: string;
+    projectId: string;
+  } | null>(null);
+  const appliedRememberedWorkspace = useRef(false);
+  const appliedRememberedProject = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLastReportContext().then((ctx) => {
+      if (!cancelled) setRememberedContext(ctx);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setWorkspacesState({ kind: "loading" });
@@ -137,6 +170,26 @@ export function ReportForm({
       cancelled = true;
     };
   }, [accessToken]);
+
+  // F296 (AS-564): once the real, scoped workspace list has loaded, apply
+  // the remembered workspace exactly once, and only if it's actually still
+  // one of the caller's real options.
+  useEffect(() => {
+    if (
+      workspacesState.kind !== "loaded" ||
+      !rememberedContext ||
+      appliedRememberedWorkspace.current
+    ) {
+      return;
+    }
+    appliedRememberedWorkspace.current = true;
+    const match = workspacesState.workspaces.find(
+      (ws) => ws.id === rememberedContext.workspaceId,
+    );
+    if (match) {
+      setWorkspaceId(match.id);
+    }
+  }, [workspacesState, rememberedContext]);
 
   useEffect(() => {
     if (!workspaceId) {
@@ -179,6 +232,30 @@ export function ReportForm({
       cancelled = true;
     };
   }, [workspaceId, accessToken]);
+
+  // F296 (AS-564): once the real, scoped project list for the (now
+  // preselected or manually chosen) workspace has loaded, apply the
+  // remembered project exactly once — and only when the workspace in view
+  // actually matches the remembered workspace (a reporter who picked a
+  // different workspace than last time should not have a stale project id
+  // from a different workspace forced onto them).
+  useEffect(() => {
+    if (
+      workspaceContext.kind !== "loaded" ||
+      !rememberedContext ||
+      appliedRememberedProject.current ||
+      workspaceId !== rememberedContext.workspaceId
+    ) {
+      return;
+    }
+    appliedRememberedProject.current = true;
+    const match = workspaceContext.projects.find(
+      (p) => p.id === rememberedContext.projectId,
+    );
+    if (match) {
+      setProjectId(match.id);
+    }
+  }, [workspaceContext, rememberedContext, workspaceId]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -255,6 +332,16 @@ export function ReportForm({
       }
 
       const taskId: string = body.task.id;
+      const taskKey: string | null = body.taskKey ?? null;
+      const boardPath: string | null = body.boardPath ?? null;
+
+      // F296 (AS-564): remember the workspace/project used for this
+      // successful submit — only once the report actually succeeds, so an
+      // abandoned/never-submitted form never pollutes the remembered
+      // context. setLastReportContext never throws (see preferences.ts),
+      // but a defensive .catch is kept anyway since this must never block
+      // showing the success view.
+      setLastReportContext({ workspaceId, projectId }).catch(() => {});
 
       // F294: the task now exists for real — the reporter's work (the text
       // report) is already safely saved regardless of what happens next.
@@ -273,19 +360,38 @@ export function ReportForm({
           setSubmitState({
             kind: "success",
             taskId,
+            taskKey,
+            boardPath,
             attachmentWarning: `Task created, but the screenshot could not be attached: ${uploadResult.error}`,
           });
           return;
         }
       }
 
-      setSubmitState({ kind: "success", taskId });
+      setSubmitState({ kind: "success", taskId, taskKey, boardPath });
     } catch {
       setSubmitState({
         kind: "error",
         reason: "Failed to create task. Your entered details are still shown above — please try again.",
       });
     }
+  }
+
+  // F296 (AS-564 "report another" path, per this feature's clarification
+  // note that "several reports on one page in a row" matters for QA
+  // sweeps): returns to a FRESH form — title/description/status/assignee/
+  // priority/due-date all cleared back to their original defaults — but
+  // workspace/project are deliberately left untouched (they're already
+  // the just-remembered/just-used values, not re-fetched as if this were
+  // the reporter's first-ever report).
+  function reportAnother() {
+    setStatus("todo");
+    setTitle("");
+    setDescription("");
+    setAssigneeId("");
+    setPriority("");
+    setDueDate("");
+    setSubmitState({ kind: "idle" });
   }
 
   if (workspacesState.kind === "loading") {
@@ -473,19 +579,14 @@ export function ReportForm({
           </button>
 
           {submitState.kind === "success" && (
-            <>
-              <p data-testid="report-form-success" style={{ margin: "8px 0 0", fontSize: 13, color: "#1a7f37" }}>
-                Task created.
-              </p>
-              {submitState.attachmentWarning && (
-                <p
-                  data-testid="report-form-attachment-warning"
-                  style={{ margin: "4px 0 0", fontSize: 13, color: "#b45309" }}
-                >
-                  {submitState.attachmentWarning}
-                </p>
-              )}
-            </>
+            <div data-testid="report-form-success" style={{ marginTop: 8 }}>
+              <ReportSuccess
+                taskKey={submitState.taskKey}
+                boardPath={submitState.boardPath}
+                attachmentWarning={submitState.attachmentWarning}
+                onReportAnother={reportAnother}
+              />
+            </div>
           )}
 
           {submitState.kind === "error" && (

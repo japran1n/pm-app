@@ -45,6 +45,14 @@ export type CreateTaskResult =
         // F149 (AS-267/AS-268 setup): null for a top-level task, the
         // parent's id for a subtask.
         parentTaskId: string | null;
+        // F296 (AS-563): the project-sequential number F145's DB trigger
+        // assigns on insert — exposed here so callers can combine it with
+        // the owning project's key (lib/tasks/task-key.ts's
+        // formatTaskKey(), the ONE formatter for this) without a second
+        // round trip. Every existing caller of createTask/createTaskForUser
+        // already destructures only the specific fields it needs, so this
+        // additive field is backward compatible.
+        number: number;
       };
     }
   | { ok: false; error: string };
@@ -288,7 +296,7 @@ export async function createTaskForUser(
       parent_task_id: parsed.data.parentTaskId ?? null,
     })
     .select(
-      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id",
+      "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id, number",
     )
     .single();
 
@@ -354,6 +362,7 @@ export async function createTaskForUser(
       position: inserted.position,
       createdAt: inserted.created_at,
       parentTaskId: inserted.parent_task_id,
+      number: inserted.number,
     },
   };
 }
