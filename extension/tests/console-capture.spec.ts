@@ -210,6 +210,11 @@ test.describe("AS_550/AS_551/AS_552 live console capture (real chrome.scripting.
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-console").click();
+      await expect(popupPage.getByTestId("privacy-toggle-console")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("console-capture-start-button").click();
       await expect(popupPage.getByTestId("console-capture-limitation")).toBeVisible();
       await expect(popupPage.getByText("Console capture running")).toBeVisible({ timeout: 10_000 });
@@ -248,6 +253,11 @@ test.describe("AS_550/AS_551/AS_552 live console capture (real chrome.scripting.
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-console").click();
+      await expect(popupPage.getByTestId("privacy-toggle-console")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("console-capture-start-button").click();
       await expect(popupPage.getByText("Console capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -286,6 +296,11 @@ test.describe("AS_550/AS_551/AS_552 live console capture (real chrome.scripting.
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-console").click();
+      await expect(popupPage.getByTestId("privacy-toggle-console")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("console-capture-start-button").click();
       await expect(popupPage.getByText("Console capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -331,6 +346,11 @@ test.describe("AS_550/AS_551/AS_552 live console capture (real chrome.scripting.
 
       const popupPage = await openPopup(context, extensionId, contentPage);
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-console").click();
+      await expect(popupPage.getByTestId("privacy-toggle-console")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("console-capture-start-button").click();
       await expect(popupPage.getByText("Console capture running")).toBeVisible({ timeout: 10_000 });
 

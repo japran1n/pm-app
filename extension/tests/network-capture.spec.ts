@@ -156,6 +156,11 @@ test.describe("AS_553 live network capture (real chrome.scripting.executeScript,
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-network").click();
+      await expect(popupPage.getByTestId("privacy-toggle-network")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("network-capture-start-button").click();
       await expect(popupPage.getByText("Network capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -194,6 +199,11 @@ test.describe("AS_553 live network capture (real chrome.scripting.executeScript,
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-network").click();
+      await expect(popupPage.getByTestId("privacy-toggle-network")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("network-capture-start-button").click();
       await expect(popupPage.getByText("Network capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -228,6 +238,11 @@ test.describe("AS_553 live network capture (real chrome.scripting.executeScript,
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-network").click();
+      await expect(popupPage.getByTestId("privacy-toggle-network")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("network-capture-start-button").click();
       await expect(popupPage.getByText("Network capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -255,6 +270,11 @@ test.describe("AS_553 live network capture (real chrome.scripting.executeScript,
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-network").click();
+      await expect(popupPage.getByTestId("privacy-toggle-network")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("network-capture-start-button").click();
       await expect(popupPage.getByText("Network capture running")).toBeVisible({ timeout: 10_000 });
 
@@ -290,6 +310,11 @@ test.describe("AS_553 live network capture (real chrome.scripting.executeScript,
       const popupPage = await openPopup(context, extensionId, contentPage);
 
       await contentPage.bringToFront();
+      // F291: capture is gated behind a persisted, private-by-default
+      // toggle now — turn it on before starting capture, matching the
+      // real reporter flow.
+      await popupPage.getByTestId("privacy-toggle-network").click();
+      await expect(popupPage.getByTestId("privacy-toggle-network")).toBeChecked({ timeout: 10_000 });
       await popupPage.getByTestId("network-capture-start-button").click();
       await expect(popupPage.getByText("Network capture running")).toBeVisible({ timeout: 10_000 });
 

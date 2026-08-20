@@ -18,6 +18,8 @@ import {
   getNetworkCaptureFromActiveTab,
   type NetworkFailureEntry,
 } from "../capture/network-hook";
+import { startConsoleCaptureIfEnabled, startNetworkCaptureIfEnabled } from "../capture/privacy-toggles";
+import { CapturePrivacyToggles } from "./privacy-toggles";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -137,9 +139,20 @@ export function Popup() {
     | { kind: "error"; reason: string };
   const [networkCaptureState, setNetworkCaptureState] = useState<NetworkCaptureUiState>({ kind: "idle" });
 
+  // F291 (AS-554): mirrors the persisted chrome.storage.local
+  // preference so the two "Start capturing" buttons below can be
+  // disabled/labelled correctly without re-reading storage on every
+  // render. The actual gating that matters (never calling
+  // chrome.scripting.executeScript when a toggle is off) lives in
+  // startConsoleCaptureIfEnabled/startNetworkCaptureIfEnabled
+  // themselves, which re-check the persisted preference directly — this
+  // mirror is UI-only and never bypasses that check.
+  const [consoleCaptureEnabled, setConsoleCaptureEnabled] = useState(false);
+  const [networkCaptureEnabled, setNetworkCaptureEnabled] = useState(false);
+
   async function handleStartNetworkCapture() {
     setNetworkCaptureState({ kind: "starting" });
-    const result = await startNetworkCaptureOnActiveTab();
+    const result = await startNetworkCaptureIfEnabled(startNetworkCaptureOnActiveTab);
     if (!result.ok) {
       setNetworkCaptureState({ kind: "error", reason: result.reason });
       return;
@@ -158,7 +171,7 @@ export function Popup() {
 
   async function handleStartConsoleCapture() {
     setConsoleCaptureState({ kind: "starting" });
-    const result = await startConsoleCaptureOnActiveTab();
+    const result = await startConsoleCaptureIfEnabled(startConsoleCaptureOnActiveTab);
     if (!result.ok) {
       setConsoleCaptureState({ kind: "error", reason: result.reason });
       return;
@@ -572,12 +585,21 @@ export function Popup() {
             )}
           </div>
 
+          <CapturePrivacyToggles
+            consoleCount={consoleCaptureState.kind === "active" ? consoleCaptureState.entries.length : undefined}
+            networkCount={networkCaptureState.kind === "active" ? networkCaptureState.entries.length : undefined}
+            onChange={(prefs) => {
+              setConsoleCaptureEnabled(prefs.consoleCaptureEnabled);
+              setNetworkCaptureEnabled(prefs.networkCaptureEnabled);
+            }}
+          />
+
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
             <button
               data-testid="console-capture-start-button"
               type="button"
               onClick={handleStartConsoleCapture}
-              disabled={consoleCaptureState.kind === "starting"}
+              disabled={consoleCaptureState.kind === "starting" || !consoleCaptureEnabled}
             >
               {consoleCaptureState.kind === "active"
                 ? "Console capture running"
@@ -636,7 +658,7 @@ export function Popup() {
               data-testid="network-capture-start-button"
               type="button"
               onClick={handleStartNetworkCapture}
-              disabled={networkCaptureState.kind === "starting"}
+              disabled={networkCaptureState.kind === "starting" || !networkCaptureEnabled}
             >
               {networkCaptureState.kind === "active"
                 ? "Network capture running"
