@@ -3,6 +3,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { APP_URL } from "../lib/supabase";
 import { getAnnotatedResult, getLastCapture } from "../capture/store";
 import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
+import { collectEnvironmentMetadata } from "../capture/environment";
+import type { PickResult } from "../capture/element-picker";
+import type { ConsoleLogEntry } from "../capture/console-hook";
+import type { NetworkFailureEntry } from "../capture/network-hook";
+import { buildTaskDescription } from "../submit/describe";
 
 // F293 (AS-555, AS-556, AS-557): the actual report form — the piece that
 // turns everything F280-F292 built into a real, submittable task. Populates
@@ -15,11 +20,19 @@ import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 // `Authorization: Bearer <access_token>` from the session the popup already
 // holds. This is the "wiring the extension's fetch call" F292's handoff
 // explicitly left out of scope, and the "core form" F294 (attachment
-// upload) and F295 (console/network-log metadata) are expected to extend
-// once they exist — this component does NOT attach any screenshot,
-// annotation, console log, or network log payload to the submitted task;
-// extensionCreateTaskSchema (lib/validation/extension.ts) doesn't accept
-// those fields yet.
+// upload) extends by attaching a screenshot after task creation.
+//
+// F295 (AS-560): the description actually sent to the server is NOT the
+// raw textarea value — it's `submit/describe.ts`'s buildTaskDescription()
+// result, which appends a structured, readable technical-metadata block
+// (environment, picked element, console/network excerpts) after the
+// reporter's own words. Environment metadata is collected fresh at submit
+// time via F288's collectEnvironmentMetadata() (using the connected
+// session's own reporter id/email, passed down from Popup.tsx); the picked
+// element and console/network capture state are read from whichever
+// in-popup state Popup.tsx already holds and passed down as props, since
+// none of those live in a shared store this component could otherwise
+// reach (see each feature's own handoff).
 //
 // Sensible defaults (per this feature's clarification, "everything else
 // optional"): status defaults to "todo" (also the DB column's own default,
@@ -65,7 +78,21 @@ type SubmitState =
   | { kind: "success"; taskId: string; attachmentWarning?: string }
   | { kind: "error"; reason: string };
 
-export function ReportForm({ accessToken }: { accessToken: string }) {
+export function ReportForm({
+  accessToken,
+  reporterId,
+  reporterEmail,
+  pickedElement,
+  consoleEntries,
+  networkEntries,
+}: {
+  accessToken: string;
+  reporterId?: string | null;
+  reporterEmail?: string | null;
+  pickedElement?: Extract<PickResult, { ok: true }> | null;
+  consoleEntries?: ConsoleLogEntry[] | null;
+  networkEntries?: NetworkFailureEntry[] | null;
+}) {
   const [workspacesState, setWorkspacesState] = useState<WorkspacesState>({
     kind: "loading",
   });
@@ -181,6 +208,24 @@ export function ReportForm({ accessToken }: { accessToken: string }) {
     }
 
     setSubmitState({ kind: "submitting" });
+
+    // F295 (AS-560): build the combined description — reporter's own text
+    // first, then a structured metadata block. Environment metadata is
+    // collected fresh here (not cached) so `capturedAt`/URL/viewport
+    // reflect the moment of submission. `collectEnvironmentMetadata` never
+    // throws (see environment.ts), so no try/catch is needed around it.
+    const environment = collectEnvironmentMetadata({
+      id: reporterId ?? null,
+      email: reporterEmail ?? null,
+    });
+    const finalDescription = buildTaskDescription({
+      reporterText: description.trim(),
+      environment,
+      element: pickedElement ? { selector: pickedElement.selector } : null,
+      consoleEntries: consoleEntries ?? null,
+      networkEntries: networkEntries ?? null,
+    });
+
     try {
       const res = await fetch(`${APP_URL}/api/extension/tasks`, {
         method: "POST",
@@ -191,7 +236,7 @@ export function ReportForm({ accessToken }: { accessToken: string }) {
         body: JSON.stringify({
           projectId,
           title: title.trim(),
-          description: description.trim() || undefined,
+          description: finalDescription || undefined,
           status,
           priority: priority || undefined,
           assigneeId: assigneeId || undefined,

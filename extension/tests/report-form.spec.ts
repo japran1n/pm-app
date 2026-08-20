@@ -294,6 +294,20 @@ test.describe.serial("F293 report form (AS-555, AS-556, AS-557)", () => {
       expect(row.priority).toBe("high");
       expect(row.due_date).toBe("2026-09-01");
       expect(row.author_id).toBe(memberUserId);
+
+      // F295 (AS-560): the persisted description is the combined string —
+      // reporter's own text first, then a readable technical-metadata
+      // block (environment metadata is always collected at submit time,
+      // no opt-in needed, unlike console/network capture).
+      const description = row.description as string;
+      expect(description.indexOf("Filed from the Playwright test.")).toBe(0);
+      const metadataIndex = description.indexOf("Technical details");
+      expect(metadataIndex).toBeGreaterThan(0);
+      expect(description).toContain("Environment:");
+      expect(description).toContain("chrome-extension://");
+      expect(description).toContain("Browser:");
+      expect(description).toContain("OS:");
+      expect(description).toContain("Viewport:");
     } finally {
       await context.close();
     }

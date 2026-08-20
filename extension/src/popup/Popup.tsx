@@ -59,9 +59,15 @@ import { ReportForm } from "./report-form";
 // already determine "connected" below — never re-derived or cached
 // separately, so it's always the same token the popup itself is currently
 // relying on (including after F282's silent refresh rewrites it).
+// F295: "connected" now also carries the session's user id, alongside the
+// email it already carried — describe.ts's environment-metadata collection
+// needs both to fill in the reporter identity fields (see
+// capture/environment.ts's `ReporterIdentity`), sourced from the exact same
+// getSession()/onAuthStateChange session objects as email/accessToken
+// already are, never re-derived separately.
 type Status =
   | { kind: "loading" }
-  | { kind: "connected"; email: string | null; accessToken: string }
+  | { kind: "connected"; email: string | null; userId: string; accessToken: string }
   | { kind: "signed_out" }
   | { kind: "expired" };
 
@@ -293,6 +299,7 @@ export function Popup() {
           setStatus({
             kind: "connected",
             email: session.user.email ?? null,
+            userId: session.user.id,
             accessToken: session.access_token,
           });
         }
@@ -310,6 +317,7 @@ export function Popup() {
         setStatus({
           kind: "connected",
           email: data.session.user.email ?? null,
+          userId: data.session.user.id,
           accessToken: data.session.access_token,
         });
       } else {
@@ -743,7 +751,14 @@ export function Popup() {
           {status.kind === "connected" && (
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
               <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>Report</h2>
-              <ReportForm accessToken={status.accessToken} />
+              <ReportForm
+                accessToken={status.accessToken}
+                reporterId={status.userId}
+                reporterEmail={status.email}
+                pickedElement={pickState.kind === "picked" ? pickState.result : null}
+                consoleEntries={consoleCaptureState.kind === "active" ? consoleCaptureState.entries : null}
+                networkEntries={networkCaptureState.kind === "active" ? networkCaptureState.entries : null}
+              />
             </div>
           )}
         </div>
