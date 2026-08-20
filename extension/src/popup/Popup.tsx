@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
 import { captureVisibleTab } from "../capture/visible-tab";
-import { setLastCapture, type CapturedScreenshot } from "../capture/store";
+import { setLastCapture, setAnnotatedResult, type CapturedScreenshot } from "../capture/store";
 import { RegionSelect } from "../capture/RegionSelect";
 import type { CropResult } from "../capture/crop";
+import { AnnotationEditor } from "../annotate/canvas";
+import type { FlattenResult } from "../annotate/types";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -63,12 +65,22 @@ export function Popup() {
   // down to a chosen area ("cropped"). Selecting never re-triggers
   // `chrome.tabs.captureVisibleTab` — it only crops the PNG this component
   // already has, so the whole-view and region-capture paths cannot diverge.
+  // F285 (AS-542, AS-543, AS-545): once the user has a capture (whole-view
+  // or cropped), they can open the annotation editor ("annotating") on
+  // whichever image they ended up with — cropped takes precedence over
+  // the full capture when both exist, since a crop is a deliberate
+  // narrowing of what the user wants attached. Confirming annotations
+  // produces "annotated": the flattened PNG replaces what's shown/held
+  // for the next stage; the pristine base image is never shown again once
+  // annotations exist (AS-545).
   type CaptureUiState =
     | { kind: "idle" }
     | { kind: "capturing" }
     | { kind: "captured"; capture: CapturedScreenshot }
     | { kind: "selecting"; capture: CapturedScreenshot }
     | { kind: "cropped"; capture: CapturedScreenshot; cropped: CropResult }
+    | { kind: "annotating"; capture: CapturedScreenshot; cropped: CropResult | null }
+    | { kind: "annotated"; capture: CapturedScreenshot; cropped: CropResult | null; annotated: FlattenResult }
     | { kind: "error"; reason: string };
   const [captureState, setCaptureState] = useState<CaptureUiState>({ kind: "idle" });
 
@@ -100,6 +112,36 @@ export function Popup() {
     // capture with no region selected — never leaves the overlay mounted,
     // never discards the underlying capture itself (AS-539 still works).
     if (captureState.kind === "selecting") {
+      setCaptureState({ kind: "captured", capture: captureState.capture });
+    }
+  }
+
+  function handleStartAnnotate() {
+    if (captureState.kind === "captured") {
+      setCaptureState({ kind: "annotating", capture: captureState.capture, cropped: null });
+    } else if (captureState.kind === "cropped") {
+      setCaptureState({ kind: "annotating", capture: captureState.capture, cropped: captureState.cropped });
+    }
+  }
+
+  function handleAnnotationSubmit(result: FlattenResult) {
+    if (captureState.kind !== "annotating") return;
+    // AS-545: the flattened annotated PNG — not the pristine capture or
+    // crop underneath it — is what's held for the next stage.
+    setAnnotatedResult(result);
+    setCaptureState({
+      kind: "annotated",
+      capture: captureState.capture,
+      cropped: captureState.cropped,
+      annotated: result,
+    });
+  }
+
+  function handleAnnotationCancel() {
+    if (captureState.kind !== "annotating") return;
+    if (captureState.cropped) {
+      setCaptureState({ kind: "cropped", capture: captureState.capture, cropped: captureState.cropped });
+    } else {
       setCaptureState({ kind: "captured", capture: captureState.capture });
     }
   }
@@ -271,6 +313,14 @@ export function Popup() {
               >
                 Select region…
               </button>
+              <button
+                data-testid="annotate-start-button"
+                type="button"
+                style={{ marginTop: 8, marginLeft: 8 }}
+                onClick={handleStartAnnotate}
+              >
+                Annotate…
+              </button>
             </div>
           )}
 
@@ -302,6 +352,46 @@ export function Popup() {
                 onClick={handleStartRegionSelect}
               >
                 Select region…
+              </button>
+              <button
+                data-testid="annotate-start-button"
+                type="button"
+                style={{ marginTop: 8, marginLeft: 8 }}
+                onClick={handleStartAnnotate}
+              >
+                Annotate…
+              </button>
+            </div>
+          )}
+
+          {captureState.kind === "annotating" && (
+            <div style={{ marginTop: 8 }}>
+              <AnnotationEditor
+                baseImageDataUrl={captureState.cropped ? captureState.cropped.dataUrl : captureState.capture.dataUrl}
+                onSubmit={handleAnnotationSubmit}
+                onCancel={handleAnnotationCancel}
+              />
+            </div>
+          )}
+
+          {captureState.kind === "annotated" && (
+            <div style={{ marginTop: 8 }}>
+              <p data-testid="capture-success" style={{ margin: "0 0 4px", fontSize: 13, color: "#1a7f37" }}>
+                Annotated screenshot ready ({captureState.annotated.width} x {captureState.annotated.height} px).
+              </p>
+              <img
+                data-testid="annotated-preview"
+                src={captureState.annotated.dataUrl}
+                alt="Annotated screenshot preview"
+                style={{ maxWidth: "100%", border: "1px solid #ddd" }}
+              />
+              <button
+                data-testid="annotate-start-button"
+                type="button"
+                style={{ marginTop: 8 }}
+                onClick={handleStartAnnotate}
+              >
+                Edit annotations…
               </button>
             </div>
           )}
