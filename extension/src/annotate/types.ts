@@ -10,7 +10,7 @@
 // "display scale" to reconcile at flatten time.
 export type Point = { x: number; y: number };
 
-export type ToolKind = "arrow" | "rectangle" | "freehand" | "text";
+export type ToolKind = "arrow" | "rectangle" | "freehand" | "text" | "blur";
 
 type BaseOp = {
   id: string;
@@ -42,13 +42,30 @@ export type TextOp = BaseOp & {
   fontSize: number;
 };
 
+// F286 — AS-544: a rectangular region marked for destructive pixelation.
+// Deliberately does NOT extend `BaseOp` (no `color`/`strokeWidth`) — a blur
+// region is not a stroke-styled drawing primitive, it's a pixel-averaging
+// operation over a rectangular area. During live editing it behaves like
+// any other op in `ops`/`redoStack` (undoable/redoable while the user is
+// still in the editor), but see draw.ts's `drawBlurRegion` for why the
+// *result* is genuinely destructive once flattened: it overwrites the
+// region's pixels with block-averaged colour via getImageData/putImageData,
+// not a drawn shape sitting visually on top of untouched pixels.
+export type BlurOp = {
+  id: string;
+  kind: "blur";
+  from: Point;
+  to: Point;
+  blockSize: number;
+};
+
 // A single discrete, undoable annotation operation. Freehand strokes are
 // committed as ONE operation per pointerdown-to-pointerup stroke (all the
 // intermediate points bundled into `points`), not one operation per
 // pointermove sample — so undo removes a whole stroke at once, matching
 // the spec's "undo as one whole stroke, not point-by-point" guidance. See
 // the handoff "Decisions made" for the reasoning.
-export type AnnotationOp = ArrowOp | RectangleOp | FreehandOp | TextOp;
+export type AnnotationOp = ArrowOp | RectangleOp | FreehandOp | TextOp | BlurOp;
 
 export type FlattenResult = {
   dataUrl: string;

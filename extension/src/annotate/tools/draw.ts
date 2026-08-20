@@ -5,9 +5,21 @@
 // produces the exact same pixels in both places, which is what makes
 // AS-545's "the flattened PNG is what the user actually saw" claim true.
 import type { AnnotationOp, ArrowOp, FreehandOp, Point, RectangleOp, TextOp } from "../types";
+import { drawBlurRegion } from "./blur";
 
 export function drawOperation(ctx: CanvasRenderingContext2D, op: AnnotationOp): void {
   ctx.save();
+
+  // F286: the blur op is not a stroke-styled drawing primitive (no
+  // `color`/`strokeWidth`) — it destructively pixelates whatever pixels
+  // are already on the canvas at that region, so it skips the shared
+  // stroke/fill style setup entirely.
+  if (op.kind === "blur") {
+    drawBlurRegion(ctx, op);
+    ctx.restore();
+    return;
+  }
+
   ctx.strokeStyle = op.color;
   ctx.fillStyle = op.color;
   ctx.lineWidth = op.strokeWidth;

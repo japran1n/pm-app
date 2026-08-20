@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { drawAllOperations, fontSizeForStrokeWidth } from "./tools/draw";
+import { BLUR_BLOCK_SIZE } from "./tools/blur";
 import { flattenToPng } from "./flatten";
 import type { AnnotationOp, FlattenResult, Point, ToolKind } from "./types";
 
@@ -56,7 +57,7 @@ type Props = {
 };
 
 type Draft =
-  | { kind: "arrow" | "rectangle"; from: Point; to: Point }
+  | { kind: "arrow" | "rectangle" | "blur"; from: Point; to: Point }
   | { kind: "freehand"; points: Point[] };
 
 type PendingText = {
@@ -133,14 +134,16 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
       const previewOp: AnnotationOp =
         draft.kind === "freehand"
           ? { id: "draft", kind: "freehand", points: draft.points, color, strokeWidth }
-          : {
-              id: "draft",
-              kind: draft.kind,
-              from: draft.from,
-              to: draft.to,
-              color,
-              strokeWidth,
-            };
+          : draft.kind === "blur"
+            ? { id: "draft", kind: "blur", from: draft.from, to: draft.to, blockSize: BLUR_BLOCK_SIZE }
+            : {
+                id: "draft",
+                kind: draft.kind,
+                from: draft.from,
+                to: draft.to,
+                color,
+                strokeWidth,
+              };
       drawAllOperations(ctx, [previewOp]);
     }
   }, [ops, draft, naturalSize, color, strokeWidth]);
@@ -205,6 +208,17 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
     if (draft.kind === "freehand") {
       if (draft.points.length > 0) {
         commitOp({ id: newOpId(), kind: "freehand", points: draft.points, color, strokeWidth });
+      }
+    } else if (draft.kind === "blur") {
+      const moved = draft.from.x !== draft.to.x || draft.from.y !== draft.to.y;
+      if (moved) {
+        commitOp({
+          id: newOpId(),
+          kind: "blur",
+          from: draft.from,
+          to: draft.to,
+          blockSize: BLUR_BLOCK_SIZE,
+        });
       }
     } else {
       const moved = draft.from.x !== draft.to.x || draft.from.y !== draft.to.y;
@@ -304,6 +318,7 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
       { kind: "rectangle", label: "Rectangle" },
       { kind: "freehand", label: "Pen" },
       { kind: "text", label: "Text" },
+      { kind: "blur", label: "Blur" },
     ],
     [],
   );
