@@ -31,6 +31,15 @@ export type ExtensionHandoffExchangeInput = z.infer<
 // optional fields (e.g. an attachment id/URL already uploaded via the
 // existing attachments bucket, a `consoleLog`/`networkLog` blob) once those
 // features exist — deliberately not built ahead of time here.
+// F293 (AS-555, AS-556): extends the schema with the report form's
+// remaining fields — status/priority/assigneeId/dueDate — mirroring
+// lib/validation/tasks.ts's createTaskSchema's own rules for these exact
+// fields (same enum values, same default, same nullable/optional shape) so
+// the extension route can never accept something the web app's own
+// create-task path would reject. `createTaskForUser` re-validates all of
+// this again against `createTaskSchema` itself (defense in depth, same as
+// every other field) — this schema exists so a bad submission gets a 400
+// with a specific message before that inner validation even runs.
 export const extensionCreateTaskSchema = z.object({
   projectId: z.string().uuid("Invalid project."),
   title: z
@@ -42,6 +51,26 @@ export const extensionCreateTaskSchema = z.object({
     .string()
     .trim()
     .max(10000, "Description must be 10000 characters or fewer.")
+    .optional()
+    .nullable(),
+  // AS-555: fixed four-status list (matches lib/actions/tasks.ts's own
+  // `status` type) — this mission's custom-project-statuses feature (M16)
+  // has not landed, per this feature's clarification, so there is no
+  // per-project status list to source this from yet.
+  status: z
+    .enum(["todo", "in_progress", "in_review", "done"])
+    .optional(),
+  // AS-556: matches `tasks_priority_check` (lib/validation/tasks.ts's
+  // createTaskSchema).
+  priority: z
+    .enum(["urgent", "high", "medium", "low", "backlog"])
+    .optional()
+    .nullable(),
+  assigneeId: z.string().uuid("Invalid assignee.").optional().nullable(),
+  dueDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
     .optional()
     .nullable(),
 });

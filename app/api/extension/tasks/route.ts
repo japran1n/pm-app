@@ -180,10 +180,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // F293 (AS-555, AS-556): the report form's remaining fields —
+  // status/priority/assigneeId/dueDate — pass straight through to
+  // createTaskForUser, which re-validates and re-checks assignee
+  // membership itself (see lib/actions/tasks.ts) exactly as it already does
+  // for the web app's own create-task Server Action. No new logic needed
+  // here; extensionCreateTaskSchema (lib/validation/extension.ts) is what
+  // changed to accept these fields.
   const result = await createTaskForUser(user.id, {
     projectId: parsed.data.projectId,
     title: parsed.data.title,
     description: parsed.data.description,
+    status: parsed.data.status,
+    priority: parsed.data.priority,
+    assigneeId: parsed.data.assigneeId,
+    dueDate: parsed.data.dueDate,
   });
 
   if (!result.ok) {

@@ -20,6 +20,7 @@ import {
 } from "../capture/network-hook";
 import { startConsoleCaptureIfEnabled, startNetworkCaptureIfEnabled } from "../capture/privacy-toggles";
 import { CapturePrivacyToggles } from "./privacy-toggles";
+import { ReportForm } from "./report-form";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -50,9 +51,17 @@ import { CapturePrivacyToggles } from "./privacy-toggles";
 // refresh, stated-reason failure": success is invisible to the user
 // (session simply keeps working), failure is not (see the "expired"
 // status below).
+// F293 (AS-555, AS-556, AS-557): "connected" now also carries the current
+// session's access_token — the report form needs it for the
+// `Authorization: Bearer <access_token>` header on both
+// GET /api/extension/context and POST /api/extension/tasks. Sourced from
+// the exact same getSession()/onAuthStateChange session objects that
+// already determine "connected" below — never re-derived or cached
+// separately, so it's always the same token the popup itself is currently
+// relying on (including after F282's silent refresh rewrites it).
 type Status =
   | { kind: "loading" }
-  | { kind: "connected"; email: string | null }
+  | { kind: "connected"; email: string | null; accessToken: string }
   | { kind: "signed_out" }
   | { kind: "expired" };
 
@@ -280,10 +289,13 @@ export function Popup() {
         );
         explicitSignOutRef.current = false;
       } else if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
-        setStatus({
-          kind: "connected",
-          email: session?.user.email ?? null,
-        });
+        if (session?.access_token) {
+          setStatus({
+            kind: "connected",
+            email: session.user.email ?? null,
+            accessToken: session.access_token,
+          });
+        }
       }
     });
 
@@ -295,7 +307,11 @@ export function Popup() {
         // nothing left to reconcile here beyond telling the user why.
         setStatus({ kind: "expired" });
       } else if (data.session) {
-        setStatus({ kind: "connected", email: data.session.user.email ?? null });
+        setStatus({
+          kind: "connected",
+          email: data.session.user.email ?? null,
+          accessToken: data.session.access_token,
+        });
       } else {
         // No session in storage. Note that a failed-refresh path may
         // already have delivered a SIGNED_OUT auth-state-change event
@@ -712,6 +728,20 @@ export function Popup() {
               </p>
             )}
           </div>
+
+          {/* F293 (AS-555, AS-556, AS-557): the actual report form —
+              workspace/project/status/title/description/assignee/priority/
+              due-date — wired to F292's real task-creation endpoint. Only
+              rendered when connected, since it needs a real access_token
+              for its Authorization header. Does NOT yet attach the
+              screenshot/annotation/console/network capture state above —
+              see report-form.tsx's doc comment for why. */}
+          {status.kind === "connected" && (
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+              <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>Report</h2>
+              <ReportForm accessToken={status.accessToken} />
+            </div>
+          )}
         </div>
       )}
     </main>
