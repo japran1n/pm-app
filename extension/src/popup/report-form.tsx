@@ -9,6 +9,8 @@ import type { ConsoleLogEntry } from "../capture/console-hook";
 import type { NetworkFailureEntry } from "../capture/network-hook";
 import { buildTaskDescription } from "../submit/describe";
 import { getLastReportContext, setLastReportContext } from "../state/preferences";
+import { getDraft, saveDraft, clearDraft, type ReportDraft } from "../submit/draft";
+import { classifySubmitError, SubmitErrorMessage, type SubmitErrorInfo } from "./errors";
 import { ReportSuccess } from "./success";
 
 // F293 (AS-555, AS-556, AS-557): the actual report form — the piece that
@@ -84,7 +86,7 @@ type SubmitState =
       boardPath: string | null;
       attachmentWarning?: string;
     }
-  | { kind: "error"; reason: string };
+  | { kind: "error"; info: SubmitErrorInfo };
 
 export function ReportForm({
   accessToken,
@@ -116,6 +118,88 @@ export function ReportForm({
   const [priority, setPriority] = useState<string>("");
   const [dueDate, setDueDate] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
+
+  // F297 (AS-565): the persisted, unsent draft from a prior failed/aborted
+  // submit attempt, if any — read once on mount. Takes priority over F296's
+  // "last used workspace/project" remembered context below: an active draft
+  // means the reporter is mid-way through a specific, already-typed report
+  // they haven't successfully submitted yet, which is more specific and more
+  // urgent than "the workspace/project they happened to use last time."
+  const [draftState, setDraftState] = useState<
+    { kind: "loading" } | { kind: "loaded"; draft: ReportDraft | null }
+  >({ kind: "loading" });
+  const appliedDraftFields = useRef(false);
+  const appliedDraftWorkspace = useRef(false);
+  const appliedDraftProject = useRef(false);
+  // The draft's screenshot data URL, once restored — fed into submit's
+  // screenshot resolution below alongside the in-memory capture/annotation
+  // singletons, and rendered as a visible preview (data-testid
+  // "report-form-draft-image") so restoration is provably real, not just
+  // "the same session still had it in memory."
+  const [restoredDraftImage, setRestoredDraftImage] = useState<string | null>(null);
+  const [draftImageOmittedNotice, setDraftImageOmittedNotice] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDraft().then((draft) => {
+      if (!cancelled) setDraftState({ kind: "loaded", draft });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Restore the draft's plain fields (independent of any server data)
+  // exactly once, as soon as the draft has loaded.
+  useEffect(() => {
+    if (draftState.kind !== "loaded" || !draftState.draft || appliedDraftFields.current) return;
+    appliedDraftFields.current = true;
+    const d = draftState.draft;
+    setStatus(d.status as (typeof STATUS_OPTIONS)[number]["value"]);
+    setTitle(d.title);
+    setDescription(d.description);
+    setAssigneeId(d.assigneeId);
+    setPriority(d.priority);
+    setDueDate(d.dueDate);
+    if (d.imageDataUrl) setRestoredDraftImage(d.imageDataUrl);
+    if (d.imageOmitted) setDraftImageOmittedNotice(true);
+  }, [draftState]);
+
+  // Restore the draft's workspace once the real, scoped workspace list has
+  // loaded — only if it's still one of the caller's real options (same
+  // "never widen what's offered" rule AS-557/F296's remembered-context
+  // preselection already follows).
+  useEffect(() => {
+    if (
+      workspacesState.kind !== "loaded" ||
+      draftState.kind !== "loaded" ||
+      !draftState.draft ||
+      appliedDraftWorkspace.current
+    ) {
+      return;
+    }
+    appliedDraftWorkspace.current = true;
+    const match = workspacesState.workspaces.find((ws) => ws.id === draftState.draft!.workspaceId);
+    if (match) setWorkspaceId(match.id);
+  }, [workspacesState, draftState]);
+
+  // Restore the draft's project once that workspace's real project list has
+  // loaded and is actually the draft's own workspace (not a stale project
+  // id left over from a different workspace).
+  useEffect(() => {
+    if (
+      workspaceContext.kind !== "loaded" ||
+      draftState.kind !== "loaded" ||
+      !draftState.draft ||
+      appliedDraftProject.current ||
+      workspaceId !== draftState.draft.workspaceId
+    ) {
+      return;
+    }
+    appliedDraftProject.current = true;
+    const match = workspaceContext.projects.find((p) => p.id === draftState.draft!.projectId);
+    if (match) setProjectId(match.id);
+  }, [workspaceContext, draftState, workspaceId]);
 
   // F296 (AS-564): the last-used workspace/project, read once from
   // chrome.storage.local via preferences.ts. Applied (at most once each)
@@ -178,7 +262,14 @@ export function ReportForm({
     if (
       workspacesState.kind !== "loaded" ||
       !rememberedContext ||
-      appliedRememberedWorkspace.current
+      appliedRememberedWorkspace.current ||
+      // F297: an active unsent draft takes priority — never overwrite it
+      // with the last-used-but-unrelated workspace/project once the draft
+      // has actually been confirmed absent (draftState not yet "loaded"
+      // also defers here, so this never races the draft's own effect
+      // above).
+      draftState.kind !== "loaded" ||
+      draftState.draft
     ) {
       return;
     }
@@ -189,7 +280,7 @@ export function ReportForm({
     if (match) {
       setWorkspaceId(match.id);
     }
-  }, [workspacesState, rememberedContext]);
+  }, [workspacesState, rememberedContext, draftState]);
 
   useEffect(() => {
     if (!workspaceId) {
@@ -244,7 +335,10 @@ export function ReportForm({
       workspaceContext.kind !== "loaded" ||
       !rememberedContext ||
       appliedRememberedProject.current ||
-      workspaceId !== rememberedContext.workspaceId
+      workspaceId !== rememberedContext.workspaceId ||
+      // F297: same draft-takes-priority rule as the workspace effect above.
+      draftState.kind !== "loaded" ||
+      draftState.draft
     ) {
       return;
     }
@@ -255,7 +349,7 @@ export function ReportForm({
     if (match) {
       setProjectId(match.id);
     }
-  }, [workspaceContext, rememberedContext, workspaceId]);
+  }, [workspaceContext, rememberedContext, workspaceId, draftState]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -269,9 +363,26 @@ export function ReportForm({
     // task creation proceeds exactly as F293 left it, with no upload
     // attempted (per this feature's explicit "must not require a
     // screenshot" scope note).
+    // F297: a screenshot restored from a persisted draft (this popup mount
+    // never itself captured/annotated one) is the last-resort fallback —
+    // a live in-memory capture/annotation from THIS mount always wins if
+    // one exists.
     const annotated = getAnnotatedResult();
     const lastCapture = getLastCapture();
-    const screenshot = annotated ?? (lastCapture?.ok ? lastCapture : null);
+    const screenshot =
+      annotated ?? (lastCapture?.ok ? lastCapture : null) ?? (restoredDraftImage ? { dataUrl: restoredDraftImage } : null);
+
+    // F297 (AS-565): persist the draft — every field plus the resolved
+    // screenshot — at the moment a submit is ATTEMPTED, before the size
+    // check and before the network call. This is what makes "an offline
+    // submission ... loses neither typed input nor annotations" hold even
+    // if the popup/extension is killed mid-network-call: the draft is
+    // already safely on disk before that call is even made. Never blocks
+    // or fails the actual submit attempt (saveDraft never throws).
+    await saveDraft(
+      { workspaceId, projectId, status, title, description, assigneeId, priority, dueDate },
+      screenshot,
+    );
 
     // AS-566: the size check happens BEFORE the task is created — an
     // oversized screenshot is rejected here and no fetch to
@@ -279,7 +390,10 @@ export function ReportForm({
     if (screenshot) {
       const sizeCheck = checkScreenshotSize(screenshot);
       if (!sizeCheck.ok) {
-        setSubmitState({ kind: "error", reason: sizeCheck.error });
+        setSubmitState({
+          kind: "error",
+          info: classifySubmitError({ networkFailure: false, serverMessage: sizeCheck.error }),
+        });
         return;
       }
     }
@@ -326,7 +440,7 @@ export function ReportForm({
       if (!res.ok) {
         setSubmitState({
           kind: "error",
-          reason: body.error ?? "Failed to create task. Your entered details are still shown above — please try again.",
+          info: classifySubmitError({ networkFailure: false, status: res.status, serverMessage: body.error }),
         });
         return;
       }
@@ -334,6 +448,16 @@ export function ReportForm({
       const taskId: string = body.task.id;
       const taskKey: string | null = body.taskKey ?? null;
       const boardPath: string | null = body.boardPath ?? null;
+
+      // F297 (AS-565): the task now genuinely exists — clear the persisted
+      // draft so a stale "restore this abandoned draft?" state never lingers
+      // after the reporter has already successfully reported the bug.
+      // `.catch(() => {})` (not awaited-and-thrown) so a failure here can
+      // never surface as a false "offline"/error state on a submit that
+      // already genuinely succeeded — this whole block still runs inside
+      // this function's outer try/catch, which exists to classify *submit*
+      // failures, not draft-cleanup failures.
+      clearDraft().catch(() => {});
 
       // F296 (AS-564): remember the workspace/project used for this
       // successful submit — only once the report actually succeeds, so an
@@ -370,9 +494,15 @@ export function ReportForm({
 
       setSubmitState({ kind: "success", taskId, taskKey, boardPath });
     } catch {
+      // F297 (AS-565): `fetch()` itself threw — no HTTP response was ever
+      // received. This is the offline/network-failure signal (see
+      // errors.tsx's doc comment for why this, not `navigator.onLine`
+      // alone, is the classification's primary input). The draft was
+      // already persisted above, before this fetch was even attempted, so
+      // nothing typed or annotated is lost.
       setSubmitState({
         kind: "error",
-        reason: "Failed to create task. Your entered details are still shown above — please try again.",
+        info: classifySubmitError({ networkFailure: true }),
       });
     }
   }
@@ -420,6 +550,30 @@ export function ReportForm({
 
   return (
     <form data-testid="report-form" onSubmit={handleSubmit}>
+      {restoredDraftImage && (
+        <div style={{ marginBottom: 8 }}>
+          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#666" }}>
+            Restored from an unsent draft — your screenshot is still attached:
+          </p>
+          <img
+            data-testid="report-form-draft-image"
+            src={restoredDraftImage}
+            alt="Restored draft screenshot"
+            style={{ maxWidth: "100%", border: "1px solid #ddd" }}
+          />
+        </div>
+      )}
+
+      {draftImageOmittedNotice && !restoredDraftImage && (
+        <p
+          data-testid="report-form-draft-image-omitted"
+          style={{ margin: "0 0 8px", fontSize: 13, color: "#b45309" }}
+        >
+          Your typed report was restored from an earlier attempt, but the screenshot was too
+          large to save for retry — please recapture it if you still want to attach one.
+        </p>
+      )}
+
       <div style={{ marginBottom: 8 }}>
         <label htmlFor="report-workspace" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
           Workspace
@@ -589,11 +743,7 @@ export function ReportForm({
             </div>
           )}
 
-          {submitState.kind === "error" && (
-            <p data-testid="report-form-error" style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}>
-              {submitState.reason}
-            </p>
-          )}
+          {submitState.kind === "error" && <SubmitErrorMessage info={submitState.info} />}
         </>
       )}
     </form>
