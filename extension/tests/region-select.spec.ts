@@ -177,14 +177,29 @@ test("AS_540_region_selection_respects_device_pixel_ratio_when_cropping", async 
     await popupPage.getByTestId("region-select-start-button").click();
 
     const image = popupPage.getByTestId("region-select-image");
+
+    // The image's displayed CSS width/height are only applied once React
+    // re-renders after the image's onLoad handler sets natural size state.
+    // Under load (e.g. running after other tests in the full suite), the
+    // bounding box can be read before that re-render commits. Poll until the
+    // DPR-scaled width settles rather than reading it immediately.
+    const expectedWidth = Math.round(naturalWidth / 2);
+    const expectedHeight = Math.round(naturalHeight / 2);
+    await expect
+      .poll(async () => {
+        const polledBox = await image.boundingBox();
+        return polledBox ? Math.round(polledBox.width) : null;
+      })
+      .toBe(expectedWidth);
+
     const box = await image.boundingBox();
     expect(box).toBeTruthy();
 
     // At devicePixelRatio 2, the CSS-pixel display size should be half the
     // physical-pixel natural size — proving the mapping this feature must
     // apply per F283's recorded devicePixelRatio.
-    expect(Math.round(box!.width)).toBe(Math.round(naturalWidth / 2));
-    expect(Math.round(box!.height)).toBe(Math.round(naturalHeight / 2));
+    expect(Math.round(box!.width)).toBe(expectedWidth);
+    expect(Math.round(box!.height)).toBe(expectedHeight);
 
     const startX = box!.x + 20;
     const startY = box!.y + 10;
