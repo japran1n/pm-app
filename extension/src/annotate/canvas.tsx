@@ -351,6 +351,7 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
           type="button"
           data-testid="annotate-add-text-button"
           onClick={handleAddTextKeyboard}
+          disabled={!naturalSize}
           title="Add a text box (keyboard-reachable, places text at the centre)"
         >
           Add text

@@ -199,8 +199,13 @@ test("AS_542_text_tool_places_a_real_focusable_input_and_renders_the_typed_text"
     const { popupPage } = await setupAnnotatingPopup(context, extensionId);
 
     // Keyboard-only path: the "Add text" button is reachable and
-    // activatable without any pointer coordinate at all.
-    await popupPage.getByTestId("annotate-add-text-button").focus();
+    // activatable without any pointer coordinate at all. The button is
+    // disabled until the base image finishes loading (natural size is
+    // known), so wait for it to become enabled before focusing it —
+    // otherwise a disabled button silently refuses focus/activation.
+    const addTextButton = popupPage.getByTestId("annotate-add-text-button");
+    await expect(addTextButton).toBeEnabled();
+    await addTextButton.focus();
     await popupPage.keyboard.press("Enter");
 
     const input = popupPage.getByTestId("annotate-text-input");
