@@ -13,6 +13,11 @@ import {
   getConsoleCaptureFromActiveTab,
   type ConsoleLogEntry,
 } from "../capture/console-hook";
+import {
+  startNetworkCaptureOnActiveTab,
+  getNetworkCaptureFromActiveTab,
+  type NetworkFailureEntry,
+} from "../capture/network-hook";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -120,6 +125,36 @@ export function Popup() {
     | { kind: "active"; entries: ConsoleLogEntry[] }
     | { kind: "error"; reason: string };
   const [consoleCaptureState, setConsoleCaptureState] = useState<ConsoleCaptureUiState>({ kind: "idle" });
+
+  // F290 (AS-553): independent of console capture — a reporter may start
+  // one, the other, both, or neither. Same "off by default, explicit
+  // gesture-triggered opt-in" default and same local-React-state
+  // storage (not chrome.storage) as F289's console capture.
+  type NetworkCaptureUiState =
+    | { kind: "idle" }
+    | { kind: "starting" }
+    | { kind: "active"; entries: NetworkFailureEntry[] }
+    | { kind: "error"; reason: string };
+  const [networkCaptureState, setNetworkCaptureState] = useState<NetworkCaptureUiState>({ kind: "idle" });
+
+  async function handleStartNetworkCapture() {
+    setNetworkCaptureState({ kind: "starting" });
+    const result = await startNetworkCaptureOnActiveTab();
+    if (!result.ok) {
+      setNetworkCaptureState({ kind: "error", reason: result.reason });
+      return;
+    }
+    setNetworkCaptureState({ kind: "active", entries: [] });
+  }
+
+  async function handleRefreshNetworkCapture() {
+    const result = await getNetworkCaptureFromActiveTab();
+    if (!result.ok) {
+      setNetworkCaptureState({ kind: "error", reason: result.reason });
+      return;
+    }
+    setNetworkCaptureState({ kind: "active", entries: result.entries });
+  }
 
   async function handleStartConsoleCapture() {
     setConsoleCaptureState({ kind: "starting" });
@@ -592,6 +627,66 @@ export function Popup() {
                 style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
               >
                 {consoleCaptureState.reason}
+              </p>
+            )}
+          </div>
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+            <button
+              data-testid="network-capture-start-button"
+              type="button"
+              onClick={handleStartNetworkCapture}
+              disabled={networkCaptureState.kind === "starting"}
+            >
+              {networkCaptureState.kind === "active"
+                ? "Network capture running"
+                : networkCaptureState.kind === "starting"
+                  ? "Starting…"
+                  : "Start capturing failed requests"}
+            </button>
+
+            <p
+              data-testid="network-capture-limitation"
+              style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}
+            >
+              Only failed requests (network errors or responses with status 400+) made after you
+              start capturing are included. Successful requests and request/response bodies are
+              never captured; obvious secrets in URLs are redacted.
+            </p>
+
+            {networkCaptureState.kind === "active" && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  data-testid="network-capture-refresh-button"
+                  type="button"
+                  onClick={handleRefreshNetworkCapture}
+                >
+                  Refresh captured requests
+                </button>
+                <p data-testid="network-capture-count" style={{ margin: "8px 0 4px", fontSize: 13 }}>
+                  {networkCaptureState.entries.length} failed request
+                  {networkCaptureState.entries.length === 1 ? "" : "s"} captured.
+                </p>
+                <ul
+                  data-testid="network-capture-list"
+                  style={{ margin: 0, padding: "0 0 0 16px", fontSize: 12, maxHeight: 160, overflowY: "auto" }}
+                >
+                  {networkCaptureState.entries.map((entry, i) => (
+                    <li key={i} data-testid="network-capture-entry" data-status={entry.status ?? "network-error"}>
+                      <strong>{entry.method}</strong> {entry.url} —{" "}
+                      {entry.status === null ? "network error" : entry.status}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {networkCaptureState.kind === "error" && (
+              <p
+                data-testid="network-capture-error"
+                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+              >
+                {networkCaptureState.reason}
               </p>
             )}
           </div>
