@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import { APP_URL } from "../lib/supabase";
+import { getAnnotatedResult, getLastCapture } from "../capture/store";
+import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 
 // F293 (AS-555, AS-556, AS-557): the actual report form — the piece that
 // turns everything F280-F292 built into a real, submittable task. Populates
@@ -60,7 +62,7 @@ type WorkspaceContextState =
 type SubmitState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "success"; taskId: string }
+  | { kind: "success"; taskId: string; attachmentWarning?: string }
   | { kind: "error"; reason: string };
 
 export function ReportForm({ accessToken }: { accessToken: string }) {
@@ -155,6 +157,29 @@ export function ReportForm({ accessToken }: { accessToken: string }) {
     e.preventDefault();
     if (!projectId || !title.trim()) return;
 
+    // F294 (AS-559, AS-566, AS-567): resolve whatever screenshot the
+    // reporter captured, if any. The annotated (flattened-with-annotations)
+    // result takes priority per F285's handoff; a reporter who captured but
+    // never annotated still has getLastCapture()'s pristine capture to fall
+    // back to. A reporter who never captured anything at all has neither —
+    // task creation proceeds exactly as F293 left it, with no upload
+    // attempted (per this feature's explicit "must not require a
+    // screenshot" scope note).
+    const annotated = getAnnotatedResult();
+    const lastCapture = getLastCapture();
+    const screenshot = annotated ?? (lastCapture?.ok ? lastCapture : null);
+
+    // AS-566: the size check happens BEFORE the task is created — an
+    // oversized screenshot is rejected here and no fetch to
+    // /api/extension/tasks is ever made for this submission.
+    if (screenshot) {
+      const sizeCheck = checkScreenshotSize(screenshot);
+      if (!sizeCheck.ok) {
+        setSubmitState({ kind: "error", reason: sizeCheck.error });
+        return;
+      }
+    }
+
     setSubmitState({ kind: "submitting" });
     try {
       const res = await fetch(`${APP_URL}/api/extension/tasks`, {
@@ -184,7 +209,32 @@ export function ReportForm({ accessToken }: { accessToken: string }) {
         return;
       }
 
-      setSubmitState({ kind: "success", taskId: body.task.id });
+      const taskId: string = body.task.id;
+
+      // F294: the task now exists for real — the reporter's work (the text
+      // report) is already safely saved regardless of what happens next.
+      // A screenshot upload failure here is surfaced as a warning
+      // alongside the success state, never as a reason to discard or roll
+      // back the task that was just created (per this feature's clarified
+      // "failure handling ... preserves the reporter's work; no silent
+      // no-ops").
+      if (screenshot) {
+        const uploadResult = await uploadScreenshotForTask({
+          accessToken,
+          taskId,
+          screenshot,
+        });
+        if (!uploadResult.ok) {
+          setSubmitState({
+            kind: "success",
+            taskId,
+            attachmentWarning: `Task created, but the screenshot could not be attached: ${uploadResult.error}`,
+          });
+          return;
+        }
+      }
+
+      setSubmitState({ kind: "success", taskId });
     } catch {
       setSubmitState({
         kind: "error",
@@ -378,9 +428,19 @@ export function ReportForm({ accessToken }: { accessToken: string }) {
           </button>
 
           {submitState.kind === "success" && (
-            <p data-testid="report-form-success" style={{ margin: "8px 0 0", fontSize: 13, color: "#1a7f37" }}>
-              Task created.
-            </p>
+            <>
+              <p data-testid="report-form-success" style={{ margin: "8px 0 0", fontSize: 13, color: "#1a7f37" }}>
+                Task created.
+              </p>
+              {submitState.attachmentWarning && (
+                <p
+                  data-testid="report-form-attachment-warning"
+                  style={{ margin: "4px 0 0", fontSize: 13, color: "#b45309" }}
+                >
+                  {submitState.attachmentWarning}
+                </p>
+              )}
+            </>
           )}
 
           {submitState.kind === "error" && (

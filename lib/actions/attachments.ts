@@ -72,20 +72,6 @@ export async function uploadAttachment(
     return { ok: false, error: "Invalid upload request." };
   }
 
-  const parsed = uploadAttachmentSchema.safeParse({
-    taskId,
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid file.",
-    };
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -93,6 +79,62 @@ export async function uploadAttachment(
 
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+
+  return uploadAttachmentForUser(user.id, {
+    taskId,
+    fileName: file.name,
+    fileSize: file.size,
+    mimeType: file.type,
+    arrayBuffer,
+  });
+}
+
+// F294 (AS-559, AS-566, AS-567): the shared upload code path, factored out
+// of uploadAttachment() so app/api/extension/attachments/route.ts (the QA
+// feedback extension's screenshot-attachment endpoint) can attach a file to
+// a task through the exact same validation/Storage/insert logic the web
+// app's Server Action uses, without a parallel implementation — same
+// rationale as F292's createTaskForUser extraction from createTask() above.
+// The only difference from the Server Action is *how the caller's identity
+// is resolved*: the web app resolves it from the cookie session, the
+// extension route resolves it from a bearer JWT — both hand this function
+// an already-verified userId and a real ArrayBuffer, and nothing else about
+// identity is ever taken from caller-supplied input.
+//
+// `options.objectPathOverride` is a test-only injection point (see
+// tests/integration/extension-attachments.test.ts's AS-567 case) used to
+// force a deterministic real Storage-layer conflict (two uploads racing for
+// the exact same object path) so the "no orphaned row survives a failed
+// upload" invariant can be proven against the real Supabase Storage API
+// rather than asserted from reading the code. No production caller passes
+// this — every real call lets the function generate its own random suffix,
+// exactly as before this feature.
+export async function uploadAttachmentForUser(
+  userId: string,
+  input: {
+    taskId: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    arrayBuffer: ArrayBuffer;
+  },
+  options?: { objectPathOverride?: string },
+): Promise<UploadAttachmentResult> {
+  const parsed = uploadAttachmentSchema.safeParse({
+    taskId: input.taskId,
+    fileName: input.fileName,
+    fileSize: input.fileSize,
+    mimeType: input.mimeType,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid file.",
+    };
   }
 
   const admin = createAdminClient();
@@ -132,7 +174,7 @@ export async function uploadAttachment(
   const membership = await requireActiveMembership(
     admin,
     workspaceId,
-    user.id,
+    userId,
   );
 
   if (!membership.ok) {
@@ -145,16 +187,17 @@ export async function uploadAttachment(
   // Path convention fixed by F064: first segment is the task id. A random
   // suffix is appended to the stored object name (not the displayed
   // `file_name`) so two uploads of a same-named file to the same task
-  // never collide in Storage.
+  // never collide in Storage. See this function's doc comment for the
+  // test-only `objectPathOverride` escape hatch.
   const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const safeName = parsed.data.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const objectPath = `${parsed.data.taskId}/${uniqueSuffix}-${safeName}`;
-
-  const arrayBuffer = await file.arrayBuffer();
+  const objectPath =
+    options?.objectPathOverride ??
+    `${parsed.data.taskId}/${uniqueSuffix}-${safeName}`;
 
   const { error: uploadError } = await admin.storage
     .from(ATTACHMENTS_BUCKET)
-    .upload(objectPath, arrayBuffer, {
+    .upload(objectPath, input.arrayBuffer, {
       contentType: parsed.data.mimeType,
       upsert: false,
     });
@@ -177,7 +220,7 @@ export async function uploadAttachment(
       task_id: parsed.data.taskId,
       file_url: objectPath,
       file_name: parsed.data.fileName,
-      uploaded_by: user.id,
+      uploaded_by: userId,
     })
     .select("id, task_id, file_url, file_name, uploaded_by, created_at")
     .single();
@@ -186,7 +229,9 @@ export async function uploadAttachment(
     console.error("uploadAttachment: row insert failed:", insertError);
     // Best-effort cleanup so a failed row insert doesn't leave an orphaned
     // Storage object behind (mirrors AS-114's "no orphans accumulate
-    // silently" intent, applied here to the upload-failure path too).
+    // silently" intent, applied here to the upload-failure path too, and is
+    // the same invariant F294's AS-567 depends on for the "row insert fails
+    // after Storage succeeds" half of the failure space).
     await admin.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
     return {
       ok: false,

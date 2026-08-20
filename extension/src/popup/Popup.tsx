@@ -733,9 +733,13 @@ export function Popup() {
               workspace/project/status/title/description/assignee/priority/
               due-date — wired to F292's real task-creation endpoint. Only
               rendered when connected, since it needs a real access_token
-              for its Authorization header. Does NOT yet attach the
-              screenshot/annotation/console/network capture state above —
-              see report-form.tsx's doc comment for why. */}
+              for its Authorization header. F294 (AS-559, AS-566, AS-567):
+              on submit, the form itself (not this component) reads
+              whichever screenshot state exists in capture/store.ts
+              (annotated, falling back to the plain capture) and uploads it
+              to the just-created task — see report-form.tsx's doc comment.
+              Console/network capture state above is still NOT attached —
+              that remains F295's scope. */}
           {status.kind === "connected" && (
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
               <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>Report</h2>
