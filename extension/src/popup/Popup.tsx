@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
 import { captureVisibleTab } from "../capture/visible-tab";
 import { setLastCapture, type CapturedScreenshot } from "../capture/store";
+import { RegionSelect } from "../capture/RegionSelect";
+import type { CropResult } from "../capture/crop";
 
 // F280 (AS-531): popup shell.
 // F281 (AS-532, AS-533): real connection status, backed by whatever session
@@ -56,10 +58,17 @@ export function Popup() {
   // the task). Kept local to this component (not chrome.storage) per the
   // "simpler/narrower" tie-breaker in the clarification: it only needs to
   // survive the current popup mount.
+  // F284 (AS-540): after a full-tab capture, the user may either keep it as
+  // is ("captured") or open the region-select UI ("selecting") to crop it
+  // down to a chosen area ("cropped"). Selecting never re-triggers
+  // `chrome.tabs.captureVisibleTab` — it only crops the PNG this component
+  // already has, so the whole-view and region-capture paths cannot diverge.
   type CaptureUiState =
     | { kind: "idle" }
     | { kind: "capturing" }
     | { kind: "captured"; capture: CapturedScreenshot }
+    | { kind: "selecting"; capture: CapturedScreenshot }
+    | { kind: "cropped"; capture: CapturedScreenshot; cropped: CropResult }
     | { kind: "error"; reason: string };
   const [captureState, setCaptureState] = useState<CaptureUiState>({ kind: "idle" });
 
@@ -71,6 +80,27 @@ export function Popup() {
       setCaptureState({ kind: "captured", capture: result });
     } else {
       setCaptureState({ kind: "error", reason: result.reason });
+    }
+  }
+
+  function handleStartRegionSelect() {
+    if (captureState.kind === "captured" || captureState.kind === "cropped") {
+      setCaptureState({ kind: "selecting", capture: captureState.capture });
+    }
+  }
+
+  function handleRegionCropped(cropped: CropResult) {
+    if (captureState.kind === "selecting") {
+      setCaptureState({ kind: "cropped", capture: captureState.capture, cropped });
+    }
+  }
+
+  function handleRegionSelectCancel() {
+    // Escape or "Use full screenshot": drop back to the plain full-tab
+    // capture with no region selected — never leaves the overlay mounted,
+    // never discards the underlying capture itself (AS-539 still works).
+    if (captureState.kind === "selecting") {
+      setCaptureState({ kind: "captured", capture: captureState.capture });
     }
   }
 
@@ -233,6 +263,46 @@ export function Popup() {
                 alt="Captured screenshot preview"
                 style={{ maxWidth: "100%", border: "1px solid #ddd" }}
               />
+              <button
+                data-testid="region-select-start-button"
+                type="button"
+                style={{ marginTop: 8 }}
+                onClick={handleStartRegionSelect}
+              >
+                Select region…
+              </button>
+            </div>
+          )}
+
+          {captureState.kind === "selecting" && (
+            <div style={{ marginTop: 8 }}>
+              <RegionSelect
+                capture={captureState.capture}
+                onCropped={handleRegionCropped}
+                onCancel={handleRegionSelectCancel}
+              />
+            </div>
+          )}
+
+          {captureState.kind === "cropped" && (
+            <div style={{ marginTop: 8 }}>
+              <p data-testid="capture-success" style={{ margin: "0 0 4px", fontSize: 13, color: "#1a7f37" }}>
+                Region captured ({captureState.cropped.width} x {captureState.cropped.height} px).
+              </p>
+              <img
+                data-testid="capture-preview"
+                src={captureState.cropped.dataUrl}
+                alt="Cropped screenshot preview"
+                style={{ maxWidth: "100%", border: "1px solid #ddd" }}
+              />
+              <button
+                data-testid="region-select-start-button"
+                type="button"
+                style={{ marginTop: 8 }}
+                onClick={handleStartRegionSelect}
+              >
+                Select region…
+              </button>
             </div>
           )}
 
