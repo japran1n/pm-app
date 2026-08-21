@@ -20,7 +20,7 @@
 // workspace/project and a real Next dev server for the one test in this
 // file that exercises the full capture -> annotate -> submit flow
 // end-to-end).
-import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
@@ -63,7 +63,7 @@ test.beforeAll(() => {
   }
 });
 
-async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string }> {
+async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string; worker: Worker }> {
   const context = await chromium.launchPersistentContext("", {
     headless: false,
     args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
@@ -73,7 +73,7 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
     worker = await context.waitForEvent("serviceworker", { timeout: 10_000 });
   }
   const extensionId = worker.url().split("/")[2];
-  return { context, extensionId };
+  return { context, extensionId, worker };
 }
 
 // F287-followup (select-portion-first flow, region-overlay.ts): this
@@ -87,17 +87,27 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
 // bounds, so the "cropped" result is pixel-identical to the full
 // screenshot below — preserving every existing pixel-based assertion in
 // this file unchanged.
-async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
-  await page.addInitScript((dataUrl) => {
+// F301 follow-up: the real `chrome.tabs.captureVisibleTab` /
+// `chrome.tabs.query` / `chrome.scripting.executeScript` calls that used
+// to be stubbed on the POPUP page now happen in the BACKGROUND SERVICE
+// WORKER instead (see capture-visible-tab.spec.ts's file header), so this
+// stub is applied via `Worker.evaluate`, not `page.addInitScript`.
+async function stubCaptureVisibleTab(worker: Worker, resolveWith: string) {
+  await worker.evaluate(async (dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.scripting as any).executeScript = async () => [
-      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+      {
+        result: {
+          ok: true,
+          rect: { x: 0, y: 0, width: 99999, height: 99999 },
+          devicePixelRatio: 1,
+        },
+      },
     ];
-    Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
 
@@ -242,7 +252,7 @@ test("AS_570_focus_is_visibly_indicated_on_the_submit_and_toolbar_controls", asy
 });
 
 test("AS_570_every_annotation_tool_button_has_a_real_accessible_name", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
     const contentPage = await context.newPage();
     await contentPage.setViewportSize({ width: 300, height: 200 });
@@ -253,7 +263,7 @@ test("AS_570_every_annotation_tool_button_has_a_real_accessible_name", async () 
     const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
     const popupPage = await context.newPage();
-    await stubCaptureVisibleTab(popupPage, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await popupPage.getByTestId("capture-button").click();
     await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
@@ -284,7 +294,7 @@ test("AS_570_every_annotation_tool_button_has_a_real_accessible_name", async () 
 });
 
 test("AS_570_the_freehand_pen_tool_discloses_that_it_has_no_keyboard_equivalent", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
     const contentPage = await context.newPage();
     await contentPage.setViewportSize({ width: 300, height: 200 });
@@ -295,7 +305,7 @@ test("AS_570_the_freehand_pen_tool_discloses_that_it_has_no_keyboard_equivalent"
     const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
     const popupPage = await context.newPage();
-    await stubCaptureVisibleTab(popupPage, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await popupPage.getByTestId("capture-button").click();
     await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
@@ -322,7 +332,7 @@ test("AS_570_the_freehand_pen_tool_discloses_that_it_has_no_keyboard_equivalent"
 });
 
 test("AS_570_arrow_tool_is_placeable_and_confirmable_entirely_via_the_keyboard", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
     const contentPage = await context.newPage();
     await contentPage.setViewportSize({ width: 300, height: 200 });
@@ -333,7 +343,7 @@ test("AS_570_arrow_tool_is_placeable_and_confirmable_entirely_via_the_keyboard",
     const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
     const popupPage = await context.newPage();
-    await stubCaptureVisibleTab(popupPage, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await popupPage.getByTestId("capture-button").click();
     await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
@@ -481,7 +491,7 @@ test("REDESIGN_popup_renders_at_a_comfortable_width_with_no_horizontal_scrollbar
 });
 
 test("REDESIGN_every_annotation_tool_button_still_has_a_real_accessible_name_as_icons", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
     const contentPage = await context.newPage();
     await contentPage.setViewportSize({ width: 300, height: 200 });
@@ -492,7 +502,7 @@ test("REDESIGN_every_annotation_tool_button_still_has_a_real_accessible_name_as_
     const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
     const popupPage = await context.newPage();
-    await stubCaptureVisibleTab(popupPage, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await popupPage.getByTestId("capture-button").click();
     await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
@@ -620,7 +630,7 @@ test.describe.serial("F299 holistic keyboard-only flow (AS-570)", () => {
   });
 
   test("AS_570_full_keyboard_only_flow_capture_annotate_fill_form_submit", async () => {
-    const { context, extensionId } = await launchExtension();
+    const { context, extensionId, worker } = await launchExtension();
 
     try {
       serverProcess = spawn("npm", ["run", "dev"], {
@@ -639,7 +649,7 @@ test.describe.serial("F299 holistic keyboard-only flow (AS-570)", () => {
       const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
       const page = await context.newPage();
-      await stubCaptureVisibleTab(page, capturedDataUrl);
+      await stubCaptureVisibleTab(worker, capturedDataUrl);
       await page.route("http://localhost:3000/**", async (route) => {
         const url = new URL(route.request().url());
         url.port = "3101";

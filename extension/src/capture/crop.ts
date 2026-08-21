@@ -72,14 +72,30 @@ export type CropResult = {
  * second `chrome.tabs.captureVisibleTab` call, so the "whole view" and
  * "region" capture paths cannot diverge — they share the same source PNG.
  *
- * Uses `HTMLCanvasElement` + 2D context, per
- * https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage
- * (the 9-argument "source rect / dest rect" overload), verified 2026-08-20.
+ * F301 follow-up: genuinely context-agnostic now, not just assumed to be.
+ * The original `HTMLCanvasElement` + `Image()` implementation (still used
+ * below when `document` exists — i.e. when called from the popup, which is
+ * still exercised directly by this module's own tests) does NOT work in
+ * the background service worker, which now also needs to crop (see
+ * `background/service-worker.ts`'s `runRegionCapture`) and has no DOM at
+ * all — no `document.createElement`, no `Image()`. When `document` is
+ * unavailable, this falls back to `OffscreenCanvas` + `createImageBitmap`,
+ * which MV3 service workers DO support (verified against
+ * https://developer.chrome.com/docs/extensions/reference/api/offscreen and
+ * the current `OffscreenCanvas`/`createImageBitmap` MDN pages, which both
+ * document worker-context — including dedicated/service worker —
+ * availability; verified 2026-08-21). Both paths share the same
+ * `clampRectToImage` bounds-checking and produce the exact same
+ * `CropResult` shape, so callers never need to know or care which one ran.
  */
 export async function cropDataUrlToRegion(
   dataUrl: string,
   physicalRect: PixelRect,
 ): Promise<CropResult> {
+  if (typeof document === "undefined") {
+    return cropDataUrlToRegionOffscreen(dataUrl, physicalRect);
+  }
+
   const clamped = clampRectToImage(physicalRect, await loadImageSize(dataUrl));
   if (clamped.width <= 0 || clamped.height <= 0) {
     throw new Error(
@@ -113,6 +129,65 @@ export async function cropDataUrlToRegion(
     width: clamped.width,
     height: clamped.height,
   };
+}
+
+/** `document`-free crop path — see `cropDataUrlToRegion`'s doc comment. */
+async function cropDataUrlToRegionOffscreen(
+  dataUrl: string,
+  physicalRect: PixelRect,
+): Promise<CropResult> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+
+  const clamped = clampRectToImage(physicalRect, {
+    width: bitmap.width,
+    height: bitmap.height,
+  });
+  if (clamped.width <= 0 || clamped.height <= 0) {
+    bitmap.close();
+    throw new Error(
+      "Selected region has zero size after clamping to the captured image bounds.",
+    );
+  }
+
+  const canvas = new OffscreenCanvas(clamped.width, clamped.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    throw new Error("OffscreenCanvas 2D context is unavailable in this environment.");
+  }
+
+  ctx.drawImage(
+    bitmap,
+    clamped.x,
+    clamped.y,
+    clamped.width,
+    clamped.height,
+    0,
+    0,
+    clamped.width,
+    clamped.height,
+  );
+  bitmap.close();
+
+  const outBlob = await canvas.convertToBlob({ type: "image/png" });
+  const outDataUrl = await blobToDataUrl(outBlob);
+
+  return {
+    dataUrl: outDataUrl,
+    width: clamped.width,
+    height: clamped.height,
+  };
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Failed to encode cropped image as a data URL."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function clampRectToImage(

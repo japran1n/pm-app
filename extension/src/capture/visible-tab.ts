@@ -80,10 +80,27 @@ function explainCaptureError(err: unknown, sawTabUrl: boolean): string {
 
 /**
  * Captures the visible area of the active tab in the current window as a
- * PNG. Must be called from a user-gesture handler in the popup (e.g. a
- * button's onClick) so the `activeTab` grant is in effect.
+ * PNG. Must be called soon enough after the qualifying user gesture (the
+ * click that opened the extension's popup) for the `activeTab` grant to
+ * still be in effect — but not necessarily FROM the popup itself; see
+ * `region-overlay.ts`'s `selectRegionOnActiveTab` doc comment for the
+ * `activeTab` grant-scope citation this also relies on.
+ *
+ * F301 follow-up: this function is genuinely context-agnostic now — it no
+ * longer reads `window.devicePixelRatio` itself (the background service
+ * worker that now also calls this has no `window` at all). The caller
+ * supplies `devicePixelRatio` explicitly; `background/service-worker.ts`
+ * passes the PAGE's own ratio (captured by `region-overlay.ts`'s injected
+ * function, in the page's real execution context) rather than the popup's,
+ * which is both more correct (it's the display the selection was actually
+ * drawn against) and the only option available from a worker with no
+ * `window` of its own. Falls back to `1` only if the caller omits it
+ * entirely (kept for defensive robustness; every real call site now always
+ * supplies a real value).
  */
-export async function captureVisibleTab(): Promise<CaptureResult> {
+export async function captureVisibleTab(
+  options: { devicePixelRatio?: number } = {},
+): Promise<CaptureResult> {
   let sawTabUrl = false;
   try {
     const [activeTab] = await chrome.tabs.query({
@@ -103,7 +120,7 @@ export async function captureVisibleTab(): Promise<CaptureResult> {
     return {
       ok: true,
       dataUrl,
-      devicePixelRatio: window.devicePixelRatio,
+      devicePixelRatio: options.devicePixelRatio ?? 1,
       capturedAt: Date.now(),
     };
   } catch (err) {

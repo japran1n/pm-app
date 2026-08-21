@@ -37,7 +37,16 @@
 export type RegionOverlayRect = { x: number; y: number; width: number; height: number };
 
 export type RegionOverlayResult =
-  | { ok: true; rect: RegionOverlayRect }
+  // F301 follow-up (region-selection-mid-flow-focus-loss fix): the page's
+  // own `window.devicePixelRatio` is captured here, in the injected
+  // function's own execution context (the live page), because the caller
+  // of `selectRegionOnActiveTab` may now be the background service
+  // worker, which has no `window` of its own at all (see
+  // `background/service-worker.ts`'s `runRegionCapture`). The page is
+  // also architecturally the more correct source for this number anyway —
+  // it's the display the selection rect (in CSS pixels) was actually drawn
+  // against — not an incidental side effect of who happens to be calling.
+  | { ok: true; rect: RegionOverlayRect; devicePixelRatio: number }
   | { ok: false; reason: "cancelled" }
   | { ok: false; reason: string };
 
@@ -62,6 +71,27 @@ function runRegionOverlayInPage(): Promise<RegionOverlayResult> {
     // rebuilding fresh is simpler than trying to reuse a possibly
     // half-finished previous instance.)
     document.getElementById(ROOT_ID)?.remove();
+
+    // F301 follow-up: DOM removal alone is NOT enough idempotency once
+    // this function can be re-injected via a background-relayed message
+    // (a second "Select area to capture" click while a first attempt is
+    // still pending) rather than only ever once per popup-driven call.
+    // Removing the DOM node above does not detach the FIRST instance's
+    // `document`-level mousedown/mousemove/mouseup/keydown listeners
+    // (added below, once per instance) — without this, a second injection
+    // would leave two full sets of listeners live at once, and whichever
+    // instance's drag the user actually finishes would resolve BOTH the
+    // stale first instance's Promise (and thus the stale first background
+    // message handler, which would go on to capture+crop+overwrite storage
+    // using coordinates that may no longer make sense) and the second's.
+    // A page-global cleanup handle — analogous to the ROOT_ID DOM
+    // idempotency guard just above, but for the listener/Promise side of
+    // the same "only one live overlay instance at a time" invariant —
+    // fixes this: force-resolve (as cancelled) and tear down any prior
+    // still-live instance before this one attaches its own listeners.
+    const CLEANUP_KEY = "__pm_app_qa_region_overlay_cleanup__";
+    const win = window as unknown as Record<string, (() => void) | undefined>;
+    win[CLEANUP_KEY]?.();
 
     const root = document.createElement("div");
     root.id = ROOT_ID;
@@ -116,12 +146,28 @@ function runRegionOverlayInPage(): Promise<RegionOverlayResult> {
       // nothing this overlay added can ever appear in a subsequently
       // captured screenshot.
       root.remove();
+      // Only clear the page-global cleanup handle if it's still THIS
+      // instance's own — a newer instance may have already overwritten it
+      // (via the `win[CLEANUP_KEY]?.()` call above, when re-injected while
+      // this one was still live), and clobbering that newer handle here
+      // would break the newer instance's own idempotency guard.
+      if (win[CLEANUP_KEY] === selfCleanup) {
+        delete win[CLEANUP_KEY];
+      }
     }
 
     function finish(result: RegionOverlayResult) {
       cleanup();
       resolve(result);
     }
+
+    // Registered as this instance's cleanup handle immediately (before any
+    // listeners are attached below) so a THIRD rapid re-injection during
+    // this instance's own setup can still find and cancel it correctly.
+    function selfCleanup() {
+      finish({ ok: false, reason: "cancelled" });
+    }
+    win[CLEANUP_KEY] = selfCleanup;
 
     function normalize(a: { x: number; y: number }, b: { x: number; y: number }) {
       const x = Math.min(a.x, b.x);
@@ -177,7 +223,7 @@ function runRegionOverlayInPage(): Promise<RegionOverlayResult> {
         return;
       }
 
-      finish({ ok: true, rect });
+      finish({ ok: true, rect, devicePixelRatio: window.devicePixelRatio });
     }
 
     function onKeyDown(e: KeyboardEvent) {
@@ -198,9 +244,27 @@ function runRegionOverlayInPage(): Promise<RegionOverlayResult> {
  * currently active (via `chrome.scripting.executeScript`, the same
  * `activeTab`-gesture-driven pattern `pickElementOnActiveTab` in
  * element-picker.ts uses — see that file's header) and resolves once the
- * user finishes a drag-selection or presses Escape. Must be called
- * synchronously enough after a user gesture (e.g. directly from a popup
- * button's onClick) for `activeTab` to still be granted.
+ * user finishes a drag-selection or presses Escape.
+ *
+ * F301 follow-up: this function itself references nothing from `window`/
+ * `document` at its OWN top level — only `runRegionOverlayInPage` (the
+ * separately-injected function above, which always runs inside the page's
+ * own document regardless of who called `executeScript`) does. That means
+ * this function is safe to call from the background service worker (which
+ * has no `window`/`document` of its own), not just from the popup. Per
+ * the current Chrome docs
+ * (https://developer.chrome.com/docs/extensions/reference/api/permissions#activetab
+ * and https://developer.chrome.com/docs/extensions/develop/concepts/activeTab,
+ * verified 2026-08-21), the `activeTab` grant is scoped to the (tab,
+ * extension) pair for the duration of the tab's page — not to "whichever
+ * extension JS context happens to make the API call" — so a grant
+ * established by the original user gesture that opened the popup (which
+ * IS the qualifying gesture: clicking the extension's toolbar action) is
+ * usable by ANY of the extension's own contexts, including the background
+ * service worker, right up until the tab navigates or the grant is
+ * otherwise revoked. This is exactly what lets `START_REGION_CAPTURE` in
+ * `background/service-worker.ts` call this function directly instead of
+ * requiring it to run inside the (about to close) popup.
  */
 export async function selectRegionOnActiveTab(): Promise<RegionOverlayResult> {
   let tab: chrome.tabs.Tab | undefined;

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
 import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
-import { captureVisibleTab } from "../capture/visible-tab";
 import { setLastCapture, setAnnotatedResult } from "../capture/store";
-import { selectRegionOnActiveTab } from "../capture/region-overlay";
-import { cropDataUrlToRegion, cssRectToPhysicalRect } from "../capture/crop";
 import type { CropResult } from "../capture/crop";
+import {
+  readAndClearPendingCaptureResult,
+  pendingResultToCropResult,
+  PENDING_CAPTURE_RESULT_KEY,
+  type PendingCaptureResult,
+} from "../capture/pending-capture";
 import { AnnotationEditor } from "../annotate/canvas";
 import type { FlattenResult } from "../annotate/types";
 import { pickElementOnActiveTab, type PickResult } from "../capture/element-picker";
@@ -77,16 +80,35 @@ export function Popup() {
   // crop happens invisibly right after" — like macOS's Cmd+Shift+4. There
   // is no more "keep the whole tab" fallback; the reporter always ends up
   // with a cropped region, and never sees a flash of the full uncropped
-  // tab. Capture state is still independent of connection status — it
-  // needs only `activeTab`/`scripting`, not an authenticated session (auth
-  // only matters once the task is actually filed) — and is still kept
-  // local to this component (not chrome.storage), since it only needs to
-  // survive the current popup mount.
+  // tab.
   //
-  // Flow: "selecting" (the live-page overlay from region-overlay.ts is
-  // open and driving its own Promise) -> "capturing" (overlay resolved
-  // with a rect; captureVisibleTab() + cropDataUrlToRegion() are running)
-  // -> "cropped" (the only screenshot state the reporter ever sees).
+  // F301 follow-up (region-selection-mid-flow-focus-loss fix): the actual
+  // select -> capture -> crop orchestration now runs entirely in the
+  // background service worker (see `capture/pending-capture.ts`'s header
+  // for the full root-cause writeup: a Chrome MV3 popup closes the instant
+  // it loses focus, which clicking into the page to draw a selection
+  // always does, so running this in the popup's own JS realm meant the
+  // whole flow was destroyed mid-flight every time). `captureState` here
+  // is still local component state (not itself persisted) — but it is now
+  // populated either by this component's own "I just sent the start
+  // message" transition (`selecting`) or by restoring a background-written
+  // result from `chrome.storage.local` (on mount, or live via
+  // `chrome.storage.onChanged` if the popup happens to still be open when
+  // the result lands) — never by directly awaiting the capture inline.
+  //
+  // Flow: "selecting" (message sent to the background worker; the
+  // live-page overlay it injected is open and driving its own Promise
+  // there, independent of this popup's lifetime — "selecting" here is
+  // purely local, best-effort feedback for the instant before the popup
+  // may close, never something the actual flow depends on) -> "cropped"
+  // (the only screenshot state the reporter ever sees, restored from
+  // `chrome.storage.local` regardless of whether this exact popup mount is
+  // the one that started the capture). The "capturing" state is retained
+  // in the type for the (now unreachable outside tests) synchronous path
+  // but is otherwise dead — the background worker's own crop step has no
+  // popup-visible interim state to report, per this fix's own scope (see
+  // item 4 of the feature spec: no live cross-popup-close progress
+  // indicator, that would be overengineering this fix).
   //
   // F285 (AS-542, AS-543, AS-545) still applies unchanged from here: once
   // cropped, the user can open the annotation editor ("annotating").
@@ -132,41 +154,38 @@ export function Popup() {
     }
   }
 
-  async function handleSelectRegion() {
+  // F301 follow-up: this now only ever SENDS a message to the background
+  // worker and returns — it never awaits the actual selection/capture/crop
+  // inline, because it cannot assume this popup instance survives long
+  // enough to see that finish (clicking into the page to draw a selection
+  // is exactly what closes the popup). `selecting` here is purely
+  // lightweight, best-effort local feedback for the brief instant before
+  // the popup may close; the real result always arrives via
+  // `chrome.storage.local` (see the mount-restore and storage-listener
+  // effects below), independent of this call's own lifetime.
+  function handleSelectRegion() {
     setCaptureState({ kind: "selecting" });
+    // `sendMessage`'s returned promise is intentionally not awaited beyond
+    // swallowing a possible rejection — the background listener never
+    // calls `sendResponse`, so there is nothing meaningful to wait for
+    // here, and the popup may already be on its way out by the time this
+    // settles either way.
+    chrome.runtime.sendMessage({ type: "START_REGION_CAPTURE" }).catch(() => {
+      // A synchronous-ish rejection here (e.g. extension context
+      // invalidated) does not mean the background never received the
+      // click — but if it truly never went through, the reporter can
+      // simply try again; there is no in-progress state to reconcile
+      // since nothing was started.
+    });
+  }
 
-    // 1. Live-page overlay: the reporter draws a selection rectangle
-    // directly on the page they're reporting a bug on (region-overlay.ts).
-    // Nothing is captured yet.
-    const overlayResult = await selectRegionOnActiveTab();
-    if (!overlayResult.ok) {
-      if (overlayResult.reason === "cancelled") {
-        setCaptureState({ kind: "idle" });
-      } else {
-        setCaptureState({ kind: "error", reason: overlayResult.reason });
-      }
-      return;
-    }
-
-    // 2. Only now — after the overlay has already removed all of its own
-    // DOM from the page — take the actual full-tab capture
-    // (chrome.tabs.captureVisibleTab can only ever capture the full
-    // visible viewport; there is no browser API for a sub-region capture)
-    // and immediately crop it down to the selected rect. The reporter
-    // never sees this intermediate full-tab image.
-    setCaptureState({ kind: "capturing" });
-    const captureResult = await captureVisibleTab();
-    if (!captureResult.ok) {
-      setCaptureState({ kind: "error", reason: captureResult.reason });
-      return;
-    }
-
-    try {
-      const physicalRect = cssRectToPhysicalRect(
-        overlayResult.rect,
-        captureResult.devicePixelRatio,
-      );
-      const cropped = await cropDataUrlToRegion(captureResult.dataUrl, physicalRect);
+  /** Applies a background-written capture result (success, failure, or
+   * cancellation) to this popup mount's local UI state — shared by both
+   * the "restore on fresh mount" path and the "still open, result landed
+   * live" path below, so the two can never diverge in behaviour. */
+  function applyPendingCaptureResult(pending: PendingCaptureResult) {
+    if (pending.ok) {
+      const cropped: CropResult = pendingResultToCropResult(pending);
       // AS-566/AS-567 fallback path (report-form.tsx's getLastCapture()):
       // must be the cropped result, not the full uncropped tab — the
       // reporter never sees, and must never submit, the intermediate
@@ -175,11 +194,13 @@ export function Popup() {
       // space; nothing downstream re-derives physical pixels from it again.
       setLastCapture({ ok: true, dataUrl: cropped.dataUrl, devicePixelRatio: 1, capturedAt: Date.now() });
       setCaptureState({ kind: "cropped", cropped });
-    } catch (err) {
-      setCaptureState({
-        kind: "error",
-        reason: err instanceof Error ? err.message : "Could not crop the selected region.",
-      });
+    } else if (pending.reason === "cancelled") {
+      // Resolves cleanly — no error banner, no stale result left behind
+      // (it was already cleared by `readAndClearPendingCaptureResult`) to
+      // confuse a later, unrelated capture attempt.
+      setCaptureState({ kind: "idle" });
+    } else {
+      setCaptureState({ kind: "error", reason: pending.reason });
     }
   }
 
@@ -205,6 +226,55 @@ export function Popup() {
     if (captureState.kind !== "annotating") return;
     setCaptureState({ kind: "cropped", cropped: captureState.cropped });
   }
+
+  // F301 follow-up: on EVERY fresh popup mount, check for a capture result
+  // the background worker may already have written while no popup (or a
+  // now-gone earlier popup instance) was open to see it — same "the popup
+  // can close/reopen at any point mid-flow" reasoning `draft.ts` already
+  // established. If the popup happens to be reopened WHILE the overlay is
+  // still live and waiting on the page (no result written yet), this
+  // simply finds nothing and leaves `captureState` at its default `idle`
+  // — a neutral "select area to capture" prompt is still perfectly valid
+  // in that window; building a live cross-popup-close progress indicator
+  // for it would be overengineering this fix (see the feature spec's own
+  // item 4).
+  useEffect(() => {
+    let cancelled = false;
+    readAndClearPendingCaptureResult().then((pending) => {
+      if (cancelled || !pending) return;
+      applyPendingCaptureResult(pending);
+    });
+    return () => {
+      cancelled = true;
+    };
+     
+  }, []);
+
+  // Covers the "popup happens to still be open" case live: if the
+  // background worker finishes (or writes a cancellation/failure) while
+  // THIS popup mount is still around, reflect it immediately rather than
+  // only on the next mount. Uses the same `applyPendingCaptureResult`
+  // helper as the mount-restore effect above so the two paths can never
+  // diverge in behaviour.
+  useEffect(() => {
+    function onStorageChange(
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ) {
+      if (areaName !== "local") return;
+      if (!(PENDING_CAPTURE_RESULT_KEY in changes)) return;
+      readAndClearPendingCaptureResult().then((pending) => {
+        if (!pending) return;
+        applyPendingCaptureResult(pending);
+      });
+    }
+
+    chrome.storage.onChanged.addListener(onStorageChange);
+    return () => {
+      chrome.storage.onChanged.removeListener(onStorageChange);
+    };
+     
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

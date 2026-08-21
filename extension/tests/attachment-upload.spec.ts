@@ -22,7 +22,7 @@
 // F293's own handoff note flagging this as the natural next step for a
 // suite with more than one such test) keeps this file's total wall-clock
 // cost close to one test's worth of server-boot time instead of three.
-import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
@@ -76,17 +76,27 @@ test.beforeAll(() => {
 // bounds, so the "cropped" result is pixel-identical to the full
 // screenshot below — preserving every existing pixel-based assertion in
 // this file unchanged.
-async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
-  await page.addInitScript((dataUrl) => {
+// F301 follow-up: the real `chrome.tabs.captureVisibleTab` /
+// `chrome.tabs.query` / `chrome.scripting.executeScript` calls that used
+// to be stubbed on the POPUP page now happen in the BACKGROUND SERVICE
+// WORKER instead (see capture-visible-tab.spec.ts's file header), so this
+// stub is applied via `Worker.evaluate`, not `page.addInitScript`.
+async function stubCaptureVisibleTab(worker: Worker, resolveWith: string) {
+  await worker.evaluate(async (dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.scripting as any).executeScript = async () => [
-      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+      {
+        result: {
+          ok: true,
+          rect: { x: 0, y: 0, width: 99999, height: 99999 },
+          devicePixelRatio: 1,
+        },
+      },
     ];
-    Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
 
@@ -154,6 +164,7 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
 
   let context: BrowserContext;
   let extensionId: string;
+  let worker: Worker;
   let serverProcess: ChildProcess | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let adminClient: any;
@@ -226,10 +237,11 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
       headless: false,
       args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
     });
-    let worker = context.serviceWorkers()[0];
-    if (!worker) {
-      worker = await context.waitForEvent("serviceworker", { timeout: 10_000 });
+    let sw = context.serviceWorkers()[0];
+    if (!sw) {
+      sw = await context.waitForEvent("serviceworker", { timeout: 10_000 });
     }
+    worker = sw;
     extensionId = worker.url().split("/")[2];
 
     serverProcess = spawn("npm", ["run", "dev"], {
@@ -297,7 +309,7 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
     await contentPage.close();
 
     const page = await context.newPage();
-    await stubCaptureVisibleTab(page, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await routeToServer(page);
     await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await seedRealSession(page, realSession);
@@ -393,7 +405,7 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
     const oversizedDataUrl = await generateOversizedNoisePngDataUrl(context);
 
     const page = await context.newPage();
-    await stubCaptureVisibleTab(page, oversizedDataUrl);
+    await stubCaptureVisibleTab(worker, oversizedDataUrl);
     await routeToServer(page);
     await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await seedRealSession(page, realSession);
@@ -404,24 +416,32 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
     );
 
     try {
-      // Capture only — deliberately skip annotating, so report-form.tsx's
-      // getAnnotatedResult() fallback to getLastCapture() is what's
-      // exercised here (a reporter who captured but never opened the
-      // annotation editor still gets the same size check).
+      // F301 follow-up: every capture result now has to pass through
+      // `chrome.storage.local` on its way from the background worker back
+      // to the popup (see background/service-worker.ts's `runRegionCapture`
+      // and capture/pending-capture.ts's header for the full rationale),
+      // which has a real, hard 10MB total quota — smaller than what an
+      // (already oversized, per MAX_ATTACHMENT_SIZE_BYTES) screenshot's
+      // base64 payload alone would need. So the SAME size check
+      // (`checkScreenshotSize`, the same limit/message
+      // report-form.tsx's own submit-time check already used) is now
+      // applied proactively, at capture time, in the background worker
+      // itself — the reporter sees this rejection immediately as a
+      // capture-error, never reaching a "cropped"/preview state at all, and
+      // never gets to attempt a submit with this oversized image in the
+      // first place. This is a strictly EARLIER, still-clearly-stated
+      // failure than before (AS-566/567's own intent — "rejected with a
+      // message naming the limit, no task created" — holds; only the
+      // moment it's caught moved earlier).
       await page.getByTestId("capture-button").click();
-      await expect(page.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
+      const captureError = page.getByTestId("capture-error");
+      await expect(captureError).toBeVisible({ timeout: 10_000 });
+      await expect(captureError).toContainText("10MB");
+      await expect(page.getByTestId("capture-preview")).toHaveCount(0);
 
-      await pickWorkspaceAndProject(page);
-      await page.getByTestId("report-form-title").fill("F294 oversized screenshot attempt");
-      await page.getByTestId("report-form-submit").click();
-
-      // AS-566: rejected with a message naming the actual limit (10MB),
-      // BEFORE any task was created — the "success" testid must never
-      // appear for this submission.
-      await expect(page.getByTestId("report-form-error")).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByTestId("report-form-error")).toContainText("10MB");
-      await expect(page.getByTestId("report-form-success")).toHaveCount(0);
-
+      // No report to submit at all — the capture never reached a state a
+      // reporter could attach and send. Confirm no task was ever created
+      // for this attempt.
       const { data: taskRows, error } = await adminClient
         .from("tasks")
         .select("id")

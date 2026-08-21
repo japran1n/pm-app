@@ -23,7 +23,7 @@
 // real, freshly served, and never previously visited by this browser
 // context — nothing about the page or its origin has been "warmed up"
 // beforehand.
-import { test, expect, chromium, type BrowserContext } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Worker } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
@@ -39,7 +39,7 @@ test.beforeAll(() => {
   }
 });
 
-async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string }> {
+async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string; worker: Worker }> {
   const context = await chromium.launchPersistentContext("", {
     headless: false,
     args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
@@ -57,7 +57,7 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
     }
   }
 
-  return { context, extensionId };
+  return { context, extensionId, worker };
 }
 
 // A unique path per test run, so this is provably a page never served or
@@ -92,7 +92,7 @@ test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_befo
   const marker = crypto.randomBytes(8).toString("hex");
   const uniquePath = `/never-seen-${marker}`;
   const server = await startFixtureServer(marker, uniquePath);
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
 
   try {
     // The single fresh page under test — never visited or served before
@@ -111,17 +111,21 @@ test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_befo
     const screenshotBuffer = await contentPage.screenshot({ type: "png" });
     const realPngDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
-    const popupPage = await context.newPage();
-    // Only `chrome.tabs.captureVisibleTab` needs stubbing (see file header
-    // — no harness can script the real toolbar-icon gesture it demands).
+    // F301 follow-up: the real `chrome.tabs.captureVisibleTab` call now
+    // happens in the BACKGROUND SERVICE WORKER, not the popup (see
+    // capture-visible-tab.spec.ts's file header for the full rationale),
+    // so only `chrome.tabs.captureVisibleTab` needs stubbing — and it
+    // needs stubbing there, via `Worker.evaluate`, not on the popup page.
     // `chrome.tabs.query` is left as the real Chrome API: it works for
     // real here because the fixture origin is covered by
     // `host_permissions`, exactly as F287/F289 rely on — stubbing it would
     // risk hiding a real regression in tab targeting.
-    await popupPage.addInitScript((dataUrl) => {
+    await worker.evaluate(async (dataUrl) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     }, realPngDataUrl);
+
+    const popupPage = await context.newPage();
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await contentPage.bringToFront();
 

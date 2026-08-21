@@ -10,7 +10,7 @@
 // real PNG Playwright itself screenshotted, so everything downstream —
 // tool drawing, undo/redo, and the flatten step's real pixel output — is
 // exercised for real through the real built popup UI.
-import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 import { Buffer } from "node:buffer";
@@ -26,7 +26,7 @@ test.beforeAll(() => {
   }
 });
 
-async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string }> {
+async function launchExtension(): Promise<{ context: BrowserContext; extensionId: string; worker: Worker }> {
   const context = await chromium.launchPersistentContext("", {
     headless: false,
     args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
@@ -37,7 +37,7 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
     worker = await context.waitForEvent("serviceworker", { timeout: 10_000 });
   }
   const extensionId = worker.url().split("/")[2];
-  return { context, extensionId };
+  return { context, extensionId, worker };
 }
 
 // F287-followup (select-portion-first flow, region-overlay.ts): this
@@ -51,23 +51,34 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
 // bounds, so the "cropped" result is pixel-identical to the full
 // screenshot below — preserving every existing pixel-based assertion in
 // this file unchanged.
-async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
-  await page.addInitScript((dataUrl) => {
+// F301 follow-up: the real `chrome.tabs.captureVisibleTab` /
+// `chrome.tabs.query` / `chrome.scripting.executeScript` calls that used
+// to be stubbed on the POPUP page now happen in the BACKGROUND SERVICE
+// WORKER instead (see capture-visible-tab.spec.ts's file header), so this
+// stub is applied via `Worker.evaluate`, not `page.addInitScript`.
+async function stubCaptureVisibleTab(worker: Worker, resolveWith: string) {
+  await worker.evaluate(async (dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.scripting as any).executeScript = async () => [
-      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+      {
+        result: {
+          ok: true,
+          rect: { x: 0, y: 0, width: 99999, height: 99999 },
+          devicePixelRatio: 1,
+        },
+      },
     ];
-    Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
 
 async function setupAnnotatingPopup(
   context: BrowserContext,
   extensionId: string,
+  worker: Worker,
 ): Promise<{ popupPage: Page }> {
   // A flat, solid-white base image, so any drawn pixel is trivially
   // distinguishable from the background by colour.
@@ -79,8 +90,9 @@ async function setupAnnotatingPopup(
   const screenshotBuffer = await contentPage.screenshot({ type: "png" });
   const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
 
+  await stubCaptureVisibleTab(worker, capturedDataUrl);
+
   const popupPage = await context.newPage();
-  await stubCaptureVisibleTab(popupPage, capturedDataUrl);
   await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
 
   await popupPage.getByTestId("capture-button").click();
@@ -148,9 +160,9 @@ async function readCanvasDataUrl(popupPage: Page): Promise<string> {
 }
 
 test("AS_542_arrow_tool_draws_real_pixels_in_the_dragged_region", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-arrow").click();
 
     const box = await getCanvasBox(popupPage);
@@ -170,9 +182,9 @@ test("AS_542_arrow_tool_draws_real_pixels_in_the_dragged_region", async () => {
 });
 
 test("AS_542_rectangle_tool_draws_real_pixels_in_the_dragged_region", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-rectangle").click();
 
     const box = await getCanvasBox(popupPage);
@@ -189,9 +201,9 @@ test("AS_542_rectangle_tool_draws_real_pixels_in_the_dragged_region", async () =
 });
 
 test("AS_542_freehand_tool_draws_real_pixels_along_the_dragged_path", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-freehand").click();
 
     const box = await getCanvasBox(popupPage);
@@ -209,9 +221,9 @@ test("AS_542_freehand_tool_draws_real_pixels_along_the_dragged_path", async () =
 });
 
 test("AS_542_text_tool_places_a_real_focusable_input_and_renders_the_typed_text", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
 
     // Keyboard-only path: the "Add text" button is reachable and
     // activatable without any pointer coordinate at all. The button is
@@ -240,9 +252,9 @@ test("AS_542_text_tool_places_a_real_focusable_input_and_renders_the_typed_text"
 });
 
 test("AS_543_undo_and_redo_change_canvas_pixel_state_as_expected", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-rectangle").click();
 
     const box = await getCanvasBox(popupPage);
@@ -278,9 +290,9 @@ test("AS_543_undo_and_redo_change_canvas_pixel_state_as_expected", async () => {
 });
 
 test("AS_543_freehand_stroke_undoes_as_one_whole_stroke_not_point_by_point", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-freehand").click();
 
     const box = await getCanvasBox(popupPage);
@@ -310,9 +322,9 @@ test("AS_543_freehand_stroke_undoes_as_one_whole_stroke_not_point_by_point", asy
 });
 
 test("AS_545_the_flattened_annotated_image_not_the_pristine_original_is_held_for_the_next_stage", async () => {
-  const { context, extensionId } = await launchExtension();
+  const { context, extensionId, worker } = await launchExtension();
   try {
-    const { popupPage } = await setupAnnotatingPopup(context, extensionId);
+    const { popupPage } = await setupAnnotatingPopup(context, extensionId, worker);
     await popupPage.getByTestId("annotate-tool-rectangle").click();
 
     const box = await getCanvasBox(popupPage);

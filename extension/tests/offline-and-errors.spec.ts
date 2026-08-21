@@ -4,7 +4,7 @@
 // Follows F294/F296's "one shared extension context + one shared spawned
 // Next server across a describe.serial" pattern (not report-form.spec.ts's
 // older one-test-one-server shape).
-import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
@@ -98,17 +98,27 @@ test.beforeAll(() => {
 // bounds, so the "cropped" result is pixel-identical to the full
 // screenshot below — preserving every existing pixel-based assertion in
 // this file unchanged.
-async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
-  await page.addInitScript((dataUrl) => {
+// F301 follow-up: the real `chrome.tabs.captureVisibleTab` /
+// `chrome.tabs.query` / `chrome.scripting.executeScript` calls that used
+// to be stubbed on the POPUP page now happen in the BACKGROUND SERVICE
+// WORKER instead (see capture-visible-tab.spec.ts's file header), so this
+// stub is applied via `Worker.evaluate`, not `page.addInitScript`.
+async function stubCaptureVisibleTab(worker: Worker, resolveWith: string) {
+  await worker.evaluate(async (dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.scripting as any).executeScript = async () => [
-      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+      {
+        result: {
+          ok: true,
+          rect: { x: 0, y: 0, width: 99999, height: 99999 },
+          devicePixelRatio: 1,
+        },
+      },
     ];
-    Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
 
@@ -171,6 +181,7 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
 
   let context: BrowserContext;
   let extensionId: string;
+  let worker: Worker;
   let serverProcess: ChildProcess | undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let adminClient: any;
@@ -246,10 +257,11 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
       headless: false,
       args: [`--disable-extensions-except=${distPath}`, `--load-extension=${distPath}`],
     });
-    let worker = context.serviceWorkers()[0];
-    if (!worker) {
-      worker = await context.waitForEvent("serviceworker", { timeout: 10_000 });
+    let sw = context.serviceWorkers()[0];
+    if (!sw) {
+      sw = await context.waitForEvent("serviceworker", { timeout: 10_000 });
     }
+    worker = sw;
     extensionId = worker.url().split("/")[2];
 
     serverProcess = spawn("npm", ["run", "dev"], {
@@ -313,7 +325,7 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
     await contentPage.close();
 
     const page = await context.newPage();
-    await stubCaptureVisibleTab(page, capturedDataUrl);
+    await stubCaptureVisibleTab(worker, capturedDataUrl);
     await routeToServer(page);
     await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await seedRealSession(page, realSession);
@@ -581,20 +593,33 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
     await page.close();
   });
 
-  test("AS-565: an oversized screenshot is rejected with the reused too-large message, distinct from the other cases", async () => {
+  test("AS-565: an oversized screenshot is rejected with a message naming the limit, distinct from the other cases", async () => {
     test.setTimeout(90_000);
-    // Every capture now goes through crop.ts's real image decode + canvas
-    // re-encode (region-overlay.ts's select-first flow, even for a "whole
-    // page" selection) — a fake, non-decodable data URL (padding base64
-    // with repeated "A"s) fails that decode with a generic crop error
-    // instead of ever reaching the size check. A real, decodable PNG of
-    // random-noise pixels is used instead: random per-pixel data defeats
-    // PNG deflate compression, so the base64 payload stays over
-    // MAX_ATTACHMENT_SIZE_BYTES (10MB) even after crop.ts's re-encode.
+    // F301 follow-up: every REAL capture now round-trips through
+    // `chrome.storage.local` on its way from the background worker back to
+    // the popup (background/service-worker.ts's `runRegionCapture`), which
+    // has its OWN, EARLIER size guard against the exact same
+    // `MAX_ATTACHMENT_SIZE_BYTES` limit/message report-form.tsx's own
+    // submit-time check used (see attachment-upload.spec.ts's AS-566 test,
+    // which now proves that earlier rejection directly). An oversized
+    // image can no longer even be WRITTEN to `chrome.storage.local` at
+    // all — its base64 payload alone (~13.3MB) exceeds the storage area's
+    // own real, hard 10MB total quota, so there is no longer any way,
+    // real or seeded, to get an oversized image into a submittable
+    // "cropped" popup state; verified empirically while updating this test
+    // (seeding the pending-capture-result key directly with an oversized
+    // image fails with the same native `QUOTA_BYTES` error the background
+    // worker's own proactive check exists to avoid surfacing to the
+    // reporter). So this test now proves the SAME reporter-facing
+    // guarantee — "an oversized screenshot is rejected with a message
+    // naming the limit, before any submit is possible" — via the new,
+    // earlier rejection point: a capture-error, immediately after
+    // clicking "Select area to capture", never reaching the report form
+    // at all.
     const oversizedDataUrl = await generateOversizedNoisePngDataUrl(context);
 
     const page = await context.newPage();
-    await stubCaptureVisibleTab(page, oversizedDataUrl);
+    await stubCaptureVisibleTab(worker, oversizedDataUrl);
     await routeToServer(page);
     await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await seedRealSession(page, realSession);
@@ -606,23 +631,19 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
 
     try {
       await page.getByTestId("capture-button").click();
-      await expect(page.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
+      const captureError = page.getByTestId("capture-error");
+      await expect(captureError).toBeVisible({ timeout: 10_000 });
+      await expect(captureError).toContainText("10MB");
+      await expect(page.getByTestId("capture-preview")).toHaveCount(0);
 
-      await pickWorkspaceAndProject(page);
-      await page.getByTestId("report-form-title").fill("F297 oversized attempt");
-      await page.getByTestId("report-form-submit").click();
-
-      const error = page.getByTestId("report-form-error");
-      await expect(error).toBeVisible({ timeout: 10_000 });
-      await expect(error).toHaveAttribute("data-error-kind", "too-large");
-      await expect(error).toContainText("10MB");
+      // No report form interaction is even possible from this state (the
+      // report form itself is unaffected/unreached), so there is no draft
+      // to persist for this attempt and no "report-form-error"/"-success"
+      // testid ever appears — distinct in KIND (a capture-error, not a
+      // report-form-error) from every other case in this file, which is
+      // this test's own remaining intent.
+      await expect(page.getByTestId("report-form-error")).toHaveCount(0);
       await expect(page.getByTestId("report-form-success")).toHaveCount(0);
-
-      // Text fields (title) still persisted to the draft even though the
-      // image itself couldn't fit — degrade gracefully, never silently
-      // drop everything.
-      const draft = (await readDraft(page)) as { title: string; imageDataUrl: string | null };
-      expect(draft.title).toBe("F297 oversized attempt");
     } finally {
       await page.close();
     }

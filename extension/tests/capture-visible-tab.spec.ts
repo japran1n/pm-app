@@ -1,13 +1,19 @@
-// Follow-up to F283/F284/F285 (superseding AS-539/AS-540's old two-step
-// "Capture screenshot" then "Select region…" flow — see
-// extension/src/capture/region-overlay.ts's header for the full design
-// rationale). The reporter now draws a selection live on the page FIRST
-// (like macOS's Cmd+Shift+4 "Capture Selected Portion"); a full-tab
-// capture + crop happens invisibly right after, and the reporter never
-// sees the intermediate uncropped tab. There is no more "capture whole
-// tab" fallback path at all.
+// Follow-up to F283/F284/F285/F301 — the reporter draws a selection live
+// on the page FIRST (like macOS's Cmd+Shift+4 "Capture Selected
+// Portion"); a full-tab capture + crop happens invisibly right after, and
+// the reporter never sees the intermediate uncropped tab.
 //
-// Harness split, same reasoning as the old file this replaces:
+// F301 rewrite (region-selection-mid-flow-focus-loss fix): a Chrome MV3
+// action popup closes the instant it loses focus, and clicking into the
+// page to draw a selection always does exactly that — so the entire
+// select -> capture -> crop orchestration was moved out of the popup's own
+// JS realm and into the background service worker (which persists
+// independently of the popup's open/closed state). See
+// `src/capture/pending-capture.ts`'s header for the full root-cause
+// writeup and `src/background/service-worker.ts`'s `runRegionCapture` for
+// the implementation this file now exercises.
+//
+// Harness split, same reasoning as the file this replaces:
 //   1. `chrome.scripting.executeScript` (region-overlay.ts) does NOT
 //      strictly require a real toolbar-icon activeTab gesture to succeed
 //      IF the target tab's origin is already covered by a declared
@@ -18,14 +24,16 @@
 //      real removal on both success and Escape — is proven fully for real
 //      against a real localhost:3000 page below.
 //   2. `chrome.tabs.captureVisibleTab` still strictly requires a real
-//      activeTab toolbar-icon click that no test harness can script
-//      (verified empirically against this exact build, see the old file's
-//      header — unchanged in this rewrite). It is stubbed with a real
-//      Playwright-screenshotted PNG of the exact same page the overlay
-//      selection was just drawn on, so the crop math downstream is
-//      exercised against real, correctly-proportioned image bytes — only
-//      the one ungrantable Chrome call is a stand-in.
-import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
+//      activeTab toolbar-icon click that no test harness can script. It is
+//      stubbed on the BACKGROUND SERVICE WORKER's own `chrome.tabs`
+//      object now (not the popup's — the real call now happens there) via
+//      Playwright's `Worker.evaluate`. The stub fetches a real,
+//      just-in-time Playwright screenshot of the content page from a
+//      small HTTP endpoint added to the fixture server below, so the crop
+//      math downstream is still exercised against real, correctly-
+//      proportioned image bytes — only the one ungrantable Chrome call is
+//      a stand-in, exactly as before.
+import { test, expect, chromium, type BrowserContext, type Page, type Worker } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 import http from "node:http";
@@ -50,9 +58,35 @@ const FIXTURE_HTML = `<!doctype html>
 </body>
 </html>`;
 
-function startFixtureServer(): Promise<http.Server> {
+/** Fixture server that also serves a `/__screenshot` route which takes a
+ * real, just-in-time Playwright screenshot of whatever page the test has
+ * pointed `getContentPage` at — this is how the background worker's
+ * stubbed `chrome.tabs.captureVisibleTab` gets real, correctly-scaled PNG
+ * bytes without needing a cross-context `exposeFunction` into the service
+ * worker (Playwright's page-level `exposeFunction`/`exposeBinding` isn't a
+ * documented, reliable bridge into a MV3 service worker's own JS realm). */
+function startFixtureServer(getContentPage: () => Page | null): Promise<http.Server> {
   return new Promise((resolve) => {
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
+      if (req.url === "/__screenshot") {
+        const page = getContentPage();
+        if (!page) {
+          res.writeHead(503);
+          res.end();
+          return;
+        }
+        page
+          .screenshot({ type: "png" })
+          .then((buf) => {
+            res.writeHead(200, { "Content-Type": "image/png" });
+            res.end(buf);
+          })
+          .catch(() => {
+            res.writeHead(500);
+            res.end();
+          });
+        return;
+      }
       res.writeHead(200, { "Content-Type": "text/html" });
       res.end(FIXTURE_HTML);
     });
@@ -62,7 +96,7 @@ function startFixtureServer(): Promise<http.Server> {
 
 async function launchExtension(
   options: { deviceScaleFactor?: number } = {},
-): Promise<{ context: BrowserContext; extensionId: string }> {
+): Promise<{ context: BrowserContext; extensionId: string; worker: Worker }> {
   const context = await chromium.launchPersistentContext("", {
     headless: false,
     deviceScaleFactor: options.deviceScaleFactor,
@@ -83,7 +117,7 @@ async function launchExtension(
     }
   }
 
-  return { context, extensionId };
+  return { context, extensionId, worker };
 }
 
 /** Decode a PNG data URL's width/height straight from the IHDR chunk. */
@@ -97,21 +131,22 @@ function decodePngDimensions(dataUrl: string): { width: number; height: number; 
   return { width, height, isPng };
 }
 
-/** The only thing this build cannot grant for real (see file header):
- * `chrome.tabs.captureVisibleTab` needs a real toolbar-icon gesture.
- * Stubbed with a real Playwright screenshot of `contentPage` taken at the
- * moment of the call, so the crop math after it runs against real,
- * correctly-scaled bytes. */
-async function stubCaptureVisibleTabWithRealScreenshot(popupPage: Page, contentPage: Page) {
-  await popupPage.exposeFunction("__takeRealScreenshot", async () => {
-    const buf = await contentPage.screenshot({ type: "png" });
-    return `data:image/png;base64,${buf.toString("base64")}`;
-  });
-  await popupPage.addInitScript(() => {
+/** Stubs `chrome.tabs.captureVisibleTab` on the BACKGROUND SERVICE
+ * WORKER's own `chrome.tabs` object — the real call now happens there
+ * (see file header) — with a real Playwright-screenshotted PNG fetched
+ * just-in-time from the fixture server's `/__screenshot` route. */
+async function stubCaptureVisibleTabOnWorker(worker: Worker) {
+  await worker.evaluate(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (chrome.tabs as any).captureVisibleTab = async () =>
+    (chrome.tabs as any).captureVisibleTab = async () => {
+      const res = await fetch("http://localhost:3000/__screenshot");
+      const buf = await res.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (const b of bytes) binary += String.fromCharCode(b);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__takeRealScreenshot();
+      return `data:image/png;base64,${(globalThis as any).btoa(binary)}`;
+    };
   });
 }
 
@@ -121,19 +156,120 @@ async function countOverlayNodes(page: Page): Promise<number> {
   );
 }
 
-test.describe("select-area-first capture (real drag-select overlay + real crop math)", () => {
-  test("real drag-select on the live page produces a correctly-dimensioned crop, and the overlay DOM is fully gone afterwards", async () => {
-    const server = await startFixtureServer();
-    const { context, extensionId } = await launchExtension();
+async function getPendingCaptureResult(worker: Worker): Promise<unknown> {
+  return worker.evaluate(async () => {
+    const stored = await chrome.storage.local.get("pmapp-pending-capture-result");
+    return stored["pmapp-pending-capture-result"] ?? null;
+  });
+}
+
+test.describe("select-area-first capture (real drag-select overlay + background-orchestrated capture)", () => {
+  test("CRITICAL: closing the popup mid-selection still completes the capture — background orchestration survives the popup's death", async () => {
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
 
     try {
       const contentPage = await context.newPage();
+      contentPageRef = contentPage;
       await contentPage.setViewportSize({ width: 400, height: 300 });
       await contentPage.goto("http://localhost:3000/");
       await contentPage.bringToFront();
 
+      await stubCaptureVisibleTabOnWorker(worker);
+
       const popupPage = await context.newPage();
-      await stubCaptureVisibleTabWithRealScreenshot(popupPage, contentPage);
+      await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await contentPage.bringToFront();
+
+      // Trigger the message send — NOT a synchronous awaited call from the
+      // popup page itself; `handleSelectRegion` just fires
+      // `chrome.runtime.sendMessage` and returns.
+      await popupPage.getByTestId("capture-button").click();
+
+      // Wait for the real, live-page overlay to actually appear — proof
+      // the background worker received the message and injected it —
+      // before doing the thing that reproduces the real bug: closing the
+      // popup while the user is mid-selection.
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+
+      // THE REAL BUG SCENARIO: close the popup page object BEFORE
+      // completing the drag-selection on the content page, genuinely
+      // reproducing "popup is gone while the background does its work" —
+      // not a synchronous stand-in for it.
+      await popupPage.close();
+
+      // Now complete the drag-selection on the content page, with no
+      // popup open anywhere.
+      await contentPage.mouse.move(150, 100);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(200, 140);
+      await contentPage.mouse.move(250, 180);
+      await contentPage.mouse.up();
+
+      // The overlay must remove all of its own DOM once the selection is
+      // finished, even with no popup around to observe it.
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
+
+      // The background must go on to capture + crop entirely on its own
+      // and land a real result in chrome.storage.local, with no popup
+      // involved at any point in this whole window.
+      await expect
+        .poll(async () => {
+          const pending = (await getPendingCaptureResult(worker)) as { ok?: boolean } | null;
+          return pending?.ok === true;
+        }, { timeout: 15_000 })
+        .toBe(true);
+
+      // Open a FRESH popup and confirm the cropped capture result is
+      // there, restored from storage, ready to annotate.
+      const freshPopup = await context.newPage();
+      await freshPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+
+      const preview = freshPopup.getByTestId("capture-preview");
+      await expect(preview).toBeVisible({ timeout: 10_000 });
+      await expect(freshPopup.getByTestId("capture-error")).toHaveCount(0);
+
+      const dataUrl = await preview.getAttribute("src");
+      expect(dataUrl).toBeTruthy();
+      const { width, height, isPng } = decodePngDimensions(dataUrl!);
+      expect(isPng).toBe(true);
+      expect(width).toBe(100);
+      expect(height).toBe(80);
+      await expect(freshPopup.getByTestId("capture-success")).toContainText("100 x 80");
+
+      // Re-reading (not re-clearing) confirms the key really was cleared
+      // by the fresh popup's own restore — a later, unrelated mount must
+      // not see this same result again.
+      const afterRestore = await getPendingCaptureResult(worker);
+      expect(afterRestore).toBeNull();
+
+      const anotherPopup = await context.newPage();
+      await anotherPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await expect(anotherPopup.getByTestId("capture-preview")).toHaveCount(0);
+      await expect(anotherPopup.getByTestId("capture-error")).toHaveCount(0);
+      await expect(anotherPopup.getByTestId("capture-button")).toHaveText("Select area to capture");
+    } finally {
+      await context.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test("real drag-select produces a correctly-dimensioned crop when the popup stays open the whole time (regression check)", async () => {
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
+
+    try {
+      const contentPage = await context.newPage();
+      contentPageRef = contentPage;
+      await contentPage.setViewportSize({ width: 400, height: 300 });
+      await contentPage.goto("http://localhost:3000/");
+      await contentPage.bringToFront();
+
+      await stubCaptureVisibleTabOnWorker(worker);
+
+      const popupPage = await context.newPage();
       await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
       await contentPage.bringToFront();
 
@@ -150,12 +286,11 @@ test.describe("select-area-first capture (real drag-select overlay + real crop m
       await contentPage.mouse.up();
 
       // The overlay must remove ALL of its own DOM before the crop is
-      // even taken — proven here as a real DOM query on the live page for
-      // zero leftover nodes, not just "the promise settled".
-      await expect
-        .poll(() => countOverlayNodes(contentPage), { timeout: 10_000 })
-        .toBe(0);
+      // even taken.
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
 
+      // The popup, still open, must reflect the background's result LIVE
+      // (via chrome.storage.onChanged), without a reload.
       await expect(popupPage.getByTestId("capture-error")).toHaveCount(0);
       const preview = popupPage.getByTestId("capture-preview");
       await expect(preview).toBeVisible({ timeout: 10_000 });
@@ -176,22 +311,24 @@ test.describe("select-area-first capture (real drag-select overlay + real crop m
     }
   });
 
-  test("a devicePixelRatio != 1 display still produces a correctly-dimensioned crop", async () => {
-    const server = await startFixtureServer();
-    const { context, extensionId } = await launchExtension({ deviceScaleFactor: 2 });
+  test("a devicePixelRatio != 1 display still produces a correctly-dimensioned crop, sourced from the page's own ratio", async () => {
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension({ deviceScaleFactor: 2 });
 
     try {
       const contentPage = await context.newPage();
+      contentPageRef = contentPage;
       await contentPage.setViewportSize({ width: 400, height: 300 });
       await contentPage.goto("http://localhost:3000/");
       await contentPage.bringToFront();
       expect(await contentPage.evaluate(() => window.devicePixelRatio)).toBe(2);
 
+      await stubCaptureVisibleTabOnWorker(worker);
+
       const popupPage = await context.newPage();
-      await stubCaptureVisibleTabWithRealScreenshot(popupPage, contentPage);
       await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
       await contentPage.bringToFront();
-      expect(await popupPage.evaluate(() => window.devicePixelRatio)).toBe(2);
 
       await popupPage.getByTestId("capture-button").click();
       await expect(popupPage.getByTestId("capture-selecting-hint")).toBeVisible({ timeout: 10_000 });
@@ -199,18 +336,17 @@ test.describe("select-area-first capture (real drag-select overlay + real crop m
       // Same CSS-pixel drag rect as the dpr=1 test (150,100 -> 250,180 =
       // 100 x 80 CSS px), but Playwright's real screenshot at
       // deviceScaleFactor 2 comes back at double the physical pixels — the
-      // crop must scale with it (200 x 160 physical px), proving the real
-      // `devicePixelRatio` math in Popup.tsx / crop.ts, not a hardcoded 1x
-      // assumption.
+      // crop must scale with it (200 x 160 physical px). This now proves
+      // the devicePixelRatio is correctly sourced from the CONTENT PAGE's
+      // own window (via the injected overlay function), not the popup's —
+      // see region-overlay.ts's `RegionOverlayResult` doc comment.
       await contentPage.mouse.move(150, 100);
       await contentPage.mouse.down();
       await contentPage.mouse.move(200, 140);
       await contentPage.mouse.move(250, 180);
       await contentPage.mouse.up();
 
-      await expect
-        .poll(() => countOverlayNodes(contentPage), { timeout: 10_000 })
-        .toBe(0);
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
 
       const preview = popupPage.getByTestId("capture-preview");
       await expect(preview).toBeVisible({ timeout: 10_000 });
@@ -225,38 +361,133 @@ test.describe("select-area-first capture (real drag-select overlay + real crop m
     }
   });
 
-  test("Escape cancels the selection, removes all overlay DOM, and captures nothing", async () => {
-    const server = await startFixtureServer();
-    const { context, extensionId } = await launchExtension();
+  test("Escape cancels the selection, even with the popup closed, and leaves no stale pending result to confuse a later attempt", async () => {
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
 
     try {
       const contentPage = await context.newPage();
+      contentPageRef = contentPage;
       await contentPage.setViewportSize({ width: 400, height: 300 });
       await contentPage.goto("http://localhost:3000/");
       await contentPage.bringToFront();
 
+      await stubCaptureVisibleTabOnWorker(worker);
+
       const popupPage = await context.newPage();
-      await stubCaptureVisibleTabWithRealScreenshot(popupPage, contentPage);
       await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
       await contentPage.bringToFront();
 
       await popupPage.getByTestId("capture-button").click();
-      await expect(popupPage.getByTestId("capture-selecting-hint")).toBeVisible({ timeout: 10_000 });
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+
+      // Close the popup before cancelling — the cancellation itself must
+      // resolve cleanly with no popup around to see it happen.
+      await popupPage.close();
 
       await contentPage.mouse.move(50, 50);
       await contentPage.mouse.down();
       await contentPage.mouse.move(120, 120);
-      // Cancel mid-drag, before mouseup.
       await contentPage.keyboard.press("Escape");
 
-      await expect
-        .poll(() => countOverlayNodes(contentPage), { timeout: 10_000 })
-        .toBe(0);
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
 
-      // Back to idle: no capture attempted, no error, no preview.
-      await expect(popupPage.getByTestId("capture-error")).toHaveCount(0);
-      await expect(popupPage.getByTestId("capture-preview")).toHaveCount(0);
-      await expect(popupPage.getByTestId("capture-button")).toHaveText("Select area to capture");
+      // The background must have resolved this as a stated cancellation,
+      // not silently vanished and not left an error behind.
+      await expect
+        .poll(() => getPendingCaptureResult(worker), { timeout: 10_000 })
+        .toEqual({ ok: false, reason: "cancelled" });
+
+      // A fresh popup opened now must resolve the cancellation cleanly:
+      // back to idle, no error, no stale preview, and the pending key
+      // itself must be cleared afterwards.
+      const freshPopup = await context.newPage();
+      await freshPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await expect(freshPopup.getByTestId("capture-error")).toHaveCount(0);
+      await expect(freshPopup.getByTestId("capture-preview")).toHaveCount(0);
+      await expect(freshPopup.getByTestId("capture-button")).toHaveText("Select area to capture");
+      await expect.poll(() => getPendingCaptureResult(worker), { timeout: 10_000 }).toBeNull();
+
+      // Confirm the cancelled attempt doesn't confuse a subsequent, real
+      // capture attempt from this same fresh popup.
+      await contentPage.bringToFront();
+      await freshPopup.getByTestId("capture-button").click();
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+      await contentPage.mouse.move(150, 100);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(250, 180);
+      await contentPage.mouse.up();
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
+      await expect(freshPopup.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await context.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test("a second 'Select area to capture' click (from a reopened popup) while a first attempt is still pending replaces it cleanly, not duplicated or corrupted", async () => {
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
+
+    try {
+      const contentPage = await context.newPage();
+      contentPageRef = contentPage;
+      await contentPage.setViewportSize({ width: 400, height: 300 });
+      await contentPage.goto("http://localhost:3000/");
+      await contentPage.bringToFront();
+
+      await stubCaptureVisibleTabOnWorker(worker);
+
+      const firstPopup = await context.newPage();
+      await firstPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await contentPage.bringToFront();
+
+      // First click: start a selection but never finish it, then close
+      // this popup — reproducing "reopened the popup and clicked it a
+      // second time before finishing the first" (the popup's own capture
+      // button is disabled while a selection is in flight in the SAME
+      // mount, so the realistic way a second attempt starts is a
+      // close/reopen, exactly like the real bug's own close-mid-selection
+      // scenario).
+      await firstPopup.getByTestId("capture-button").click();
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+      await contentPage.mouse.move(10, 10);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(40, 40);
+      // No mouseup yet — first selection is left mid-drag.
+      await firstPopup.close();
+
+      // Second attempt, from a freshly reopened popup: re-injects and must
+      // supersede the first, per region-overlay.ts's page-global cleanup
+      // handle (see that file's header comment).
+      await contentPage.bringToFront();
+      const secondPopup = await context.newPage();
+      await secondPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await contentPage.bringToFront();
+      await secondPopup.getByTestId("capture-button").click();
+      // Still exactly one overlay root live at a time.
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+
+      // Complete only the SECOND selection, over the yellow target box.
+      await contentPage.mouse.move(150, 100);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(250, 180);
+      await contentPage.mouse.up();
+
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
+
+      // The final, settled result must reflect the SECOND selection's
+      // dimensions (100 x 80), not the abandoned first one, and there must
+      // be exactly one final result, not a corrupted/overwritten mix.
+      const preview = secondPopup.getByTestId("capture-preview");
+      await expect(preview).toBeVisible({ timeout: 10_000 });
+      const dataUrl = await preview.getAttribute("src");
+      const { width, height, isPng } = decodePngDimensions(dataUrl!);
+      expect(isPng).toBe(true);
+      expect(width).toBe(100);
+      expect(height).toBe(80);
     } finally {
       await context.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -298,7 +529,9 @@ test.describe("select-area-first capture (real drag-select overlay + real crop m
       // `chrome.scripting.executeScript` can never inject into
       // (https://developer.chrome.com/docs/extensions/develop/concepts/activeTab
       // "restrictions", verified 2026-08-19) — a real, deterministic
-      // trigger for this failure path, not a synthetic stand-in.
+      // trigger for this failure path, not a synthetic stand-in. The
+      // popup stays open here, so it must reflect the background's stated
+      // failure LIVE, via chrome.storage.onChanged.
       const restrictedPage = await context.newPage();
       await restrictedPage.goto("chrome://extensions");
       await restrictedPage.bringToFront();
