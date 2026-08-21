@@ -171,7 +171,17 @@ export async function getProjectBoardTasks(
 export type ProjectListTaskFilters = {
   status?: TaskCardTask["status"];
   priority?: NonNullable<TaskCardTask["priority"]>;
-  assigneeId?: string;
+  // F162 (AS-291): a single id (the URL-driven `<ListFilters>` shape today)
+  // or an array of ids (for callers/tests that need to filter by several
+  // assignees at once) — either way this now matches ANY of a task's
+  // CURRENT assignees via `task_assignees`, not the deprecated single
+  // `tasks.assignee_id` column (F160's mirror rule means `assignee_id` only
+  // ever names ONE of several assignees, so filtering on it directly would
+  // silently miss tasks where the selected person is a second/third
+  // assignee). See `filterTaskIdsByAnyAssignee` below for the dedup
+  // strategy that keeps a task with several matching assignees to exactly
+  // one row.
+  assigneeId?: string | string[];
 };
 
 // F055 (AS-091): due-date sort, applied AFTER filtering — same query, just
@@ -181,6 +191,47 @@ export type ProjectListTaskFilters = {
 // false`) so an unset due date never outranks a real one in either sort
 // order — it's neither "earliest" nor "latest", it's unset.
 export type ProjectListTaskSort = "due_date_asc" | "due_date_desc";
+
+// F162 (AS-291): resolves an assignee filter (single id or several) to the
+// deduplicated set of task ids that have ANY of those ids as a CURRENT
+// assignee, via `task_assignees` (RLS-scoped the same way `tasks` itself
+// is — `task_assignees_select_visible`,
+// supabase/migrations/20260822020000_task_assignees_table.sql — so this
+// never leaks a task id from a workspace/project the caller can't see).
+//
+// Dedup strategy: a task with N matching assignees comes back as N rows
+// from this join-table query (one per matching `user_id`), but feeding
+// that straight into a `tasks.id IN (...)` filter is naturally idempotent
+// — `IN` doesn't care how many times an id is repeated in the list, and
+// the outer `tasks` query still returns exactly one row per task id
+// regardless. The `Set` here is just to keep the `.in()` argument itself
+// free of literal duplicates (smaller query, not a correctness
+// requirement) — the actual "no duplicate task rows" guarantee comes from
+// filtering by primary-key membership rather than joining `tasks` directly
+// to `task_assignees` (which WOULD fan out one row per matching assignee
+// if selected via an embedded/inner join instead of this two-step
+// id-list approach). Returns `null` when no `assigneeId` filter was given
+// (caller should skip the id-scoping entirely), or an array (possibly
+// empty, meaning "no task matches") otherwise.
+async function filterTaskIdsByAnyAssignee(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  assigneeId: string | string[] | undefined,
+): Promise<string[] | null> {
+  if (!assigneeId) return null;
+  const ids = Array.isArray(assigneeId) ? assigneeId : [assigneeId];
+  if (ids.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .in("user_id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  return [...new Set((data ?? []).map((row) => row.task_id))];
+}
 
 export async function getProjectListTasks(
   projectId: string,
@@ -205,8 +256,15 @@ export async function getProjectListTasks(
   if (filters?.priority) {
     query = query.eq("priority", filters.priority);
   }
-  if (filters?.assigneeId) {
-    query = query.eq("assignee_id", filters.assigneeId);
+  // F162 (AS-291): matches ANY of a task's current assignees via
+  // `task_assignees`, not the deprecated single `assignee_id` column — see
+  // `filterTaskIdsByAnyAssignee`'s comment above for the dedup rationale.
+  const assigneeTaskIds = await filterTaskIdsByAnyAssignee(
+    supabase,
+    filters?.assigneeId,
+  );
+  if (assigneeTaskIds !== null) {
+    query = query.in("id", assigneeTaskIds);
   }
 
   query =
@@ -291,8 +349,16 @@ export async function getWorkspaceListTasks(
   if (filters?.priority) {
     query = query.eq("priority", filters.priority);
   }
-  if (filters?.assigneeId) {
-    query = query.eq("assignee_id", filters.assigneeId);
+  // F162 (AS-291): see getProjectListTasks above — same
+  // `filterTaskIdsByAnyAssignee` helper, same dedup rationale, just
+  // workspace- instead of project-scoped via the surrounding query's own
+  // `projects.workspace_id` filter.
+  const assigneeTaskIds = await filterTaskIdsByAnyAssignee(
+    supabase,
+    filters?.assigneeId,
+  );
+  if (assigneeTaskIds !== null) {
+    query = query.in("id", assigneeTaskIds);
   }
 
   query = query.order("created_at", { ascending: true });

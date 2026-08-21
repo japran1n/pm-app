@@ -128,6 +128,18 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
       .single();
     if (taskAErr || !taskA) throw new Error(`Failed to seed task A: ${taskAErr?.message}`);
     createdTaskIds.push(taskA.id);
+    // F162 (AS-291): the assignee filter now matches via `task_assignees`,
+    // not the legacy `assignee_id` column directly — mirror the real app's
+    // write path (setTaskAssigneesCore always keeps both in sync, per
+    // F160) here in the fixture too, so AS-088 below exercises the same
+    // state a real assignment produces.
+    const { error: taskAAssigneeErr } = await adminClient
+      .from("task_assignees")
+      .insert({ task_id: taskA.id, user_id: memberUserId });
+    if (taskAAssigneeErr)
+      throw new Error(
+        `Failed to seed task A assignee: ${taskAAssigneeErr.message}`,
+      );
 
     // Task B: todo / low / assigned to otherMemberUserId — same status as A,
     // different priority and assignee, so it proves narrowing by more than
@@ -146,6 +158,13 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
       .single();
     if (taskBErr || !taskB) throw new Error(`Failed to seed task B: ${taskBErr?.message}`);
     createdTaskIds.push(taskB.id);
+    const { error: taskBAssigneeErr } = await adminClient
+      .from("task_assignees")
+      .insert({ task_id: taskB.id, user_id: otherMemberUserId });
+    if (taskBAssigneeErr)
+      throw new Error(
+        `Failed to seed task B assignee: ${taskBAssigneeErr.message}`,
+      );
 
     // Task C: in_progress / high / unassigned — different status from A/B.
     const { data: taskC, error: taskCErr } = await adminClient
@@ -207,6 +226,80 @@ describe.skipIf(!haveAdminCreds)("getProjectListTasks filters (F054)", () => {
 
     expect(tasks).toHaveLength(1);
     expect(tasks[0].title).toBe("Task B");
+  });
+
+  it("AS-291: an assignee filter matches ANY of a task's several assignees, and selecting several assignees returns each matching task exactly once (no duplicate rows)", async () => {
+    const { getProjectListTasks } = await import("@/lib/queries/tasks");
+
+    // Task A already has memberUserId as an assignee (seeded above). Add
+    // otherMemberUserId as a SECOND assignee on the same task, via
+    // task_assignees directly (mirrors what setTaskAssigneesCore/F160
+    // would write for a multi-assignee task) — Task A now has BOTH
+    // memberUserId and otherMemberUserId as current assignees.
+    const { error: secondAssigneeErr } = await adminClient
+      .from("task_assignees")
+      .insert({ task_id: createdTaskIds[0], user_id: otherMemberUserId });
+    if (secondAssigneeErr) {
+      throw new Error(
+        `Failed to seed Task A's second assignee: ${secondAssigneeErr.message}`,
+      );
+    }
+
+    try {
+      // Filtering by BOTH memberUserId and otherMemberUserId together: Task
+      // A matches on two separate assignee rows (would fan out to 2 rows if
+      // the join weren't deduplicated) and Task B matches on one
+      // (otherMemberUserId). The critical assertion is that Task A appears
+      // EXACTLY ONCE despite matching twice.
+      const tasks = await getProjectListTasks(projectId, {
+        assigneeId: [memberUserId, otherMemberUserId],
+      });
+
+      const taskATitleCount = tasks.filter((t) => t.title === "Task A").length;
+      expect(taskATitleCount).toBe(1);
+
+      const titles = tasks.map((t) => t.title).sort();
+      expect(titles).toEqual(["Task A", "Task B"]);
+
+      // Task A's returned row itself reports both current assignees (F161's
+      // assigneeIds field), proving this is a genuine multi-assignee match,
+      // not an accidental single-row coincidence.
+      const taskARow = tasks.find((t) => t.title === "Task A");
+      expect(taskARow?.assigneeIds?.slice().sort()).toEqual(
+        [memberUserId, otherMemberUserId].sort(),
+      );
+    } finally {
+      await adminClient
+        .from("task_assignees")
+        .delete()
+        .eq("task_id", createdTaskIds[0])
+        .eq("user_id", otherMemberUserId);
+    }
+  });
+
+  it("AS-291 negative: an assignee filter for someone who is not a current assignee of any task returns an empty list", async () => {
+    const { getProjectListTasks } = await import("@/lib/queries/tasks");
+
+    const { data: unrelatedAuth, error: unrelatedAuthErr } =
+      await adminClient.auth.admin.createUser({
+        email: `f162-unrelated-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
+        password: "Test-password-1!",
+        email_confirm: true,
+      });
+    if (unrelatedAuthErr || !unrelatedAuth.user) {
+      throw new Error(
+        `Failed to create unrelated test user: ${unrelatedAuthErr?.message}`,
+      );
+    }
+
+    try {
+      const tasks = await getProjectListTasks(projectId, {
+        assigneeId: unrelatedAuth.user.id,
+      });
+      expect(tasks).toHaveLength(0);
+    } finally {
+      await adminClient.auth.admin.deleteUser(unrelatedAuth.user.id);
+    }
   });
 
   it("AS-089: combining status + priority filters applies AND semantics", async () => {

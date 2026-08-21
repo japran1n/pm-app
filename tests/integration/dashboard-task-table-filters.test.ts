@@ -216,6 +216,16 @@ describe.skipIf(!haveAdminCreds)(
       if (taskAErr || !taskA)
         throw new Error(`Failed to seed task A: ${taskAErr?.message}`);
       createdTaskIds.push(taskA.id);
+      // F162 (AS-291): assignee filtering now goes through `task_assignees`
+      // — mirror the real app's write path (setTaskAssigneesCore always
+      // keeps both in sync, per F160) in this fixture too.
+      const { error: taskAAssigneeErr } = await adminClient
+        .from("task_assignees")
+        .insert({ task_id: taskA.id, user_id: memberUserId });
+      if (taskAAssigneeErr)
+        throw new Error(
+          `Failed to seed task A assignee: ${taskAAssigneeErr.message}`,
+        );
 
       // Task B: project B / todo / low / assigned to otherMemberUserId —
       // different project than A, proving the query spans projects.
@@ -234,6 +244,13 @@ describe.skipIf(!haveAdminCreds)(
       if (taskBErr || !taskB)
         throw new Error(`Failed to seed task B: ${taskBErr?.message}`);
       createdTaskIds.push(taskB.id);
+      const { error: taskBAssigneeErr } = await adminClient
+        .from("task_assignees")
+        .insert({ task_id: taskB.id, user_id: otherMemberUserId });
+      if (taskBAssigneeErr)
+        throw new Error(
+          `Failed to seed task B assignee: ${taskBAssigneeErr.message}`,
+        );
 
       // Task C: project A / in_progress / high / unassigned.
       const { data: taskC, error: taskCErr } = await adminClient
@@ -354,6 +371,41 @@ describe.skipIf(!haveAdminCreds)(
 
       expect(tasks).toHaveLength(1);
       expect(tasks[0].title).toBe("Task B");
+    });
+
+    it("AS-291: an assignee filter matches ANY of a task's several assignees across projects, and selecting several assignees returns each matching task exactly once (no duplicate rows)", async () => {
+      const { getWorkspaceListTasks } = await import("@/lib/queries/tasks");
+
+      // Task A (project A) already has memberUserId; add otherMemberUserId
+      // as a second assignee — it now matches BOTH filter ids.
+      const { error: secondAssigneeErr } = await adminClient
+        .from("task_assignees")
+        .insert({ task_id: createdTaskIds[0], user_id: otherMemberUserId });
+      if (secondAssigneeErr) {
+        throw new Error(
+          `Failed to seed Task A's second assignee: ${secondAssigneeErr.message}`,
+        );
+      }
+
+      try {
+        const tasks = await getWorkspaceListTasks(workspaceId, {
+          assigneeId: [memberUserId, otherMemberUserId],
+        });
+
+        const taskATitleCount = tasks.filter(
+          (t) => t.title === "Task A",
+        ).length;
+        expect(taskATitleCount).toBe(1);
+
+        const titles = tasks.map((t) => t.title).sort();
+        expect(titles).toEqual(["Task A", "Task B"]);
+      } finally {
+        await adminClient
+          .from("task_assignees")
+          .delete()
+          .eq("task_id", createdTaskIds[0])
+          .eq("user_id", otherMemberUserId);
+      }
     });
 
     it("AS-134: combining status + priority filters applies AND semantics, same as the project list view", async () => {
