@@ -13,6 +13,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
+import { canWrite } from "@/lib/auth/permissions";
 
 // Storage bucket + path convention fixed by F064
 // (supabase/migrations/20260818050100_create_attachments.sql): bucket
@@ -182,6 +183,16 @@ export async function uploadAttachmentForUser(
     return {
       ok: false,
       error: "You don't have permission to upload files to this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to upload files.",
     };
   }
 
@@ -513,6 +524,15 @@ export async function deleteAttachment(
       return {
         ok: false,
         error: "You don't have permission to delete this attachment.",
+      };
+    }
+    // F128 (AS-216, AS-217): even the uploader must currently be a
+    // writable role — same "demoted since uploading" defense-in-depth as
+    // deleteComment's author branch.
+    if (!canWrite({ role: membership.role })) {
+      return {
+        ok: false,
+        error: "Viewers don't have permission to delete attachments.",
       };
     }
   }

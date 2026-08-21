@@ -10,9 +10,17 @@
 // enforcement layer it exists to back up.
 
 import type { createAdminClient } from "@/lib/supabase/admin";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
 
+// F128: widened from the original "owner" | "admin" | "member" to the full
+// `WorkspaceRole` (adds "viewer" | "guest", F126) — this check only proves
+// *active membership*, not write access. Callers that need to gate a
+// mutation must separately re-check the returned `role` against
+// lib/auth/permissions.ts's predicates (e.g. `canWrite`); this function
+// deliberately does not filter role itself so read-only actions (viewers
+// listing tasks, etc.) can keep using it unchanged.
 export type MembershipCheckResult =
-  | { ok: true; role: "owner" | "admin" | "member" }
+  | { ok: true; role: WorkspaceRole }
   | { ok: false };
 
 // Active membership of any role.
@@ -33,7 +41,7 @@ export async function requireActiveMembership(
     return { ok: false };
   }
 
-  return { ok: true, role: data.role as "owner" | "admin" | "member" };
+  return { ok: true, role: data.role as WorkspaceRole };
 }
 
 // Active membership restricted to owner/admin roles.

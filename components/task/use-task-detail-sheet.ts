@@ -23,13 +23,17 @@ import { getTaskDetail } from "@/lib/actions/tasks";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
 
 type TaskDetailState = {
   task: TaskDetailSheetTask;
   comments: TaskComment[];
   attachments: TaskAttachment[];
   currentUserId: string;
-  currentUserRole: "owner" | "admin" | "member";
+  // F128 (AS-216): widened to the full `WorkspaceRole` (adds "viewer" |
+  // "guest") so the sheet can disable write controls for a read-only
+  // caller — see comment-list.tsx/attachment-list.tsx/time-tracking.tsx.
+  currentUserRole: WorkspaceRole;
 };
 
 export function useTaskDetailSheet() {

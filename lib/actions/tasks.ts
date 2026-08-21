@@ -18,6 +18,7 @@ import {
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
@@ -201,6 +202,18 @@ export async function createTaskForUser(
     return {
       ok: false,
       error: "You don't have permission to create a task in this project.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/
+  // permissions.ts) — the server independently rejects this call even if a
+  // viewer somehow reaches it directly, regardless of whether the UI hid
+  // the create-task control.
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to create tasks.",
     };
   }
 
@@ -451,6 +464,16 @@ export async function assignTask(
     };
   }
 
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to assign tasks.",
+    };
+  }
+
   // AS-052: a task cannot be assigned to a user who is not a member of the
   // task's workspace — verified server-side via a real DB query against
   // the *task's own* workspace, never trusted from client input, and never
@@ -611,6 +634,19 @@ export async function editTask(
     return {
       ok: false,
       error: "You don't have permission to edit this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223). Uses
+  // `canEditTask` (identical viewer/guest gating to `canWrite` here, since
+  // editTask has no ownership restriction — AS-061) so this stays wired to
+  // the same predicate the task-detail UI's edit controls already use.
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit tasks.",
     };
   }
 
@@ -804,6 +840,21 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
     };
   }
 
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223). Deliberately
+  // `canWrite`, not `canDeleteTask` — this action's existing model (AS-055)
+  // is "any active role may delete, no per-task ownership check", and
+  // `canDeleteTask` additionally scopes plain members to their own
+  // creations, which would regress AS-055 for members. Only the new
+  // viewer exclusion is being added here.
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to delete tasks.",
+    };
+  }
+
   // AS-267: single atomic RPC call — soft-deletes this task AND cascades
   // to any live children in one transaction (see doc comment above).
   const { data: cascadeRows, error: deleteError } = await admin.rpc(
@@ -945,6 +996,16 @@ export async function promoteSubtask(
     };
   }
 
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to promote tasks.",
+    };
+  }
+
   // Zero-state (Clarified implementation Q6): already top-level — no-op,
   // ok without writing.
   if (taskRow.parent_task_id === null) {
@@ -1082,6 +1143,16 @@ export async function updateTaskTags(
     };
   }
 
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to update tags.",
+    };
+  }
+
   // AS-066: `parsed.data.tags` may legitimately be `[]` here — that is
   // written as-is, never coerced to null.
   const { data: updated, error: updateError } = await admin
@@ -1215,6 +1286,16 @@ export async function moveTaskStatus(
     return {
       ok: false,
       error: "You don't have permission to move this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to move tasks.",
     };
   }
 
@@ -1372,6 +1453,16 @@ export async function reorderTask(
     };
   }
 
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to reorder tasks.",
+    };
+  }
+
   // AS-070/AS-078: position only — status is deliberately absent from this
   // payload. AS-080: this UPDATE only ever sets `position`, and the
   // tasks_set_updated_at trigger's WHEN clause (see migration referenced
@@ -1521,6 +1612,16 @@ export async function moveAndReorderTask(
     return {
       ok: false,
       error: "You don't have permission to move this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to move tasks.",
     };
   }
 
@@ -1764,7 +1865,10 @@ export type GetTaskDetailResult =
         comments: TaskComment[];
         attachments: TaskAttachment[];
         currentUserId: string;
-        currentUserRole: "owner" | "admin" | "member";
+        // F128 (AS-216): widened from "owner" | "admin" | "member" to the
+        // full WorkspaceRole (adds "viewer" | "guest") — see
+        // lib/auth/require-membership.ts's matching widening.
+        currentUserRole: WorkspaceRole;
       };
     }
   | { ok: false; error: string };

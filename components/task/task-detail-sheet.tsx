@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 // re-concatenating projectKey/number locally.
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
 import { TagsEditor } from "@/components/task/tags-editor";
 import {
   SubtaskList,
@@ -260,7 +261,10 @@ export function TaskDetailSheet({
   /** F061: the viewer's active role in this task's workspace, used by
    * CommentList to show a delete affordance on *any* comment for
    * admin/owner (AS-100). */
-  currentUserRole?: "owner" | "admin" | "member";
+  /** F128 (AS-216): widened to the full `WorkspaceRole` so the write
+   * controls this Sheet composes (CommentList/AttachmentList/TimeTracking)
+   * can be disabled for a read-only caller. */
+  currentUserRole?: WorkspaceRole;
   /** F124/F275 (AS-207): the viewer's IANA timezone, resolved once per
    * request by the caller's Server Component page (board/page.tsx,
    * list/page.tsx — via lib/queries/profile.ts's getCurrentUserTimezone)

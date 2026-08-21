@@ -13,6 +13,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
+import { canWrite } from "@/lib/auth/permissions";
 
 export type CreateProjectResult =
   | {
@@ -85,6 +86,16 @@ export async function createProject(
     return {
       ok: false,
       error: "You don't have permission to create a project in this workspace.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to create projects.",
     };
   }
 
@@ -218,6 +229,16 @@ export async function editProject(
     return {
       ok: false,
       error: "You don't have permission to edit this project.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit projects.",
     };
   }
 

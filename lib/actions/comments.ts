@@ -9,6 +9,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
+import { canWrite } from "@/lib/auth/permissions";
 
 export type AddCommentResult =
   | {
@@ -109,6 +110,16 @@ export async function addComment(
     return {
       ok: false,
       error: "You don't have permission to comment on this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to comment.",
     };
   }
 
@@ -281,6 +292,20 @@ export async function deleteComment(
       return {
         ok: false,
         error: "You don't have permission to delete this comment.",
+      };
+    }
+    // F128 (AS-216, AS-217): even the comment's own author must currently
+    // be a writable role — a member later demoted to viewer loses delete
+    // rights on their own old comments (defense in depth, shouldn't
+    // practically occur since a viewer can no longer author new ones, but
+    // a pre-existing comment from before the role change is still
+    // possible). Deliberately `canWrite` (viewer-only), not a viewer+guest
+    // exclusion — a guest may still delete their own comment per AS-223's
+    // guest-can-comment allowance.
+    if (!canWrite({ role: membership.role })) {
+      return {
+        ok: false,
+        error: "Viewers don't have permission to delete comments.",
       };
     }
   }

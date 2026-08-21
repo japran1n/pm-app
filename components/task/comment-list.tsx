@@ -47,6 +47,7 @@ import { Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { addComment, deleteComment } from "@/lib/actions/comments";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,8 +131,12 @@ export function CommentList({
    * rejected server-side" — hiding the button is the UX half; the Server
    * Action call is the enforcement half). */
   currentUserId?: string;
-  /** F061 (AS-100): the viewer's active role in this task's workspace. */
-  currentUserRole?: "owner" | "admin" | "member";
+  /** F061 (AS-100): the viewer's active role in this task's workspace.
+   * F128 (AS-216): widened to the full `WorkspaceRole` (includes "viewer"
+   * | "guest") so the add-comment form can be disabled for a read-only
+   * caller — the server (`addComment`) independently rejects the call
+   * regardless, this only controls UI affordance. */
+  currentUserRole?: WorkspaceRole;
 }) {
   const [localComments, setLocalComments] = useState(comments);
   // Tracks which task's comments are currently loaded into local state, so
@@ -159,6 +164,11 @@ export function CommentList({
 
   const isAdminOrOwner =
     currentUserRole === "owner" || currentUserRole === "admin";
+  // F128 (AS-216): viewers/guests never see a usable add-comment form.
+  // Undefined currentUserRole (caller hasn't wired it through yet) is
+  // treated as writable, same permissive default the rest of this file
+  // already applies to unset optional props.
+  const canPost = currentUserRole ? canWrite({ role: currentUserRole }) : true;
 
   function canDelete(comment: TaskComment): boolean {
     if (!currentUserId) return false;
@@ -287,11 +297,16 @@ export function CommentList({
         <Input
           id={`comment-draft-${taskId}`}
           value={draft}
-          disabled={isSubmitting}
-          placeholder="Add a comment…"
+          disabled={isSubmitting || !canPost}
+          placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
+          title={canPost ? undefined : "Viewers can't comment"}
           onChange={(changeEvent) => setDraft(changeEvent.target.value)}
         />
-        <Button type="submit" disabled={isSubmitting || !draft.trim()}>
+        <Button
+          type="submit"
+          disabled={isSubmitting || !draft.trim() || !canPost}
+          title={canPost ? undefined : "Viewers can't comment"}
+        >
           {isSubmitting ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : (

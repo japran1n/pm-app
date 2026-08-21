@@ -57,6 +57,7 @@ import {
   stopTimer,
 } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time/format-duration";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -160,7 +161,11 @@ export function TimeTracking({
    * when this equals an entry's userId; delete is shown for that OR
    * admin/owner. Undefined hides both affordances entirely. */
   currentUserId?: string;
-  currentUserRole?: "owner" | "admin" | "member";
+  /** F128 (AS-216): widened to the full `WorkspaceRole` so the
+   * start-timer/log-time controls can be disabled for a read-only caller —
+   * the server (`startTimer`/`stopTimer`/`logTimeEntry`) independently
+   * rejects the call regardless. */
+  currentUserRole?: WorkspaceRole;
   /** Notifies the caller when this component starts/stops a timer, so a
    * parent tracking active-timer state elsewhere (e.g. a global "timer
    * running" indicator) can stay in sync without a full re-fetch. */
@@ -303,13 +308,19 @@ export function TimeTracking({
     return currentUserRole === "owner" || currentUserRole === "admin";
   }
 
+  // F128 (AS-216): viewers/guests never see usable start-timer/log-time/
+  // edit/delete controls.
+  const canTrackTime = currentUserRole
+    ? canWrite({ role: currentUserRole })
+    : true;
+
   function canEdit(entry: TimeEntry): boolean {
-    if (!currentUserId) return false;
+    if (!currentUserId || !canTrackTime) return false;
     return entry.userId === currentUserId;
   }
 
   function canDelete(entry: TimeEntry): boolean {
-    if (!currentUserId) return false;
+    if (!currentUserId || !canTrackTime) return false;
     return entry.userId === currentUserId || isAdminOrOwner();
   }
 
@@ -398,7 +409,8 @@ export function TimeTracking({
               type="button"
               variant="outline"
               size="sm"
-              disabled={isStartingOrStopping}
+              disabled={isStartingOrStopping || !canTrackTime}
+              title={canTrackTime ? undefined : "Viewers can't track time"}
               onClick={handleStop}
             >
               {isStartingOrStopping ? (
@@ -424,7 +436,8 @@ export function TimeTracking({
               variant="link"
               size="sm"
               className="h-auto p-0"
-              disabled={isStartingOrStopping}
+              disabled={isStartingOrStopping || !canTrackTime}
+              title={canTrackTime ? undefined : "Viewers can't track time"}
               onClick={handleStartOrSwitch}
             >
               Switch here
@@ -435,7 +448,8 @@ export function TimeTracking({
             type="button"
             variant="outline"
             size="sm"
-            disabled={isStartingOrStopping}
+            disabled={isStartingOrStopping || !canTrackTime}
+            title={canTrackTime ? undefined : "Viewers can't track time"}
             onClick={handleStartOrSwitch}
           >
             {isStartingOrStopping ? (
@@ -466,7 +480,7 @@ export function TimeTracking({
               step={1}
               className="w-24"
               value={minutesDraft}
-              disabled={isLogging}
+              disabled={isLogging || !canTrackTime}
               onChange={(event) => setMinutesDraft(event.target.value)}
             />
           </div>
@@ -479,7 +493,7 @@ export function TimeTracking({
               type="date"
               className="w-40"
               value={dateDraft}
-              disabled={isLogging}
+              disabled={isLogging || !canTrackTime}
               onChange={(event) => setDateDraft(event.target.value)}
             />
           </div>
@@ -489,7 +503,7 @@ export function TimeTracking({
               type="checkbox"
               className="size-4 rounded border-input"
               checked={billableDraft}
-              disabled={isLogging}
+              disabled={isLogging || !canTrackTime}
               onChange={(event) => setBillableDraft(event.target.checked)}
             />
             <Label htmlFor={`time-billable-${taskId}`} className="text-xs">
@@ -504,7 +518,7 @@ export function TimeTracking({
           <Input
             id={`time-note-${taskId}`}
             value={noteDraft}
-            disabled={isLogging}
+            disabled={isLogging || !canTrackTime}
             onChange={(event) => setNoteDraft(event.target.value)}
           />
         </div>

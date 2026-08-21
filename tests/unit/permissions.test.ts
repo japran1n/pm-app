@@ -16,6 +16,7 @@ import {
   canManageProject,
   canPurge,
   canViewAudit,
+  canWrite,
   isResourceOwner,
   type PermissionContext,
 } from "@/lib/auth/permissions";
@@ -198,6 +199,34 @@ describe("canDeleteTask", () => {
   });
   it("AS-230: member with no resourceOwnerId/callerId supplied is treated as not the owner", () => {
     expect(canDeleteTask({ role: "member" })).toBe(false);
+  });
+});
+
+// --- canWrite (F128: AS-216, AS-217) ---------------------------------------
+
+describe("canWrite", () => {
+  it("test_AS_216_owner_can_write", () => {
+    expect(canWrite({ role: "owner" })).toBe(true);
+  });
+  it("test_AS_216_admin_can_write", () => {
+    expect(canWrite({ role: "admin" })).toBe(true);
+  });
+  it("test_AS_216_member_can_write", () => {
+    expect(canWrite({ role: "member" })).toBe(true);
+  });
+  it("test_AS_216_viewer_cannot_write", () => {
+    expect(canWrite({ role: "viewer" })).toBe(false);
+  });
+  it("AS-223: guest is NOT excluded by this generic gate — guest write access is project-scoped (F134) and governed by its own rules, not this predicate", () => {
+    expect(canWrite({ role: "guest" })).toBe(true);
+  });
+  it("test_AS_217_viewer_cannot_write_even_as_resource_owner", () => {
+    // A viewer's own-resource ownership never grants write access — the
+    // read-only role always wins, matching canEditTask/canDeleteTask's
+    // "role overrides ownership" convention for viewer/guest.
+    expect(
+      canWrite({ role: "viewer", resourceOwnerId: CALLER, callerId: CALLER }),
+    ).toBe(false);
   });
 });
 

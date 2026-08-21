@@ -12,6 +12,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
+import { canWrite } from "@/lib/auth/permissions";
 
 export type LogTimeEntryResult =
   | {
@@ -130,6 +131,16 @@ export async function logTimeEntry(
     return {
       ok: false,
       error: "You don't have permission to log time on this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to log time.",
     };
   }
 
@@ -275,6 +286,16 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
     return {
       ok: false,
       error: "You don't have permission to start a timer on this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
+  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
+  // guest write access is separately scoped by F134's AS-223).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to track time.",
     };
   }
 
@@ -611,6 +632,15 @@ export async function deleteTimeEntry(
       return {
         ok: false,
         error: "You don't have permission to delete this time entry.",
+      };
+    }
+    // F128 (AS-216, AS-217): even the author must currently be a writable
+    // role — same "demoted since logging" defense-in-depth as
+    // deleteComment's/deleteAttachment's author branches.
+    if (!canWrite({ role: membership.role })) {
+      return {
+        ok: false,
+        error: "Viewers don't have permission to delete time entries.",
       };
     }
   }

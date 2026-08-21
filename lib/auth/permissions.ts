@@ -73,6 +73,18 @@ export function canManageColumns(ctx: PermissionContext): boolean {
   return ctx.projectRole === "lead";
 }
 
+// Viewing the workspace members list and workspace settings pages (F134,
+// AS-222). Every non-guest active member could already reach these pages
+// under the pre-F134 behaviour (no page-level gate existed at all — see
+// this predicate's call site); this only carves out "guest", which per
+// AS-222 must be denied, not merely have controls hidden. Deliberately
+// broader than `canManageMembers`/`canViewAudit` (which are the
+// owner/admin-only *mutation*/audit gates) — a plain member can still see
+// who else is in the workspace, just not invite/remove/change roles.
+export function canViewMembersList(ctx: PermissionContext): boolean {
+  return ctx.role !== "guest";
+}
+
 // Viewing the workspace audit log. Owner/admin only — this is
 // deliberately narrower than `canManageMembers` because audit visibility
 // is a read of potentially sensitive history, not a management action.
@@ -84,6 +96,33 @@ export function canViewAudit(ctx: PermissionContext): boolean {
 // — irreversible, workspace-wide destructive action.
 export function canPurge(ctx: PermissionContext): boolean {
   return ctx.role === "owner";
+}
+
+// --- Generic write gate ----------------------------------------------------
+
+// F128 (AS-216, AS-217): the single generic "is this caller allowed to
+// write at all" predicate. Viewer is a read-only role by definition — no
+// mutating Server Action (create/assign/move/reorder/tag/comment/attach/
+// log-time/etc.) may proceed for a viewer, regardless of resource
+// ownership. Every existing mutating Server Action re-checks this (or one
+// of the more specific predicates below, where a specific predicate
+// already encodes the same viewer-excluded rule plus extra nuance, e.g.
+// `canDeleteTask`'s ownership scoping) at the top, so a direct call to the
+// action (bypassing the UI entirely) is rejected server-side, not just
+// hidden client-side.
+//
+// Deliberately does NOT exclude "guest" here: F128's scope is the viewer
+// role specifically (see this feature's spec title). Guest write access is
+// project-scoped and already governed by its own assertions (AS-223: "a
+// guest can comment on and be assigned tasks inside a project they were
+// added to") established by F134 — folding a blanket guest exclusion into
+// this generic predicate would regress AS-223. A future feature that wants
+// finer-grained guest write scoping (e.g. "guest can comment but not
+// create tasks") should add a guest-aware predicate rather than widen this
+// one, so this generic gate's contract stays exactly "viewer is
+// read-only, every other role's existing write rules are unchanged."
+export function canWrite(ctx: PermissionContext): boolean {
+  return ctx.role !== "viewer";
 }
 
 // --- Task-level predicates -------------------------------------------------

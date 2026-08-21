@@ -47,6 +47,7 @@ import {
   uploadAttachment,
 } from "@/lib/actions/attachments";
 import { appendAttachment } from "@/lib/tasks/append-attachment";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -185,8 +186,11 @@ export function AttachmentList({
    * never the actual guarantee (same convention as CommentList's
    * `currentUserId`). */
   currentUserId?: string;
-  /** F067 (AS-110): the viewer's active role in this task's workspace. */
-  currentUserRole?: "owner" | "admin" | "member";
+  /** F067 (AS-110): the viewer's active role in this task's workspace.
+   * F128 (AS-216): widened to the full `WorkspaceRole` so the upload
+   * control can be disabled for a read-only caller — the server
+   * (`uploadAttachment`) independently rejects the call regardless. */
+  currentUserRole?: WorkspaceRole;
 }) {
   const [localAttachments, setLocalAttachments] = useState(attachments);
   // Tracks which task's attachments are currently loaded into local state,
@@ -200,9 +204,14 @@ export function AttachmentList({
 
   const isAdminOrOwner =
     currentUserRole === "owner" || currentUserRole === "admin";
+  // F128 (AS-216): viewers/guests never see a usable upload control.
+  const canUpload = currentUserRole
+    ? canWrite({ role: currentUserRole })
+    : true;
 
   function canDelete(attachment: TaskAttachment): boolean {
     if (!currentUserId) return false;
+    if (currentUserRole && !canWrite({ role: currentUserRole })) return false;
     return attachment.uploadedBy === currentUserId || isAdminOrOwner;
   }
 
@@ -370,7 +379,8 @@ export function AttachmentList({
         <Input
           id={`attachment-upload-${taskId}`}
           type="file"
-          disabled={isUploading}
+          disabled={isUploading || !canUpload}
+          title={canUpload ? undefined : "Viewers can't upload files"}
           onChange={handleFileChange}
         />
         {isUploading && (
