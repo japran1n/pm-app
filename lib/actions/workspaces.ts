@@ -193,8 +193,13 @@ async function findAuthUserByEmail(
 export async function inviteMember(
   workspaceId: string,
   email: string,
+  role?: "admin" | "member" | "viewer",
 ): Promise<InviteMemberResult> {
-  const parsed = inviteMemberSchema.safeParse({ workspaceId, email });
+  const parsed = inviteMemberSchema.safeParse({
+    workspaceId,
+    email,
+    ...(role !== undefined ? { role } : {}),
+  });
 
   if (!parsed.success) {
     return {
@@ -316,11 +321,16 @@ export async function inviteMember(
     }
   }
 
+  // AS-238: the row is created with the role the inviter chose (default
+  // "member" when the caller doesn't specify one), and that same `role`
+  // column is what the accept path (activateInvitedMemberships) grants
+  // unchanged when it later flips status/user_id — see the F126 migration
+  // comment for why no separate invited_role column exists.
   const { error: insertError } = await admin.from("workspace_members").insert({
     workspace_id: parsed.data.workspaceId,
     user_id: null,
     invited_email: parsed.data.email,
-    role: "member",
+    role: parsed.data.role,
     status: "invited",
   });
 

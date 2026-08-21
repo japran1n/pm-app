@@ -12,7 +12,14 @@ export const createWorkspaceSchema = z.object({
 
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 
-// Validates invite-member input (AS-007).
+// Validates invite-member input (AS-007, AS-238). `role` names the role the
+// invite grants on acceptance (F126) — deliberately excludes "owner" (an
+// invite can never hand out ownership; see F095/AS-006 for how ownership is
+// established) and deliberately excludes "guest" for now (F126 only widens
+// the database's allowed role domain; the invite/UI path for granting
+// "guest" specifically is F134's scope, not this feature's). Defaults to
+// "member" so every existing caller that doesn't pass a role keeps its
+// current behaviour unchanged.
 export const inviteMemberSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   email: z
@@ -21,6 +28,11 @@ export const inviteMemberSchema = z.object({
     .toLowerCase()
     .min(1, "Email is required.")
     .email("Enter a valid email address."),
+  role: z
+    .enum(["admin", "member", "viewer"], {
+      message: "Role must be admin, member, or viewer.",
+    })
+    .default("member"),
 });
 
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;

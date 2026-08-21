@@ -624,6 +624,14 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_project_visible_to_row: {
+        Args: {
+          target_project_id: string
+          target_visibility: string
+          target_workspace_id: string
+        }
+        Returns: boolean
+      }
       is_project_workspace_member: {
         Args: { target_project_id: string }
         Returns: boolean
