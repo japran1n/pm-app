@@ -145,6 +145,41 @@ export async function addComment(
     };
   }
 
+  // F164 (AS-295): commenting on a task adds the commenter as a watcher,
+  // idempotently. Uses the admin client (service role) rather than the
+  // caller's own session because this is a write "on behalf of" the
+  // commenter as a side effect of another action, not the self-serve
+  // watch/unwatch path (lib/actions/watchers.ts) -- avoids needing a
+  // SECURITY DEFINER trigger for this one call site, consistent with the
+  // rest of this file already using the admin client for the primary
+  // insert.
+  //
+  // Durability rule (AS-296, see F164 handoff's Decisions made for full
+  // reasoning): `ignoreDuplicates: true` compiles to
+  // `INSERT ... ON CONFLICT (task_id, user_id) DO NOTHING`. If the
+  // commenter has never had a task_watchers row, this inserts one with
+  // `is_watching: true` (default). If a row already exists -- whether
+  // still watching or explicitly unwatched via unwatchTask -- the insert
+  // is a no-op and that existing state, including an explicit opt-out, is
+  // left untouched. This is what makes an explicit unwatch durable across
+  // a later comment by the same user, rather than being silently
+  // resurrected.
+  const { error: watcherError } = await admin.from("task_watchers").upsert(
+    { task_id: parsed.data.taskId, user_id: user.id, is_watching: true },
+    { onConflict: "task_id,user_id", ignoreDuplicates: true },
+  );
+
+  if (watcherError) {
+    // Non-fatal: the comment itself already succeeded. Auto-watch is a
+    // best-effort side effect, not the source of truth for whether the
+    // comment was posted (mirrors the non-fatal revalidatePath/broadcast
+    // handling elsewhere in this file).
+    console.error(
+      "addComment: auto-watch upsert failed (non-fatal):",
+      watcherError,
+    );
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
