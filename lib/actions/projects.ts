@@ -14,6 +14,7 @@ import {
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
+import { writeAudit } from "@/lib/activity/audit";
 
 export type CreateProjectResult =
   | {
@@ -123,6 +124,14 @@ export async function createProject(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "project.created",
+    targetType: "project",
+    targetId: inserted.id,
+    metadata: { name: inserted.name },
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")
@@ -305,6 +314,14 @@ export async function editProject(
     };
   }
 
+  await writeAudit(supabase, {
+    workspaceId,
+    action: "project.updated",
+    targetType: "project",
+    targetId: projectId,
+    metadata: { fields: Object.keys(updatePayload) },
+  });
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -441,6 +458,13 @@ export async function archiveProject(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "project.archived",
+    targetType: "project",
+    targetId: parsed.data.projectId,
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")

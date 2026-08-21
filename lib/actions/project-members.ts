@@ -29,6 +29,7 @@ import {
   updateProjectVisibilitySchema,
 } from "@/lib/validation/project-members";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
+import { writeAudit } from "@/lib/activity/audit";
 
 type ProjectContext = {
   id: string;
@@ -217,6 +218,18 @@ export async function addProjectMember(
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
+  await writeAudit(supabase, {
+    workspaceId: project.workspaceId,
+    action: "project_member.added",
+    targetType: "project_member",
+    targetId: inserted.id,
+    metadata: {
+      project_id: project.id,
+      user_id: parsed.data.userId,
+      project_role: parsed.data.projectRole,
+    },
+  });
+
   await revalidateWorkspace(admin, project.workspaceId, "addProjectMember");
 
   return {
@@ -291,6 +304,14 @@ export async function removeProjectMember(
     console.error("removeProjectMember: delete failed:", deleteError);
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: project.workspaceId,
+    action: "project_member.removed",
+    targetType: "project_member",
+    targetId: deletedRows[0]?.id ?? null,
+    metadata: { project_id: project.id, user_id: parsed.data.userId },
+  });
 
   await revalidateWorkspace(admin, project.workspaceId, "removeProjectMember");
 
@@ -381,6 +402,14 @@ export async function updateProjectVisibility(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: project.workspaceId,
+    action: "project.visibility_changed",
+    targetType: "project",
+    targetId: parsed.data.projectId,
+    metadata: { visibility: parsed.data.visibility },
+  });
 
   await revalidateWorkspace(admin, project.workspaceId, "updateProjectVisibility");
 

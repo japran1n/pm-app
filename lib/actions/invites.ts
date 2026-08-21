@@ -29,6 +29,8 @@
 // the AS-009 "not yet active" check.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { writeAudit } from "@/lib/activity/audit";
 
 export interface ActivatedMembership {
   workspaceId: string;
@@ -65,6 +67,29 @@ export async function activateInvitedMemberships(
 
   const activated: ActivatedMembership[] = [];
 
+  // Session-bound client for `writeAudit` — the `write_audit_log_entry`
+  // RPC pins `actor_id` to `auth.uid()`, so it must be called through the
+  // authenticated user's own session, not the service-role admin client
+  // used for the rest of this function's writes. In production this
+  // function only ever runs from app/(auth)/auth/callback/route.ts, after
+  // `exchangeCodeForSession` has already set the session cookies for this
+  // exact request — `createClient()` here reads those same cookies. Guarded
+  // with try/catch (non-fatal, same convention as the `revalidatePath`
+  // failures elsewhere in lib/actions/*.ts) because `next/headers`'
+  // `cookies()` throws outside an active request/render context, e.g. when
+  // this function is called directly from a test harness — the invite
+  // activation itself must never fail because audit logging couldn't set
+  // up its client.
+  let supabase: Awaited<ReturnType<typeof createClient>> | null = null;
+  try {
+    supabase = await createClient();
+  } catch (createClientError) {
+    console.error(
+      "activateInvitedMemberships: createClient failed (non-fatal, audit logging skipped):",
+      createClientError,
+    );
+  }
+
   for (const row of pending) {
     // Scope the UPDATE to the specific row id AND re-assert user_id is
     // still null: if a concurrent request already claimed this row, this
@@ -88,6 +113,16 @@ export async function activateInvitedMemberships(
 
     if (updated) {
       activated.push({ workspaceId: updated.workspace_id });
+
+      if (supabase) {
+        await writeAudit(supabase, {
+          workspaceId: updated.workspace_id,
+          action: "invite.accepted",
+          targetType: "workspace_member",
+          targetId: row.id,
+          metadata: { role: row.role },
+        });
+      }
 
       // F134 (AS-220): a guest invite created with an invited_project_id
       // grants that specific project's access at the same moment the
