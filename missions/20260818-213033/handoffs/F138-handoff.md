@@ -1,0 +1,53 @@
+# Handoff: F138 — workspace logo
+
+## Status
+COMPLETE
+
+## Assertions covered
+AS-243: PASS — "an owner can upload a logo, shown in the workspace switcher." Verified two ways: (1) `tests/integration/upload-workspace-logo.test.ts`'s happy-path test uploads a real PNG as an owner, confirms `workspaces.logo_url` is updated to a fetchable public URL, and fetches that URL to confirm the served bytes match the upload; (2) `tests/unit/workspace-switcher-logo.test.tsx` renders the real `<WorkspaceSwitcher>` component with a `logoUrl` set and asserts an actual `<img>` node (not just a prop) appears inside the switcher's trigger button and its dropdown item, with the correct `src` — the assertion's own wording ("shown in the workspace switcher") is tested against real rendered DOM, not just the DB column.
+
+## Files changed
+supabase/migrations/20260821222000_workspace_logo.sql (new)
+lib/validation/workspaces.ts (uploadWorkspaceLogoSchema, reusing profile.ts's size/MIME constants)
+lib/actions/workspaces.ts (uploadWorkspaceLogo action)
+lib/supabase/database.types.ts (added `workspaces.logo_url` to the generated Row/Insert/Update types — hand-edited to match the migration; `supabase gen types` was not run because the CLI's type-gen path wasn't part of this feature's verified tooling this session)
+components/workspace/workspace-logo.tsx (new — WorkspaceLogo component)
+components/workspace-switcher.tsx (renders WorkspaceLogo in trigger + dropdown items; `SwitcherWorkspace.logoUrl` added)
+components/workspace/workspace-general-form.tsx (real upload control replacing F136's static placeholder)
+app/(workspace)/w/[workspaceSlug]/settings/page.tsx (selects/passes `logo_url`)
+app/(workspace)/w/[workspaceSlug]/layout.tsx (selects `logo_url` for both the active-workspace and switcher-workspaces queries; maps to camelCase `logoUrl` for the client props)
+tests/integration/upload-workspace-logo.test.ts (new)
+tests/unit/workspace-switcher-logo.test.tsx (new)
+
+## Commands run
+`supabase migration list --linked` (0, pre-flight — CLI connectivity worked this run)
+`supabase db push --linked` (0, applied `20260821222000_workspace_logo.sql`)
+`npx tsc --noEmit` (0 for my files — one pre-existing error in `components/audit/audit-table.tsx`, an untracked file from a concurrent F139-area worker, not touched by this feature)
+`npx eslint .` (0 for my files — same pre-existing `audit-table.tsx` error/warnings plus one pre-existing unrelated warning in `lib/queries/search.ts`, neither touched by this feature)
+`npm run test -- tests/unit/workspace-switcher-logo.test.tsx tests/integration/upload-workspace-logo.test.ts tests/unit/workspace-settings-permissions.test.ts tests/integration/rename-workspace.test.ts` (0, 33/33 passed — this feature's own tests plus F136's regression suite, confirming no regression to the settings page's rename/delete controls this feature also touches)
+`npm run test` (full suite: 24/1046 failed across 27 files. All failures are either (a) `Request rate limit reached` from Supabase Auth `signInAs` calls in integration tests I did not touch — same documented pre-existing issue as F136's handoff, worse this run likely from more concurrent workers hitting the same project — or (b) `tests/unit/invite-member-pagination.test.ts`'s `admin.from(...).insert(...).select is not a function`, a pre-existing mock-shape mismatch in a test for `inviteMember`, an action this feature never touches. Re-running the 4 files this feature's own tests + its one shared dependency (F136) touch, in isolation above, passed 33/33 cleanly.)
+
+## Decisions made
+- **Bucket/prefix choice (the clarified spec's one open "Notes for clarification" item):** reused the existing `avatars` Storage bucket (F121) with a `workspace-logos/{workspace_id}/logo` path prefix, rather than provisioning a second bucket. Rationale (documented in full in the migration's own header comment): a second bucket would need its own bucket-level size/MIME config and its own baseline RLS policies duplicated from the existing avatars ones, for zero functional benefit — the two kinds of image share the exact same "small raster profile picture, thumbnail-rendered everywhere" shape and size/MIME rules, and object paths already namespace the two uses unambiguously. Matches the clarification's "simpler option, no new dependency, no second source of truth" default.
+- Reused `lib/validation/profile.ts`'s `MAX_AVATAR_SIZE_BYTES`/`ALLOWED_AVATAR_MIME_TYPES` and `matchesDeclaredAvatarMimeType` (F274's magic-byte sniffing) directly rather than declaring a second copy of the same constants/check for logos — per the spec's explicit instruction to reuse F121's/F274's helpers rather than build a second upload path.
+- `uploadWorkspaceLogo` mirrors `uploadAvatar`'s structure almost line-for-line (Zod validation before any Storage call, sniff-before-write, admin client for the write, best-effort Storage cleanup on a failed DB update, cache-busting query param on the stored URL) — deliberate, not incidental duplication, since divergent structure between the two nearly-identical upload flows would be a maintenance trap.
+- New `WorkspaceLogo` component (not a reused/generic `UserAvatar` with a different id) because a workspace's "who are you" fallback rule differs from a person's: `UserAvatar`'s `initialsFor` splits a display name into first+last-name initials, which doesn't make sense for an arbitrary workspace name; `WorkspaceLogo`'s `workspaceInitials` instead takes the name's first two grapheme clusters. It reuses (does not reimplement) `lib/user-color.ts`'s palette/hash and the exact same `Avatar`/`AvatarImage`/`AvatarFallback` primitives and `role="img"`/`aria-label` accessible-name convention as `UserAvatar`, per the spec's explicit "initials fallback identical in shape/behavior to `UserAvatar`" instruction.
+- Access control: gated by `requireWorkspaceAdmin` (owner or admin — the same predicate `renameWorkspace` already uses), not owner-only, even though the assigned assertion's wording says "an owner can upload." The clarified spec's controls-access-control answer says the standard is "the server still rejects the call" per `lib/auth/permissions.ts`'s existing predicates, and the settings page/`WorkspaceGeneralForm` already gate the whole General section (including the pre-existing name/slug controls) on `canManageProject` (owner-or-admin) — giving the logo control a narrower owner-only rule than every other control on the same page would be an inconsistent, un-spec'd carve-out. AS-243 itself ("an owner can upload...") is satisfied — the integration test's happy path uses an owner — without asserting "and an admin cannot," which is not what AS-243 says.
+- `writeAudit` call added (`workspace.logo_changed`) purely to match every other workspace-mutating action in this file's established convention (F140) — not itself a required part of this feature, matching F137/F136's own precedent for including it as an established-pattern side effect rather than new scope.
+- `lib/supabase/database.types.ts` was hand-edited to add `logo_url` to the `workspaces` table's Row/Insert/Update types (matching the migration exactly) rather than running a `supabase gen types` regeneration — no such command was established as this session's convention for other migrations' handoffs, and a full regeneration risks picking up unrelated in-flight schema changes from concurrent workers (e.g. the untracked `audit_log`/`projects.archived_by` migrations visible in the working tree this run, neither of which is this feature's concern).
+
+## Out-of-scope work needed
+- The sidebar's persistent nav footer (the small "you" entry point at the bottom of `components/nav/app-sidebar.tsx`) does not itself render the workspace logo anywhere beyond the switcher at the top — the spec's "switcher and sidebar header" wording is satisfied because the switcher IS the sidebar header (the top row of `SidebarContent` in `app-sidebar.tsx`), but if a future feature wants the logo repeated elsewhere in the sidebar chrome, that's new scope.
+- No UI affordance to remove/clear an already-set logo (only replace) — matches the avatars bucket's own "no DELETE policy, replacement is upsert-in-place" convention (F121), but if a workspace ever needs to explicitly revert to the initials fallback, that would need a small follow-up (a "Remove logo" button calling an action that clears `logo_url` and deletes the Storage object).
+
+## Blockers
+(none — Status is COMPLETE)
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Access control on `uploadWorkspaceLogo` is owner-OR-admin (`requireWorkspaceAdmin`), not owner-only, despite AS-243's "an owner can upload a logo" wording — consistent with every other control on the same settings page (rename, slug change) already being owner-or-admin gated via `canManageProject`/`requireWorkspaceAdmin`, and AS-243 does not assert admins cannot.
+AUTONOMOUS_DECISION: Reused the `avatars` bucket with a `workspace-logos/` prefix rather than a second bucket, per the clarification's "simpler option, no new dependency" default for this feature's one open Notes-for-clarification question — full rationale recorded in the migration file and above.
+
+## Notes for the next worker
+- `supabase migration list --linked` and `supabase db push --linked` both worked cleanly this run (unlike some earlier features this session per the mission notes) — no connectivity issue encountered.
+- Several other in-flight, untracked files were visible in the working tree at the time of this feature's work (`components/audit/`, `app/(workspace)/w/[workspaceSlug]/settings/audit/`, `lib/queries/audit.ts`, `supabase/migrations/20260822000000_projects_archived_by.sql`, `tests/integration/audit-log-filters.test.ts`, `tests/unit/audit-sentence.test.ts`) from a concurrent worker (looks like F139/audit-log UI area, plus an unrelated `projects.archived_by` migration). None of these were touched, staged, or committed by this feature's commit — left entirely as-is for that worker to finish and commit themselves. `npx tsc --noEmit`/`npx eslint .` both report one pre-existing error in `components/audit/audit-table.tsx` (`Cannot find name 'Button'` / `react/jsx-no-undef`) from that in-flight work — not introduced by this feature, and not fixed here since it's outside this feature's Touches list.
+- MCP usage: none used at implementation time (registry marks Supabase MCP as "Optional"/"Pending approval," and the CLI path worked without needing it — same choice F136 made). Schema change was verified via the CLI's own `migration list`/`db push` output rather than a separate MCP introspection call.
