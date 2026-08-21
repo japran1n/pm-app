@@ -435,7 +435,10 @@ export function TaskDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-describedby={undefined}>
+      <SheetContent
+        aria-describedby={undefined}
+        className="w-full sm:max-w-2xl data-[side=right]:sm:max-w-2xl data-[side=left]:sm:max-w-2xl"
+      >
         {loading ? (
           <div className="flex flex-col gap-4 p-4">
             <SheetHeader className="p-0">
@@ -519,7 +522,7 @@ export function TaskDetailSheet({
                 priority, assignee, and due date.
               </SheetDescription>
             </SheetHeader>
-            <div className="flex flex-col gap-6 overflow-y-auto px-4">
+            <div className="flex flex-col gap-6 overflow-y-auto px-6">
               <div className="flex flex-col gap-2">
                 <Label htmlFor={`task-title-${task.id}`}>Title</Label>
                 <Input
@@ -528,27 +531,15 @@ export function TaskDetailSheet({
                   disabled={isSavingField}
                   onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                   onBlur={handleTitleBlur}
+                  className="text-base font-medium"
                 />
               </div>
 
-              <div className="flex flex-col gap-2">
-                <Label htmlFor={`task-description-${task.id}`}>
-                  Description
-                </Label>
-                <Textarea
-                  id={`task-description-${task.id}`}
-                  value={description}
-                  disabled={isSavingField}
-                  onChange={(changeEvent) =>
-                    setDescription(changeEvent.target.value)
-                  }
-                  onBlur={handleDescriptionBlur}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-2 gap-4">
+              {/* Metadata block: status/priority/assignee/due date grouped
+                  together in a dense grid so a reader can scan the
+                  important fields before scrolling past the description or
+                  any of the list-heavy sections below. */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-4">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor={`task-status-${task.id}`}>Status</Label>
                   {/* F158 (AS-280, AS-281): status editing ships with this
@@ -620,9 +611,8 @@ export function TaskDetailSheet({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
                 <Label htmlFor={`task-assignee-${task.id}`}>Assignee</Label>
                 <Select
                   value={task.assigneeId ?? NO_ASSIGNEE_VALUE}
@@ -685,9 +675,9 @@ export function TaskDetailSheet({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+                </div>
 
-              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
                 <Label
                   htmlFor={`task-due-date-${task.id}`}
                   className={cn(
@@ -716,9 +706,23 @@ export function TaskDetailSheet({
                       "border-destructive text-destructive",
                   )}
                 />
+                </div>
               </div>
 
-              <Separator />
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-description-${task.id}`}>
+                  Description
+                </Label>
+                <Textarea
+                  id={`task-description-${task.id}`}
+                  value={description}
+                  disabled={isSavingField}
+                  onChange={(changeEvent) =>
+                    setDescription(changeEvent.target.value)
+                  }
+                  onBlur={handleDescriptionBlur}
+                />
+              </div>
 
               <TagsEditor taskId={task.id} tags={task.tags} />
 
