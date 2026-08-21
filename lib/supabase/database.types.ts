@@ -457,6 +457,7 @@ export type Database = {
           created_at: string
           id: string
           invited_email: string | null
+          invited_project_id: string | null
           role: string
           status: string
           user_id: string | null
@@ -466,6 +467,7 @@ export type Database = {
           created_at?: string
           id?: string
           invited_email?: string | null
+          invited_project_id?: string | null
           role?: string
           status?: string
           user_id?: string | null
@@ -475,12 +477,20 @@ export type Database = {
           created_at?: string
           id?: string
           invited_email?: string | null
+          invited_project_id?: string | null
           role?: string
           status?: string
           user_id?: string | null
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "workspace_members_invited_project_id_fkey"
+            columns: ["invited_project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "workspace_members_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -636,8 +646,16 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_project_workspace_writer: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
       is_task_visible_to: { Args: { target_task_id: string }; Returns: boolean }
       is_task_workspace_member: {
+        Args: { target_task_id: string }
+        Returns: boolean
+      }
+      is_task_workspace_writer: {
         Args: { target_task_id: string }
         Returns: boolean
       }

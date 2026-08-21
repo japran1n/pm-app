@@ -46,7 +46,7 @@ export async function activateInvitedMemberships(
 
   const { data: pending, error: selectError } = await admin
     .from("workspace_members")
-    .select("id, workspace_id")
+    .select("id, workspace_id, role, invited_project_id")
     .eq("invited_email", email)
     .eq("status", "invited")
     .is("user_id", null);
@@ -88,6 +88,47 @@ export async function activateInvitedMemberships(
 
     if (updated) {
       activated.push({ workspaceId: updated.workspace_id });
+
+      // F134 (AS-220): a guest invite created with an invited_project_id
+      // grants that specific project's access at the same moment the
+      // workspace membership itself is activated — a guest with zero
+      // project_members rows can sign in but sees no projects at all
+      // (AS-220's own wording: "only the projects they're added to"), so
+      // this is the step that actually makes the invite useful. Uses the
+      // admin client (already bypassing RLS in this function) rather than
+      // going through addProjectMember's Server Action, since there is no
+      // authenticated caller/session in this sign-in-time code path for
+      // that action's own re-check to run against. Guarded to
+      // role === 'guest' only: a non-guest invite's invited_project_id
+      // would always be null (inviteMember only writes it when the
+      // inviter set one), but this keeps the intent explicit even if a
+      // future caller ever wrote the column for a non-guest role by
+      // mistake — project_members access for non-guests already works via
+      // ordinary workspace-wide visibility and shouldn't gain a redundant
+      // row here.
+      if (row.role === "guest" && row.invited_project_id) {
+        const { error: projectMemberError } = await admin
+          .from("project_members")
+          .insert({
+            project_id: row.invited_project_id,
+            user_id: userId,
+            project_role: "member",
+            added_by: null,
+          })
+          .select("id");
+
+        // A concurrent duplicate callback (see the file-header atomicity
+        // note) could race two inserts for the same (project_id, user_id)
+        // pair; 23505 (unique_project_user violation) is treated as a
+        // harmless no-op rather than logged as a failure.
+        if (projectMemberError && projectMemberError.code !== "23505") {
+          console.error(
+            "activateInvitedMemberships: failed to grant guest project access:",
+            row.id,
+            projectMemberError,
+          );
+        }
+      }
     }
   }
 

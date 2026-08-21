@@ -77,9 +77,14 @@ export default async function WorkspaceLayout({
   // generated `workspace_members` -> `workspaces` FK is not one-to-one, so
   // an embedded select types as an array and cannot be `.slug`-accessed
   // directly (same tradeoff F013's auth callback route made).
+  //
+  // F134 (AS-222): `role` is fetched alongside so the sidebar can hide the
+  // "Members" link for a guest — every page under this layout shares one
+  // fetch of the caller's role in *this* workspace rather than each page
+  // re-querying it.
   const { data: memberships, error: membershipsError } = await supabase
     .from("workspace_members")
-    .select("workspace_id")
+    .select("workspace_id, role")
     .eq("user_id", user.id)
     .eq("status", "active");
 
@@ -112,6 +117,14 @@ export default async function WorkspaceLayout({
   }
 
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
+
+  // F134 (AS-222): the caller's own role in the *active* workspace
+  // specifically (not just "some role in some workspace" — a person can be
+  // a guest in one workspace and an owner in another, per-workspace roles
+  // being this codebase's existing model).
+  const isGuest =
+    (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
+      ?.role === "guest";
 
   const { data: workspaces, error: workspacesError } = workspaceIds.length
     ? await supabase
@@ -153,6 +166,7 @@ export default async function WorkspaceLayout({
         workspaceSlug={workspaceSlug}
         workspaces={switcherWorkspaces}
         currentWorkspaceId={activeWorkspace.id}
+        isGuest={isGuest}
         currentUser={{
           id: user.id,
           name: currentUserProfile?.display_name ?? null,

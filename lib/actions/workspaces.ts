@@ -193,12 +193,14 @@ async function findAuthUserByEmail(
 export async function inviteMember(
   workspaceId: string,
   email: string,
-  role?: "admin" | "member" | "viewer",
+  role?: "admin" | "member" | "viewer" | "guest",
+  projectId?: string,
 ): Promise<InviteMemberResult> {
   const parsed = inviteMemberSchema.safeParse({
     workspaceId,
     email,
     ...(role !== undefined ? { role } : {}),
+    ...(projectId !== undefined ? { projectId } : {}),
   });
 
   if (!parsed.success) {
@@ -321,17 +323,54 @@ export async function inviteMember(
     }
   }
 
+  // F134 (AS-220): a guest invite may carry a projectId — the project the
+  // invitee is scoped to on acceptance. Re-verified server-side that the
+  // named project actually belongs to this workspace (defense in depth,
+  // same rationale as every other cross-workspace-leak check in this
+  // file) rather than trusting the client-submitted id.
+  if (parsed.data.projectId) {
+    const { data: targetProject, error: targetProjectError } = await admin
+      .from("projects")
+      .select("id")
+      .eq("id", parsed.data.projectId)
+      .eq("workspace_id", parsed.data.workspaceId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (targetProjectError) {
+      console.error(
+        "inviteMember: project lookup failed:",
+        targetProjectError,
+      );
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    if (!targetProject) {
+      return {
+        ok: false,
+        error: "That project could not be found in this workspace.",
+      };
+    }
+  }
+
   // AS-238: the row is created with the role the inviter chose (default
   // "member" when the caller doesn't specify one), and that same `role`
   // column is what the accept path (activateInvitedMemberships) grants
   // unchanged when it later flips status/user_id — see the F126 migration
   // comment for why no separate invited_role column exists.
+  // F134 (AS-220): invited_project_id is read once, on acceptance, by
+  // activateInvitedMemberships to also create the guest's project_members
+  // row — see lib/actions/invites.ts.
   const { error: insertError } = await admin.from("workspace_members").insert({
     workspace_id: parsed.data.workspaceId,
     user_id: null,
     invited_email: parsed.data.email,
     role: parsed.data.role,
     status: "invited",
+    invited_project_id: parsed.data.projectId ?? null,
   });
 
   if (insertError) {

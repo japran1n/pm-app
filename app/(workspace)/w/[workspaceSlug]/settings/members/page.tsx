@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
+import { canViewMembersList, type WorkspaceRole } from "@/lib/auth/permissions";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { MemberRoleSelect } from "@/components/member-role-select";
@@ -64,6 +65,28 @@ export default async function MembersPage({
     redirect("/onboarding");
   }
 
+  const { data: ownMembership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspace.id)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  // F134 (AS-222): a guest cannot see the workspace members list at all —
+  // deny, not merely hide, so this page also rejects direct navigation.
+  // The layout guard above only proves active workspace membership, not
+  // non-guest membership, so this page needs its own gate the way F132's
+  // project pages do. Same "single source of truth" predicate the UI
+  // gating and any future server-side re-check both call (AS-230).
+  if (
+    !canViewMembersList({
+      role: (ownMembership?.role ?? "guest") as WorkspaceRole,
+    })
+  ) {
+    redirect(`/w/${workspaceSlug}`);
+  }
+
   let members: Awaited<ReturnType<typeof getWorkspaceMembers>> | null = null;
   let loadError = false;
 
@@ -79,19 +102,25 @@ export default async function MembersPage({
     loadError = true;
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
   const canInvite =
     ownMembership?.role === "owner" || ownMembership?.role === "admin";
   // AS-014/AS-015: only the owner may change another member's role — a
   // stricter gate than `canInvite` (which also allows admins).
   const canChangeRoles = ownMembership?.role === "owner";
+
+  // F134 (AS-220): the invite-as-guest UI needs a project list to scope the
+  // invite to. RLS-scoped select is sufficient here (an owner/admin — the
+  // only caller who reaches the invite form below — sees every
+  // workspace-visible project regardless of visibility, per is_project_
+  // visible_to's owner/admin bypass).
+  const { data: inviteableProjects } = canInvite
+    ? await supabase
+        .from("projects")
+        .select("id, name")
+        .eq("workspace_id", workspace.id)
+        .is("deleted_at", null)
+        .order("name", { ascending: true })
+    : { data: [] };
 
   return (
     <div className="flex flex-col gap-8 p-6">
@@ -117,7 +146,10 @@ export default async function MembersPage({
       {members && canInvite && (
         <section className="flex flex-col gap-3 rounded-lg border bg-card p-4">
           <h2 className="text-sm font-medium">Invite a teammate</h2>
-          <InviteMemberForm workspaceId={workspace.id} />
+          <InviteMemberForm
+            workspaceId={workspace.id}
+            projects={inviteableProjects ?? []}
+          />
         </section>
       )}
 

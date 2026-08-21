@@ -20,9 +20,39 @@ import { inviteMember } from "@/lib/actions/workspaces";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
+type InviteRole = "admin" | "member" | "viewer" | "guest";
+
+export interface InviteableProject {
+  id: string;
+  name: string;
+}
+
+// F134 (AS-220): "guest" is now an invitable role. A guest invite is
+// additionally scoped to one project at invite time — the project select
+// below only renders once "Guest" is chosen, and is required before
+// submit for that role only (a guest invite with no project would create
+// a guest who can see nothing, which is a confusing dead end for the
+// person sending the invite, even though the server itself treats it as
+// merely a valid-but-useless state rather than a hard error — see
+// lib/validation/workspaces.ts).
+export function InviteMemberForm({
+  workspaceId,
+  projects,
+}: {
+  workspaceId: string;
+  projects: InviteableProject[];
+}) {
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<InviteRole>("member");
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -30,11 +60,25 @@ export function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
     formEvent.preventDefault();
     setError(null);
 
+    if (role === "guest" && !projectId) {
+      const message = "Choose a project to scope this guest to.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+
     startTransition(async () => {
-      const result = await inviteMember(workspaceId, email);
+      const result = await inviteMember(
+        workspaceId,
+        email,
+        role,
+        role === "guest" && projectId ? projectId : undefined,
+      );
       if (result.ok) {
         toast.success(`Invite sent to ${result.invitedEmail}.`);
         setEmail("");
+        setRole("member");
+        setProjectId(null);
       } else {
         setError(result.error);
         toast.error(result.error);
@@ -45,7 +89,7 @@ export function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3"
+      className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3"
     >
       <div className="flex flex-1 flex-col gap-2">
         <Label htmlFor="invite-email">Invite by email</Label>
@@ -63,6 +107,71 @@ export function InviteMemberForm({ workspaceId }: { workspaceId: string }) {
           aria-describedby={error ? "invite-email-error" : undefined}
         />
       </div>
+
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="invite-role">Role</Label>
+        <Select
+          value={role}
+          onValueChange={(value) => {
+            if (
+              value !== "admin" &&
+              value !== "member" &&
+              value !== "viewer" &&
+              value !== "guest"
+            ) {
+              return;
+            }
+            setRole(value);
+            if (value !== "guest") {
+              setProjectId(null);
+            }
+          }}
+          disabled={isPending}
+        >
+          <SelectTrigger id="invite-role" size="sm" className="w-28">
+            <SelectValue>
+              {(value: string) =>
+                value === "guest"
+                  ? "Guest"
+                  : value === "viewer"
+                    ? "Viewer"
+                    : value === "admin"
+                      ? "Admin"
+                      : "Member"
+              }
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="member">Member</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
+            <SelectItem value="viewer">Viewer</SelectItem>
+            <SelectItem value="guest">Guest</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {role === "guest" && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="invite-project">Project</Label>
+          <Select
+            value={projectId ?? undefined}
+            onValueChange={(value) => setProjectId(value)}
+            disabled={isPending}
+          >
+            <SelectTrigger id="invite-project" size="sm" className="w-40">
+              <SelectValue placeholder="Choose a project" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map((project) => (
+                <SelectItem key={project.id} value={project.id}>
+                  {project.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <Button type="submit" disabled={isPending}>
         {isPending ? (
           <>

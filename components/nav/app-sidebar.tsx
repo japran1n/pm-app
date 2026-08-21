@@ -31,14 +31,21 @@ import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/use
 // is still server-fetched by the layout and passed down as props, keeping
 // this component's own state to just "which link is active" (desktop) /
 // "is the mobile sheet open" (mobile).
-function navItems(workspaceSlug: string) {
-  return [
+// F134 (AS-222): a guest never sees the "Members" nav item — this is the
+// hide-the-control half of AS-222 (the members page itself independently
+// denies direct navigation, see app/(workspace)/w/[workspaceSlug]/settings/
+// members/page.tsx's own canViewMembersList guard; this hides the link so
+// a guest isn't shown a control that would only bounce them back).
+function navItems(workspaceSlug: string, isGuest: boolean) {
+  const items = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
   ];
+
+  return isGuest ? items.filter((item) => item.label !== "Members") : items;
 }
 
 function SidebarContent({
@@ -46,16 +53,18 @@ function SidebarContent({
   workspaces,
   currentWorkspaceId,
   currentUser,
+  isGuest,
   onNavigate,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
   currentWorkspaceId: string;
   currentUser: UserAvatarPerson;
+  isGuest: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItems(workspaceSlug);
+  const items = navItems(workspaceSlug, isGuest);
 
   return (
     <div className="flex h-full flex-col">
@@ -147,11 +156,13 @@ export function AppSidebar({
   workspaces,
   currentWorkspaceId,
   currentUser,
+  isGuest = false,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
   currentWorkspaceId: string;
   currentUser: UserAvatarPerson;
+  isGuest?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -164,6 +175,7 @@ export function AppSidebar({
           workspaces={workspaces}
           currentWorkspaceId={currentWorkspaceId}
           currentUser={currentUser}
+          isGuest={isGuest}
         />
       </aside>
 
@@ -185,6 +197,7 @@ export function AppSidebar({
               workspaces={workspaces}
               currentWorkspaceId={currentWorkspaceId}
               currentUser={currentUser}
+              isGuest={isGuest}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>

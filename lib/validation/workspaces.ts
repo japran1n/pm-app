@@ -12,14 +12,21 @@ export const createWorkspaceSchema = z.object({
 
 export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
 
-// Validates invite-member input (AS-007, AS-238). `role` names the role the
-// invite grants on acceptance (F126) — deliberately excludes "owner" (an
-// invite can never hand out ownership; see F095/AS-006 for how ownership is
-// established) and deliberately excludes "guest" for now (F126 only widens
-// the database's allowed role domain; the invite/UI path for granting
-// "guest" specifically is F134's scope, not this feature's). Defaults to
-// "member" so every existing caller that doesn't pass a role keeps its
-// current behaviour unchanged.
+// Validates invite-member input (AS-007, AS-238, AS-220). `role` names the
+// role the invite grants on acceptance (F126) — deliberately excludes
+// "owner" (an invite can never hand out ownership; see F095/AS-006 for how
+// ownership is established). Defaults to "member" so every existing caller
+// that doesn't pass a role keeps its current behaviour unchanged.
+//
+// F134: "guest" is now an acceptable invite role, and a guest invite may
+// additionally carry `projectId` — the single project the invitee is
+// scoped to on acceptance (AS-220: a guest sees only the projects they are
+// added to, so a guest invite with no project would create a guest with
+// zero project access, which is a valid-but-useless state, not an error;
+// the server independently re-derives "guest requires a project" as a
+// business rule below, not a hard schema constraint, so an admin can still
+// invite a guest first and add project(s) via F131's addProjectMember
+// afterward).
 export const inviteMemberSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   email: z
@@ -29,10 +36,11 @@ export const inviteMemberSchema = z.object({
     .min(1, "Email is required.")
     .email("Enter a valid email address."),
   role: z
-    .enum(["admin", "member", "viewer"], {
-      message: "Role must be admin, member, or viewer.",
+    .enum(["admin", "member", "viewer", "guest"], {
+      message: "Role must be admin, member, viewer, or guest.",
     })
     .default("member"),
+  projectId: z.string().uuid("Invalid project.").optional(),
 });
 
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
