@@ -866,6 +866,7 @@ export type Database = {
           child_done: number
           child_total: number
           due_date: string
+          estimate_minutes: number | null
           id: string
           number: number
           open_blocker_count: number

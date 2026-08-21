@@ -2331,7 +2331,11 @@ export async function getTaskDetail(
       // `parent_task_id` (drives whether the parent-lookup query below
       // runs at all) are selected here for the exact same "one query,
       // not a second round trip" reason.
-      "id, title, description, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, projects!inner(key, workspace_id)",
+      // F167 follow-up: `estimate_minutes` added here so
+      // TaskDetailSheetTask.estimateMinutes (F167's UI, previously always
+      // undefined on this path) actually receives real data — see this
+      // function's mapping below.
+      "id, title, description, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, projects!inner(key, workspace_id)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -2629,6 +2633,9 @@ export async function getTaskDetail(
         // F146 (AS-258): see this function's task+project select above.
         number: taskRow.number,
         projectKey: projectRow?.key,
+        // F167 follow-up: see this function's task select above — threads
+        // the estimate through to TimeTracking via TaskDetailSheetTask.
+        estimateMinutes: taskRow.estimate_minutes,
         // F150 (AS-263, AS-264): see this function's task select above —
         // `projectId` feeds the Subtasks section's add-subtask form,
         // `parentTaskId`/`parent` feed the "Subtask of ..." breadcrumb,

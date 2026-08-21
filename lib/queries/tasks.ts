@@ -90,6 +90,9 @@ export async function getProjectBoardTasks(
     child_total: number;
     child_done: number;
     open_blocker_count: number;
+    // F167 follow-up: added to the RPC's return in
+    // 20260822040000_rpc_project_board_tasks_estimate_minutes.sql.
+    estimate_minutes: number | null;
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -131,6 +134,14 @@ export async function getProjectBoardTasks(
       // returns `null` when there is nothing to measure (AS-273), never a
       // misleading 0%.
       completion,
+      // F167 follow-up (AS-300..AS-302): straight off the RPC row — no
+      // `|| undefined` coercion here, since TaskCardTask.estimateMinutes
+      // already treats null/undefined/non-positive identically via
+      // getEstimateProgress's own gate (unlike subtaskCount/
+      // openBlockerCount above, where 0 vs undefined both mean "hide the
+      // indicator" and the RPC always returns 0 rather than null for
+      // those two).
+      estimateMinutes: task.estimate_minutes,
     };
   });
 }
@@ -181,7 +192,9 @@ export async function getProjectListTasks(
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, projects(key)",
+      // F167 follow-up: `estimate_minutes` added so the list view's
+      // `TaskCard`s also receive a real estimate, same as the board view.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects(key)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -222,6 +235,8 @@ export async function getProjectListTasks(
     // same existing-query-extension approach, same helper.
     number: task.number,
     projectKey: firstRelated(task.projects)?.key,
+    // F167 follow-up: see this function's select above.
+    estimateMinutes: task.estimate_minutes,
   }));
 }
 
@@ -261,7 +276,10 @@ export async function getWorkspaceListTasks(
   let query = supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, projects!inner(key, workspace_id, deleted_at)",
+      // F167 follow-up: `estimate_minutes` added so the dashboard's
+      // `TaskCard`s also receive a real estimate, same as the board/list
+      // views.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects!inner(key, workspace_id, deleted_at)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -302,5 +320,7 @@ export async function getWorkspaceListTasks(
     // per-row fetch.
     number: task.number,
     projectKey: firstRelated(task.projects)?.key,
+    // F167 follow-up: see this function's select above.
+    estimateMinutes: task.estimate_minutes,
   }));
 }
