@@ -42,16 +42,38 @@ export const AVATAR_PALETTE: readonly AvatarPaletteEntry[] = [
   { name: "fuchsia", background: "#c026d3", foreground: "#ffffff" }, // 4.71:1
 ] as const;
 
-// djb2 string hash — small, pure, dependency-free, and stable across
+// FNV-1a 32-bit string hash, followed by a Murmur3-style finalizer
+// avalanche mix — small, pure, dependency-free, and stable across
 // platforms/Node versions (unlike relying on a `Map`/`Set` iteration order
 // or a non-deterministic hashing API). Only used to pick a palette bucket,
 // never for anything security-sensitive, so collision resistance beyond
-// "looks well distributed across 8 buckets" is not a requirement.
+// "looks well distributed across 8 buckets, without collapsing anagrams to
+// the same bucket" is not a requirement.
+//
+// F277 hardening: the previous implementation (`hash = (hash * 33) ^ c`,
+// classic djb2-xor) only ever XORs each char code into the low bits before
+// the *next* multiply-by-33 shifts them up — for a palette length that is a
+// power of two (8, here), `index = hash % 8` reads only the low 3 bits of
+// the final hash, and those low bits are dominated by the *last* character
+// processed combined with character order in a way that makes two ids
+// which are anagrams of each other (e.g. "acme-user-42" permuted) collide
+// far more often than chance. FNV-1a mixes multiplication in *before* the
+// XOR every step (rather than after), and the finalizer below spreads
+// entropy from the high bits back down into the low bits, so permuting the
+// input's characters changes the low bits of the result.
 function hashString(value: string): number {
-  let hash = 5381;
+  let hash = 0x811c9dc5; // FNV-1a 32-bit offset basis
   for (let i = 0; i < value.length; i++) {
-    hash = (hash * 33) ^ value.charCodeAt(i);
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193); // FNV-1a 32-bit prime
   }
+  // Murmur3 finalizer avalanche: without this, FNV-1a's own low bits are
+  // still noticeably weaker-mixed than its high bits for short inputs.
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
   // `>>> 0` coerces the possibly-negative 32-bit result to an unsigned
   // integer before the modulo below, so the index is always in range.
   return hash >>> 0;

@@ -39,14 +39,24 @@ export type UserAvatarPerson = {
   avatarUrl?: string | null;
 };
 
+// F277: `Array.from(string)` (not `.charAt`/`.slice`, which index by UTF-16
+// code unit) so a display name whose first "character" is an astral
+// codepoint — e.g. an emoji, which is a surrogate pair — yields the whole
+// glyph as the initial instead of one half of a broken surrogate pair.
+function firstGrapheme(value: string): string {
+  return Array.from(value)[0] ?? "";
+}
+
 function initialsFor(name?: string | null, email?: string | null): string {
   const label = (name ?? "").trim() || (email ?? "").trim();
   if (!label) return "?";
   const parts = label.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
-    return (parts[0]!.charAt(0) + parts[1]!.charAt(0)).toUpperCase();
+    return (
+      firstGrapheme(parts[0]!) + firstGrapheme(parts[1]!)
+    ).toUpperCase();
   }
-  return label.slice(0, 2).toUpperCase();
+  return Array.from(label).slice(0, 2).join("").toUpperCase();
 }
 
 /**

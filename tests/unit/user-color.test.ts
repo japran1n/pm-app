@@ -52,6 +52,32 @@ describe("test_AS_204_user_color_is_deterministic", () => {
     expect(index).toBeLessThan(AVATAR_PALETTE.length);
   });
 
+  // F277: the golden `id -> index` assertion this describe block names but
+  // did not actually make — pins a literal expected index for a fixed id
+  // so a future refactor of the hash *is* caught here, not just "some
+  // stable value or other". Recomputed from the current
+  // FNV-1a + Murmur3-finalizer implementation in lib/user-color.ts; update
+  // deliberately (with a comment explaining why) if the hash ever changes.
+  it("golden: a fixed, known user id resolves to a specific, pinned palette index", () => {
+    expect(userColorIndex("acme-user-42")).toBe(6);
+    expect(userColorIndex("11111111-2222-4333-8444-555555555555")).toBe(
+      userColorIndex("11111111-2222-4333-8444-555555555555"),
+    );
+  });
+
+  // F277 hardening: the previous `(hash * 33) ^ charCode` hash only ever
+  // read the low 3 bits of its output for this 8-entry (power-of-two)
+  // palette, and those low bits didn't mix character order in — so ids
+  // that are anagrams of each other (same characters, different order)
+  // collided far more often than chance. This guards against that
+  // regression: anagram pairs must not all collapse to one bucket.
+  it("ids that are anagrams of each other do not all collapse to the same palette index", () => {
+    const a = userColorIndex("acme-user-42");
+    const b = userColorIndex("42-acme-user");
+    const c = userColorIndex("user-acme-42");
+    expect(new Set([a, b, c]).size).toBeGreaterThan(1);
+  });
+
   it("two different user ids can (and typically do) get different colours — the hash isn't a constant function", () => {
     const a = userColorIndex("alice");
     const b = userColorIndex("bob");
