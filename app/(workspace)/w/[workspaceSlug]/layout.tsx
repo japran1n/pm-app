@@ -61,7 +61,7 @@ export default async function WorkspaceLayout({
   const { data: activeWorkspace, error: activeWorkspaceError } =
     await supabase
       .from("workspaces")
-      .select("id, name, slug")
+      .select("id, name, slug, logo_url")
       .eq("slug", workspaceSlug)
       .maybeSingle();
 
@@ -229,7 +229,7 @@ export default async function WorkspaceLayout({
   const { data: workspaces, error: workspacesError } = workspaceIds.length
     ? await supabase
         .from("workspaces")
-        .select("id, name, slug")
+        .select("id, name, slug, logo_url")
         .in("id", workspaceIds)
         .order("name", { ascending: true })
     : { data: [], error: null };
@@ -246,11 +246,21 @@ export default async function WorkspaceLayout({
   // queries raced with a concurrent membership change; fall back to
   // including it explicitly so the switcher never omits the current
   // workspace (AS-012/AS-013).
-  const switcherWorkspaces = (workspaces ?? []).some(
+  const workspacesWithFallback = (workspaces ?? []).some(
     (w) => w.id === activeWorkspace.id,
   )
     ? (workspaces ?? [])
     : [...(workspaces ?? []), activeWorkspace];
+
+  // F138 (AS-243): camelCase `logoUrl` for SwitcherWorkspace/AppSidebar's
+  // props, mapped once here rather than threading the raw snake_case
+  // column name through the client component boundary.
+  const switcherWorkspaces = workspacesWithFallback.map((w) => ({
+    id: w.id,
+    name: w.name,
+    slug: w.slug,
+    logoUrl: w.logo_url ?? null,
+  }));
 
   // Persistent nav shell: AppSidebar renders both the always-on desktop
   // sidebar (workspace switcher, primary nav, sign-out) and, on narrow

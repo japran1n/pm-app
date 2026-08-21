@@ -10,11 +10,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 
 export type SwitcherWorkspace = {
   id: string;
   name: string;
   slug: string;
+  // F138 (AS-243): "an owner can upload a logo, shown in the workspace
+  // switcher" — null/undefined for a workspace with no logo, which
+  // WorkspaceLogo renders as an initials fallback.
+  logoUrl?: string | null;
 };
 
 // Client Component (smallest possible client boundary per tech-decisions.md
@@ -45,6 +50,14 @@ export function WorkspaceSwitcher({
       <DropdownMenuTrigger
         render={
           <Button variant="outline" size="sm" className="max-w-56 gap-1.5">
+            {current ? (
+              <WorkspaceLogo
+                workspaceId={current.id}
+                name={current.name}
+                logoUrl={current.logoUrl}
+                size="sm"
+              />
+            ) : null}
             <span className="truncate">{current?.name ?? "Select workspace"}</span>
             <ChevronsUpDown className="text-muted-foreground" />
           </Button>
@@ -57,7 +70,15 @@ export function WorkspaceSwitcher({
             render={<Link href={`/w/${workspace.slug}`} />}
             className="justify-between gap-2"
           >
-            <span className="truncate">{workspace.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <WorkspaceLogo
+                workspaceId={workspace.id}
+                name={workspace.name}
+                logoUrl={workspace.logoUrl}
+                size="sm"
+              />
+              <span className="truncate">{workspace.name}</span>
+            </span>
             {workspace.id === currentWorkspaceId ? (
               <Check className="text-muted-foreground" />
             ) : null}

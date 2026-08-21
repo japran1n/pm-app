@@ -51,7 +51,7 @@ export default async function WorkspaceSettingsPage({
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, name, slug")
+    .select("id, name, slug, logo_url")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
@@ -106,6 +106,7 @@ export default async function WorkspaceSettingsPage({
           workspaceId={workspace.id}
           name={workspace.name}
           slug={workspace.slug}
+          logoUrl={workspace.logo_url}
           canManage={canManage}
         />
       </section>

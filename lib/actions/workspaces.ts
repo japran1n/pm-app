@@ -16,6 +16,7 @@ import {
   deleteWorkspaceSchema,
   renameWorkspaceSchema,
   changeWorkspaceSlugSchema,
+  uploadWorkspaceLogoSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -24,6 +25,7 @@ import {
   requireWorkspaceOwner,
 } from "@/lib/auth/require-membership";
 import { writeAudit } from "@/lib/activity/audit";
+import { matchesDeclaredAvatarMimeType } from "@/lib/validation/profile";
 
 export type CreateWorkspaceResult =
   | { ok: true; slug: string }
@@ -54,6 +56,10 @@ export type RenameWorkspaceResult =
 
 export type ChangeWorkspaceSlugResult =
   | { ok: true; data: { slug: string } }
+  | { ok: false; error: string };
+
+export type UploadWorkspaceLogoResult =
+  | { ok: true; data: { logoUrl: string } }
   | { ok: false; error: string };
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
@@ -1437,4 +1443,195 @@ export async function changeWorkspaceSlug(
   }
 
   return { ok: true, data: { slug: updated.slug } };
+}
+
+// F138 (AS-243): "an owner can upload a logo, shown in the workspace
+// switcher." Pattern mirrors lib/actions/profile.ts's uploadAvatar almost
+// exactly — Zod-validated input checked before any Storage call, magic-
+// byte MIME sniffing (F274 hardening) before the Storage write, admin
+// client for the actual write + `workspaces` update, discriminated-union
+// return, generic user-facing errors with details only logged
+// server-side. Reuses the SAME `avatars` Storage bucket as F121's avatar
+// upload rather than a second bucket — see this feature's migration
+// (supabase/migrations/20260821222000_workspace_logo.sql) for the bucket-
+// choice rationale — under a `workspace-logos/{workspace_id}/logo` path
+// prefix, no file extension (same "MIME lives in Storage metadata, not
+// the path" convention as avatars).
+//
+// Takes a FormData for the same reason uploadAvatar does — Server Actions
+// receive `File` objects through FormData, not as plain function
+// arguments.
+const AVATARS_BUCKET_FOR_LOGOS = "avatars";
+
+export async function uploadWorkspaceLogo(
+  formData: FormData,
+): Promise<UploadWorkspaceLogoResult> {
+  const workspaceId = formData.get("workspaceId");
+  const file = formData.get("file");
+
+  if (typeof workspaceId !== "string" || !(file instanceof File)) {
+    return { ok: false, error: "Invalid upload request." };
+  }
+
+  const parsed = uploadWorkspaceLogoSchema.safeParse({
+    workspaceId,
+    fileSize: file.size,
+    mimeType: file.type,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid file.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to upload a workspace logo.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143/renameWorkspace convention): only an
+  // owner/admin of THIS workspace may set its logo — a member/viewer/
+  // guest calling this action directly (bypassing the UI, which only
+  // renders the control for owner/admin) must be rejected. The Storage
+  // RLS policies in this feature's migration re-check the exact same
+  // owner/admin rule as a second layer, since the admin client used below
+  // bypasses RLS.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only a workspace owner or admin can change the workspace logo.",
+    };
+  }
+
+  const { data: workspaceRow, error: lookupError } = await admin
+    .from("workspaces")
+    .select("id, deleted_at")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error(
+      "uploadWorkspaceLogo: workspace lookup failed:",
+      lookupError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!workspaceRow || workspaceRow.deleted_at) {
+    return { ok: false, error: "This workspace no longer exists." };
+  }
+
+  const objectPath = `workspace-logos/${parsed.data.workspaceId}/logo`;
+  const arrayBuffer = await file.arrayBuffer();
+
+  // AS-206-style hardening (F274 convention, applied here too): the
+  // declared MIME type is entirely client-controlled, so the actual
+  // leading bytes are sniffed against real JPEG/PNG/WebP signatures and
+  // compared to what was declared before anything is written to Storage.
+  if (
+    !matchesDeclaredAvatarMimeType(
+      new Uint8Array(arrayBuffer),
+      parsed.data.mimeType,
+    )
+  ) {
+    return {
+      ok: false,
+      error: "Logo must be a JPEG, PNG, or WebP image.",
+    };
+  }
+
+  const { error: uploadError } = await admin.storage
+    .from(AVATARS_BUCKET_FOR_LOGOS)
+    .upload(objectPath, arrayBuffer, {
+      contentType: parsed.data.mimeType,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    console.error(
+      "uploadWorkspaceLogo: storage upload failed:",
+      uploadError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // The bucket is public (F121) — a plain public URL is correct here for
+  // the same reason it is for avatars. A cache-busting query param is
+  // appended and stored as part of `logo_url` itself, same rationale as
+  // uploadAvatar: the object path is fixed and reused on every
+  // replacement, so without this every reader that just re-fetches
+  // `workspaces.logo_url` would keep getting the CDN/browser-cached
+  // previous image at the exact same URL after a successful replace.
+  const { data: publicUrlData } = admin.storage
+    .from(AVATARS_BUCKET_FOR_LOGOS)
+    .getPublicUrl(objectPath);
+
+  const logoUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+
+  const { error: updateError } = await admin
+    .from("workspaces")
+    .update({ logo_url: logoUrl })
+    .eq("id", parsed.data.workspaceId);
+
+  if (updateError) {
+    console.error(
+      "uploadWorkspaceLogo: workspaces update failed:",
+      updateError,
+    );
+    // Best-effort cleanup so a failed workspaces update doesn't leave the
+    // just-uploaded Storage object orphaned — mirrors uploadAvatar's own
+    // post-Storage-success cleanup.
+    await admin.storage.from(AVATARS_BUCKET_FOR_LOGOS).remove([objectPath]);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "workspace.logo_changed",
+    targetType: "workspace",
+    targetId: parsed.data.workspaceId,
+    metadata: {},
+  });
+
+  // AS-243: the logo is shown in the workspace switcher, which every page
+  // under this workspace's layout renders (see
+  // app/(workspace)/w/[workspaceSlug]/layout.tsx) — "layout" invalidates
+  // every nested page's cached render so the new logo appears without a
+  // manual reload, same convention as renameWorkspace/changeWorkspaceSlug.
+  try {
+    revalidatePath("/", "layout");
+  } catch (revalidateError) {
+    console.error(
+      "uploadWorkspaceLogo: revalidatePath failed (non-fatal):",
+      revalidateError,
+    );
+  }
+
+  return { ok: true, data: { logoUrl } };
 }

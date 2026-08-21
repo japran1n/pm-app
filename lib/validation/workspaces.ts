@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import {
+  MAX_AVATAR_SIZE_BYTES,
+  ALLOWED_AVATAR_MIME_TYPES,
+} from "@/lib/validation/profile";
 
 // Validates create-workspace input (AS-006) before it reaches Supabase.
 export const createWorkspaceSchema = z.object({
@@ -128,6 +132,36 @@ export const changeWorkspaceSlugSchema = z.object({
 
 export type ChangeWorkspaceSlugInput = z.infer<
   typeof changeWorkspaceSlugSchema
+>;
+
+// Validates uploadWorkspaceLogo input (F138, AS-243). Reuses the exact
+// same size/MIME limits as lib/validation/profile.ts's uploadAvatarSchema
+// (MAX_AVATAR_SIZE_BYTES, ALLOWED_AVATAR_MIME_TYPES) — a workspace logo
+// and a user avatar are the same "small raster profile image, rendered at
+// thumbnail size everywhere" shape, so this deliberately does not declare
+// a second copy of those limits (see this migration's own header comment
+// for the same reasoning applied to the Storage bucket choice).
+export const uploadWorkspaceLogoSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  fileSize: z
+    .number()
+    .int()
+    .positive("File is empty.")
+    .max(
+      MAX_AVATAR_SIZE_BYTES,
+      `Logo must be ${MAX_AVATAR_SIZE_BYTES / (1024 * 1024)}MB or smaller.`,
+    ),
+  mimeType: z
+    .string()
+    .refine(
+      (value) =>
+        (ALLOWED_AVATAR_MIME_TYPES as readonly string[]).includes(value),
+      { message: "Logo must be a JPEG, PNG, or WebP image." },
+    ),
+});
+
+export type UploadWorkspaceLogoInput = z.infer<
+  typeof uploadWorkspaceLogoSchema
 >;
 
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single

@@ -13,35 +13,49 @@
 // not as a generic toast alone, so the user knows exactly which field to
 // fix.
 //
-// Logo: the clarified spec calls for "a logo placeholder/stub if F138
-// hasn't landed" — F138 (workspace logo upload) has not landed in this
-// tree (checked: no `logo_url` column on `workspaces`, no upload action),
-// so this renders a static, disabled placeholder rather than inventing a
-// second, half-built upload flow out of this feature's scope.
+// Logo (F138, AS-243): "an owner can upload a logo, shown in the
+// workspace switcher." Uploads through `uploadWorkspaceLogo`
+// (lib/actions/workspaces.ts), which reuses F121's/F274's avatar
+// upload/validation helpers (size limit, magic-byte MIME sniffing)
+// rather than a second upload path — see that action's own doc comment
+// and this feature's handoff for the bucket/prefix choice. `canManage`
+// (owner/admin) gates the control the same way it gates the name/slug
+// forms below; the server-side `requireWorkspaceAdmin` check in the
+// action is the actual enforcement boundary.
 //
 // Failure handling (clarified spec): the optimistic name change reverts
 // to the last-saved value on a server rejection, and a sonner toast
 // states what failed in plain language; the form returns to an
-// actionable state.
+// actionable state. The logo upload follows the same convention: on
+// failure the previously-saved logo is kept on screen (nothing is
+// optimistically swapped in before the server confirms), a toast states
+// what failed, and the file input is re-enabled.
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { renameWorkspace, changeWorkspaceSlug } from "@/lib/actions/workspaces";
+import {
+  renameWorkspace,
+  changeWorkspaceSlug,
+  uploadWorkspaceLogo,
+} from "@/lib/actions/workspaces";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 
 export function WorkspaceGeneralForm({
   workspaceId,
   name: initialName,
   slug: initialSlug,
+  logoUrl: initialLogoUrl,
   canManage,
 }: {
   workspaceId: string;
   name: string;
   slug: string;
+  logoUrl?: string | null;
   canManage: boolean;
 }) {
   const [savedName, setSavedName] = useState(initialName);
@@ -54,8 +68,40 @@ export function WorkspaceGeneralForm({
   const [slugError, setSlugError] = useState<string | null>(null);
   const [isSavingSlug, startSaveSlugTransition] = useTransition();
 
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl ?? null);
+  const [isUploadingLogo, startUploadLogoTransition] = useTransition();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
   const isDirty = name !== savedName;
   const isSlugDirty = slug !== savedSlug;
+
+  function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    // Reset the input value immediately so selecting the exact same file
+    // again after a failed upload still fires this handler.
+    event.target.value = "";
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.set("workspaceId", workspaceId);
+    formData.set("file", file);
+
+    startUploadLogoTransition(async () => {
+      const result = await uploadWorkspaceLogo(formData);
+
+      if (result.ok) {
+        setLogoUrl(result.data.logoUrl);
+        toast.success("Workspace logo updated.");
+      } else {
+        // The previously-saved logo was never replaced on screen (no
+        // optimistic swap before the server confirms), so there is
+        // nothing to revert — just surface the failure and return the
+        // control to an actionable state (isUploadingLogo clears once
+        // this transition finishes).
+        toast.error(result.error);
+      }
+    });
+  }
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -109,18 +155,48 @@ export function WorkspaceGeneralForm({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        {/* F138 (logo upload) has not landed — static placeholder only,
-            not a functioning control, per this feature's clarified
-            scope. */}
-        <Label>Logo</Label>
-        <div
-          aria-hidden="true"
-          className="flex size-16 items-center justify-center rounded-lg border border-dashed bg-muted text-xs text-muted-foreground"
-        >
-          No logo
+        <Label htmlFor="workspace-logo-input">Logo</Label>
+        <div className="flex items-center gap-3">
+          <WorkspaceLogo
+            workspaceId={workspaceId}
+            name={savedName}
+            logoUrl={logoUrl}
+            size="lg"
+          />
+          {canManage && (
+            <>
+              <input
+                ref={logoInputRef}
+                id="workspace-logo-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                disabled={isUploadingLogo}
+                onChange={handleLogoChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={isUploadingLogo}
+                onClick={() => logoInputRef.current?.click()}
+              >
+                {isUploadingLogo ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    Uploading...
+                  </>
+                ) : logoUrl ? (
+                  "Change logo"
+                ) : (
+                  "Upload logo"
+                )}
+              </Button>
+            </>
+          )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Workspace logos aren&rsquo;t supported yet.
+          JPEG, PNG, or WebP, up to 2MB. Shown in the workspace switcher.
         </p>
       </div>
 
