@@ -38,6 +38,13 @@ export type Database = {
             foreignKeyName: "active_timers_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "active_timers_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
@@ -72,6 +79,13 @@ export type Database = {
           uploaded_by?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attachments_task_id_fkey"
             columns: ["task_id"]
@@ -158,6 +172,13 @@ export type Database = {
             foreignKeyName: "checklist_items_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checklist_items_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
@@ -189,6 +210,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "comments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "comments_task_id_fkey"
             columns: ["task_id"]
@@ -265,6 +293,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          archived_by: string | null
           created_at: string
           created_by: string | null
           deleted_at: string | null
@@ -280,6 +309,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          archived_by?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -295,6 +325,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          archived_by?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -315,6 +346,42 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_assignees: {
+        Row: {
+          assigned_by: string | null
+          created_at: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_by?: string | null
+          created_at?: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_by?: string | null
+          created_at?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -346,12 +413,59 @@ export type Database = {
             foreignKeyName: "task_dependencies_blocked_task_id_fkey"
             columns: ["blocked_task_id"]
             isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_blocked_task_id_fkey"
+            columns: ["blocked_task_id"]
+            isOneToOne: false
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "task_dependencies_blocking_task_id_fkey"
             columns: ["blocking_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_blocking_task_id_fkey"
+            columns: ["blocking_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_watchers: {
+        Row: {
+          created_at: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_watchers_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_watchers_task_id_fkey"
+            columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
             referencedColumns: ["id"]
@@ -367,6 +481,7 @@ export type Database = {
           deleted_via_task_id: string | null
           description: string | null
           due_date: string | null
+          estimate_minutes: number | null
           id: string
           number: number
           parent_task_id: string | null
@@ -389,6 +504,7 @@ export type Database = {
           deleted_via_task_id?: string | null
           description?: string | null
           due_date?: string | null
+          estimate_minutes?: number | null
           id?: string
           number?: number
           parent_task_id?: string | null
@@ -411,6 +527,7 @@ export type Database = {
           deleted_via_task_id?: string | null
           description?: string | null
           due_date?: string | null
+          estimate_minutes?: number | null
           id?: string
           number?: number
           parent_task_id?: string | null
@@ -430,7 +547,21 @@ export type Database = {
             foreignKeyName: "tasks_deleted_via_task_id_fkey"
             columns: ["deleted_via_task_id"]
             isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_deleted_via_task_id_fkey"
+            columns: ["deleted_via_task_id"]
+            isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
             referencedColumns: ["id"]
           },
           {
@@ -484,6 +615,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "time_entries_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "time_entries_task_id_fkey"
             columns: ["task_id"]
@@ -599,7 +737,75 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      active_project_tasks: {
+        Row: {
+          assignee_id: string | null
+          author_id: string | null
+          created_at: string | null
+          deleted_at: string | null
+          deleted_via_task_id: string | null
+          description: string | null
+          due_date: string | null
+          id: string | null
+          number: number | null
+          parent_task_id: string | null
+          points: number | null
+          position: number | null
+          priority: string | null
+          project_id: string | null
+          project_workspace_id: string | null
+          search_vector: unknown
+          start_date: string | null
+          status: string | null
+          tags: string[] | null
+          title: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_workspace_id_fkey"
+            columns: ["project_workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_deleted_via_task_id_fkey"
+            columns: ["deleted_via_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_deleted_via_task_id_fkey"
+            columns: ["deleted_via_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       can_modify_comment: {
@@ -754,6 +960,7 @@ export type Database = {
           deleted_via_task_id: string | null
           description: string | null
           due_date: string | null
+          estimate_minutes: number | null
           id: string
           number: number
           parent_task_id: string | null

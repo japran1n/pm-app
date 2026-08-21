@@ -544,6 +544,7 @@ export type EditTaskResult =
         description: string | null;
         priority: string | null;
         dueDate: string | null;
+        estimateMinutes: number | null;
       };
     }
   | { ok: false; error: string };
@@ -657,6 +658,7 @@ export async function editTask(
     description?: string | null;
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     due_date?: string | null;
+    estimate_minutes?: number | null;
   } = {};
   if ("title" in parsed.data.updates) {
     updatePayload.title = parsed.data.updates.title;
@@ -670,15 +672,31 @@ export async function editTask(
   if ("dueDate" in parsed.data.updates) {
     updatePayload.due_date = parsed.data.updates.dueDate;
   }
+  if ("estimateMinutes" in parsed.data.updates) {
+    updatePayload.estimate_minutes = parsed.data.updates.estimateMinutes;
+  }
 
   const { data: updated, error: updateError } = await admin
     .from("tasks")
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
-    .select("id, title, description, priority, due_date")
+    .select("id, title, description, priority, due_date, estimate_minutes")
     .single();
 
   if (updateError || !updated) {
+    // F166 (AS-299): the tasks_estimate_minutes_positive CHECK is the last
+    // line of defense if this row is ever reached with an invalid value
+    // (e.g. via a future direct-write path); map it to a field-level
+    // message rather than the generic fallback, per this feature's
+    // Clarified failure-handling answer.
+    if (
+      updateError?.message?.includes("tasks_estimate_minutes_positive")
+    ) {
+      return {
+        ok: false,
+        error: "Estimate must be greater than zero.",
+      };
+    }
     console.error("editTask: update failed:", updateError);
     return {
       ok: false,
@@ -712,6 +730,7 @@ export async function editTask(
       description: updated.description,
       priority: updated.priority,
       dueDate: updated.due_date,
+      estimateMinutes: updated.estimate_minutes,
     },
   };
 }

@@ -84,6 +84,7 @@ describe.skipIf(!haveAdminCreds)(
     let authorUserId: string;
     let otherMemberUserId: string;
     let outsiderUserId: string;
+    let viewerUserId: string;
 
     beforeAll(async () => {
       adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
@@ -169,6 +170,23 @@ describe.skipIf(!haveAdminCreds)(
       outsiderUserId = outsiderAuth.user.id;
       createdUserIds.push(outsiderUserId);
 
+      // F166 (AS-305): a viewer of `workspaceId` — used to prove the
+      // server rejects an estimate change from a role that cannot edit
+      // tasks at all (canEditTask excludes viewer/guest), not merely
+      // hides the control in the UI.
+      const viewerEmail = `f166-viewer-${uniqueSuffix}@example.com`;
+      const { data: viewerAuth, error: viewerAuthErr } =
+        await adminClient.auth.admin.createUser({
+          email: viewerEmail,
+          password: "Test-password-1!",
+          email_confirm: true,
+        });
+      if (viewerAuthErr || !viewerAuth.user) {
+        throw new Error(`Failed to create viewer user: ${viewerAuthErr?.message}`);
+      }
+      viewerUserId = viewerAuth.user.id;
+      createdUserIds.push(viewerUserId);
+
       const { error: memberInsertErr } = await adminClient
         .from("workspace_members")
         .insert([
@@ -188,6 +206,12 @@ describe.skipIf(!haveAdminCreds)(
             workspace_id: otherWorkspaceId,
             user_id: outsiderUserId,
             role: "member",
+            status: "active",
+          },
+          {
+            workspace_id: workspaceId,
+            user_id: viewerUserId,
+            role: "viewer",
             status: "active",
           },
         ]);
@@ -393,6 +417,114 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       expect(row?.title).toBe("Scoped edit");
       expect(row?.project_id).toBe(projectId);
+    });
+
+    it("AS-298: a task can carry an estimate, set and read back in minutes", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+
+      const result = await editTask(taskId, { estimateMinutes: 90 });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.estimateMinutes).toBe(90);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("estimate_minutes")
+        .eq("id", taskId)
+        .single();
+      expect(row?.estimate_minutes).toBe(90);
+    });
+
+    it("AS-299: a zero estimate is rejected by the Zod schema, no write occurs", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+
+      const result = await editTask(taskId, { estimateMinutes: 0 });
+
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("estimate_minutes")
+        .eq("id", taskId)
+        .single();
+      expect(row?.estimate_minutes).toBeNull();
+    });
+
+    it("AS-299: a negative estimate is rejected by the Zod schema, no write occurs", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+
+      const result = await editTask(taskId, { estimateMinutes: -30 });
+
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("estimate_minutes")
+        .eq("id", taskId)
+        .single();
+      expect(row?.estimate_minutes).toBeNull();
+    });
+
+    it("AS-299: the database CHECK constraint rejects a zero/negative estimate even if Zod is bypassed", async () => {
+      const taskId = await makeTask();
+
+      const { error } = await adminClient
+        .from("tasks")
+        .update({ estimate_minutes: -5 })
+        .eq("id", taskId);
+
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain("tasks_estimate_minutes_positive");
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("estimate_minutes")
+        .eq("id", taskId)
+        .single();
+      expect(row?.estimate_minutes).toBeNull();
+    });
+
+    it("AS-305: a viewer cannot change a task's estimate, server-side, even with a direct call", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = viewerUserId;
+
+      const result = await editTask(taskId, { estimateMinutes: 60 });
+
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("estimate_minutes")
+        .eq("id", taskId)
+        .single();
+      expect(row?.estimate_minutes).toBeNull();
+    });
+
+    it("AS-298: setting estimateMinutes to null clears a previously set estimate", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+
+      const first = await editTask(taskId, { estimateMinutes: 120 });
+      expect(first.ok).toBe(true);
+
+      const second = await editTask(taskId, { estimateMinutes: null });
+      expect(second.ok).toBe(true);
+      if (!second.ok) return;
+      expect(second.data.estimateMinutes).toBeNull();
     });
   },
 );

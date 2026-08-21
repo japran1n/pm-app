@@ -111,6 +111,17 @@ const editableFields = z.object({
     .trim()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
     .nullable(),
+  // F166 (AS-298, AS-299): normalized minute count, already parsed from
+  // human input (e.g. "2h", "90m") via lib/time/parse-estimate.ts before
+  // reaching this schema — mirrors `tasks_estimate_minutes_positive` in
+  // supabase/migrations/20260822030000_tasks_estimate_minutes.sql
+  // (defense in depth: Zod rejects zero/negative here too, not only the
+  // DB CHECK). Nullable — null clears a previously set estimate.
+  estimateMinutes: z
+    .number()
+    .int("Estimate must be a whole number of minutes.")
+    .positive("Estimate must be greater than zero.")
+    .nullable(),
 });
 
 const partialEditableFields = editableFields.partial();
