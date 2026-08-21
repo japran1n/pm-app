@@ -46,7 +46,14 @@
 // enforcement half" convention as CommentList's canDelete).
 
 import { useEffect, useState, useTransition } from "react";
-import { Clock, Loader2, Play, Square, Trash2 } from "lucide-react";
+import {
+  Clock,
+  Loader2,
+  Play,
+  Square,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -57,7 +64,12 @@ import {
   stopTimer,
 } from "@/lib/actions/time-entries";
 import { formatDuration } from "@/lib/time/format-duration";
+// F167 (AS-300, AS-301, AS-302): the single ratio/flag source shared with
+// TaskCard's over-estimate badge — see that file's doc comment for the
+// null-means-no-estimate contract.
+import { getEstimateProgress } from "@/lib/tasks/estimate-progress";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,6 +151,7 @@ export function TimeTracking({
   taskId,
   timeEntries,
   members,
+  estimateMinutes = null,
   activeTimer = null,
   currentUserId,
   currentUserRole,
@@ -150,6 +163,12 @@ export function TimeTracking({
   timeEntries: TimeEntry[];
   /** Workspace members, used to resolve each entry's person display. */
   members: TimeTrackingMember[];
+  /** F167 (AS-300, AS-301, AS-302): this task's `estimate_minutes`
+   * (F166), or null/undefined when no estimate is set — the "no estimate"
+   * empty state (AS-302: logged time only, no bar, no flag) is the safe
+   * default, same "caller hasn't fetched it yet" convention as
+   * `activeTimer` below. */
+  estimateMinutes?: number | null;
   /** F111 (AS-168): the viewer's own active timer, if any, anywhere in the
    * workspace (not necessarily on this task). `null`/undefined (caller
    * hasn't fetched it yet) is treated as "no active timer" — a safe
@@ -222,6 +241,12 @@ export function TimeTracking({
     (sum, entry) => sum + entry.minutes,
     0,
   );
+
+  // F167 (AS-300, AS-301, AS-302): null when no estimate is set — the
+  // estimate row/progress bar/over-estimate badge below all key off this
+  // single value being null vs. present, never re-deriving the check
+  // themselves.
+  const estimateProgress = getEstimateProgress(estimateMinutes, totalMinutes);
 
   function handleStartOrSwitch() {
     startTimerTransition(async () => {
@@ -400,6 +425,48 @@ export function TimeTracking({
           {formatDuration(totalMinutes)}
         </span>
       </div>
+
+      {/* F167 (AS-300, AS-301, AS-302): estimate row — only rendered when
+          an estimate is set (estimateProgress is non-null); a task with no
+          estimate shows nothing more here beyond the logged-time total
+          above (AS-302). */}
+      {estimateProgress && (
+        <div className="flex flex-col gap-1.5" data-testid="estimate-progress">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {formatDuration(totalMinutes)} of{" "}
+              {formatDuration(estimateMinutes as number)} estimated
+            </span>
+            {estimateProgress.isOverEstimate && (
+              <span
+                className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-500"
+                data-testid="over-estimate-badge"
+              >
+                <TriangleAlert className="size-3" aria-hidden="true" />
+                Over estimate
+              </span>
+            )}
+          </div>
+          <div
+            className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuenow={estimateProgress.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`${estimateProgress.percent}% of estimate logged`}
+          >
+            <span
+              className={cn(
+                "absolute inset-y-0 left-0 rounded-full",
+                estimateProgress.isOverEstimate
+                  ? "bg-amber-500"
+                  : "bg-foreground/70",
+              )}
+              style={{ width: `${estimateProgress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Start/stop timer control */}
       <div className="flex flex-col gap-2">

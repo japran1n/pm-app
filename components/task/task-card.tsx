@@ -18,6 +18,10 @@ import { Ban, Clock, ListTree, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+// F167 (AS-300, AS-301, AS-302): the single ratio/flag source shared with
+// TimeTracking's estimate row — see that file's doc comment for the
+// null-means-no-estimate contract.
+import { getEstimateProgress } from "@/lib/tasks/estimate-progress";
 // F154 (AS-272, AS-273): the shared completion-percentage shape — see
 // that file's doc comment for the null-means-nothing-to-measure contract.
 import type { TaskCompletion } from "@/lib/tasks/completion";
@@ -71,6 +75,12 @@ export type TaskCardTask = {
   // convention as `updatedAt`. Zero/undefined/null all mean "no time
   // logged yet" and hide the indicator entirely.
   totalMinutes?: number | null;
+  // F166/F167 (AS-300, AS-301, AS-302): this task's `estimate_minutes`.
+  // Optional/null both mean "no estimate set" — the over-estimate badge
+  // below simply doesn't render in that case (getEstimateProgress's own
+  // null contract), same "safe default" convention as `totalMinutes`
+  // above.
+  estimateMinutes?: number | null;
   // F146 (AS-258): this task's owning project's key (e.g. "PM") and its
   // own per-project sequential number (e.g. 142), combined by
   // formatTaskKey into "PM-142" below. Both selected via the query's
@@ -148,6 +158,13 @@ export function TaskCard({
   timezone: string;
 }) {
   const overdue = isOverdue(task.dueDate, task.status, timezone);
+  // F167 (AS-300, AS-301, AS-302): null when no estimate is set — the
+  // over-estimate badge below only renders when this is non-null AND
+  // flagged, never a false positive on an estimate-less task.
+  const estimateProgress = getEstimateProgress(
+    task.estimateMinutes,
+    task.totalMinutes ?? 0,
+  );
   // F146 (AS-258): null when either half is missing (e.g. a realtime-
   // reconciled row still resolving its project — see task.projectKey's
   // doc comment above) — formatTaskKey's contract is "null means don't
@@ -220,6 +237,21 @@ export function TaskCard({
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="size-3" aria-hidden="true" />
             {formatDuration(task.totalMinutes)}
+          </span>
+        )}
+        {/* F167 (AS-301, AS-153 convention): "over estimate" is icon +
+            text, never colour alone — same overdue-indicator pairing this
+            card already establishes above, just with an amber (informing,
+            not alarming — per the Clarified spec's Notes) treatment rather
+            than the destructive-red overdue uses, since going over
+            estimate is a fact, not an error. */}
+        {estimateProgress?.isOverEstimate && (
+          <span
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500"
+            data-testid="over-estimate-badge"
+          >
+            <TriangleAlert className="size-3" aria-hidden="true" />
+            Over estimate
           </span>
         )}
         {/* F150 (AS-275, AS-153 convention): "has subtasks" is icon +

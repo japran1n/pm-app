@@ -112,6 +112,13 @@ export type TaskDetailSheetTask = {
   dueDate: string | null;
   /** AS-065: may be empty — every task has a tag list, never null. */
   tags: string[];
+  /** F166/F167 (AS-300, AS-301, AS-302): this task's `estimate_minutes`,
+   * threaded straight through to TimeTracking's estimate row/progress
+   * bar/over-estimate badge below. Optional/null both mean "no estimate
+   * set" — TimeTracking's own "safe default" convention (see that
+   * component's `estimateMinutes` prop doc comment) handles the AS-302
+   * empty state; this Sheet does no computation of its own. */
+  estimateMinutes?: number | null;
   /** F146 (AS-258): this task's owning project's key (e.g. "PM") and its
    * own per-project sequential number (e.g. 142), combined by
    * formatTaskKey into "PM-142" for the header's click-to-copy badge
@@ -826,6 +833,7 @@ export function TaskDetailSheet({
                 taskId={task.id}
                 timeEntries={timeEntries}
                 members={members}
+                estimateMinutes={task.estimateMinutes}
                 activeTimer={activeTimer}
                 currentUserId={currentUserId}
                 currentUserRole={currentUserRole}
