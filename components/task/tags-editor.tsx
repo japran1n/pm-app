@@ -19,6 +19,7 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { updateTaskTags } from "@/lib/actions/tasks";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,11 +28,24 @@ import { Label } from "@/components/ui/label";
 export function TagsEditor({
   taskId,
   tags,
+  currentUserRole,
 }: {
   taskId: string;
   /** Current tag list for this task (may be empty — AS-065). */
   tags: string[];
+  /** F135 (AS-231): threaded straight through from TaskDetailSheet's own
+   * `currentUserRole` prop, same convention CommentList/TimeTracking/
+   * AttachmentList already use — viewers/guests never see a usable
+   * add/remove-tag control. Undefined (a caller that hasn't been updated,
+   * e.g. an existing test) is treated as permissive. */
+  currentUserRole?: WorkspaceRole;
 }) {
+  const canEditTags = currentUserRole
+    ? canWrite({ role: currentUserRole })
+    : true;
+  const disabledTitle = canEditTags
+    ? undefined
+    : "You don't have permission to edit tags.";
   const [localTags, setLocalTags] = useState(tags);
   // Tracks which task's tags are currently loaded into local state, so it
   // can be re-synced below without an Effect — same "adjust state during
@@ -91,7 +105,8 @@ export function TagsEditor({
               <button
                 type="button"
                 aria-label={`Remove tag ${tag}`}
-                disabled={isSaving}
+                disabled={isSaving || !canEditTags}
+                title={disabledTitle}
                 onClick={() => handleRemove(tag)}
                 className="rounded-full p-0.5 hover:bg-muted-foreground/20 disabled:pointer-events-none disabled:opacity-50"
               >
@@ -105,8 +120,9 @@ export function TagsEditor({
         <Input
           id={`task-tags-${taskId}`}
           value={draft}
-          disabled={isSaving}
+          disabled={isSaving || !canEditTags}
           placeholder="Add a tag"
+          title={disabledTitle}
           onChange={(changeEvent) => setDraft(changeEvent.target.value)}
           onKeyDown={(keyEvent) => {
             if (keyEvent.key === "Enter") {
@@ -118,7 +134,8 @@ export function TagsEditor({
         <Button
           type="button"
           variant="outline"
-          disabled={isSaving || !draft.trim()}
+          disabled={isSaving || !draft.trim() || !canEditTags}
+          title={disabledTitle}
           onClick={handleAdd}
         >
           <Plus className="size-4" aria-hidden="true" />

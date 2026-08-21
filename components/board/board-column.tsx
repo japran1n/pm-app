@@ -43,6 +43,7 @@ export function BoardColumn({
   assignees,
   onCardClick,
   timezone,
+  canDrag = true,
 }: {
   status: TaskCardTask["status"];
   tasks: TaskCardTask[];
@@ -58,6 +59,10 @@ export function BoardColumn({
    * SortableTaskCard in this column. REQUIRED since F275 — see board.tsx's
    * own doc comment on this same prop for why. */
   timezone: string;
+  /** F135 (AS-231): passed straight through to every SortableTaskCard in
+   * this column — see that component's own doc comment for why dragging
+   * itself (not just the drop's Server Action) needs to be gated. */
+  canDrag?: boolean;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
@@ -102,6 +107,7 @@ export function BoardColumn({
                 }
                 onClick={onCardClick}
                 timezone={timezone}
+                canDrag={canDrag}
               />
             ))
           )}

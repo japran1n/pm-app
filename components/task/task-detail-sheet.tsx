@@ -50,7 +50,12 @@ import { cn } from "@/lib/utils";
 // re-concatenating projectKey/number locally.
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
-import type { WorkspaceRole } from "@/lib/auth/permissions";
+import {
+  canDeleteTask,
+  canEditTask,
+  type WorkspaceRole,
+} from "@/lib/auth/permissions";
+import { useProjectRole } from "@/components/auth/membership-provider";
 import { TagsEditor } from "@/components/task/tags-editor";
 import {
   SubtaskList,
@@ -302,6 +307,37 @@ export function TaskDetailSheet({
   const { confirmIfMovingToDone, dialog: blockedDoneDialog } =
     useBlockedDoneGuard();
 
+  // F135 (AS-231): lib/auth/permissions.ts (F127) is the single source of
+  // truth for whether this caller may edit/delete this task — never
+  // re-derived from `currentUserRole` inline. `projectRole` comes from the
+  // membership context (see membership-provider.tsx's own doc comment),
+  // not a second fetch. `currentUserRole` undefined (a caller that hasn't
+  // been updated to pass it, e.g. an existing test) is treated as
+  // permissive, matching every other optional-role prop's "safe default"
+  // convention already established by CommentList/TimeTracking/
+  // AttachmentList in this same codebase.
+  const projectRole = useProjectRole(task?.projectId);
+  const canEdit = currentUserRole
+    ? canEditTask({ role: currentUserRole, projectRole })
+    : true;
+  // Deliberately conservative: this codebase has no task-creator/owner
+  // tracking yet (no `createdBy`/`created_by` column — see this feature's
+  // handoff Out-of-scope section), so `resourceOwnerId`/`callerId` are
+  // never passed here and canDeleteTask's ownership branch always
+  // evaluates to false for a plain "member" without a project-lead role.
+  // That's the safe direction for AS-231 (a control that COULD have
+  // succeeded staying hidden is not a violation; a control that WILL fail
+  // being shown is) — it just means a task's own creator can't yet delete
+  // it themselves unless they're also owner/admin/lead, which the handoff
+  // flags as a known gap for a future feature to lift once ownership is
+  // tracked.
+  const canDelete = currentUserRole
+    ? canDeleteTask({ role: currentUserRole, projectRole })
+    : true;
+  const editDisabledTitle = canEdit
+    ? undefined
+    : "You don't have permission to edit this task.";
+
   // Re-sync local edit state whenever the sheet is opened for a (possibly
   // different) task, mirroring EditProjectDialog's handleOpenChange reset
   // convention.
@@ -532,7 +568,8 @@ export function TaskDetailSheet({
                 <Input
                   id={`task-title-${task.id}`}
                   value={title}
-                  disabled={isSavingField}
+                  disabled={isSavingField || !canEdit}
+                  title={editDisabledTitle}
                   onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                   onBlur={handleTitleBlur}
                   className="text-base font-medium"
@@ -559,7 +596,7 @@ export function TaskDetailSheet({
                   <Select
                     value={task.status}
                     onValueChange={handleStatusChange}
-                    disabled={isSavingField}
+                    disabled={isSavingField || !canEdit}
                   >
                     <SelectTrigger
                       id={`task-status-${task.id}`}
@@ -587,7 +624,7 @@ export function TaskDetailSheet({
                   <Select
                     value={task.priority ?? NO_PRIORITY_VALUE}
                     onValueChange={handlePriorityChange}
-                    disabled={isSavingField}
+                    disabled={isSavingField || !canEdit}
                   >
                     <SelectTrigger
                       id={`task-priority-${task.id}`}
@@ -621,7 +658,7 @@ export function TaskDetailSheet({
                 <Select
                   value={task.assigneeId ?? NO_ASSIGNEE_VALUE}
                   onValueChange={handleAssigneeChange}
-                  disabled={isAssigning}
+                  disabled={isAssigning || !canEdit}
                 >
                   <SelectTrigger
                     id={`task-assignee-${task.id}`}
@@ -701,7 +738,8 @@ export function TaskDetailSheet({
                   id={`task-due-date-${task.id}`}
                   type="date"
                   value={dueDate ?? ""}
-                  disabled={isSavingField}
+                  disabled={isSavingField || !canEdit}
+                  title={editDisabledTitle}
                   onChange={(changeEvent) =>
                     handleDueDateChange(changeEvent.target.value)
                   }
@@ -720,7 +758,8 @@ export function TaskDetailSheet({
                 <Textarea
                   id={`task-description-${task.id}`}
                   value={description}
-                  disabled={isSavingField}
+                  disabled={isSavingField || !canEdit}
+                  title={editDisabledTitle}
                   onChange={(changeEvent) =>
                     setDescription(changeEvent.target.value)
                   }
@@ -728,7 +767,11 @@ export function TaskDetailSheet({
                 />
               </div>
 
-              <TagsEditor taskId={task.id} tags={task.tags} />
+              <TagsEditor
+                taskId={task.id}
+                tags={task.tags}
+                currentUserRole={currentUserRole}
+              />
 
               <Separator />
 
@@ -742,7 +785,11 @@ export function TaskDetailSheet({
 
               <Separator />
 
-              <Checklist taskId={task.id} items={task.checklistItems ?? []} />
+              <Checklist
+                taskId={task.id}
+                items={task.checklistItems ?? []}
+                currentUserRole={currentUserRole}
+              />
 
               <Separator />
 
@@ -789,7 +836,8 @@ export function TaskDetailSheet({
               <Button
                 type="button"
                 variant="destructive"
-                disabled={isDeleting}
+                disabled={isDeleting || !canDelete}
+                title={canDelete ? undefined : "You don't have permission to delete this task."}
                 onClick={handleDelete}
               >
                 {isDeleting ? (

@@ -21,6 +21,8 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { createTask } from "@/lib/actions/tasks";
+import { canWrite } from "@/lib/auth/permissions";
+import { useMembership } from "@/components/auth/membership-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,6 +92,17 @@ export function NewTaskDialog({
   triggerLabel?: string;
 }) {
   const router = useRouter();
+  // F135 (AS-231): read from the shared membership context rather than a
+  // per-caller prop — this dialog is mounted straight from the board
+  // toolbar/empty state and the list toolbar, none of which otherwise
+  // fetch or thread a role through to here. `null` (no provider in the
+  // tree, e.g. an existing test) is treated as permissive, matching the
+  // rest of this codebase's optional-role convention.
+  const membership = useMembership();
+  const canCreate = membership ? canWrite({ role: membership.role }) : true;
+  const createDisabledTitle = canCreate
+    ? undefined
+    : "You don't have permission to create tasks.";
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -161,7 +174,13 @@ export function NewTaskDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger
         render={
-          <Button variant={variant} size={size} className="gap-1.5">
+          <Button
+            variant={variant}
+            size={size}
+            className="gap-1.5"
+            disabled={!canCreate}
+            title={createDisabledTitle}
+          >
             <Plus className="size-4" aria-hidden="true" />
             {triggerLabel}
           </Button>

@@ -2,6 +2,12 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+// F135 (AS-231): the membership context provider — see that file's own doc
+// comment for why this exists alongside (not instead of) the more precise
+// per-fetch role props (e.g. TaskDetailSheet's own currentUserRole) other
+// features already thread through explicitly.
+import { MembershipProvider } from "@/components/auth/membership-provider";
+import type { ProjectRole } from "@/lib/auth/permissions";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -126,6 +132,50 @@ export default async function WorkspaceLayout({
     (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
       ?.role === "guest";
 
+  // F135 (AS-231): the caller's own workspace role, in full (not just the
+  // isGuest boolean above) — the single value MembershipProvider exposes
+  // to every client component under this layout so mutating controls can
+  // gate themselves via lib/auth/permissions.ts without a per-component
+  // re-fetch. Defaults to "guest" (the least-privileged role) in the
+  // defensive case where the caller somehow has no matching membership row
+  // despite the workspace lookup above having already succeeded (should be
+  // unreachable — the workspace query itself is scoped to active
+  // memberships — but a safe fallback here is strictly better than
+  // crashing or silently granting a wider role than the caller has).
+  const activeWorkspaceRole =
+    (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
+      ?.role ?? "guest";
+
+  // F135 (AS-231): every project_members row the caller has for a project
+  // IN THIS WORKSPACE — one query, loaded once per layout render, so every
+  // client component under this layout (board rows, list rows, task
+  // detail) can gate a project-lead-scoped control (e.g. canManageColumns,
+  // canDeleteTask) without its own fetch. Scoped to the active workspace
+  // via the `projects!inner(workspace_id)` embed — project_members' own
+  // RLS policy (`project_members_select_active_members`) already limits
+  // this to projects whose workspace the caller is an active member of,
+  // but without this filter a caller who belongs to project_members rows
+  // in more than one workspace would get another workspace's project ids
+  // mixed into this one's map.
+  const { data: projectMemberRows, error: projectMemberRowsError } =
+    await supabase
+      .from("project_members")
+      .select("project_id, project_role, projects!inner(workspace_id)")
+      .eq("user_id", user.id)
+      .eq("projects.workspace_id", activeWorkspace.id);
+
+  if (projectMemberRowsError) {
+    console.error(
+      "WorkspaceLayout: failed to look up caller's project memberships:",
+      projectMemberRowsError,
+    );
+  }
+
+  const projectRoles: Record<string, ProjectRole> = {};
+  for (const row of projectMemberRows ?? []) {
+    projectRoles[row.project_id] = row.project_role as ProjectRole;
+  }
+
   const { data: workspaces, error: workspacesError } = workspaceIds.length
     ? await supabase
         .from("workspaces")
@@ -161,22 +211,24 @@ export default async function WorkspaceLayout({
   // own heading (e.g. "Projects", "Members") as the page-title convention
   // instead.
   return (
-    <div className="flex min-h-svh">
-      <AppSidebar
-        workspaceSlug={workspaceSlug}
-        workspaces={switcherWorkspaces}
-        currentWorkspaceId={activeWorkspace.id}
-        isGuest={isGuest}
-        currentUser={{
-          id: user.id,
-          name: currentUserProfile?.display_name ?? null,
-          email: user.email ?? null,
-          avatarUrl: currentUserProfile?.avatar_url ?? null,
-        }}
-      />
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        {children}
-      </main>
-    </div>
+    <MembershipProvider role={activeWorkspaceRole} projectRoles={projectRoles}>
+      <div className="flex min-h-svh">
+        <AppSidebar
+          workspaceSlug={workspaceSlug}
+          workspaces={switcherWorkspaces}
+          currentWorkspaceId={activeWorkspace.id}
+          isGuest={isGuest}
+          currentUser={{
+            id: user.id,
+            name: currentUserProfile?.display_name ?? null,
+            email: user.email ?? null,
+            avatarUrl: currentUserProfile?.avatar_url ?? null,
+          }}
+        />
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          {children}
+        </main>
+      </div>
+    </MembershipProvider>
   );
 }

@@ -23,6 +23,7 @@ export function SortableTaskCard({
   assignee,
   onClick,
   timezone,
+  canDrag = true,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee, looked up by the caller
@@ -33,9 +34,21 @@ export function SortableTaskCard({
    * component's own doc comment for where this ultimately comes from.
    * REQUIRED since F275. */
   timezone: string;
+  /** F135 (AS-231): a viewer/guest (lib/auth/permissions.ts's `canWrite`)
+   * can look at the board but must never be able to drag a card into a
+   * different status/position — dnd-kit's own `disabled` option on
+   * useSortable is the correct place to gate this (not just "don't call
+   * the Server Action on drop"), since leaving the card draggable would
+   * let it visually reorder client-side and then silently snap back when
+   * the mutation is rejected server-side — exactly the "control that will
+   * fail" AS-231 forbids. Defaults to true so every existing caller that
+   * hasn't been updated (e.g. tests, the DragOverlay's own bare TaskCard
+   * usage in board.tsx which doesn't go through this component at all)
+   * keeps its current behavior. */
+  canDrag?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: task.id });
+    useSortable({ id: task.id, disabled: !canDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),

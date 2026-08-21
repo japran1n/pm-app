@@ -24,6 +24,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { moveTaskStatus } from "@/lib/actions/tasks";
+import { canWrite } from "@/lib/auth/permissions";
+import { useMembership } from "@/components/auth/membership-provider";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import type { TaskCardTask } from "@/components/task/task-card";
 import {
@@ -66,6 +68,16 @@ export function ListStatusSelect({
   const { confirmIfMovingToDone, dialog: blockedDoneDialog } =
     useBlockedDoneGuard();
 
+  // F135 (AS-231): this row's status select is rendered straight from the
+  // initial Server Component list fetch (TaskListTable) with no per-row
+  // role prop available — the membership context (see
+  // membership-provider.tsx) is exactly the case it exists for. `null` (no
+  // provider, e.g. an existing test) is treated as permissive.
+  const membership = useMembership();
+  const canChangeStatus = membership
+    ? canWrite({ role: membership.role })
+    : true;
+
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
     setLocalStatus(status);
@@ -102,7 +114,12 @@ export function ListStatusSelect({
         <SelectTrigger
           size="sm"
           className="w-36"
-          disabled={isSaving}
+          disabled={isSaving || !canChangeStatus}
+          title={
+            canChangeStatus
+              ? undefined
+              : "You don't have permission to change this task's status."
+          }
           aria-label={`Change status for task ${taskId}`}
         >
           <span className="flex items-center gap-1.5 overflow-hidden">

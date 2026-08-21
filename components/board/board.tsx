@@ -42,6 +42,8 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 
 import { reorderTask, moveAndReorderTask } from "@/lib/actions/tasks";
+import { canWrite } from "@/lib/auth/permissions";
+import { useMembership } from "@/components/auth/membership-provider";
 import { calculatePosition } from "@/lib/board/position";
 import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
 import { BoardColumn } from "@/components/board/board-column";
@@ -130,6 +132,15 @@ export function Board({
   // rolled back to the pre-drop snapshot on failure).
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
+
+  // F135 (AS-231): a viewer/guest can look at the board but must never be
+  // able to drag a card — see SortableTaskCard's own doc comment for why
+  // this is gated at the dnd-kit `disabled` level, not just at the drop
+  // handler. `null` (no provider in the tree, e.g. an existing test) is
+  // treated as permissive, matching every other optional-role fallback in
+  // this codebase.
+  const membership = useMembership();
+  const canDrag = membership ? canWrite({ role: membership.role }) : true;
 
   // F049 (AS-076): reconcile every Realtime event (this client's own
   // moves included — see reconcileTask's doc comment on why dedup isn't
@@ -356,6 +367,7 @@ export function Board({
               assignees={assignees}
               onCardClick={handleCardClick}
               timezone={timezone}
+              canDrag={canDrag}
             />
           ))}
         </div>

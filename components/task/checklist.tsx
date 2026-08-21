@@ -145,6 +145,7 @@ import {
   reorderChecklistItem,
   toggleChecklistItem,
 } from "@/lib/actions/checklist";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { countChecklistProgress } from "@/lib/tasks/checklist-progress";
 import { cn } from "@/lib/utils";
@@ -176,6 +177,8 @@ function ChecklistItemRow({
   onDelete,
   onKeyDown,
   disabled,
+  disabledTitle,
+  canDrag,
 }: {
   item: ChecklistListItem;
   registerInputRef: (id: string, element: HTMLInputElement | null) => void;
@@ -192,6 +195,11 @@ function ChecklistItemRow({
    * handle — reordering a not-yet-confirmed item is harmless (the
    * eventual reorder call just persists whatever position it lands on). */
   disabled: boolean;
+  /** F135 (AS-231): explains a disabled row when it's the permission gate
+   * (not just an in-flight mutation) causing it — undefined otherwise. */
+  disabledTitle?: string;
+  /** F135 (AS-231): viewers/guests can't reorder checklist items either. */
+  canDrag: boolean;
 }) {
   const {
     attributes,
@@ -201,7 +209,7 @@ function ChecklistItemRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id });
+  } = useSortable({ id: item.id, disabled: !canDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -229,6 +237,7 @@ function ChecklistItemRow({
       <Checkbox
         checked={item.isChecked}
         disabled={disabled}
+        title={disabledTitle}
         onCheckedChange={() => onToggle(item)}
         aria-label={
           item.isChecked
@@ -241,6 +250,7 @@ function ChecklistItemRow({
         ref={(element) => registerInputRef(item.id, element)}
         value={item.content}
         disabled={disabled}
+        title={disabledTitle}
         maxLength={CONTENT_MAX_LENGTH}
         aria-label="Checklist item text"
         className={cn(
@@ -258,6 +268,7 @@ function ChecklistItemRow({
         size="icon"
         className="size-6 shrink-0"
         disabled={disabled}
+        title={disabledTitle}
         aria-label={`Delete "${item.content || "checklist item"}"`}
         onClick={() => onDelete(item)}
       >
@@ -270,13 +281,26 @@ function ChecklistItemRow({
 export function Checklist({
   taskId,
   items,
+  currentUserRole,
 }: {
   /** The task this checklist belongs to. */
   taskId: string;
   /** This task's current checklist items, from getTaskDetail's own query
    * (lib/actions/tasks.ts), ideally already position-ascending. */
   items: ChecklistListItem[];
+  /** F135 (AS-231): threaded straight through from TaskDetailSheet's own
+   * `currentUserRole` prop, same convention CommentList/TimeTracking/
+   * TagsEditor already use — viewers/guests never see a usable
+   * add/toggle/rename/delete/reorder control. Undefined (an existing
+   * caller/test that hasn't been updated) is treated as permissive. */
+  currentUserRole?: WorkspaceRole;
 }) {
+  const canEditChecklist = currentUserRole
+    ? canWrite({ role: currentUserRole })
+    : true;
+  const checklistDisabledTitle = canEditChecklist
+    ? undefined
+    : "You don't have permission to edit the checklist.";
   const [localItems, setLocalItems] = useState(items);
   const [draft, setDraft] = useState("");
   // Tracks which task's items are currently loaded into local state, so
@@ -709,7 +733,9 @@ export function Checklist({
                   onCommitRename={handleCommitRename}
                   onDelete={(current) => handleDelete(current)}
                   onKeyDown={handleItemKeyDown}
-                  disabled={busyItemId === item.id}
+                  disabled={busyItemId === item.id || !canEditChecklist}
+                  disabledTitle={canEditChecklist ? undefined : checklistDisabledTitle}
+                  canDrag={canEditChecklist}
                 />
               ))}
             </ul>
@@ -726,7 +752,8 @@ export function Checklist({
           id={`checklist-draft-${taskId}`}
           ref={draftRef}
           value={draft}
-          disabled={isAdding}
+          disabled={isAdding || !canEditChecklist}
+          title={checklistDisabledTitle}
           placeholder="Add an item…"
           className="h-7 flex-1 border-transparent bg-transparent px-1.5 shadow-none focus-visible:border-ring focus-visible:bg-background"
           onChange={(event) => setDraft(event.target.value)}
