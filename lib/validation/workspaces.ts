@@ -105,6 +105,31 @@ export const renameWorkspaceSchema = z.object({
 
 export type RenameWorkspaceInput = z.infer<typeof renameWorkspaceSchema>;
 
+// Validates change-slug input (F137, AS-241/AS-242). Slugs are
+// user-editable, unlike the auto-generated `slugify()` output used at
+// creation time, so this enforces the same URL-safe shape directly
+// (lowercase letters, digits, single hyphens, no leading/trailing
+// hyphen) rather than silently normalizing arbitrary input through
+// `slugify()` and surprising the caller with a value that doesn't match
+// what they typed.
+export const changeWorkspaceSlugSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, "Slug is required.")
+    .max(80, "Slug must be 80 characters or fewer.")
+    .regex(
+      /^[a-z0-9]+(-[a-z0-9]+)*$/,
+      "Slug can only contain lowercase letters, numbers, and single hyphens.",
+    ),
+});
+
+export type ChangeWorkspaceSlugInput = z.infer<
+  typeof changeWorkspaceSlugSchema
+>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).

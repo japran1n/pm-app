@@ -1,11 +1,17 @@
 "use client";
 
-// F136 (AS-239, AS-240): the settings page's interactive "General" section
-// — workspace name (editable) and slug (read-only, see `renameWorkspace`'s
-// own comment for why slug is out of scope here). Smallest possible client
+// F136 (AS-239, AS-240) + F137 (AS-241, AS-242): the settings page's
+// interactive "General" section — workspace name and slug, each editable
+// and saved independently through their own Server Action
+// (`renameWorkspace` / `changeWorkspaceSlug`). Smallest possible client
 // boundary, matching F123's ProfileForm: the settings page above is a
 // Server Component that loads the current values; this owns only the
-// rename interaction.
+// rename/slug-change interactions.
+//
+// F137: the slug field is a field-level error surface (AS-242) — a
+// collision (live or historical) is shown right under the slug input,
+// not as a generic toast alone, so the user knows exactly which field to
+// fix.
 //
 // Logo: the clarified spec calls for "a logo placeholder/stub if F138
 // hasn't landed" — F138 (workspace logo upload) has not landed in this
@@ -22,7 +28,7 @@ import { useState, useTransition } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { renameWorkspace } from "@/lib/actions/workspaces";
+import { renameWorkspace, changeWorkspaceSlug } from "@/lib/actions/workspaces";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +36,7 @@ import { Label } from "@/components/ui/label";
 export function WorkspaceGeneralForm({
   workspaceId,
   name: initialName,
-  slug,
+  slug: initialSlug,
   canManage,
 }: {
   workspaceId: string;
@@ -43,7 +49,13 @@ export function WorkspaceGeneralForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, startSaveTransition] = useTransition();
 
+  const [savedSlug, setSavedSlug] = useState(initialSlug);
+  const [slug, setSlug] = useState(initialSlug);
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [isSavingSlug, startSaveSlugTransition] = useTransition();
+
   const isDirty = name !== savedName;
+  const isSlugDirty = slug !== savedSlug;
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -63,6 +75,32 @@ export function WorkspaceGeneralForm({
         // transition finishes) — same convention as ProfileForm (F123).
         setName(savedName);
         setFormError(result.error);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  // F137 (AS-241, AS-242): saved separately from the name — the two
+  // fields have different consequences (renaming is cosmetic; changing
+  // the slug moves the workspace's URL and is what
+  // workspace_slug_history/the layout redirect exist to make safe) and
+  // different failure surfaces (a slug collision is field-level, shown
+  // right under this input).
+  function handleSlugSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    setSlugError(null);
+
+    startSaveSlugTransition(async () => {
+      const result = await changeWorkspaceSlug(workspaceId, slug);
+
+      if (result.ok) {
+        setSavedSlug(result.data.slug);
+        setSlug(result.data.slug);
+        toast.success("Workspace URL updated.");
+      } else {
+        // Same revert-to-last-saved convention as the name form above.
+        setSlug(savedSlug);
+        setSlugError(result.error);
         toast.error(result.error);
       }
     });
@@ -103,22 +141,6 @@ export function WorkspaceGeneralForm({
           />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="workspace-slug">Slug</Label>
-          <Input
-            id="workspace-slug"
-            type="text"
-            value={slug}
-            readOnly
-            disabled
-            className="max-w-sm"
-          />
-          <p className="text-sm text-muted-foreground">
-            The URL slug can&rsquo;t be changed once a workspace is
-            created.
-          </p>
-        </div>
-
         {formError && (
           <p
             id="workspace-name-error"
@@ -136,6 +158,61 @@ export function WorkspaceGeneralForm({
             className="w-fit"
           >
             {isSaving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                Saving...
+              </>
+            ) : (
+              "Save changes"
+            )}
+          </Button>
+        )}
+      </form>
+
+      {/* F137 (AS-241, AS-242): the slug is now editable, saved through
+          its own action/transition (see handleSlugSubmit above) so a
+          rename and a URL change never share one optimistic-revert
+          state. */}
+      <form onSubmit={handleSlugSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="workspace-slug">URL slug</Label>
+          <Input
+            id="workspace-slug"
+            name="slug"
+            type="text"
+            maxLength={80}
+            disabled={!canManage || isSavingSlug}
+            value={slug}
+            onChange={(changeEvent) =>
+              setSlug(changeEvent.target.value.toLowerCase())
+            }
+            aria-invalid={slugError ? true : undefined}
+            aria-describedby={slugError ? "workspace-slug-error" : undefined}
+            className="max-w-sm"
+          />
+          <p className="text-sm text-muted-foreground">
+            Changing this updates the workspace&rsquo;s URL. Links using the
+            old URL will keep working — they redirect here automatically.
+          </p>
+        </div>
+
+        {slugError && (
+          <p
+            id="workspace-slug-error"
+            role="alert"
+            className="text-sm text-destructive"
+          >
+            {slugError}
+          </p>
+        )}
+
+        {canManage && (
+          <Button
+            type="submit"
+            disabled={isSavingSlug || !isSlugDirty}
+            className="w-fit"
+          >
+            {isSavingSlug ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 Saving...

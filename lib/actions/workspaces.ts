@@ -15,6 +15,7 @@ import {
   removeMemberSchema,
   deleteWorkspaceSchema,
   renameWorkspaceSchema,
+  changeWorkspaceSlugSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -22,6 +23,7 @@ import {
   requireWorkspaceAdmin,
   requireWorkspaceOwner,
 } from "@/lib/auth/require-membership";
+import { writeAudit } from "@/lib/activity/audit";
 
 export type CreateWorkspaceResult =
   | { ok: true; slug: string }
@@ -48,6 +50,10 @@ export type DeleteWorkspaceResult =
 
 export type RenameWorkspaceResult =
   | { ok: true; data: { name: string } }
+  | { ok: false; error: string };
+
+export type ChangeWorkspaceSlugResult =
+  | { ok: true; data: { slug: string } }
   | { ok: false; error: string };
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
@@ -369,14 +375,18 @@ export async function inviteMember(
   // F134 (AS-220): invited_project_id is read once, on acceptance, by
   // activateInvitedMemberships to also create the guest's project_members
   // row — see lib/actions/invites.ts.
-  const { error: insertError } = await admin.from("workspace_members").insert({
-    workspace_id: parsed.data.workspaceId,
-    user_id: null,
-    invited_email: parsed.data.email,
-    role: parsed.data.role,
-    status: "invited",
-    invited_project_id: parsed.data.projectId ?? null,
-  });
+  const { data: insertedInvite, error: insertError } = await admin
+    .from("workspace_members")
+    .insert({
+      workspace_id: parsed.data.workspaceId,
+      user_id: null,
+      invited_email: parsed.data.email,
+      role: parsed.data.role,
+      status: "invited",
+      invited_project_id: parsed.data.projectId ?? null,
+    })
+    .select("id")
+    .single();
 
   if (insertError) {
     console.error("inviteMember: insert failed:", insertError);
@@ -393,6 +403,14 @@ export async function inviteMember(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "member.invited",
+    targetType: "workspace_member",
+    targetId: insertedInvite?.id ?? null,
+    metadata: { email: parsed.data.email, role: parsed.data.role },
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")
@@ -517,6 +535,13 @@ export async function revokeInvite(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "invite.revoked",
+    targetType: "workspace_member",
+    targetId: parsed.data.workspaceMemberId,
+  });
 
   const { data: workspaceRow } = await admin
     .from("workspaces")
@@ -726,6 +751,14 @@ export async function changeMemberRole(
     };
   }
 
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "member.role_changed",
+    targetType: "workspace_member",
+    targetId: parsed.data.targetMembershipId,
+    metadata: { old_role: targetRow.role, new_role: parsed.data.newRole },
+  });
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -883,6 +916,14 @@ export async function removeMember(
     return { ok: false, error: "This member no longer exists." };
   }
 
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "member.removed",
+    targetType: "workspace_member",
+    targetId: parsed.data.targetMembershipId,
+    metadata: { role: targetRow.role },
+  });
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -999,6 +1040,13 @@ export async function deleteWorkspace(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "workspace.deleted",
+    targetType: "workspace",
+    targetId: parsed.data.workspaceId,
+  });
 
   try {
     revalidatePath(`/w/${parsed.data.workspaceId}`, "layout");
@@ -1140,6 +1188,14 @@ export async function renameWorkspace(
     };
   }
 
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "workspace.renamed",
+    targetType: "workspace",
+    targetId: parsed.data.workspaceId,
+    metadata: { name: updated.name },
+  });
+
   try {
     // "layout" invalidates every page nested under this workspace's
     // layout (sidebar switcher, page titles that read the workspace name
@@ -1158,4 +1214,227 @@ export async function renameWorkspace(
   }
 
   return { ok: true, data: { name: updated.name } };
+}
+
+// F137 (AS-241, AS-242): changes a workspace's slug from its settings page.
+// Owner-or-admin (`requireWorkspaceAdmin`), the same gate `renameWorkspace`
+// uses — slug is part of the same "general settings" section, not a more
+// sensitive operation than the name.
+//
+// AS-242: uniqueness is checked across BOTH currently-live slugs
+// (`workspaces.slug`, which already carries its own unique constraint as a
+// backstop) AND retired slugs (`workspace_slug_history.old_slug`, unique
+// per that table's own constraint) — a slug that used to belong to some
+// *other* workspace must stay rejected forever, otherwise a second
+// workspace could "steal" it and hijack the first workspace's still-live
+// old bookmarks/redirects. Both checks are surfaced as the same
+// field-level error (returned as `ok: false` with a message the caller
+// renders next to the slug field, not a generic failure toast).
+//
+// AS-241: on a successful change, the OLD slug is inserted into
+// `workspace_slug_history` in the same request (best-effort — see the
+// insert's own error handling below) before `workspaces.slug` is updated,
+// so the workspace layout (app/(workspace)/w/[workspaceSlug]/layout.tsx)
+// can resolve a request for the old slug to this workspace's new one and
+// issue a permanent redirect instead of 404ing. See that layout for the
+// redirect side of this feature.
+export async function changeWorkspaceSlug(
+  workspaceId: string,
+  slug: string,
+): Promise<ChangeWorkspaceSlugResult> {
+  const parsed = changeWorkspaceSlugSchema.safeParse({ workspaceId, slug });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to change a workspace's URL." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention): re-check the caller is
+  // specifically owner/admin of this exact workspace, server-side — a
+  // member or viewer calling this action directly (bypassing the UI)
+  // must be rejected.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only a workspace owner or admin can change this workspace's URL.",
+    };
+  }
+
+  const { data: workspaceRow, error: lookupError } = await admin
+    .from("workspaces")
+    .select("id, slug, deleted_at")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("changeWorkspaceSlug: workspace lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!workspaceRow || workspaceRow.deleted_at) {
+    return { ok: false, error: "This workspace no longer exists." };
+  }
+
+  const newSlug = parsed.data.slug;
+
+  // No-op: submitting the workspace's current slug unchanged. Treat as a
+  // trivial success rather than a "slug already in use" rejection — it is
+  // this workspace's own live slug, not a collision with anyone else's.
+  if (newSlug === workspaceRow.slug) {
+    return { ok: true, data: { slug: workspaceRow.slug } };
+  }
+
+  // AS-242: check the new slug against every OTHER workspace's currently
+  // live slug.
+  const { data: liveCollision, error: liveCollisionError } = await admin
+    .from("workspaces")
+    .select("id")
+    .eq("slug", newSlug)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (liveCollisionError) {
+    console.error(
+      "changeWorkspaceSlug: live-slug collision check failed:",
+      liveCollisionError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (liveCollision) {
+    return { ok: false, error: "This URL is already in use." };
+  }
+
+  // AS-242: check the new slug against every retired slug in history,
+  // regardless of which workspace it used to belong to (including this
+  // workspace's own past slugs — a slug is retired permanently once
+  // changed, and re-claiming it here would break any old redirect chain
+  // pointing at it).
+  const { data: historyCollision, error: historyCollisionError } = await admin
+    .from("workspace_slug_history")
+    .select("id")
+    .eq("old_slug", newSlug)
+    .maybeSingle();
+
+  if (historyCollisionError) {
+    console.error(
+      "changeWorkspaceSlug: history-slug collision check failed:",
+      historyCollisionError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (historyCollision) {
+    return { ok: false, error: "This URL was used before and can't be reused." };
+  }
+
+  const oldSlug = workspaceRow.slug;
+
+  // AS-241: record the retired slug before flipping `workspaces.slug`, so
+  // a crash/error between the two steps leans toward "old URL still
+  // 404s" rather than "old URL is live" (a missing history row is safe;
+  // a stray one pointing at a slug that was never actually retired is
+  // not). If this insert fails (e.g. a race lost the old_slug unique
+  // constraint to a concurrent change of some other workspace's slug back
+  // to this exact value, vanishingly unlikely but not impossible), the
+  // whole change is rejected rather than proceeding without a working
+  // redirect for the slug being abandoned.
+  const { error: historyInsertError } = await admin
+    .from("workspace_slug_history")
+    .insert({ workspace_id: parsed.data.workspaceId, old_slug: oldSlug });
+
+  if (historyInsertError) {
+    console.error(
+      "changeWorkspaceSlug: history insert failed:",
+      historyInsertError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("workspaces")
+    .update({ slug: newSlug })
+    .eq("id", parsed.data.workspaceId)
+    .select("slug")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("changeWorkspaceSlug: update failed:", updateError);
+    // Best-effort compensating cleanup: remove the history row we just
+    // wrote so a failed slug change doesn't leave a phantom redirect
+    // target pointing at a slug the workspace never actually stopped
+    // using. Non-fatal if this also fails — the history row is at worst
+    // a harmless (if theoretically confusing) redirect to a workspace
+    // that already owns that exact slug, since the update above did not
+    // take effect.
+    await admin
+      .from("workspace_slug_history")
+      .delete()
+      .eq("workspace_id", parsed.data.workspaceId)
+      .eq("old_slug", oldSlug);
+
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // F140 convention: every workspace-mutating action records an audit_log
+  // entry via writeAudit (AS-245-adjacent — not itself an assigned
+  // assertion of this feature, but matching the established pattern every
+  // other action in this file now follows).
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "workspace.slug_changed",
+    targetType: "workspace",
+    targetId: parsed.data.workspaceId,
+    metadata: { old_slug: oldSlug, new_slug: updated.slug },
+  });
+
+  try {
+    // "layout" invalidates every page nested under the OLD slug's layout
+    // path — the route itself moves out from under it once `slug`
+    // changes, so this mirrors `deleteWorkspace`/`renameWorkspace`'s own
+    // use of the "layout" type for the same "this route tree's data
+    // changed" reason.
+    revalidatePath(`/w/${oldSlug}`, "layout");
+  } catch (revalidateError) {
+    console.error(
+      "changeWorkspaceSlug: revalidatePath failed (non-fatal):",
+      revalidateError,
+    );
+  }
+
+  return { ok: true, data: { slug: updated.slug } };
 }

@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound, redirect, permanentRedirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/nav/app-sidebar";
@@ -73,6 +73,56 @@ export default async function WorkspaceLayout({
   }
 
   if (!activeWorkspace) {
+    // F137 (AS-241): before giving up with a generic 404, check whether
+    // this slug is a RETIRED one (the workspace changed its slug via
+    // `changeWorkspaceSlug`, lib/actions/workspaces.ts) rather than one
+    // that never existed. If so, permanently redirect to the same path
+    // under the workspace's current slug instead of 404ing — a bookmark
+    // or shared link built from the old slug keeps working.
+    //
+    // This lookup deliberately runs with no membership check of its own:
+    // `workspace_slug_history` only reveals "this old slug now maps to
+    // workspace id X" (see that table's own RLS policy comment — no
+    // information beyond what a slug itself already carries), and the
+    // redirect target still passes back through this exact guard on the
+    // next request, re-running the real `workspaces_select_active_members`
+    // membership check against the NEW slug. A non-member hitting an old
+    // slug for a workspace they don't belong to still ends up at the same
+    // generic 404 AS-144 requires — just one redirect further along —
+    // rather than this shortcut ever granting access the membership check
+    // would otherwise deny.
+    const { data: slugHistoryRow, error: slugHistoryError } = await supabase
+      .from("workspace_slug_history")
+      .select("workspace_id")
+      .eq("old_slug", workspaceSlug)
+      .maybeSingle();
+
+    if (slugHistoryError) {
+      console.error(
+        "WorkspaceLayout: failed to look up slug history:",
+        slugHistoryError,
+      );
+    }
+
+    if (slugHistoryRow) {
+      const { data: currentWorkspace } = await supabase
+        .from("workspaces")
+        .select("slug")
+        .eq("id", slugHistoryRow.workspace_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (currentWorkspace?.slug) {
+        // Permanent redirect (AS-241): the old URL is gone for good, not
+        // a temporary detour. `permanentRedirect()` (as opposed to plain
+        // `redirect()`) is what Next.js maps to a 308 status in a Route
+        // Handler, or a permanent-semantics client navigation elsewhere —
+        // telling clients and intermediaries this is the canonical new
+        // location, not a one-off reroute.
+        permanentRedirect(`/w/${currentWorkspace.slug}`);
+      }
+    }
+
     // AS-144: generic 404, not a redirect to /onboarding or any page that
     // would signal "you don't have access" — see file-header comment.
     notFound();

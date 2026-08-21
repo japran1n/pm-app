@@ -541,6 +541,35 @@ export type Database = {
           },
         ]
       }
+      workspace_slug_history: {
+        Row: {
+          created_at: string
+          id: string
+          old_slug: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          old_slug: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          old_slug?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_slug_history_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspaces: {
         Row: {
           created_at: string
