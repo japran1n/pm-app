@@ -187,6 +187,41 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          id: string
+          project_id: string
+          project_role: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          project_id: string
+          project_role?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          project_id?: string
+          project_role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -200,6 +235,7 @@ export type Database = {
           start_date: string | null
           task_counter: number
           updated_at: string
+          visibility: string
           workspace_id: string
         }
         Insert: {
@@ -214,6 +250,7 @@ export type Database = {
           start_date?: string | null
           task_counter?: number
           updated_at?: string
+          visibility?: string
           workspace_id: string
         }
         Update: {
@@ -228,6 +265,7 @@ export type Database = {
           start_date?: string | null
           task_counter?: number
           updated_at?: string
+          visibility?: string
           workspace_id?: string
         }
         Relationships: [
@@ -578,10 +616,19 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      is_project_lead_or_workspace_admin: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
+      is_project_visible_to: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
       is_project_workspace_member: {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_task_visible_to: { Args: { target_task_id: string }; Returns: boolean }
       is_task_workspace_member: {
         Args: { target_task_id: string }
         Returns: boolean
