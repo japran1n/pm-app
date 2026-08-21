@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  Archive,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -46,6 +47,13 @@ import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/use
 // denies guests (see that page's own `role === "guest"` redirect) and
 // `renameWorkspace`/`deleteWorkspace` re-check server-side (AS-230
 // convention), so hiding this link is not the actual security boundary.
+//
+// F142: an "Archive" nav item, gated to non-guests the same way "Members"
+// already is — a guest never sees an entry point to
+// `/w/[workspaceSlug]/archive` from the sidebar. This is a UI-only
+// convenience gate, same caveat as above; the archive page itself
+// independently redirects a guest who navigates there directly (see that
+// page's own `role === "guest"` redirect).
 function navItems(
   workspaceSlug: string,
   isGuest: boolean,
@@ -57,12 +65,15 @@ function navItems(
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
+    { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
     ...(canManageWorkspace
       ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
       : []),
   ];
 
-  return isGuest ? items.filter((item) => item.label !== "Members") : items;
+  return isGuest
+    ? items.filter((item) => item.label !== "Members" && item.label !== "Archive")
+    : items;
 }
 
 function SidebarContent({

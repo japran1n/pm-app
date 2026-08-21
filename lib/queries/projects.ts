@@ -20,6 +20,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolvePeople } from "@/lib/queries/people";
 
 export type ProjectListItem = {
   id: string;
@@ -119,4 +120,147 @@ export async function getProjectById(
     createdAt: data.created_at,
     deletedAt: data.deleted_at,
   };
+}
+
+// F142 (AS-250, AS-251, AS-256): data for the archive view
+// (`/w/[workspaceSlug]/archive`).
+//
+// AS-250 ("archived projects leave the active project list") is already
+// satisfied by `getWorkspaceProjects` above's pre-existing
+// `.is("deleted_at", null)` filter — verified, not re-fixed here (see
+// `tests/unit/archived-projects-excluded.test.ts`). This function is the
+// mirror-image query: everything `getWorkspaceProjects` excludes.
+//
+// Uses the admin client, same justification as `getProjectById` just
+// above: `projects_select_active_members` filters `deleted_at IS NULL`,
+// which would hide every row this query needs. Callers MUST independently
+// verify the caller is an active member of `workspaceId` before calling
+// this (the page does, via the layout guard + its own membership lookup,
+// same pattern `getProjectById`'s callers already follow).
+export type ArchivedProjectListItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  archivedAt: string;
+  archivedByName: string | null;
+  taskCount: number;
+};
+
+export async function getArchivedWorkspaceProjects(
+  workspaceId: string,
+): Promise<ArchivedProjectListItem[]> {
+  const admin = createAdminClient();
+
+  // Feature-detect `archived_by` (F142's migration,
+  // supabase/migrations/20260822000000_projects_archived_by.sql): this
+  // worker's sandbox could not confirm the migration was applied to the
+  // linked project (`supabase db push`/`migration list` both hung —
+  // documented in this feature's handoff), so the column may not exist
+  // live yet. Selecting it explicitly and falling back to a
+  // column-free select on a "column does not exist" error (Postgres
+  // code 42703) means the archive view still renders (AS-250, AS-256)
+  // even before the migration lands, and picks up "by whom" automatically
+  // (no code change needed) the moment it does.
+  let rows: { id: string; name: string; description: string | null; deleted_at: string | null; archived_by?: string | null }[] = [];
+
+  const withArchivedBy = await admin
+    .from("projects")
+    // `archived_by` isn't in the generated `Database` type yet (same
+    // reason as `archiveProject`'s write side, lib/actions/projects.ts) —
+    // `.returns<T>()` overrides the compile-time result shape for this
+    // one query without an unsafe cast on the whole call.
+    .select("id, name, description, deleted_at, archived_by")
+    .eq("workspace_id", workspaceId)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false })
+    .returns<
+      {
+        id: string;
+        name: string;
+        description: string | null;
+        deleted_at: string | null;
+        archived_by: string | null;
+      }[]
+    >();
+
+  if (withArchivedBy.error) {
+    if (
+      withArchivedBy.error.code === "42703" ||
+      withArchivedBy.error.code === "PGRST204"
+    ) {
+      const withoutArchivedBy = await admin
+        .from("projects")
+        .select("id, name, description, deleted_at")
+        .eq("workspace_id", workspaceId)
+        .not("deleted_at", "is", null)
+        .order("deleted_at", { ascending: false });
+
+      if (withoutArchivedBy.error) {
+        throw withoutArchivedBy.error;
+      }
+      rows = withoutArchivedBy.data ?? [];
+    } else {
+      throw withArchivedBy.error;
+    }
+  } else {
+    rows = withArchivedBy.data ?? [];
+  }
+
+  if (rows.length === 0) return [];
+
+  const projectIds = rows.map((row) => row.id);
+
+  // Task counts: one batched query for every archived project's tasks
+  // (no per-row/N+1 network call), same performance budget
+  // `getWorkspaceProjects`'s own header comment follows. Non-deleted tasks
+  // only, matching this codebase's soft-delete convention.
+  const { data: taskRows, error: taskError } = await admin
+    .from("tasks")
+    .select("project_id")
+    .in("project_id", projectIds)
+    .is("deleted_at", null);
+
+  if (taskError) {
+    console.error(
+      "getArchivedWorkspaceProjects: task count query failed:",
+      taskError,
+    );
+  }
+
+  const taskCountByProject = new Map<string, number>();
+  for (const task of taskRows ?? []) {
+    taskCountByProject.set(
+      task.project_id,
+      (taskCountByProject.get(task.project_id) ?? 0) + 1,
+    );
+  }
+
+  // "By whom" (AS-251): resolve archiver display names in one batched
+  // call, same `resolvePeople` used by the audit log page
+  // (app/(workspace)/w/[workspaceSlug]/settings/audit/page.tsx) — not a
+  // new name-resolution path.
+  const archiverIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.archived_by)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const archiverNames =
+    archiverIds.length > 0
+      ? await resolvePeople(archiverIds)
+      : new Map<string, { name: string | null; email: string | null; avatarUrl: string | null }>();
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    archivedAt: row.deleted_at as string,
+    archivedByName: row.archived_by
+      ? (archiverNames.get(row.archived_by)?.name ??
+        archiverNames.get(row.archived_by)?.email ??
+        null)
+      : null,
+    taskCount: taskCountByProject.get(row.id) ?? 0,
+  }));
 }

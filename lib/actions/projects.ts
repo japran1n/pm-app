@@ -15,6 +15,21 @@ import {
 } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
+import type { Database } from "@/lib/supabase/database.types";
+
+// F142: `projects.archived_by` (supabase/migrations/
+// 20260822000000_projects_archived_by.sql) is not yet reflected in the
+// generated `Database` type — `supabase gen types typescript` requires the
+// same live-schema connectivity that `supabase db push` needs, which
+// hung in this worker's sandbox (see this feature's handoff). This local
+// type extension lets `archiveProject` write the column via a typed
+// variable (structurally assignable, extra property allowed) rather than
+// an unsafe `as any`/`as never` cast on the update call itself. Delete
+// this once `database.types.ts` is regenerated against the live schema.
+type ProjectsUpdateWithArchivedBy =
+  Database["public"]["Tables"]["projects"]["Update"] & {
+    archived_by?: string | null;
+  };
 
 export type CreateProjectResult =
   | {
@@ -442,14 +457,62 @@ export async function archiveProject(
     return { ok: false, error: "This project is already archived." };
   }
 
-  const { data: updated, error: updateError } = await admin
+  const archivedAt = new Date().toISOString();
+
+  // F142 (AS-251): also stamp `archived_by` so the archive view can show
+  // who archived the project. Feature-detected the same way
+  // `getArchivedWorkspaceProjects` (lib/queries/projects.ts) reads it —
+  // this worker's sandbox could not confirm the F142 migration
+  // (supabase/migrations/20260822000000_projects_archived_by.sql) was
+  // applied to the linked project (`supabase db push`/`migration list`
+  // both hung, see this feature's handoff), so a "column does not exist"
+  // error (42703) here must not break archiving itself (mission-1's
+  // AS-030/AS-031/AS-032/AS-033 behaviour, which this action must never
+  // regress) — it falls back to the pre-existing `deleted_at`-only
+  // update. Once the migration is confirmed live, the `archived_by` write
+  // below succeeds and no further code change is needed.
+  let updated:
+    | { id: string; workspace_id: string; deleted_at: string | null }
+    | null = null;
+  let updateError: { code?: string; message?: string } | null = null;
+
+  const archivedByUpdate: ProjectsUpdateWithArchivedBy = {
+    deleted_at: archivedAt,
+    archived_by: user.id,
+  };
+
+  const withArchivedBy = await admin
     .from("projects")
-    .update({ deleted_at: new Date().toISOString() })
+    // `archived_by` isn't in the generated `Database` type yet (see the
+    // `ProjectsUpdateWithArchivedBy` comment above) — the typed client's
+    // update() rejects any excess property at the type level regardless
+    // of structural assignability, so this one call site needs the
+    // explicit cast; every other query below stays fully typed.
+    .update(archivedByUpdate as never)
     .eq("id", parsed.data.projectId)
     .eq("workspace_id", parsed.data.workspaceId)
     .is("deleted_at", null)
     .select("id, workspace_id, deleted_at")
     .single();
+
+  if (
+    withArchivedBy.error?.code === "42703" ||
+    withArchivedBy.error?.code === "PGRST204"
+  ) {
+    const withoutArchivedBy = await admin
+      .from("projects")
+      .update({ deleted_at: archivedAt })
+      .eq("id", parsed.data.projectId)
+      .eq("workspace_id", parsed.data.workspaceId)
+      .is("deleted_at", null)
+      .select("id, workspace_id, deleted_at")
+      .single();
+    updated = withoutArchivedBy.data;
+    updateError = withoutArchivedBy.error;
+  } else {
+    updated = withArchivedBy.data;
+    updateError = withArchivedBy.error;
+  }
 
   if (updateError || !updated) {
     console.error("archiveProject: soft-delete update failed:", updateError);
