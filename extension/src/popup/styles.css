@@ -1,0 +1,261 @@
+/* F300-followup — shared design system for the extension popup.
+ *
+ * Loaded via a plain `import "./styles.css"` in main.tsx — Vite handles
+ * `.css` imports natively (no extra plugin needed; verified against
+ * vite.config.ts, which already ships @vitejs/plugin-react and has no CSS
+ * config overrides, so Vite's built-in CSS handling applies unchanged).
+ * This file is the ONLY place global styles live for the popup; the old
+ * `<style>` block in index.html (just the F299 :focus-visible rule) has
+ * been folded into `.pm-focusable:focus-visible` / a global fallback below
+ * so that rule is not lost, just relocated and generalised.
+ *
+ * Scope for this pass (see feature brief): design tokens, base
+ * typography/layout, and button variants (primary/secondary/icon). Applied
+ * to the popup shell/status area and the annotation toolbar only — the
+ * report form and other capture states are NOT restyled here (a second
+ * pass covers those), though they still get the base tokens/typography for
+ * free since they're just unstyled inline-style elements sitting inside
+ * this same document.
+ *
+ * region-overlay.ts (the live third-party-page overlay) intentionally does
+ * NOT use these tokens — it is not part of this stylesheet's scope and its
+ * inline styles are left untouched.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Color tokens — light mode (default). */
+  --pm-bg: #ffffff;
+  --pm-surface: #f7f7f8;
+  --pm-text-primary: #16181d;
+  --pm-text-secondary: #5c6270;
+  --pm-border: #e2e4e9;
+  --pm-accent: #4f46e5;
+  --pm-accent-fg: #ffffff;
+  --pm-accent-hover: #4338ca;
+  --pm-success: #16a34a;
+  --pm-success-bg: #ecfdf3;
+  --pm-error: #dc2626;
+  --pm-error-bg: #fef2f2;
+  --pm-warning: #b45309;
+  --pm-warning-bg: #fffbeb;
+  --pm-focus-ring: #4f46e5;
+
+  /* Spacing scale. */
+  --pm-space-1: 4px;
+  --pm-space-2: 8px;
+  --pm-space-3: 12px;
+  --pm-space-4: 16px;
+  --pm-space-6: 24px;
+
+  /* Radius scale. */
+  --pm-radius-sm: 6px;
+  --pm-radius-md: 8px;
+  --pm-radius-lg: 12px;
+
+  /* Typography scale. */
+  --pm-font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
+  --pm-font-size-heading: 16px;
+  --pm-font-size-body: 13px;
+  --pm-font-size-meta: 12px;
+}
+
+/* Dark mode: MV3 popups have no reliable hook into the extension's/host
+ * app's own theme toggle, so `prefers-color-scheme` (the OS-level signal)
+ * is the correct mechanism here — it's what a popup can actually observe.
+ * (https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme,
+ * verified 2026-08-21: broadly supported, no flag needed in Chrome, which
+ * is the only engine this MV3 extension runs in.) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pm-bg: #1c1d21;
+    --pm-surface: #26272c;
+    --pm-text-primary: #f2f3f5;
+    --pm-text-secondary: #9a9ea8;
+    --pm-border: #34363c;
+    --pm-accent: #818cf8;
+    --pm-accent-fg: #16181d;
+    --pm-accent-hover: #a5b4fc;
+    --pm-success: #4ade80;
+    --pm-success-bg: #052e16;
+    --pm-error: #f87171;
+    --pm-error-bg: #450a0a;
+    --pm-warning: #fbbf24;
+    --pm-warning-bg: #451a03;
+    --pm-focus-ring: #a5b4fc;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 380px;
+  background: var(--pm-bg);
+  color: var(--pm-text-primary);
+  font-family: var(--pm-font-family);
+  font-size: var(--pm-font-size-body);
+  line-height: 1.45;
+}
+
+h1,
+h2 {
+  font-family: inherit;
+  color: var(--pm-text-primary);
+}
+
+.pm-heading {
+  font-size: var(--pm-font-size-heading);
+  font-weight: 600;
+  margin: 0;
+}
+
+.pm-body {
+  font-size: var(--pm-font-size-body);
+}
+
+.pm-meta {
+  font-size: var(--pm-font-size-meta);
+  color: var(--pm-text-secondary);
+}
+
+/* F299 (AS-570), relocated from index.html's old inline <style> block and
+ * generalised: a real, explicit, always-visible focus indicator on every
+ * keyboard-focusable control, via :focus-visible so it only shows for
+ * keyboard/programmatic focus, never a mouse click. Kept as a bare
+ * `:focus-visible` selector (not scoped to a class) so it keeps applying
+ * to every interactive element in the popup exactly as before, including
+ * ones outside this pass's scope (the report form, native <select>s, the
+ * annotation canvas itself) — nothing loses its focus ring as a result of
+ * this file replacing index.html's <style> block. */
+:focus-visible {
+  outline: 3px solid var(--pm-focus-ring);
+  outline-offset: 2px;
+}
+
+/* --- Buttons --- */
+
+.pm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pm-space-2);
+  font-family: inherit;
+  font-size: var(--pm-font-size-body);
+  font-weight: 500;
+  padding: var(--pm-space-2) var(--pm-space-3);
+  border-radius: var(--pm-radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.pm-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* Primary: filled, accent-colored — the main action (e.g. "Select area to
+ * capture", "Connect"). */
+.pm-btn-primary {
+  background: var(--pm-accent);
+  color: var(--pm-accent-fg);
+  border-color: var(--pm-accent);
+}
+
+.pm-btn-primary:not(:disabled):hover {
+  background: var(--pm-accent-hover);
+  border-color: var(--pm-accent-hover);
+}
+
+/* Secondary: outlined/ghost — lower-emphasis actions (e.g. "Disconnect"). */
+.pm-btn-secondary {
+  background: transparent;
+  color: var(--pm-text-primary);
+  border-color: var(--pm-border);
+}
+
+.pm-btn-secondary:not(:disabled):hover {
+  background: var(--pm-surface);
+}
+
+/* Icon-only: fixed square hit target for the annotation toolbar. Shares
+ * the same radius/padding scale and focus-visible handling as the other
+ * two variants. `aria-pressed="true"` (the selected tool) gets the accent
+ * treatment so the current tool is visually obvious without relying on
+ * color alone (paired with the pressed outline below). */
+.pm-btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--pm-radius-sm);
+  background: transparent;
+  color: var(--pm-text-secondary);
+  border-color: transparent;
+}
+
+.pm-btn-icon:not(:disabled):hover {
+  background: var(--pm-surface);
+  color: var(--pm-text-primary);
+}
+
+.pm-btn-icon[aria-pressed="true"] {
+  background: var(--pm-accent);
+  color: var(--pm-accent-fg);
+  border-color: var(--pm-accent);
+}
+
+.pm-btn-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* --- Layout helpers --- */
+
+.pm-card {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-lg);
+  padding: var(--pm-space-4);
+}
+
+.pm-section {
+  margin-top: var(--pm-space-4);
+  padding-top: var(--pm-space-3);
+  border-top: 1px solid var(--pm-border);
+}
+
+.pm-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--pm-space-2);
+}
+
+.pm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-2);
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-md);
+}
+
+.pm-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--pm-border);
+  margin: 0 var(--pm-space-1);
+}

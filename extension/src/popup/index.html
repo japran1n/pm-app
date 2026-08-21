@@ -4,25 +4,10 @@
     <meta charset="UTF-8" />
     <title>PM-App QA Feedback</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      body {
-        margin: 0;
-        width: 320px;
-        font-family: system-ui, sans-serif;
-      }
-      /* F299 (AS-570): a real, explicit, guaranteed visible focus
-         indicator on every keyboard-focusable control in the popup —
-         does not rely on an unstyled browser default (which is real but
-         not something this codebase asserts or controls). Applies to
-         every interactive element (buttons, inputs, selects, the
-         annotation canvas itself) via :focus-visible so it only shows for
-         keyboard/programmatic focus, not for a mouse click, matching how
-         real browsers already draw default focus rings. */
-      :focus-visible {
-        outline: 3px solid #2563eb;
-        outline-offset: 2px;
-      }
-    </style>
+    <!-- F300-followup: global styles (design tokens, typography, button
+         variants, the F299 :focus-visible rule) now live in
+         src/popup/styles.css, imported from main.tsx — see that file's
+         header comment for why this moved out of an inline <style> block. -->
   </head>
   <body>
     <div id="root"></div>

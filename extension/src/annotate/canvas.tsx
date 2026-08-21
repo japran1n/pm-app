@@ -5,6 +5,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactElement,
 } from "react";
 
 import { drawAllOperations, fontSizeForStrokeWidth } from "./tools/draw";
@@ -413,13 +414,13 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
     }
   }
 
-  const tools = useMemo<{ kind: ToolKind; label: string }[]>(
+  const tools = useMemo<{ kind: ToolKind; label: string; icon: ReactElement }[]>(
     () => [
-      { kind: "arrow", label: "Arrow" },
-      { kind: "rectangle", label: "Rectangle" },
-      { kind: "freehand", label: "Pen" },
-      { kind: "text", label: "Text" },
-      { kind: "blur", label: "Blur" },
+      { kind: "arrow", label: "Arrow", icon: <ArrowIcon /> },
+      { kind: "rectangle", label: "Rectangle", icon: <RectangleIcon /> },
+      { kind: "freehand", label: "Pen", icon: <PenIcon /> },
+      { kind: "text", label: "Text", icon: <TextIcon /> },
+      { kind: "blur", label: "Blur", icon: <BlurIcon /> },
     ],
     [],
   );
@@ -430,35 +431,42 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
         data-testid="annotate-toolbar"
         role="toolbar"
         aria-label="Annotation tools"
-        style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}
+        className="pm-toolbar"
+        style={{ marginBottom: "var(--pm-space-2)" }}
       >
         {tools.map((t) => (
           <button
             key={t.kind}
             type="button"
+            className="pm-btn pm-btn-icon"
             data-testid={`annotate-tool-${t.kind}`}
             aria-pressed={tool === t.kind}
+            aria-label={t.label}
+            title={t.label}
             onClick={() => setTool(t.kind)}
-            style={{
-              fontWeight: tool === t.kind ? 700 : 400,
-              outline: tool === t.kind ? "2px solid #2563eb" : undefined,
-            }}
           >
-            {t.label}
+            {t.icon}
           </button>
         ))}
 
+        <span className="pm-toolbar-divider" aria-hidden="true" />
+
         <button
           type="button"
+          className="pm-btn pm-btn-icon"
           data-testid="annotate-add-text-button"
           onClick={handleAddTextKeyboard}
           disabled={!naturalSize}
+          aria-label="Add text"
           title="Add a text box (keyboard-reachable, places text at the centre)"
         >
-          Add text
+          <AddTextIcon />
         </button>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <label
+          className="pm-meta"
+          style={{ display: "flex", alignItems: "center", gap: "var(--pm-space-1)" }}
+        >
           Colour
           <input
             data-testid="annotate-color-picker"
@@ -468,7 +476,10 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
           />
         </label>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <label
+          className="pm-meta"
+          style={{ display: "flex", alignItems: "center", gap: "var(--pm-space-1)" }}
+        >
           Width
           <input
             data-testid="annotate-stroke-width"
@@ -480,21 +491,29 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
           />
         </label>
 
+        <span className="pm-toolbar-divider" aria-hidden="true" />
+
         <button
           type="button"
+          className="pm-btn pm-btn-icon"
           data-testid="annotate-undo"
           onClick={handleUndo}
           disabled={!canUndo}
+          aria-label="Undo"
+          title="Undo"
         >
-          Undo
+          <UndoIcon />
         </button>
         <button
           type="button"
+          className="pm-btn pm-btn-icon"
           data-testid="annotate-redo"
           onClick={handleRedo}
           disabled={!canRedo}
+          aria-label="Redo"
+          title="Redo"
         >
-          Redo
+          <RedoIcon />
         </button>
       </div>
 
@@ -557,19 +576,104 @@ export function AnnotationEditor({ baseImageDataUrl, onSubmit, onCancel }: Props
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+      <div style={{ display: "flex", gap: "var(--pm-space-2)", marginTop: "var(--pm-space-2)" }}>
         <button
           type="button"
+          className="pm-btn pm-btn-primary"
           data-testid="annotate-confirm-button"
           onClick={handleSubmit}
           disabled={submitting || !naturalSize}
         >
           {submitting ? "Saving…" : "Save annotations"}
         </button>
-        <button type="button" data-testid="annotate-cancel-button" onClick={onCancel}>
+        <button
+          type="button"
+          className="pm-btn pm-btn-secondary"
+          data-testid="annotate-cancel-button"
+          onClick={onCancel}
+        >
           Cancel
         </button>
       </div>
     </div>
+  );
+}
+
+// Simple, self-contained inline SVG icons for the toolbar — no external
+// icon library/CDN (this extension makes no external requests, per
+// tech-decisions.md and every prior feature in this codebase). 20x20
+// viewBox, stroke-based so `.pm-btn-icon svg` (styles.css) can tint them
+// via `currentColor` and control stroke-width consistently.
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M4 16 16 4" />
+      <path d="M8 4h8v8" />
+    </svg>
+  );
+}
+
+function RectangleIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="3.5" y="5" width="13" height="10" rx="1.5" />
+    </svg>
+  );
+}
+
+function PenIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M4 16c1.5-4 2-9 5-11 1.5-1 3 .5 2 2-2 3-6 4-9 9" />
+      <path d="M12 6l2 2" />
+    </svg>
+  );
+}
+
+function TextIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M5 5h10" />
+      <path d="M10 5v10" />
+      <path d="M7.5 15h5" />
+    </svg>
+  );
+}
+
+function BlurIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="6" />
+      <path d="M10 4v2M10 14v2M4 10h2M14 10h2" />
+    </svg>
+  );
+}
+
+function AddTextIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M4 6h8" />
+      <path d="M8 6v9" />
+      <path d="M13 12h4" />
+      <path d="M15 10v4" />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M5 8H12a4 4 0 0 1 0 8H8" />
+      <path d="M8 5 5 8l3 3" />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M15 8H8a4 4 0 0 0 0 8h4" />
+      <path d="M12 5l3 3-3 3" />
+    </svg>
   );
 }

@@ -293,38 +293,60 @@ export function Popup() {
   }
 
   return (
-    <main data-testid="popup-root" style={{ padding: 16, minWidth: 240 }}>
-      <h1 style={{ fontSize: 16, margin: "0 0 8px" }}>PM-App QA Feedback</h1>
+    <main
+      data-testid="popup-root"
+      style={{ padding: "var(--pm-space-4)", minWidth: 380, fontFamily: "var(--pm-font-family)" }}
+    >
+      <h1 className="pm-heading" style={{ margin: "0 0 var(--pm-space-3)" }}>
+        PM-App QA Feedback
+      </h1>
 
       {status.kind === "loading" && (
-        <p data-testid="connection-status" style={{ margin: 0, color: "#666" }}>
+        <p data-testid="connection-status" className="pm-meta" style={{ margin: 0 }}>
           Checking connection&hellip;
         </p>
       )}
 
       {status.kind === "connected" && (
-        <>
-          <p data-testid="connection-status" style={{ margin: "0 0 8px", color: "#1a7f37" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--pm-space-3)" }}>
+          <p
+            data-testid="connection-status"
+            className="pm-body"
+            style={{ margin: 0, color: "var(--pm-success)", display: "flex", alignItems: "center" }}
+          >
+            <span className="pm-status-dot" style={{ background: "var(--pm-success)" }} aria-hidden="true" />
             Connected{status.email ? ` as ${status.email}` : ""}
           </p>
-          <button data-testid="disconnect-button" type="button" onClick={disconnect}>
+          <button
+            className="pm-btn pm-btn-secondary"
+            data-testid="disconnect-button"
+            type="button"
+            onClick={disconnect}
+          >
             Disconnect
           </button>
-        </>
+        </div>
       )}
 
       {status.kind === "expired" && (
         <>
-          <p data-testid="connection-status" style={{ margin: "0 0 8px", color: "#b91c1c" }}>
+          <p
+            data-testid="connection-status"
+            className="pm-body"
+            style={{ margin: "0 0 var(--pm-space-1)", color: "var(--pm-error)", display: "flex", alignItems: "center" }}
+          >
+            <span className="pm-status-dot" style={{ background: "var(--pm-error)" }} aria-hidden="true" />
             Not connected
           </p>
           <p
             data-testid="signed-out-reason"
-            style={{ margin: "0 0 8px", fontSize: 13, color: "#b91c1c" }}
+            className="pm-meta"
+            style={{ margin: "0 0 var(--pm-space-3)", color: "var(--pm-error)" }}
           >
             Session expired. Please reconnect.
           </p>
           <button
+            className="pm-btn pm-btn-primary"
             data-testid="connect-button"
             type="button"
             onClick={openConnectFlow}
@@ -336,13 +358,19 @@ export function Popup() {
 
       {status.kind === "signed_out" && (
         <>
-          <p data-testid="connection-status" style={{ margin: "0 0 8px", color: "#666" }}>
+          <p
+            data-testid="connection-status"
+            className="pm-body"
+            style={{ margin: "0 0 var(--pm-space-1)", color: "var(--pm-text-secondary)", display: "flex", alignItems: "center" }}
+          >
+            <span className="pm-status-dot" style={{ background: "var(--pm-text-secondary)" }} aria-hidden="true" />
             Not connected
           </p>
-          <p style={{ margin: "0 0 8px", fontSize: 13, color: "#666" }}>
+          <p className="pm-meta" style={{ margin: "0 0 var(--pm-space-3)" }}>
             Sign in to pm-app, then connect the extension to your account.
           </p>
           <button
+            className="pm-btn pm-btn-primary"
             data-testid="connect-button"
             type="button"
             onClick={openConnectFlow}
@@ -353,12 +381,14 @@ export function Popup() {
       )}
 
       {status.kind !== "loading" && (
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
+        <div className="pm-section">
           <button
+            className="pm-btn pm-btn-primary"
             data-testid="capture-button"
             type="button"
             onClick={handleSelectRegion}
             disabled={captureState.kind === "selecting" || captureState.kind === "capturing"}
+            style={{ width: "100%" }}
           >
             {captureState.kind === "selecting"
               ? "Draw a selection on the page…"

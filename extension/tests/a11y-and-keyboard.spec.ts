@@ -373,6 +373,162 @@ test("AS_570_arrow_tool_is_placeable_and_confirmable_entirely_via_the_keyboard",
 });
 
 // ---------------------------------------------------------------------------
+// Design-system pass (redesign part 1/2): the popup shell/status area and
+// the annotation toolbar now use the shared stylesheet
+// (src/popup/styles.css) and icon-only toolbar buttons. These tests prove
+// the stylesheet is genuinely loaded and applied (not just present on
+// disk), that dark mode genuinely activates a real computed-style change,
+// and that every toolbar button still exposes a real accessible name after
+// becoming icon-only (re-running the same check AS_570 already asserts,
+// against the new markup).
+// ---------------------------------------------------------------------------
+
+test("REDESIGN_design_system_stylesheet_is_actually_applied_to_a_real_button", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const page = await context.newPage();
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await expect(page.getByTestId("connection-status")).toHaveText("Not connected");
+
+    const style = await page.getByTestId("connect-button").evaluate((el) => {
+      const s = getComputedStyle(el as HTMLElement);
+      return { backgroundColor: s.backgroundColor, borderRadius: s.borderRadius, color: s.color };
+    });
+
+    // A real, non-default computed style — the browser's own default
+    // <button> is never this accent color or this border-radius, so this
+    // is proof the stylesheet file is actually loaded and its rules are
+    // actually applied to real markup, not just present on disk unused.
+    expect(style.backgroundColor).toBe("rgb(79, 70, 229)"); // --pm-accent light value
+    expect(style.borderRadius).not.toBe("0px");
+  } finally {
+    await context.close();
+  }
+});
+
+test("REDESIGN_dark_mode_genuinely_changes_a_real_computed_style", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await expect(page.getByTestId("connection-status")).toHaveText("Not connected");
+
+    await page.emulateMedia({ colorScheme: "light" });
+    const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+    // https://playwright.dev/docs/api/class-page#page-emulate-media
+    // (verified 2026-08-21) — swaps the CSS `prefers-color-scheme` media
+    // feature the popup itself observes, exactly like a real dark-mode OS
+    // toggle would.
+    await page.emulateMedia({ colorScheme: "dark" });
+    const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+    // A real, different resolved color — proves the `@media
+    // (prefers-color-scheme: dark)` block in styles.css is genuinely
+    // activating, not just present-but-unused in the stylesheet.
+    expect(darkBg).not.toBe(lightBg);
+    expect(lightBg).toBe("rgb(255, 255, 255)"); // --pm-bg light value
+    expect(darkBg).toBe("rgb(28, 29, 33)"); // --pm-bg dark value
+  } finally {
+    await context.close();
+  }
+});
+
+test("REDESIGN_focus_is_still_visibly_indicated_after_the_stylesheet_move", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await expect(page.getByTestId("connection-status")).toHaveText("Not connected");
+
+    await tabUntilTestId(page, "capture-button");
+    const focusedStyle = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      const style = getComputedStyle(el);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    // The F299 :focus-visible rule moved from index.html's inline <style>
+    // into styles.css (main.tsx import) — must still genuinely apply.
+    expect(focusedStyle.outlineStyle).not.toBe("none");
+    expect(focusedStyle.outlineWidth).not.toBe("0px");
+  } finally {
+    await context.close();
+  }
+});
+
+test("REDESIGN_popup_renders_at_a_comfortable_width_with_no_horizontal_scrollbar", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await expect(page.getByTestId("connection-status")).toHaveText("Not connected");
+
+    const measurements = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      bodyMinWidth: getComputedStyle(document.body).minWidth,
+    }));
+
+    // No horizontal overflow (a well-designed popup at this width does not
+    // force a scrollbar), and the width is in the 360-420px comfortable
+    // range called for by the brief.
+    expect(measurements.scrollWidth).toBeLessThanOrEqual(measurements.clientWidth + 1);
+    expect(measurements.bodyMinWidth).toBe("380px");
+  } finally {
+    await context.close();
+  }
+});
+
+test("REDESIGN_every_annotation_tool_button_still_has_a_real_accessible_name_as_icons", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const contentPage = await context.newPage();
+    await contentPage.setViewportSize({ width: 300, height: 200 });
+    await contentPage.setContent(
+      "<html><body style='margin:0;background:#ffffff;width:300px;height:200px'></body></html>",
+    );
+    const screenshotBuffer = await contentPage.screenshot({ type: "png" });
+    const capturedDataUrl = `data:image/png;base64,${screenshotBuffer.toString("base64")}`;
+
+    const popupPage = await context.newPage();
+    await stubCaptureVisibleTab(popupPage, capturedDataUrl);
+    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.getByTestId("capture-button").click();
+    await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
+    await popupPage.getByTestId("annotate-start-button").click();
+    await expect(popupPage.getByTestId("annotate-editor")).toBeVisible();
+
+    for (const kind of ["arrow", "rectangle", "freehand", "text", "blur"]) {
+      const button = popupPage.getByTestId(`annotate-tool-${kind}`);
+      // Now icon-only — accessible name must come from aria-label (real
+      // text content is intentionally empty since the button only holds an
+      // SVG glyph). A native `title` attribute must also be present as the
+      // hover/focus tooltip the brief asked for.
+      const [ariaLabel, title] = await Promise.all([
+        button.getAttribute("aria-label"),
+        button.getAttribute("title"),
+      ]);
+      expect(ariaLabel, `tool button "${kind}" has no aria-label`).toBeTruthy();
+      expect(ariaLabel!.trim().length).toBeGreaterThan(0);
+      expect(title, `tool button "${kind}" has no title tooltip`).toBeTruthy();
+    }
+
+    const addTextButton = popupPage.getByTestId("annotate-add-text-button");
+    expect(await addTextButton.getAttribute("aria-label")).toBeTruthy();
+    expect(await addTextButton.getAttribute("title")).toBeTruthy();
+
+    for (const testId of ["annotate-undo", "annotate-redo"]) {
+      const button = popupPage.getByTestId(testId);
+      expect(await button.getAttribute("aria-label")).toBeTruthy();
+      expect(await button.getAttribute("title")).toBeTruthy();
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // The holistic end-to-end keyboard-only flow: open popup -> capture ->
 // select tool -> place annotation -> fill report form -> submit. Every
 // interaction in THIS test is a page.keyboard.* call — no .click()/.fill().
