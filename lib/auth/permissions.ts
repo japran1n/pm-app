@@ -98,6 +98,18 @@ export function canPurge(ctx: PermissionContext): boolean {
   return ctx.role === "owner";
 }
 
+// F136 (AS-244): deleting the workspace itself. Deliberately narrower than
+// `canManageProject` (which covers rename/general settings and is
+// owner-or-admin) — AS-244 requires that only the owner ever sees the
+// delete-workspace control, matching `deleteWorkspace`'s own server-side
+// `requireWorkspaceOwner` re-check in lib/actions/workspaces.ts. An admin
+// must see nothing here (not a disabled control, not a tooltip — the
+// control itself is omitted), which is what this predicate's single
+// consumer (the settings page's danger zone) relies on.
+export function canDeleteWorkspace(ctx: PermissionContext): boolean {
+  return ctx.role === "owner";
+}
+
 // --- Generic write gate ----------------------------------------------------
 
 // F128 (AS-216, AS-217): the single generic "is this caller allowed to

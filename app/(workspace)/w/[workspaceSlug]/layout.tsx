@@ -7,7 +7,7 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 // per-fetch role props (e.g. TaskDetailSheet's own currentUserRole) other
 // features already thread through explicitly.
 import { MembershipProvider } from "@/components/auth/membership-provider";
-import type { ProjectRole } from "@/lib/auth/permissions";
+import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -218,6 +218,11 @@ export default async function WorkspaceLayout({
           workspaces={switcherWorkspaces}
           currentWorkspaceId={activeWorkspace.id}
           isGuest={isGuest}
+          // F136 (AS-239): gates the sidebar's "Settings" nav item to
+          // owner/admin, the same `canManageProject` predicate the
+          // settings page itself uses to decide what's rendered
+          // interactive (AS-230 convention).
+          canManageWorkspace={canManageProject({ role: activeWorkspaceRole })}
           currentUser={{
             id: user.id,
             name: currentUserProfile?.display_name ?? null,

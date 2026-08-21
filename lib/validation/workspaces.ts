@@ -91,6 +91,20 @@ export const deleteWorkspaceSchema = z.object({
 
 export type DeleteWorkspaceInput = z.infer<typeof deleteWorkspaceSchema>;
 
+// Validates rename-workspace input (F136, AS-240). Same name shape as
+// `createWorkspaceSchema` — one workspace-name validation rule for the
+// whole app rather than a second, possibly-drifting copy.
+export const renameWorkspaceSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Workspace name is required.")
+    .max(80, "Workspace name must be 80 characters or fewer."),
+});
+
+export type RenameWorkspaceInput = z.infer<typeof renameWorkspaceSchema>;
+
 // Turns "My Team!!" into "my-team", collapsing non-alphanumerics to single
 // hyphens and trimming leading/trailing ones. Falls back to "workspace" if
 // the name has no URL-safe characters at all (e.g. an all-emoji name).

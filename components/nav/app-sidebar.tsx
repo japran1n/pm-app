@@ -11,6 +11,7 @@ import {
   Clock,
   LogOut,
   Menu,
+  Settings,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -36,13 +37,29 @@ import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/use
 // denies direct navigation, see app/(workspace)/w/[workspaceSlug]/settings/
 // members/page.tsx's own canViewMembersList guard; this hides the link so
 // a guest isn't shown a control that would only bounce them back).
-function navItems(workspaceSlug: string, isGuest: boolean) {
+// F136 (AS-239): a "Settings" nav item, only shown to owner/admin
+// (`canManageWorkspace`, threaded down from the layout's own
+// `canManageProject` check) — a member/viewer sees no entry point to
+// `/w/[workspaceSlug]/settings` from the sidebar, matching AS-239's
+// "reachable from the sidebar for owners and admins" wording. This is a
+// UI-only convenience gate; the settings page itself independently
+// denies guests (see that page's own `role === "guest"` redirect) and
+// `renameWorkspace`/`deleteWorkspace` re-check server-side (AS-230
+// convention), so hiding this link is not the actual security boundary.
+function navItems(
+  workspaceSlug: string,
+  isGuest: boolean,
+  canManageWorkspace: boolean,
+) {
   const items = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
+    ...(canManageWorkspace
+      ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
+      : []),
   ];
 
   return isGuest ? items.filter((item) => item.label !== "Members") : items;
@@ -54,6 +71,7 @@ function SidebarContent({
   currentWorkspaceId,
   currentUser,
   isGuest,
+  canManageWorkspace,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -61,10 +79,11 @@ function SidebarContent({
   currentWorkspaceId: string;
   currentUser: UserAvatarPerson;
   isGuest: boolean;
+  canManageWorkspace: boolean;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItems(workspaceSlug, isGuest);
+  const items = navItems(workspaceSlug, isGuest, canManageWorkspace);
 
   return (
     <div className="flex h-full flex-col">
@@ -157,12 +176,14 @@ export function AppSidebar({
   currentWorkspaceId,
   currentUser,
   isGuest = false,
+  canManageWorkspace = false,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
   currentWorkspaceId: string;
   currentUser: UserAvatarPerson;
   isGuest?: boolean;
+  canManageWorkspace?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -176,6 +197,7 @@ export function AppSidebar({
           currentWorkspaceId={currentWorkspaceId}
           currentUser={currentUser}
           isGuest={isGuest}
+          canManageWorkspace={canManageWorkspace}
         />
       </aside>
 
@@ -198,6 +220,7 @@ export function AppSidebar({
               currentWorkspaceId={currentWorkspaceId}
               currentUser={currentUser}
               isGuest={isGuest}
+              canManageWorkspace={canManageWorkspace}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>

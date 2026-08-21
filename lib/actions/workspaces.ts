@@ -14,6 +14,7 @@ import {
   changeMemberRoleSchema,
   removeMemberSchema,
   deleteWorkspaceSchema,
+  renameWorkspaceSchema,
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
@@ -43,6 +44,10 @@ export type RemoveMemberResult =
   | { ok: false; error: string };
 
 export type DeleteWorkspaceResult =
+  | { ok: false; error: string };
+
+export type RenameWorkspaceResult =
+  | { ok: true; data: { name: string } }
   | { ok: false; error: string };
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
@@ -1037,4 +1042,120 @@ export async function deleteWorkspace(
   }
 
   redirect("/onboarding");
+}
+
+// F136 (AS-239, AS-240): renames a workspace from its settings page.
+// Owner-or-admin (`requireWorkspaceAdmin`), matching `canManageProject`
+// (lib/auth/permissions.ts) — deliberately less strict than
+// `deleteWorkspace`'s owner-only gate (AS-244 only narrows *delete*, not
+// general settings management).
+//
+// The workspace's `slug` is intentionally left untouched here: this
+// action only ever writes `name`. Changing the slug would break every
+// existing bookmark/link into `/w/{slug}/...` for no assertion this
+// feature is scoped to cover, so the settings page renders slug as a
+// read-only field (see the settings page's own comment) rather than this
+// action growing a second, riskier responsibility.
+//
+// AS-240 ("renaming a workspace updates the switcher immediately"):
+// `revalidatePath(.../layout")` invalidates the workspace layout's cached
+// RSC payload (the layout is what fetches `workspaces` for the switcher),
+// and the calling Client Component follows up with `router.refresh()`
+// once this action resolves — the same two-step pattern
+// `archiveProject`/`ArchiveProjectDialog` already use elsewhere in this
+// app — so the switcher's displayed name changes without a manual
+// reload, not just on the next natural navigation.
+export async function renameWorkspace(
+  workspaceId: string,
+  name: string,
+): Promise<RenameWorkspaceResult> {
+  const parsed = renameWorkspaceSchema.safeParse({ workspaceId, name });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to rename a workspace." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention): re-check the caller is
+  // specifically owner/admin of this exact workspace, server-side — a
+  // member or viewer calling this action directly (bypassing the UI,
+  // which only renders the form for owner/admin per `canManageProject`)
+  // must be rejected.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only a workspace owner or admin can rename this workspace.",
+    };
+  }
+
+  const { data: workspaceRow, error: lookupError } = await admin
+    .from("workspaces")
+    .select("id, slug, deleted_at")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (lookupError) {
+    console.error("renameWorkspace: workspace lookup failed:", lookupError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (!workspaceRow || workspaceRow.deleted_at) {
+    return { ok: false, error: "This workspace no longer exists." };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("workspaces")
+    .update({ name: parsed.data.name })
+    .eq("id", parsed.data.workspaceId)
+    .select("name")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("renameWorkspace: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    // "layout" invalidates every page nested under this workspace's
+    // layout (sidebar switcher, page titles that read the workspace name
+    // server-side), matching `deleteWorkspace`'s own use of the "layout"
+    // type just above.
+    revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+  } catch (revalidateError) {
+    // Same non-fatal cache-freshness rationale as every other action in
+    // this file: revalidatePath throws outside an active request/render
+    // context (e.g. this action invoked from a test harness). The rename
+    // itself already succeeded, so this is not an action failure.
+    console.error(
+      "renameWorkspace: revalidatePath failed (non-fatal):",
+      revalidateError,
+    );
+  }
+
+  return { ok: true, data: { name: updated.name } };
 }
