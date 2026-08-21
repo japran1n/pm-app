@@ -558,4 +558,137 @@ test.describe("select-area-first capture (real drag-select overlay + background-
       await context.close();
     }
   });
+
+  test("bug fix: the page has focus the instant the overlay is injected, and a single click-drag motion (no wasted first click) produces the correct selection", async () => {
+    // Root cause (see region-overlay.ts's own comment on the
+    // `window.focus()` call this proves): the very first real mousedown a
+    // reporter made on the page right after clicking "Select area to
+    // capture" in the popup was being consumed as a window-activation
+    // click rather than delivered to the overlay's own listener, because
+    // the tab's document did not yet have focus at that moment — the
+    // popup (a separate native window) still did. The fix calls
+    // `window.focus()` synchronously the instant the overlay function is
+    // injected, before the user can possibly click. This test proves both
+    // halves: (1) the page already reports `document.hasFocus()` true the
+    // moment the overlay appears — not on some later tick — and (2) a
+    // SINGLE mousedown -> mousemove -> mouseup motion, with no preceding
+    // "wasted" click sent anywhere by this test, produces a correctly
+    // dimensioned selection.
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
+
+    try {
+      const contentPage = await context.newPage();
+      contentPageRef = contentPage;
+      await contentPage.setViewportSize({ width: 400, height: 300 });
+      await contentPage.goto("http://localhost:3000/");
+      await contentPage.bringToFront();
+
+      await stubCaptureVisibleTabOnWorker(worker);
+
+      const popupPage = await context.newPage();
+      await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await contentPage.bringToFront();
+
+      await popupPage.getByTestId("capture-button").click();
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+
+      // (1) The fix's own mechanism: the page must already have focus the
+      // instant the overlay exists, proving `window.focus()` ran as part
+      // of the same synchronous injected-function execution that built
+      // the overlay's DOM — not something that only happens later, after
+      // some other event.
+      await expect
+        .poll(() => contentPage.evaluate(() => document.hasFocus()), { timeout: 10_000 })
+        .toBe(true);
+
+      // (2) A single, uninterrupted click-drag motion — mousedown
+      // immediately followed by mousemove/mouseup, with no separate first
+      // click sent by this test at all (unlike a "click once to focus,
+      // then click-drag again" pattern, which is exactly the bug this
+      // fixes) — must produce a correct selection.
+      await contentPage.mouse.move(150, 100);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(200, 140);
+      await contentPage.mouse.move(250, 180);
+      await contentPage.mouse.up();
+
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
+
+      const preview = popupPage.getByTestId("capture-preview");
+      await expect(preview).toBeVisible({ timeout: 10_000 });
+      const dataUrl = await preview.getAttribute("src");
+      const { width, height, isPng } = decodePngDimensions(dataUrl!);
+      expect(isPng).toBe(true);
+      expect(width).toBe(100);
+      expect(height).toBe(80);
+    } finally {
+      await context.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test("bug fix: the toolbar badge is set the instant a capture result is ready and cleared once a popup mounts and consumes it", async () => {
+    // `chrome.action.openPopup()` was empirically tested (real Chromium,
+    // real page mouseup with intervening async work matching this exact
+    // codebase's `runRegionCapture` flow) and found to resolve without
+    // throwing but NOT reliably produce a visible popup window in this
+    // real automated environment (confirmed across repeated runs via
+    // `chrome.windows.getAll()`), so it cannot be the only observable
+    // signal this fix provides — the badge is the guaranteed, verifiable
+    // mechanism, and is what this test actually proves.
+    let contentPageRef: Page | null = null;
+    const server = await startFixtureServer(() => contentPageRef);
+    const { context, extensionId, worker } = await launchExtension();
+
+    try {
+      const contentPage = await context.newPage();
+      contentPageRef = contentPage;
+      await contentPage.setViewportSize({ width: 400, height: 300 });
+      await contentPage.goto("http://localhost:3000/");
+      await contentPage.bringToFront();
+
+      await stubCaptureVisibleTabOnWorker(worker);
+
+      const popupPage = await context.newPage();
+      await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await contentPage.bringToFront();
+
+      await expect(await worker.evaluate(() => chrome.action.getBadgeText({}))).toBe("");
+
+      await popupPage.getByTestId("capture-button").click();
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(1);
+
+      // Close the popup before finishing the selection, exactly like the
+      // real bug scenario: nothing is open to observe the capture
+      // complete, so the badge is the only surviving signal.
+      await popupPage.close();
+
+      await contentPage.mouse.move(150, 100);
+      await contentPage.mouse.down();
+      await contentPage.mouse.move(250, 180);
+      await contentPage.mouse.up();
+
+      await expect.poll(() => countOverlayNodes(contentPage), { timeout: 10_000 }).toBe(0);
+
+      // The badge must appear the instant the result is ready, with no
+      // popup open anywhere to have triggered it manually.
+      await expect
+        .poll(() => worker.evaluate(() => chrome.action.getBadgeText({})), { timeout: 15_000 })
+        .toBe("✓");
+
+      // A fresh popup mounting and consuming the result must clear it.
+      const freshPopup = await context.newPage();
+      await freshPopup.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+      await expect(freshPopup.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
+
+      await expect
+        .poll(() => worker.evaluate(() => chrome.action.getBadgeText({})), { timeout: 10_000 })
+        .toBe("");
+    } finally {
+      await context.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });

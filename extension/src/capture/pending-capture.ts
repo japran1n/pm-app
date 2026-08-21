@@ -93,6 +93,29 @@ export async function readAndClearPendingCaptureResult(): Promise<PendingCapture
   }
 }
 
+// Bug fix (region-select "popup doesn't reopen automatically" follow-up):
+// shared with both the background service worker (which sets this the
+// instant a pending result is written — success, failure, or cancellation
+// all count as "there is something to see") and the popup (which clears it
+// the instant it mounts and actually consumes that result) — kept here,
+// not in `background/service-worker.ts`, so the popup can reference it
+// directly without importing the service worker's own module (which would
+// also pull in unrelated auth-handoff-token-exchange code into the popup's
+// bundle). `chrome.action.setBadgeText`/`setBadgeBackgroundColor` are valid
+// to call from any extension context, not just the background worker — see
+// https://developer.chrome.com/docs/extensions/reference/api/action,
+// verified 2026-08-21.
+const CAPTURE_READY_BADGE_TEXT = "✓"; // check mark — "a result is ready"
+
+export async function setCaptureReadyBadge(): Promise<void> {
+  await chrome.action.setBadgeBackgroundColor({ color: "#1a7f37" });
+  await chrome.action.setBadgeText({ text: CAPTURE_READY_BADGE_TEXT });
+}
+
+export async function clearCaptureReadyBadge(): Promise<void> {
+  await chrome.action.setBadgeText({ text: "" });
+}
+
 /** Converts a successful pending result into the `CropResult` shape the
  * existing capture-state UI (and the annotation editor downstream of it)
  * already expects — never changed, per this fix's own scope. */

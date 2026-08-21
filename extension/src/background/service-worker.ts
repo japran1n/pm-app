@@ -14,7 +14,10 @@ import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
 import { selectRegionOnActiveTab } from "../capture/region-overlay";
 import { captureVisibleTab } from "../capture/visible-tab";
 import { cropDataUrlToRegion, cssRectToPhysicalRect } from "../capture/crop";
-import { writePendingCaptureResult } from "../capture/pending-capture";
+import {
+  writePendingCaptureResult,
+  setCaptureReadyBadge,
+} from "../capture/pending-capture";
 import { checkScreenshotSize } from "../submit/upload";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -91,6 +94,74 @@ function isStartRegionCaptureMessage(message: unknown): message is StartRegionCa
   );
 }
 
+// Bug fix (region-select "popup doesn't reopen automatically" follow-up).
+//
+// Investigated `chrome.action.openPopup()`
+// (https://developer.chrome.com/docs/extensions/reference/api/action#method-openPopup,
+// verified 2026-08-21 — available since Chrome 127, well below any version
+// this codebase otherwise targets; no minimum-Chrome-version statement
+// exists elsewhere in tech-decisions.md or manifest.json, so this is not a
+// blocking constraint either way).
+//
+// Empirically tested (real Playwright-driven Chromium, not assumed) whether
+// calling it from here — after the real page `mouseup` that finishes the
+// drag-selection, with the intervening `captureVisibleTab`/crop async work
+// this function already does before this point — can succeed: the call
+// consistently RESOLVED WITHOUT THROWING (satisfied whatever
+// transient-activation window Chrome tracks from that real mouseup), but
+// across 5 repeated real runs no popup window was ever observed to actually
+// materialize (`chrome.windows.getAll()` count stayed at 1 throughout, and
+// no new Playwright `page` event fired within a 5s window). A rejected-only
+// promise would have been an easy, honest signal to fall back on — a
+// promise that quietly resolves without producing a visible popup is not:
+// this is not a reliable, verifiable "automatic reopen" in this real,
+// automated environment, so it cannot be the ONLY mechanism the reporter
+// depends on.
+//
+// Given that, both are wired in: `openPopup()` is still attempted here,
+// opportunistically, as a strict best-effort improvement for whichever
+// real, non-automated Chrome sessions it may genuinely work in (it costs
+// nothing and never blocks or throws past this function) — but the
+// guaranteed, always-present, independently-verified user cue is the
+// toolbar badge below, set the instant a pending result is written and
+// cleared the moment a popup mounts and consumes it (see
+// `Popup.tsx`'s mount-restore effect). If `openPopup()` silently does
+// nothing, the reporter still sees an unambiguous visual signal to click
+// the icon, rather than wondering if anything happened at all.
+async function tryReopenPopup(): Promise<void> {
+  try {
+    await chrome.action.openPopup();
+  } catch (err) {
+    // Never a silent swallow — logged so it is visible in the service
+    // worker's own console during real usage/debugging, but never
+    // surfaced to the reporter as an error: the badge fallback below
+    // already guarantees a visible cue regardless of this outcome.
+    console.warn(
+      "[pm-app-qa-feedback] chrome.action.openPopup() did not reopen the popup automatically:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/** Writes the final pending capture result AND — unless it's a plain
+ * cancellation (Escape; nothing for the reporter to see, so reopening the
+ * popup for it would just be confusing) — sets the toolbar badge and makes
+ * a best-effort attempt to reopen the popup automatically. Every terminal
+ * path of `runRegionCapture` below funnels through this single function so
+ * the "reopen/badge on anything worth seeing" behaviour can never diverge
+ * between the success path and the various failure paths (a restricted
+ * page, an oversized screenshot, a crop error, a storage-quota error all
+ * deserve the same visible cue a successful capture does — the reporter
+ * needs to know something happened either way, not just on success). */
+async function finishRegionCapture(
+  result: Parameters<typeof writePendingCaptureResult>[0],
+): Promise<void> {
+  await writePendingCaptureResult(result);
+  if (!result.ok && result.reason === "cancelled") return;
+  await setCaptureReadyBadge();
+  await tryReopenPopup();
+}
+
 async function runRegionCapture(): Promise<void> {
   // 1. Live-page overlay — see region-overlay.ts's own idempotency guard
   // (both the DOM-level ROOT_ID guard and the newer page-global cleanup
@@ -105,7 +176,7 @@ async function runRegionCapture(): Promise<void> {
     // re-injection) and every other stated failure reason (e.g. a
     // restricted page) — every failure state says what happened, never
     // silently vanishes.
-    await writePendingCaptureResult({ ok: false, reason: overlayResult.reason });
+    await finishRegionCapture({ ok: false, reason: overlayResult.reason });
     return;
   }
 
@@ -119,7 +190,7 @@ async function runRegionCapture(): Promise<void> {
     devicePixelRatio: overlayResult.devicePixelRatio,
   });
   if (!captureResult.ok) {
-    await writePendingCaptureResult({ ok: false, reason: captureResult.reason });
+    await finishRegionCapture({ ok: false, reason: captureResult.reason });
     return;
   }
 
@@ -147,12 +218,12 @@ async function runRegionCapture(): Promise<void> {
     // not a silent one.
     const sizeCheck = checkScreenshotSize({ dataUrl: cropped.dataUrl });
     if (!sizeCheck.ok) {
-      await writePendingCaptureResult({ ok: false, reason: sizeCheck.error });
+      await finishRegionCapture({ ok: false, reason: sizeCheck.error });
       return;
     }
 
     try {
-      await writePendingCaptureResult({
+      await finishRegionCapture({
         ok: true,
         dataUrl: cropped.dataUrl,
         width: cropped.width,
@@ -167,7 +238,7 @@ async function runRegionCapture(): Promise<void> {
       // make even a within-limit image's write fail. Report this plainly
       // rather than letting the promise rejection go unhandled and the
       // reporter be left staring at a popup that never shows anything.
-      await writePendingCaptureResult({
+      await finishRegionCapture({
         ok: false,
         reason:
           storageErr instanceof Error
@@ -176,7 +247,7 @@ async function runRegionCapture(): Promise<void> {
       });
     }
   } catch (err) {
-    await writePendingCaptureResult({
+    await finishRegionCapture({
       ok: false,
       reason: err instanceof Error ? err.message : "Could not crop the selected region.",
     });

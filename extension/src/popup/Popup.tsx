@@ -6,6 +6,7 @@ import type { CropResult } from "../capture/crop";
 import {
   readAndClearPendingCaptureResult,
   pendingResultToCropResult,
+  clearCaptureReadyBadge,
   PENDING_CAPTURE_RESULT_KEY,
   type PendingCaptureResult,
 } from "../capture/pending-capture";
@@ -184,6 +185,18 @@ export function Popup() {
    * the "restore on fresh mount" path and the "still open, result landed
    * live" path below, so the two can never diverge in behaviour. */
   function applyPendingCaptureResult(pending: PendingCaptureResult) {
+    // Bug fix (region-select "popup doesn't reopen automatically"
+    // follow-up): the toolbar badge the background worker sets the instant
+    // a pending result is written (see `pending-capture.ts`'s
+    // `setCaptureReadyBadge`) is only meaningful until the reporter has
+    // actually seen the result — cleared here, in the SAME place both the
+    // mount-restore and live storage-listener paths funnel through, so a
+    // stale checkmark badge can never survive once this popup mount has
+    // consumed the result it was announcing. Best-effort: a failure here
+    // (e.g. extension context torn down mid-call) is not worth surfacing
+    // as an error to the reporter — the badge is a convenience cue, not
+    // load-bearing state.
+    void clearCaptureReadyBadge().catch(() => {});
     if (pending.ok) {
       const cropped: CropResult = pendingResultToCropResult(pending);
       // AS-566/AS-567 fallback path (report-form.tsx's getLastCapture()):

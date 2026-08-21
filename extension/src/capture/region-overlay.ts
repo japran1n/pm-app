@@ -58,6 +58,30 @@ export type RegionOverlayResult =
  */
 function runRegionOverlayInPage(): Promise<RegionOverlayResult> {
   return new Promise((resolve) => {
+    // Bug fix (region-select "wasted first click" follow-up): when this
+    // function is injected via `chrome.scripting.executeScript` right
+    // after the popup sent `START_REGION_CAPTURE` and (per the F301 fix)
+    // is about to close, the tab's own top-level browser window does not
+    // necessarily have OS-level window focus yet — the popup (a separate
+    // native window) still does, or is only mid-transition to closing.
+    // Empirically, the very first real `mousedown` a user makes on the
+    // page in that state gets consumed by the OS/browser as the
+    // window-activation click (bringing the browser window to the front)
+    // rather than being delivered to this overlay's own listeners as a
+    // "start dragging" event — the user then has to click a SECOND time,
+    // once the window already has focus, for the drag to actually start.
+    // Calling `window.focus()` here, synchronously, the instant the
+    // overlay is injected (well before the user's first real click can
+    // happen) pulls focus onto this tab's document immediately, so by the
+    // time the user clicks, the window-activation step has already
+    // happened and the click is delivered straight through as a normal
+    // `mousedown` the overlay's own listener receives on the first try.
+    // This is the standard, documented mitigation for "first click after
+    // programmatic/background tab focus doesn't register" in Chrome
+    // extensions (window.focus() is safe/no-op if the tab already has
+    // focus).
+    window.focus();
+
     const ROOT_ID = "__pm_app_qa_region_overlay_root__";
 
     // Idempotency: if this was somehow injected twice in a row without a
