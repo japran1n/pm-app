@@ -169,9 +169,9 @@ async function readCanvasDataUrl(popupPage: Page): Promise<string> {
 
 // ---------------------------------------------------------------------------
 // Lightweight tests: no real server/Supabase session needed — the popup's
-// pre-connection ("signed_out") state already renders the capture, pick
-// -element, and privacy-toggle sections, which is enough to audit tab order
-// and focus visibility across the popup shell for real.
+// pre-connection ("signed_out") state already renders the capture and
+// pick-element sections, which is enough to audit tab order and focus
+// visibility across the popup shell for real.
 // ---------------------------------------------------------------------------
 
 test("AS_570_popup_main_controls_have_a_sane_forward_only_tab_order", async () => {
@@ -184,19 +184,7 @@ test("AS_570_popup_main_controls_have_a_sane_forward_only_tab_order", async () =
 
     // Tab from the top of the document through the popup's main controls,
     // in the order a keyboard-only user would actually encounter them.
-    // Note: the console/network "Start capturing…" buttons are correctly
-    // `disabled` (and therefore unreachable by Tab, matching real browser
-    // behaviour for disabled controls) until their matching privacy toggle
-    // is switched on — see privacy-toggles.tsx/Popup.tsx. That's real,
-    // intended gating, not a keyboard-operability bug, so this list stops
-    // at the last always-reachable control before them.
-    const expectedOrder = [
-      "connect-button",
-      "capture-button",
-      "pick-element-button",
-      "privacy-toggle-console",
-      "privacy-toggle-network",
-    ];
+    const expectedOrder = ["connect-button", "capture-button", "pick-element-button"];
 
     const seen: string[] = [];
     for (let i = 0; i < expectedOrder.length; i++) {

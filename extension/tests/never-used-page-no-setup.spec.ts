@@ -1,27 +1,28 @@
-// F298 — AS-569: capture, element-pick, and console-capture-start all work
-// the FIRST time on a page the extension has genuinely never touched
-// before — no prior visit to that page, no prior grant beyond the one-time
-// activeTab-equivalent gesture the popup interaction itself provides.
+// F298 — AS-569: capture and element-pick both work the FIRST time on a
+// page the extension has genuinely never touched before — no prior visit
+// to that page, no prior grant beyond the one-time activeTab-equivalent
+// gesture the popup interaction itself provides.
 //
-// This is a holistic proof, distinct from F283/F287/F289's own per-feature
-// tests: it exercises all three capabilities back-to-back against ONE
-// single fresh page (a unique, never-served-before path) within a single
-// test, to prove "no prior setup" as a combined claim rather than three
-// separate ones.
+// This is a holistic proof, distinct from F283/F287's own per-feature
+// tests: it exercises both capabilities back-to-back against ONE single
+// fresh page (a unique, never-served-before path) within a single test, to
+// prove "no prior setup" as a combined claim rather than two separate ones.
+// (Console/network capture, previously a third capability proven here, has
+// been removed from the extension entirely — not needed.)
 //
-// Follows F287/F289's established `host_permissions:
+// Follows F287's established `host_permissions:
 // ["http://localhost:3000/*"]` trick for driving `chrome.scripting.
 // executeScript` without a real toolbar-icon gesture Playwright cannot
-// reproduce (documented at length in element-picker-selector.spec.ts and
-// console-capture.spec.ts). The one capability that genuinely requires the
-// literal activeTab gesture — `chrome.tabs.captureVisibleTab` — is proven
-// the same way capture-visible-tab.spec.ts proves it: by stubbing only
-// that one Chrome API call with a real Playwright-captured PNG, since no
-// harness can script a real toolbar-icon click (a Playwright/Chromium
-// limitation, not a gap in this extension's behaviour). Crucially, the
-// page itself is real, freshly served, and never previously visited by
-// this browser context — nothing about the page or its origin has been
-// "warmed up" beforehand.
+// reproduce (documented at length in element-picker-selector.spec.ts). The
+// one capability that genuinely requires the literal activeTab gesture —
+// `chrome.tabs.captureVisibleTab` — is proven the same way
+// capture-visible-tab.spec.ts proves it: by stubbing only that one Chrome
+// API call with a real Playwright-captured PNG, since no harness can
+// script a real toolbar-icon click (a Playwright/Chromium limitation, not
+// a gap in this extension's behaviour). Crucially, the page itself is
+// real, freshly served, and never previously visited by this browser
+// context — nothing about the page or its origin has been "warmed up"
+// beforehand.
 import { test, expect, chromium, type BrowserContext } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
@@ -87,7 +88,7 @@ function startFixtureServer(marker: string, uniquePath: string): Promise<http.Se
   });
 }
 
-test("AS_569_capture_pick_and_console_start_all_work_the_first_time_on_a_genuinely_never_before_seen_page", async () => {
+test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_before_seen_page", async () => {
   const marker = crypto.randomBytes(8).toString("hex");
   const uniquePath = `/never-seen-${marker}`;
   const server = await startFixtureServer(marker, uniquePath);
@@ -145,23 +146,6 @@ test("AS_569_capture_pick_and_console_start_all_work_the_first_time_on_a_genuine
 
     await expect(popupPage.getByTestId("pick-element-result")).toBeVisible({ timeout: 10_000 });
     await expect(popupPage.getByTestId("pick-element-selector")).toHaveText("#target");
-
-    // --- capability 3: console capture start (once the privacy toggle is
-    // turned on, per F291) ---
-    await popupPage.getByTestId("privacy-toggle-console").click();
-    await expect(popupPage.getByTestId("privacy-toggle-console")).toBeChecked({ timeout: 10_000 });
-    await contentPage.bringToFront();
-    await popupPage.getByTestId("console-capture-start-button").click();
-    await expect(popupPage.getByText("Console capture running")).toBeVisible({ timeout: 10_000 });
-
-    await contentPage.evaluate(() => console.error("first-time console message"));
-
-    await popupPage.getByTestId("console-capture-refresh-button").click();
-    await expect(popupPage.getByTestId("console-capture-count")).toHaveText("1 message captured.", {
-      timeout: 10_000,
-    });
-    const listText = await popupPage.getByTestId("console-capture-list").textContent();
-    expect(listText).toContain("first-time console message");
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

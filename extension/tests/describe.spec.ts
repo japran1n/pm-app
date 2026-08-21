@@ -36,7 +36,7 @@ function writeCompiledModule(): void {
   });
   fs.writeFileSync(
     compiledModulePath,
-    `${outputText}\nwindow.__describe = { buildTaskDescription, MAX_CONSOLE_ENTRIES_IN_DESCRIPTION, MAX_NETWORK_ENTRIES_IN_DESCRIPTION };`,
+    `${outputText}\nwindow.__describe = { buildTaskDescription };`,
   );
 }
 
@@ -131,94 +131,29 @@ test("AS_560_omits_empty_sections_rather_than_rendering_none_noise", async () =>
         reporterText: "Just words, nothing captured.",
         environment: null,
         element: null,
-        consoleEntries: null,
-        networkEntries: null,
       }),
     );
     expect(result).toBe("Just words, nothing captured.");
     expect(result).not.toContain("Technical details");
-    expect(result).not.toContain("Console");
     expect(result).not.toContain("Element");
   } finally {
     await context.close();
   }
 });
 
-test("AS_560_console_entries_truncated_with_an_explicit_omitted_note_when_over_the_cap", async () => {
-  const { context, extensionId } = await launchExtension();
-  try {
-    const popupPage = await loadDescribeOnPopup(context, extensionId);
-    const result = await popupPage.evaluate(() => {
-      const entries = Array.from({ length: 25 }, (_, i) => ({
-        level: "error",
-        source: "console",
-        timestamp: i,
-        message: `error number ${i}`,
-      }));
-      return {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        text: (window as any).__describe.buildTaskDescription({
-          reporterText: "Broke here.",
-          consoleEntries: entries,
-        }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        cap: (window as any).__describe.MAX_CONSOLE_ENTRIES_IN_DESCRIPTION,
-      };
-    });
-    expect(result.cap).toBeLessThanOrEqual(20);
-    expect(result.cap).toBeGreaterThanOrEqual(10);
-    // Only the most recent `cap` entries render — the oldest ones are omitted.
-    expect(result.text).toContain(`error number ${24}`);
-    expect(result.text).not.toContain("error number 0\n");
-    expect(result.text).toMatch(/\.\.\. and \d+ more console entries not shown/);
-    const omittedCount = 25 - result.cap;
-    expect(result.text).toContain(`... and ${omittedCount} more console entries not shown`);
-  } finally {
-    await context.close();
-  }
-});
-
-test("AS_560_network_entries_truncated_with_an_explicit_omitted_note_when_over_the_cap", async () => {
-  const { context, extensionId } = await launchExtension();
-  try {
-    const popupPage = await loadDescribeOnPopup(context, extensionId);
-    const result = await popupPage.evaluate(() => {
-      const entries = Array.from({ length: 15 }, (_, i) => ({
-        method: "GET",
-        url: `/api/thing-${i}`,
-        status: 500,
-        duration: 10,
-        timestamp: i,
-      }));
-      return (window as any).__describe.buildTaskDescription({ // eslint-disable-line @typescript-eslint/no-explicit-any
-        reporterText: "Requests failing.",
-        networkEntries: entries,
-      });
-    });
-    expect(result).toContain("/api/thing-14");
-    expect(result).toMatch(/\.\.\. and \d+ more network entries not shown/);
-  } finally {
-    await context.close();
-  }
-});
-
-test("AS_560_no_omission_note_when_entries_are_within_the_cap", async () => {
+test("AS_560_element_section_included_when_present", async () => {
   const { context, extensionId } = await launchExtension();
   try {
     const popupPage = await loadDescribeOnPopup(context, extensionId);
     const result = await popupPage.evaluate(() =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__describe.buildTaskDescription({
-        reporterText: "Two errors only.",
-        consoleEntries: [
-          { level: "error", source: "console", timestamp: 1, message: "first" },
-          { level: "warn", source: "console", timestamp: 2, message: "second" },
-        ],
+        reporterText: "Broke here.",
+        element: { selector: "#submit-button" },
       }),
     );
-    expect(result).toContain("first");
-    expect(result).toContain("second");
-    expect(result).not.toContain("not shown");
+    expect(result).toContain("Picked element:");
+    expect(result).toContain("#submit-button");
   } finally {
     await context.close();
   }

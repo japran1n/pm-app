@@ -5,8 +5,6 @@ import { getAnnotatedResult, getLastCapture } from "../capture/store";
 import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 import { collectEnvironmentMetadata } from "../capture/environment";
 import type { PickResult } from "../capture/element-picker";
-import type { ConsoleLogEntry } from "../capture/console-hook";
-import type { NetworkFailureEntry } from "../capture/network-hook";
 import { buildTaskDescription } from "../submit/describe";
 import { getLastReportContext, setLastReportContext } from "../state/preferences";
 import { getDraft, saveDraft, clearDraft, type ReportDraft } from "../submit/draft";
@@ -29,14 +27,14 @@ import { ReportSuccess } from "./success";
 // F295 (AS-560): the description actually sent to the server is NOT the
 // raw textarea value — it's `submit/describe.ts`'s buildTaskDescription()
 // result, which appends a structured, readable technical-metadata block
-// (environment, picked element, console/network excerpts) after the
-// reporter's own words. Environment metadata is collected fresh at submit
-// time via F288's collectEnvironmentMetadata() (using the connected
-// session's own reporter id/email, passed down from Popup.tsx); the picked
-// element and console/network capture state are read from whichever
-// in-popup state Popup.tsx already holds and passed down as props, since
-// none of those live in a shared store this component could otherwise
-// reach (see each feature's own handoff).
+// (environment, picked element) after the reporter's own words. Environment
+// metadata is collected fresh at submit time via F288's
+// collectEnvironmentMetadata() (using the connected session's own reporter
+// id/email, passed down from Popup.tsx); the picked element is read from
+// whichever in-popup state Popup.tsx already holds and passed down as a
+// prop, since it does not live in a shared store this component could
+// otherwise reach (see that feature's own handoff). Console/network capture
+// support has been removed entirely (not needed).
 //
 // Sensible defaults (per this feature's clarification, "everything else
 // optional"): status defaults to "todo" (also the DB column's own default,
@@ -93,15 +91,11 @@ export function ReportForm({
   reporterId,
   reporterEmail,
   pickedElement,
-  consoleEntries,
-  networkEntries,
 }: {
   accessToken: string;
   reporterId?: string | null;
   reporterEmail?: string | null;
   pickedElement?: Extract<PickResult, { ok: true }> | null;
-  consoleEntries?: ConsoleLogEntry[] | null;
-  networkEntries?: NetworkFailureEntry[] | null;
 }) {
   const [workspacesState, setWorkspacesState] = useState<WorkspacesState>({
     kind: "loading",
@@ -413,8 +407,6 @@ export function ReportForm({
       reporterText: description.trim(),
       environment,
       element: pickedElement ? { selector: pickedElement.selector } : null,
-      consoleEntries: consoleEntries ?? null,
-      networkEntries: networkEntries ?? null,
     });
 
     try {

@@ -8,18 +8,6 @@ import type { CropResult } from "../capture/crop";
 import { AnnotationEditor } from "../annotate/canvas";
 import type { FlattenResult } from "../annotate/types";
 import { pickElementOnActiveTab, type PickResult } from "../capture/element-picker";
-import {
-  startConsoleCaptureOnActiveTab,
-  getConsoleCaptureFromActiveTab,
-  type ConsoleLogEntry,
-} from "../capture/console-hook";
-import {
-  startNetworkCaptureOnActiveTab,
-  getNetworkCaptureFromActiveTab,
-  type NetworkFailureEntry,
-} from "../capture/network-hook";
-import { startConsoleCaptureIfEnabled, startNetworkCaptureIfEnabled } from "../capture/privacy-toggles";
-import { CapturePrivacyToggles } from "./privacy-toggles";
 import { ReportForm } from "./report-form";
 
 // F280 (AS-531): popup shell.
@@ -126,82 +114,6 @@ export function Popup() {
     | { kind: "cancelled" }
     | { kind: "error"; reason: string };
   const [pickState, setPickState] = useState<ElementPickUiState>({ kind: "idle" });
-
-  // F289 (AS-550, AS-551, AS-552): console capture is a deliberate,
-  // user-triggered action (not always-on), per the clarification's
-  // "less data, simpler, more private" default and because there is no
-  // toggle from F291 to gate it behind yet (see this feature's handoff
-  // "Out-of-scope work needed" — a future feature can wrap a persistent
-  // on/off preference around this trigger without changing this
-  // component's contract). It only ever sees console activity produced
-  // after the button below is clicked — AS-552's limitation is stated in
-  // the UI text itself, not just in a code comment.
-  type ConsoleCaptureUiState =
-    | { kind: "idle" }
-    | { kind: "starting" }
-    | { kind: "active"; entries: ConsoleLogEntry[] }
-    | { kind: "error"; reason: string };
-  const [consoleCaptureState, setConsoleCaptureState] = useState<ConsoleCaptureUiState>({ kind: "idle" });
-
-  // F290 (AS-553): independent of console capture — a reporter may start
-  // one, the other, both, or neither. Same "off by default, explicit
-  // gesture-triggered opt-in" default and same local-React-state
-  // storage (not chrome.storage) as F289's console capture.
-  type NetworkCaptureUiState =
-    | { kind: "idle" }
-    | { kind: "starting" }
-    | { kind: "active"; entries: NetworkFailureEntry[] }
-    | { kind: "error"; reason: string };
-  const [networkCaptureState, setNetworkCaptureState] = useState<NetworkCaptureUiState>({ kind: "idle" });
-
-  // F291 (AS-554): mirrors the persisted chrome.storage.local
-  // preference so the two "Start capturing" buttons below can be
-  // disabled/labelled correctly without re-reading storage on every
-  // render. The actual gating that matters (never calling
-  // chrome.scripting.executeScript when a toggle is off) lives in
-  // startConsoleCaptureIfEnabled/startNetworkCaptureIfEnabled
-  // themselves, which re-check the persisted preference directly — this
-  // mirror is UI-only and never bypasses that check.
-  const [consoleCaptureEnabled, setConsoleCaptureEnabled] = useState(false);
-  const [networkCaptureEnabled, setNetworkCaptureEnabled] = useState(false);
-
-  async function handleStartNetworkCapture() {
-    setNetworkCaptureState({ kind: "starting" });
-    const result = await startNetworkCaptureIfEnabled(startNetworkCaptureOnActiveTab);
-    if (!result.ok) {
-      setNetworkCaptureState({ kind: "error", reason: result.reason });
-      return;
-    }
-    setNetworkCaptureState({ kind: "active", entries: [] });
-  }
-
-  async function handleRefreshNetworkCapture() {
-    const result = await getNetworkCaptureFromActiveTab();
-    if (!result.ok) {
-      setNetworkCaptureState({ kind: "error", reason: result.reason });
-      return;
-    }
-    setNetworkCaptureState({ kind: "active", entries: result.entries });
-  }
-
-  async function handleStartConsoleCapture() {
-    setConsoleCaptureState({ kind: "starting" });
-    const result = await startConsoleCaptureIfEnabled(startConsoleCaptureOnActiveTab);
-    if (!result.ok) {
-      setConsoleCaptureState({ kind: "error", reason: result.reason });
-      return;
-    }
-    setConsoleCaptureState({ kind: "active", entries: [] });
-  }
-
-  async function handleRefreshConsoleCapture() {
-    const result = await getConsoleCaptureFromActiveTab();
-    if (!result.ok) {
-      setConsoleCaptureState({ kind: "error", reason: result.reason });
-      return;
-    }
-    setConsoleCaptureState({ kind: "active", entries: result.entries });
-  }
 
   async function handlePickElement() {
     setPickState({ kind: "picking" });
@@ -609,134 +521,6 @@ export function Popup() {
             )}
           </div>
 
-          <CapturePrivacyToggles
-            consoleCount={consoleCaptureState.kind === "active" ? consoleCaptureState.entries.length : undefined}
-            networkCount={networkCaptureState.kind === "active" ? networkCaptureState.entries.length : undefined}
-            onChange={(prefs) => {
-              setConsoleCaptureEnabled(prefs.consoleCaptureEnabled);
-              setNetworkCaptureEnabled(prefs.networkCaptureEnabled);
-            }}
-          />
-
-          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
-            <button
-              data-testid="console-capture-start-button"
-              type="button"
-              onClick={handleStartConsoleCapture}
-              disabled={consoleCaptureState.kind === "starting" || !consoleCaptureEnabled}
-            >
-              {consoleCaptureState.kind === "active"
-                ? "Console capture running"
-                : consoleCaptureState.kind === "starting"
-                  ? "Starting…"
-                  : "Start capturing console output"}
-            </button>
-
-            <p
-              data-testid="console-capture-limitation"
-              style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}
-            >
-              Only console messages logged after you start capturing are included. Anything
-              logged before you clicked "Start capturing console output" — including on page
-              load — is not captured.
-            </p>
-
-            {consoleCaptureState.kind === "active" && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  data-testid="console-capture-refresh-button"
-                  type="button"
-                  onClick={handleRefreshConsoleCapture}
-                >
-                  Refresh captured logs
-                </button>
-                <p data-testid="console-capture-count" style={{ margin: "8px 0 4px", fontSize: 13 }}>
-                  {consoleCaptureState.entries.length} message
-                  {consoleCaptureState.entries.length === 1 ? "" : "s"} captured.
-                </p>
-                <ul
-                  data-testid="console-capture-list"
-                  style={{ margin: 0, padding: "0 0 0 16px", fontSize: 12, maxHeight: 160, overflowY: "auto" }}
-                >
-                  {consoleCaptureState.entries.map((entry, i) => (
-                    <li key={i} data-testid="console-capture-entry" data-level={entry.level}>
-                      <strong>{entry.level}</strong> ({entry.source}): {entry.message}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {consoleCaptureState.kind === "error" && (
-              <p
-                data-testid="console-capture-error"
-                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
-              >
-                {consoleCaptureState.reason}
-              </p>
-            )}
-          </div>
-
-          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
-            <button
-              data-testid="network-capture-start-button"
-              type="button"
-              onClick={handleStartNetworkCapture}
-              disabled={networkCaptureState.kind === "starting" || !networkCaptureEnabled}
-            >
-              {networkCaptureState.kind === "active"
-                ? "Network capture running"
-                : networkCaptureState.kind === "starting"
-                  ? "Starting…"
-                  : "Start capturing failed requests"}
-            </button>
-
-            <p
-              data-testid="network-capture-limitation"
-              style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}
-            >
-              Only failed requests (network errors or responses with status 400+) made after you
-              start capturing are included. Successful requests and request/response bodies are
-              never captured; obvious secrets in URLs are redacted.
-            </p>
-
-            {networkCaptureState.kind === "active" && (
-              <div style={{ marginTop: 8 }}>
-                <button
-                  data-testid="network-capture-refresh-button"
-                  type="button"
-                  onClick={handleRefreshNetworkCapture}
-                >
-                  Refresh captured requests
-                </button>
-                <p data-testid="network-capture-count" style={{ margin: "8px 0 4px", fontSize: 13 }}>
-                  {networkCaptureState.entries.length} failed request
-                  {networkCaptureState.entries.length === 1 ? "" : "s"} captured.
-                </p>
-                <ul
-                  data-testid="network-capture-list"
-                  style={{ margin: 0, padding: "0 0 0 16px", fontSize: 12, maxHeight: 160, overflowY: "auto" }}
-                >
-                  {networkCaptureState.entries.map((entry, i) => (
-                    <li key={i} data-testid="network-capture-entry" data-status={entry.status ?? "network-error"}>
-                      <strong>{entry.method}</strong> {entry.url} —{" "}
-                      {entry.status === null ? "network error" : entry.status}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {networkCaptureState.kind === "error" && (
-              <p
-                data-testid="network-capture-error"
-                style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
-              >
-                {networkCaptureState.reason}
-              </p>
-            )}
-          </div>
-
           {/* F293 (AS-555, AS-556, AS-557): the actual report form —
               workspace/project/status/title/description/assignee/priority/
               due-date — wired to F292's real task-creation endpoint. Only
@@ -746,8 +530,8 @@ export function Popup() {
               whichever screenshot state exists in capture/store.ts
               (annotated, falling back to the plain capture) and uploads it
               to the just-created task — see report-form.tsx's doc comment.
-              Console/network capture state above is still NOT attached —
-              that remains F295's scope. */}
+              Console/network capture support has been removed entirely
+              (not needed). */}
           {status.kind === "connected" && (
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid #e5e5e5" }}>
               <h2 style={{ fontSize: 14, margin: "0 0 8px" }}>Report</h2>
@@ -756,8 +540,6 @@ export function Popup() {
                 reporterId={status.userId}
                 reporterEmail={status.email}
                 pickedElement={pickState.kind === "picked" ? pickState.result : null}
-                consoleEntries={consoleCaptureState.kind === "active" ? consoleCaptureState.entries : null}
-                networkEntries={networkCaptureState.kind === "active" ? networkCaptureState.entries : null}
               />
             </div>
           )}

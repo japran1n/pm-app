@@ -14,22 +14,20 @@ manifest — in particular, `<all_urls>` never appears.
   qualifying gesture). Used for `chrome.tabs.captureVisibleTab`
   (screenshotting the tab the reporter is looking at) and as the
   fallback/primary basis for `chrome.scripting.executeScript` calls (element
-  picking, console-capture injection, network-capture injection) on
-  arbitrary pages the reporter chooses to report a bug on. This is the
-  narrowest permission Chrome offers for "the page the user is currently
-  looking at, only when they act" — no persistent or background tab access
-  is requested.
+  picking) on arbitrary pages the reporter chooses to report a bug on. This
+  is the narrowest permission Chrome offers for "the page the user is
+  currently looking at, only when they act" — no persistent or background
+  tab access is requested.
 - **`storage`** — used for `chrome.storage.local` only (never `sync`), to
-  hold the reporter's session token after the one-time web-app handoff and
-  their privacy-toggle preferences (whether console/network capture are
-  enabled) between popup opens. Nothing is synced to a Google account or any
-  server other than this app's own API.
+  hold the reporter's session token after the one-time web-app handoff
+  between popup opens. Nothing is synced to a Google account or any server
+  other than this app's own API.
 - **`scripting`** — required to call `chrome.scripting.executeScript`,
-  which injects the element-picker, console-hook, and network-hook code
-  into the current page **on demand**, only when the reporter explicitly
-  triggers "pick element" or toggles capture on. No content script from
-  this permission runs automatically or on every page load — it only runs
-  when invoked, scoped to the single tab the call targets.
+  which injects the element-picker code into the current page **on
+  demand**, only when the reporter explicitly triggers "pick element". No
+  content script from this permission runs automatically or on every page
+  load — it only runs when invoked, scoped to the single tab the call
+  targets.
 
 ## Host permissions
 
@@ -76,21 +74,15 @@ Specifically:
   current page, but only after you explicitly click "pick element" and then
   click that element yourself — it does not read the page's contents
   otherwise, and stops listening the moment you pick or cancel.
-- It can record console errors/warnings and outgoing network requests made
-  by the page you're reporting on, but only after you explicitly turn that
-  capture on for that session, and only from the moment you turn it on
-  onward — anything logged or requested before you turned capture on, or on
-  any other tab, is never seen. Capture also automatically stops being
-  useful once you close or navigate away from that tab/popup session.
 - It never runs automatically on pages you have not chosen to interact with
   — the one exception is the app's own one-time sign-in handoff page
   (`localhost:3000/extension-connect`), where it only ever reads the
   one-time token that page itself placed there for the extension to pick
   up.
-- It stores your session token and your capture on/off preferences locally
-  in the browser (`chrome.storage.local`); nothing is synced to a Google
-  account, and nothing is sent anywhere except this app's own server when
-  you submit a report.
+- It stores your session token locally in the browser
+  (`chrome.storage.local`); nothing is synced to a Google account, and
+  nothing is sent anywhere except this app's own server when you submit a
+  report.
 - It cannot access `chrome://` pages, the Chrome Web Store, or other
   browser-internal pages — Chrome blocks extensions from those regardless
   of permissions, and the extension explains this plainly if you try.

@@ -1,6 +1,6 @@
 // F296 (AS-564): the last-used workspace/project the reporter picked in the
 // report form, persisted to `chrome.storage.local` so it's preselected the
-// next time the popup opens. Follows F291's `privacy-toggles.ts` exact
+// next time the popup opens. Follows this extension's established storage
 // conventions: a flat, unprefixed key, merge-patch writes, and a malformed
 // or unset stored value falls back to "no remembered context" rather than
 // throwing — a corrupted preference should never crash the popup or force
@@ -56,8 +56,7 @@ export async function getLastReportContext(): Promise<LastReportContext | null> 
  * just browsing, not actually reporting into. This is a full overwrite
  * (not a merge-patch of a larger preferences object, since this key holds
  * only these two fields) but follows the same "read-then-write via
- * chrome.storage.local.set" shape as privacy-toggles.ts's
- * setCapturePreferences.
+ * chrome.storage.local.set" shape used elsewhere in this extension.
  */
 export async function setLastReportContext(
   context: LastReportContext,

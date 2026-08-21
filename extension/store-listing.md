@@ -19,16 +19,16 @@ to re-derive any of it.
   longer hand-maintained.
 - **Category:** Developer Tools (this is an internal QA/bug-reporting tool
   for a project-management app, not a consumer product).
-- **Short description (<=132 chars):** "Capture QA feedback — screenshot,
-  console logs, and page context — and file it as a pm-app task without
-  leaving the page."
+- **Short description (<=132 chars):** "Capture QA feedback — screenshot
+  and page context — and file it as a pm-app task without leaving the
+  page."
 - **Detailed description:** Lets a signed-in pm-app teammate report a bug or
   QA issue directly from any page of the app under test: click the toolbar
-  icon, optionally capture a screenshot, pick a page element, and/or record
-  recent console/network activity, then submit — the extension files a task
-  in pm-app with that context attached. Built for internal team use during
-  QA passes; requires an existing pm-app account and an active session
-  (established once via the app's own sign-in flow).
+  icon, optionally capture a screenshot and/or pick a page element, then
+  submit — the extension files a task in pm-app with that context attached.
+  Built for internal team use during QA passes; requires an existing pm-app
+  account and an active session (established once via the app's own sign-in
+  flow).
 
 ## Icons
 
@@ -82,9 +82,8 @@ above). See `extension/PERMISSIONS.md` for:
 
 Chrome Web Store requires a one-sentence "single purpose" justification for
 the whole extension (separate from per-permission justifications): *"Capture
-in-page QA feedback (screenshot, picked element, console/network activity)
-from the page a signed-in pm-app teammate is looking at, and file it as a
-pm-app task."*
+in-page QA feedback (screenshot, picked element) from the page a signed-in
+pm-app teammate is looking at, and file it as a pm-app task."*
 
 ## Distribution / visibility
 
@@ -106,9 +105,8 @@ publishers to explicitly declare what user data is collected. Based on
 
 - **Website content** — yes, but only on-demand and only for the tab the
   reporter is actively reporting on (screenshot pixels, one picked
-  element's selector/position, console/network log lines the reporter
-  chose to capture). Never collected in the background or on pages the
-  reporter did not choose to interact with.
+  element's selector/position). Never collected in the background or on
+  pages the reporter did not choose to interact with.
 - **Authentication information** — yes, a session token, stored locally via
   `chrome.storage.local` only, never synced to a Google account, sent only
   to this app's own API.
