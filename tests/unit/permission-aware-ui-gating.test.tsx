@@ -95,14 +95,12 @@ describe("AS-231: TagsEditor add/remove is hidden or disabled for a viewer", () 
 describe("AS-231: NewTaskDialog create trigger is disabled for a viewer/guest via membership context", () => {
   it("disables the trigger for a viewer, reading role from MembershipProvider (not a prop)", () => {
     render(
-      createElement(
-        MembershipProvider,
-        { role: "viewer", projectRoles: {} },
-        createElement(NewTaskDialog, {
-          projectId: "11111111-1111-1111-1111-111111111111",
-          assigneeOptions: [],
-        }),
-      ),
+      <MembershipProvider role="viewer" projectRoles={{}}>
+        <NewTaskDialog
+          projectId="11111111-1111-1111-1111-111111111111"
+          assigneeOptions={[]}
+        />
+      </MembershipProvider>,
     );
 
     const trigger = screen.getByRole("button", { name: /new task/i });
@@ -111,14 +109,12 @@ describe("AS-231: NewTaskDialog create trigger is disabled for a viewer/guest vi
 
   it("enables the trigger for an admin via the same context", () => {
     render(
-      createElement(
-        MembershipProvider,
-        { role: "admin", projectRoles: {} },
-        createElement(NewTaskDialog, {
-          projectId: "11111111-1111-1111-1111-111111111111",
-          assigneeOptions: [],
-        }),
-      ),
+      <MembershipProvider role="admin" projectRoles={{}}>
+        <NewTaskDialog
+          projectId="11111111-1111-1111-1111-111111111111"
+          assigneeOptions={[]}
+        />
+      </MembershipProvider>,
     );
 
     const trigger = screen.getByRole("button", { name: /new task/i });

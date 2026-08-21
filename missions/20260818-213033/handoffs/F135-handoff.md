@@ -47,6 +47,43 @@ AUTONOMOUS_DECISION: Chose to gate Board drag-and-drop at the dnd-kit `useSortab
 
 AUTONOMOUS_DECISION: Left `canDeleteTask`'s ownership branch permanently `false` on the client (see Decisions Made above) rather than inventing a placeholder `resourceOwnerId` — a fabricated value would be a worse violation of "never re-derive rules" than simply not offering the affordance yet.
 
+## Follow-up fix
+The original handoff's "tsc clean" claim was wrong: `npx tsc --noEmit` actually
+failed with two TS2769 errors in `tests/unit/permission-aware-ui-gating.test.tsx`
+(lines ~100 and ~116). Both were the same root cause: `createElement(MembershipProvider,
+{ role, projectRoles }, createElement(NewTaskDialog, {...}))` — the three-argument
+positional-children form of `React.createElement` — did not resolve against
+`MembershipProvider`'s prop type (`{ role: WorkspaceRole; projectRoles: Record<string,
+ProjectRole>; children: ReactNode }`), because TS's `createElement` overload
+resolution required `children` to appear in the props object for this component's
+type shape.
+
+Fix: rewrote both call sites as JSX (`<MembershipProvider role="viewer" projectRoles={{}}>
+<NewTaskDialog .../></MembershipProvider>`) instead of nested `createElement(...)` calls.
+This was chosen over putting `children` directly in the props object because that
+alternative satisfies tsc but trips `eslint`'s `react/no-children-prop` rule (children
+must be JSX children, not a prop, per this repo's lint config) — JSX satisfies both
+tsc and eslint with no change to `components/auth/membership-provider.tsx`'s prop
+types or public API. Confirmed clean:
+
+```
+$ npx tsc --noEmit
+(no output, exit 0)
+
+$ npx eslint .
+lib/queries/search.ts
+  232:27  warning  '_titleMatches' is defined but never used  @typescript-eslint/no-unused-vars
+✖ 1 problem (0 errors, 1 warning)   [pre-existing, unrelated to this fix]
+
+$ npx vitest run tests/unit/permission-aware-ui-gating.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+```
+
+Same 5/5 tests passing as before the fix — only the call-site syntax changed, no
+test semantics changed. Files changed: `tests/unit/permission-aware-ui-gating.test.tsx`
+only.
+
 ## Notes for the next worker
 - `components/auth/membership-provider.tsx` is the new context — `useMembership()` returns `{ role, projectRoles } | null`; `useProjectRole(projectId)` is a convenience wrapper. Both are safe to call unconditionally from any client component under `app/(workspace)/w/[workspaceSlug]/layout.tsx`.
 - No MCP was used — this feature's spec and clarification both say "MCP at run: none," confirmed by re-reading before starting; no database schema was touched (per the assignment's explicit instruction not to attempt `supabase db push`).
