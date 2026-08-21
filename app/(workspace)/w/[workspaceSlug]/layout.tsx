@@ -90,6 +90,27 @@ export default async function WorkspaceLayout({
     );
   }
 
+  // F273 (AS-202): the signed-in person's own display name/avatar for the
+  // sidebar footer entry point that links to the profile settings page —
+  // without this the profile page (F123) has no in-app way to reach it.
+  // Same fallback order as UserAvatar's `personLabel`/`initialsFor`
+  // helpers (display name, then email, then id), kept here rather than
+  // imported so the layout doesn't need a client-only import just for a
+  // label string.
+  const { data: currentUserProfile, error: currentUserProfileError } =
+    await supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle();
+
+  if (currentUserProfileError) {
+    console.error(
+      "WorkspaceLayout: failed to look up current user's profile:",
+      currentUserProfileError,
+    );
+  }
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   const { data: workspaces, error: workspacesError } = workspaceIds.length
@@ -132,6 +153,12 @@ export default async function WorkspaceLayout({
         workspaceSlug={workspaceSlug}
         workspaces={switcherWorkspaces}
         currentWorkspaceId={activeWorkspace.id}
+        currentUser={{
+          id: user.id,
+          name: currentUserProfile?.display_name ?? null,
+          email: user.email ?? null,
+          avatarUrl: currentUserProfile?.avatar_url ?? null,
+        }}
       />
       <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         {children}

@@ -204,11 +204,6 @@ export default async function TimeReportPage({
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-medium">{label}</span>
-                        {member.name && member.email && (
-                          <span className="text-xs text-muted-foreground">
-                            {member.email}
-                          </span>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">

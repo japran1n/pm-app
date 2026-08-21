@@ -163,11 +163,6 @@ export default async function MembersPage({
                             />
                             <div className="flex flex-col">
                               <span className="font-medium">{label}</span>
-                              {member.name && member.email && (
-                                <span className="text-xs text-muted-foreground">
-                                  {member.email}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </TableCell>

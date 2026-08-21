@@ -23,6 +23,7 @@ import {
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
+import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 
 // Persistent left nav shell wrapping every /w/[workspaceSlug]/* page (see
 // app/(workspace)/w/[workspaceSlug]/layout.tsx). Client Component: needs
@@ -44,11 +45,13 @@ function SidebarContent({
   workspaceSlug,
   workspaces,
   currentWorkspaceId,
+  currentUser,
   onNavigate,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
   currentWorkspaceId: string;
+  currentUser: UserAvatarPerson;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -90,6 +93,31 @@ function SidebarContent({
       </nav>
 
       <div className="flex flex-col gap-2 border-t p-2">
+        {/* F273 (AS-202): the only in-app entry point to the profile
+            settings page (F123) — without this a user has no way to set a
+            display name except by typing the URL by hand. Reuses
+            UserAvatar/personLabel (F122) rather than a new name/initials
+            implementation, per this feature's inherited clarification. */}
+        <Link
+          href={`/w/${workspaceSlug}/settings/profile`}
+          onClick={onNavigate}
+          aria-current={
+            pathname === `/w/${workspaceSlug}/settings/profile`
+              ? "page"
+              : undefined
+          }
+          className={cn(
+            "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+            pathname === `/w/${workspaceSlug}/settings/profile`
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          )}
+        >
+          <UserAvatar person={currentUser} size="sm" />
+          <span className="min-w-0 flex-1 truncate">
+            {personLabel(currentUser)}
+          </span>
+        </Link>
         {/* F125 (AS-211): theme toggle, next to sign-out per the feature
             spec's Files list. */}
         <div className="flex items-center justify-between px-1">
@@ -118,10 +146,12 @@ export function AppSidebar({
   workspaceSlug,
   workspaces,
   currentWorkspaceId,
+  currentUser,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
   currentWorkspaceId: string;
+  currentUser: UserAvatarPerson;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -133,6 +163,7 @@ export function AppSidebar({
           workspaceSlug={workspaceSlug}
           workspaces={workspaces}
           currentWorkspaceId={currentWorkspaceId}
+          currentUser={currentUser}
         />
       </aside>
 
@@ -153,6 +184,7 @@ export function AppSidebar({
               workspaceSlug={workspaceSlug}
               workspaces={workspaces}
               currentWorkspaceId={currentWorkspaceId}
+              currentUser={currentUser}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
