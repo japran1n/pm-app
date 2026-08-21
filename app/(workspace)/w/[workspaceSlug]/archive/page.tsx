@@ -3,6 +3,7 @@ import { Archive } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getArchivedWorkspaceProjects } from "@/lib/queries/projects";
+import { RestoreProjectButton } from "@/components/project/restore-project-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -76,6 +77,14 @@ export default async function ArchivePage({
   if (role === "guest") {
     redirect(`/w/${workspaceSlug}`);
   }
+
+  // F143 (AS-253): the restore control is only rendered for admin/owner —
+  // same role gate `requireWorkspaceAdmin` enforces server-side in
+  // `restoreProject` (lib/actions/projects.ts). A plain member/viewer can
+  // still view the archive (per F142's page-level gate above) but sees no
+  // restore affordance; the server-side re-check remains the real
+  // enforcement boundary if this action were ever called directly.
+  const canRestore = role === "owner" || role === "admin";
 
   let archivedProjects: Awaited<
     ReturnType<typeof getArchivedWorkspaceProjects>
@@ -168,6 +177,16 @@ export default async function ArchivePage({
                     ? ` by ${project.archivedByName}`
                     : ""}
                 </p>
+                {/* F143 (AS-252, AS-253): restore control, admin/owner
+                    only. */}
+                {canRestore && (
+                  <div className="pt-1">
+                    <RestoreProjectButton
+                      workspaceId={workspace.id}
+                      project={{ id: project.id, name: project.name }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

@@ -110,3 +110,13 @@ export const archiveProjectSchema = z.object({
 });
 
 export type ArchiveProjectInput = z.infer<typeof archiveProjectSchema>;
+
+// Validates restore-project input (F143: AS-252, AS-253). Same shape as
+// archiveProjectSchema — restoring is the exact inverse mutation of
+// archiving, over the same identity fields.
+export const restoreProjectSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  workspaceId: z.string().uuid("Invalid workspace."),
+});
+
+export type RestoreProjectInput = z.infer<typeof restoreProjectSchema>;

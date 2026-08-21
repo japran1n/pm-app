@@ -8,6 +8,7 @@ import {
   archiveProjectSchema,
   createProjectSchema,
   editProjectSchema,
+  restoreProjectSchema,
 } from "@/lib/validation/projects";
 import {
   requireActiveMembership,
@@ -552,6 +553,193 @@ export async function archiveProject(
       id: updated.id,
       workspaceId: updated.workspace_id,
       deletedAt: updated.deleted_at as string,
+    },
+  };
+}
+
+export type RestoreProjectResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        workspaceId: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Restores (un-archives) a project (F143: AS-252, AS-253, AS-255) — the
+// exact inverse of archiveProject above. Admin/owner-only, same gate as
+// archiving (`requireWorkspaceAdmin`, not `requireActiveMembership`) — the
+// clarified spec's access-control answer says this is "gated by F127"
+// (lib/auth/permissions.ts / the role-check convention this codebase
+// already applies), and there is no reason restoring should be less
+// protected than the archive action it reverses; AS-253 requires this be
+// rejected server-side, not just hidden from a non-admin's UI.
+//
+// Clears `deleted_at` (and `archived_by`, when the F142 column is live —
+// same feature-detection fallback as archiveProject's write, since this
+// worker's sandbox could not confirm that migration is applied to the
+// linked project either; see this feature's handoff). Restoring never
+// touches the `tasks` table: per F029's own soft-delete convention (see
+// archiveProject's doc comment and AS-032), archiving only ever set
+// `projects.deleted_at` — no task row was ever touched by archiving, so
+// none needs to be touched by restoring either. A task that was
+// independently soft-deleted (its own `deleted_at`) before the project was
+// archived must stay soft-deleted; this action never writes to `tasks` at
+// all, so that invariant holds by construction (AS-252's "not resurrect
+// independently-soft-deleted tasks").
+export async function restoreProject(
+  projectId: string,
+  workspaceId: string,
+): Promise<RestoreProjectResult> {
+  const parsed = restoreProjectSchema.safeParse({ projectId, workspaceId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to restore a project." };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention, tightened per AS-253): the caller
+  // must be an active admin or owner of this exact workspace, re-checked
+  // server-side — a plain member calling this action directly (bypassing
+  // the UI, which only renders the control for admin/owner) must be
+  // rejected here, not just hidden client-side.
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only a workspace admin or owner can restore a project.",
+    };
+  }
+
+  const { data: existing, error: fetchError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at")
+    .eq("id", parsed.data.projectId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (fetchError || !existing) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  if (!existing.deleted_at) {
+    // (a) definition-of-done "no-op input" convention: restoring an
+    // already-active project is a no-op success, not an error — mirrors
+    // this codebase's established "a no-op returns ok without writing"
+    // pattern, applied here since there's nothing wrong with the caller's
+    // request, just nothing left to do.
+    return {
+      ok: true,
+      data: { id: existing.id, workspaceId: existing.workspace_id },
+    };
+  }
+
+  // Same feature-detection fallback as archiveProject's write (see comment
+  // above and archiveProject's own doc comment): `archived_by` may not
+  // exist live yet, and a "column does not exist" error here must not
+  // break restoring itself.
+  let updated: { id: string; workspace_id: string } | null = null;
+  let updateError: { code?: string; message?: string } | null = null;
+
+  const restoreWithArchivedBy: ProjectsUpdateWithArchivedBy = {
+    deleted_at: null,
+    archived_by: null,
+  };
+
+  const withArchivedBy = await admin
+    .from("projects")
+    .update(restoreWithArchivedBy as never)
+    .eq("id", parsed.data.projectId)
+    .eq("workspace_id", parsed.data.workspaceId)
+    .not("deleted_at", "is", null)
+    .select("id, workspace_id")
+    .single();
+
+  if (
+    withArchivedBy.error?.code === "42703" ||
+    withArchivedBy.error?.code === "PGRST204"
+  ) {
+    const withoutArchivedBy = await admin
+      .from("projects")
+      .update({ deleted_at: null })
+      .eq("id", parsed.data.projectId)
+      .eq("workspace_id", parsed.data.workspaceId)
+      .not("deleted_at", "is", null)
+      .select("id, workspace_id")
+      .single();
+    updated = withoutArchivedBy.data;
+    updateError = withoutArchivedBy.error;
+  } else {
+    updated = withArchivedBy.data;
+    updateError = withArchivedBy.error;
+  }
+
+  if (updateError || !updated) {
+    console.error("restoreProject: restore update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "project.restored",
+    targetType: "project",
+    targetId: parsed.data.projectId,
+  });
+
+  // AS-255: revalidate every path whose data reflects live (non-archived)
+  // projects, not just the archive page itself, so the project list,
+  // dashboard, and search all reflect the restored project immediately.
+  // Mirrors exactly what archiveProject already revalidates — the same
+  // `/w/${slug}` layout segment covers the project list
+  // (app/(workspace)/w/[workspaceSlug]/page.tsx), the dashboard (same page,
+  // F073's tiles), and search (app/(workspace)/w/[workspaceSlug]/search,
+  // if server-rendered) since they all live under that one layout segment;
+  // there is no separate top-level route for any of those three that a
+  // `"layout"`-scoped revalidation of `/w/${slug}` would miss.
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "restoreProject: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      workspaceId: updated.workspace_id,
     },
   };
 }
