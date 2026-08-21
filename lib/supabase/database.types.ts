@@ -81,6 +81,47 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          target_id: string | null
+          target_type: string
+          workspace_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          target_id?: string | null
+          target_type: string
+          workspace_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          target_id?: string | null
+          target_type?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_items: {
         Row: {
           checked_at: string | null
@@ -727,6 +768,31 @@ export type Database = {
           task_id: string
           user_id: string
         }[]
+      }
+      write_audit_log_entry: {
+        Args: {
+          p_action: string
+          p_metadata?: Json
+          p_target_id: string
+          p_target_type: string
+          p_workspace_id: string
+        }
+        Returns: {
+          action: string
+          actor_id: string
+          created_at: string
+          id: string
+          metadata: Json
+          target_id: string | null
+          target_type: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "audit_log"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
