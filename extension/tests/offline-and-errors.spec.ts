@@ -9,12 +9,51 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import path from "node:path";
 import fs from "node:fs";
+import { Buffer } from "node:buffer";
 
 const distPath = path.resolve(import.meta.dirname, "..", "dist");
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const PROJECT_REF = "qcipqonnqajmazdbysow";
 const SERVER_PORT = 3107;
 const DRAFT_STORAGE_KEY = "pmapp-report-draft";
+
+/** Decode a PNG data URL's width/height straight from the IHDR chunk. Used
+ * below because every capture now goes through the select-first overlay's
+ * crop step (region-overlay.ts + crop.ts) even for a "whole page" drag
+ * selection — the resulting bytes are a fresh canvas re-encode of the
+ * captured image, not a byte-identical copy of it, so draft persistence is
+ * proven by matching pixel dimensions rather than exact string equality. */
+function decodePngDimensions(dataUrl: string): { width: number; height: number } {
+  const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
+  const buf = Buffer.from(base64, "base64");
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+/** A real, decodable PNG of random-noise pixels whose base64 payload stays
+ * comfortably over MAX_ATTACHMENT_SIZE_BYTES (10MB) even after the
+ * select-first flow's real crop.ts canvas re-encode. See the "oversized
+ * screenshot" test below for why a fake/padded data URL no longer works. */
+async function generateOversizedNoisePngDataUrl(context: BrowserContext): Promise<string> {
+  const tmp = await context.newPage();
+  try {
+    return await tmp.evaluate(() => {
+      const size = 2200;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      const imageData = ctx.createImageData(size, size);
+      const buf = imageData.data;
+      for (let i = 0; i < buf.length; i++) {
+        buf[i] = Math.floor(Math.random() * 256);
+      }
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL("image/png");
+    });
+  } finally {
+    await tmp.close();
+  }
+}
 
 function loadDotEnv(filePath: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -48,12 +87,27 @@ test.beforeAll(() => {
   }
 });
 
+// F287-followup (select-portion-first flow, region-overlay.ts): this
+// file is not about the drag-select mechanics themselves (see
+// capture-visible-tab.spec.ts for the real end-to-end drag test) — it
+// only needs a stable, deterministic path to a cropped screenshot, so
+// `chrome.scripting.executeScript` (which region-overlay.ts's
+// `selectRegionOnActiveTab()` calls) is stubbed to resolve immediately
+// with a rect covering the whole captured image. crop.ts's own
+// `clampRectToImage` clamps an oversized rect down to the real image
+// bounds, so the "cropped" result is pixel-identical to the full
+// screenshot below — preserving every existing pixel-based assertion in
+// this file unchanged.
 async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
   await page.addInitScript((dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (chrome.tabs as any).query = async () => [{ active: true, url: "http://example.com/" }];
+    (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (chrome.scripting as any).executeScript = async () => [
+      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+    ];
     Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
@@ -310,7 +364,14 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
       expect(draft).toBeTruthy();
       expect(draft.title).toBe("F297 offline submission attempt");
       expect(draft.description).toBe("Typed while offline.");
-      expect(draft.imageDataUrl).toBe(capturedDataUrl);
+      expect(draft.imageDataUrl).toBeTruthy();
+      expect(draft.imageDataUrl!.startsWith("data:image/png;base64,")).toBe(true);
+      // Byte-for-byte equality no longer holds — the select-first flow
+      // always crops (even a "whole page" selection) via a canvas
+      // re-encode — so dimensions are the meaningful equality check here.
+      const expectedDims = decodePngDimensions(capturedDataUrl);
+      const draftDims = decodePngDimensions(draft.imageDataUrl!);
+      expect(draftDims).toEqual(expectedDims);
       expect(draft.imageOmitted).toBe(false);
     } finally {
       await page.unroute(`http://localhost:3000/api/extension/tasks`);
@@ -503,8 +564,15 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
 
   test("AS-565: an oversized screenshot is rejected with the reused too-large message, distinct from the other cases", async () => {
     test.setTimeout(90_000);
-    const oversizedBase64 = "A".repeat(Math.ceil(((10 * 1024 * 1024 + 1024) * 4) / 3));
-    const oversizedDataUrl = `data:image/png;base64,${oversizedBase64}`;
+    // Every capture now goes through crop.ts's real image decode + canvas
+    // re-encode (region-overlay.ts's select-first flow, even for a "whole
+    // page" selection) — a fake, non-decodable data URL (padding base64
+    // with repeated "A"s) fails that decode with a generic crop error
+    // instead of ever reaching the size check. A real, decodable PNG of
+    // random-noise pixels is used instead: random per-pixel data defeats
+    // PNG deflate compression, so the base64 payload stays over
+    // MAX_ATTACHMENT_SIZE_BYTES (10MB) even after crop.ts's re-encode.
+    const oversizedDataUrl = await generateOversizedNoisePngDataUrl(context);
 
     const page = await context.newPage();
     await stubCaptureVisibleTab(page, oversizedDataUrl);

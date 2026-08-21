@@ -125,7 +125,18 @@ test("AS_569_capture_and_pick_both_work_the_first_time_on_a_genuinely_never_befo
     await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
     await contentPage.bringToFront();
 
+    // The select-area-first flow (region-overlay.ts) also runs via real
+    // `chrome.scripting.executeScript` against this fresh, never-visited
+    // page — same real-injection story as capability 2 below, just for the
+    // overlay instead of the picker. A real click-drag on the live page
+    // drives it end to end, matching the file's own "no prior visit, no
+    // prior injection" intent.
     await popupPage.getByTestId("capture-button").click();
+    await expect(popupPage.getByTestId("capture-selecting-hint")).toBeVisible({ timeout: 10_000 });
+    await contentPage.mouse.move(10, 10);
+    await contentPage.mouse.down();
+    await contentPage.mouse.move(120, 90);
+    await contentPage.mouse.up();
     await expect(popupPage.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
     await expect(popupPage.getByTestId("capture-success")).toBeVisible();
     await expect(popupPage.getByTestId("capture-error")).toHaveCount(0);

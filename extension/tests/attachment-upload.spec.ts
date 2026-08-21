@@ -65,14 +65,55 @@ test.beforeAll(() => {
   }
 });
 
+// F287-followup (select-portion-first flow, region-overlay.ts): this
+// file is not about the drag-select mechanics themselves (see
+// capture-visible-tab.spec.ts for the real end-to-end drag test) — it
+// only needs a stable, deterministic path to a cropped screenshot, so
+// `chrome.scripting.executeScript` (which region-overlay.ts's
+// `selectRegionOnActiveTab()` calls) is stubbed to resolve immediately
+// with a rect covering the whole captured image. crop.ts's own
+// `clampRectToImage` clamps an oversized rect down to the real image
+// bounds, so the "cropped" result is pixel-identical to the full
+// screenshot below — preserving every existing pixel-based assertion in
+// this file unchanged.
 async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
   await page.addInitScript((dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (chrome.tabs as any).query = async () => [{ active: true, url: "http://example.com/" }];
+    (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (chrome.scripting as any).executeScript = async () => [
+      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+    ];
     Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
+}
+
+/** A real, decodable PNG of random-noise pixels whose base64 payload stays
+ * comfortably over MAX_ATTACHMENT_SIZE_BYTES (10MB) even after the
+ * select-first flow's real crop.ts canvas re-encode (see the AS-566 test's
+ * comment for why a fake/padded data URL no longer works here). */
+async function generateOversizedNoisePngDataUrl(context: BrowserContext): Promise<string> {
+  const tmp = await context.newPage();
+  try {
+    return await tmp.evaluate(() => {
+      const size = 2200;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d")!;
+      const imageData = ctx.createImageData(size, size);
+      const buf = imageData.data;
+      for (let i = 0; i < buf.length; i++) {
+        buf[i] = Math.floor(Math.random() * 256);
+      }
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL("image/png");
+    });
+  } finally {
+    await tmp.close();
+  }
 }
 
 async function seedRealSession(page: Page, session: unknown) {
@@ -336,15 +377,20 @@ test.describe.serial("F294 attachment upload from extension (AS-559, AS-566, AS-
     // rather than a smaller (and less honest) oversized fixture.
     test.setTimeout(90_000);
 
-    // A synthetic data URL whose base64 payload decodes to just over
-    // MAX_ATTACHMENT_SIZE_BYTES (10MB) — content doesn't need to be a real
-    // decodable PNG for this test, since the reporter never opens the
-    // annotation editor on it (see below): checkScreenshotSize
-    // (extension/src/submit/upload.ts) measures real decoded byte length
-    // from the base64 string alone, which is exactly what this exercises
-    // for real.
-    const oversizedBase64 = "A".repeat(Math.ceil(((10 * 1024 * 1024 + 1024) * 4) / 3));
-    const oversizedDataUrl = `data:image/png;base64,${oversizedBase64}`;
+    // Unlike before this feature (select-area-first capture,
+    // region-overlay.ts), EVERY capture now goes through
+    // `cropDataUrlToRegion` (crop.ts) — which decodes the data URL as a
+    // real `Image` and re-encodes it via canvas — even when the "selected
+    // region" covers the whole page. A fake, non-decodable data URL (the
+    // old approach here: padding a base64 string with repeated "A"s to hit
+    // a target byte length) would fail that real decode step with a
+    // generic "could not crop" error instead of ever reaching AS-566's
+    // size check. So this test instead generates a genuine, decodable PNG
+    // of random noise pixels large enough that even after canvas
+    // re-encoding its base64 payload still exceeds MAX_ATTACHMENT_SIZE_BYTES
+    // (10MB) — random per-pixel data defeats PNG's deflate compression, so
+    // the size survives the real crop step's real re-encode.
+    const oversizedDataUrl = await generateOversizedNoisePngDataUrl(context);
 
     const page = await context.newPage();
     await stubCaptureVisibleTab(page, oversizedDataUrl);

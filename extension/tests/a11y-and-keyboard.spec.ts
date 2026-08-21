@@ -76,12 +76,27 @@ async function launchExtension(): Promise<{ context: BrowserContext; extensionId
   return { context, extensionId };
 }
 
+// F287-followup (select-portion-first flow, region-overlay.ts): this
+// file is not about the drag-select mechanics themselves (see
+// capture-visible-tab.spec.ts for the real end-to-end drag test) — it
+// only needs a stable, deterministic path to a cropped screenshot, so
+// `chrome.scripting.executeScript` (which region-overlay.ts's
+// `selectRegionOnActiveTab()` calls) is stubbed to resolve immediately
+// with a rect covering the whole captured image. crop.ts's own
+// `clampRectToImage` clamps an oversized rect down to the real image
+// bounds, so the "cropped" result is pixel-identical to the full
+// screenshot below — preserving every existing pixel-based assertion in
+// this file unchanged.
 async function stubCaptureVisibleTab(page: Page, resolveWith: string) {
   await page.addInitScript((dataUrl) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (chrome.tabs as any).captureVisibleTab = async () => dataUrl;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (chrome.tabs as any).query = async () => [{ active: true, url: "http://example.com/" }];
+    (chrome.tabs as any).query = async () => [{ active: true, id: 1, url: "http://example.com/" }];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (chrome.scripting as any).executeScript = async () => [
+      { result: { ok: true, rect: { x: 0, y: 0, width: 99999, height: 99999 } } },
+    ];
     Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true });
   }, resolveWith);
 }
@@ -489,8 +504,10 @@ test.describe.serial("F299 holistic keyboard-only flow (AS-570)", () => {
       await page.keyboard.press("Enter");
       await expect(page.getByTestId("capture-preview")).toBeVisible({ timeout: 10_000 });
 
-      // --- Choose to annotate: Tab (skipping "Select region…") to
-      // "Annotate…", activate with Enter. ---
+      // --- Choose to annotate: Tab to "Annotate…", activate with Enter.
+      // (The old separate "Select region…" step is gone — selection now
+      // happens live on the page before capture, driven by the stubbed
+      // executeScript rect above.) ---
       await tabUntilTestId(page, "annotate-start-button");
       await page.keyboard.press("Enter");
       await expect(page.getByTestId("annotate-editor")).toBeVisible();

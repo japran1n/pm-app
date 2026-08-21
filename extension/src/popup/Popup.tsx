@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { APP_URL, createExtensionSupabaseClient } from "../lib/supabase";
 import { captureVisibleTab } from "../capture/visible-tab";
-import { setLastCapture, setAnnotatedResult, type CapturedScreenshot } from "../capture/store";
-import { RegionSelect } from "../capture/RegionSelect";
+import { setLastCapture, setAnnotatedResult } from "../capture/store";
+import { selectRegionOnActiveTab } from "../capture/region-overlay";
+import { cropDataUrlToRegion, cssRectToPhysicalRect } from "../capture/crop";
 import type { CropResult } from "../capture/crop";
 import { AnnotationEditor } from "../annotate/canvas";
 import type { FlattenResult } from "../annotate/types";
@@ -70,33 +71,35 @@ export function Popup() {
   // violate the "re-derivable from storage" requirement above.
   const explicitSignOutRef = useRef(false);
 
-  // F283 (AS-539, AS-541): capture state is independent of connection
-  // status — capturing the visible tab needs only `activeTab`, not an
-  // authenticated session (auth only matters once a later feature files
-  // the task). Kept local to this component (not chrome.storage) per the
-  // "simpler/narrower" tie-breaker in the clarification: it only needs to
+  // Follow-up to F283/F284/F285 (superseding the old "capture whole tab,
+  // then optionally crop inside the popup" two-step flow): the ONLY capture
+  // mode now is "select the region live on the page first, then capture +
+  // crop happens invisibly right after" — like macOS's Cmd+Shift+4. There
+  // is no more "keep the whole tab" fallback; the reporter always ends up
+  // with a cropped region, and never sees a flash of the full uncropped
+  // tab. Capture state is still independent of connection status — it
+  // needs only `activeTab`/`scripting`, not an authenticated session (auth
+  // only matters once the task is actually filed) — and is still kept
+  // local to this component (not chrome.storage), since it only needs to
   // survive the current popup mount.
-  // F284 (AS-540): after a full-tab capture, the user may either keep it as
-  // is ("captured") or open the region-select UI ("selecting") to crop it
-  // down to a chosen area ("cropped"). Selecting never re-triggers
-  // `chrome.tabs.captureVisibleTab` — it only crops the PNG this component
-  // already has, so the whole-view and region-capture paths cannot diverge.
-  // F285 (AS-542, AS-543, AS-545): once the user has a capture (whole-view
-  // or cropped), they can open the annotation editor ("annotating") on
-  // whichever image they ended up with — cropped takes precedence over
-  // the full capture when both exist, since a crop is a deliberate
-  // narrowing of what the user wants attached. Confirming annotations
-  // produces "annotated": the flattened PNG replaces what's shown/held
-  // for the next stage; the pristine base image is never shown again once
-  // annotations exist (AS-545).
+  //
+  // Flow: "selecting" (the live-page overlay from region-overlay.ts is
+  // open and driving its own Promise) -> "capturing" (overlay resolved
+  // with a rect; captureVisibleTab() + cropDataUrlToRegion() are running)
+  // -> "cropped" (the only screenshot state the reporter ever sees).
+  //
+  // F285 (AS-542, AS-543, AS-545) still applies unchanged from here: once
+  // cropped, the user can open the annotation editor ("annotating").
+  // Confirming annotations produces "annotated": the flattened PNG
+  // replaces what's shown/held for the next stage; the pristine cropped
+  // image is never shown again once annotations exist (AS-545).
   type CaptureUiState =
     | { kind: "idle" }
+    | { kind: "selecting" }
     | { kind: "capturing" }
-    | { kind: "captured"; capture: CapturedScreenshot }
-    | { kind: "selecting"; capture: CapturedScreenshot }
-    | { kind: "cropped"; capture: CapturedScreenshot; cropped: CropResult }
-    | { kind: "annotating"; capture: CapturedScreenshot; cropped: CropResult | null }
-    | { kind: "annotated"; capture: CapturedScreenshot; cropped: CropResult | null; annotated: FlattenResult }
+    | { kind: "cropped"; cropped: CropResult }
+    | { kind: "annotating"; cropped: CropResult }
+    | { kind: "annotated"; cropped: CropResult; annotated: FlattenResult }
     | { kind: "error"; reason: string };
   const [captureState, setCaptureState] = useState<CaptureUiState>({ kind: "idle" });
 
@@ -129,54 +132,70 @@ export function Popup() {
     }
   }
 
-  async function handleCapture() {
+  async function handleSelectRegion() {
+    setCaptureState({ kind: "selecting" });
+
+    // 1. Live-page overlay: the reporter draws a selection rectangle
+    // directly on the page they're reporting a bug on (region-overlay.ts).
+    // Nothing is captured yet.
+    const overlayResult = await selectRegionOnActiveTab();
+    if (!overlayResult.ok) {
+      if (overlayResult.reason === "cancelled") {
+        setCaptureState({ kind: "idle" });
+      } else {
+        setCaptureState({ kind: "error", reason: overlayResult.reason });
+      }
+      return;
+    }
+
+    // 2. Only now — after the overlay has already removed all of its own
+    // DOM from the page — take the actual full-tab capture
+    // (chrome.tabs.captureVisibleTab can only ever capture the full
+    // visible viewport; there is no browser API for a sub-region capture)
+    // and immediately crop it down to the selected rect. The reporter
+    // never sees this intermediate full-tab image.
     setCaptureState({ kind: "capturing" });
-    const result = await captureVisibleTab();
-    if (result.ok) {
-      setLastCapture(result);
-      setCaptureState({ kind: "captured", capture: result });
-    } else {
-      setCaptureState({ kind: "error", reason: result.reason });
+    const captureResult = await captureVisibleTab();
+    if (!captureResult.ok) {
+      setCaptureState({ kind: "error", reason: captureResult.reason });
+      return;
     }
-  }
 
-  function handleStartRegionSelect() {
-    if (captureState.kind === "captured" || captureState.kind === "cropped") {
-      setCaptureState({ kind: "selecting", capture: captureState.capture });
-    }
-  }
-
-  function handleRegionCropped(cropped: CropResult) {
-    if (captureState.kind === "selecting") {
-      setCaptureState({ kind: "cropped", capture: captureState.capture, cropped });
-    }
-  }
-
-  function handleRegionSelectCancel() {
-    // Escape or "Use full screenshot": drop back to the plain full-tab
-    // capture with no region selected — never leaves the overlay mounted,
-    // never discards the underlying capture itself (AS-539 still works).
-    if (captureState.kind === "selecting") {
-      setCaptureState({ kind: "captured", capture: captureState.capture });
+    try {
+      const physicalRect = cssRectToPhysicalRect(
+        overlayResult.rect,
+        captureResult.devicePixelRatio,
+      );
+      const cropped = await cropDataUrlToRegion(captureResult.dataUrl, physicalRect);
+      // AS-566/AS-567 fallback path (report-form.tsx's getLastCapture()):
+      // must be the cropped result, not the full uncropped tab — the
+      // reporter never sees, and must never submit, the intermediate
+      // full-tab image. devicePixelRatio is recorded as 1 here since
+      // `cropped.dataUrl` is already in the crop's own final physical-pixel
+      // space; nothing downstream re-derives physical pixels from it again.
+      setLastCapture({ ok: true, dataUrl: cropped.dataUrl, devicePixelRatio: 1, capturedAt: Date.now() });
+      setCaptureState({ kind: "cropped", cropped });
+    } catch (err) {
+      setCaptureState({
+        kind: "error",
+        reason: err instanceof Error ? err.message : "Could not crop the selected region.",
+      });
     }
   }
 
   function handleStartAnnotate() {
-    if (captureState.kind === "captured") {
-      setCaptureState({ kind: "annotating", capture: captureState.capture, cropped: null });
-    } else if (captureState.kind === "cropped") {
-      setCaptureState({ kind: "annotating", capture: captureState.capture, cropped: captureState.cropped });
+    if (captureState.kind === "cropped") {
+      setCaptureState({ kind: "annotating", cropped: captureState.cropped });
     }
   }
 
   function handleAnnotationSubmit(result: FlattenResult) {
     if (captureState.kind !== "annotating") return;
-    // AS-545: the flattened annotated PNG — not the pristine capture or
-    // crop underneath it — is what's held for the next stage.
+    // AS-545: the flattened annotated PNG — not the pristine cropped image
+    // underneath it — is what's held for the next stage.
     setAnnotatedResult(result);
     setCaptureState({
       kind: "annotated",
-      capture: captureState.capture,
       cropped: captureState.cropped,
       annotated: result,
     });
@@ -184,11 +203,7 @@ export function Popup() {
 
   function handleAnnotationCancel() {
     if (captureState.kind !== "annotating") return;
-    if (captureState.cropped) {
-      setCaptureState({ kind: "cropped", capture: captureState.capture, cropped: captureState.cropped });
-    } else {
-      setCaptureState({ kind: "captured", capture: captureState.capture });
-    }
+    setCaptureState({ kind: "cropped", cropped: captureState.cropped });
   }
 
   useEffect(() => {
@@ -342,50 +357,20 @@ export function Popup() {
           <button
             data-testid="capture-button"
             type="button"
-            onClick={handleCapture}
-            disabled={captureState.kind === "capturing"}
+            onClick={handleSelectRegion}
+            disabled={captureState.kind === "selecting" || captureState.kind === "capturing"}
           >
-            {captureState.kind === "capturing" ? "Capturing…" : "Capture screenshot"}
+            {captureState.kind === "selecting"
+              ? "Draw a selection on the page…"
+              : captureState.kind === "capturing"
+                ? "Capturing…"
+                : "Select area to capture"}
           </button>
 
-          {captureState.kind === "captured" && (
-            <div style={{ marginTop: 8 }}>
-              <p data-testid="capture-success" style={{ margin: "0 0 4px", fontSize: 13, color: "#1a7f37" }}>
-                Screenshot captured.
-              </p>
-              <img
-                data-testid="capture-preview"
-                src={captureState.capture.dataUrl}
-                alt="Captured screenshot preview"
-                style={{ maxWidth: "100%", border: "1px solid #ddd" }}
-              />
-              <button
-                data-testid="region-select-start-button"
-                type="button"
-                style={{ marginTop: 8 }}
-                onClick={handleStartRegionSelect}
-              >
-                Select region…
-              </button>
-              <button
-                data-testid="annotate-start-button"
-                type="button"
-                style={{ marginTop: 8, marginLeft: 8 }}
-                onClick={handleStartAnnotate}
-              >
-                Annotate…
-              </button>
-            </div>
-          )}
-
           {captureState.kind === "selecting" && (
-            <div style={{ marginTop: 8 }}>
-              <RegionSelect
-                capture={captureState.capture}
-                onCropped={handleRegionCropped}
-                onCancel={handleRegionSelectCancel}
-              />
-            </div>
+            <p data-testid="capture-selecting-hint" style={{ margin: "8px 0 0", fontSize: 13, color: "#666" }}>
+              Click-drag on the page to select the area to capture, or press Escape to cancel.
+            </p>
           )}
 
           {captureState.kind === "cropped" && (
@@ -400,17 +385,9 @@ export function Popup() {
                 style={{ maxWidth: "100%", border: "1px solid #ddd" }}
               />
               <button
-                data-testid="region-select-start-button"
-                type="button"
-                style={{ marginTop: 8 }}
-                onClick={handleStartRegionSelect}
-              >
-                Select region…
-              </button>
-              <button
                 data-testid="annotate-start-button"
                 type="button"
-                style={{ marginTop: 8, marginLeft: 8 }}
+                style={{ marginTop: 8 }}
                 onClick={handleStartAnnotate}
               >
                 Annotate…
@@ -421,7 +398,7 @@ export function Popup() {
           {captureState.kind === "annotating" && (
             <div style={{ marginTop: 8 }}>
               <AnnotationEditor
-                baseImageDataUrl={captureState.cropped ? captureState.cropped.dataUrl : captureState.capture.dataUrl}
+                baseImageDataUrl={captureState.cropped.dataUrl}
                 onSubmit={handleAnnotationSubmit}
                 onCancel={handleAnnotationCancel}
               />
