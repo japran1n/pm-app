@@ -7,6 +7,19 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      # F278: required for the integration (vitest) and e2e (Playwright)
+      # suites to run against the real linked Supabase project instead of
+      # being silently skipped. Must be set as repository secrets in GitHub
+      # (Settings > Secrets and variables > Actions) — see
+      # missions/20260818-213033/handoffs/F278-handoff.md for the exact
+      # names and where the values come from. CI is intentionally NOT
+      # tolerant of these being absent: tests/integration/*.test.ts and
+      # tests/e2e/*.spec.ts hard-fail (rather than skip) when `CI` is set
+      # and credentials are missing.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,23 +39,17 @@ jobs:
       - name: Lint
         run: npx eslint .
 
-      - name: Unit tests
-        # NOTE: unit test suite (vitest) arrives in F091. Until then, npm run
-        # test is a placeholder that tolerates an empty/missing suite so this
-        # workflow stays green as a skeleton. See tech-decisions.md "How to
-        # run tests" — this is the same command the local pre-worker-exit
-        # hook runs, kept in sync intentionally.
+      - name: Unit + integration tests
+        # F278: same command the local pre-worker-exit hook runs (see
+        # tech-decisions.md "How to run tests"), kept in sync intentionally.
+        # With NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+        # / SUPABASE_SECRET_KEY present above, the integration suite (which
+        # was previously silently `describe.skipIf`-skipped in CI) now runs
+        # for real; if those secrets are absent, the affected test files
+        # hard-fail instead of reporting green.
         run: npm run test
 
       - name: End-to-end tests (Playwright)
-        # NOTE: Playwright/e2e suite arrives in F090. Guarded so CI does not
-        # fail on the currently-missing @playwright/test dependency and
-        # tests/e2e directory. This step is a known temporary no-op and must
-        # be tightened (remove the guard) once F090 lands.
         run: |
-          if npm ls @playwright/test >/dev/null 2>&1 && [ -d tests/e2e ] && [ -n "$(find tests/e2e -type f 2>/dev/null)" ]; then
-            npx playwright install --with-deps
-            npx playwright test
-          else
-            echo "No Playwright suite yet (@playwright/test / tests/e2e arrive in F090) - skipping, exit 0"
-          fi
+          npx playwright install --with-deps
+          npx playwright test

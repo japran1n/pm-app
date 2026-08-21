@@ -40,6 +40,11 @@ const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
 const haveCreds = Boolean(SUPABASE_URL && PUBLISHABLE_KEY && SECRET_KEY);
+if (process.env.CI && !haveCreds) {
+  throw new Error(
+    "F278: missing Supabase credentials required to run this suite in CI (haveCreds is false). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY as GitHub Actions repository secrets.",
+  );
+}
 
 // A minimal valid 1x1 PNG (real bytes, not a fake string) — small enough to
 // stay far under MAX_ATTACHMENT_SIZE_BYTES for the "real, successful

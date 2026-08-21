@@ -38,6 +38,11 @@ loadDotEnv();
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY);
+if (process.env.CI && !haveAdminCreds) {
+  throw new Error(
+    "F278: missing Supabase credentials required to run this suite in CI (haveAdminCreds is false). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY as GitHub Actions repository secrets.",
+  );
+}
 
 function projectRefFromUrl(url: string): string {
   const host = new URL(url).hostname;
