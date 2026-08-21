@@ -2,7 +2,11 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
-import { canViewMembersList, type WorkspaceRole } from "@/lib/auth/permissions";
+import {
+  canManageMembers,
+  canViewMembersList,
+  type WorkspaceRole,
+} from "@/lib/auth/permissions";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { MemberRoleSelect } from "@/components/member-role-select";
@@ -104,9 +108,14 @@ export default async function MembersPage({
 
   const canInvite =
     ownMembership?.role === "owner" || ownMembership?.role === "admin";
-  // AS-014/AS-015: only the owner may change another member's role — a
-  // stricter gate than `canInvite` (which also allows admins).
-  const canChangeRoles = ownMembership?.role === "owner";
+  // AS-218 (F129, superseding mission-1's owner-only AS-014/AS-015): owner
+  // OR admin may change another member's role — same line as `canInvite`,
+  // via the shared `canManageMembers` predicate (AS-230: one permission
+  // helper backs both UI gating and the server-side re-check in
+  // `changeMemberRole`).
+  const canChangeRoles = canManageMembers({
+    role: (ownMembership?.role ?? "guest") as WorkspaceRole,
+  });
 
   // F134 (AS-220): the invite-as-guest UI needs a project list to scope the
   // invite to. RLS-scoped select is sufficient here (an owner/admin — the

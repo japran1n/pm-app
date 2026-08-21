@@ -537,18 +537,52 @@ export async function revokeInvite(
   return { ok: true };
 }
 
-// Changes an existing active member's role between "member" and "admin"
-// (AS-014). Only the workspace owner may perform this — deliberately
-// re-checked as owner-specifically here, not the broader owner/admin check
-// `requireWorkspaceAdmin` uses for invite/revoke, because AS-014/AS-015/
-// AS-019 draw the line at owner only: an admin can invite and remove
-// members (AS-019) but does not get to reassign roles. `newRole` is
-// restricted by `changeMemberRoleSchema` to "member" | "admin" — this
-// action can never grant "owner" through it; see that schema for why.
+// Changes an existing active member's role among "member" | "admin" |
+// "viewer" | "guest" (AS-218, AS-219, AS-235 — F129, superseding mission-1's
+// owner-only AS-014/AS-015/AS-019 now that F126 widened the role set).
+//
+// AS-218: owner OR admin may perform this — deliberately the broader
+// `requireWorkspaceAdmin` check (not the owner-only line the old F019
+// implementation used), because AS-218 explicitly says "an owner or admin
+// can change any member's role."
+//
+// AS-219: the last remaining owner cannot be demoted to any other role.
+// A non-sole owner's row CAN now be the target of this action (unlike the
+// old implementation, which rejected touching any owner row outright).
+//
+// This guard is a check-then-act count-then-update (count active owners,
+// reject if <= 1, otherwise update), NOT the atomic SELECT ... FOR UPDATE
+// Postgres-function pattern F094's `remove_workspace_member` used to close
+// the equivalent TOCTOU race for AS-018. That RPC pattern is the intended
+// long-term shape for this guard too (reusing the same technique, not
+// reinventing a different one) — deploying it requires `supabase db push`
+// against the linked project, which this worker's sandbox could not reach
+// (direct/pooled Postgres connection attempts hung with no error; the
+// Supabase Management API needed for `--linked` requires
+// SUPABASE_ACCESS_TOKEN, which is not present in this environment). See
+// the F129 handoff's Out-of-scope section for the exact follow-up spec:
+// add a `change_workspace_member_role` SECURITY DEFINER function mirroring
+// `remove_workspace_member` once migration-push access is restored, and
+// swap this block to call it. Until then, this is the same class of race
+// mission-1's original (pre-F094) removeMember guard had — narrow window,
+// requires two concurrent role-change calls against the same 2-owner
+// workspace, not exercised by any assigned assertion here.
+//
+// AS-235: a guest cannot be promoted directly to admin (or owner — already
+// excluded from `newRole` entirely). Per the clarified spec, promoting a
+// guest takes the simpler of the two open options: a single UI action that
+// is rejected server-side if it tries to jump straight from "guest" to
+// "admin", rather than a bespoke two-step wizard flow. A caller who wants
+// to make a guest an admin makes two separate role changes (guest → member,
+// then member → admin) — no new UI state machine, no second source of
+// truth for "is this a multi-step promotion in progress."
+//
+// `newRole` is restricted by `changeMemberRoleSchema` to "member" | "admin"
+// | "viewer" | "guest" — this action can never grant "owner" through it.
 export async function changeMemberRole(
   workspaceId: string,
   targetMembershipId: string,
-  newRole: "member" | "admin",
+  newRole: "member" | "admin" | "viewer" | "guest",
 ): Promise<ChangeMemberRoleResult> {
   const parsed = changeMemberRoleSchema.safeParse({
     workspaceId,
@@ -577,12 +611,12 @@ export async function changeMemberRole(
 
   const admin = createAdminClient();
 
-  // Defense in depth (AS-143 convention, tightened per AS-014/AS-015/
-  // AS-019): re-check the caller is specifically the active *owner* of
-  // this exact workspace, server-side — an admin calling this action
-  // directly (bypassing the UI, which only renders the control for
-  // owners) must be rejected just as a plain member would be.
-  const membership = await requireWorkspaceOwner(
+  // Defense in depth (AS-143 convention): re-check the caller is an active
+  // owner/admin of this exact workspace, server-side — AS-218 widens this
+  // from the old owner-only check to owner-or-admin; a plain member or
+  // guest calling this action directly (bypassing the UI) must still be
+  // rejected.
+  const membership = await requireWorkspaceAdmin(
     admin,
     parsed.data.workspaceId,
     user.id,
@@ -591,7 +625,7 @@ export async function changeMemberRole(
   if (!membership.ok) {
     return {
       ok: false,
-      error: "Only the workspace owner can change member roles.",
+      error: "Only the workspace owner or an admin can change member roles.",
     };
   }
 
@@ -616,9 +650,7 @@ export async function changeMemberRole(
 
   // Only active members have a meaningful role to change; a pending
   // invite's role is changed by revoking and re-inviting (out of scope
-  // here), and an owner's own row is never touched by this action (no
-  // "become owner" path, and demoting the sole owner is AS-018's guard,
-  // not this feature's).
+  // here).
   if (targetRow.status !== "active") {
     return {
       ok: false,
@@ -626,15 +658,52 @@ export async function changeMemberRole(
     };
   }
 
-  if (targetRow.role === "owner") {
+  // AS-235: a guest cannot be promoted directly to admin. (Promotion to
+  // "owner" is already impossible — `newRole` never accepts that value.)
+  // Per the clarified spec's simpler option, this is a single rejected
+  // action, not a two-step wizard: an admin/owner who wants a guest to
+  // become an admin makes two calls — guest → member, then member → admin.
+  if (targetRow.role === "guest" && parsed.data.newRole === "admin") {
     return {
       ok: false,
-      error: "The workspace owner's role cannot be changed here.",
+      error:
+        "A guest cannot be promoted directly to admin. Change them to a member first, then to admin.",
     };
   }
 
   if (targetRow.role === parsed.data.newRole) {
     return { ok: true };
+  }
+
+  if (targetRow.role === "owner") {
+    // AS-219: count the workspace's other active owners before allowing a
+    // demotion. See the doc comment above this function for why this is a
+    // check-then-act count rather than the atomic RPC pattern used
+    // elsewhere in this file.
+    const { count: ownerCount, error: ownerCountError } = await admin
+      .from("workspace_members")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", parsed.data.workspaceId)
+      .eq("role", "owner")
+      .eq("status", "active");
+
+    if (ownerCountError) {
+      console.error(
+        "changeMemberRole: owner count check failed:",
+        ownerCountError,
+      );
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    if ((ownerCount ?? 0) <= 1) {
+      return {
+        ok: false,
+        error: "You cannot change the role of the sole owner of a workspace.",
+      };
+    }
   }
 
   const { error: updateError } = await admin

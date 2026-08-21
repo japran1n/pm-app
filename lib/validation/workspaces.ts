@@ -53,19 +53,24 @@ export const revokeInviteSchema = z.object({
 
 export type RevokeInviteInput = z.infer<typeof revokeInviteSchema>;
 
-// Validates change-member-role input (AS-014/AS-015/AS-019). `newRole` is
-// deliberately restricted to "member" | "admin" — "owner" is never an
-// accepted value here: this action changes an *existing* member's role,
+// Validates change-member-role input (AS-218/AS-219/AS-232/AS-235,
+// superseding mission-1's AS-014/AS-015/AS-019 now that F126 has widened
+// workspace_members.role to the full 5-role set). `newRole` is deliberately
+// restricted to "member" | "admin" | "viewer" | "guest" — "owner" is never
+// an accepted value here: this action changes an *existing* member's role,
 // and granting ownership isn't supported through it (a workspace must
 // always have exactly the ownership it already has resolved elsewhere;
-// see AS-018's sole-owner protection, which a generic "promote to owner"
+// see AS-219's sole-owner protection, which a generic "promote to owner"
 // path would need to coordinate with and which is out of this feature's
-// scope).
+// scope). An *owner*'s row CAN now be the target of this action (demoting
+// them to one of these four roles) — AS-219 only blocks that when the
+// target is the workspace's sole remaining owner; see
+// lib/actions/workspaces.ts `changeMemberRole` for the atomic guard.
 export const changeMemberRoleSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   targetMembershipId: z.string().uuid("Invalid member."),
-  newRole: z.enum(["member", "admin"], {
-    message: "Role must be member or admin.",
+  newRole: z.enum(["member", "admin", "viewer", "guest"], {
+    message: "Role must be member, admin, viewer, or guest.",
   }),
 });
 

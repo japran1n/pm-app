@@ -1,7 +1,16 @@
-// Integration test for F019 (AS-014, AS-015, AS-019), run against the real
+// Integration test for F019 (AS-014, AS-015, AS-019) and F129 (AS-218,
+// AS-219, AS-232, AS-235 — the expanded 5-role set), run against the real
 // linked Supabase project — mirrors the loadDotEnv/skipIf and
 // server-client mocking pattern established by
 // tests/integration/revoke-invite.test.ts.
+//
+// F129 widens `changeMemberRole` from mission-1's owner-only line to
+// owner-or-admin (AS-218), and now allows an owner's row to be the target
+// of a role change — except when it is the workspace's sole remaining
+// owner (AS-219). Several tests below that asserted the old, narrower
+// behaviour ("only the owner can change roles", "an owner's row can never
+// be touched") have been rewritten to match the superseding assertions;
+// see the F129 handoff for the full rationale.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -59,7 +68,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 describe.skipIf(!haveAdminCreds)(
-  "changeMemberRole (F019: AS-014, AS-015, AS-019)",
+  "changeMemberRole (F019: AS-014, AS-015, AS-019; F129: AS-218, AS-219, AS-232, AS-235)",
   () => {
     let adminClient: SupabaseClient;
     const createdWorkspaceIds: string[] = [];
@@ -121,7 +130,7 @@ describe.skipIf(!haveAdminCreds)(
 
     async function seedMember(
       workspaceId: string,
-      role: "owner" | "admin" | "member",
+      role: "owner" | "admin" | "member" | "viewer" | "guest",
     ) {
       const userId = await createThrowawayUser(role);
       const { data, error } = await adminClient
@@ -140,7 +149,7 @@ describe.skipIf(!haveAdminCreds)(
       return { membershipId: data.id as string, userId };
     }
 
-    it("AS-014: an owner can change a member's role from member to admin", async () => {
+    it("AS-014/AS-218: an owner can change a member's role from member to admin", async () => {
       const { changeMemberRole } = await import("@/lib/actions/workspaces");
       const workspaceId = await createWorkspace();
       const owner = await seedMember(workspaceId, "owner");
@@ -188,7 +197,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.role).toBe("member");
     });
 
-    it("AS-015/AS-019 (failure case): an admin cannot change a member's role — rejected server-side even called directly", async () => {
+    it("AS-218: an admin can also change a member's role (superseding mission-1's owner-only AS-014/AS-019)", async () => {
       const { changeMemberRole } = await import("@/lib/actions/workspaces");
       const workspaceId = await createWorkspace();
       const admin = await seedMember(workspaceId, "admin");
@@ -198,13 +207,10 @@ describe.skipIf(!haveAdminCreds)(
       const result = await changeMemberRole(
         workspaceId,
         target.membershipId,
-        "admin",
+        "viewer",
       );
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error).toMatch(/owner/i);
-      }
+      expect(result).toEqual({ ok: true });
 
       const { data: row } = await adminClient
         .from("workspace_members")
@@ -212,7 +218,32 @@ describe.skipIf(!haveAdminCreds)(
         .eq("id", target.membershipId)
         .maybeSingle();
 
-      expect(row?.role).toBe("member");
+      expect(row?.role).toBe("viewer");
+    });
+
+    it("AS-218: an owner or admin can change a member's role to every non-owner role (member/admin/viewer/guest)", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+      const target = await seedMember(workspaceId, "member");
+
+      currentTestUserId = owner.userId;
+
+      for (const newRole of ["viewer", "admin", "guest", "member"] as const) {
+        const result = await changeMemberRole(
+          workspaceId,
+          target.membershipId,
+          newRole,
+        );
+        expect(result).toEqual({ ok: true });
+
+        const { data: row } = await adminClient
+          .from("workspace_members")
+          .select("role")
+          .eq("id", target.membershipId)
+          .maybeSingle();
+        expect(row?.role).toBe(newRole);
+      }
     });
 
     it("AS-015 (failure case): a plain member cannot change another member's role — rejected server-side even called directly", async () => {
@@ -230,8 +261,32 @@ describe.skipIf(!haveAdminCreds)(
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toMatch(/owner/i);
+        expect(result.error).toMatch(/owner or an admin/i);
       }
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", target.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("member");
+    });
+
+    it("AS-015 (failure case): a viewer cannot change another member's role — rejected server-side", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const caller = await seedMember(workspaceId, "viewer");
+      const target = await seedMember(workspaceId, "member");
+
+      currentTestUserId = caller.userId;
+      const result = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "admin",
+      );
+
+      expect(result.ok).toBe(false);
 
       const { data: row } = await adminClient
         .from("workspace_members")
@@ -268,7 +323,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.role).toBe("member");
     });
 
-    it("(failure case): newRole is rejected if it is not 'member' or 'admin' (e.g. 'owner')", async () => {
+    it("(failure case): newRole is rejected if it is 'owner' — this action never grants ownership", async () => {
       const { changeMemberRole } = await import("@/lib/actions/workspaces");
       const workspaceId = await createWorkspace();
       const owner = await seedMember(workspaceId, "owner");
@@ -294,7 +349,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.role).toBe("member");
     });
 
-    it("(failure case): the owner's own row cannot be changed through this action", async () => {
+    it("AS-219: the sole remaining owner cannot be demoted to any role", async () => {
       const { changeMemberRole } = await import("@/lib/actions/workspaces");
       const workspaceId = await createWorkspace();
       const owner = await seedMember(workspaceId, "owner");
@@ -307,6 +362,9 @@ describe.skipIf(!haveAdminCreds)(
       );
 
       expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/sole owner/i);
+      }
 
       const { data: row } = await adminClient
         .from("workspace_members")
@@ -315,6 +373,144 @@ describe.skipIf(!haveAdminCreds)(
         .maybeSingle();
 
       expect(row?.role).toBe("owner");
+    });
+
+    it("AS-219 (negative sibling): a non-sole owner CAN be demoted", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const ownerA = await seedMember(workspaceId, "owner");
+      const ownerB = await seedMember(workspaceId, "owner");
+
+      currentTestUserId = ownerA.userId;
+      const result = await changeMemberRole(
+        workspaceId,
+        ownerB.membershipId,
+        "admin",
+      );
+
+      expect(result).toEqual({ ok: true });
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", ownerB.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("admin");
+    });
+
+    it("AS-235: a guest cannot be promoted directly to admin", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+      const target = await seedMember(workspaceId, "guest");
+
+      currentTestUserId = owner.userId;
+      const result = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "admin",
+      );
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/guest cannot be promoted/i);
+      }
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", target.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("guest");
+    });
+
+    it("AS-235 (negative sibling): a guest CAN be changed to member (the first step towards eventually becoming admin)", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+      const target = await seedMember(workspaceId, "guest");
+
+      currentTestUserId = owner.userId;
+      const result = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "member",
+      );
+
+      expect(result).toEqual({ ok: true });
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", target.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("member");
+    });
+
+    it("AS-235 (two-step path): a guest changed to member can then be changed to admin", async () => {
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+      const target = await seedMember(workspaceId, "guest");
+
+      currentTestUserId = owner.userId;
+      const first = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "member",
+      );
+      expect(first).toEqual({ ok: true });
+
+      const second = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "admin",
+      );
+      expect(second).toEqual({ ok: true });
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", target.membershipId)
+        .maybeSingle();
+
+      expect(row?.role).toBe("admin");
+    });
+
+    it("AS-232: the target's next request re-reads their role from the database, with no session cache to invalidate", async () => {
+      // changeMemberRole updates workspace_members.role directly, and every
+      // membership/permission check in this codebase (requireActiveMembership,
+      // requireWorkspaceAdmin, canManageMembers, etc.) re-queries that table
+      // per-request rather than reading from a cached session/JWT claim — so
+      // a role change takes effect on the target's very next request with no
+      // explicit invalidation step and no sign-out required. This test
+      // proves that DB-level guarantee: read the role again immediately
+      // after the change, exactly as any subsequent request's fresh query
+      // would.
+      const { changeMemberRole } = await import("@/lib/actions/workspaces");
+      const workspaceId = await createWorkspace();
+      const owner = await seedMember(workspaceId, "owner");
+      const target = await seedMember(workspaceId, "member");
+
+      currentTestUserId = owner.userId;
+      const result = await changeMemberRole(
+        workspaceId,
+        target.membershipId,
+        "admin",
+      );
+      expect(result).toEqual({ ok: true });
+
+      const { data: row } = await adminClient
+        .from("workspace_members")
+        .select("role")
+        .eq("id", target.membershipId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      expect(row?.role).toBe("admin");
     });
 
     it("(side effect): changing a role in one workspace does not affect a same-id-shaped membership in another workspace", async () => {
