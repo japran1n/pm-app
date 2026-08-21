@@ -179,7 +179,17 @@ describe("inviteMember pagination (F099: AS-007)", () => {
     matchIndex = -1; // no match anywhere
 
     // Mock the final insert step separately since this path reaches it.
-    const insertMock = vi.fn(async () => ({ error: null }));
+    // Supports the .insert(...).select("id").single() chain that
+    // inviteMember uses to retrieve the newly-inserted row's id for the
+    // audit-log writer.
+    const insertMock = vi.fn(() => ({
+      select: vi.fn((_columns: string) => ({
+        single: vi.fn(async () => ({
+          data: { id: "new-membership-row-id" },
+          error: null,
+        })),
+      })),
+    }));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (adminFromMock as any).mockImplementation((table: string) => {
       if (table === "workspace_members") {
