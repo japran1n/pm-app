@@ -46,6 +46,7 @@ const ATTACHMENTS: TaskAttachment[] = [
     fileUrl: "t1/1-spec.pdf",
     uploadedBy: "u1",
     createdAt: new Date(NOW - 3600_000).toISOString(),
+    mimeType: "application/pdf",
   },
   {
     id: "a2",
@@ -54,6 +55,7 @@ const ATTACHMENTS: TaskAttachment[] = [
     fileUrl: "t1/2-screenshot.png",
     uploadedBy: "u2",
     createdAt: new Date(NOW - 1_000).toISOString(),
+    mimeType: "image/png",
   },
 ];
 
@@ -95,6 +97,7 @@ describe("AttachmentList (F066: AS-109)", () => {
         fileUrl: "t1/3-notes.txt",
         uploadedBy: "u3",
         createdAt: new Date(NOW).toISOString(),
+        mimeType: "text/plain",
       },
     ]);
 
@@ -116,6 +119,7 @@ describe("appendAttachment (F066: AS-115)", () => {
       fileUrl: "t1/3-new-file.pdf",
       uploadedBy: "u1",
       createdAt: new Date(NOW).toISOString(),
+      mimeType: "application/pdf",
     };
 
     const next = appendAttachment(ATTACHMENTS, newAttachment);
@@ -150,6 +154,7 @@ describe("appendAttachment (F066: AS-115)", () => {
       fileUrl: "t1/1-first-upload.png",
       uploadedBy: "u2",
       createdAt: new Date(NOW).toISOString(),
+      mimeType: "image/png",
     };
 
     const next = appendAttachment([], uploaded);

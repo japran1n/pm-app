@@ -237,6 +237,41 @@ describe.skipIf(!haveAdminCreds)(
       expect(downloaded).not.toBeNull();
     });
 
+    it("test_mime_type_persisted_and_returned_for_an_image_upload: uploading a real image file results in a real mime_type value persisted in the attachments row and returned to the caller", async () => {
+      const { uploadAttachment } = await import("@/lib/actions/attachments");
+
+      currentTestUserId = memberUserId;
+
+      // A minimal 1x1 PNG payload — real bytes, real content-type, not a
+      // stubbed/fake upload.
+      const pngBytes = Uint8Array.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+      const file = new File([pngBytes], "screenshot.png", {
+        type: "image/png",
+      });
+      const formData = buildFormData(taskId, file);
+
+      const result = await uploadAttachment(formData);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      createdAttachmentIds.push(result.data.id);
+      createdObjectPaths.push(result.data.fileUrl);
+
+      expect(result.data.mimeType).toBe("image/png");
+
+      const { data: row, error } = await adminClient
+        .from("attachments")
+        .select("mime_type")
+        .eq("id", result.data.id)
+        .single();
+
+      expect(error).toBeNull();
+      expect(row?.mime_type).toBe("image/png");
+    });
+
     it("AS-112: a file larger than the configured size limit is rejected before the upload completes", async () => {
       const { uploadAttachment } = await import("@/lib/actions/attachments");
       const { MAX_ATTACHMENT_SIZE_BYTES } = await import(

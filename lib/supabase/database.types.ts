@@ -49,6 +49,7 @@ export type Database = {
           file_name: string
           file_url: string
           id: string
+          mime_type: string | null
           task_id: string
           uploaded_by: string
         }
@@ -57,6 +58,7 @@ export type Database = {
           file_name: string
           file_url: string
           id?: string
+          mime_type?: string | null
           task_id: string
           uploaded_by: string
         }
@@ -65,6 +67,7 @@ export type Database = {
           file_name?: string
           file_url?: string
           id?: string
+          mime_type?: string | null
           task_id?: string
           uploaded_by?: string
         }
@@ -522,6 +525,27 @@ export type Database = {
         Returns: {
           count: number
           priority: string
+        }[]
+      }
+      get_project_board_tasks: {
+        Args: { p_project_id: string }
+        Returns: {
+          assignee_id: string
+          checklist_done: number
+          checklist_total: number
+          child_done: number
+          child_total: number
+          due_date: string
+          id: string
+          number: number
+          open_blocker_count: number
+          position: number
+          priority: string
+          project_key: string
+          status: string
+          subtask_count: number
+          title: string
+          updated_at: string
         }[]
       }
       get_project_time_totals: {

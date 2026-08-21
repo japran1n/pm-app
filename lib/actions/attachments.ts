@@ -41,6 +41,7 @@ export type UploadAttachmentResult =
         uploadedBy: string;
         createdAt: string;
         signedUrl: string;
+        mimeType: string | null;
       };
     }
   | { ok: false; error: string };
@@ -221,8 +222,9 @@ export async function uploadAttachmentForUser(
       file_url: objectPath,
       file_name: parsed.data.fileName,
       uploaded_by: userId,
+      mime_type: parsed.data.mimeType,
     })
-    .select("id, task_id, file_url, file_name, uploaded_by, created_at")
+    .select("id, task_id, file_url, file_name, uploaded_by, created_at, mime_type")
     .single();
 
   if (insertError || !inserted) {
@@ -284,6 +286,7 @@ export async function uploadAttachmentForUser(
       uploadedBy: inserted.uploaded_by,
       createdAt: inserted.created_at,
       signedUrl: signedUrlData.signedUrl,
+      mimeType: inserted.mime_type,
     },
   };
 }

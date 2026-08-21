@@ -1931,7 +1931,7 @@ export async function getTaskDetail(
       .order("created_at", { ascending: true }),
     admin
       .from("attachments")
-      .select("id, task_id, file_url, file_name, uploaded_by, created_at")
+      .select("id, task_id, file_url, file_name, uploaded_by, created_at, mime_type")
       .eq("task_id", parsed.data.taskId)
       .order("created_at", { ascending: true }),
     childrenQuery,
@@ -2084,6 +2084,7 @@ export async function getTaskDetail(
     fileUrl: row.file_url,
     uploadedBy: row.uploaded_by,
     createdAt: row.created_at,
+    mimeType: row.mime_type,
   }));
 
   return {

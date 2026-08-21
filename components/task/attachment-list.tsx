@@ -37,7 +37,7 @@
 // stale cached URL — satisfying "generate on demand, don't cache a stale
 // one."
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Loader2, Paperclip, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -59,6 +59,11 @@ export type TaskAttachment = {
   fileUrl: string;
   uploadedBy: string;
   createdAt: string;
+  /** Follow-up (2026-08-21, user-reported): the file's MIME type, persisted
+   * at upload time (attachments.mime_type). Null for attachments uploaded
+   * before this column existed — treated identically to a non-image type:
+   * no thumbnail, plain filename-link rendering. */
+  mimeType: string | null;
 };
 
 export type AttachmentListMember = {
@@ -73,6 +78,83 @@ function uploaderLabel(
 ): string {
   const member = members.find((m) => m.userId === userId);
   return member?.name || member?.email || userId;
+}
+
+// Follow-up (2026-08-21, user-reported): inline thumbnail preview for
+// image/* attachments, so a screenshot doesn't require a click-through to
+// view. Mints its own signed URL on mount (proactively, not on click) via
+// the same getAttachmentSignedUrl mechanism the "Open" click already uses.
+//
+// Signed-URL TTL tradeoff (SIGNED_URL_TTL_SECONDS = 1 hour, see
+// lib/actions/attachments.ts): the thumbnail's URL is minted once on mount
+// and not proactively refreshed. If the task detail sheet is left open
+// longer than an hour, the thumbnail's <img> may start 404ing against an
+// expired signed URL. This is an accepted tradeoff (not silently broken —
+// re-opening the task detail sheet re-mounts this component and mints a
+// fresh URL) rather than adding a refresh-interval timer for a case (a
+// single sheet left open >1hr) this codebase's other attachment UI doesn't
+// otherwise guard against either.
+function AttachmentThumbnail({
+  attachmentId,
+  fileName,
+  onOpen,
+}: {
+  attachmentId: string;
+  fileName: string;
+  onOpen: () => void;
+}) {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getAttachmentSignedUrl(attachmentId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setSignedUrl(result.signedUrl);
+        setStatus("ready");
+      } else {
+        setStatus("error");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachmentId]);
+
+  if (status === "loading") {
+    return <Skeleton className="h-20 w-20 rounded" />;
+  }
+
+  // AS: on failure to mint a signed URL, render nothing here — the
+  // filename link in the parent row is still a working fallback, never a
+  // broken-image icon.
+  if (status === "error" || !signedUrl) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      className="block h-20 w-20 overflow-hidden rounded border"
+      onClick={onOpen}
+      aria-label={`Open ${fileName}`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- signed
+          Storage URLs are short-lived and not a static asset next/image can
+          usefully optimize; a plain <img> matches this component's existing
+          convention of not routing attachment access through next/image. */}
+      <img
+        src={signedUrl}
+        alt={fileName}
+        className="h-full w-full object-cover"
+      />
+    </button>
+  );
 }
 
 export function AttachmentList({
@@ -171,6 +253,7 @@ export function AttachmentList({
             fileUrl: result.data.fileUrl,
             uploadedBy: result.data.uploadedBy,
             createdAt: result.data.createdAt,
+            mimeType: result.data.mimeType,
           }),
         );
         toast.success("File uploaded.");
@@ -227,7 +310,15 @@ export function AttachmentList({
       ) : (
         <ul className="flex flex-col gap-2">
           {localAttachments.map((attachment) => (
-            <li key={attachment.id} className="flex items-center gap-2">
+            <li key={attachment.id} className="flex flex-col gap-2">
+              {attachment.mimeType?.startsWith("image/") && (
+                <AttachmentThumbnail
+                  attachmentId={attachment.id}
+                  fileName={attachment.fileName}
+                  onOpen={() => handleOpen(attachment.id)}
+                />
+              )}
+              <div className="flex items-center gap-2">
               <FileText
                 className="size-4 shrink-0 text-muted-foreground"
                 aria-hidden="true"
@@ -266,6 +357,7 @@ export function AttachmentList({
                   )}
                 </Button>
               )}
+              </div>
             </li>
           ))}
         </ul>
