@@ -75,6 +75,41 @@ export const assignTaskSchema = z.object({
 
 export type AssignTaskInput = z.infer<typeof assignTaskSchema>;
 
+// F160: multi-assignee actions over `task_assignees` (AS-289, AS-290).
+// `assignTask`/`assignTaskSchema` above are kept unchanged for backward
+// compatibility (single-assignee callers, e.g. the create-task form) — the
+// three schemas below back the new add/remove/set operations that let a
+// task carry more than one assignee.
+
+// addTaskAssignee: adds exactly one assignee to a task's existing set.
+export const addTaskAssigneeSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  userId: z.string().uuid("Invalid assignee."),
+});
+
+export type AddTaskAssigneeInput = z.infer<typeof addTaskAssigneeSchema>;
+
+// removeTaskAssignee: removes exactly one assignee from a task's existing
+// set, without affecting any other assignee (AS-289).
+export const removeTaskAssigneeSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  userId: z.string().uuid("Invalid assignee."),
+});
+
+export type RemoveTaskAssigneeInput = z.infer<typeof removeTaskAssigneeSchema>;
+
+// setTaskAssignees: replaces a task's entire assignee set in one call. An
+// empty array is a valid, explicit "clear all assignees" input — mirrors
+// assignTaskSchema's `assigneeId: null` meaning "unassign" (AS-053).
+export const setTaskAssigneesSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  userIds: z
+    .array(z.string().uuid("Invalid assignee."))
+    .max(50, "A task can have at most 50 assignees."),
+});
+
+export type SetTaskAssigneesInput = z.infer<typeof setTaskAssigneesSchema>;
+
 // Validates editTask input (F037: AS-054, AS-061). Partial update — every
 // field besides taskId is optional, and only fields actually present in
 // the update are validated/applied (a field genuinely absent from the

@@ -7,6 +7,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createTaskSchema,
   assignTaskSchema,
+  addTaskAssigneeSchema,
+  removeTaskAssigneeSchema,
+  setTaskAssigneesSchema,
   editTaskSchema,
   deleteTaskSchema,
   updateTaskTagsSchema,
@@ -390,17 +393,409 @@ export type AssignTaskResult =
     }
   | { ok: false; error: string };
 
-// Assigns (or unassigns) a task (F036: AS-051, AS-052, AS-053). Pattern
-// mirrors createTask above: Zod-validated input, membership re-checked
-// server-side (defense in depth, AS-143), admin client used for the
-// actual update (RLS on `tasks` would also allow this same update for an
-// active member; the admin client is used here only because this action
-// has already independently re-verified membership itself), discriminated
-// union return, generic user-facing errors with details only logged
-// server-side (AS-146).
+// ---------------------------------------------------------------------
+// F160: multi-assignee actions over `task_assignees` (AS-289, AS-290).
+//
+// `assignTask` (F036) is kept as the single-assignee entry point every
+// existing caller (task-detail-sheet.tsx, the create-task flow, and
+// tests/integration/assign-task.test.ts) already uses — its signature and
+// AssignTaskResult shape are unchanged. It is now a thin wrapper around
+// `setTaskAssigneesCore` below (assigneeId === null -> empty set,
+// otherwise a one-element set), so a single-assignee call through the old
+// entry point writes BOTH `task_assignees` and the deprecated
+// `tasks.assignee_id` mirror, and a multi-assignee call through the new
+// `addTaskAssignee`/`removeTaskAssignee`/`setTaskAssignees` entry points
+// keeps that same mirror in sync — there is exactly one write path
+// (`setTaskAssigneesCore`'s diff-and-write + `syncMirrorAssigneeId`) behind
+// both.
+// ---------------------------------------------------------------------
+
+type ProjectVisibility = "workspace" | "private";
+
+type TaskAssignContext = {
+  workspaceId: string;
+  projectId: string;
+  visibility: ProjectVisibility;
+};
+
+// Loads task -> project -> workspace context for assignment actions.
+// Mirrors the "deleted_at is null, else not found" convention every
+// sibling action in this file already uses for its own task lookup.
+async function loadTaskAssignContext(
+  admin: ReturnType<typeof createAdminClient>,
+  taskId: string,
+): Promise<{ ok: true; context: TaskAssignContext } | { ok: false }> {
+  const { data: taskRow, error } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error || !taskRow) return { ok: false };
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+
+  if (!project?.workspace_id) return { ok: false };
+
+  return {
+    ok: true,
+    context: {
+      workspaceId: project.workspace_id,
+      projectId: project.id,
+      visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+    },
+  };
+}
+
+// AS-290: re-implements `public.is_project_visible_to`'s rule
+// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql) in
+// application code. Every action in this file uses the admin client, which
+// bypasses RLS entirely by design (see the module-level doc comments on
+// createTask/editTask above) — so the visibility check RLS would otherwise
+// provide has to be re-run explicitly here, exactly like every other
+// "defense in depth" re-check in this file (AS-143). A candidate user id is
+// assignable only if they are an ACTIVE workspace member of the task's
+// workspace AND (the project is 'workspace'-visible, OR they're a
+// workspace owner/admin, OR they have an explicit project_members row for
+// this project) — a guest, or an otherwise-active workspace member, who
+// lacks access to a private project is rejected even though they are
+// technically an active workspace member (AS-290's exact scenario).
+//
+// One query per input (workspace_members, then project_members only when
+// the project is private) — bounded by the size of the caller-supplied
+// candidate list, never a per-existing-row loop over the task's current
+// assignees (this feature's performance-budget answer).
+async function filterProjectVisibleUserIds(
+  admin: ReturnType<typeof createAdminClient>,
+  context: TaskAssignContext,
+  candidateUserIds: string[],
+): Promise<Set<string>> {
+  if (candidateUserIds.length === 0) return new Set();
+
+  const { data: memberRows } = await admin
+    .from("workspace_members")
+    .select("user_id, role")
+    .eq("workspace_id", context.workspaceId)
+    .eq("status", "active")
+    .in("user_id", candidateUserIds);
+
+  const activeRoleById = new Map<string, WorkspaceRole>(
+    (memberRows ?? []).map((row) => [
+      row.user_id as string,
+      row.role as WorkspaceRole,
+    ]),
+  );
+
+  if (context.visibility === "workspace") {
+    return new Set(activeRoleById.keys());
+  }
+
+  // Private project: only workspace owners/admins, or candidates with an
+  // explicit project_members row for THIS project, are assignable.
+  const { data: explicitRows } = await admin
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", context.projectId)
+    .in("user_id", candidateUserIds);
+
+  const explicitIds = new Set(
+    (explicitRows ?? [])
+      .map((row) => row.user_id as string)
+      .filter(Boolean),
+  );
+
+  const visible = new Set<string>();
+  for (const [userId, role] of activeRoleById) {
+    if (role === "owner" || role === "admin" || explicitIds.has(userId)) {
+      visible.add(userId);
+    }
+  }
+  return visible;
+}
+
+// F160 clarification, ambiguity Q1 ("decide the deprecated-column mirror
+// rule: first assignee, or null when there are several"). Resolved per the
+// ambiguity-resolution default (simpler option, no second source of
+// truth) as "always the first assignee, never null while at least one
+// assignee exists" — a mirror that goes null the instant a second
+// assignee is added would silently break every existing reader of
+// `tasks.assignee_id` (board grouping, my-tasks, notifications) for a task
+// that still very much has an assignee, which is a worse
+// transition-period regression than a mirror that only ever names ONE of
+// several assignees. "First" = the earliest `task_assignees.created_at`
+// row for this task, ties broken by `user_id` for determinism. Zero
+// assignees mirrors to null (AS-053's existing "unassign" meaning is
+// unchanged).
+function resolveMirrorAssigneeId(
+  rows: Array<{ user_id: string; created_at: string }>,
+): string | null {
+  if (rows.length === 0) return null;
+  const sorted = [...rows].sort((a, b) => {
+    const byTime = a.created_at.localeCompare(b.created_at);
+    if (byTime !== 0) return byTime;
+    return a.user_id.localeCompare(b.user_id);
+  });
+  return sorted[0].user_id;
+}
+
+// Re-reads the task's current `task_assignees` rows and writes the
+// resolved mirror value to `tasks.assignee_id` — the single place this
+// column is written from the multi-assignee code path, so it can never
+// drift from what `task_assignees` actually contains (F207 notifications,
+// which read `assignee_id`, therefore see one consistent value regardless
+// of which of the three actions below changed the underlying set).
+async function syncMirrorAssigneeId(
+  admin: ReturnType<typeof createAdminClient>,
+  taskId: string,
+): Promise<string | null> {
+  const { data: rows } = await admin
+    .from("task_assignees")
+    .select("user_id, created_at")
+    .eq("task_id", taskId);
+
+  const mirror = resolveMirrorAssigneeId(rows ?? []);
+
+  await admin.from("tasks").update({ assignee_id: mirror }).eq("id", taskId);
+
+  return mirror;
+}
+
+type TaskAssigneesData = {
+  taskId: string;
+  assigneeIds: string[];
+  mirrorAssigneeId: string | null;
+};
+
+type TaskAssigneesActionResult =
+  | { ok: true; data: TaskAssigneesData }
+  | { ok: false; error: string };
+
+// Shared preflight for every multi-assignee action: resolves the caller's
+// identity, the task's owning project/workspace (not-found for a missing
+// or soft-deleted task), re-verifies workspace membership + edit
+// permission server-side (AS-143's defense-in-depth convention, same as
+// every sibling action in this file), and hands back the admin client plus
+// resolved context so each caller only has to run its own specific write.
+async function requireAssignActionContext(taskId: string): Promise<
+  | {
+      ok: true;
+      admin: ReturnType<typeof createAdminClient>;
+      userId: string;
+      context: TaskAssignContext;
+    }
+  | { ok: false; error: string }
+> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to change assignees." };
+  }
+
+  const admin = createAdminClient();
+
+  const taskContext = await loadTaskAssignContext(admin, taskId);
+  if (!taskContext.ok) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    taskContext.context.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to change this task's assignees.",
+    };
+  }
+
+  // Per this feature's Clarified implementation ("permission-checked
+  // (canEditTask or similar)"): `canEditTask` mirrors editTask's own gate
+  // above (viewers and guests are read-only, AS-216/AS-217; every other
+  // active role may edit any task in the workspace, AS-061).
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change this task's assignees.",
+    };
+  }
+
+  return { ok: true, admin, userId: user.id, context: taskContext.context };
+}
+
+async function revalidateWorkspaceForTaskAssignment(
+  admin: ReturnType<typeof createAdminClient>,
+  workspaceId: string,
+  actionLabel: string,
+) {
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        `${actionLabel}: revalidatePath failed (non-fatal):`,
+        revalidateError,
+      );
+    }
+  }
+}
+
+// The one real write path behind assignTask/addTaskAssignee/
+// removeTaskAssignee/setTaskAssignees: replaces a task's entire assignee
+// set with `desiredUserIds`, validating every desired id against AS-290's
+// project-visibility rule first (the whole call is rejected, nothing is
+// written, if ANY desired id fails that check — never a partial
+// assignment). AS-289 falls out of this by construction: removing one
+// assignee (a desired set missing just that one id) computes a diff whose
+// `toRemove` is exactly that one row; the DELETE is scoped to
+// `(task_id, user_id)` pairs, so it can never touch any other assignee's
+// row.
+//
+// Zero-state (Clarified implementation Q6, same convention as
+// promoteSubtask above): when the desired set already equals the current
+// set, this returns ok without writing anything — no DELETE/INSERT, no
+// mirror recompute, no revalidatePath.
+async function setTaskAssigneesCore(
+  taskId: string,
+  desiredUserIdsInput: string[],
+): Promise<TaskAssigneesActionResult> {
+  const preflight = await requireAssignActionContext(taskId);
+  if (!preflight.ok) return preflight;
+  const { admin, userId, context } = preflight;
+
+  const desiredUserIds = Array.from(new Set(desiredUserIdsInput));
+
+  if (desiredUserIds.length > 0) {
+    const visible = await filterProjectVisibleUserIds(
+      admin,
+      context,
+      desiredUserIds,
+    );
+    const invalid = desiredUserIds.filter((id) => !visible.has(id));
+    if (invalid.length > 0) {
+      return {
+        ok: false,
+        error:
+          "One or more selected people don't have access to this task's project.",
+      };
+    }
+  }
+
+  const { data: currentRows, error: currentError } = await admin
+    .from("task_assignees")
+    .select("user_id")
+    .eq("task_id", taskId);
+
+  if (currentError) {
+    console.error(
+      "setTaskAssigneesCore: failed to read current assignees:",
+      currentError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const currentUserIds = (currentRows ?? []).map((row) => row.user_id as string);
+  const currentSet = new Set(currentUserIds);
+  const desiredSet = new Set(desiredUserIds);
+
+  const toRemove = currentUserIds.filter((id) => !desiredSet.has(id));
+  const toAdd = desiredUserIds.filter((id) => !currentSet.has(id));
+
+  if (toRemove.length === 0 && toAdd.length === 0) {
+    // Zero-state no-op: read the already-correct mirror rather than
+    // recomputing it, since nothing changed.
+    const { data: taskRow } = await admin
+      .from("tasks")
+      .select("assignee_id")
+      .eq("id", taskId)
+      .maybeSingle();
+    return {
+      ok: true,
+      data: {
+        taskId,
+        assigneeIds: desiredUserIds,
+        mirrorAssigneeId: taskRow?.assignee_id ?? null,
+      },
+    };
+  }
+
+  if (toRemove.length > 0) {
+    const { error: deleteError } = await admin
+      .from("task_assignees")
+      .delete()
+      .eq("task_id", taskId)
+      .in("user_id", toRemove);
+
+    if (deleteError) {
+      console.error("setTaskAssigneesCore: delete failed:", deleteError);
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+  }
+
+  if (toAdd.length > 0) {
+    const { error: insertError } = await admin.from("task_assignees").insert(
+      toAdd.map((id) => ({
+        task_id: taskId,
+        user_id: id,
+        assigned_by: userId,
+      })),
+    );
+
+    if (insertError) {
+      console.error("setTaskAssigneesCore: insert failed:", insertError);
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+  }
+
+  const mirror = await syncMirrorAssigneeId(admin, taskId);
+
+  await revalidateWorkspaceForTaskAssignment(
+    admin,
+    context.workspaceId,
+    "setTaskAssigneesCore",
+  );
+
+  return {
+    ok: true,
+    data: { taskId, assigneeIds: desiredUserIds, mirrorAssigneeId: mirror },
+  };
+}
+
+// Assigns (or unassigns) a task (F036: AS-051, AS-052, AS-053). Kept as the
+// single-assignee entry point every existing caller already uses; now
+// delegates to `setTaskAssigneesCore` (F160) so a call through this
+// function writes both `task_assignees` and the deprecated
+// `tasks.assignee_id` mirror in one atomic-per-row write path, rather than
+// writing `assignee_id` directly the way this action used to.
 //
 // assigneeId === null means "unassign" (AS-053) and is a valid, explicit
-// input — never treated as "no change".
+// input — never treated as "no change". AS-052 (assignee must be a
+// workspace member) is now the stricter AS-290 project-visibility check,
+// enforced by `setTaskAssigneesCore` -> `filterProjectVisibleUserIds`.
 export async function assignTask(
   taskId: string,
   assigneeId: string | null,
@@ -414,125 +809,134 @@ export async function assignTask(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to assign a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as
-  // createTask's project lookup.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, assignee_id, deleted_at, projects!inner(id, workspace_id)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
+  const result = await setTaskAssigneesCore(
+    parsed.data.taskId,
+    parsed.data.assigneeId === null ? [] : [parsed.data.assigneeId],
   );
 
-  if (!membership.ok) {
+  if (!result.ok) return result;
+
+  return {
+    ok: true,
+    data: { id: result.data.taskId, assigneeId: result.data.mirrorAssigneeId },
+  };
+}
+
+export type SetTaskAssigneesResult = TaskAssigneesActionResult;
+
+// F160 (AS-289, AS-290): replaces a task's entire assignee set in one call.
+// See `setTaskAssigneesCore`'s doc comment for the write/validation
+// semantics this and every other multi-assignee action below share.
+export async function setTaskAssignees(
+  taskId: string,
+  userIds: string[],
+): Promise<SetTaskAssigneesResult> {
+  const parsed = setTaskAssigneesSchema.safeParse({ taskId, userIds });
+
+  if (!parsed.success) {
     return {
       ok: false,
-      error: "You don't have permission to assign this task.",
+      error: parsed.error.issues[0]?.message ?? "Enter valid assignees.",
     };
   }
 
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
+  return setTaskAssigneesCore(parsed.data.taskId, parsed.data.userIds);
+}
+
+export type AddTaskAssigneeResult = TaskAssigneesActionResult;
+
+// F160 (AS-290): adds exactly one assignee to a task's existing set,
+// leaving every other current assignee untouched. Implemented as
+// setTaskAssigneesCore(taskId, [...current, userId]) rather than a direct
+// single-row INSERT so it goes through the exact same AS-290
+// project-visibility validation, zero-state no-op, and mirror-sync logic
+// as setTaskAssignees/removeTaskAssignee — one real write path behind all
+// three (see the block-level doc comment above assignTask).
+export async function addTaskAssignee(
+  taskId: string,
+  userId: string,
+): Promise<AddTaskAssigneeResult> {
+  const parsed = addTaskAssigneeSchema.safeParse({ taskId, userId });
+
+  if (!parsed.success) {
     return {
       ok: false,
-      error: "Viewers don't have permission to assign tasks.",
+      error: parsed.error.issues[0]?.message ?? "Enter a valid assignee.",
     };
   }
 
-  // AS-052: a task cannot be assigned to a user who is not a member of the
-  // task's workspace — verified server-side via a real DB query against
-  // the *task's own* workspace, never trusted from client input, and never
-  // skipped when assigneeId is non-null.
-  if (parsed.data.assigneeId !== null) {
-    const assigneeMembership = await requireActiveMembership(
-      admin,
-      workspaceId,
-      parsed.data.assigneeId,
+  const preflight = await requireAssignActionContext(parsed.data.taskId);
+  if (!preflight.ok) return preflight;
+
+  const { data: currentRows, error: currentError } = await preflight.admin
+    .from("task_assignees")
+    .select("user_id")
+    .eq("task_id", parsed.data.taskId);
+
+  if (currentError) {
+    console.error(
+      "addTaskAssignee: failed to read current assignees:",
+      currentError,
     );
-    if (!assigneeMembership.ok) {
-      return {
-        ok: false,
-        error: "The selected assignee is not a member of this workspace.",
-      };
-    }
-  }
-
-  // AS-053: assigneeId === null unassigns the task.
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ assignee_id: parsed.data.assigneeId })
-    .eq("id", parsed.data.taskId)
-    .select("id, assignee_id")
-    .single();
-
-  if (updateError || !updated) {
-    console.error("assignTask: update failed:", updateError);
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
 
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
+  const currentUserIds = (currentRows ?? []).map((row) => row.user_id as string);
 
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "assignTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
-    }
+  return setTaskAssigneesCore(parsed.data.taskId, [
+    ...currentUserIds,
+    parsed.data.userId,
+  ]);
+}
+
+export type RemoveTaskAssigneeResult = TaskAssigneesActionResult;
+
+// F160 (AS-289): removes exactly one assignee from a task's existing set
+// without affecting any other assignee. Implemented as
+// setTaskAssigneesCore(taskId, current.filter(id => id !== userId)) — see
+// addTaskAssignee's doc comment for why this goes through the shared core
+// rather than a direct DELETE.
+export async function removeTaskAssignee(
+  taskId: string,
+  userId: string,
+): Promise<RemoveTaskAssigneeResult> {
+  const parsed = removeTaskAssigneeSchema.safeParse({ taskId, userId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter a valid assignee.",
+    };
   }
 
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      assigneeId: updated.assignee_id,
-    },
-  };
+  const preflight = await requireAssignActionContext(parsed.data.taskId);
+  if (!preflight.ok) return preflight;
+
+  const { data: currentRows, error: currentError } = await preflight.admin
+    .from("task_assignees")
+    .select("user_id")
+    .eq("task_id", parsed.data.taskId);
+
+  if (currentError) {
+    console.error(
+      "removeTaskAssignee: failed to read current assignees:",
+      currentError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const currentUserIds = (currentRows ?? []).map((row) => row.user_id as string);
+
+  return setTaskAssigneesCore(
+    parsed.data.taskId,
+    currentUserIds.filter((id) => id !== parsed.data.userId),
+  );
 }
 
 export type EditTaskResult =
