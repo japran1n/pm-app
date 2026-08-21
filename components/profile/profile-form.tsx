@@ -24,6 +24,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { updateProfile, uploadAvatar } from "@/lib/actions/profile";
+import { MAX_AVATAR_SIZE_BYTES } from "@/lib/validation/profile";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,25 +111,48 @@ export function ProfileForm({
     changeEvent.target.value = "";
     if (!file) return;
 
+    // F274 (AS-205): client-side pre-flight size check using the SAME
+    // constant the server enforces, so an oversized file never reaches
+    // the network at all — this is what avoids the 413 case entirely for
+    // the common "picked an obviously too-big file" path, rather than
+    // relying on next.config.ts's body-size headroom to let it through
+    // just so the server can reject it.
+    if (file.size > MAX_AVATAR_SIZE_BYTES) {
+      toast.error(
+        `Avatar must be ${MAX_AVATAR_SIZE_BYTES / (1024 * 1024)}MB or smaller.`,
+      );
+      return;
+    }
+
     const previousAvatarUrl = avatarUrl;
     const previewUrl = URL.createObjectURL(file);
     setAvatarUrl(previewUrl);
 
     startAvatarTransition(async () => {
-      const formData = new FormData();
-      formData.set("file", file);
-      const result = await uploadAvatar(formData);
+      // F274: wrapped in try/catch/finally — a request that still fails
+      // at the HTTP layer (e.g. an unexpected 413, a network error)
+      // previously rejected the promise with no `catch`, so
+      // URL.revokeObjectURL never ran (leaking the local object URL) and
+      // the optimistic preview was left stuck on screen with no toast.
+      try {
+        const formData = new FormData();
+        formData.set("file", file);
+        const result = await uploadAvatar(formData);
 
-      URL.revokeObjectURL(previewUrl);
-
-      if (result.ok) {
-        setAvatarUrl(result.data.avatarUrl);
-        toast.success("Avatar updated.");
-      } else {
-        // Revert the live preview back to whatever was showing before
-        // this upload attempt.
+        if (result.ok) {
+          setAvatarUrl(result.data.avatarUrl);
+          toast.success("Avatar updated.");
+        } else {
+          // Revert the live preview back to whatever was showing before
+          // this upload attempt.
+          setAvatarUrl(previousAvatarUrl);
+          toast.error(result.error);
+        }
+      } catch {
         setAvatarUrl(previousAvatarUrl);
-        toast.error(result.error);
+        toast.error("Something went wrong. Please try again in a moment.");
+      } finally {
+        URL.revokeObjectURL(previewUrl);
       }
     });
   }

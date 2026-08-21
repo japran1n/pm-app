@@ -213,3 +213,175 @@ test.describe("AS-202: display name replaces the email everywhere a person is re
     await expect(page.getByText(memberEmail)).not.toBeVisible();
   });
 });
+
+// F274 (AS-205): before this feature, Next's default 1MB Server Action
+// body limit was smaller than the app's own 2MB avatar limit, so any
+// upload over 1MB 413'd before uploadAvatarSchema ever ran, and the form
+// had no catch — the rejection was silently swallowed, not surfaced as
+// the limit-naming message. Crucially, the previous version of this
+// assertion's only test (tests/integration/upload-avatar.test.ts) called
+// `uploadAvatar(formData)` directly in-process, never crossing HTTP at
+// all, so it could not have caught this. This test drives a real browser
+// against the real `next dev` server started by playwright.config.ts's
+// webServer (same linked Supabase project as the rest of this suite),
+// selecting a file genuinely larger than MAX_AVATAR_SIZE_BYTES through
+// the actual file input — an HTTP request really leaves the browser and
+// really reaches the app's real Next.js server, with next.config.ts's now
+// -configured `experimental.serverActions.bodySizeLimit` in front of it.
+test.describe("AS-205: an oversized avatar upload is rejected with a message naming the limit", () => {
+  test.skip(!haveAdminCreds, "requires SUPABASE_SECRET_KEY for admin seeding");
+
+  let adminClient: SupabaseClient;
+  const createdWorkspaceIds: string[] = [];
+  const createdUserIds: string[] = [];
+
+  let workspaceSlug: string;
+  let memberUserId: string;
+  let memberEmail: string;
+
+  test.beforeAll(async () => {
+    adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    workspaceSlug = `f274-avatar-${uniqueSuffix}`;
+
+    const { data: ws, error: wsErr } = await adminClient
+      .from("workspaces")
+      .insert({ name: "F274 Test Workspace", slug: workspaceSlug })
+      .select("id")
+      .single();
+    if (wsErr || !ws) {
+      throw new Error(`Failed to create test workspace: ${wsErr?.message}`);
+    }
+    const workspaceId = ws.id;
+    createdWorkspaceIds.push(workspaceId);
+
+    memberEmail = `f274-member-${uniqueSuffix}@example.com`;
+    const { data: memberAuth, error: memberAuthErr } =
+      await adminClient.auth.admin.createUser({
+        email: memberEmail,
+        email_confirm: true,
+      });
+    if (memberAuthErr || !memberAuth.user) {
+      throw new Error(`Failed to create member user: ${memberAuthErr?.message}`);
+    }
+    memberUserId = memberAuth.user.id;
+    createdUserIds.push(memberUserId);
+
+    const { error: memberInsertErr } = await adminClient
+      .from("workspace_members")
+      .insert({
+        workspace_id: workspaceId,
+        user_id: memberUserId,
+        role: "owner",
+        status: "active",
+      });
+    if (memberInsertErr) {
+      throw new Error(`Failed to seed member: ${memberInsertErr.message}`);
+    }
+  });
+
+  test.afterAll(async () => {
+    for (const wsId of createdWorkspaceIds) {
+      await adminClient.from("workspace_members").delete().eq("workspace_id", wsId);
+      await adminClient.from("workspaces").delete().eq("id", wsId);
+    }
+    for (const userId of createdUserIds) {
+      await adminClient.from("profiles").delete().eq("id", userId);
+      await adminClient.auth.admin.deleteUser(userId);
+    }
+  });
+
+  test("a file larger than the configured limit is rejected in the real running app with a message naming the limit, and no unhandled rejection/crash occurs", async ({
+    page,
+    baseURL,
+  }) => {
+    const { data: linkData, error: linkErr } =
+      await adminClient.auth.admin.generateLink({
+        type: "magiclink",
+        email: memberEmail,
+        options: { redirectTo: `${baseURL}/auth/callback` },
+      });
+    if (linkErr || !linkData?.properties?.action_link) {
+      throw new Error(`Failed to generate magic link: ${linkErr?.message}`);
+    }
+
+    await page.goto(linkData.properties.action_link);
+    await page.waitForURL(/\/sign-in\?error=auth_failed#/, {
+      timeout: 15_000,
+    });
+
+    const fragment = new URL(page.url()).hash.slice(1);
+    const params = new URLSearchParams(fragment);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const expiresIn = params.get("expires_in");
+    const expiresAt = params.get("expires_at");
+    if (!accessToken || !refreshToken) {
+      throw new Error(
+        `Magic link redirect did not carry session tokens: ${page.url()}`,
+      );
+    }
+
+    const projectRef = new URL(SUPABASE_URL!).hostname.split(".")[0];
+    const session = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "bearer",
+      expires_in: expiresIn ? Number(expiresIn) : 3600,
+      expires_at: expiresAt
+        ? Number(expiresAt)
+        : Math.floor(Date.now() / 1000) + 3600,
+      user: { id: memberUserId, email: memberEmail },
+    };
+    const cookieValue =
+      "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
+
+    await page.context().addCookies([
+      {
+        name: `sb-${projectRef}-auth-token`,
+        value: cookieValue,
+        url: baseURL,
+      },
+    ]);
+
+    await page.goto(`${baseURL}/w/${workspaceSlug}/settings/profile`);
+    await page.waitForURL(`**/w/${workspaceSlug}/settings/profile`, {
+      timeout: 15_000,
+    });
+
+    // A real oversized file (MAX_AVATAR_SIZE_BYTES + 1MB — well past the
+    // 2MB app limit, and picked to also exceed what the *previous*,
+    // unfixed 1MB default Server Action body limit would have silently
+    // swallowed with no message at all).
+    const oversizedBytes = Buffer.alloc(3 * 1024 * 1024, 1);
+
+    let pageErrored = false;
+    page.on("pageerror", () => {
+      pageErrored = true;
+    });
+
+    await page.setInputFiles("#avatar-upload", {
+      name: "huge-avatar.png",
+      mimeType: "image/png",
+      buffer: oversizedBytes,
+    });
+
+    // AS-205: the message names the configured limit — surfaced via
+    // toast — whether it's caught by the client pre-flight check or (for
+    // a file that somehow got past that) the server's own validator; both
+    // paths return the exact same limit-naming string, and per this
+    // feature's fix neither one leaves the request unhandled the way the
+    // pre-fix code did.
+    await expect(page.getByText(/2MB or smaller/i)).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // No unhandled rejection escaped to the page (the pre-fix bug: a
+    // missing try/catch let a 413 rejection surface as an unhandled
+    // promise rejection instead of a toast).
+    expect(pageErrored).toBe(false);
+  });
+});

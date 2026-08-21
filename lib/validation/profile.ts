@@ -49,6 +49,67 @@ export const uploadAvatarSchema = z.object({
 
 export type UploadAvatarInput = z.infer<typeof uploadAvatarSchema>;
 
+// F274 (AS-206): the declared `File.type`/`mimeType` sniffed above is
+// client-controlled — renaming `evil.exe` to `evil.png` gets `image/png`
+// from the browser and previously sailed through every enforcement layer
+// unchecked. This checks the ACTUAL bytes against each allowed format's
+// real magic-byte signature and rejects on mismatch with what was
+// declared, before the Storage call ever happens. Deliberately a small
+// local byte-signature check (per this feature's clarified spec) rather
+// than adding a `file-type` npm dependency — three fixed-offset signature
+// comparisons don't need a library.
+//
+// Signatures:
+//  - JPEG: FF D8 FF (all JPEG variants start with this 3-byte SOI marker)
+//  - PNG:  89 50 4E 47 0D 0A 1A 0A (the 8-byte PNG signature)
+//  - WebP: "RIFF" (bytes 0-3) + "WEBP" (bytes 8-11) — the RIFF container
+//    tag followed by the WEBP form type at a fixed offset (bytes 4-7 are a
+//    file-size field that varies per file and are intentionally skipped)
+export function sniffAvatarMimeType(bytes: Uint8Array): string | null {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+
+  const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (
+    bytes.length >= pngSignature.length &&
+    pngSignature.every((byte, index) => bytes[index] === byte)
+  ) {
+    return "image/png";
+  }
+
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && // R
+    bytes[1] === 0x49 && // I
+    bytes[2] === 0x46 && // F
+    bytes[3] === 0x46 && // F
+    bytes[8] === 0x57 && // W
+    bytes[9] === 0x45 && // E
+    bytes[10] === 0x42 && // B
+    bytes[11] === 0x50 // P
+  ) {
+    return "image/webp";
+  }
+
+  return null;
+}
+
+// Returns true when the declared MIME type matches the file's actual
+// sniffed content — the check `uploadAvatar` (lib/actions/profile.ts)
+// enforces before ever calling Storage.
+export function matchesDeclaredAvatarMimeType(
+  bytes: Uint8Array,
+  declaredMimeType: string,
+): boolean {
+  return sniffAvatarMimeType(bytes) === declaredMimeType;
+}
+
 // Validates updateProfile input (F123: AS-202 — set a display name; the
 // timezone field rides along in the same action/form since F124's
 // due-date/overdue math needs a valid IANA identifier stored, and the

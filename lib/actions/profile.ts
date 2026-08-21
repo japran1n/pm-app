@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { uploadAvatarSchema, updateProfileSchema } from "@/lib/validation/profile";
+import {
+  uploadAvatarSchema,
+  updateProfileSchema,
+  matchesDeclaredAvatarMimeType,
+} from "@/lib/validation/profile";
 
 // Storage bucket + path convention fixed by F121
 // (supabase/migrations/20260818201642_create_avatars_bucket.sql): bucket
@@ -79,6 +83,25 @@ export async function uploadAvatar(
   const objectPath = `${user.id}/avatar`;
   const arrayBuffer = await file.arrayBuffer();
 
+  // AS-206 (F274 hardening): the declared MIME type checked above is
+  // entirely client-controlled (a renamed `evil.exe` reports
+  // `image/png`), so before anything is written to Storage the actual
+  // leading bytes are sniffed against real JPEG/PNG/WebP signatures and
+  // compared to what was declared. A mismatch is rejected here, never
+  // silently "corrected" to the sniffed type — the file simply isn't what
+  // it claimed to be.
+  if (
+    !matchesDeclaredAvatarMimeType(
+      new Uint8Array(arrayBuffer),
+      parsed.data.mimeType,
+    )
+  ) {
+    return {
+      ok: false,
+      error: "Avatar must be a JPEG, PNG, or WebP image.",
+    };
+  }
+
   const { error: uploadError } = await admin.storage
     .from(AVATARS_BUCKET)
     .upload(objectPath, arrayBuffer, {
@@ -119,6 +142,13 @@ export async function uploadAvatar(
 
   if (updateError) {
     console.error("uploadAvatar: profiles update failed:", updateError);
+    // Best-effort cleanup so a failed profiles update doesn't leave the
+    // just-uploaded Storage object orphaned — mirrors
+    // uploadAttachment's post-Storage-success cleanup pattern in
+    // lib/actions/attachments.ts. Unlike attachments' fresh per-upload
+    // path, this deletes the object this call itself just wrote (the
+    // fixed per-user path), not a previous avatar.
+    await admin.storage.from(AVATARS_BUCKET).remove([objectPath]);
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

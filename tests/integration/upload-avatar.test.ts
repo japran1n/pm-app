@@ -138,7 +138,13 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       expect(before?.avatar_url).toBeNull();
 
-      const pixelBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+      // F274 (AS-206): the leading bytes must now be a real PNG signature
+      // — the previous version of this test used 8 arbitrary bytes, which
+      // is exactly the spoofed-MIME bypass this feature closes (see the
+      // dedicated AS-206 spoofed-MIME test below).
+      const pixelBytes = new Uint8Array([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4,
+      ]);
       const file = new File([pixelBytes], "avatar.png", {
         type: "image/png",
       });
@@ -180,7 +186,12 @@ describe.skipIf(!haveAdminCreds)(
 
       currentTestUserId = memberUserId;
 
-      const secondBytes = new Uint8Array([9, 9, 9, 9]);
+      // F274 (AS-206): must be real WebP bytes (RIFF....WEBP) now that
+      // declared type is checked against sniffed content.
+      const secondBytes = new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
+        0x50, 9, 9,
+      ]);
       const file = new File([secondBytes], "new-avatar.webp", {
         type: "image/webp",
       });
@@ -269,6 +280,66 @@ describe.skipIf(!haveAdminCreds)(
       expect(result.ok).toBe(false);
       if (result.ok) return;
       expect(result.error).toBeTruthy();
+    });
+
+    it("AS-206 (F274): a spoofed-MIME upload — real non-image bytes declared image/png — is rejected server-side, before any Storage write", async () => {
+      const { uploadAvatar } = await import("@/lib/actions/profile");
+
+      currentTestUserId = memberUserId;
+
+      // The exact bypass M10 scrutiny reproduced: renaming evil.exe to
+      // evil.png gets `image/png` from the browser. These bytes are not a
+      // PNG (or JPEG/WebP) by any real signature — a fake ELF-style
+      // header, chosen to be unambiguously not any allowed image format.
+      const spoofedBytes = new Uint8Array([
+        0x7f, 0x45, 0x4c, 0x46, 0x01, 0x02, 0x03, 0x04,
+      ]);
+      const file = new File([spoofedBytes], "evil.png", {
+        type: "image/png",
+      });
+      const formData = buildFormData(file);
+
+      const result = await uploadAvatar(formData);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toBeTruthy();
+
+      // Nothing was written to Storage for the rejected upload — the
+      // served bytes at this user's fixed path must not be the spoofed
+      // content (either nothing was ever written, or the last legitimate
+      // upload from an earlier test in this suite is still the only
+      // content there).
+      const { data: listed } = await adminClient.storage
+        .from(BUCKET)
+        .list(memberUserId);
+      if (listed && listed.length > 0) {
+        const response = await fetch(
+          adminClient.storage.from(BUCKET).getPublicUrl(`${memberUserId}/avatar`)
+            .data.publicUrl,
+        );
+        const servedBytes = new Uint8Array(await response.arrayBuffer());
+        expect(Array.from(servedBytes)).not.toEqual(Array.from(spoofedBytes));
+      }
+    });
+
+    it("F274: the avatars bucket's configured file_size_limit and allowed_mime_types equal the TypeScript constants they are meant to mirror, not two independently-maintained numbers", async () => {
+      const { MAX_AVATAR_SIZE_BYTES, ALLOWED_AVATAR_MIME_TYPES } =
+        await import("@/lib/validation/profile");
+
+      const { data: bucket, error } = await adminClient.storage.getBucket(
+        BUCKET,
+      );
+
+      expect(error).toBeNull();
+      expect(bucket).toBeTruthy();
+      expect(bucket?.file_size_limit).toBe(MAX_AVATAR_SIZE_BYTES);
+      expect(bucket?.allowed_mime_types ?? []).toEqual(
+        expect.arrayContaining([...ALLOWED_AVATAR_MIME_TYPES]),
+      );
+      expect((bucket?.allowed_mime_types ?? []).length).toBe(
+        ALLOWED_AVATAR_MIME_TYPES.length,
+      );
     });
 
     it("uploadAvatar rejects an unauthenticated caller", async () => {
