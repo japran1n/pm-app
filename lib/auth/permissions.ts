@@ -151,3 +151,30 @@ export function canDeleteTask(ctx: PermissionContext): boolean {
   if (ctx.projectRole === "lead") return true;
   return isResourceOwner(ctx);
 }
+
+// --- Project-member-management predicates (F133) --------------------------
+
+// Adding/removing a project's explicit member list rows. Mirrors
+// `isProjectLeadOrWorkspaceAdmin` in lib/actions/project-members.ts (the
+// actual server-side re-check, itself defense in depth on top of the
+// `project_members_insert_leads_or_admins`/`..._delete_leads_or_admins`
+// RLS policies from F132) — this predicate exists only so the settings
+// page UI can hide/disable the add/remove controls the same way, per
+// AS-230's single-source-of-truth convention. A workspace owner/admin may
+// manage any project's members; an existing project lead may manage
+// members of the project(s) they lead even at the workspace "member" role.
+export function canManageProjectMembers(ctx: PermissionContext): boolean {
+  if (ctx.role === "owner" || ctx.role === "admin") return true;
+  return ctx.projectRole === "lead";
+}
+
+// Switching a project between "workspace" and "private" visibility.
+// Owner/admin only — the real boundary is the DB-level
+// `enforce_project_visibility_change_role` trigger (F132, AS-229); this
+// predicate mirrors the same rule for UI gating. Deliberately narrower
+// than `canManageProjectMembers` — a project lead can scope who has
+// access via the member list, but changing the project's overall
+// visibility policy is a workspace-level decision.
+export function canChangeProjectVisibility(ctx: PermissionContext): boolean {
+  return ctx.role === "owner" || ctx.role === "admin";
+}

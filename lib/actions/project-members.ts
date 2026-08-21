@@ -26,7 +26,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addProjectMemberSchema,
   removeProjectMemberSchema,
+  updateProjectVisibilitySchema,
 } from "@/lib/validation/project-members";
+import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 
 type ProjectContext = {
   id: string;
@@ -295,5 +297,98 @@ export async function removeProjectMember(
   return {
     ok: true,
     data: { projectId: parsed.data.projectId, userId: parsed.data.userId },
+  };
+}
+
+export type UpdateProjectVisibilityResult =
+  | { ok: true; data: { id: string; visibility: "workspace" | "private" } }
+  | { ok: false; error: string };
+
+// F133: toggles a project between "workspace" (visible to every active,
+// non-guest workspace member) and "private" (visible only to explicit
+// project_members plus workspace owners/admins) — the UI counterpart to
+// F132's schema/RLS work. AS-229 ("only owners/admins may change a
+// project's visibility") is the real enforcement boundary at the DB layer
+// via the `enforce_project_visibility_change_role` BEFORE UPDATE trigger
+// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql);
+// the `requireWorkspaceAdmin` check here is defense in depth (AS-143
+// convention, same as every other action in this file) so a non-owner/
+// admin caller gets a clean, field-level error message instead of a raw
+// Postgres exception bubbling up.
+export async function updateProjectVisibility(
+  projectId: string,
+  visibility: "workspace" | "private",
+): Promise<UpdateProjectVisibilityResult> {
+  const parsed = updateProjectVisibilitySchema.safeParse({
+    projectId,
+    visibility,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to change a project's visibility.",
+    };
+  }
+
+  const admin = createAdminClient();
+  const project = await loadProjectContext(admin, parsed.data.projectId);
+
+  if (!project) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const membership = await requireWorkspaceAdmin(
+    admin,
+    project.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only workspace owners or admins can change a project's visibility.",
+    };
+  }
+
+  // Executed through the RLS-respecting request-scoped client (not the
+  // admin client) so the `enforce_project_visibility_change_role` trigger
+  // stays the exercised boundary, same convention as add/removeProjectMember
+  // running their INSERT/DELETE through `supabase` rather than `admin`.
+  const { data: updated, error: updateError } = await supabase
+    .from("projects")
+    .update({ visibility: parsed.data.visibility })
+    .eq("id", parsed.data.projectId)
+    .select("id, visibility")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("updateProjectVisibility: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  await revalidateWorkspace(admin, project.workspaceId, "updateProjectVisibility");
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      visibility: updated.visibility as "workspace" | "private",
+    },
   };
 }

@@ -17,5 +17,16 @@ export const removeProjectMemberSchema = z.object({
   userId: z.string().uuid("Invalid user."),
 });
 
+// F133: visibility-toggle action validation (AS-229's UI counterpart —
+// the DB trigger `enforce_project_visibility_change_role` is the real
+// boundary; this schema just keeps a bad value from ever reaching it).
+export const updateProjectVisibilitySchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  visibility: z.enum(["workspace", "private"]),
+});
+
 export type AddProjectMemberInput = z.infer<typeof addProjectMemberSchema>;
 export type RemoveProjectMemberInput = z.infer<typeof removeProjectMemberSchema>;
+export type UpdateProjectVisibilityInput = z.infer<
+  typeof updateProjectVisibilitySchema
+>;
