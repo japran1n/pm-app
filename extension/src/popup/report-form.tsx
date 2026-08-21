@@ -518,7 +518,7 @@ export function ReportForm({
 
   if (workspacesState.kind === "loading") {
     return (
-      <p data-testid="report-form-loading" style={{ margin: 0, color: "#666" }}>
+      <p data-testid="report-form-loading" className="pm-meta" style={{ margin: 0 }}>
         Loading workspaces&hellip;
       </p>
     );
@@ -526,7 +526,7 @@ export function ReportForm({
 
   if (workspacesState.kind === "error") {
     return (
-      <p data-testid="report-form-workspaces-error" style={{ margin: 0, color: "#b91c1c" }}>
+      <p data-testid="report-form-workspaces-error" className="pm-body" style={{ margin: 0, color: "var(--pm-error)" }}>
         {workspacesState.reason}
       </p>
     );
@@ -534,7 +534,7 @@ export function ReportForm({
 
   if (workspacesState.workspaces.length === 0) {
     return (
-      <p data-testid="report-form-no-workspaces" style={{ margin: 0, color: "#666" }}>
+      <p data-testid="report-form-no-workspaces" className="pm-meta" style={{ margin: 0 }}>
         You don't belong to any workspaces yet. Join or create one in pm-app first.
       </p>
     );
@@ -543,36 +543,39 @@ export function ReportForm({
   return (
     <form data-testid="report-form" onSubmit={handleSubmit}>
       {restoredDraftImage && (
-        <div style={{ marginBottom: 8 }}>
-          <p style={{ margin: "0 0 4px", fontSize: 13, color: "#666" }}>
-            Restored from an unsent draft — your screenshot is still attached:
-          </p>
-          <img
-            data-testid="report-form-draft-image"
-            src={restoredDraftImage}
-            alt="Restored draft screenshot"
-            style={{ maxWidth: "100%", border: "1px solid #ddd" }}
-          />
+        <div className="pm-banner pm-banner-info">
+          <div>
+            <p style={{ margin: "0 0 var(--pm-space-2)" }}>
+              Restored from an unsent draft — your screenshot is still attached:
+            </p>
+            <img
+              data-testid="report-form-draft-image"
+              src={restoredDraftImage}
+              alt="Restored draft screenshot"
+              style={{ maxWidth: "100%", border: "1px solid var(--pm-border)", borderRadius: "var(--pm-radius-sm)" }}
+            />
+          </div>
         </div>
       )}
 
       {draftImageOmittedNotice && !restoredDraftImage && (
         <p
           data-testid="report-form-draft-image-omitted"
-          style={{ margin: "0 0 8px", fontSize: 13, color: "#b45309" }}
+          className="pm-banner pm-banner-warning"
         >
           Your typed report was restored from an earlier attempt, but the screenshot was too
           large to save for retry — please recapture it if you still want to attach one.
         </p>
       )}
 
-      <div style={{ marginBottom: 8 }}>
-        <label htmlFor="report-workspace" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+      <div className="pm-field pm-field-primary">
+        <label htmlFor="report-workspace" className="pm-field-label">
           Workspace
         </label>
         <select
           id="report-workspace"
           data-testid="report-form-workspace"
+          className="pm-select"
           value={workspaceId}
           onChange={(e) => setWorkspaceId(e.target.value)}
         >
@@ -586,26 +589,31 @@ export function ReportForm({
       </div>
 
       {workspaceContext.kind === "loading" && (
-        <p data-testid="report-form-context-loading" style={{ margin: "0 0 8px", fontSize: 13, color: "#666" }}>
+        <p data-testid="report-form-context-loading" className="pm-meta" style={{ margin: "0 0 var(--pm-space-2)" }}>
           Loading projects&hellip;
         </p>
       )}
 
       {workspaceContext.kind === "error" && (
-        <p data-testid="report-form-context-error" style={{ margin: "0 0 8px", fontSize: 13, color: "#b91c1c" }}>
+        <p
+          data-testid="report-form-context-error"
+          className="pm-body"
+          style={{ margin: "0 0 var(--pm-space-2)", color: "var(--pm-error)" }}
+        >
           {workspaceContext.reason}
         </p>
       )}
 
       {workspaceContext.kind === "loaded" && (
         <>
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-project" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-primary">
+            <label htmlFor="report-project" className="pm-field-label">
               Project
             </label>
             <select
               id="report-project"
               data-testid="report-form-project"
+              className="pm-select"
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
             >
@@ -618,13 +626,14 @@ export function ReportForm({
             </select>
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-status" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-primary">
+            <label htmlFor="report-status" className="pm-field-label">
               Status
             </label>
             <select
               id="report-status"
               data-testid="report-form-status"
+              className="pm-select"
               value={status}
               onChange={(e) =>
                 setStatus(e.target.value as (typeof STATUS_OPTIONS)[number]["value"])
@@ -638,41 +647,44 @@ export function ReportForm({
             </select>
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-title" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-primary">
+            <label htmlFor="report-title" className="pm-field-label">
               Title
             </label>
             <input
               id="report-title"
               data-testid="report-form-title"
+              className="pm-input"
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              style={{ width: "100%", boxSizing: "border-box" }}
             />
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-description" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field-group-divider" />
+
+          <div className="pm-field pm-field-optional">
+            <label htmlFor="report-description" className="pm-field-label">
               Description
             </label>
             <textarea
               id="report-description"
               data-testid="report-form-description"
+              className="pm-textarea"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ width: "100%", boxSizing: "border-box" }}
             />
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-assignee" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-optional">
+            <label htmlFor="report-assignee" className="pm-field-label">
               Assignee
             </label>
             <select
               id="report-assignee"
               data-testid="report-form-assignee"
+              className="pm-select"
               value={assigneeId}
               onChange={(e) => setAssigneeId(e.target.value)}
             >
@@ -685,13 +697,14 @@ export function ReportForm({
             </select>
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-priority" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-optional">
+            <label htmlFor="report-priority" className="pm-field-label">
               Priority
             </label>
             <select
               id="report-priority"
               data-testid="report-form-priority"
+              className="pm-select"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
@@ -703,13 +716,14 @@ export function ReportForm({
             </select>
           </div>
 
-          <div style={{ marginBottom: 8 }}>
-            <label htmlFor="report-due-date" style={{ display: "block", fontSize: 13, marginBottom: 2 }}>
+          <div className="pm-field pm-field-optional">
+            <label htmlFor="report-due-date" className="pm-field-label">
               Due date
             </label>
             <input
               id="report-due-date"
               data-testid="report-form-due-date"
+              className="pm-input"
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
@@ -718,14 +732,16 @@ export function ReportForm({
 
           <button
             type="submit"
+            className="pm-btn pm-btn-primary"
             data-testid="report-form-submit"
             disabled={submitState.kind === "submitting" || !projectId || !title.trim()}
+            style={{ width: "100%", marginTop: "var(--pm-space-2)" }}
           >
             {submitState.kind === "submitting" ? "Creating task…" : "Create task"}
           </button>
 
           {submitState.kind === "success" && (
-            <div data-testid="report-form-success" style={{ marginTop: 8 }}>
+            <div data-testid="report-form-success" style={{ marginTop: "var(--pm-space-3)" }}>
               <ReportSuccess
                 taskKey={submitState.taskKey}
                 boardPath={submitState.boardPath}

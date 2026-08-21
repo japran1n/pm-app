@@ -37,13 +37,15 @@ export function ReportSuccess({
   }
 
   return (
-    <div data-testid="report-success">
-      <p style={{ margin: "0 0 4px", fontSize: 13, color: "#1a7f37" }}>
+    <div data-testid="report-success" className="pm-banner pm-banner-success" style={{ flexDirection: "column", alignItems: "stretch" }}>
+      <p style={{ margin: "0 0 var(--pm-space-2)" }}>
         Task created{taskKey ? ":" : "."}
         {taskKey && (
           <>
             {" "}
-            <strong data-testid="report-success-task-key">{taskKey}</strong>
+            <strong data-testid="report-success-task-key" className="pm-success-key">
+              {taskKey}
+            </strong>
           </>
         )}
       </p>
@@ -51,9 +53,10 @@ export function ReportSuccess({
       {boardPath && (
         <button
           type="button"
+          className="pm-btn pm-btn-secondary"
           data-testid="report-success-open-board"
           onClick={openBoard}
-          style={{ marginBottom: 8 }}
+          style={{ marginBottom: "var(--pm-space-2)", alignSelf: "flex-start" }}
         >
           Open board
         </button>
@@ -62,7 +65,7 @@ export function ReportSuccess({
       {attachmentWarning && (
         <p
           data-testid="report-form-attachment-warning"
-          style={{ margin: "4px 0 8px", fontSize: 13, color: "#b45309" }}
+          style={{ margin: "0 0 var(--pm-space-2)", color: "var(--pm-warning)" }}
         >
           {attachmentWarning}
         </p>
@@ -71,6 +74,8 @@ export function ReportSuccess({
       <div>
         <button
           type="button"
+          className="pm-btn pm-btn-icon"
+          style={{ width: "auto", padding: "var(--pm-space-2) var(--pm-space-3)", color: "var(--pm-text-secondary)" }}
           data-testid="report-success-report-another"
           onClick={onReportAnother}
         >

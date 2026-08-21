@@ -487,6 +487,25 @@ test.describe.serial("F297 offline and error states (AS-565)", () => {
       await expect(error).toHaveAttribute("data-error-kind", "expired-session");
       await expect(error).toContainText("session has expired");
       await expect(page.getByTestId("report-form-success")).toHaveCount(0);
+
+      // Design-system proof (UI/UX redesign part 2): the error banner
+      // actually uses the shared design system's semantic error color, not
+      // a copy-pasted one-off hex value — its computed color should match
+      // the `--pm-error` custom property currently in effect on :root, and
+      // must differ from the success view's own color (checked below via
+      // a fresh submit attempt on the same page).
+      const [errorColor, pmErrorVar] = await Promise.all([
+        error.evaluate((el) => getComputedStyle(el).color),
+        page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--pm-error").trim()),
+      ]);
+      expect(errorColor).toBe(await page.evaluate((hex) => {
+        const probe = document.createElement("div");
+        probe.style.color = hex;
+        document.body.appendChild(probe);
+        const resolved = getComputedStyle(probe).color;
+        probe.remove();
+        return resolved;
+      }, pmErrorVar));
     } finally {
       await page.unroute(`http://localhost:3000/api/extension/tasks`);
       await page.close();

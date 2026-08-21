@@ -266,7 +266,26 @@ test.describe.serial("F296 extension success view and preferences (AS-563, AS-56
     const expectedKey = `${projectKey}-${row.number}`;
 
     // AS-563: the success view shows the real task's real formatted key.
-    await expect(page.getByTestId("report-success-task-key")).toHaveText(expectedKey);
+    const taskKeyEl = page.getByTestId("report-success-task-key");
+    await expect(taskKeyEl).toHaveText(expectedKey);
+
+    // Design-system proof (UI/UX redesign part 2): the task key reads as
+    // prominent — its computed font-size is genuinely larger than the
+    // surrounding success message's body text, not merely bolded inline.
+    const [keyFontSize, bodyFontSize] = await Promise.all([
+      taskKeyEl.evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+      page.getByTestId("report-form-title").evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+    ]);
+    expect(keyFontSize).toBeGreaterThan(bodyFontSize);
+
+    // The submit button ("Create task") uses the shared design system's
+    // primary button treatment: filled with the accent color, distinct
+    // from a plain unstyled button's transparent/default background.
+    const submitBg = await page
+      .getByTestId("report-form-submit")
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(submitBg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(submitBg).not.toBe("transparent");
 
     // AS-563: the "Open board" link opens the project's real board URL in
     // a new tab, via chrome.tabs.create (asserted on the resulting tab's

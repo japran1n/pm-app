@@ -96,7 +96,8 @@ export function SubmitErrorMessage({ info }: { info: SubmitErrorInfo }) {
     <p
       data-testid="report-form-error"
       data-error-kind={info.kind}
-      style={{ margin: "8px 0 0", fontSize: 13, color: "#b91c1c" }}
+      className="pm-banner pm-banner-error"
+      style={{ marginTop: "var(--pm-space-3)", marginBottom: 0 }}
     >
       {info.message}
     </p>

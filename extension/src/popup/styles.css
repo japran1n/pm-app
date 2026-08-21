@@ -259,3 +259,123 @@ h2 {
   background: var(--pm-border);
   margin: 0 var(--pm-space-1);
 }
+
+/* --- Form fields (report-form.tsx) ---
+ *
+ * Native <select>/<input>/<textarea> elements only, styled via CSS — no
+ * custom-widget replacements, per the redesign brief (keeps native
+ * keyboard reachability intact for F296/F299's already-tested behaviour).
+ */
+
+.pm-field {
+  margin-bottom: var(--pm-space-3);
+}
+
+.pm-field-label {
+  display: block;
+  font-size: var(--pm-font-size-meta);
+  font-weight: 500;
+  color: var(--pm-text-secondary);
+  margin-bottom: var(--pm-space-1);
+}
+
+.pm-input,
+.pm-select,
+.pm-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: var(--pm-font-size-body);
+  color: var(--pm-text-primary);
+  background: var(--pm-bg);
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-sm);
+  padding: var(--pm-space-2) var(--pm-space-3);
+  transition: border-color 120ms ease;
+}
+
+.pm-textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+.pm-input:hover,
+.pm-select:hover,
+.pm-textarea:hover {
+  border-color: var(--pm-text-secondary);
+}
+
+.pm-input:focus,
+.pm-select:focus,
+.pm-textarea:focus {
+  border-color: var(--pm-accent);
+}
+
+/* Primary field group: the required title (grouped with workspace/project/
+ * status, the fields that actually gate submission) reads as more
+ * prominent than the optional fields below it. */
+.pm-field-primary .pm-field-label {
+  color: var(--pm-text-primary);
+  font-weight: 600;
+}
+
+.pm-field-primary .pm-input {
+  font-size: 14px;
+  padding: var(--pm-space-3);
+}
+
+/* Visual separator between the required/primary field group and the
+ * optional fields (description/assignee/priority/due-date). */
+.pm-field-group-divider {
+  margin: var(--pm-space-4) 0 var(--pm-space-3);
+  padding-top: var(--pm-space-3);
+  border-top: 1px dashed var(--pm-border);
+}
+
+.pm-field-optional .pm-field-label {
+  font-weight: 400;
+}
+
+/* --- Banners (draft restoration, warnings, errors, success) --- */
+
+.pm-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pm-space-2);
+  padding: var(--pm-space-3);
+  border-radius: var(--pm-radius-md);
+  font-size: var(--pm-font-size-body);
+  margin-bottom: var(--pm-space-3);
+}
+
+.pm-banner-info {
+  background: var(--pm-surface);
+  border: 1px solid var(--pm-border);
+  color: var(--pm-text-primary);
+}
+
+.pm-banner-warning {
+  background: var(--pm-warning-bg);
+  border: 1px solid var(--pm-warning);
+  color: var(--pm-warning);
+}
+
+.pm-banner-error {
+  background: var(--pm-error-bg);
+  border: 1px solid var(--pm-error);
+  color: var(--pm-error);
+}
+
+.pm-banner-success {
+  background: var(--pm-success-bg);
+  border: 1px solid var(--pm-success);
+  color: var(--pm-success);
+}
+
+/* --- Success view (success.tsx) --- */
+
+.pm-success-key {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--pm-text-primary);
+}
