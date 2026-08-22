@@ -19,6 +19,7 @@ import {
   promoteSubtaskSchema,
   getOpenBlockersSchema,
   toggleDescriptionChecklistItemSchema,
+  duplicateTaskSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
@@ -26,6 +27,10 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
+import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
+import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
+import { getCurrentUserTimezone } from "@/lib/queries/profile";
+import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
@@ -1681,7 +1686,9 @@ export async function moveTaskStatus(
   // assignTask/editTask/deleteTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select(
+      "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id)",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1737,6 +1744,44 @@ export async function moveTaskStatus(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F177 (AS-315, AS-320, AS-321): a recurring task that just transitioned
+  // into a done-category status generates its next occurrence, in the same
+  // logical unit as this status write (immediately after it succeeds, same
+  // request). Per this feature's Clarified implementation, this is purely
+  // additive — a failure or legitimate no-op here (no recurrence, no due
+  // date, archived project, already generated) never turns the status
+  // change itself into a failure; the user's completion always succeeds.
+  if (isDoneStatus(parsed.data.status) && taskRow.recurrence) {
+    try {
+      const timezone = await getCurrentUserTimezone(supabase);
+      await generateNextOccurrence(
+        admin,
+        {
+          id: taskRow.id,
+          project_id: taskRow.project_id,
+          title: taskRow.title,
+          description: taskRow.description,
+          description_json: taskRow.description_json,
+          priority: taskRow.priority,
+          estimate_minutes: taskRow.estimate_minutes,
+          due_date: taskRow.due_date,
+          recurrence: taskRow.recurrence,
+          recurrence_parent_id: taskRow.recurrence_parent_id,
+        },
+        user.id,
+        timezone,
+      );
+    } catch (recurrenceError) {
+      // Non-fatal: the status change already succeeded above. Generation
+      // is best-effort additive behavior, never a reason to fail the
+      // user's completion action.
+      console.error(
+        "moveTaskStatus: generateNextOccurrence failed (non-fatal):",
+        recurrenceError,
+      );
+    }
   }
 
   const { data: workspaceRow } = await admin
@@ -2984,5 +3029,282 @@ export async function toggleDescriptionChecklistItem(
   return {
     ok: true,
     data: { descriptionJson: updated.description_json as JSONContent },
+  };
+}
+
+export type DuplicateTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        projectId: string;
+        title: string;
+        status: string;
+        position: number;
+        number: number;
+      };
+    }
+  | { ok: false; error: string };
+
+// Duplicates a task (F180: AS-324, AS-325, AS-326, AS-327). Reuses F176's
+// `cloneTaskFields` (lib/recurrence/clone-fields.ts) verbatim for the
+// title/description/description_json/assignees/priority/checklist/estimate
+// copy rules, per this feature's own spec ("reusing F176's clone-fields
+// allow-list so copy rules exist in exactly one place") — this function
+// does NOT re-derive which fields are copied vs excluded; it only adds the
+// two things `cloneTaskFields` deliberately has no I/O to do itself: `tags`
+// (a plain column copy, not part of the recurrence allow-list — recurrence
+// occurrences don't carry tags forward, but a duplicate explicitly should
+// per AS-325) and the actual database writes (new task row + checklist
+// items + task_assignees rows), including generating the new task's own
+// key/number via the SAME atomic mechanism (F145's `assign_task_key`
+// trigger, which fires on any `tasks` insert that doesn't supply `number`)
+// every other task-creation path in this file already relies on — never a
+// manually computed number.
+//
+// Title marking (Clarified implementation's one open question, resolved
+// per the clarification's "take the simpler option, record it"): "Copy of
+// <original title>" — matches this mission's project-duplication feature's
+// own convention (see that feature's handoff) so both duplication features
+// share one convention rather than inventing two.
+//
+// Same project, same status (AS-327): the duplicate is never re-parented
+// to a different project/status — both are read straight from the source
+// row and never accepted as caller input (duplicateTaskSchema takes only
+// `taskId`).
+//
+// Position (AS-327): "positioned right after the original" is computed via
+// the same lib/board/position.ts `calculatePosition` every other
+// reposition path in this codebase (board drag-and-drop) already uses —
+// the source task's own position is the `prevPosition` neighbor, and the
+// source's current next sibling in that (project, status) column (by
+// position ascending) is the `nextPosition` neighbor, so the new row's
+// position always lands strictly between the two (or after the source with
+// the boundary gap, if the source was already last in its column).
+//
+// Excluded (AS-326, per cloneTaskFields's own contract): comments,
+// attachments, logged time entries are never read from the source task at
+// all — this function has no query against `comments`/`attachments`/
+// `time_entries` for the source. The new task's key/number is freshly
+// assigned by the DB trigger, never copied from the source row.
+export async function duplicateTask(
+  taskId: string,
+): Promise<DuplicateTaskResult> {
+  const parsed = duplicateTaskSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to duplicate a task." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: sourceRow, error: sourceError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id)",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (sourceError || !sourceRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = sourceRow.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to duplicate this task.",
+    };
+  }
+
+  // Same gate createTask/editTask use: viewers/guests are read-only
+  // (AS-216/AS-217) — duplicating a task creates a new one, so it's a
+  // write, gated the same way createTask's own write is.
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to duplicate tasks.",
+    };
+  }
+
+  const [assigneesResult, checklistResult] = await Promise.all([
+    admin
+      .from("task_assignees")
+      .select("user_id, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("checklist_items")
+      .select("content, position")
+      .eq("task_id", parsed.data.taskId)
+      .order("position", { ascending: true }),
+  ]);
+
+  const cloned = cloneTaskFields({
+    title: sourceRow.title,
+    description: sourceRow.description,
+    description_json: sourceRow.description_json,
+    assigneeIds: (assigneesResult.data ?? []).map((row) => row.user_id as string),
+    priority: sourceRow.priority,
+    checklistItems: (checklistResult.data ?? []).map((row) => ({
+      content: row.content as string,
+      position: row.position as number,
+    })),
+    estimate_minutes: sourceRow.estimate_minutes,
+  });
+
+  // AS-327: land in the SAME status as the original, never the recurrence
+  // allow-list's "todo" reset — cloneTaskFields.status is deliberately
+  // ignored here (that reset is specific to recurring occurrences, not
+  // duplication), and the source's own current status is used instead.
+  const targetStatus = sourceRow.status;
+
+  // AS-327: positioned right after the original in its current column.
+  // The source's own position is the previous-sibling anchor; its current
+  // next sibling by position (same project + status column) is the
+  // next-sibling anchor.
+  const { data: nextSibling } = await admin
+    .from("tasks")
+    .select("position")
+    .eq("project_id", sourceRow.project_id)
+    .eq("status", targetStatus)
+    .is("deleted_at", null)
+    .gt("position", sourceRow.position)
+    .order("position", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const newPosition = calculatePosition(
+    sourceRow.position as number,
+    nextSibling?.position ?? null,
+  );
+
+  const { data: inserted, error: insertError } = await admin
+    .from("tasks")
+    .insert({
+      project_id: sourceRow.project_id,
+      // AS-324: the duplicate's title is distinctly marked, never an exact
+      // copy of the source's title.
+      title: `Copy of ${cloned.title}`,
+      description: cloned.description,
+      description_json: cloned.description_json as Json,
+      status: targetStatus,
+      priority: cloned.priority,
+      tags: sourceRow.tags ?? [],
+      estimate_minutes: cloned.estimate_minutes,
+      author_id: user.id,
+      position: newPosition,
+      // No `number`/key supplied: F145's assign_task_key trigger assigns
+      // this new row its OWN project-sequential number on insert, exactly
+      // like every other task-creation path in this file (createTaskForUser
+      // above never supplies one either) — never copied from the source.
+    })
+    .select("id, project_id, title, status, position, number")
+    .single();
+
+  if (insertError || !inserted) {
+    console.error("duplicateTask: insert failed:", insertError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (cloned.checklistItems.length > 0) {
+    const { error: checklistInsertError } = await admin
+      .from("checklist_items")
+      .insert(
+        cloned.checklistItems.map((item) => ({
+          task_id: inserted.id,
+          content: item.content,
+          position: item.position,
+        })),
+      );
+    if (checklistInsertError) {
+      console.error(
+        "duplicateTask: checklist insert failed:",
+        checklistInsertError,
+      );
+    }
+  }
+
+  if (cloned.assigneeIds.length > 0) {
+    const { error: assigneeInsertError } = await admin
+      .from("task_assignees")
+      .insert(
+        cloned.assigneeIds.map((assigneeId) => ({
+          task_id: inserted.id,
+          user_id: assigneeId,
+          assigned_by: user.id,
+        })),
+      );
+    if (assigneeInsertError) {
+      console.error(
+        "duplicateTask: assignee insert failed:",
+        assigneeInsertError,
+      );
+    } else {
+      await syncMirrorAssigneeId(admin, inserted.id);
+    }
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "duplicateTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: inserted.id,
+      projectId: inserted.project_id,
+      title: inserted.title,
+      status: inserted.status,
+      position: inserted.position,
+      number: inserted.number,
+    },
   };
 }

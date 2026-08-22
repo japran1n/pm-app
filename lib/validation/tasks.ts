@@ -255,6 +255,19 @@ export const getOpenBlockersSchema = z.object({
 
 export type GetOpenBlockersInput = z.infer<typeof getOpenBlockersSchema>;
 
+// Validates duplicateTask input (F180: AS-324, AS-325, AS-326, AS-327).
+// Just the task id — same shape as deleteTaskSchema/promoteSubtaskSchema,
+// same "one schema per action" convention as every other action in this
+// file. No other caller-supplied fields: title marking, project, status,
+// and position are all derived server-side from the source task, never
+// accepted from the client (per this feature's Clarified implementation —
+// only the files/inputs named in the spec, no extra surface area).
+export const duplicateTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+});
+
+export type DuplicateTaskInput = z.infer<typeof duplicateTaskSchema>;
+
 // Validates toggleDescriptionChecklistItem input (F173: AS-311). `itemId`
 // is the taskItem node's `id` attribute assigned by
 // components/editor/rich-text-editor.tsx's TaskItemWithId — a client
