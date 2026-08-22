@@ -47,7 +47,8 @@ import { Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { JSONContent } from "@tiptap/react";
 
-import { addComment, deleteComment } from "@/lib/actions/comments";
+import { addComment, deleteComment, restoreComment } from "@/lib/actions/comments";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
 import { Button } from "@/components/ui/button";
@@ -252,6 +253,28 @@ export function CommentList({
         setLocalComments((previous) =>
           previous.filter((comment) => comment.id !== commentId),
         );
+        // F190 (AS-345): Undo restores this exact comment without
+        // visiting trash. restoreComment's return shape already matches
+        // TaskComment exactly, so it's appended straight back into local
+        // state the same way addComment's own success path does above —
+        // no second fetch, no second source of truth for the comment's
+        // fields.
+        showUndoToast({
+          message: "Comment deleted.",
+          onUndo: async () => {
+            const restoreResult = await restoreComment(commentId);
+            if (restoreResult.ok) {
+              setLocalComments((previous) =>
+                previous.some((comment) => comment.id === commentId)
+                  ? previous
+                  : [...previous, restoreResult.data],
+              );
+              toast.success("Comment restored.");
+            } else {
+              toast.error(restoreResult.error);
+            }
+          },
+        });
       } else {
         toast.error(result.error);
       }

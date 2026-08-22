@@ -4182,3 +4182,67 @@ export async function bulkDeleteTasks(
 
   return { ok: true, data: { succeededIds, failedIds } };
 }
+
+export type BulkRestoreTasksResult =
+  | {
+      ok: true;
+      data: {
+        succeededIds: string[];
+        failedIds: { id: string; reason: string }[];
+      };
+    }
+  | { ok: false; error: string };
+
+// Restores a batch of soft-deleted tasks in a single Server Action call
+// (F190/AS-345: "Bulk deletes undo the whole batch in one call" — the
+// requirement is that the CLIENT makes one call, not a per-row loop of
+// its own; it does not require a brand-new batch-UPDATE SQL statement).
+//
+// Per this feature's own Clarified "ambiguity resolution" default (take
+// the simpler option that adds no new dependency and no second source of
+// truth), this delegates to the existing, already-correct `restoreTask`
+// per id rather than re-implementing restoreTask's position recompute,
+// status-fallback, and cascade-children-restore logic a second time as a
+// parallel batch code path — that logic is intricate (see restoreTask's
+// own doc comment above) and duplicating it here would create exactly the
+// "second source of truth" divergence risk the clarified default says to
+// avoid. The calls run concurrently (Promise.all) so the batch completes
+// in one round trip's worth of wall-clock time from the caller's
+// perspective, matching this feature's UI contract of "one Undo click
+// restores the whole batch."
+//
+// Each id's outcome is independent — one task failing (already restored
+// by someone else, no longer found, permission revoked mid-flight) does
+// not fail the rest of the batch, mirroring bulkDeleteTasks's own
+// succeededIds/failedIds contract exactly.
+export async function bulkRestoreTasks(
+  taskIds: string[],
+): Promise<BulkRestoreTasksResult> {
+  const parsed = bulkDeleteTasksSchema.safeParse({ taskIds });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid bulk restore.",
+    };
+  }
+
+  const results = await Promise.all(
+    parsed.data.taskIds.map(async (id) => {
+      const result = await restoreTask(id);
+      return { id, result };
+    }),
+  );
+
+  const succeededIds: string[] = [];
+  const failedIds: { id: string; reason: string }[] = [];
+  for (const { id, result } of results) {
+    if (result.ok) {
+      succeededIds.push(id);
+    } else {
+      failedIds.push({ id, reason: result.error });
+    }
+  }
+
+  return { ok: true, data: { succeededIds, failedIds } };
+}

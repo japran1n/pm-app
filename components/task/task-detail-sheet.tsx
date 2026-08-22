@@ -44,6 +44,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 
 // F173 (AS-311): client-side mirror of lib/actions/tasks.ts's
@@ -80,6 +81,7 @@ function setJsonTaskItemChecked(
 
 import {
   deleteTask,
+  restoreTask,
   editTask,
   moveTaskStatus,
   setTaskAssignees,
@@ -662,12 +664,29 @@ export function TaskDetailSheet({
 
   function handleDelete() {
     if (!task) return;
+    const deletedTaskId = task.id;
     startDeleteTransition(async () => {
-      const result = await deleteTask(task.id);
+      const result = await deleteTask(deletedTaskId);
       if (result.ok) {
-        toast.success("Task deleted.");
         onOpenChange(false);
-        onDeleted?.(task.id);
+        onDeleted?.(deletedTaskId);
+        // F190 (AS-345): Undo restores the same task without visiting
+        // trash. restoreTask's own revalidatePath (list views) and the
+        // board's realtime subscription (board.tsx's reconcileTask, which
+        // re-inserts a task the instant its deleted_at UPDATE clears) both
+        // already pick this restore up — no extra client-side plumbing is
+        // needed here beyond calling the action.
+        showUndoToast({
+          message: "Task deleted.",
+          onUndo: async () => {
+            const restoreResult = await restoreTask(deletedTaskId);
+            if (restoreResult.ok) {
+              toast.success("Task restored.");
+            } else {
+              toast.error(restoreResult.error);
+            }
+          },
+        });
       } else {
         toast.error(result.error);
       }

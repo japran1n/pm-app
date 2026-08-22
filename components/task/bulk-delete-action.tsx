@@ -30,8 +30,9 @@ import { useState, useTransition } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { bulkDeleteTasks } from "@/lib/actions/tasks";
+import { bulkDeleteTasks, bulkRestoreTasks } from "@/lib/actions/tasks";
 import { canWrite } from "@/lib/auth/permissions";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import { useMembership } from "@/components/auth/membership-provider";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { TaskCardTask } from "@/components/task/task-card";
@@ -96,12 +97,37 @@ export function BulkDeleteAction({
         toast.warning(
           `Moved ${succeededIds.length} of ${count} tasks to trash. Couldn't delete: ${failedLabels.join(", ")}.`,
         );
-      } else {
-        toast.success(
-          `Moved ${succeededIds.length} ${
+      } else if (succeededIds.length > 0) {
+        // F190 (AS-345): "Bulk deletes undo the whole batch in one call" —
+        // Undo here fires exactly one bulkRestoreTasks call with every
+        // succeeded id, not a client-side loop of single restores.
+        showUndoToast({
+          message: `Moved ${succeededIds.length} ${
             succeededIds.length === 1 ? "task" : "tasks"
           } to trash.`,
-        );
+          onUndo: async () => {
+            const restoreResult = await bulkRestoreTasks(succeededIds);
+            if (!restoreResult.ok) {
+              toast.error(restoreResult.error);
+              return;
+            }
+            const {
+              succeededIds: restoredIds,
+              failedIds: restoreFailedIds,
+            } = restoreResult.data;
+            if (restoreFailedIds.length > 0) {
+              toast.warning(
+                `Restored ${restoredIds.length} of ${succeededIds.length} tasks. Some couldn't be restored.`,
+              );
+            } else {
+              toast.success(
+                `Restored ${restoredIds.length} ${
+                  restoredIds.length === 1 ? "task" : "tasks"
+                }.`,
+              );
+            }
+          },
+        });
       }
 
       setOpen(false);

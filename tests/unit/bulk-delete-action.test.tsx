@@ -16,19 +16,26 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 const bulkDeleteTasksMock = vi.fn();
+const bulkRestoreTasksMock = vi.fn();
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
 const toastWarningMock = vi.fn();
+const toastDismissMock = vi.fn();
 
 vi.mock("@/lib/actions/tasks", () => ({
   bulkDeleteTasks: (...args: unknown[]) => bulkDeleteTasksMock(...args),
+  bulkRestoreTasks: (...args: unknown[]) => bulkRestoreTasksMock(...args),
 }));
 
 vi.mock("sonner", () => ({
   toast: {
     error: (...args: unknown[]) => toastErrorMock(...args),
-    success: (...args: unknown[]) => toastSuccessMock(...args),
+    success: (...args: unknown[]) => {
+      toastSuccessMock(...args);
+      return "toast-id";
+    },
     warning: (...args: unknown[]) => toastWarningMock(...args),
+    dismiss: (...args: unknown[]) => toastDismissMock(...args),
   },
 }));
 
@@ -139,5 +146,45 @@ describe("BulkDeleteAction (F187: AS-339, AS-340)", () => {
     // ...and names the failed task by its "PM-5" key, never the raw uuid.
     expect(message).toContain("PM-5");
     expect(message).not.toContain(SELECTED_TASKS[1].id);
+  });
+
+  it("F190/AS-345: a full-success bulk delete shows an Undo toast, and clicking Undo restores the whole batch in ONE bulkRestoreTasks call", async () => {
+    bulkDeleteTasksMock.mockResolvedValue({
+      ok: true,
+      data: { succeededIds: SELECTED_TASKS.map((t) => t.id), failedIds: [] },
+    });
+    bulkRestoreTasksMock.mockResolvedValue({
+      ok: true,
+      data: { succeededIds: SELECTED_TASKS.map((t) => t.id), failedIds: [] },
+    });
+
+    render(
+      createElement(BulkDeleteAction, {
+        selectedTasks: SELECTED_TASKS,
+        onDone: vi.fn(),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /delete/i }));
+    await screen.findByText(/move 2 tasks to trash\?/i);
+    fireEvent.click(
+      screen.getByRole("button", { name: /move tasks to trash/i }),
+    );
+
+    await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledTimes(1));
+    const [message, options] = toastSuccessMock.mock.calls[0];
+    expect(message).toMatch(/moved 2 tasks to trash/i);
+    expect(options.action.label).toBe("Undo");
+
+    await options.action.onClick();
+
+    // Exactly one call, with every id from the delete — not a client-side
+    // loop of single restores.
+    await waitFor(() =>
+      expect(bulkRestoreTasksMock).toHaveBeenCalledTimes(1),
+    );
+    expect(bulkRestoreTasksMock).toHaveBeenCalledWith(
+      SELECTED_TASKS.map((t) => t.id),
+    );
   });
 });
