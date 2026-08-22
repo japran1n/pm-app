@@ -35,7 +35,14 @@
 
 import { useState, useTransition } from "react";
 import dynamic from "next/dynamic";
-import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react";
+import {
+  Copy,
+  CornerUpLeft,
+  Loader2,
+  Repeat,
+  TriangleAlert,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 
@@ -113,6 +120,12 @@ import {
   type TimeTrackingActiveTimer,
 } from "@/components/task/time-tracking";
 import { Watchers } from "@/components/task/watchers";
+// F179 (AS-317, AS-318, AS-319): the recurrence picker + remove control —
+// same "smallest-possible-client-boundary, caller passes current value
+// down, component calls its own Server Action" convention as TagsEditor/
+// Checklist above.
+import { RecurrenceEditor } from "@/components/task/recurrence-editor";
+import type { RecurrenceRule } from "@/lib/recurrence/next-date";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -272,6 +285,30 @@ export type TaskDetailSheetTask = {
    * generic count (clarified spec). Optional/defaults to false for the
    * same "safe default" reason as `watcherIds` above. */
   isWatching?: boolean;
+  /** F179 (AS-317, AS-318, AS-319): this task's own recurrence rule, or
+   * null/undefined for no active rule. Feeds RecurrenceEditor's picker/
+   * live summary/remove control below — see lib/recurrence/next-date.ts's
+   * `RecurrenceRule` for the exact shape (frozen by F175's handoff).
+   * Optional so a caller that hasn't been updated yet (existing tests/
+   * fixtures) still renders, same "safe default" convention as every
+   * other optional field on this type. */
+  recurrence?: RecurrenceRule | null;
+  /** F179 (AS-318): non-null only when THIS task is itself a GENERATED
+   * OCCURRENCE (F177's `recurrence_parent_id`, which always points at the
+   * series ROOT — see that feature's handoff). Drives whether the
+   * "View source task" link renders. */
+  recurrenceParentId?: string | null;
+  /** F179 (AS-318): just enough of the recurrence source (series root)
+   * task to render and open the link — populated by getTaskDetail's
+   * existing task+project fetch (one extra lookup only when
+   * `recurrenceParentId` is set), never a per-render fetch from this
+   * Client Component. Mirrors `parent`'s own shape/convention above. */
+  recurrenceSource?: {
+    id: string;
+    title: string;
+    projectKey?: string;
+    number?: number;
+  } | null;
 };
 
 export type TaskDetailSheetMember = {
@@ -722,6 +759,36 @@ export function TaskDetailSheet({
                     task.parent.title}
                 </button>
               )}
+              {/* F179 (AS-318): a GENERATED OCCURRENCE (recurrenceParentId
+                  set) links back to its source/root task — mirrors the
+                  "Subtask of ..." breadcrumb immediately above, just with
+                  Repeat's icon and "Generated from ..." wording so the two
+                  relationships (parent/child vs. recurrence
+                  source/occurrence) never look identical. Rendered only
+                  when getTaskDetail actually resolved the source row
+                  (still live, not soft-deleted) — same "no dead link"
+                  convention as the parent breadcrumb. */}
+              {task.recurrenceSource && (
+                <button
+                  type="button"
+                  onClick={() => onOpenTask?.(task.recurrenceSource!.id)}
+                  disabled={!onOpenTask}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
+                  aria-label={`Open source task ${
+                    formatTaskKey(
+                      task.recurrenceSource.projectKey,
+                      task.recurrenceSource.number,
+                    ) ?? task.recurrenceSource.title
+                  }`}
+                >
+                  <Repeat className="size-3" aria-hidden="true" />
+                  Generated from{" "}
+                  {formatTaskKey(
+                    task.recurrenceSource.projectKey,
+                    task.recurrenceSource.number,
+                  ) ?? task.recurrenceSource.title}
+                </button>
+              )}
               <SheetTitle>Task details</SheetTitle>
               <SheetDescription className="sr-only">
                 View and edit this task&apos;s title, description, status,
@@ -1048,6 +1115,14 @@ export function TaskDetailSheet({
               <TagsEditor
                 taskId={task.id}
                 tags={task.tags}
+                currentUserRole={currentUserRole}
+              />
+
+              <Separator />
+
+              <RecurrenceEditor
+                taskId={task.id}
+                recurrence={task.recurrence ?? null}
                 currentUserRole={currentUserRole}
               />
 

@@ -1070,6 +1070,16 @@ export async function editTask(
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     due_date?: string | null;
     estimate_minutes?: number | null;
+    // F179 (AS-317, AS-318, AS-319): `null` clears the rule (AS-319: no
+    // future occurrences generate — F177's generation logic already
+    // checks `recurrence is not null` before generating, per that
+    // feature's own skip-conditions list), a valid rule object sets/
+    // replaces it.
+    recurrence?: {
+      freq: "daily" | "weekly" | "monthly" | "every_n_days";
+      interval: number;
+      until?: string | null;
+    } | null;
   } = {};
   if ("title" in parsed.data.updates) {
     updatePayload.title = parsed.data.updates.title;
@@ -1086,12 +1096,17 @@ export async function editTask(
   if ("estimateMinutes" in parsed.data.updates) {
     updatePayload.estimate_minutes = parsed.data.updates.estimateMinutes;
   }
+  if ("recurrence" in parsed.data.updates) {
+    updatePayload.recurrence = parsed.data.updates.recurrence;
+  }
 
   const { data: updated, error: updateError } = await admin
     .from("tasks")
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
-    .select("id, title, description, priority, due_date, estimate_minutes")
+    .select(
+      "id, title, description, priority, due_date, estimate_minutes, recurrence",
+    )
     .single();
 
   if (updateError || !updated) {
@@ -1106,6 +1121,16 @@ export async function editTask(
       return {
         ok: false,
         error: "Estimate must be greater than zero.",
+      };
+    }
+    // F179 (AS-317, AS-318): last line of defense against
+    // `tasks_recurrence_shape` (F175's migration) — the Zod schema above
+    // already rejects the same malformed shapes client-side, so this
+    // should only ever fire via a future direct-write path.
+    if (updateError?.message?.includes("tasks_recurrence_shape")) {
+      return {
+        ok: false,
+        error: "Enter a valid recurrence rule.",
       };
     }
     console.error("editTask: update failed:", updateError);
@@ -2390,7 +2415,12 @@ export async function getTaskDetail(
       // and keeps this column in sync via a DB trigger, so it always
       // exists (an empty `{ type: "doc", content: [] }` doc for
       // null/empty descriptions), never null-vs-column-missing.
-      "id, title, description, description_json, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, projects!inner(key, workspace_id)",
+      // F179 (AS-317, AS-318, AS-319): `recurrence`/`recurrence_parent_id`
+      // added here so the detail sheet's recurrence picker/remove control
+      // and the occurrence-to-source link both read real data instead of
+      // always-undefined — same "one query, no second round trip"
+      // convention as every other field on this select.
+      "id, title, description, description_json, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -2466,6 +2496,21 @@ export async function getTaskDetail(
         .maybeSingle()
     : null;
 
+  // F179 (AS-318): only run the recurrence-source lookup when this task
+  // is itself a GENERATED OCCURRENCE (`recurrence_parent_id` set, F177's
+  // handoff: it always points at the series ROOT, never an intermediate
+  // occurrence) — a top-level/root recurring task's own
+  // `recurrence_parent_id` is null, so there is nothing to look up, same
+  // "conditional query" convention as `parentQuery` immediately above.
+  const recurrenceSourceQuery = taskRow.recurrence_parent_id
+    ? admin
+        .from("tasks")
+        .select("id, title, number")
+        .eq("id", taskRow.recurrence_parent_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : null;
+
   // F157 (AS-277): this task's own dependency rows, in BOTH directions,
   // fetched here in getTaskDetail's existing single detail-fetch — same
   // "one query per section, no per-row round trip" convention as
@@ -2532,6 +2577,7 @@ export async function getTaskDetail(
     attachmentsResult,
     childrenResult,
     parentResult,
+    recurrenceSourceResult,
     checklistResult,
     blockedByResult,
     blocksResult,
@@ -2551,6 +2597,7 @@ export async function getTaskDetail(
       .order("created_at", { ascending: true }),
     childrenQuery,
     parentQuery ?? Promise.resolve({ data: null, error: null }),
+    recurrenceSourceQuery ?? Promise.resolve({ data: null, error: null }),
     checklistQuery,
     blockedByQuery,
     blocksQuery,
@@ -2595,6 +2642,17 @@ export async function getTaskDetail(
     console.error(
       "getTaskDetail: parent fetch failed:",
       parentResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (recurrenceSourceResult.error) {
+    console.error(
+      "getTaskDetail: recurrence source fetch failed:",
+      recurrenceSourceResult.error,
     );
     return {
       ok: false,
@@ -2786,6 +2844,22 @@ export async function getTaskDetail(
               title: parentResult.data.title,
               projectKey: projectRow?.key,
               number: parentResult.data.number,
+            }
+          : null,
+        // F179 (AS-317, AS-318, AS-319): the task's own recurrence rule
+        // (null means no active rule) — feeds the RecurrenceEditor
+        // picker's live summary/remove control below.
+        recurrence: taskRow.recurrence as TaskDetailSheetTask["recurrence"],
+        recurrenceParentId: taskRow.recurrence_parent_id,
+        // F179 (AS-318): only populated when this task is itself a
+        // GENERATED OCCURRENCE (see recurrenceSourceQuery above) — the
+        // detail view's "View source task" link.
+        recurrenceSource: recurrenceSourceResult.data
+          ? {
+              id: recurrenceSourceResult.data.id,
+              title: recurrenceSourceResult.data.title,
+              projectKey: projectRow?.key,
+              number: recurrenceSourceResult.data.number,
             }
           : null,
         children: (childrenResult.data ?? []).map(

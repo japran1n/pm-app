@@ -157,6 +157,34 @@ const editableFields = z.object({
     .int("Estimate must be a whole number of minutes.")
     .positive("Estimate must be greater than zero.")
     .nullable(),
+  // F179 (AS-317, AS-318, AS-319): the recurrence rule set/edited/cleared
+  // by the task detail sheet's recurrence picker (components/task/
+  // recurrence-editor.tsx). Mirrors `tasks_recurrence_shape`
+  // (supabase/migrations/20260822140000_tasks_recurrence.sql, F175) as
+  // client-side defense-in-depth (AS-146: the client check never stands
+  // alone) — the DB CHECK constraint is still the real enforcement
+  // boundary. Nullable — `null` is a deliberate, valid input meaning
+  // "remove the rule" (AS-318/AS-319), not merely "field omitted"; an
+  // omitted `recurrence` key (not present in `updates` at all) leaves the
+  // existing rule untouched, same "only present fields are applied"
+  // convention every other field in this schema follows.
+  recurrence: z
+    .object({
+      freq: z.enum(["daily", "weekly", "monthly", "every_n_days"], {
+        message: "Choose a valid recurrence frequency.",
+      }),
+      interval: z
+        .number()
+        .int("Interval must be a whole number.")
+        .positive("Interval must be greater than zero."),
+      until: z
+        .string()
+        .trim()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid end date (YYYY-MM-DD).")
+        .optional()
+        .nullable(),
+    })
+    .nullable(),
 });
 
 const partialEditableFields = editableFields.partial();

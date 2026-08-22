@@ -14,7 +14,7 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { Ban, Clock, ListTree, TriangleAlert } from "lucide-react";
+import { Ban, Clock, ListTree, Repeat, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
@@ -54,6 +54,12 @@ import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 // overflow chip beyond the display limit — replaces this card's old
 // single `<UserAvatar>` rendering below.
 import { UserAvatarGroup } from "@/components/user-avatar-group";
+// F179 (AS-317): the single "rule to plain-language summary" source, also
+// used by the recurrence picker's own live summary
+// (components/task/recurrence-editor.tsx) — see that module's doc comment
+// for why neither surface re-derives the wording inline.
+import { summarizeRecurrenceRule } from "@/lib/recurrence/summarize-rule";
+import type { RecurrenceRule } from "@/lib/recurrence/next-date";
 
 export type TaskCardTask = {
   id: string;
@@ -139,6 +145,16 @@ export type TaskCardTask = {
   // `assigneeId` below when empty, so a task assigned only through the
   // deprecated single-assignee path still shows its one avatar.
   assigneeIds?: string[];
+  /** F179 (AS-317): this task's own active recurrence rule, or null/
+   * undefined for no rule — the card's repeat indicator below only
+   * renders when this is non-null, same "safe default" convention as
+   * every other optional field on this type (`totalMinutes`,
+   * `estimateMinutes`, etc.). Query layers that haven't been updated to
+   * select `recurrence` yet simply omit the indicator, exactly like a
+   * caller that predates `estimateMinutes` never showed the over-estimate
+   * badge (F167) — see this feature's handoff for which queries still
+   * need wiring. */
+  recurrence?: RecurrenceRule | null;
 };
 
 export function TaskCard({
@@ -195,6 +211,10 @@ export function TaskCard({
   // doc comment above) — formatTaskKey's contract is "null means don't
   // render the badge," never a malformed partial string.
   const taskKey = formatTaskKey(task.projectKey, task.number);
+  // F179 (AS-317): null when no active rule — same "null means don't
+  // render the badge" contract summarizeRecurrenceRule's own doc comment
+  // establishes.
+  const recurrenceSummary = summarizeRecurrenceRule(task.recurrence);
 
   return (
     <Card
@@ -277,6 +297,21 @@ export function TaskCard({
           >
             <TriangleAlert className="size-3" aria-hidden="true" />
             Over estimate
+          </span>
+        )}
+        {/* F179 (AS-317): "recurring task" is icon + text, never colour
+            alone — same overdue-indicator pairing this card already
+            establishes above. Text is the SAME plain-language summary the
+            recurrence picker shows (lib/recurrence/summarize-rule.ts), so
+            the card and the detail sheet never disagree about what the
+            rule says. */}
+        {recurrenceSummary && (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+            data-testid="recurrence-badge"
+          >
+            <Repeat className="size-3" aria-hidden="true" />
+            {recurrenceSummary}
           </span>
         )}
         {/* F150 (AS-275, AS-153 convention): "has subtasks" is icon +
