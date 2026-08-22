@@ -254,3 +254,24 @@ export const getOpenBlockersSchema = z.object({
 });
 
 export type GetOpenBlockersInput = z.infer<typeof getOpenBlockersSchema>;
+
+// Validates toggleDescriptionChecklistItem input (F173: AS-311). `itemId`
+// is the taskItem node's `id` attribute assigned by
+// components/editor/rich-text-editor.tsx's TaskItemWithId — a client
+// (browser-generated) UUID-shaped string, not a DB primary key, so it's
+// validated as a non-empty string rather than `.uuid()` (the fallback
+// generator in rich-text-editor.tsx's `generateTaskItemId` doesn't always
+// produce a UUID literal).
+export const toggleDescriptionChecklistItemSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  itemId: z
+    .string()
+    .trim()
+    .min(1, "Invalid checklist item.")
+    .max(200, "Invalid checklist item."),
+  checked: z.boolean(),
+});
+
+export type ToggleDescriptionChecklistItemInput = z.infer<
+  typeof toggleDescriptionChecklistItemSchema
+>;

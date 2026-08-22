@@ -35,12 +35,17 @@ import {
   type JSONContent,
 } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
+import { TaskList } from "@tiptap/extension-task-list"
+import { TaskItem } from "@tiptap/extension-task-item"
+import { Plugin, PluginKey } from "@tiptap/pm/state"
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model"
 import {
   Bold,
   Italic,
   Code,
   List,
   ListOrdered,
+  ListChecks,
   Heading1,
   Heading2,
   Link as LinkIcon,
@@ -61,7 +66,89 @@ import { transformPastedHtml } from "@/lib/editor/paste-rules"
  * than added a second time, which previously produced a
  * "Duplicate extension names found: ['link']" runtime warning.
  */
-function sharedExtensions() {
+// F173 (AS-311): stable identity for taskItem nodes.
+//
+// Tiptap's stock `TaskItem` only carries a `checked` attribute — there is
+// nothing that survives a save/reload round trip and still uniquely
+// addresses "this specific checkbox" for a server-side toggle-and-persist
+// action. Rather than inventing document-position-based addressing (which
+// shifts under concurrent edits and doesn't survive save/reload), a plain
+// string `id` attribute is added, generated once when a task item is first
+// created and carried through unchanged afterwards — the same "attribute
+// that outlives a save" pattern already used by nothing else in this repo
+// but is the standard editor convention for "stable handle on a node".
+function generateTaskItemId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID()
+  }
+  // Fallback for environments without `crypto.randomUUID` (older browsers,
+  // some test runners) — collision-resistant enough for a single document's
+  // checklist, not a security boundary.
+  return `task-item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+const TaskItemWithId = TaskItem.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      id: {
+        default: null,
+        keepOnSplit: false,
+        parseHTML: (element) => element.getAttribute("data-item-id"),
+        renderHTML: (attributes) =>
+          attributes.id ? { "data-item-id": attributes.id } : {},
+      },
+    }
+  },
+})
+
+// Assigns a stable id to any `taskItem` node that doesn't have one yet
+// (freshly typed/inserted items). Only registered on the EDITABLE instance
+// (`RichTextEditor`) — the read-only `RichTextRenderer` must never mint a
+// fresh id for a node that already has one persisted server-side, since
+// `RichTextRenderer`'s inline-toggle handler addresses the server-stored
+// node by the id embedded in the fetched JSON (F173/AS-311); minting a new
+// one at render time would desync the client's id from what's in the
+// database.
+const taskItemIdPluginKey = new PluginKey("taskItemId")
+
+function taskItemIdPlugin() {
+  return new Plugin({
+    key: taskItemIdPluginKey,
+    appendTransaction(_transactions, _oldState, newState) {
+      let tr: ReturnType<typeof newState.tr.setNodeMarkup> | null = null
+      newState.doc.descendants((node: ProseMirrorNode, pos: number) => {
+        if (node.type.name === "taskItem" && !node.attrs.id) {
+          tr = (tr ?? newState.tr).setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            id: generateTaskItemId(),
+          })
+        }
+      })
+      return tr
+    },
+  })
+}
+
+function sharedExtensions({
+  assignTaskItemIds = false,
+  onReadOnlyChecked,
+}: {
+  assignTaskItemIds?: boolean
+  /** F173 (AS-311): fired when a checkbox is clicked in a non-editable
+   * (`RichTextRenderer`) instance. Returning `false` reverts the visual
+   * toggle (Tiptap's own built-in behaviour for a denied/failed change) —
+   * see `RichTextRenderer` below for the actual persistence call. */
+  onReadOnlyChecked?: (node: ProseMirrorNode, checked: boolean) => boolean
+} = {}) {
+  const taskItemExtension = assignTaskItemIds
+    ? TaskItemWithId.extend({
+        addProseMirrorPlugins() {
+          return [...(this.parent?.() ?? []), taskItemIdPlugin()]
+        },
+      })
+    : TaskItemWithId
+
   return [
     StarterKit.configure({
       link: {
@@ -69,6 +156,10 @@ function sharedExtensions() {
         autolink: true,
       },
     }),
+    TaskList,
+    taskItemExtension.configure(
+      onReadOnlyChecked ? { onReadOnlyChecked } : {},
+    ),
   ]
 }
 
@@ -153,6 +244,18 @@ function Toolbar({ editor, disabled }: { editor: Editor; disabled?: boolean }) {
       isActive: () => editor.isActive("orderedList"),
       onToggle: () => editor.chain().focus().toggleOrderedList().run(),
     },
+    {
+      // F173 (AS-311): inline checkbox list — distinct from the structured
+      // per-task Checklist section (components/task/checklist.tsx, F151-
+      // F153) that drives the task's completion percentage. This toolbar
+      // button only inserts a `taskList`/`taskItem` node inside rich text
+      // (a description or, per F174, a comment); it never writes to
+      // task_checklist_items and never affects AS-272's completion %.
+      label: "Checklist",
+      icon: ListChecks,
+      isActive: () => editor.isActive("taskList"),
+      onToggle: () => editor.chain().focus().toggleTaskList().run(),
+    },
   ]
 
   return (
@@ -224,7 +327,7 @@ export function RichTextEditor({
   const plainTextPasteRef = useRef(false)
 
   const editor = useEditor({
-    extensions: sharedExtensions(),
+    extensions: sharedExtensions({ assignTaskItemIds: true }),
     content: content ?? undefined,
     editable: !disabled,
     immediatelyRender: false,
@@ -334,6 +437,23 @@ export interface RichTextRendererProps {
   content?: JSONContent | null
   className?: string
   "aria-label"?: string
+  /**
+   * F173 (AS-311): called when a checkbox inside a `taskList`/`taskItem`
+   * is clicked in this read-only render. `itemId` is the clicked node's
+   * `id` attribute (see `TaskItemWithId` above) — `null` if the stored
+   * document predates ids being assigned, in which case the toggle is
+   * rejected (there is nothing stable to address server-side). Return
+   * (or resolve to) `true` once the change is actually persisted; `false`
+   * reverts the checkbox visually and the caller is expected to surface
+   * its own failure feedback (e.g. a toast) before returning `false`.
+   * Omitting this prop makes every checkbox in this render inert (clicks
+   * always revert) — the safe default for any caller that hasn't wired up
+   * persistence.
+   */
+  onToggleTaskItem?: (
+    itemId: string | null,
+    checked: boolean,
+  ) => boolean | Promise<boolean>
 }
 
 // F171 (AS-307, AS-309): the render-time security boundary. This is the
@@ -373,6 +493,9 @@ const ALLOWED_NODE_TYPES = new Set([
   "blockquote",
   "hardBreak",
   "horizontalRule",
+  // F173 (AS-311): inline checkbox lists.
+  "taskList",
+  "taskItem",
 ])
 
 const ALLOWED_MARK_TYPES = new Set(["bold", "italic", "code", "link", "strike"])
@@ -451,6 +574,18 @@ function sanitiseNode(node: unknown): JSONContent | null {
     result.attrs = { level: level === 2 ? 2 : level === 3 ? 3 : 1 }
   }
 
+  // F173 (AS-311): only `checked` (coerced to a real boolean) and `id`
+  // (only if it's a non-empty string) ever survive — this is the same
+  // "rebuild attrs from scratch, key by key" rule every other node above
+  // follows, so an injected hostile key on a taskItem can't ride along.
+  if (n.type === "taskItem") {
+    const id = n.attrs?.id
+    result.attrs = {
+      checked: n.attrs?.checked === true,
+      id: typeof id === "string" && id.length > 0 ? id : null,
+    }
+  }
+
   if (Array.isArray(n.marks) && n.marks.length > 0) {
     const marks = n.marks
       .map(sanitiseMark)
@@ -497,11 +632,35 @@ export function RichTextRenderer({
   content,
   className,
   "aria-label": ariaLabel = "Rich text content",
+  onToggleTaskItem,
 }: RichTextRendererProps) {
   const safeContent = sanitiseDocument(content)
 
   const editor = useEditor({
-    extensions: sharedExtensions(),
+    extensions: sharedExtensions({
+      // F173 (AS-311): read-only checkbox toggling. Optimistic by design —
+      // this handler always accepts the click at the DOM level (returns
+      // `true`) and hands off persistence to `onToggleTaskItem`; the
+      // caller owns optimistic state + rollback via the `content` prop
+      // (same pattern task-detail-sheet.tsx already uses for every other
+      // field's editTask call), so a failed save is reflected here purely
+      // by the next `content` prop update re-syncing the editor, not by
+      // this component reaching back into the DOM after the fact.
+      onReadOnlyChecked: onToggleTaskItem
+        ? (node, checked) => {
+            const itemId =
+              typeof node.attrs.id === "string" && node.attrs.id.length > 0
+                ? node.attrs.id
+                : null
+            // No stable id (e.g. content stored before this feature
+            // shipped) — nothing to address server-side, so reject the
+            // toggle rather than silently doing nothing.
+            if (!itemId) return false
+            void onToggleTaskItem(itemId, checked)
+            return true
+          }
+        : undefined,
+    }),
     content: safeContent,
     editable: false,
     immediatelyRender: false,

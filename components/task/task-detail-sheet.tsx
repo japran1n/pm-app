@@ -39,11 +39,44 @@ import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react
 import { toast } from "sonner";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 
+// F173 (AS-311): client-side mirror of lib/actions/tasks.ts's
+// (unexported) `setTaskItemChecked` — duplicated rather than imported
+// because the source of truth lives in a `"use server"` file, which can
+// only export async Server Actions; a second, identical helper here is
+// the simpler option (no shared non-server module to introduce just for
+// one small pure function) for what's only ever used to compute the
+// OPTIMISTIC preview before the real Server Action call resolves — the
+// server's own copy is what actually persists.
+function setJsonTaskItemChecked(
+  doc: JSONContent | null | undefined,
+  itemId: string,
+  checked: boolean,
+): JSONContent | null {
+  if (!doc) return null;
+  if (
+    doc.type === "taskItem" &&
+    (doc.attrs as { id?: unknown } | undefined)?.id === itemId
+  ) {
+    return { ...doc, attrs: { ...doc.attrs, checked } };
+  }
+  if (!Array.isArray(doc.content)) return null;
+  for (let i = 0; i < doc.content.length; i++) {
+    const updatedChild = setJsonTaskItemChecked(doc.content[i], itemId, checked);
+    if (updatedChild) {
+      const content = doc.content.slice();
+      content[i] = updatedChild;
+      return { ...doc, content };
+    }
+  }
+  return null;
+}
+
 import {
   deleteTask,
   editTask,
   moveTaskStatus,
   setTaskAssignees,
+  toggleDescriptionChecklistItem,
 } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
@@ -359,6 +392,17 @@ export function TaskDetailSheet({
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  // F173 (AS-311): local, optimistic mirror of `task.descriptionJson`,
+  // same "local state re-synced on task change" shape as
+  // title/description/dueDate above — needed so the Preview's inline
+  // checkbox toggle can show the new checked state immediately and roll
+  // back to the last-known-good document if the save fails, without
+  // waiting on a full task refetch (this component receives `task` as a
+  // prop from its caller, which only refreshes on its own schedule/
+  // realtime event, not synchronously after this action resolves).
+  const [descriptionJson, setDescriptionJson] = useState<
+    JSONContent | null | undefined
+  >(task?.descriptionJson);
   // Tracks which task's fields are currently loaded into local edit state,
   // so it can be re-synced below without an Effect (React docs: "adjusting
   // state when a prop changes" is done during render, not in a useEffect,
@@ -412,6 +456,7 @@ export function TaskDetailSheet({
     setTitle(task.title);
     setDescription(task.description ?? "");
     setDueDate(task.dueDate ?? "");
+    setDescriptionJson(task.descriptionJson);
   } else if (!open && syncedTaskId !== null) {
     // Sheet closed — clear the sync marker so reopening the same task
     // (e.g. after an external update) re-syncs from the latest props.
@@ -445,6 +490,43 @@ export function TaskDetailSheet({
     const next = description.trim() || null;
     if (next === (task.description ?? null)) return;
     saveField({ description: next }, "Description updated.");
+  }
+
+  // F173 (AS-311): inline toggle for a checkbox inside the description's
+  // rich-text Preview — permission-checked (`canEdit`, same gate as every
+  // other field on this Sheet) and persisted through a dedicated Server
+  // Action, WITHOUT opening a full editor. Optimistic: the local
+  // `descriptionJson` mirror is updated immediately (so `RichTextRenderer`
+  // re-syncs and the checkbox visually reflects the click right away,
+  // per that component's own optimistic-by-design `onReadOnlyChecked`
+  // contract), then rolled back with a toast if the Server Action fails.
+  async function handleToggleDescriptionChecklistItem(
+    itemId: string | null,
+    checked: boolean,
+  ): Promise<boolean> {
+    if (!task || !canEdit || !itemId) return false;
+
+    const previous = descriptionJson;
+    const optimistic = setJsonTaskItemChecked(previous, itemId, checked);
+    if (optimistic) setDescriptionJson(optimistic);
+
+    const result = await toggleDescriptionChecklistItem(
+      task.id,
+      itemId,
+      checked,
+    );
+
+    if (result.ok) {
+      setDescriptionJson(result.data.descriptionJson);
+      return true;
+    }
+
+    // Roll back to the last-known-good document and surface why, per the
+    // clarified failure-handling answer ("the optimistic change reverts
+    // and a sonner toast states what failed in plain language").
+    setDescriptionJson(previous);
+    toast.error(result.error);
+    return false;
   }
 
   // F158 (AS-280, AS-281): status editing ships with this feature — see
@@ -931,16 +1013,33 @@ export function TaskDetailSheet({
                    edit buffer above. Only shown when there is real
                    content beyond an empty doc, so the plain edit
                    Textarea above stays the single empty-state surface. */}
-                {task.descriptionJson &&
-                  Array.isArray(task.descriptionJson.content) &&
-                  task.descriptionJson.content.length > 0 && (
+                {descriptionJson &&
+                  Array.isArray(descriptionJson.content) &&
+                  descriptionJson.content.length > 0 && (
                     <div className="rounded-lg border border-input bg-muted/30 px-3 py-2">
                       <p className="mb-1 text-xs font-medium text-muted-foreground">
                         Preview
                       </p>
+                      {/* F173 (AS-311): checkboxes inside this preview
+                         (a `taskList`/`taskItem` typed via the toolbar
+                         once a caller wires RichTextEditor into the
+                         description write path — out of scope here) are
+                         toggle-able right here, without opening a
+                         separate editor. Distinct from the structured
+                         Checklist section elsewhere on this Sheet
+                         (components/task/checklist.tsx) — see
+                         app/globals.css's [data-type="taskList"] rules
+                         for the visual distinction, and this feature's
+                         handoff for why these checkboxes never feed
+                         AS-272's completion percentage. */}
                       <RichTextRenderer
-                        content={task.descriptionJson}
+                        content={descriptionJson}
                         aria-label="Description preview"
+                        onToggleTaskItem={
+                          canEdit
+                            ? handleToggleDescriptionChecklistItem
+                            : undefined
+                        }
                       />
                     </div>
                   )}

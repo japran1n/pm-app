@@ -18,8 +18,10 @@ import {
   moveAndReorderTaskSchema,
   promoteSubtaskSchema,
   getOpenBlockersSchema,
+  toggleDescriptionChecklistItemSchema,
   type EditTaskUpdates,
 } from "@/lib/validation/tasks";
+import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
@@ -2776,5 +2778,211 @@ export async function getTaskDetail(
       currentUserId: user.id,
       currentUserRole: membership.role,
     },
+  };
+}
+
+// F173 (AS-311): recursively finds the `taskItem` node carrying `itemId`
+// (its `id` attr, assigned client-side by
+// components/editor/rich-text-editor.tsx's `TaskItemWithId`) inside a
+// Tiptap JSON document and returns a NEW document with only that node's
+// `checked` attr flipped — every other node/array in the tree is reused
+// by reference (not cloned) except along the path down to the match, so
+// this stays cheap even for a long description. Returns `null` if no node
+// with that id exists (already-deleted item, stale client, or a document
+// stored before ids existed) so the caller can distinguish "nothing to
+// toggle" from "toggled".
+function setTaskItemChecked(
+  node: JSONContent,
+  itemId: string,
+  checked: boolean,
+): JSONContent | null {
+  if (
+    node.type === "taskItem" &&
+    (node.attrs as { id?: unknown } | undefined)?.id === itemId
+  ) {
+    return { ...node, attrs: { ...node.attrs, checked } };
+  }
+  if (!Array.isArray(node.content)) return null;
+  for (let i = 0; i < node.content.length; i++) {
+    const updatedChild = setTaskItemChecked(node.content[i], itemId, checked);
+    if (updatedChild) {
+      const content = node.content.slice();
+      content[i] = updatedChild;
+      return { ...node, content };
+    }
+  }
+  return null;
+}
+
+export type ToggleDescriptionChecklistItemResult =
+  | { ok: true; data: { descriptionJson: JSONContent } }
+  | { ok: false; error: string };
+
+// F173 (AS-311): toggles a single checkbox inside a task description's
+// rich-text content WITHOUT opening the full editor and without the
+// caller round-tripping the entire document through editTask/description
+// — this is deliberately its own narrow action, not a call to editTask,
+// for two reasons documented in this feature's handoff:
+//
+//   1. editTask's `updates.description` is the LEGACY plain-text column
+//      (AS-054's original contract) — there is no field on
+//      `EditTaskUpdates` for description_json at all, and adding one
+//      would reopen the "which column is the source of truth" question
+//      20260822090000_task_description_json.sql's header comment
+//      explicitly deferred to a later feature. This action writes
+//      `description_json` ONLY, leaving `description` untouched, which is
+//      exactly the shape
+//      20260822130000_task_description_json_direct_write.sql's trigger
+//      condition (`description_json` changed, `description` did not)
+//      detects to keep the direct write instead of overwriting it back
+//      from the legacy column.
+//   2. Concurrency: re-fetching the CURRENT description_json here (not
+//      trusting whatever stale copy the client had open) and writing back
+//      a full-document copy with only the target node's `checked` flipped
+//      is a deliberate, documented last-write-wins tradeoff — two
+//      concurrent toggles of DIFFERENT checkboxes on the same task within
+//      the same read-modify-write window can still race (the second
+//      write's read predates the first write's commit), overwriting one
+//      of the two toggles. This is accepted as the simpler option (no new
+//      dependency, no optimistic-concurrency version column, no second
+//      source of truth) per this feature's clarified ambiguity-resolution
+//      answer — see the handoff's Decisions Made for the full rationale,
+//      including why this differs from F153's structured checklist (whose
+//      items are separate rows, so concurrent toggles of different items
+//      never collide at the row level).
+export async function toggleDescriptionChecklistItem(
+  taskId: string,
+  itemId: string,
+  checked: boolean,
+): Promise<ToggleDescriptionChecklistItemResult> {
+  const parsed = toggleDescriptionChecklistItemSchema.safeParse({
+    taskId,
+    itemId,
+    checked,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid checklist item.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Same task lookup + membership + canEditTask gate as editTask above —
+  // this action is a narrower write to the same row, so it is
+  // permission-checked identically (AS-061: any active member, no
+  // ownership restriction; viewers/guests cannot edit, mirroring
+  // editTask's own gate).
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, deleted_at, description_json, projects!inner(id, workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this task.",
+    };
+  }
+
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit tasks.",
+    };
+  }
+
+  const currentDoc = (taskRow.description_json as JSONContent | null) ?? {
+    type: "doc",
+    content: [],
+  };
+
+  const updatedDoc = setTaskItemChecked(
+    currentDoc,
+    parsed.data.itemId,
+    parsed.data.checked,
+  );
+
+  if (!updatedDoc) {
+    return {
+      ok: false,
+      error:
+        "This checklist item no longer exists. Reload the task to see the latest description.",
+    };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    // Only description_json is written — description is deliberately
+    // absent from this payload (see this function's doc comment, point 1
+    // above).
+    .update({ description_json: updatedDoc })
+    .eq("id", parsed.data.taskId)
+    .select("description_json")
+    .single();
+
+  if (updateError || !updated) {
+    console.error(
+      "toggleDescriptionChecklistItem: update failed:",
+      updateError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.warn(
+        "toggleDescriptionChecklistItem: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: { descriptionJson: updated.description_json as JSONContent },
   };
 }
