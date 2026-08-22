@@ -11,6 +11,10 @@ import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { MemberRoleSelect } from "@/components/member-role-select";
 import { RemoveMemberButton } from "@/components/remove-member-button";
+import {
+  TransferOwnershipDialog,
+  type TransferOwnershipCandidate,
+} from "@/components/transfer-ownership-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -131,6 +135,23 @@ export default async function MembersPage({
         .order("name", { ascending: true })
     : { data: [] };
 
+  // F130 (AS-233, AS-234): only the workspace owner sees the transfer
+  // control at all — gated the same way `canDeleteWorkspace` gates
+  // DeleteWorkspaceDialog, not merely a disabled control for anyone else.
+  // Candidates are built only from `members.active` (already excludes
+  // pending invites — AS-234) and exclude the caller's own row (there is
+  // nothing to transfer to yourself).
+  const isOwner = ownMembership?.role === "owner";
+  const transferCandidates: TransferOwnershipCandidate[] =
+    isOwner && members
+      ? members.active
+          .filter((member) => member.userId !== user.id)
+          .map((member) => ({
+            userId: member.userId,
+            label: member.name ?? member.email ?? "Unknown member",
+          }))
+      : [];
+
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
@@ -139,6 +160,15 @@ export default async function MembersPage({
           Active members and pending invites for {workspace.name}.
         </p>
       </div>
+
+      {isOwner && members && (
+        <div>
+          <TransferOwnershipDialog
+            workspaceId={workspace.id}
+            candidates={transferCandidates}
+          />
+        </div>
+      )}
 
       {loadError && (
         <div

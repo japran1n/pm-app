@@ -956,6 +956,13 @@ export type Database = {
           reason: string
         }[]
       }
+      transfer_workspace_ownership: {
+        Args: { p_new_owner_user_id: string; p_workspace_id: string }
+        Returns: {
+          reason: string
+          transferred: boolean
+        }[]
+      }
       search_tasks: {
         Args: { p_project_id: string; p_query: string }
         Returns: {

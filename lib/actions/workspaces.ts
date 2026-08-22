@@ -13,6 +13,7 @@ import {
   revokeInviteSchema,
   changeMemberRoleSchema,
   removeMemberSchema,
+  transferOwnershipSchema,
   deleteWorkspaceSchema,
   renameWorkspaceSchema,
   changeWorkspaceSlugSchema,
@@ -44,6 +45,10 @@ export type ChangeMemberRoleResult =
   | { ok: false; error: string };
 
 export type RemoveMemberResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export type TransferOwnershipResult =
   | { ok: true }
   | { ok: false; error: string };
 
@@ -947,6 +952,164 @@ export async function removeMember(
       // failure.
       console.error(
         "removeMember: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true };
+}
+
+// F130 (AS-233, AS-234): transfers ownership of a workspace to another
+// active member. Owner-only (`requireWorkspaceOwner`) — unlike
+// `removeMember`/`changeMemberRole`'s broader owner-or-admin line, only the
+// current owner may hand off ownership.
+//
+// Atomicity: this is a genuine two-write operation (old owner -> admin,
+// new owner -> owner), unlike F129's `changeMemberRole` sole-owner guard,
+// which could get away with a check-then-act compromise because it only
+// ever mutates one row. A partial failure here would leave the workspace
+// either ownerless or double-owned, both of which break every owner-only
+// permission check in the app — so both writes happen inside the single
+// SECURITY DEFINER `transfer_workspace_ownership` RPC
+// (supabase/migrations/20260822085141_transfer_workspace_ownership_atomic.sql),
+// which mirrors `remove_workspace_member`'s (F094) `SELECT ... FOR UPDATE`
+// locking shape: both rows are locked, validated, and updated inside one
+// implicit transaction, so a mid-transfer failure leaves the original
+// owner's row completely untouched (AS-233).
+//
+// AS-234: the RPC rejects a target who is not an active member of this
+// exact workspace (removed, pending/invited, or not a member at all) —
+// mapped below to a specific user-facing message.
+export async function transferOwnership(
+  workspaceId: string,
+  newOwnerUserId: string,
+): Promise<TransferOwnershipResult> {
+  const parsed = transferOwnershipSchema.safeParse({
+    workspaceId,
+    newOwnerUserId,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to transfer ownership.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Defense in depth (AS-143 convention): re-check the caller is
+  // specifically the active *owner* of this exact workspace, server-side —
+  // an admin or member calling this action directly (bypassing the UI,
+  // which only renders the control for the owner) must be rejected.
+  const membership = await requireWorkspaceOwner(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "Only the workspace owner can transfer ownership.",
+    };
+  }
+
+  if (parsed.data.newOwnerUserId === user.id) {
+    return {
+      ok: false,
+      error: "You are already the owner of this workspace.",
+    };
+  }
+
+  const { data: rpcRows, error: rpcError } = await admin.rpc(
+    "transfer_workspace_ownership",
+    {
+      p_workspace_id: parsed.data.workspaceId,
+      p_new_owner_user_id: parsed.data.newOwnerUserId,
+    },
+  );
+
+  if (rpcError) {
+    console.error(
+      "transferOwnership: transfer_workspace_ownership RPC failed:",
+      rpcError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (!rpcResult?.transferred) {
+    if (
+      rpcResult?.reason === "target_not_member" ||
+      rpcResult?.reason === "target_not_active"
+    ) {
+      return {
+        ok: false,
+        error:
+          "You can only transfer ownership to an active member of this workspace.",
+      };
+    }
+    if (rpcResult?.reason === "target_is_current_owner") {
+      return {
+        ok: false,
+        error: "You are already the owner of this workspace.",
+      };
+    }
+    if (rpcResult?.reason === "no_active_owner") {
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  await writeAudit(supabase, {
+    workspaceId: parsed.data.workspaceId,
+    action: "workspace.ownership_transferred",
+    targetType: "workspace_member",
+    targetId: null,
+    metadata: { new_owner_user_id: parsed.data.newOwnerUserId },
+  });
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}/settings/members`);
+    } catch (revalidateError) {
+      // Same non-fatal cache-freshness rationale as every other action in
+      // this file: revalidatePath throws outside an active request/render
+      // context (e.g. this action invoked from a test harness). The
+      // transfer itself already succeeded, so this is not an action
+      // failure.
+      console.error(
+        "transferOwnership: revalidatePath failed (non-fatal):",
         revalidateError,
       );
     }

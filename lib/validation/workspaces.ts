@@ -88,6 +88,19 @@ export const removeMemberSchema = z.object({
 
 export type RemoveMemberInput = z.infer<typeof removeMemberSchema>;
 
+// Validates transfer-ownership input (F130, AS-233/AS-234). Only the
+// workspace id and the target's user id (not their membership id) are
+// needed — the atomic `transfer_workspace_ownership` RPC looks the target
+// up by `user_id` within the workspace itself, since the caller-facing
+// dialog only ever knows "who" they're transferring to, not that row's
+// internal membership id.
+export const transferOwnershipSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  newOwnerUserId: z.string().uuid("Invalid member."),
+});
+
+export type TransferOwnershipInput = z.infer<typeof transferOwnershipSchema>;
+
 // Validates delete-workspace input (AS-020/AS-021).
 export const deleteWorkspaceSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
