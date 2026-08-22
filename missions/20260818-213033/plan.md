@@ -129,7 +129,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F200 reaction-actions — AS-367 [CLARIFIED-AUTO]
 - F201 reaction-ui — AS-366 [CLARIFIED-AUTO] [COMPLETE]
 - F202 reaction-realtime — AS-369 [CLARIFIED-AUTO] [COMPLETE]
-- F203 mention-extension — AS-371, AS-372, AS-373 [CLARIFIED-AUTO]
+- F203 mention-extension — AS-371, AS-372, AS-373 [CLARIFIED-AUTO] [COMPLETE]
 - F204 mention-permission-filter — AS-376, AS-377 [CLARIFIED-AUTO]
 - F205 mention-in-description — AS-378 [CLARIFIED-AUTO]
 - F206 db-schema-notifications — AS-389, AS-392 [CLARIFIED-AUTO]
