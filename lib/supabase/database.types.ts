@@ -483,6 +483,8 @@ export type Database = {
           deleted_at: string | null
           deleted_via_task_id: string | null
           description: string | null
+          description_json: Json | null
+          description_text: string | null
           due_date: string | null
           estimate_minutes: number | null
           id: string
@@ -506,6 +508,8 @@ export type Database = {
           deleted_at?: string | null
           deleted_via_task_id?: string | null
           description?: string | null
+          description_json?: Json | null
+          description_text?: string | null
           due_date?: string | null
           estimate_minutes?: number | null
           id?: string
@@ -529,6 +533,8 @@ export type Database = {
           deleted_at?: string | null
           deleted_via_task_id?: string | null
           description?: string | null
+          description_json?: Json | null
+          description_text?: string | null
           due_date?: string | null
           estimate_minutes?: number | null
           id?: string
@@ -867,7 +873,7 @@ export type Database = {
           child_done: number
           child_total: number
           due_date: string
-          estimate_minutes: number | null
+          estimate_minutes: number
           id: string
           number: number
           open_blocker_count: number
@@ -956,13 +962,6 @@ export type Database = {
           reason: string
         }[]
       }
-      transfer_workspace_ownership: {
-        Args: { p_new_owner_user_id: string; p_workspace_id: string }
-        Returns: {
-          reason: string
-          transferred: boolean
-        }[]
-      }
       search_tasks: {
         Args: { p_project_id: string; p_query: string }
         Returns: {
@@ -972,6 +971,8 @@ export type Database = {
           deleted_at: string | null
           deleted_via_task_id: string | null
           description: string | null
+          description_json: Json | null
+          description_text: string | null
           due_date: string | null
           estimate_minutes: number | null
           id: string
@@ -1019,6 +1020,14 @@ export type Database = {
           note: string
           task_id: string
           user_id: string
+        }[]
+      }
+      tiptap_doc_from_text: { Args: { p_text: string }; Returns: Json }
+      transfer_workspace_ownership: {
+        Args: { p_new_owner_user_id: string; p_workspace_id: string }
+        Returns: {
+          reason: string
+          transferred: boolean
         }[]
       }
       write_audit_log_entry: {
