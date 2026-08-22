@@ -3,17 +3,21 @@ import { createClient } from "@/lib/supabase/server";
 export type ProjectTimeTotals = {
   billableMinutes: number;
   nonBillableMinutes: number;
+  estimateMinutes: number;
 };
 
-// getProjectTimeTotals (F114, AS-172, AS-174): thin wrapper around the
-// `get_project_time_totals` RPC (supabase/migrations/20260818160000_rpc_project_time_totals.sql),
+// getProjectTimeTotals (F114/AS-172/AS-174; extended by F168/AS-303/AS-304
+// to add `estimateMinutes`): thin wrapper around the `get_project_time_totals`
+// RPC (supabase/migrations/20260818160000_rpc_project_time_totals.sql,
+// extended by supabase/migrations/20260822080000_rpc_project_time_totals_estimate.sql),
 // following the same thin-wrapper convention as `getActiveTimer` below and
 // the F073 dashboard wrappers around `get_priority_counts`/`get_status_counts`
 // (lib/queries/dashboard.ts). Uses the request-scoped (RLS-respecting)
 // client — the RPC itself is `security invoker`, so a caller who isn't an
 // active member of the project's workspace gets zero totals back, not an
 // error and not another workspace's data. The RPC's own `t.deleted_at is
-// null` filter excludes a soft-deleted task's logged time (AS-174).
+// null` filter excludes a soft-deleted task's logged time and estimate
+// (AS-174, AS-304).
 export async function getProjectTimeTotals(
   projectId: string,
 ): Promise<ProjectTimeTotals> {
@@ -25,12 +29,13 @@ export async function getProjectTimeTotals(
 
   const row = data?.[0];
   if (error || !row) {
-    return { billableMinutes: 0, nonBillableMinutes: 0 };
+    return { billableMinutes: 0, nonBillableMinutes: 0, estimateMinutes: 0 };
   }
 
   return {
     billableMinutes: Number(row.billable_minutes ?? 0),
     nonBillableMinutes: Number(row.non_billable_minutes ?? 0),
+    estimateMinutes: Number(row.estimate_minutes ?? 0),
   };
 }
 

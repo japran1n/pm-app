@@ -87,6 +87,9 @@ export default async function ProjectDetailLayout({
   // rendered as a small stat in the project header. AS-174 (excluding a
   // soft-deleted task's time) is enforced inside the RPC itself
   // (get_project_time_totals), not here.
+  // F168 (AS-303): the same RPC also returns the project's summed task
+  // estimate, rendered alongside the logged total. AS-304 (excluding a
+  // soft-deleted task's estimate) is likewise enforced inside the RPC.
   const timeTotals = await getProjectTimeTotals(project.id);
   const totalMinutes =
     timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
@@ -118,10 +121,12 @@ export default async function ProjectDetailLayout({
           </Link>
         </div>
 
-        {totalMinutes > 0 && (
+        {(totalMinutes > 0 || timeTotals.estimateMinutes > 0) && (
           <p className="text-sm text-muted-foreground">
             {formatHours(totalMinutes)}h logged (
             {formatHours(timeTotals.billableMinutes)}h billable)
+            {timeTotals.estimateMinutes > 0 &&
+              ` of ${formatHours(timeTotals.estimateMinutes)}h estimated`}
           </p>
         )}
 

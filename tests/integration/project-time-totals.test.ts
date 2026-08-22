@@ -1,4 +1,6 @@
-// Integration test for F114's `get_project_time_totals` RPC (AS-172, AS-174).
+// Integration test for F114's `get_project_time_totals` RPC (AS-172, AS-174),
+// extended by F168 (AS-303, AS-304) to also cover the RPC's `estimate_minutes`
+// column.
 //
 // Verifies against the real linked Supabase project that:
 //  - billable and non-billable minutes are summed and split correctly
@@ -6,6 +8,10 @@
 //  - a soft-deleted task's logged time is excluded from the total: the
 //    RPC's reported total drops by exactly that task's minutes once the
 //    task is soft-deleted (AS-174)
+//  - the project's task estimates are summed against the logged time
+//    (AS-303)
+//  - a soft-deleted task's estimate is excluded from the estimate sum,
+//    exactly mirroring AS-174's logged-time behaviour (AS-304)
 //
 // Skips (rather than fails) when Supabase credentials aren't present in the
 // environment. Mirrors tests/integration/rls-time-entries.test.ts (F108)
@@ -107,7 +113,12 @@ describe.skipIf(!haveAdminCreds)(
 
       const { data: taskKept, error: taskKeptErr } = await adminClient
         .from("tasks")
-        .insert({ project_id: projectId, title: "F114 kept task", author_id: userId })
+        .insert({
+          project_id: projectId,
+          title: "F114 kept task",
+          author_id: userId,
+          estimate_minutes: 120,
+        })
         .select("id")
         .single();
       if (taskKeptErr || !taskKept) {
@@ -117,7 +128,12 @@ describe.skipIf(!haveAdminCreds)(
 
       const { data: taskDeleted, error: taskDeletedErr } = await adminClient
         .from("tasks")
-        .insert({ project_id: projectId, title: "F114 soft-deleted task", author_id: userId })
+        .insert({
+          project_id: projectId,
+          title: "F114 soft-deleted task",
+          author_id: userId,
+          estimate_minutes: 200,
+        })
         .select("id")
         .single();
       if (taskDeletedErr || !taskDeleted) {
@@ -177,7 +193,17 @@ describe.skipIf(!haveAdminCreds)(
       expect(Number(row?.non_billable_minutes)).toBe(25);
     });
 
-    it("AS-174: soft-deleting a task drops its logged time from the project total", async () => {
+    it("AS-303: sums the project's task estimates alongside the logged time totals", async () => {
+      const { data, error } = await adminClient.rpc("get_project_time_totals", {
+        p_project_id: projectId,
+      });
+      expect(error).toBeNull();
+      const row = data?.[0];
+      // 120 (kept task's estimate) + 200 (not-yet-deleted task's estimate) = 320.
+      expect(Number(row?.estimate_minutes)).toBe(320);
+    });
+
+    it("AS-174 / AS-304: soft-deleting a task drops its logged time AND its estimate from the project totals", async () => {
       const { error: deleteErr } = await adminClient
         .from("tasks")
         .update({ deleted_at: new Date().toISOString() })
@@ -193,6 +219,9 @@ describe.skipIf(!haveAdminCreds)(
       // task's 100 billable minutes must no longer be counted.
       expect(Number(row?.billable_minutes)).toBe(40);
       expect(Number(row?.non_billable_minutes)).toBe(25);
+      // AS-304: only the kept task's 120-minute estimate remains; the
+      // soft-deleted task's 200-minute estimate must no longer be summed.
+      expect(Number(row?.estimate_minutes)).toBe(120);
     });
   },
 );

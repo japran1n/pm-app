@@ -884,6 +884,7 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: {
           billable_minutes: number
+          estimate_minutes: number
           non_billable_minutes: number
         }[]
       }
