@@ -1,0 +1,44 @@
+-- F177: idempotent next-occurrence generation on task completion
+-- (AS-315, AS-320, AS-321)
+--
+-- Problem: moveTaskStatus (lib/actions/tasks.ts) generates the next
+-- occurrence of a recurring task when it transitions into "done". A double
+-- submit, a realtime replay, or a retried request must NOT create two
+-- occurrences for the same (series, due date) pair (AS-320). Per this
+-- feature's Clarified implementation ("idempotency must be enforced by a
+-- database constraint, not only by an application check"), the guarantee
+-- lives here, not just as an app-level "check first" (which is inherently
+-- racy under concurrent requests).
+--
+-- `tasks_recurrence_occurrence_idempotency`: a partial UNIQUE index on
+-- (recurrence_parent_id, due_date), scoped to `recurrence_parent_id is not
+-- null` (an occurrence row always has this set — see below) and
+-- `deleted_at is null` (a soft-deleted occurrence shouldn't block
+-- regenerating the same date if the series is somehow replayed after a
+-- delete; additive/non-destructive per this mission's migration-safety
+-- convention).
+--
+-- Application-side contract this index depends on (lib/actions/tasks.ts):
+-- `recurrence_parent_id` on every GENERATED occurrence is always the ROOT
+-- task of the series (source.recurrence_parent_id ?? source.id), never the
+-- immediately-completing task, so repeatedly completing occurrence N, N+1,
+-- N+2... of the SAME series all share one `recurrence_parent_id` value and
+-- this single index enforces "at most one occurrence per due date" across
+-- the whole series, not just per-immediate-parent.
+--
+-- The insert itself uses `ON CONFLICT (recurrence_parent_id, due_date) DO
+-- NOTHING` (Supabase JS: `.upsert(..., { onConflict:
+-- 'recurrence_parent_id,due_date', ignoreDuplicates: true })`), so a
+-- concurrent duplicate attempt is silently absorbed by Postgres itself,
+-- not by an app-level pre-check-then-insert race window.
+--
+-- Nullable `due_date` is fine: two occurrences with a NULL due_date do NOT
+-- collide under a standard UNIQUE index (NULL <> NULL in SQL), so a series
+-- whose task never had a due date to advance from is simply never a
+-- candidate for this constraint — the application layer already skips
+-- generation entirely when the source task has no `due_date` (nothing to
+-- advance from), so this is a defensive backstop, not the primary guard.
+
+create unique index if not exists tasks_recurrence_occurrence_idempotency
+  on tasks (recurrence_parent_id, due_date)
+  where recurrence_parent_id is not null and deleted_at is null;
