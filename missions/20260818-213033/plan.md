@@ -127,7 +127,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F198 comment-edited-indicator — AS-363 [CLARIFIED-AUTO]
 - F199 db-schema-comment-reactions — AS-365, AS-368, AS-370 [CLARIFIED-AUTO]
 - F200 reaction-actions — AS-367 [CLARIFIED-AUTO]
-- F201 reaction-ui — AS-366 [CLARIFIED-AUTO]
+- F201 reaction-ui — AS-366 [CLARIFIED-AUTO] [COMPLETE]
 - F202 reaction-realtime — AS-369 [CLARIFIED-AUTO]
 - F203 mention-extension — AS-371, AS-372, AS-373 [CLARIFIED-AUTO]
 - F204 mention-permission-filter — AS-376, AS-377 [CLARIFIED-AUTO]
