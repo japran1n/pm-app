@@ -316,3 +316,54 @@ export const toggleDescriptionChecklistItemSchema = z.object({
 export type ToggleDescriptionChecklistItemInput = z.infer<
   typeof toggleDescriptionChecklistItemSchema
 >;
+
+// Validates bulkUpdateTasks input (F186: AS-337, AS-338, AS-341). Mirrors
+// editTaskSchema's ".partial()" shape (only the fields actually present in
+// `updates` are applied — status/assigneeId/priority/dueDate all
+// omittable), but the writable field set is deliberately narrower than
+// editTaskSchema: title/description/estimate/recurrence are single-task
+// editor fields, not bulk fields, per this feature's Clarified
+// implementation ("only the files named in the feature's Files section").
+//
+// taskIds: capped at 200 (this feature's own resolved "Notes for
+// clarification" choice, recorded in the handoff's Decisions Made — the
+// simplest option that adds no new dependency: large enough to cover a
+// full page of the list view's select-all in every realistic project size
+// this app supports, small enough that a single `UPDATE ... WHERE id =
+// ANY($1)` stays a cheap single-statement write, AS-337/AS-338's
+// performance-budget answer).
+export const bulkUpdateTasksSchema = z
+  .object({
+    taskIds: z
+      .array(z.string().uuid("Invalid task."))
+      .min(1, "Select at least one task.")
+      .max(200, "You can update at most 200 tasks at once."),
+    updates: z
+      .object({
+        // Matches `tasks_status_check` — same fixed 4-value set as
+        // moveTaskStatusSchema.
+        status: z.enum(["todo", "in_progress", "in_review", "done"]),
+        // null explicitly means "unassign", same convention as
+        // assignTaskSchema's assigneeId.
+        assigneeId: z.string().uuid("Invalid assignee.").nullable(),
+        priority: z
+          .enum(["urgent", "high", "medium", "low", "backlog"])
+          .nullable(),
+        dueDate: z
+          .string()
+          .trim()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
+          .nullable(),
+      })
+      .partial()
+      .refine((updates) => Object.keys(updates).length > 0, {
+        message: "Choose at least one field to update.",
+      }),
+  })
+  .refine((input) => new Set(input.taskIds).size === input.taskIds.length, {
+    message: "Duplicate tasks in selection.",
+    path: ["taskIds"],
+  });
+
+export type BulkUpdateTasksInput = z.infer<typeof bulkUpdateTasksSchema>;
+export type BulkUpdateTasksUpdates = BulkUpdateTasksInput["updates"];

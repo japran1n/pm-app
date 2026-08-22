@@ -76,6 +76,10 @@ import { UserAvatarGroup } from "@/components/user-avatar-group";
 // action bar shown while the selection is non-empty.
 import { Checkbox } from "@/components/ui/checkbox";
 import { BulkActionBar } from "@/components/task/bulk-action-bar";
+// F186 (AS-337): the first real bulk action rendered into
+// <BulkActionBar>'s children slot — see that component for the rest of
+// the F185/F186 wiring contract.
+import { BulkStatusAction } from "@/components/task/bulk-status-action";
 
 export function TaskListTable({
   tasks,
@@ -415,7 +419,12 @@ export function TaskListTable({
     {/* F185 (AS-336/342): only rendered while the selection is non-empty;
         `onClear` is the same programmatic-clear mechanism F186/F187's
         bulk actions will call once their mutation completes. */}
-    <BulkActionBar selectedCount={selectedCount} onClear={clearSelection} />
+    <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
+      <BulkStatusAction
+        selectedIds={Array.from(selectedIds)}
+        onDone={clearSelection}
+      />
+    </BulkActionBar>
     </>
   );
 }

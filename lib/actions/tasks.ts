@@ -20,7 +20,9 @@ import {
   getOpenBlockersSchema,
   toggleDescriptionChecklistItemSchema,
   duplicateTaskSchema,
+  bulkUpdateTasksSchema,
   type EditTaskUpdates,
+  type BulkUpdateTasksUpdates,
 } from "@/lib/validation/tasks";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -3381,4 +3383,264 @@ export async function duplicateTask(
       number: inserted.number,
     },
   };
+}
+
+// ---------------------------------------------------------------------
+// F186 (AS-337, AS-338, AS-341): bulk field updates from the list view's
+// multi-select (F185's <TaskListTable> row checkboxes + <BulkActionBar>).
+// ---------------------------------------------------------------------
+
+export type BulkUpdateTasksResult =
+  | {
+      ok: true;
+      data: {
+        // Ids the update actually applied to. AS-337/AS-338's "N tasks all
+        // get updated via one call" is proven by this list matching the
+        // caller-permitted subset of the input, not by every input id
+        // necessarily appearing here.
+        succeededIds: string[];
+        // AS-341: a task the caller isn't authorized to edit (not found,
+        // soft-deleted, or in a private project they have no access to)
+        // is excluded from the update and reported here with a reason —
+        // it does NOT fail the whole batch. Every OTHER selected task the
+        // caller can edit still succeeds in the same call. This is the
+        // clarification's resolved answer to "does one forbidden task
+        // fail the whole batch, or just itself": just itself. See this
+        // feature's handoff Decisions Made for the full rationale.
+        failedIds: { id: string; reason: string }[];
+      };
+    }
+  | { ok: false; error: string };
+
+type BulkTaskAuthContext = {
+  workspaceId: string;
+  projectId: string;
+  visibility: ProjectVisibility;
+};
+
+// Loads (id -> {workspaceId, projectId, visibility}) for every requested
+// task id in one query, excluding soft-deleted rows outright (a
+// soft-deleted task is treated identically to "not found" everywhere else
+// in this file — deleteTask's own doc comment). One round trip regardless
+// of how many ids were requested, matching this feature's Clarified
+// performance-budget answer ("never a per-row loop of network calls").
+async function loadBulkTaskAuthContexts(
+  admin: ReturnType<typeof createAdminClient>,
+  taskIds: string[],
+): Promise<Map<string, BulkTaskAuthContext>> {
+  const { data: rows } = await admin
+    .from("tasks")
+    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+    .in("id", taskIds)
+    .is("deleted_at", null);
+
+  const contexts = new Map<string, BulkTaskAuthContext>();
+  for (const row of rows ?? []) {
+    const project = Array.isArray(row.projects)
+      ? row.projects[0]
+      : row.projects;
+    if (!project?.workspace_id) continue;
+    contexts.set(row.id, {
+      workspaceId: project.workspace_id,
+      projectId: project.id,
+      visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+    });
+  }
+  return contexts;
+}
+
+// Bulk-updates status/assigneeId/priority/dueDate on a caller-supplied set
+// of tasks in a single UPDATE statement, per this feature's Clarified
+// performance-budget answer ("one statement ... never a per-row loop of
+// network calls"). Every task in the input list gets its OWN
+// authorization check (AS-341) — some selected tasks may belong to a
+// private project the caller has no access to even though they're an
+// active member of the same workspace as other, permitted tasks in the
+// same call (mirrors AS-290's exact scenario for assignee candidates,
+// re-implemented here the same way: `is_project_visible_to`'s rule,
+// re-checked in application code because this action uses the admin
+// client, which bypasses RLS by design — see loadTaskAssignContext's
+// sibling doc comment above).
+//
+// AS-341's resolved behaviour: a forbidden task is excluded from the
+// UPDATE and reported in `failedIds`; it never fails the whole batch —
+// every other, permitted task in the same call still succeeds. This
+// mirrors this codebase's own precedent for "some items in a batch are
+// invalid" (setTaskAssigneesCore is the one exception, by contrast,
+// because assignment there is a single task's own field, not a
+// cross-task batch — there is no batch to partially fail).
+//
+// Blocked-task confirmation (F158): per this feature's own draft scope,
+// resolved BEFORE this action is called, once for the whole selection —
+// this server action does not call getOpenBlockers/isDoneStatus itself.
+// The list view's bulk status control (components/task/
+// task-list-table.tsx) is responsible for calling
+// useBlockedDoneGuard().confirmIfMovingToDone for each task in the
+// selection (skipping ones the user cancels) and passing only the
+// confirmed ids through to this action, exactly as F158's own doc
+// comment on useBlockedDoneGuard anticipates.
+//
+// assigneeId (AS-338): writes ONLY the deprecated `tasks.assignee_id`
+// single-assignee mirror column, not `task_assignees` (F160's
+// multi-assignee table). Routing a bulk call through
+// setTaskAssigneesCore per task would be a per-row loop of network calls
+// (diff-then-write per task), which this feature's performance budget
+// explicitly forbids; writing the mirror column directly keeps the whole
+// operation a single statement. This means a bulk assignee change
+// replaces a task's single mirrored assignee but does not touch any
+// OTHER existing multi-assignee rows that task might already have via
+// `task_assignees` — see this feature's handoff Out-of-scope note.
+export async function bulkUpdateTasks(
+  taskIds: string[],
+  updates: BulkUpdateTasksUpdates,
+): Promise<BulkUpdateTasksResult> {
+  const parsed = bulkUpdateTasksSchema.safeParse({ taskIds, updates });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid bulk update.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to update tasks." };
+  }
+
+  const admin = createAdminClient();
+  const contexts = await loadBulkTaskAuthContexts(admin, parsed.data.taskIds);
+
+  const failedIds: { id: string; reason: string }[] = [];
+  for (const id of parsed.data.taskIds) {
+    if (!contexts.has(id)) {
+      failedIds.push({ id, reason: "Task not found." });
+    }
+  }
+
+  // One membership check per distinct workspace touched by this call
+  // (typically one — the list view a selection is made from is always
+  // scoped to a single project/workspace — but this does not assume
+  // that), never per task (AS-341's performance budget).
+  const distinctWorkspaceIds = new Set(
+    [...contexts.values()].map((c) => c.workspaceId),
+  );
+  const roleByWorkspace = new Map<string, WorkspaceRole>();
+  for (const workspaceId of distinctWorkspaceIds) {
+    const membership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (membership.ok) {
+      roleByWorkspace.set(workspaceId, membership.role);
+    }
+  }
+
+  // Private-project visibility (AS-290's rule, re-applied here): only
+  // needed for tasks whose project is actually private — one extra query
+  // covering every such project in this call, not one per task.
+  const privateProjectIds = new Set(
+    [...contexts.values()]
+      .filter((c) => c.visibility === "private")
+      .map((c) => c.projectId),
+  );
+  const explicitMemberProjectIds = new Set<string>();
+  if (privateProjectIds.size > 0) {
+    const { data: memberRows } = await admin
+      .from("project_members")
+      .select("project_id")
+      .in("project_id", [...privateProjectIds])
+      .eq("user_id", user.id);
+    for (const row of memberRows ?? []) {
+      explicitMemberProjectIds.add(row.project_id as string);
+    }
+  }
+
+  const allowedIds: string[] = [];
+  for (const [id, context] of contexts) {
+    const role = roleByWorkspace.get(context.workspaceId);
+    if (!role) {
+      failedIds.push({ id, reason: "You are not a member of this workspace." });
+      continue;
+    }
+    if (!canEditTask({ role })) {
+      failedIds.push({
+        id,
+        reason: "You don't have permission to edit this task.",
+      });
+      continue;
+    }
+    if (
+      context.visibility === "private" &&
+      role !== "owner" &&
+      role !== "admin" &&
+      !explicitMemberProjectIds.has(context.projectId)
+    ) {
+      failedIds.push({
+        id,
+        reason: "You don't have access to this task's project.",
+      });
+      continue;
+    }
+    allowedIds.push(id);
+  }
+
+  if (allowedIds.length === 0) {
+    return { ok: true, data: { succeededIds: [], failedIds } };
+  }
+
+  // Build the update payload from only the fields present in `updates` —
+  // same "only present fields are applied" convention as editTask.
+  const updatePayload: {
+    status?: "todo" | "in_progress" | "in_review" | "done";
+    assignee_id?: string | null;
+    priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+    due_date?: string | null;
+  } = {};
+  if ("status" in parsed.data.updates) {
+    updatePayload.status = parsed.data.updates.status;
+  }
+  if ("assigneeId" in parsed.data.updates) {
+    updatePayload.assignee_id = parsed.data.updates.assigneeId;
+  }
+  if ("priority" in parsed.data.updates) {
+    updatePayload.priority = parsed.data.updates.priority;
+  }
+  if ("dueDate" in parsed.data.updates) {
+    updatePayload.due_date = parsed.data.updates.dueDate;
+  }
+
+  // The one real write: a single `UPDATE ... WHERE id = ANY(allowedIds)`
+  // statement, per this feature's Clarified performance-budget answer.
+  const { data: updatedRows, error: updateError } = await admin
+    .from("tasks")
+    .update(updatePayload)
+    .in("id", allowedIds)
+    .select("id");
+
+  if (updateError) {
+    console.error("bulkUpdateTasks: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const succeededIds = (updatedRows ?? []).map((row) => row.id as string);
+
+  for (const workspaceId of distinctWorkspaceIds) {
+    if (!roleByWorkspace.has(workspaceId)) continue;
+    await revalidateWorkspaceForTaskAssignment(
+      admin,
+      workspaceId,
+      "bulkUpdateTasks",
+    );
+  }
+
+  return { ok: true, data: { succeededIds, failedIds } };
 }
