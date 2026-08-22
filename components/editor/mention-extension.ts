@@ -66,6 +66,32 @@ export function resolveMentionLabel(
 }
 
 /**
+ * F204 (AS-377): the render-time fallback for a mention whose id is not in
+ * the *reader's* currently-visible member/suggestion list — either because
+ * the mentioned user was removed from the workspace/project, or because
+ * this specific reader no longer has visibility into them (the id is not
+ * necessarily invalid; `mentionSuggestions` is always scoped to who the
+ * current reader can see). Unlike `resolveMentionLabel` above (used by
+ * AS-373's "insert" path, which intentionally falls back to the raw id
+ * rather than going blank), this is the read-only render path and
+ * deliberately never surfaces the raw user id — a UUID leaking into
+ * rendered text isn't a meaningful label for a reader who can't resolve it
+ * anyway, and doing so would be exactly the "leak identity" failure mode
+ * this feature's spec calls out. `known: false` means "render as plain
+ * text, not a chip" — see renderHTML/renderText below.
+ */
+export function resolveMentionDisplay(
+  items: MentionSuggestionItem[],
+  id: string | null | undefined,
+): { label: string; known: boolean } {
+  if (!id) return { label: "Former member", known: false }
+  const found = items.find((item) => item.id === id)
+  return found
+    ? { label: found.label, known: true }
+    : { label: "Former member", known: false }
+}
+
+/**
  * Builds a Mention extension bound to a *live* getter for the current
  * member list, so the same extension instance always filters/renders
  * against up-to-date `mentionSuggestions` props (rich-text-editor.tsx
@@ -154,12 +180,24 @@ export function createMentionExtension({
           .run()
       },
     } satisfies Partial<SuggestionOptions<MentionSuggestionItem>>,
-    // AS-373: the highlighted chip. Resolves the label live via
-    // `getItems()` on every render pass — never reads `node.attrs.label`
-    // (which this extension never sets — see `command` above).
+    // AS-373 / AS-377: resolves the label live via `getItems()` on every
+    // render pass — never reads `node.attrs.label` (which this extension
+    // never sets — see `command` above). A mention whose id isn't
+    // resolvable against the CURRENT reader's `mentionSuggestions`
+    // (removed from the workspace/project, or simply not visible to this
+    // reader) renders as plain, unstyled text instead of the highlighted
+    // chip — no `data-id`, no raw user id ever reaches the DOM (AS-377: "a
+    // mention of a removed user renders as plain text").
     renderHTML({ node }) {
       const id = node.attrs.id as string | null
-      const label = resolveMentionLabel(getItems(), id)
+      const { label, known } = resolveMentionDisplay(getItems(), id)
+      if (!known) {
+        return [
+          "span",
+          { "data-type": "mention-unresolved", class: "text-muted-foreground" },
+          `@${label}`,
+        ]
+      }
       return [
         "span",
         {
@@ -173,7 +211,7 @@ export function createMentionExtension({
     },
     renderText({ node }) {
       const id = node.attrs.id as string | null
-      return `@${resolveMentionLabel(getItems(), id)}`
+      return `@${resolveMentionDisplay(getItems(), id).label}`
     },
   })
 }

@@ -34,6 +34,7 @@ import "@testing-library/jest-dom/vitest";
 import {
   filterMentionItems,
   resolveMentionLabel,
+  resolveMentionDisplay,
 } from "@/components/editor/mention-extension";
 import {
   MentionList,
@@ -178,5 +179,83 @@ describe("AS-373: a selected mention renders as a highlighted chip", () => {
 
   it("test_AS_373_unresolvable_id_falls_back_to_the_raw_id_rather_than_blank", () => {
     expect(resolveMentionLabel(MEMBERS, "removed-user")).toBe("removed-user");
+  });
+});
+
+// F204: mentions respect project access.
+describe("AS-377: a mention of a removed/inaccessible user renders as plain text", () => {
+  it("test_AS_377_resolveMentionDisplay_marks_a_missing_id_as_unknown_with_a_former_member_label", () => {
+    // The exact function renderHTML/renderText call — unlike
+    // resolveMentionLabel (AS-373's insert-path fallback, which
+    // deliberately falls back to the raw id), the render path must never
+    // surface a raw user id to a reader who can't resolve it.
+    expect(resolveMentionDisplay(MEMBERS, "removed-user")).toEqual({
+      label: "Former member",
+      known: false,
+    });
+    expect(resolveMentionDisplay(MEMBERS, "u-1")).toEqual({
+      label: "Ada Lovelace",
+      known: true,
+    });
+    expect(resolveMentionDisplay(MEMBERS, null)).toEqual({
+      label: "Former member",
+      known: false,
+    });
+  });
+
+  it("test_AS_377_renders_plain_text_not_a_chip_when_the_mentioned_id_is_not_in_the_readers_visible_list", () => {
+    // Simulates exactly what a reader sees when the mentioned user has
+    // since been removed from the workspace/project, or was never visible
+    // to this reader in the first place (e.g. F204's server-side stripping
+    // left the original id in an older stored comment predating this
+    // feature, or the reader's own mentionSuggestions is scoped narrower
+    // than the author's was). `mentionSuggestions` here deliberately does
+    // NOT include "u-9".
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "hey " },
+            { type: "mention", attrs: { id: "u-9" } },
+          ],
+        },
+      ],
+    };
+
+    render(
+      createElement(RichTextRenderer, {
+        content: doc,
+        mentionSuggestions: MEMBERS,
+      }),
+    );
+
+    const fallback = screen.getByText("@Former member");
+    expect(fallback).toBeInTheDocument();
+    // Not rendered as the highlighted mention chip — no data-id (the raw
+    // user id must never reach the DOM for a mention the reader can't
+    // resolve), and not tagged as a real "mention" node type.
+    expect(fallback.getAttribute("data-id")).toBeNull();
+    expect(fallback.getAttribute("data-type")).not.toBe("mention");
+  });
+
+  it("test_AS_377_does_not_crash_when_content_has_no_matching_mentionSuggestions_at_all", () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "mention", attrs: { id: "someone-gone" } }],
+        },
+      ],
+    };
+
+    expect(() =>
+      render(
+        createElement(RichTextRenderer, { content: doc, mentionSuggestions: [] }),
+      ),
+    ).not.toThrow();
+    expect(screen.getByText("@Former member")).toBeInTheDocument();
   });
 });

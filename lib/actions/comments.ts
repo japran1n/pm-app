@@ -13,6 +13,7 @@ import {
   restoreCommentSchema,
 } from "@/lib/validation/comments";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
+import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -124,7 +125,7 @@ export async function addComment(
   // convention.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, deleted_at, projects(workspace_id)")
+    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -134,12 +135,11 @@ export async function addComment(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string }
+    | { workspace_id: string; visibility: string }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -172,6 +172,23 @@ export async function addComment(
     };
   }
 
+  // F204 (AS-376): strip any mention node referencing a user who is not
+  // actually visible to this commenter on the task's owning project,
+  // independent of whatever suggestion list the client used (or bypassed
+  // entirely via a hand-crafted bodyJson) — see
+  // lib/comments/mentions.ts's doc comment for the full rationale.
+  const mentionSafeBodyJson = await sanitiseMentionsForVisibility(
+    admin,
+    validatedBodyJson,
+    {
+      projectId: taskRow.project_id,
+      workspaceId,
+      projectVisibility: projectRow?.visibility ?? "workspace",
+    },
+  );
+  const finalProjectedText =
+    extractPlainText(mentionSafeBodyJson) || projectedText;
+
   // user_id is set here from the server-verified caller id, never trusted
   // from client input. created_at is left to the column default
   // (supabase/migrations/20260818040214_create_comments.sql sets `default
@@ -185,9 +202,9 @@ export async function addComment(
       // and `body_text` are kept identical — both are the same
       // server-recomputed projection, never two independently-trusted
       // values.
-      text: projectedText,
-      body_json: validatedBodyJson,
-      body_text: projectedText,
+      text: finalProjectedText,
+      body_json: mentionSafeBodyJson,
+      body_text: finalProjectedText,
     })
     .select("id, task_id, user_id, text, body_json, created_at")
     .single();
@@ -280,7 +297,7 @@ export async function addComment(
       taskId: inserted.task_id,
       userId: inserted.user_id,
       text: inserted.text,
-      bodyJson: (inserted.body_json as JSONContent | null) ?? validatedBodyJson,
+      bodyJson: (inserted.body_json as JSONContent | null) ?? mentionSafeBodyJson,
       createdAt: inserted.created_at,
     },
   };
@@ -838,7 +855,9 @@ export async function editComment(
   // convention as deleteComment's own lookup.
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
-    .select("id, user_id, deleted_at, tasks(id, projects(workspace_id))")
+    .select(
+      "id, user_id, deleted_at, tasks(id, project_id, projects(workspace_id, visibility))",
+    )
     .eq("id", parsed.data.commentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -850,21 +869,29 @@ export async function editComment(
   const task = commentRow.tasks as
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
   const commentTaskId = taskRow?.id;
+  const commentProjectId = taskRow?.project_id;
 
-  if (!workspaceId || !commentTaskId) {
+  if (!workspaceId || !commentTaskId || !commentProjectId) {
     return { ok: false, error: "Comment not found." };
   }
 
@@ -900,14 +927,28 @@ export async function editComment(
     };
   }
 
+  // F204 (AS-376): same server-side re-check as addComment — see
+  // lib/comments/mentions.ts's doc comment.
+  const mentionSafeBodyJson = await sanitiseMentionsForVisibility(
+    admin,
+    validatedBodyJson,
+    {
+      projectId: commentProjectId,
+      workspaceId,
+      projectVisibility: projectRow?.visibility ?? "workspace",
+    },
+  );
+  const finalProjectedText =
+    extractPlainText(mentionSafeBodyJson) || projectedText;
+
   const editedAt = new Date().toISOString();
 
   const { data: updated, error: updateError } = await admin
     .from("comments")
     .update({
-      text: projectedText,
-      body_json: validatedBodyJson,
-      body_text: projectedText,
+      text: finalProjectedText,
+      body_json: mentionSafeBodyJson,
+      body_text: finalProjectedText,
       edited_at: editedAt,
     })
     .eq("id", parsed.data.commentId)
@@ -938,7 +979,7 @@ export async function editComment(
         task_id: updated.task_id,
         user_id: updated.user_id,
         text: updated.text,
-        body_json: validatedBodyJson,
+        body_json: mentionSafeBodyJson,
         edited_at: updated.edited_at,
       },
     });
@@ -974,7 +1015,7 @@ export async function editComment(
       taskId: updated.task_id,
       userId: updated.user_id,
       text: updated.text,
-      bodyJson: (updated.body_json as JSONContent | null) ?? validatedBodyJson,
+      bodyJson: (updated.body_json as JSONContent | null) ?? mentionSafeBodyJson,
       editedAt: updated.edited_at as string,
     },
   };
