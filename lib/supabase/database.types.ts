@@ -865,6 +865,7 @@ export type Database = {
         }[]
       }
       derive_project_key_base: { Args: { p_name: string }; Returns: string }
+      generate_due_recurring_occurrences: { Args: never; Returns: number }
       generate_unique_project_key: {
         Args: { p_name: string; p_workspace_id: string }
         Returns: string
@@ -983,6 +984,10 @@ export type Database = {
       is_workspace_admin: {
         Args: { target_workspace_id: string }
         Returns: boolean
+      }
+      recurrence_next_due_date: {
+        Args: { p_from_date: string; p_rule: Json }
+        Returns: string
       }
       remove_workspace_member: {
         Args: { p_membership_id: string; p_workspace_id: string }
