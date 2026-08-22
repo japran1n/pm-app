@@ -61,6 +61,11 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
 import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
+// F201 (AS-366): reaction chips + emoji picker under each comment.
+import {
+  CommentReactions,
+  type CommentReactionSummary,
+} from "@/components/task/comment-reactions";
 // F122 (AS-214): each comment's author is now rendered via the shared
 // avatar component instead of `authorLabel`'s plain text alone.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
@@ -136,6 +141,11 @@ export type TaskComment = {
    * null/undefined if it has never been edited. Drives the "(edited)"
    * indicator next to the timestamp. */
   editedAt?: string | null;
+  /** F201 (AS-366): this comment's reaction summary — emoji plus the user
+   * ids of everyone reacting with it. Falls back to an empty array below
+   * for any caller that hasn't been updated to fetch it yet, same
+   * permissive-optional-prop convention as `bodyJson`/`editedAt`. */
+  reactions?: CommentReactionSummary[];
 };
 
 export type CommentListMember = {
@@ -314,6 +324,20 @@ export function CommentList({
         toast.error(result.error);
       }
     });
+  }
+
+  // F201 (AS-366): mirrors saveEdit's convention of updating just the
+  // affected comment's fields in local state after a successful Server
+  // Action call — no re-fetch of the whole comments list needed.
+  function handleReactionsChange(
+    commentId: string,
+    reactions: CommentReactionSummary[],
+  ) {
+    setLocalComments((previous) =>
+      previous.map((comment) =>
+        comment.id === commentId ? { ...comment, reactions } : comment,
+      ),
+    );
   }
 
   function handleDelete(commentId: string) {
@@ -567,6 +591,16 @@ export function CommentList({
                 // assertions (which render via renderToStaticMarkup, no
                 // DOM/effects) passing unchanged.
                 <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
+              )}
+              {editingCommentId !== comment.id && (
+                <CommentReactions
+                  commentId={comment.id}
+                  reactions={comment.reactions ?? []}
+                  members={members}
+                  currentUserId={currentUserId}
+                  canReact={canPost}
+                  onChange={(next) => handleReactionsChange(comment.id, next)}
+                />
               )}
             </li>
           ))}
