@@ -27,7 +27,7 @@
 //     { ssr: false }
 //   )
 
-import { useEffect, useReducer } from "react"
+import { useEffect, useReducer, useRef } from "react"
 import {
   EditorContent,
   useEditor,
@@ -49,6 +49,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import { transformPastedHtml } from "@/lib/editor/paste-rules"
 
 /**
  * Shared extension set for both the editable and read-only render paths.
@@ -215,6 +216,13 @@ export function RichTextEditor({
   className,
   "aria-label": ariaLabel = "Rich text editor",
 }: RichTextEditorProps) {
+  // F172 (AS-308): Cmd/Ctrl+Shift+V is the standard "paste as plain text"
+  // override. Modifier state isn't exposed on the native `paste` event, so
+  // the preceding keydown sets this ref; `handlePaste` below consumes and
+  // clears it on the very next paste. A ref (not state) is used so setting
+  // it never triggers a re-render mid-keystroke.
+  const plainTextPasteRef = useRef(false)
+
   const editor = useEditor({
     extensions: sharedExtensions(),
     content: content ?? undefined,
@@ -244,10 +252,40 @@ export function RichTextEditor({
           onBlur?.()
           return true
         }
+        // F172 (AS-308): record the plain-text-paste override so the next
+        // `paste` event bypasses all formatting. Deliberately does NOT
+        // return true — the browser still needs to fire its native paste
+        // event for `handlePaste` below to intercept.
+        if (
+          (event.key === "v" || event.key === "V") &&
+          event.shiftKey &&
+          (event.metaKey || event.ctrlKey)
+        ) {
+          plainTextPasteRef.current = true
+        }
         // NOTE: a submit shortcut (documented in F245) will hook in here
         // once that feature exists — intentionally not implemented yet.
         return false
       },
+      // F172 (AS-308): Cmd/Ctrl+Shift+V bypasses ALL formatting regardless
+      // of the clipboard's HTML content, inserting the raw text/plain
+      // payload only — the standard editor convention for "paste as
+      // plain text".
+      handlePaste: (view, event) => {
+        if (!plainTextPasteRef.current) return false
+        plainTextPasteRef.current = false
+        const text = event.clipboardData?.getData("text/plain")
+        if (text == null) return false
+        event.preventDefault()
+        view.dispatch(view.state.tr.insertText(text))
+        return true
+      },
+      // F172 (AS-308): everything else (a normal Cmd/Ctrl+V, or a
+      // drag-and-drop paste) still goes through the schema, but the
+      // clipboard HTML is pre-degraded to the shared allow-list first —
+      // unsupported markup (tables, Word/Google Docs wrapper spans,
+      // images, etc.) becomes its own plain text rather than vanishing.
+      transformPastedHTML: (html) => transformPastedHtml(html),
     },
     onUpdate: ({ editor: updatedEditor }) => {
       onChange?.(updatedEditor.getJSON())
