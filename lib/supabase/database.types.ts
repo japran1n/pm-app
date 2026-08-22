@@ -359,6 +359,54 @@ export type Database = {
           },
         ]
       }
+      task_activity: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          field: string | null
+          id: string
+          kind: string
+          new_value: Json | null
+          old_value: Json | null
+          task_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          field?: string | null
+          id?: string
+          kind: string
+          new_value?: Json | null
+          old_value?: Json | null
+          task_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          field?: string | null
+          id?: string
+          kind?: string
+          new_value?: Json | null
+          old_value?: Json | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_activity_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_activity_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_assignees: {
         Row: {
           assigned_by: string | null
@@ -1170,6 +1218,32 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "audit_log"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      write_task_activity_entry: {
+        Args: {
+          p_field?: string
+          p_kind: string
+          p_new_value?: Json
+          p_old_value?: Json
+          p_system?: boolean
+          p_task_id: string
+        }
+        Returns: {
+          actor_id: string | null
+          created_at: string
+          field: string | null
+          id: string
+          kind: string
+          new_value: Json | null
+          old_value: Json | null
+          task_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "task_activity"
           isOneToOne: true
           isSetofReturn: false
         }
