@@ -13,7 +13,10 @@ import {
   restoreCommentSchema,
 } from "@/lib/validation/comments";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
-import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
+import {
+  sanitiseMentionsForVisibility,
+  resolveVisibleMentionIds,
+} from "@/lib/comments/mentions";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -1019,4 +1022,98 @@ export async function editComment(
       editedAt: updated.edited_at as string,
     },
   };
+}
+
+export type MentionCandidateResult =
+  | { ok: true; data: { userIds: string[] } }
+  | { ok: false; error: string };
+
+// F204 follow-up (AS-376, "not offered in the picker" half): returns the
+// ids of workspace members who are actually visible (mentionable) to the
+// caller on this specific task's owning project — active workspace member
+// AND (project is workspace-visible, OR role is owner/admin, OR an
+// explicit project_members row exists). This reuses
+// `lib/comments/mentions.ts`'s `resolveVisibleMentionIds` directly (the
+// exact same function `addComment`/`editComment` use to strip a
+// hand-crafted mention referencing an invisible user) rather than
+// reimplementing the rule a second time, so the "who's visible" predicate
+// is defined in exactly one place for both the write-time enforcement
+// (already GREEN, F204) and this read-time picker-narrowing half.
+//
+// Returns only ids, not full member records — the caller
+// (components/task/comment-list.tsx) already has full member display
+// data (name/email/avatar) in its own `members` prop, so this just
+// narrows which of those ids are offered as mention candidates rather
+// than duplicating a second member-record fetch.
+export async function getMentionCandidates(
+  taskId: string,
+): Promise<MentionCandidateResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string; visibility: string }
+    | { workspace_id: string; visibility: string }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to view this task.",
+    };
+  }
+
+  const { data: memberRows, error: memberError } = await admin
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active");
+
+  if (memberError) {
+    console.error("getMentionCandidates: member fetch failed:", memberError);
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
+
+  const allMemberIds = (memberRows ?? [])
+    .map((row) => row.user_id as string)
+    .filter(Boolean);
+
+  const visibleIds = await resolveVisibleMentionIds(admin, allMemberIds, {
+    projectId: taskRow.project_id,
+    workspaceId,
+    projectVisibility: projectRow?.visibility ?? "workspace",
+  });
+
+  return { ok: true, data: { userIds: Array.from(visibleIds) } };
 }

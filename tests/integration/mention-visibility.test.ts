@@ -388,5 +388,36 @@ describe.skipIf(!haveAdminCreds)(
       expect(result.ok).toBe(true);
       if (result.ok) createdCommentIds.push(result.data.id);
     });
+
+    // F204 follow-up (AS-376, "not offered in the picker" half): the picker
+    // candidate list itself (getMentionCandidates, used by
+    // components/task/comment-list.tsx's mentionSuggestions) must already
+    // exclude a workspace member with no access to the private project —
+    // not merely reject them if force-inserted (that half is proven above).
+    it("AS-376 (picker): a workspace member with no access to the private project is not among the mention candidates for that project's task", async () => {
+      const { getMentionCandidates } = await import("@/lib/actions/comments");
+
+      currentTestUserId = commenterUserId;
+
+      const result = await getMentionCandidates(privateTaskId);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.userIds).not.toContain(outsiderUserId);
+      expect(result.data.userIds).toContain(commenterUserId);
+    });
+
+    it("AS-376 (picker, positive control): any active member is offered as a candidate on a workspace-visible project's task", async () => {
+      const { getMentionCandidates } = await import("@/lib/actions/comments");
+
+      currentTestUserId = commenterUserId;
+
+      const result = await getMentionCandidates(workspaceTaskId);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.userIds).toContain(commenterUserId);
+      expect(result.data.userIds).toContain(outsiderUserId);
+    });
   },
 );

@@ -51,6 +51,7 @@ import {
   addComment,
   deleteComment,
   editComment,
+  getMentionCandidates,
   restoreComment,
 } from "@/lib/actions/comments";
 import { showUndoToast } from "@/lib/toast/undo-toast";
@@ -234,15 +235,65 @@ export function CommentList({
    * regardless, this only controls UI affordance. */
   currentUserRole?: WorkspaceRole;
 }) {
-  // F203 (AS-371, AS-372, AS-373): the @-mention suggestion source is the
-  // same `members` list this component already receives as a prop (no new
-  // query — see mention-extension.ts's file doc comment for why reusing
-  // this is the simpler, single-source-of-truth option). Recomputed only
-  // when `members` changes, not on every render.
-  const mentionSuggestions = members.map((member) => ({
-    id: member.userId,
-    label: member.name || member.email || member.userId,
-  }));
+  // F204 follow-up (AS-376, "not offered in the picker" half): the
+  // @-mention suggestion source used to be simply every `members` entry
+  // (all active workspace members, F203's original convention — see this
+  // block's history). That's too wide: a workspace member with no access
+  // to this task's (possibly private) project shouldn't be offered as a
+  // mention candidate at all, even though the server-side check
+  // (lib/comments/mentions.ts's sanitiseMentionsForVisibility, F204) would
+  // already reject/strip a hand-crafted mention referencing them. This
+  // fetches the narrowed, project-visibility-scoped id list via the
+  // `getMentionCandidates` Server Action — which reuses
+  // `resolveVisibleMentionIds`, the exact same predicate the server-side
+  // strip uses, so the "who's visible" rule is defined in exactly one
+  // place — and filters `members` down to just those ids for display data
+  // (name/email/avatar), rather than fetching a second, duplicate member
+  // record set.
+  //
+  // `null` (not yet resolved, or the fetch failed) intentionally means "no
+  // suggestions offered yet" rather than falling back to the wider
+  // all-members list — the safer default per this feature's "not offered"
+  // requirement: a transient loading/error state should never widen who's
+  // offered as a mention candidate.
+  const [visibleMentionIds, setVisibleMentionIds] = useState<string[] | null>(
+    null,
+  );
+  // Tracks which task's candidates `visibleMentionIds` currently reflects,
+  // so a taskId change resets the picker to "not offered yet" during
+  // render (same "adjust state during render on prop change" convention
+  // as `syncedTaskId` below) rather than via a synchronous setState call
+  // inside the effect body.
+  const [syncedMentionTaskId, setSyncedMentionTaskId] = useState(taskId);
+  if (taskId !== syncedMentionTaskId) {
+    setSyncedMentionTaskId(taskId);
+    setVisibleMentionIds(null);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    getMentionCandidates(taskId).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setVisibleMentionIds(result.data.userIds);
+      } else {
+        setVisibleMentionIds([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+
+  const mentionSuggestions = members
+    .filter(
+      (member) =>
+        visibleMentionIds !== null && visibleMentionIds.includes(member.userId),
+    )
+    .map((member) => ({
+      id: member.userId,
+      label: member.name || member.email || member.userId,
+    }));
 
   const [localComments, setLocalComments] = useState(comments);
   // Tracks which task's comments are currently loaded into local state, so

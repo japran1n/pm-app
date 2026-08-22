@@ -99,8 +99,16 @@ function stripInvisibleMentions(
  * mentioned user id rather than `auth.uid()` — see this file's doc comment.
  * Batched (one workspace_members query + one project_members query for the
  * whole set of mentioned ids), not one query per id, per this project's
- * performance budget (no N+1). */
-async function resolveVisibleMentionIds(
+ * performance budget (no N+1).
+ *
+ * Exported (rather than kept module-private) so this is the single place
+ * the "who's visible" rule is defined — this follow-up feature
+ * (AS-376's "not offered in the picker" half) reuses it directly from
+ * `lib/actions/comments.ts`'s `getMentionCandidates` to narrow the
+ * client-side suggestion list to the same set of ids this function would
+ * keep, rather than reimplementing the rule a second time. See this file's
+ * top doc comment and this feature's handoff. */
+export async function resolveVisibleMentionIds(
   admin: AdminClient,
   ids: string[],
   {

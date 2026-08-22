@@ -77,6 +77,11 @@ vi.mock("@/lib/actions/comments", () => ({
   addComment: vi.fn(),
   deleteComment: (...args: unknown[]) => commentDeleteMock(...args),
   restoreComment: (...args: unknown[]) => commentRestoreMock(...args),
+  editComment: vi.fn(),
+  // F204 follow-up (AS-376 picker narrowing): CommentList now fetches
+  // mention candidates on mount — resolved to "none visible yet" here,
+  // irrelevant to this delete/undo test.
+  getMentionCandidates: vi.fn(async () => ({ ok: true, data: { userIds: [] } })),
 }));
 
 // CommentList mounts useCommentsRealtime, which creates a real browser
