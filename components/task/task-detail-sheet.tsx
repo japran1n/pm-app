@@ -34,8 +34,10 @@
 // than left to crash).
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import type { JSONContent } from "@/components/editor/rich-text-editor";
 
 import {
   deleteTask,
@@ -111,11 +113,34 @@ import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 // F161 (AS-287, AS-288): stacked avatar group for this task's full
 // assignee set, header + trigger.
 import { UserAvatarGroup } from "@/components/user-avatar-group";
+// F171 (AS-307, AS-309): read-only rendering of the stored Tiptap document
+// via F169's shared, allow-listed renderer — dynamically imported with
+// `{ ssr: false }` per that component's own doc comment, since Tiptap's
+// `useEditor` touches the DOM and this Sheet is otherwise SSR-eligible as
+// a Client Component.
+const RichTextRenderer = dynamic(
+  () =>
+    import("@/components/editor/rich-text-editor").then(
+      (mod) => mod.RichTextRenderer,
+    ),
+  { ssr: false },
+);
 
 export type TaskDetailSheetTask = {
   id: string;
   title: string;
   description: string | null;
+  /** F171 (AS-307, AS-309): the same description, stored as a Tiptap JSON
+   * document (F170's `tasks.description_json`, always kept in sync with
+   * `description` by a DB trigger — see F170's handoff). Rendered
+   * read-only through RichTextRenderer's allow-listed schema below,
+   * NEVER via `dangerouslySetInnerHTML`. Optional so a caller/fixture
+   * that hasn't been updated yet still renders (falls back to showing
+   * nothing extra beyond the plain-text description already shown by the
+   * editable Textarea). Untrusted, previously-stored content — treated
+   * as hostile input at render time, not assumed safe because it came
+   * from our own DB. */
+  descriptionJson?: JSONContent | null;
   status: "todo" | "in_progress" | "in_review" | "done";
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
@@ -897,6 +922,27 @@ export function TaskDetailSheet({
                   }
                   onBlur={handleDescriptionBlur}
                 />
+                {/* F171 (AS-307, AS-309): the safe, formatted rendering of
+                   the same description, sourced from `description_json`
+                   (F170's DB-trigger-derived, always-in-sync column) —
+                   proves formatting survives a reload since this reads
+                   from freshly-fetched stored JSON, not the in-memory
+                   edit buffer above. Only shown when there is real
+                   content beyond an empty doc, so the plain edit
+                   Textarea above stays the single empty-state surface. */}
+                {task.descriptionJson &&
+                  Array.isArray(task.descriptionJson.content) &&
+                  task.descriptionJson.content.length > 0 && (
+                    <div className="rounded-lg border border-input bg-muted/30 px-3 py-2">
+                      <p className="mb-1 text-xs font-medium text-muted-foreground">
+                        Preview
+                      </p>
+                      <RichTextRenderer
+                        content={task.descriptionJson}
+                        aria-label="Description preview"
+                      />
+                    </div>
+                  )}
               </div>
 
               <TagsEditor

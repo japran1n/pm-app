@@ -2335,7 +2335,15 @@ export async function getTaskDetail(
       // TaskDetailSheetTask.estimateMinutes (F167's UI, previously always
       // undefined on this path) actually receives real data — see this
       // function's mapping below.
-      "id, title, description, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, projects!inner(key, workspace_id)",
+      // F171 (AS-307, AS-309): `description_json` added here so the detail
+      // sheet can render the safe, formatted Tiptap document via
+      // RichTextRenderer instead of only ever showing the plain-text
+      // `description` column — same "one query, no second round trip"
+      // convention as every other field on this select. F170 backfills
+      // and keeps this column in sync via a DB trigger, so it always
+      // exists (an empty `{ type: "doc", content: [] }` doc for
+      // null/empty descriptions), never null-vs-column-missing.
+      "id, title, description, description_json, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, projects!inner(key, workspace_id)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -2678,6 +2686,16 @@ export async function getTaskDetail(
         id: taskRow.id,
         title: taskRow.title,
         description: taskRow.description,
+        // F171 (AS-307, AS-309): passed straight through as the Tiptap
+        // `JSONContent` shape — the `Json` DB type is a structural
+        // superset of `JSONContent`; RichTextRenderer/sanitiseDocument
+        // validate/allow-list this at render time rather than trusting
+        // the column's shape, since this is untrusted, previously-stored
+        // content (AS-309 exists precisely because this can't be assumed
+        // safe).
+        descriptionJson: taskRow.description_json as
+          | TaskDetailSheetTask["descriptionJson"]
+          | undefined,
         status: taskRow.status as TaskDetailSheetTask["status"],
         priority: taskRow.priority as TaskDetailSheetTask["priority"],
         assigneeId: taskRow.assignee_id,

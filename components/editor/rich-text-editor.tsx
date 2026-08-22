@@ -291,25 +291,180 @@ export function RichTextEditor({
 }
 
 export interface RichTextRendererProps {
-  /** Tiptap JSON document to render read-only. */
+  /** Tiptap JSON document to render read-only. Treated as UNTRUSTED —
+   * see `sanitiseDocument` below (F171: AS-309). */
   content?: JSONContent | null
   className?: string
   "aria-label"?: string
 }
 
+// F171 (AS-307, AS-309): the render-time security boundary. This is the
+// ONE place the allow-list of node/mark types is defined for the display
+// path — `sharedExtensions()` above defines what Tiptap/ProseMirror is
+// *capable* of rendering (its schema), but `sanitiseDocument` is what
+// actually decides what untrusted, previously-stored JSON is ALLOWED to
+// reach that schema at all. Two layers on purpose:
+//   1. Anything not on this allow-list is dropped (not just visually
+//      hidden) before it ever reaches `editor.commands.setContent` /
+//      `useEditor({ content })`, so an unknown node type (e.g. a
+//      fabricated `"script"` node) can never throw deep inside
+//      ProseMirror's `Node.fromJSON` (which throws on unknown types) and
+//      can never round-trip back out as anything executable.
+//   2. Every node/mark's `attrs` are rebuilt from scratch using only the
+//      specific keys that node/mark type is known to use — an injected
+//      `onclick`/`onerror`/etc. attribute (or any other unexpected key)
+//      is never copied through, regardless of what ProseMirror's schema
+//      would or wouldn't render for it. This means even a "safe" node
+//      type carrying hostile-looking attrs is neutralised at the data
+//      layer, not left to the renderer's toDOM to (hopefully) ignore it.
+//
+// This function is exported so a future server-side projection (if one
+// is added) can reuse the exact same allow-list — the clarified spec's
+// explicit requirement that "the allow-list ... must be defined once and
+// shared by editor, renderer, and any server-side projection."
+
+const ALLOWED_NODE_TYPES = new Set([
+  "doc",
+  "paragraph",
+  "text",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "listItem",
+  "codeBlock",
+  "blockquote",
+  "hardBreak",
+  "horizontalRule",
+])
+
+const ALLOWED_MARK_TYPES = new Set(["bold", "italic", "code", "link", "strike"])
+
+/** http/https/mailto only, per the clarified spec — no `javascript:`,
+ * `data:`, `vbscript:`, or any other scheme, and no scheme-relative
+ * `//host/...` URLs (browsers treat those as `http(s):`, but we don't
+ * trust that inference here — require an explicit allowed scheme). */
+const ALLOWED_LINK_PROTOCOLS = /^(https?|mailto):/i
+
+function sanitiseHref(href: unknown): string | null {
+  if (typeof href !== "string") return null
+  const trimmed = href.trim()
+  // Strip ASCII control characters and whitespace that browsers/parsers
+  // are known to ignore inside a URL scheme (a classic
+  // "java\tscript:alert(1)" bypass) before checking the scheme.
+  const normalised = trimmed.replace(/[ -\s]/g, "")
+  if (!ALLOWED_LINK_PROTOCOLS.test(normalised)) return null
+  return trimmed
+}
+
+function sanitiseMark(mark: unknown): JSONContent | null {
+  if (!mark || typeof mark !== "object") return null
+  const m = mark as { type?: unknown; attrs?: Record<string, unknown> }
+  if (typeof m.type !== "string" || !ALLOWED_MARK_TYPES.has(m.type)) return null
+
+  if (m.type === "link") {
+    const href = sanitiseHref(m.attrs?.href)
+    // No safe href survived sanitisation (e.g. a `javascript:` URL) —
+    // drop the mark entirely rather than render an inert-but-present
+    // link, so there is no href attribute at all for anything to read.
+    if (!href) return null
+    return {
+      type: "link",
+      attrs: {
+        href,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        class: null,
+      },
+    }
+  }
+
+  // bold/italic/code/strike carry no attrs in the shared schema — never
+  // copy through whatever attrs object was actually present (this is
+  // exactly the "on*-attribute-injected-into-attrs" hostile case).
+  return { type: m.type }
+}
+
+function sanitiseNode(node: unknown): JSONContent | null {
+  if (!node || typeof node !== "object") return null
+  const n = node as {
+    type?: unknown
+    text?: unknown
+    attrs?: Record<string, unknown>
+    marks?: unknown[]
+    content?: unknown[]
+  }
+
+  if (typeof n.type !== "string" || !ALLOWED_NODE_TYPES.has(n.type)) {
+    return null
+  }
+
+  const result: JSONContent = { type: n.type }
+
+  if (n.type === "text") {
+    // Text nodes must carry a real string; anything else becomes no node
+    // at all rather than coercing to "" (which would still render an
+    // empty, harmless text node — coercion here is just for type safety).
+    if (typeof n.text !== "string") return null
+    result.text = n.text
+  }
+
+  if (n.type === "heading") {
+    const level = n.attrs?.level
+    result.attrs = { level: level === 2 ? 2 : level === 3 ? 3 : 1 }
+  }
+
+  if (Array.isArray(n.marks) && n.marks.length > 0) {
+    const marks = n.marks
+      .map(sanitiseMark)
+      .filter((mark): mark is JSONContent => mark !== null)
+    if (marks.length > 0)
+      result.marks = marks as unknown as NonNullable<JSONContent["marks"]>
+  }
+
+  if (Array.isArray(n.content) && n.content.length > 0) {
+    const content = n.content
+      .map(sanitiseNode)
+      .filter((child): child is JSONContent => child !== null)
+    if (content.length > 0) result.content = content
+  }
+
+  return result
+}
+
+/**
+ * Sanitises an untrusted Tiptap `JSONContent` document down to the
+ * shared allow-list before it is ever handed to ProseMirror. Always
+ * returns a well-formed `doc` node — hostile/malformed input degrades to
+ * an empty document rather than throwing.
+ */
+export function sanitiseDocument(
+  content: JSONContent | null | undefined,
+): JSONContent {
+  if (!content || typeof content !== "object") {
+    return { type: "doc", content: [] }
+  }
+  const sanitised = sanitiseNode({ ...content, type: "doc" })
+  if (!sanitised) return { type: "doc", content: [] }
+  return sanitised
+}
+
 /**
  * Read-only render mode sharing the exact same extension set as
  * `RichTextEditor`, so display and edit can never diverge in how they
- * interpret the JSON schema (needed by F171).
+ * interpret the JSON schema (needed by F171). Content is always run
+ * through `sanitiseDocument` first — never rendered as raw HTML, never
+ * trusted just because it came from our own database.
  */
 export function RichTextRenderer({
   content,
   className,
   "aria-label": ariaLabel = "Rich text content",
 }: RichTextRendererProps) {
+  const safeContent = sanitiseDocument(content)
+
   const editor = useEditor({
     extensions: sharedExtensions(),
-    content: content ?? undefined,
+    content: safeContent,
     editable: false,
     immediatelyRender: false,
     editorProps: {
@@ -323,12 +478,12 @@ export function RichTextRenderer({
   useEffect(() => {
     if (!editor) return
     const current = JSON.stringify(editor.getJSON())
-    const next = JSON.stringify(content ?? { type: "doc", content: [] })
+    const next = JSON.stringify(safeContent)
     if (current !== next) {
-      editor.commands.setContent(content ?? null, { emitUpdate: false })
+      editor.commands.setContent(safeContent, { emitUpdate: false })
     }
-     
-  }, [content, editor])
+
+  }, [safeContent, editor])
 
   if (!editor) return null
 
