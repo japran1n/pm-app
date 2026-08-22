@@ -134,6 +134,43 @@ describe("CommentList (F060: AS-096, AS-097)", () => {
     expect(html).toContain('aria-label="Edit comment"');
   });
 
+  // F198 (AS-363): "(edited)" marker presence/absence, and that the exact
+  // edit time is carried both on hover (title) and to screen readers
+  // (aria-label) — not hover-only, per this feature's clarified note.
+  it("test_AS_363_edited_comment_shows_marker_with_exact_time_accessible_and_on_hover", () => {
+    const editedAt = new Date(NOW - 30_000).toISOString();
+    const html = renderToStaticMarkup(
+      createElement(CommentList, {
+        taskId: "t1",
+        comments: [
+          {
+            id: "c1",
+            taskId: "t1",
+            userId: "u1",
+            text: "First comment (by created time)",
+            createdAt: new Date(NOW - 3600_000).toISOString(),
+            editedAt,
+          },
+        ],
+        members: MEMBERS,
+      }),
+    );
+
+    expect(html).toContain("(edited)");
+    // Accessible name (aria-label) and hover title both carry the exact
+    // edit time, not just a relative/vague indicator — an aria-label alone
+    // relying on hover would fail this assertion's screen-reader half.
+    expect(html).toMatch(/aria-label="Edited [^"]+"/);
+    expect(html).toMatch(/title="Edited [^"]+"/);
+  });
+
+  it("test_AS_363_unedited_comment_shows_no_edited_marker", () => {
+    const html = render();
+
+    expect(html).not.toContain("(edited)");
+    expect(html).not.toContain("aria-label=\"Edited");
+  });
+
   it("test_AS_364_edit_button_not_shown_for_a_different_member_including_admin", () => {
     // Viewer is u4: not the author of any seeded comment (authors are
     // u1/u2/u3), even as an admin — AS-364's author-only rule means the

@@ -42,7 +42,7 @@
 // tech-decisions.md's libraries list for exactly this use).
 
 import { useEffect, useState, useTransition } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { Loader2, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { JSONContent } from "@tiptap/react";
@@ -166,6 +166,15 @@ function authorOf(
     name: member?.name ?? null,
     avatarUrl: member?.avatarUrl ?? null,
   };
+}
+
+// F198 (AS-363): exact edit time, used both for the hover `title` and the
+// `aria-label` that carries the same information to screen readers — a
+// hover-only `title` alone would fail AS-524 (screen readers don't reliably
+// expose `title`), so the accessible name is set explicitly rather than
+// relying on `title` to double as it.
+function formatExactEditTime(iso: string): string {
+  return format(new Date(iso), "PPpp");
 }
 
 function sortedOldestFirst(comments: TaskComment[]): TaskComment[] {
@@ -422,12 +431,29 @@ export function CommentList({
                   {formatDistanceToNow(new Date(comment.createdAt), {
                     addSuffix: true,
                   })}
-                  {/* F197 (AS-362): a visible "(edited)" marker so other
-                   * viewers know the content changed since it was
-                   * posted — the actual authorization is server-side, this
-                   * is purely a transparency affordance. */}
-                  {comment.editedAt ? " (edited)" : ""}
                 </span>
+                {comment.editedAt && (
+                  // F198 (AS-363): a visible "(edited)" marker so other
+                  // viewers know the content changed since it was posted.
+                  // `title` surfaces the exact edit time on hover for
+                  // sighted mouse users; `aria-label` independently carries
+                  // that same exact time as this span's accessible name, so
+                  // screen readers get it regardless of whether they expose
+                  // `title` (AS-524 — hover-only information is not
+                  // sufficient). Live updates for other viewers already
+                  // looking at the task come from `reconcileComment`
+                  // (lib/tasks/reconcile-realtime-comment.ts) replacing the
+                  // comment's `editedAt` on the `comment_edited` broadcast
+                  // F197 added — no extra wiring needed here, this
+                  // component just renders whatever `editedAt` holds.
+                  <span
+                    className="text-xs text-muted-foreground"
+                    title={`Edited ${formatExactEditTime(comment.editedAt)}`}
+                    aria-label={`Edited ${formatExactEditTime(comment.editedAt)}`}
+                  >
+                    (edited)
+                  </span>
+                )}
                 {canEdit(comment) && editingCommentId !== comment.id && (
                   <Button
                     type="button"

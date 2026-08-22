@@ -351,6 +351,52 @@ describe("reconcileComment (AS-101, AS-102)", () => {
     expect(next.find((c) => c.id === "c2")).toEqual(baseComments[1]);
   });
 
+  // F198 (AS-363): the "(edited)" marker itself is a pure function of
+  // `editedAt` (comment-list.tsx renders it whenever `comment.editedAt` is
+  // set) — so once reconcileComment has folded a `comment_edited` broadcast
+  // into local state (proven above), rendering that exact resulting list
+  // through CommentList proves the marker appears live for another viewer
+  // already looking at the task, with no page reload: a comment initially
+  // rendered *without* the marker gets it the moment the broadcast arrives.
+  it("test_AS_363_edited_marker_appears_live_after_a_comment_edited_broadcast_reconciles", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { CommentList } = await import("@/components/task/comment-list");
+
+    // Before the broadcast: c1 has never been edited, so no marker.
+    const beforeHtml = renderToStaticMarkup(
+      createElement(CommentList, {
+        taskId: "t1",
+        comments: baseComments,
+        members: [],
+      }),
+    );
+    expect(beforeHtml).not.toContain("(edited)");
+
+    // The broadcast arrives (same event shape as the AS-362 test above) and
+    // reconcileComment folds it into local state, exactly as
+    // components/task/comment-list.tsx's useCommentsRealtime callback does.
+    const event = updateEvent({
+      id: "c1",
+      text: "First comment, now edited",
+      edited_at: "2026-08-18T00:20:00Z",
+    });
+    const reconciled = reconcileComment(baseComments, event);
+
+    // After the broadcast, re-rendering with the reconciled list (what a
+    // state update in the live component would produce) shows the marker —
+    // no page reload, no re-fetch.
+    const afterHtml = renderToStaticMarkup(
+      createElement(CommentList, {
+        taskId: "t1",
+        comments: reconciled,
+        members: [],
+      }),
+    );
+    expect(afterHtml).toContain("(edited)");
+    expect(afterHtml).toMatch(/aria-label="Edited [^"]+"/);
+  });
+
   it("AS_101_removes_comment_on_hard_delete_event", () => {
     const event = {
       eventType: "DELETE",
