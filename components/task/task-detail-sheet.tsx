@@ -77,6 +77,7 @@ import {
   type TimeEntry,
   type TimeTrackingActiveTimer,
 } from "@/components/task/time-tracking";
+import { Watchers } from "@/components/task/watchers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -199,6 +200,19 @@ export type TaskDetailSheetTask = {
     blockedBy: DependencyRelatedTask[];
     blocks: DependencyRelatedTask[];
   };
+  /** F165 (AS-297): this task's current watcher set (`is_watching: true`
+   * only), from getTaskDetail's own `task_watchers` fetch — same "fetched
+   * once with the task, no per-section round trip" convention as
+   * `children`/`checklistItems`/`dependencies` above. Optional/defaults to
+   * [] via the Watchers component's own rendering below so a caller that
+   * hasn't been updated yet (existing tests/fixtures) still renders
+   * rather than crashing. */
+  watcherIds?: string[];
+  /** F165 (AS-297): whether the SIGNED-IN caller specifically is
+   * currently watching — drives the toggle button's label/icon, never a
+   * generic count (clarified spec). Optional/defaults to false for the
+   * same "safe default" reason as `watcherIds` above. */
+  isWatching?: boolean;
 };
 
 export type TaskDetailSheetMember = {
@@ -605,6 +619,23 @@ export function TaskDetailSheet({
                 View and edit this task&apos;s title, description, status,
                 priority, assignee, and due date.
               </SheetDescription>
+              {/* F165 (AS-297): watch/unwatch toggle + watcher avatar
+                  group. Placed in the header, below the title, rather
+                  than inside the metadata grid the assignee picker lives
+                  in — visually subordinate to assignees, per the
+                  clarified spec's own ambiguity-resolution note. */}
+              <Watchers
+                taskId={task.id}
+                watcherIds={task.watcherIds ?? []}
+                isWatching={task.isWatching ?? false}
+                members={members.map((member) => ({
+                  userId: member.userId,
+                  name: member.name,
+                  email: member.email,
+                  avatarUrl: member.avatarUrl,
+                }))}
+                currentUserId={currentUserId}
+              />
             </SheetHeader>
             <div className="flex flex-col gap-6 overflow-y-auto px-6">
               <div className="flex flex-col gap-2">

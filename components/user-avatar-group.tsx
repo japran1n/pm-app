@@ -52,12 +52,21 @@ export function UserAvatarGroup({
   max = AVATAR_GROUP_LIMIT,
   size = "sm",
   className,
+  // F165: reused for the task detail header's watcher avatar group, where
+  // "Assigned: ..." would be a wrong accessible name — the group's own
+  // meaning (who it represents) varies by caller. Optional and defaulted
+  // to "Assigned" so every existing caller (F161's assignee groups) keeps
+  // its exact previous accessible name with no changes needed there.
+  ariaLabelPrefix = "Assigned",
 }: {
   people: UserAvatarPerson[];
   /** Display limit before the rest collapse into a "+K" chip. */
   max?: number;
   size?: "sm" | "default" | "lg";
   className?: string;
+  /** Prefix for this group's accessible name, e.g. "Assigned" or
+   * "Watching" — see doc comment above. */
+  ariaLabelPrefix?: string;
 }) {
   if (people.length === 0) return null;
 
@@ -70,7 +79,7 @@ export function UserAvatarGroup({
       <div
         className={cn("flex items-center", className)}
         data-testid="avatar-group"
-        aria-label={`Assigned: ${people.map((person) => personLabel(person)).join(", ")}`}
+        aria-label={`${ariaLabelPrefix}: ${people.map((person) => personLabel(person)).join(", ")}`}
       >
         {visible.map((person, index) => (
           <Fragment key={person.id}>
@@ -98,7 +107,7 @@ export function UserAvatarGroup({
                 height: SIZE_PX[size],
                 fontSize: size === "sm" ? 10 : 11,
               }}
-              aria-label={`${hidden.length} more assigned: ${hidden
+              aria-label={`${hidden.length} more ${ariaLabelPrefix.toLowerCase()}: ${hidden
                 .map((person) => personLabel(person))
                 .join(", ")}`}
             >

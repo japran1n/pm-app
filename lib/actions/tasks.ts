@@ -2459,6 +2459,19 @@ export async function getTaskDetail(
     .eq("task_id", parsed.data.taskId)
     .order("created_at", { ascending: true });
 
+  // F165 (AS-297): this task's CURRENT watcher set — `is_watching = true`
+  // only, per F164's own durability rule (a row can exist with
+  // `is_watching: false` for an explicit opt-out; that must never surface
+  // as "watching" here). Same "one query per section, fetched once with
+  // the task" convention as `assigneesQuery` immediately above — no
+  // second round trip from the Watchers component below.
+  const watchersQuery = admin
+    .from("task_watchers")
+    .select("user_id")
+    .eq("task_id", parsed.data.taskId)
+    .eq("is_watching", true)
+    .order("created_at", { ascending: true });
+
   const [
     commentsResult,
     attachmentsResult,
@@ -2468,6 +2481,7 @@ export async function getTaskDetail(
     blockedByResult,
     blocksResult,
     assigneesResult,
+    watchersResult,
   ] = await Promise.all([
     admin
       .from("comments")
@@ -2486,6 +2500,7 @@ export async function getTaskDetail(
     blockedByQuery,
     blocksQuery,
     assigneesQuery,
+    watchersQuery,
   ]);
 
   if (commentsResult.error) {
@@ -2569,6 +2584,17 @@ export async function getTaskDetail(
     console.error(
       "getTaskDetail: assignees fetch failed:",
       assigneesResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (watchersResult.error) {
+    console.error(
+      "getTaskDetail: watchers fetch failed:",
+      watchersResult.error,
     );
     return {
       ok: false,
@@ -2661,6 +2687,16 @@ export async function getTaskDetail(
         // setTaskAssignees, never the deprecated single `assigneeId`
         // directly, once this field is populated).
         assigneeIds: (assigneesResult.data ?? []).map((row) => row.user_id),
+        // F165 (AS-297): this task's current watcher set (is_watching:
+        // true only, see watchersQuery above) plus whether the CALLING
+        // user specifically is among them — the toggle button's
+        // label/icon reflects `isWatching` for this signed-in caller,
+        // never a generic "N people are watching" count (clarified
+        // spec's own wording).
+        watcherIds: (watchersResult.data ?? []).map((row) => row.user_id),
+        isWatching: (watchersResult.data ?? []).some(
+          (row) => row.user_id === user.id,
+        ),
         dueDate: taskRow.due_date,
         tags: taskRow.tags ?? [],
         // F146 (AS-258): see this function's task+project select above.
