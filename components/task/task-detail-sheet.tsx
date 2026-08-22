@@ -116,6 +116,11 @@ import {
 } from "@/components/task/dependencies";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
+// F196 (AS-358, AS-361): the Comments/Activity toggle — see
+// components/task/activity-feed.tsx's own doc comment for why a toggle
+// was chosen over interleaving the two into one feed.
+import { ActivityFeed } from "@/components/task/activity-feed";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AttachmentList,
   type TaskAttachment,
@@ -1189,13 +1194,29 @@ export function TaskDetailSheet({
 
               <Separator />
 
-              <CommentList
-                taskId={task.id}
-                comments={comments}
-                members={members}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-              />
+              {/* F196 (AS-358, AS-361): "Comments" keeps CommentList's
+                  existing full-featured rendering unchanged; "Activity"
+                  is the read-only day-grouped chronicle of every
+                  task_activity entry (field changes, plus comment
+                  add/delete EVENTS per AS-356 — not their content). */}
+              <Tabs defaultValue="comments">
+                <TabsList>
+                  <TabsTrigger value="comments">Comments</TabsTrigger>
+                  <TabsTrigger value="activity">Activity</TabsTrigger>
+                </TabsList>
+                <TabsContent value="comments">
+                  <CommentList
+                    taskId={task.id}
+                    comments={comments}
+                    members={members}
+                    currentUserId={currentUserId}
+                    currentUserRole={currentUserRole}
+                  />
+                </TabsContent>
+                <TabsContent value="activity">
+                  <ActivityFeed taskId={task.id} timezone={timezone} />
+                </TabsContent>
+              </Tabs>
 
               <Separator />
 
