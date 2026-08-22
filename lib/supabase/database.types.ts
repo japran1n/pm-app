@@ -494,12 +494,15 @@ export type Database = {
           due_date: string | null
           estimate_minutes: number | null
           id: string
+          last_occurrence_at: string | null
           number: number
           parent_task_id: string | null
           points: number | null
           position: number
           priority: string | null
           project_id: string
+          recurrence: Json | null
+          recurrence_parent_id: string | null
           search_vector: unknown
           start_date: string | null
           status: string
@@ -519,12 +522,15 @@ export type Database = {
           due_date?: string | null
           estimate_minutes?: number | null
           id?: string
+          last_occurrence_at?: string | null
           number?: number
           parent_task_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
           project_id: string
+          recurrence?: Json | null
+          recurrence_parent_id?: string | null
           search_vector?: unknown
           start_date?: string | null
           status?: string
@@ -544,12 +550,15 @@ export type Database = {
           due_date?: string | null
           estimate_minutes?: number | null
           id?: string
+          last_occurrence_at?: string | null
           number?: number
           parent_task_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
           project_id?: string
+          recurrence?: Json | null
+          recurrence_parent_id?: string | null
           search_vector?: unknown
           start_date?: string | null
           status?: string
@@ -591,6 +600,20 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -982,12 +1005,15 @@ export type Database = {
           due_date: string | null
           estimate_minutes: number | null
           id: string
+          last_occurrence_at: string | null
           number: number
           parent_task_id: string | null
           points: number | null
           position: number
           priority: string | null
           project_id: string
+          recurrence: Json | null
+          recurrence_parent_id: string | null
           search_vector: unknown
           start_date: string | null
           status: string
@@ -1029,6 +1055,7 @@ export type Database = {
         }[]
       }
       tiptap_doc_from_text: { Args: { p_text: string }; Returns: Json }
+      tiptap_text_from_doc: { Args: { p_doc: Json }; Returns: string }
       transfer_workspace_ownership: {
         Args: { p_new_owner_user_id: string; p_workspace_id: string }
         Returns: {
