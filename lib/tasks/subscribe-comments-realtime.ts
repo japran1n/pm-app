@@ -78,6 +78,86 @@ import type {
 
 export type { CommentRealtimeEvent, CommentRealtimeRow };
 
+// F202 (AS-369): a second, independent Realtime subscription — reactions
+// on any comment in the current task — kept as its own channel/function
+// rather than folded into subscribeToCommentsRealtime above, per this
+// feature's "no new dependency, no second source of truth" ambiguity
+// answer: comment_reactions is a distinct table with a distinct payload
+// shape, and keeping it separate avoids widening subscribeToCommentsRealtime's
+// existing, already-tested `CommentRealtimeEvent` contract.
+//
+// comment_reactions has no task_id column (F199's migration), so unlike
+// the comments channel above, postgres_changes can't be given a
+// `filter: task_id=eq.<taskId>` clause directly. This channel therefore
+// subscribes to ALL comment_reactions changes (RLS — comment_reactions_
+// select_visible, F199 — still governs which rows a client is even sent)
+// and the caller (components/task/use-reactions-realtime.ts's consumer,
+// comment-list.tsx) filters client-side by checking the event's commentId
+// against the task's already-loaded comment ids, the same "narrow inside
+// the component that already has the scoping context" shape F049's board
+// channel uses for out-of-scope project rows.
+//
+// Both INSERT and DELETE are usable via plain postgres_changes here
+// (unlike comments' F104 workaround): comment_reactions_select_visible's
+// RLS predicate depends only on the *task's* visibility (public.is_task_
+// visible_to), not on any column that a reaction's own INSERT/DELETE
+// changes — so, unlike a comment's soft-delete (which flips deleted_at,
+// the very column its SELECT policy gates on), a reaction row's
+// visibility never changes out from under it. No broadcast fallback is
+// needed for either direction.
+//
+// DELETE payloads carry old.comment_id/old.user_id/old.emoji without
+// requiring `REPLICA IDENTITY FULL` because all three columns are part of
+// comment_reactions' composite primary key (F199's migration) — Postgres
+// always includes primary-key columns in a DELETE's replicated OLD row
+// regardless of replica identity setting.
+export type ReactionRealtimeEvent = {
+  eventType: "INSERT" | "DELETE";
+  commentId: string;
+  userId: string;
+  emoji: string;
+};
+
+export function subscribeToReactionsRealtime(
+  supabase: SupabaseClient,
+  taskId: string,
+  onChange: (event: ReactionRealtimeEvent) => void,
+): () => void {
+  function forward(eventType: "INSERT" | "DELETE") {
+    return (payload: {
+      new?: { comment_id?: string; user_id?: string; emoji?: string };
+      old?: { comment_id?: string; user_id?: string; emoji?: string };
+    }) => {
+      const row = eventType === "INSERT" ? payload?.new : payload?.old;
+      if (!row?.comment_id || !row.user_id || !row.emoji) return;
+      onChange({
+        eventType,
+        commentId: row.comment_id,
+        userId: row.user_id,
+        emoji: row.emoji,
+      });
+    };
+  }
+
+  const channel = supabase
+    .channel(`comment_reactions:${taskId}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "comment_reactions" },
+      forward("INSERT"),
+    )
+    .on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "comment_reactions" },
+      forward("DELETE"),
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
 export function subscribeToCommentsRealtime(
   supabase: SupabaseClient,
   taskId: string,

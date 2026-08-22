@@ -61,9 +61,12 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
 import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
+// F202 (AS-369): reactions from other viewers appear live, without a reload.
+import { useReactionsRealtime } from "@/components/task/use-reactions-realtime";
 // F201 (AS-366): reaction chips + emoji picker under each comment.
 import {
   CommentReactions,
+  applyReactionToggle,
   type CommentReactionSummary,
 } from "@/components/task/comment-reactions";
 // F122 (AS-214): each comment's author is now rendered via the shared
@@ -264,6 +267,38 @@ export function CommentList({
   // viewer performed the delete themselves.
   useCommentsRealtime(taskId, (event) => {
     setLocalComments((previous) => reconcileComment(previous, event));
+  });
+
+  // F202 (AS-369): reconcile every Realtime comment-reaction event into
+  // local state via the same pure `applyReactionToggle` reducer F201's
+  // own optimistic-update path already uses (handleReactionsChange
+  // below) — a reaction added/removed by *another* viewer shows up here
+  // without a manual refresh.
+  //
+  // Guard against echoing the caller's own update: this viewer's own
+  // toggle is already applied optimistically by handleReactionsChange the
+  // instant toggleReaction resolves, so folding the resulting Realtime
+  // event a second time here would be a harmless no-op at best (the
+  // reducer is idempotent for a repeat add/remove of the same user+emoji)
+  // but is skipped outright to avoid any redundant re-render/flicker
+  // between the optimistic update and the event arriving over the wire.
+  useReactionsRealtime(taskId, (event) => {
+    if (currentUserId && event.userId === currentUserId) return;
+    setLocalComments((previous) =>
+      previous.map((comment) =>
+        comment.id === event.commentId
+          ? {
+              ...comment,
+              reactions: applyReactionToggle(
+                comment.reactions ?? [],
+                event.emoji,
+                event.eventType === "INSERT",
+                event.userId,
+              ),
+            }
+          : comment,
+      ),
+    );
   });
 
   const isAdminOrOwner =
