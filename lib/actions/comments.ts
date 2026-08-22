@@ -17,6 +17,7 @@ import {
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
+import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
 
 export type AddCommentResult =
   | {
@@ -233,6 +234,22 @@ export async function addComment(
     );
   }
 
+  // F195 (AS-356): comment additions appear in the same task_activity feed
+  // as field changes. Non-fatal — the comment itself already succeeded.
+  try {
+    await writeTaskCommentEvent(
+      supabase,
+      parsed.data.taskId,
+      "comment_added",
+      inserted.id,
+    );
+  } catch (activityError) {
+    console.error(
+      "addComment: writeTaskCommentEvent failed (non-fatal):",
+      activityError,
+    );
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -414,6 +431,23 @@ export async function deleteComment(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F195 (AS-356): comment deletions appear in the same task_activity feed
+  // as additions/field changes. Non-fatal — the delete itself already
+  // succeeded.
+  try {
+    await writeTaskCommentEvent(
+      supabase,
+      commentTaskId,
+      "comment_deleted",
+      deleted.id,
+    );
+  } catch (activityError) {
+    console.error(
+      "deleteComment: writeTaskCommentEvent failed (non-fatal):",
+      activityError,
+    );
   }
 
   // F104 (AS-101 fix): notify live viewers via Realtime Broadcast instead

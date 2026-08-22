@@ -34,6 +34,7 @@ import { isDoneStatus } from "@/lib/tasks/blocked-guard";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
+import { diffTaskFields, writeTaskFieldChanges } from "@/lib/activity/task-activity";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
@@ -594,6 +595,7 @@ async function requireAssignActionContext(taskId: string): Promise<
   | {
       ok: true;
       admin: ReturnType<typeof createAdminClient>;
+      supabase: Awaited<ReturnType<typeof createClient>>;
       userId: string;
       context: TaskAssignContext;
     }
@@ -639,7 +641,13 @@ async function requireAssignActionContext(taskId: string): Promise<
     };
   }
 
-  return { ok: true, admin, userId: user.id, context: taskContext.context };
+  return {
+    ok: true,
+    admin,
+    supabase,
+    userId: user.id,
+    context: taskContext.context,
+  };
 }
 
 async function revalidateWorkspaceForTaskAssignment(
@@ -687,7 +695,17 @@ async function setTaskAssigneesCore(
 ): Promise<TaskAssigneesActionResult> {
   const preflight = await requireAssignActionContext(taskId);
   if (!preflight.ok) return preflight;
-  const { admin, userId, context } = preflight;
+  const { admin, supabase, userId, context } = preflight;
+
+  // F195 (AS-354, AS-355): the mirror `assignee_id` value before this call
+  // — the "before" side of the diff written once the mirror is
+  // recomputed below.
+  const { data: taskBeforeRow } = await admin
+    .from("tasks")
+    .select("assignee_id")
+    .eq("id", taskId)
+    .maybeSingle();
+  const mirrorBefore = taskBeforeRow?.assignee_id ?? null;
 
   const desiredUserIds = Array.from(new Set(desiredUserIdsInput));
 
@@ -783,6 +801,24 @@ async function setTaskAssigneesCore(
   }
 
   const mirror = await syncMirrorAssigneeId(admin, taskId);
+
+  // F195 (AS-354, AS-355): record the assignee change via the mirror
+  // column's before/after value — the single column every reader
+  // (including this feature) already treats as the task's canonical
+  // "current assignee" projection, even when multiple assignees exist
+  // (see resolveMirrorAssigneeId's doc comment above). Non-fatal.
+  try {
+    const changes = diffTaskFields(
+      { assignee_id: mirrorBefore },
+      { assignee_id: mirror },
+    );
+    await writeTaskFieldChanges(supabase, taskId, changes);
+  } catch (activityError) {
+    console.error(
+      "setTaskAssigneesCore: writeTaskFieldChanges failed (non-fatal):",
+      activityError,
+    );
+  }
 
   await revalidateWorkspaceForTaskAssignment(
     admin,
@@ -1019,7 +1055,9 @@ export async function editTask(
   // assignTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select(
+      "id, deleted_at, title, priority, due_date, estimate_minutes, projects!inner(id, workspace_id)",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1142,6 +1180,33 @@ export async function editTask(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F195 (AS-354, AS-355): record one task_activity entry per diffably
+  // changed field (title, priority, due date, estimate — status/assignee
+  // are not editable through this action). Non-fatal on failure, same as
+  // revalidatePath below — the edit itself already succeeded.
+  try {
+    const changes = diffTaskFields(
+      {
+        title: taskRow.title,
+        priority: taskRow.priority,
+        due_date: taskRow.due_date,
+        estimate_minutes: taskRow.estimate_minutes,
+      },
+      {
+        title: updated.title,
+        priority: updated.priority,
+        due_date: updated.due_date,
+        estimate_minutes: updated.estimate_minutes,
+      },
+    );
+    await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
+  } catch (activityError) {
+    console.error(
+      "editTask: writeTaskFieldChanges failed (non-fatal):",
+      activityError,
+    );
   }
 
   const { data: workspaceRow } = await admin
@@ -2083,6 +2148,21 @@ export async function moveTaskStatus(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F195 (AS-354, AS-355): record the status change. Non-fatal, mirrors
+  // editTask's own activity write above.
+  try {
+    const changes = diffTaskFields(
+      { status: taskRow.status },
+      { status: updated.status },
+    );
+    await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
+  } catch (activityError) {
+    console.error(
+      "moveTaskStatus: writeTaskFieldChanges failed (non-fatal):",
+      activityError,
+    );
   }
 
   // F177 (AS-315, AS-320, AS-321): a recurring task that just transitioned
@@ -3927,13 +4007,26 @@ export async function bulkUpdateTasks(
     updatePayload.due_date = parsed.data.updates.dueDate;
   }
 
+  // F195 (AS-354, AS-355): "before" snapshot of every allowed task's
+  // diffable fields, read in ONE query covering the whole batch (not a
+  // per-task query) — the per-task activity entries below are diffed
+  // against this, matching this feature's clarified "one entry per task,
+  // not one per batch" resolution (see the handoff's Decisions Made).
+  const { data: beforeRows } = await admin
+    .from("tasks")
+    .select("id, status, assignee_id, priority, due_date")
+    .in("id", allowedIds);
+  const beforeById = new Map(
+    (beforeRows ?? []).map((row) => [row.id as string, row]),
+  );
+
   // The one real write: a single `UPDATE ... WHERE id = ANY(allowedIds)`
   // statement, per this feature's Clarified performance-budget answer.
   const { data: updatedRows, error: updateError } = await admin
     .from("tasks")
     .update(updatePayload)
     .in("id", allowedIds)
-    .select("id");
+    .select("id, status, assignee_id, priority, due_date");
 
   if (updateError) {
     console.error("bulkUpdateTasks: update failed:", updateError);
@@ -3944,6 +4037,38 @@ export async function bulkUpdateTasks(
   }
 
   const succeededIds = (updatedRows ?? []).map((row) => row.id as string);
+
+  // F195 (AS-354, AS-355): one task_activity entry per changed field, PER
+  // TASK — each task in this bulk update gets its own diffed entries, not
+  // one collapsed entry for the whole batch (this feature's clarified
+  // ambiguity resolution). Non-fatal: the bulk update itself already
+  // succeeded above.
+  try {
+    for (const row of updatedRows ?? []) {
+      const before = beforeById.get(row.id as string);
+      if (!before) continue;
+      const changes = diffTaskFields(
+        {
+          status: before.status,
+          assignee_id: before.assignee_id,
+          priority: before.priority,
+          due_date: before.due_date,
+        },
+        {
+          status: row.status,
+          assignee_id: row.assignee_id,
+          priority: row.priority,
+          due_date: row.due_date,
+        },
+      );
+      await writeTaskFieldChanges(supabase, row.id as string, changes);
+    }
+  } catch (activityError) {
+    console.error(
+      "bulkUpdateTasks: writeTaskFieldChanges failed (non-fatal):",
+      activityError,
+    );
+  }
 
   for (const workspaceId of distinctWorkspaceIds) {
     if (!roleByWorkspace.has(workspaceId)) continue;

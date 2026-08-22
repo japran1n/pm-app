@@ -238,5 +238,41 @@ export async function generateNextOccurrence(
     .update({ last_occurrence_at: new Date().toISOString() })
     .eq("id", rootParentId);
 
+  // F195 (AS-360): the new occurrence's own creation is a SYSTEM action,
+  // distinct from the human `actorId` who completed the prior occurrence
+  // and triggered this generation — recorded with `p_system: true` so the
+  // RPC writes `actor_id = null` regardless of who is authenticated in
+  // this request. Recorded as a 'due_date' field_changed entry (old value
+  // null — the occurrence didn't exist before this call — new value the
+  // computed due date) since the closed `kind` vocabulary (F194) has no
+  // dedicated "task created" kind and 'field_changed' is the closest
+  // fit for "this occurrence now has a due date, set by the system".
+  // Non-fatal on failure, same rationale as every other activity write in
+  // this feature: the occurrence has already been created successfully.
+  try {
+    const { error: activityError } = await admin.rpc(
+      "write_task_activity_entry",
+      {
+        p_task_id: inserted.id,
+        p_kind: "field_changed",
+        p_field: "due_date",
+        p_old_value: null,
+        p_new_value: inserted.due_date as Json,
+        p_system: true,
+      },
+    );
+    if (activityError) {
+      console.error(
+        "generateNextOccurrence: write_task_activity_entry RPC failed (non-fatal):",
+        activityError,
+      );
+    }
+  } catch (unexpectedActivityError) {
+    console.error(
+      "generateNextOccurrence: activity write unexpected failure (non-fatal):",
+      unexpectedActivityError,
+    );
+  }
+
   return { generated: true, taskId: inserted.id, dueDate: inserted.due_date as string };
 }
