@@ -24,7 +24,11 @@ import {
   renameTemplateSchema,
   deleteTemplateSchema,
   taskTemplatePayloadSchema,
+  saveProjectAsTemplateSchema,
+  createProjectFromTemplateSchema,
+  projectTemplatePayloadSchema,
   type TaskTemplatePayload,
+  type ProjectTemplatePayload,
 } from "@/lib/validation/templates";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
@@ -702,4 +706,386 @@ export async function deleteTemplate(
   }
 
   return { ok: true, data: { id: parsed.data.templateId } };
+}
+
+// --- saveProjectAsTemplate ---------------------------------------------------
+// F184 (AS-333 setup): the "how does a project-kind template originate"
+// question the spec's draft scope left open. Mirrors saveTaskAsTemplate
+// above but at project scope: snapshots a project's current, non-deleted
+// tasks (title/description/description_json/priority/checklist/estimate/
+// tags — the SAME clonable fields cloneTaskFields/duplicateTask already
+// establish, minus assigneeIds per this feature's own payload schema doc
+// comment) into a new `task_templates` row with `kind = 'project'`, in
+// the project's current board order (status column order todo -> done,
+// then position within each column) so createProjectFromTemplate
+// recreates them in a sensible order.
+
+export type SaveProjectAsTemplateResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        name: string;
+        workspaceId: string;
+        taskCount: number;
+      };
+    }
+  | { ok: false; error: string };
+
+const STATUS_ORDER: Record<string, number> = {
+  todo: 0,
+  in_progress: 1,
+  in_review: 2,
+  done: 3,
+};
+
+export async function saveProjectAsTemplate(
+  projectId: string,
+  name: string,
+): Promise<SaveProjectAsTemplateResult> {
+  const parsed = saveProjectAsTemplateSchema.safeParse({ projectId, name });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to save a template." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at")
+    .eq("id", parsed.data.projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const workspaceId = projectRow.workspace_id;
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to save a template from this project.",
+    };
+  }
+
+  // Same write gate as saveTaskAsTemplate: saving a template creates a
+  // new row, so viewers (read-only, AS-216/AS-217) are excluded.
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to save templates.",
+    };
+  }
+
+  const { data: taskRows, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, title, description, description_json, priority, tags, estimate_minutes, status, position",
+    )
+    .eq("project_id", parsed.data.projectId)
+    .is("deleted_at", null)
+    .order("status", { ascending: true })
+    .order("position", { ascending: true });
+
+  if (taskError) {
+    console.error("saveProjectAsTemplate: task read failed:", taskError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const sortedTasks = (taskRows ?? []).slice().sort((a, b) => {
+    const statusDelta =
+      (STATUS_ORDER[a.status as string] ?? 99) -
+      (STATUS_ORDER[b.status as string] ?? 99);
+    if (statusDelta !== 0) return statusDelta;
+    return (a.position as number) - (b.position as number);
+  });
+
+  const taskIds = sortedTasks.map((row) => row.id as string);
+
+  const { data: checklistRows } = taskIds.length
+    ? await admin
+        .from("checklist_items")
+        .select("task_id, content, position")
+        .in("task_id", taskIds)
+        .order("position", { ascending: true })
+    : { data: [] as { task_id: string; content: string; position: number }[] };
+
+  const checklistByTask = new Map<
+    string,
+    { content: string; position: number }[]
+  >();
+  for (const row of checklistRows ?? []) {
+    const list = checklistByTask.get(row.task_id as string) ?? [];
+    list.push({
+      content: row.content as string,
+      position: row.position as number,
+    });
+    checklistByTask.set(row.task_id as string, list);
+  }
+
+  const payload: ProjectTemplatePayload = {
+    tasks: sortedTasks.map((row) => ({
+      title: row.title as string,
+      description: row.description as string | null,
+      description_json: row.description_json,
+      priority: row.priority as ProjectTemplatePayload["tasks"][number]["priority"],
+      checklistItems: checklistByTask.get(row.id as string) ?? [],
+      estimate_minutes: row.estimate_minutes as number | null,
+      tags: (row as unknown as { tags?: string[] }).tags ?? [],
+    })),
+  };
+
+  const { data: inserted, error: insertError } = await admin
+    .from("task_templates")
+    .insert({
+      workspace_id: workspaceId,
+      kind: "project",
+      name: parsed.data.name,
+      payload: payload as unknown as Json,
+      created_by: user.id,
+    })
+    .select("id, name, workspace_id")
+    .single();
+
+  if (insertError || !inserted) {
+    console.error("saveProjectAsTemplate: insert failed:", insertError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "saveProjectAsTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: inserted.id,
+      name: inserted.name,
+      workspaceId: inserted.workspace_id,
+      taskCount: payload.tasks.length,
+    },
+  };
+}
+
+// --- createProjectFromTemplate -----------------------------------------------
+
+export type CreateProjectFromTemplateResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        key: string;
+        name: string;
+        workspaceId: string;
+        taskCount: number;
+      };
+    }
+  | { ok: false; error: string };
+
+// AS-333: creates a new project AND every one of the template's tasks,
+// in ONE atomic unit — delegated to the `create_project_from_template`
+// Postgres function (supabase/migrations/
+// 20260822190000_rpc_create_project_from_template.sql), which runs the
+// project insert (firing F145's project-key trigger) and every task
+// insert (firing F145's per-project task-number trigger, so each task
+// gets its own key/number via the same atomic counter every other
+// create path uses) inside a single function invocation — a single
+// PL/pgSQL function body is one implicit transaction, so a failure
+// anywhere in the loop (e.g. a malformed/empty task title tripping the
+// `tasks_title_not_empty` CHECK) rolls back the ENTIRE call, including
+// the project row that was inserted first. No orphaned project, no
+// partial task set, ever.
+export async function createProjectFromTemplate(
+  templateId: string,
+  workspaceId: string,
+  name: string,
+  description?: string | null,
+): Promise<CreateProjectFromTemplateResult> {
+  const parsed = createProjectFromTemplateSchema.safeParse({
+    templateId,
+    workspaceId,
+    name,
+    description: description ?? null,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid project details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to create a project from a template.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const membership = await requireActiveMembership(
+    admin,
+    parsed.data.workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to create a project in this workspace.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to create projects.",
+    };
+  }
+
+  const { data: templateRow, error: templateError } = await admin
+    .from("task_templates")
+    .select("id, workspace_id, kind, payload")
+    .eq("id", parsed.data.templateId)
+    .maybeSingle();
+
+  if (templateError || !templateRow) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  if (templateRow.kind !== "project") {
+    return { ok: false, error: "This template is not a project template." };
+  }
+
+  // Same workspace-scoping rule createTaskFromTemplate enforces: a
+  // template must be applied within its own workspace, never trusted
+  // from a client-supplied workspaceId that happens to differ.
+  if (templateRow.workspace_id !== parsed.data.workspaceId) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  const payloadParsed = projectTemplatePayloadSchema.safeParse(
+    templateRow.payload,
+  );
+
+  if (!payloadParsed.success) {
+    console.error(
+      "createProjectFromTemplate: stored payload failed schema validation:",
+      payloadParsed.error,
+    );
+    return {
+      ok: false,
+      error: "This template's saved data is invalid. Please re-save it.",
+    };
+  }
+
+  const payload = payloadParsed.data;
+
+  const { data: rpcRows, error: rpcError } = await admin.rpc(
+    "create_project_from_template",
+    {
+      p_workspace_id: parsed.data.workspaceId,
+      p_name: parsed.data.name,
+      p_description: (parsed.data.description ?? null) as unknown as string,
+      p_created_by: user.id,
+      p_tasks: payload.tasks as unknown as Json,
+    },
+  );
+
+  if (rpcError) {
+    console.error(
+      "createProjectFromTemplate: create_project_from_template RPC failed:",
+      rpcError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const created = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (!created) {
+    console.error(
+      "createProjectFromTemplate: create_project_from_template RPC returned no row",
+    );
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", parsed.data.workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "createProjectFromTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: created.project_id as string,
+      key: created.project_key as string,
+      name: created.project_name as string,
+      workspaceId: parsed.data.workspaceId,
+      taskCount: payload.tasks.length,
+    },
+  };
 }

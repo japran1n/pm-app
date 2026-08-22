@@ -895,6 +895,20 @@ export type Database = {
           id: string
         }[]
       }
+      create_project_from_template: {
+        Args: {
+          p_created_by: string
+          p_description: string
+          p_name: string
+          p_tasks: Json
+          p_workspace_id: string
+        }
+        Returns: {
+          project_id: string
+          project_key: string
+          project_name: string
+        }[]
+      }
       create_workspace_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: {

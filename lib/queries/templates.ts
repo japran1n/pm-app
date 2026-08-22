@@ -112,3 +112,26 @@ export async function getWorkspaceTaskTemplateOptions(
 
   return rows.map((row) => ({ id: row.id as string, name: row.name as string }));
 }
+
+// F184: minimal id/name listing for the "Start from template" option in
+// the new-project dialog — same shape/rationale as
+// getWorkspaceTaskTemplateOptions above, filtered to `kind = 'project'`.
+export async function getWorkspaceProjectTemplateOptions(
+  workspaceId: string,
+): Promise<TaskTemplatePickerOption[]> {
+  const supabase = await createClient();
+
+  const { data: rows, error } = await supabase
+    .from("task_templates")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .eq("kind", "project")
+    .order("name", { ascending: true });
+
+  if (error || !rows) {
+    console.error("getWorkspaceProjectTemplateOptions: query failed:", error);
+    return [];
+  }
+
+  return rows.map((row) => ({ id: row.id as string, name: row.name as string }));
+}

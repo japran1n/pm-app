@@ -3,9 +3,11 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceProjects } from "@/lib/queries/projects";
+import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { EditProjectDialog } from "@/components/edit-project-dialog";
 import { ArchiveProjectDialog } from "@/components/archive-project-dialog";
+import { SaveProjectAsTemplateDialog } from "@/components/save-project-as-template-dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -78,6 +80,12 @@ export default async function ProjectsPage({
   const canArchive =
     callerMembership?.role === "owner" || callerMembership?.role === "admin";
 
+  // F184: "Save as template" is a write (creates a new task_templates row)
+  // — same canWrite/viewer-is-read-only gate every other mutating control
+  // on this page already re-checks client-side; the server independently
+  // re-checks membership + canWrite itself.
+  const canSaveTemplate = callerMembership?.role !== "viewer";
+
   let projects: Awaited<ReturnType<typeof getWorkspaceProjects>> | null = null;
   let loadError = false;
 
@@ -90,6 +98,14 @@ export default async function ProjectsPage({
     loadError = true;
   }
 
+  // F184: project-template options for the "Start from template" option
+  // in the New Project dialog, server-fetched here and passed down as a
+  // typed prop (clarified data-shape answer) rather than the dialog
+  // querying Supabase directly.
+  const projectTemplateOptions = await getWorkspaceProjectTemplateOptions(
+    workspace.id,
+  );
+
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -99,7 +115,10 @@ export default async function ProjectsPage({
             All projects in {workspace.name}.
           </p>
         </div>
-        <NewProjectDialog workspaceId={workspace.id} />
+        <NewProjectDialog
+          workspaceId={workspace.id}
+          templateOptions={projectTemplateOptions}
+        />
       </div>
 
       {loadError && (
@@ -138,6 +157,12 @@ export default async function ProjectsPage({
                   </CardDescription>
                 </Link>
                 <div className="flex items-center gap-2">
+                  <SaveProjectAsTemplateDialog
+                    projectId={project.id}
+                    projectName={project.name}
+                    disabled={!canSaveTemplate}
+                    disabledTitle="You don't have permission to save templates."
+                  />
                   <EditProjectDialog
                     workspaceId={workspace.id}
                     project={{
