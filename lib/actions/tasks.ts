@@ -35,6 +35,11 @@ import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { diffTaskFields, writeTaskFieldChanges } from "@/lib/activity/task-activity";
+import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
+import {
+  extractNewlyMentionedIds,
+  notifyNewlyMentionedUsers,
+} from "@/lib/notifications/mentions";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
@@ -993,6 +998,13 @@ export type EditTaskResult =
         id: string;
         title: string;
         description: string | null;
+        /** F205 (AS-378): present only when `updates.descriptionJson` was
+         * part of this call — the mention-sanitised document actually
+         * persisted, so an optimistic caller can re-sync its local mirror
+         * to the authoritative (possibly-stripped) value without a second
+         * fetch, same "return what was actually written" convention as
+         * `toggleDescriptionChecklistItem`. */
+        descriptionJson?: JSONContent | null;
         priority: string | null;
         dueDate: string | null;
         estimateMinutes: number | null;
@@ -1056,7 +1068,13 @@ export async function editTask(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, deleted_at, title, priority, due_date, estimate_minutes, projects!inner(id, workspace_id)",
+      // F205 (AS-378): `description_json` (needed to diff against the new
+      // document — see extractNewlyMentionedIds call below) and the
+      // project's own `id`/`visibility` (needed by
+      // sanitiseMentionsForVisibility, mirroring lib/actions/comments.ts's
+      // addComment/editComment) are added here alongside the pre-existing
+      // columns; nothing else about this select changes.
+      "id, deleted_at, title, priority, due_date, estimate_minutes, description_json, projects!inner(id, workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -1106,9 +1124,47 @@ export async function editTask(
 
   // Build the update payload from only the fields present in `updates`.
   // Never includes project_id (AS-060) — there is no source field for it.
+  // F205 (AS-378): when `updates.descriptionJson` is present, every
+  // mention in it is re-validated against this task's own project
+  // visibility server-side — the exact same
+  // `sanitiseMentionsForVisibility` call addComment/editComment already
+  // make (lib/comments/mentions.ts), reused rather than reimplemented, so
+  // "who's visible" stays defined in exactly one place regardless of
+  // whether the mention lives in a comment or a description. A
+  // hand-crafted descriptionJson bypassing the picker entirely (any raw
+  // call to editTask, not just the wired-up UI) gets the same protection
+  // AS-376 already gives comments — this is not skipped just because it's
+  // a description.
+  let sanitisedDescriptionJson: JSONContent | undefined;
+  if ("descriptionJson" in parsed.data.updates) {
+    const rawDescriptionJson = parsed.data.updates.descriptionJson;
+    sanitisedDescriptionJson = rawDescriptionJson
+      ? ((await sanitiseMentionsForVisibility(
+          admin,
+          rawDescriptionJson as JSONContent,
+          {
+            projectId: project.id,
+            workspaceId,
+            projectVisibility: project.visibility ?? "workspace",
+          },
+        )) as JSONContent)
+      : ({ type: "doc", content: [] } as JSONContent);
+  }
+
   const updatePayload: {
     title?: string;
     description?: string | null;
+    // F205 (AS-378): written ALONE (never alongside `description` in the
+    // same call — `EditTaskUpdates` has no code path that sets both at
+    // once, since the description Textarea and the RichTextEditor are
+    // mutually exclusive edit surfaces on the same field, see
+    // task-detail-sheet.tsx) so the direct-write trigger condition in
+    // 20260822130000_task_description_json_direct_write.sql ("description
+    // changed is-distinct AND description did NOT change") is met and
+    // description_text is derived FROM this document rather than this
+    // write being silently discarded back to whatever `description`
+    // (untouched) would otherwise re-derive.
+    description_json?: Json;
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     due_date?: string | null;
     estimate_minutes?: number | null;
@@ -1141,13 +1197,16 @@ export async function editTask(
   if ("recurrence" in parsed.data.updates) {
     updatePayload.recurrence = parsed.data.updates.recurrence;
   }
+  if (sanitisedDescriptionJson !== undefined) {
+    updatePayload.description_json = sanitisedDescriptionJson as Json;
+  }
 
   const { data: updated, error: updateError } = await admin
     .from("tasks")
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
     .select(
-      "id, title, description, priority, due_date, estimate_minutes, recurrence",
+      "id, title, description, description_json, priority, due_date, estimate_minutes, recurrence",
     )
     .single();
 
@@ -1209,6 +1268,33 @@ export async function editTask(
     );
   }
 
+  // F205 (AS-378): "notify only newly added mentions, diffed against the
+  // previous save" — the whole feature. Compares the document that was
+  // ACTUALLY on the row before this call (`taskRow.description_json`)
+  // against the document ACTUALLY written (`updated.description_json`,
+  // post-sanitisation) — not the raw client input, so a mention that got
+  // stripped by sanitiseMentionsForVisibility above is never notified
+  // either. Non-fatal (same convention as writeTaskFieldChanges above) and
+  // only runs when this call actually touched descriptionJson.
+  if (sanitisedDescriptionJson !== undefined) {
+    try {
+      const newlyMentionedUserIds = extractNewlyMentionedIds(
+        taskRow.description_json as JSONContent | null,
+        updated.description_json as JSONContent | null,
+      );
+      await notifyNewlyMentionedUsers({
+        taskId: parsed.data.taskId,
+        authorId: user.id,
+        newlyMentionedUserIds,
+      });
+    } catch (notifyError) {
+      console.error(
+        "editTask: notifyNewlyMentionedUsers failed (non-fatal):",
+        notifyError,
+      );
+    }
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
@@ -1233,6 +1319,9 @@ export async function editTask(
       id: updated.id,
       title: updated.title,
       description: updated.description,
+      ...(sanitisedDescriptionJson !== undefined
+        ? { descriptionJson: updated.description_json as JSONContent | null }
+        : {}),
       priority: updated.priority,
       dueDate: updated.due_date,
       estimateMinutes: updated.estimate_minutes,

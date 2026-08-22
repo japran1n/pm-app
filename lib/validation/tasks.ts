@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { JSONContent } from "@tiptap/react";
 
 // Validates create-task input (AS-043, AS-044, AS-045, AS-046). Mirrors the
 // tech-decisions.md file-layout convention established by
@@ -123,6 +124,20 @@ export type SetTaskAssigneesInput = z.infer<typeof setTaskAssigneesSchema>;
 // structurally impossible to attempt through this schema/action, since
 // there is no field here that could carry a project id through to the
 // update. Do not add one.
+// F205 (AS-378): mirrors lib/validation/comments.ts's commentBodyJsonSchema
+// exactly — same shallow "is this plausibly a Tiptap doc" shape check.
+// This is deliberately NOT the real security boundary (that's
+// components/editor/rich-text-editor.tsx's sanitiseDocument at render time,
+// plus lib/comments/mentions.ts's sanitiseMentionsForVisibility at write
+// time for mentions specifically) — this schema only rejects a request
+// that isn't even shaped like a document, per AS-146.
+const taskDescriptionJsonSchema = z
+  .object({
+    type: z.literal("doc"),
+    content: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
 const editableFields = z.object({
   title: z
     .string()
@@ -185,6 +200,15 @@ const editableFields = z.object({
         .nullable(),
     })
     .nullable(),
+  // F205 (AS-378): the rich-text description document, written directly
+  // (mirrors F173's toggleDescriptionChecklistItem's write shape — see
+  // supabase/migrations/20260822130000_task_description_json_direct_write.sql's
+  // trigger condition: an UPDATE that changes description_json but NOT
+  // description is treated as authoritative and never overwritten by the
+  // legacy plain-text-derivation path). Nullable — null clears the
+  // description entirely (an empty Tiptap doc), same "explicit null is a
+  // valid input" convention as every other nullable field in this schema.
+  descriptionJson: taskDescriptionJsonSchema.nullable(),
 });
 
 const partialEditableFields = editableFields.partial();
@@ -195,7 +219,22 @@ export const editTaskSchema = z.object({
 });
 
 export type EditTaskInput = z.infer<typeof editTaskSchema>;
-export type EditTaskUpdates = z.infer<typeof partialEditableFields>;
+// F205 (AS-378): `descriptionJson`'s runtime schema uses `z.literal("doc")`
+// (needed so a malformed request that isn't even shaped like a Tiptap doc
+// is rejected server-side, per AS-146) but that produces an overly-narrow
+// inferred TS type (`type: "doc"` rather than `type: string`) that real
+// `JSONContent` values (e.g. from `@tiptap/react`'s own `Editor.getJSON()`)
+// don't structurally satisfy. The runtime check stays exactly as strict as
+// written above; only the exported TS type is widened back to `JSONContent`
+// here, mirroring the same "schema validates narrowly, exported type stays
+// usable" pattern lib/actions/comments.ts's `bodyJson?: JSONContent | null`
+// parameter already uses for the identical comment-mentions case.
+export type EditTaskUpdates = Omit<
+  z.infer<typeof partialEditableFields>,
+  "descriptionJson"
+> & {
+  descriptionJson?: JSONContent | null;
+};
 
 // Validates deleteTask input (F038: AS-055, AS-056, AS-057). Just the task
 // id — soft delete has no other caller-supplied fields.

@@ -33,7 +33,7 @@
 // should only open the sheet once it has a task, but is handled rather
 // than left to crash).
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import {
   Copy,
@@ -116,6 +116,13 @@ import {
 } from "@/components/task/dependencies";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import { CommentList, type TaskComment } from "@/components/task/comment-list";
+// F205 (AS-378): reuses the SAME Server Action F204 built for the comment
+// composer's mention picker (lib/actions/comments.ts's getMentionCandidates
+// is generic over `taskId`, not comment-specific — it already narrows to
+// the task's own project-visibility-scoped member set) rather than adding
+// a second, near-identical action for descriptions. See this feature's
+// handoff, Decisions made.
+import { getMentionCandidates } from "@/lib/actions/comments";
 // F196 (AS-358, AS-361): the Comments/Activity toggle — see
 // components/task/activity-feed.tsx's own doc comment for why a toggle
 // was chosen over interleaving the two into one feed.
@@ -142,7 +149,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -179,6 +185,22 @@ const RichTextRenderer = dynamic(
   () =>
     import("@/components/editor/rich-text-editor").then(
       (mod) => mod.RichTextRenderer,
+    ),
+  { ssr: false },
+);
+
+// F205 (AS-378): the SAME editable component F174 already wired into the
+// comment composer (components/task/comment-list.tsx), dynamically
+// imported the same "{ ssr: false }" way as RichTextRenderer above, for
+// the identical Tiptap-touches-the-DOM reason. This is what turns the
+// description field from a plain Textarea into a rich-text editor with
+// the @-mention picker (mentionSuggestions below) — the same extension
+// F203 built, enabled here for descriptions exactly as it already is for
+// comments.
+const RichTextEditor = dynamic(
+  () =>
+    import("@/components/editor/rich-text-editor").then(
+      (mod) => mod.RichTextEditor,
     ),
   { ssr: false },
 );
@@ -438,7 +460,6 @@ export function TaskDetailSheet({
   onOpenTask?: (taskId: string) => void;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
-  const [description, setDescription] = useState(task?.description ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   // F173 (AS-311): local, optimistic mirror of `task.descriptionJson`,
   // same "local state re-synced on task change" shape as
@@ -513,7 +534,6 @@ export function TaskDetailSheet({
   if (open && task && task.id !== syncedTaskId) {
     setSyncedTaskId(task.id);
     setTitle(task.title);
-    setDescription(task.description ?? "");
     setDueDate(task.dueDate ?? "");
     setDescriptionJson(task.descriptionJson);
   } else if (!open && syncedTaskId !== null) {
@@ -544,12 +564,87 @@ export function TaskDetailSheet({
     saveField({ title: trimmed }, "Title updated.");
   }
 
-  function handleDescriptionBlur() {
-    if (!task) return;
-    const next = description.trim() || null;
-    if (next === (task.description ?? null)) return;
-    saveField({ description: next }, "Description updated.");
+  // F205 (AS-378): the description editor's own @-mention save path.
+  // Replaces the former handleDescriptionBlur (which used to write the
+  // legacy plain-text `description` column from a plain Textarea) —
+  // RichTextEditor
+  // below is bound to `descriptionJson` alone, and this writes ONLY
+  // `updates.descriptionJson` (never `updates.description` in the same
+  // call), matching the direct-write trigger condition
+  // (20260822130000_task_description_json_direct_write.sql: a write that
+  // changes description_json but NOT description is treated as
+  // authoritative). See this feature's handoff, Decisions made, for why
+  // the legacy plain-text column is intentionally left to go stale from
+  // this write path rather than being back-derived here.
+  function handleDescriptionJsonBlur() {
+    if (!task || !canEdit) return;
+    const previous = task.descriptionJson ?? null;
+    const next = descriptionJson ?? null;
+    if (JSON.stringify(previous) === JSON.stringify(next)) return;
+
+    startSaveTransition(async () => {
+      const result = await editTask(task.id, { descriptionJson: next });
+      if (result.ok) {
+        if ("descriptionJson" in result.data) {
+          // The server may have stripped an invisible mention
+          // (sanitiseMentionsForVisibility, AS-376's protection reused
+          // for descriptions) — re-sync the local mirror to whatever was
+          // actually persisted rather than trusting the optimistic buffer.
+          setDescriptionJson(result.data.descriptionJson);
+        }
+        toast.success("Description updated.");
+      } else {
+        // Failure handling per Clarified implementation: the optimistic
+        // change reverts and a toast states what failed in plain
+        // language.
+        setDescriptionJson(previous);
+        toast.error(result.error);
+      }
+    });
   }
+
+  // F205 (AS-378): the description editor's @-mention suggestion source —
+  // exactly the same "narrowed, project-visibility-scoped id list via
+  // getMentionCandidates" pattern comment-list.tsx already uses (see that
+  // file's own doc comment on this same block for the full rationale).
+  // `null` (not yet resolved) means "no suggestions offered yet", never
+  // widened to the full `members` list, same safe default.
+  const [visibleDescriptionMentionIds, setVisibleDescriptionMentionIds] =
+    useState<string[] | null>(null);
+  const [syncedDescriptionMentionTaskId, setSyncedDescriptionMentionTaskId] =
+    useState<string | null>(null);
+  if (task && task.id !== syncedDescriptionMentionTaskId) {
+    setSyncedDescriptionMentionTaskId(task.id);
+    setVisibleDescriptionMentionIds(null);
+  }
+
+  const taskIdForMentions = task?.id;
+  useEffect(() => {
+    if (!taskIdForMentions) return;
+    let cancelled = false;
+    getMentionCandidates(taskIdForMentions).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setVisibleDescriptionMentionIds(result.data.userIds);
+      } else {
+        setVisibleDescriptionMentionIds([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskIdForMentions]);
+
+  const descriptionMentionSuggestions = members
+    .filter(
+      (member) =>
+        visibleDescriptionMentionIds !== null &&
+        visibleDescriptionMentionIds.includes(member.userId),
+    )
+    .map((member) => ({
+      id: member.userId,
+      label: member.name || member.email || member.userId,
+    }));
 
   // F173 (AS-311): inline toggle for a checkbox inside the description's
   // rich-text Preview — permission-checked (`canEdit`, same gate as every
@@ -1101,24 +1196,31 @@ export function TaskDetailSheet({
                 <Label htmlFor={`task-description-${task.id}`}>
                   Description
                 </Label>
-                <Textarea
-                  id={`task-description-${task.id}`}
-                  value={description}
+                {/* F205 (AS-378): the plain Textarea is replaced with the
+                   shared RichTextEditor (F169/F174's same component,
+                   already wired into the comment composer), bound to
+                   `descriptionJson` — this is what enables the same
+                   @-mention picker (F203) for descriptions, with the same
+                   server-side visibility enforcement (F204's
+                   sanitiseMentionsForVisibility, reused unchanged by
+                   editTask) protecting it. The read-only Preview below is
+                   UNCHANGED from F173 (AS-311) — this feature does not
+                   touch its inline checkbox-toggle behaviour, only the
+                   editing surface above it. */}
+                <RichTextEditor
+                  content={descriptionJson}
+                  onChange={setDescriptionJson}
+                  onBlur={handleDescriptionJsonBlur}
                   disabled={isSavingField || !canEdit}
-                  title={editDisabledTitle}
-                  onChange={(changeEvent) =>
-                    setDescription(changeEvent.target.value)
-                  }
-                  onBlur={handleDescriptionBlur}
+                  placeholder="Add a description..."
+                  aria-label={`Description for ${task.title}`}
+                  mentionSuggestions={descriptionMentionSuggestions}
                 />
                 {/* F171 (AS-307, AS-309): the safe, formatted rendering of
-                   the same description, sourced from `description_json`
-                   (F170's DB-trigger-derived, always-in-sync column) —
-                   proves formatting survives a reload since this reads
-                   from freshly-fetched stored JSON, not the in-memory
-                   edit buffer above. Only shown when there is real
-                   content beyond an empty doc, so the plain edit
-                   Textarea above stays the single empty-state surface. */}
+                   the same description, sourced from `description_json`.
+                   Only shown when there is real content beyond an empty
+                   doc. F173 (AS-311): checkboxes inside this preview are
+                   toggle-able right here — unchanged by this feature. */}
                 {descriptionJson &&
                   Array.isArray(descriptionJson.content) &&
                   descriptionJson.content.length > 0 && (
@@ -1126,21 +1228,10 @@ export function TaskDetailSheet({
                       <p className="mb-1 text-xs font-medium text-muted-foreground">
                         Preview
                       </p>
-                      {/* F173 (AS-311): checkboxes inside this preview
-                         (a `taskList`/`taskItem` typed via the toolbar
-                         once a caller wires RichTextEditor into the
-                         description write path — out of scope here) are
-                         toggle-able right here, without opening a
-                         separate editor. Distinct from the structured
-                         Checklist section elsewhere on this Sheet
-                         (components/task/checklist.tsx) — see
-                         app/globals.css's [data-type="taskList"] rules
-                         for the visual distinction, and this feature's
-                         handoff for why these checkboxes never feed
-                         AS-272's completion percentage. */}
                       <RichTextRenderer
                         content={descriptionJson}
                         aria-label="Description preview"
+                        mentionSuggestions={descriptionMentionSuggestions}
                         onToggleTaskItem={
                           canEdit
                             ? handleToggleDescriptionChecklistItem
