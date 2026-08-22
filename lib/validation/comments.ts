@@ -1,5 +1,20 @@
 import { z } from "zod";
 
+// F174 (AS-312): loose structural validation for a comment's rich-text
+// body. Deliberately NOT a full allow-list re-implementation — that
+// allow-list is owned once by components/editor/rich-text-editor.tsx's
+// sanitiseDocument and re-applied on every render (see
+// lib/comments/rich-text.ts's doc comment for the full rationale). This
+// schema only guards against obviously-malformed payloads (wrong shape,
+// wrong top-level type) reaching the database at all; it is not the
+// security boundary.
+export const commentBodyJsonSchema = z
+  .object({
+    type: z.literal("doc"),
+    content: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
 // Validates addComment input (AS-094, AS-095). Mirrors the file-layout
 // convention established by lib/validation/tasks.ts.
 //

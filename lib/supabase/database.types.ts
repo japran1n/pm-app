@@ -186,6 +186,8 @@ export type Database = {
       }
       comments: {
         Row: {
+          body_json: Json | null
+          body_text: string | null
           created_at: string
           deleted_at: string | null
           id: string
@@ -194,6 +196,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          body_json?: Json | null
+          body_text?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string
@@ -202,6 +206,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          body_json?: Json | null
+          body_text?: string | null
           created_at?: string
           deleted_at?: string | null
           id?: string

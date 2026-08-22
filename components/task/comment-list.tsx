@@ -41,15 +41,16 @@
 // relative timestamp via date-fns's formatDistanceToNow (already in
 // tech-decisions.md's libraries list for exactly this use).
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import type { JSONContent } from "@tiptap/react";
 
 import { addComment, deleteComment } from "@/lib/actions/comments";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
@@ -57,12 +58,73 @@ import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
 // F122 (AS-214): each comment's author is now rendered via the shared
 // avatar component instead of `authorLabel`'s plain text alone.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
+// F174 (AS-312): comments support the same rich-text formatting as
+// descriptions, reusing F169/F171's shared editor/renderer pair as-is —
+// its own toolbar is already documented as "compact" (built from the
+// existing shadcn Button primitives, no bespoke toolbar design), so no
+// second, reduced-formatting-subset toolbar variant was built for
+// comments; that would mean either a new prop on the shared, currently
+// off-limits rich-text-editor.tsx (owned by a concurrent worker this
+// session) or a parallel bespoke toolbar — both rejected per the
+// clarified "simpler option, no new dependency, no second source of
+// truth" answer. See this feature's handoff, Decisions made.
+//
+// Client-only by construction (components/editor/rich-text-editor.tsx's
+// own doc comment): both components are lazy-loaded here via a plain
+// dynamic `import()` inside an effect, rather than next/dynamic, so this
+// file stays a single, simple client boundary and — importantly — so
+// this component's existing SSR/no-DOM unit test
+// (tests/unit/comment-list.test.ts, `renderToStaticMarkup`, environment:
+// node, no window) keeps rendering the same plain-text content it always
+// has (AS-096/AS-097 unaffected): before the effect ever runs, both the
+// composer and the comment body fall back to plain-text rendering
+// identical to this component's pre-F174 behaviour.
+type RichTextEditorModule = {
+  RichTextEditor: (props: {
+    content?: JSONContent | null;
+    onChange?: (content: JSONContent) => void;
+    disabled?: boolean;
+    placeholder?: string;
+    "aria-label"?: string;
+    className?: string;
+  }) => React.ReactElement | null;
+  RichTextRenderer: (props: {
+    content?: JSONContent | null;
+    className?: string;
+    "aria-label"?: string;
+  }) => React.ReactElement | null;
+};
+
+function useRichTextModule(): RichTextEditorModule | null {
+  const [module, setModule] = useState<RichTextEditorModule | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("@/components/editor/rich-text-editor").then((imported) => {
+      if (!cancelled) {
+        setModule({
+          RichTextEditor: imported.RichTextEditor,
+          RichTextRenderer: imported.RichTextRenderer,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return module;
+}
 
 export type TaskComment = {
   id: string;
   taskId: string;
   userId: string;
   text: string;
+  /** F174 (AS-312): Tiptap JSONContent document for this comment. Falls
+   * back to a single-paragraph wrap of `text` (docFromPlainText) for any
+   * comment predating this feature or missing it for another reason —
+   * every call site of this type constructs `bodyJson` the same way, so
+   * rendering never needs its own separate fallback branch. */
+  bodyJson?: JSONContent | null;
   createdAt: string;
 };
 
@@ -144,7 +206,11 @@ export function CommentList({
   // during render on prop change" convention as TaskDetailSheet's
   // syncedTaskId / TagsEditor's syncedTaskId.
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
-  const [draft, setDraft] = useState("");
+  // F174 (AS-312): the composer's draft is a Tiptap JSONContent document,
+  // not a plain string. `null` is the shared editor's own "empty" value
+  // (RichTextEditorProps's doc comment).
+  const [draft, setDraft] = useState<JSONContent | null>(null);
+  const richText = useRichTextModule();
   const [isSubmitting, startSubmitTransition] = useTransition();
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
@@ -196,21 +262,26 @@ export function CommentList({
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
     setLocalComments(comments);
-    setDraft("");
+    setDraft(null);
   }
 
   const orderedComments = sortedOldestFirst(localComments);
+  const draftPlainText = extractPlainText(draft);
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
-    const trimmed = draft.trim();
-    if (!trimmed) return;
+    if (!draftPlainText) return;
 
     startSubmitTransition(async () => {
-      const result = await addComment(taskId, trimmed);
+      // F174 (AS-312): posts both the plain-text projection (pre-flight
+      // non-empty check, same shape addCommentSchema has always
+      // validated) and the real Tiptap document — see
+      // lib/actions/comments.ts's addComment doc comment for why both are
+      // sent and how the server treats them.
+      const result = await addComment(taskId, draftPlainText, draft);
       if (result.ok) {
         setLocalComments((previous) => [...previous, result.data]);
-        setDraft("");
+        setDraft(null);
       } else {
         toast.error(result.error);
       }
@@ -280,7 +351,19 @@ export function CommentList({
                   </Button>
                 )}
               </div>
-              <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
+              {richText ? (
+                <richText.RichTextRenderer
+                  content={comment.bodyJson ?? docFromPlainText(comment.text)}
+                  aria-label={`Comment by ${authorLabel(comment.userId, members)}`}
+                />
+              ) : (
+                // F174: pre-hydration fallback, identical to this
+                // component's pre-F174 rendering — keeps
+                // tests/unit/comment-list.test.ts's AS-096/AS-097
+                // assertions (which render via renderToStaticMarkup, no
+                // DOM/effects) passing unchanged.
+                <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
+              )}
             </li>
           ))}
         </ul>
@@ -288,23 +371,40 @@ export function CommentList({
 
       <form
         onSubmit={handleSubmit}
-        className="flex gap-2"
+        className="flex flex-col gap-2"
         aria-label="Add a comment"
       >
         <Label htmlFor={`comment-draft-${taskId}`} className="sr-only">
           Add a comment
         </Label>
-        <Input
-          id={`comment-draft-${taskId}`}
-          value={draft}
-          disabled={isSubmitting || !canPost}
-          placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
-          title={canPost ? undefined : "Viewers can't comment"}
-          onChange={(changeEvent) => setDraft(changeEvent.target.value)}
-        />
+        {richText ? (
+          <richText.RichTextEditor
+            content={draft}
+            onChange={setDraft}
+            disabled={isSubmitting || !canPost}
+            placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
+            aria-label="Add a comment"
+          />
+        ) : (
+          // F174: pre-hydration fallback — a plain input bound to the
+          // same JSONContent draft state via docFromPlainText, so typing
+          // before the editor has loaded is not lost once it does.
+          <input
+            id={`comment-draft-${taskId}`}
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            value={draftPlainText}
+            disabled={isSubmitting || !canPost}
+            placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
+            title={canPost ? undefined : "Viewers can't comment"}
+            onChange={(changeEvent) =>
+              setDraft(docFromPlainText(changeEvent.target.value))
+            }
+          />
+        )}
         <Button
           type="submit"
-          disabled={isSubmitting || !draft.trim() || !canPost}
+          className="self-end"
+          disabled={isSubmitting || !draftPlainText || !canPost}
           title={canPost ? undefined : "Viewers can't comment"}
         >
           {isSubmitting ? (

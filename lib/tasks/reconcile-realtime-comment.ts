@@ -39,7 +39,9 @@
 // repeat soft-delete events.
 
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import type { JSONContent } from "@tiptap/react";
 import type { TaskComment } from "@/components/task/comment-list";
+import { docFromPlainText } from "@/lib/comments/rich-text";
 
 export type CommentRealtimeRow = {
   id: string;
@@ -48,6 +50,13 @@ export type CommentRealtimeRow = {
   text: string;
   created_at: string;
   deleted_at: string | null;
+  // F174 (AS-312): optional so every existing test payload (constructed
+  // before this feature existed) still satisfies this type unchanged.
+  // Realtime postgres_changes on the `comments` table always includes
+  // every column of the row, so a live event always has this populated
+  // once the DB migration has run; the fallback below only matters for
+  // synthetic/older test payloads.
+  body_json?: JSONContent | null;
 };
 
 export type CommentRealtimeEvent =
@@ -59,6 +68,13 @@ function toTaskComment(row: CommentRealtimeRow): TaskComment {
     taskId: row.task_id,
     userId: row.user_id,
     text: row.text,
+    // F174 (AS-312): a live-delivered row always carries body_json once
+    // the migration has run; a synthetic/legacy payload without it falls
+    // back to the same single-paragraph wrap used everywhere else in this
+    // feature (docFromPlainText), so a realtime-delivered comment always
+    // renders through RichTextRenderer identically to one loaded on
+    // initial page fetch.
+    bodyJson: row.body_json ?? docFromPlainText(row.text),
     createdAt: row.created_at,
   };
 }

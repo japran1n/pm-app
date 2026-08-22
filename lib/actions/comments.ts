@@ -1,10 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { addCommentSchema, deleteCommentSchema } from "@/lib/validation/comments";
+import {
+  addCommentSchema,
+  commentBodyJsonSchema,
+  deleteCommentSchema,
+} from "@/lib/validation/comments";
+import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -19,6 +25,9 @@ export type AddCommentResult =
         taskId: string;
         userId: string;
         text: string;
+        /** F174 (AS-312): the Tiptap JSONContent document actually
+         * stored/rendered for this comment. */
+        bodyJson: JSONContent;
         createdAt: string;
       };
     }
@@ -44,9 +53,22 @@ export type AddCommentResult =
 // the caller's side — the task's owning project -> workspace is looked up
 // server-side so membership is checked against the *real* owning
 // workspace, never a workspace_id supplied (or omitted) by the client.
+// F174 (AS-312): `bodyJson` is optional so every existing caller of this
+// action (tests, watcher/auto-watch flows, rls-viewer tests) that only
+// ever passed a plain string keeps working unchanged — when omitted, the
+// comment is stored as the same single-paragraph wrap shape F170 already
+// established for descriptions (docFromPlainText), so a comment posted
+// without rich formatting round-trips identically to before this feature.
+// components/task/comment-list.tsx's rich-text composer now passes both:
+// `text` (the plain-text projection, computed client-side via
+// extractPlainText, used only for the pre-flight non-empty check) and
+// `bodyJson` (the real Tiptap document, re-validated + the authoritative
+// plain-text projection recomputed server-side below rather than trusted
+// from the client).
 export async function addComment(
   taskId: string,
   text: string,
+  bodyJson?: JSONContent | null,
 ): Promise<AddCommentResult> {
   const parsed = addCommentSchema.safeParse({ taskId, text });
 
@@ -56,6 +78,30 @@ export async function addComment(
       error: parsed.error.issues[0]?.message ?? "Enter a valid comment.",
     };
   }
+
+  // F174: validate the rich-text payload's basic shape (defense in depth
+  // — the real security boundary is RichTextRenderer's sanitiseDocument,
+  // re-applied on every render regardless of what's stored, per
+  // lib/comments/rich-text.ts's doc comment). An invalid/malformed
+  // bodyJson silently falls back to wrapping the validated plain text,
+  // rather than failing the whole submission — the plain text has already
+  // passed addCommentSchema, so the comment can still be posted.
+  const bodyJsonParsed = bodyJson
+    ? commentBodyJsonSchema.safeParse(bodyJson)
+    : null;
+  const validatedBodyJson: JSONContent = bodyJsonParsed?.success
+    ? (bodyJsonParsed.data as JSONContent)
+    : docFromPlainText(parsed.data.text);
+
+  // Authoritative plain-text projection, recomputed server-side from the
+  // validated rich-text document — never trusts a client-supplied `text`
+  // value alone as the thing that gets persisted, only as the pre-flight
+  // non-empty check above. Falls back to the validated plain text if the
+  // rich document projects to nothing (e.g. a formatting-only document),
+  // so comments_text_not_empty is never violated by a real submission
+  // that already passed the schema's own non-empty check.
+  const projectedText =
+    extractPlainText(validatedBodyJson) || parsed.data.text;
 
   const supabase = await createClient();
   const {
@@ -132,9 +178,15 @@ export async function addComment(
     .insert({
       task_id: parsed.data.taskId,
       user_id: user.id,
-      text: parsed.data.text,
+      // F174: `text` (legacy, still required by comments_text_not_empty)
+      // and `body_text` are kept identical — both are the same
+      // server-recomputed projection, never two independently-trusted
+      // values.
+      text: projectedText,
+      body_json: validatedBodyJson,
+      body_text: projectedText,
     })
-    .select("id, task_id, user_id, text, created_at")
+    .select("id, task_id, user_id, text, body_json, created_at")
     .single();
 
   if (insertError || !inserted) {
@@ -209,6 +261,7 @@ export async function addComment(
       taskId: inserted.task_id,
       userId: inserted.user_id,
       text: inserted.text,
+      bodyJson: (inserted.body_json as JSONContent | null) ?? validatedBodyJson,
       createdAt: inserted.created_at,
     },
   };

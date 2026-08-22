@@ -351,6 +351,15 @@ describe("reconcileComment (AS-101, AS-102)", () => {
       taskId: "task-1",
       userId: "u3",
       text: "Third comment",
+      // F174 (AS-312): a realtime row without body_json (as this
+      // synthetic payload has none) falls back to the same
+      // single-paragraph wrap docFromPlainText produces everywhere else.
+      bodyJson: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Third comment" }] },
+        ],
+      },
       createdAt: "2026-08-18T00:02:00Z",
     });
   });
