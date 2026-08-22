@@ -50,6 +50,10 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 // `assigneeNames` Map pattern task-list-table.tsx already used before this
 // feature.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
+// F161 (AS-287, AS-288): stacked avatars for every assignee, with a "+K"
+// overflow chip beyond the display limit — replaces this card's old
+// single `<UserAvatar>` rendering below.
+import { UserAvatarGroup } from "@/components/user-avatar-group";
 
 export type TaskCardTask = {
   id: string;
@@ -124,11 +128,23 @@ export type TaskCardTask = {
   // above; `undefined` additionally covers a caller that hasn't been
   // updated to fetch it yet (e.g. existing tests), same as those fields.
   completion?: TaskCompletion | null;
+  // F161 (AS-287, AS-288): every current assignee id for this task,
+  // oldest-first (lib/queries/tasks.ts's getProjectBoardTasks/
+  // getProjectListTasks/getWorkspaceListTasks, backed by `task_assignees`
+  // — see those functions' doc comments). Optional/defaults to [] so a
+  // caller that hasn't been updated (existing tests/fixtures, a
+  // realtime-reconciled row) still renders without the avatar group
+  // instead of crashing, same "safe default" convention as every other
+  // optional field on this type. Falls back to the single legacy
+  // `assigneeId` below when empty, so a task assigned only through the
+  // deprecated single-assignee path still shows its one avatar.
+  assigneeIds?: string[];
 };
 
 export function TaskCard({
   task,
   assignee,
+  assignees,
   onClick,
   className,
   timezone,
@@ -138,8 +154,17 @@ export function TaskCard({
    * undefined for an unassigned task or a caller that hasn't been updated
    * to resolve it yet (e.g. tests) — the avatar simply doesn't render in
    * either case, matching every other optional prop's "safe default"
-   * convention in this file (see `updatedAt`/`totalMinutes` above). */
+   * convention in this file (see `updatedAt`/`totalMinutes` above).
+   * Deprecated in favour of `assignees` below (F161) — still accepted so
+   * a caller that hasn't been updated yet renders one avatar instead of
+   * none; ignored once `assignees` is non-empty. */
   assignee?: UserAvatarPerson | null;
+  /** F161 (AS-287, AS-288): every resolved assignee for `task.assigneeIds`
+   * (deduped, same order), or undefined/[] for an unassigned task or a
+   * caller that hasn't been updated yet — falls back to the single
+   * `assignee` prop above in that case, and to nothing at all if neither
+   * is provided, matching this file's "safe default" convention. */
+  assignees?: UserAvatarPerson[];
   /** Opens the task (e.g. TaskDetailSheet) when the card is activated. */
   onClick?: (taskId: string) => void;
   className?: string;
@@ -302,7 +327,16 @@ export function TaskCard({
             {task.completion.percent}%
           </span>
         )}
-        {assignee && <UserAvatar person={assignee} size="sm" className="ml-auto" />}
+        {/* F161 (AS-287, AS-288): `assignees` (the multi-assignee array)
+            wins when provided and non-empty; a caller still on the old
+            single `assignee` prop, or an assignees-array caller for a
+            task with no `task_assignees` rows yet, falls back to the
+            single-avatar rendering below it. */}
+        {assignees && assignees.length > 0 ? (
+          <UserAvatarGroup people={assignees} size="sm" className="ml-auto" />
+        ) : (
+          assignee && <UserAvatar person={assignee} size="sm" className="ml-auto" />
+        )}
       </CardContent>
     </Card>
   );

@@ -93,6 +93,12 @@ export async function getProjectBoardTasks(
     // F167 follow-up: added to the RPC's return in
     // 20260822040000_rpc_project_board_tasks_estimate_minutes.sql.
     estimate_minutes: number | null;
+    // F161 follow-through (AS-287, AS-288): every current assignee for
+    // this task, oldest-first — added to the RPC's return in
+    // 20260822070000_rpc_project_board_tasks_assignee_ids.sql. Always an
+    // array (possibly empty), never null — see that migration's own
+    // comment for the coalesce.
+    assignee_ids: string[];
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -142,6 +148,10 @@ export async function getProjectBoardTasks(
       // indicator" and the RPC always returns 0 rather than null for
       // those two).
       estimateMinutes: task.estimate_minutes,
+      // F161 follow-through (AS-287, AS-288): straight off the RPC row —
+      // feeds TaskCard's UserAvatarGroup. See TaskCardTask.assigneeIds'
+      // doc comment for the "always an array" contract.
+      assigneeIds: task.assignee_ids ?? [],
     };
   });
 }
@@ -245,7 +255,11 @@ export async function getProjectListTasks(
     .select(
       // F167 follow-up: `estimate_minutes` added so the list view's
       // `TaskCard`s also receive a real estimate, same as the board view.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects(key)",
+      // F161 follow-through (AS-287, AS-288): `task_assignees(user_id)`
+      // added so the list view's `TaskCard`s also receive the full
+      // assignee set, same as the board view's RPC — one embedded join,
+      // no per-row fetch.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects(key), task_assignees(user_id)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -274,6 +288,16 @@ export async function getProjectListTasks(
         ? query.order("due_date", { ascending: false, nullsFirst: false })
         : query.order("created_at", { ascending: true });
 
+  // F161 follow-through (AS-287, AS-288): orders the embedded
+  // `task_assignees` rows oldest-first — PostgREST embeds are otherwise
+  // unordered — matching the board RPC's own `assignee_ids` tie-break
+  // (supabase/migrations/20260822070000_rpc_project_board_tasks_assignee_ids.sql)
+  // so a task's assignee list renders in the same order everywhere.
+  query = query.order("created_at", {
+    ascending: true,
+    referencedTable: "task_assignees",
+  });
+
   const { data, error } = await query;
 
   if (error) {
@@ -295,6 +319,12 @@ export async function getProjectListTasks(
     projectKey: firstRelated(task.projects)?.key,
     // F167 follow-up: see this function's select above.
     estimateMinutes: task.estimate_minutes,
+    // F161 follow-through (AS-287, AS-288): see this function's select
+    // above — `task_assignees` always comes back as an array for a
+    // one-to-many embed (unlike the single-relation `projects` above,
+    // never object-or-array), so no `firstRelated`-style normalization is
+    // needed here.
+    assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
   }));
 }
 
@@ -337,7 +367,10 @@ export async function getWorkspaceListTasks(
       // F167 follow-up: `estimate_minutes` added so the dashboard's
       // `TaskCard`s also receive a real estimate, same as the board/list
       // views.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects!inner(key, workspace_id, deleted_at)",
+      // F161 follow-through (AS-287, AS-288): `task_assignees(user_id)`
+      // added so the dashboard's `TaskCard`s also receive the full
+      // assignee set, same as the board/list views.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -362,6 +395,13 @@ export async function getWorkspaceListTasks(
   }
 
   query = query.order("created_at", { ascending: true });
+
+  // F161 follow-through (AS-287, AS-288): see getProjectListTasks above
+  // for why this explicit embedded-table ordering is needed.
+  query = query.order("created_at", {
+    ascending: true,
+    referencedTable: "task_assignees",
+  });
 
   const { data, error } = await query;
 
@@ -388,5 +428,8 @@ export async function getWorkspaceListTasks(
     projectKey: firstRelated(task.projects)?.key,
     // F167 follow-up: see this function's select above.
     estimateMinutes: task.estimate_minutes,
+    // F161 follow-through (AS-287, AS-288): see getProjectListTasks above
+    // for why no `firstRelated` normalization is needed here.
+    assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
   }));
 }

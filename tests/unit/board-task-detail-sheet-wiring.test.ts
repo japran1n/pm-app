@@ -133,8 +133,13 @@ describe("Board wires TaskCard clicks to TaskDetailSheet (bugfix)", () => {
   });
 
   it("SortableTaskCard forwards its onClick prop through to TaskCard", () => {
+    // F161 reformatted this call onto multiple lines (adding an
+    // `assignees` prop) — match `task={task}` and `onClick={onClick}`
+    // independently, in either order/spacing, rather than assuming a
+    // single-line call.
+    expect(sortableTaskCardSource).toMatch(/<TaskCard[\s\S]*?task=\{task\}/);
     expect(sortableTaskCardSource).toMatch(
-      /<TaskCard task=\{task\} onClick=\{onClick\}/,
+      /<TaskCard[\s\S]*?onClick=\{onClick\}/,
     );
   });
 

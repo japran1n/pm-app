@@ -70,6 +70,7 @@ import {
 // dashboard-task-table.tsx composes this same component) now renders the
 // shared avatar component instead of plain text.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
+import { UserAvatarGroup } from "@/components/user-avatar-group";
 
 export function TaskListTable({
   tasks,
@@ -184,6 +185,19 @@ export function TaskListTable({
             const assignee = task.assigneeId
               ? assignees.get(task.assigneeId)
               : null;
+            // F161 (AS-287, AS-288): every resolved assignee for this
+            // row, falling back to the single legacy `assigneeId` when
+            // `assigneeIds` is empty — same resolution BoardColumn uses,
+            // against the same already-batched `assignees` map.
+            const resolvedAssignees = (
+              task.assigneeIds && task.assigneeIds.length > 0
+                ? task.assigneeIds
+                : task.assigneeId
+                  ? [task.assigneeId]
+                  : []
+            )
+              .map((id) => assignees.get(id))
+              .filter((person): person is UserAvatarPerson => Boolean(person));
             const taskKey = formatTaskKey(task.projectKey, task.number);
 
             return (
@@ -232,7 +246,16 @@ export function TaskListTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {assignee ? (
+                  {resolvedAssignees.length > 0 ? (
+                    <span className="flex items-center gap-2">
+                      <UserAvatarGroup people={resolvedAssignees} size="sm" />
+                      {resolvedAssignees.length === 1
+                        ? (resolvedAssignees[0]!.name ||
+                          resolvedAssignees[0]!.email ||
+                          resolvedAssignees[0]!.id)
+                        : `${resolvedAssignees.length} assignees`}
+                    </span>
+                  ) : assignee ? (
                     <span className="flex items-center gap-2">
                       <UserAvatar person={assignee} size="sm" />
                       {assignee.name || assignee.email || assignee.id}

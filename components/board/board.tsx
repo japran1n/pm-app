@@ -381,6 +381,19 @@ export function Board({
                   ? assignees?.get(activeTask.assigneeId)
                   : null
               }
+              // F161 (AS-287, AS-288): same resolution as BoardColumn's
+              // SortableTaskCard rendering — the DragOverlay is a second,
+              // separate TaskCard render of the same task, kept visually
+              // consistent with the one it's dragging in place of.
+              assignees={(
+                activeTask.assigneeIds && activeTask.assigneeIds.length > 0
+                  ? activeTask.assigneeIds
+                  : activeTask.assigneeId
+                    ? [activeTask.assigneeId]
+                    : []
+              )
+                .map((id) => assignees?.get(id))
+                .filter((person): person is UserAvatarPerson => Boolean(person))}
               timezone={timezone}
             />
           ) : null}

@@ -38,10 +38,10 @@ import { Copy, CornerUpLeft, Loader2, TriangleAlert, Trash2 } from "lucide-react
 import { toast } from "sonner";
 
 import {
-  assignTask,
   deleteTask,
   editTask,
   moveTaskStatus,
+  setTaskAssignees,
 } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
@@ -98,9 +98,18 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 // F122 (AS-214): "assignee pickers" includes this Sheet's own assignee
-// Select.
-import { UserAvatar } from "@/components/user-avatar";
+// control.
+import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
+// F161 (AS-287, AS-288): stacked avatar group for this task's full
+// assignee set, header + trigger.
+import { UserAvatarGroup } from "@/components/user-avatar-group";
 
 export type TaskDetailSheetTask = {
   id: string;
@@ -109,6 +118,17 @@ export type TaskDetailSheetTask = {
   status: "todo" | "in_progress" | "in_review" | "done";
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
+  /** F161 (AS-287, AS-288): this task's full current assignee set,
+   * oldest-first, from getTaskDetail's own `task_assignees` fetch
+   * (lib/actions/tasks.ts) — no second round trip. Optional/defaults to
+   * [] so a caller that hasn't been updated yet (existing tests/
+   * fixtures) still renders, falling back to the single legacy
+   * `assigneeId` above for the header avatar, same "safe default"
+   * convention as every other optional field on this type. This is the
+   * array the multi-select picker below reads from and writes to via
+   * `setTaskAssignees` — `assigneeId` stays read-only display/fallback
+   * once this is populated. */
+  assigneeIds?: string[];
   dueDate: string | null;
   /** AS-065: may be empty — every task has a tag list, never null. */
   tags: string[];
@@ -210,7 +230,6 @@ const PRIORITY_LABELS: Record<
 };
 
 const NO_PRIORITY_VALUE = "__none__";
-const NO_ASSIGNEE_VALUE = "__unassigned__";
 
 function memberLabel(member: TaskDetailSheetMember): string {
   return member.name || member.email || member.userId;
@@ -435,14 +454,32 @@ export function TaskDetailSheet({
     saveField({ dueDate: next }, "Due date updated.");
   }
 
-  function handleAssigneeChange(value: string | null) {
+  // F161 (AS-287, AS-288): replaces the old single-value handleAssigneeChange
+  // — the picker below toggles ONE user id in/out of the task's full
+  // assignee set and sends the whole resulting set through
+  // `setTaskAssignees` (F160), the same shared write path `assignTask`
+  // itself now delegates to (lib/actions/tasks.ts's setTaskAssigneesCore
+  // doc comment). Current set is read from `task.assigneeIds` when
+  // populated, falling back to the single legacy `assigneeId` for a
+  // caller/task that predates this feature so toggling still starts from
+  // the right baseline instead of silently dropping an existing assignee.
+  function handleAssigneesToggle(userId: string) {
     if (!task) return;
-    const next = value && value !== NO_ASSIGNEE_VALUE ? value : null;
-    if (next === task.assigneeId) return;
+    const current =
+      task.assigneeIds && task.assigneeIds.length > 0
+        ? task.assigneeIds
+        : task.assigneeId
+          ? [task.assigneeId]
+          : [];
+    const next = current.includes(userId)
+      ? current.filter((id) => id !== userId)
+      : [...current, userId];
     startAssignTransition(async () => {
-      const result = await assignTask(task.id, next);
+      const result = await setTaskAssignees(task.id, next);
       if (result.ok) {
-        toast.success(next ? "Assignee updated." : "Task unassigned.");
+        toast.success(
+          next.length > 0 ? "Assignees updated." : "Task unassigned.",
+        );
       } else {
         toast.error(result.error);
       }
@@ -661,68 +698,125 @@ export function TaskDetailSheet({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                <Label htmlFor={`task-assignee-${task.id}`}>Assignee</Label>
-                <Select
-                  value={task.assigneeId ?? NO_ASSIGNEE_VALUE}
-                  onValueChange={handleAssigneeChange}
-                  disabled={isAssigning || !canEdit}
-                >
-                  <SelectTrigger
-                    id={`task-assignee-${task.id}`}
-                    className="w-full"
-                  >
-                    {isAssigning ? (
-                      <Loader2
-                        className="size-4 animate-spin"
-                        aria-hidden="true"
-                      />
-                    ) : (
-                      <SelectValue placeholder="Unassigned">
-                        {(value: string) => {
-                          if (value === NO_ASSIGNEE_VALUE) return "Unassigned";
-                          const member = members.find(
-                            (m) => m.userId === value,
-                          );
-                          return (
-                            <span className="flex items-center gap-2">
-                              <UserAvatar
-                                person={{
-                                  id: value,
-                                  name: member?.name ?? null,
-                                  email: member?.email ?? null,
-                                  avatarUrl: member?.avatarUrl ?? null,
-                                }}
-                                size="sm"
-                              />
-                              {member ? memberLabel(member) : value}
-                            </span>
-                          );
-                        }}
-                      </SelectValue>
-                    )}
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_ASSIGNEE_VALUE}>
-                      Unassigned
-                    </SelectItem>
-                    {members.map((member) => (
-                      <SelectItem key={member.userId} value={member.userId}>
-                        <span className="flex items-center gap-2">
-                          <UserAvatar
-                            person={{
-                              id: member.userId,
-                              name: member.name,
-                              email: member.email,
-                              avatarUrl: member.avatarUrl,
-                            }}
-                            size="sm"
+                <Label id={`task-assignee-label-${task.id}`}>Assignees</Label>
+                {/* F161 (AS-287, AS-288): multi-select assignee picker —
+                    replaces the old single-value Select. Current set is
+                    `task.assigneeIds` (falls back to the single legacy
+                    `assigneeId` for a caller/task that predates this
+                    feature — same fallback handleAssigneesToggle's own
+                    "current" resolution uses). Reachable by keyboard: a
+                    real focusable trigger button opens the popover, and
+                    each row inside is itself a focusable, checkable
+                    button (not a hover-only affordance) — this feature's
+                    own clarified note. */}
+                {(() => {
+                  const currentIds =
+                    task.assigneeIds && task.assigneeIds.length > 0
+                      ? task.assigneeIds
+                      : task.assigneeId
+                        ? [task.assigneeId]
+                        : [];
+                  const currentPeople: UserAvatarPerson[] = currentIds.map(
+                    (id) => {
+                      const member = members.find((m) => m.userId === id);
+                      return {
+                        id,
+                        name: member?.name ?? null,
+                        email: member?.email ?? null,
+                        avatarUrl: member?.avatarUrl ?? null,
+                      };
+                    },
+                  );
+                  return (
+                    <Popover>
+                      <PopoverTrigger
+                        render={
+                          <button
+                            type="button"
+                            id={`task-assignee-${task.id}`}
+                            aria-labelledby={`task-assignee-label-${task.id}`}
+                            disabled={isAssigning || !canEdit}
+                            title={editDisabledTitle}
+                            className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           />
-                          {memberLabel(member)}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                        }
+                      >
+                        {isAssigning ? (
+                          <Loader2
+                            className="size-4 animate-spin"
+                            aria-hidden="true"
+                          />
+                        ) : currentPeople.length > 0 ? (
+                          <>
+                            <UserAvatarGroup people={currentPeople} size="sm" />
+                            <span className="truncate text-muted-foreground">
+                              {currentPeople.length === 1
+                                ? memberLabel(
+                                    members.find(
+                                      (m) => m.userId === currentPeople[0]!.id,
+                                    ) ?? {
+                                      userId: currentPeople[0]!.id,
+                                      name: currentPeople[0]!.name ?? null,
+                                      email: currentPeople[0]!.email ?? null,
+                                    },
+                                  )
+                                : `${currentPeople.length} assignees`}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Unassigned
+                          </span>
+                        )}
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-64 p-1">
+                        <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+                          {members.length === 0 && (
+                            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                              No workspace members.
+                            </p>
+                          )}
+                          {members.map((member) => {
+                            const checked = currentIds.includes(
+                              member.userId,
+                            );
+                            return (
+                              <button
+                                key={member.userId}
+                                type="button"
+                                role="menuitemcheckbox"
+                                aria-checked={checked}
+                                disabled={isAssigning || !canEdit}
+                                onClick={() =>
+                                  handleAssigneesToggle(member.userId)
+                                }
+                                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  tabIndex={-1}
+                                  aria-hidden="true"
+                                />
+                                <UserAvatar
+                                  person={{
+                                    id: member.userId,
+                                    name: member.name,
+                                    email: member.email,
+                                    avatarUrl: member.avatarUrl,
+                                  }}
+                                  size="sm"
+                                />
+                                <span className="truncate">
+                                  {memberLabel(member)}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  );
+                })()}
                 </div>
 
                 <div className="flex flex-col gap-2">

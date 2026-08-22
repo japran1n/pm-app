@@ -21,14 +21,20 @@ import type { UserAvatarPerson } from "@/components/user-avatar";
 export function SortableTaskCard({
   task,
   assignee,
+  assignees,
   onClick,
   timezone,
   canDrag = true,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee, looked up by the caller
-   * (BoardColumn) from its `assignees` map and passed straight through. */
+   * (BoardColumn) from its `assignees` map and passed straight through.
+   * Deprecated in favour of `assignees` below (F161). */
   assignee?: UserAvatarPerson | null;
+  /** F161 (AS-287, AS-288): every resolved assignee, looked up by the
+   * caller (BoardColumn) from its `assigneesById` map and passed straight
+   * through to TaskCard's UserAvatarGroup. */
+  assignees?: UserAvatarPerson[];
   onClick?: (taskId: string) => void;
   /** F124/F275 (AS-207): passed straight through to TaskCard — see that
    * component's own doc comment for where this ultimately comes from.
@@ -58,7 +64,13 @@ export function SortableTaskCard({
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} onClick={onClick} assignee={assignee} timezone={timezone} />
+      <TaskCard
+        task={task}
+        onClick={onClick}
+        assignee={assignee}
+        assignees={assignees}
+        timezone={timezone}
+      />
     </div>
   );
 }

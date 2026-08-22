@@ -861,6 +861,7 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: {
           assignee_id: string
+          assignee_ids: string[]
           checklist_done: number
           checklist_total: number
           child_done: number

@@ -105,6 +105,20 @@ export function BoardColumn({
                 assignee={
                   task.assigneeId ? assignees?.get(task.assigneeId) : null
                 }
+                // F161 (AS-287, AS-288): resolve every id in
+                // `task.assigneeIds` (falls back to the single legacy
+                // `assigneeId` when empty) against the SAME `assignees`
+                // map this column already resolves the single-avatar
+                // fallback from — no second batched query.
+                assignees={(
+                  task.assigneeIds && task.assigneeIds.length > 0
+                    ? task.assigneeIds
+                    : task.assigneeId
+                      ? [task.assigneeId]
+                      : []
+                )
+                  .map((id) => assignees?.get(id))
+                  .filter((person): person is UserAvatarPerson => Boolean(person))}
                 onClick={onCardClick}
                 timezone={timezone}
                 canDrag={canDrag}

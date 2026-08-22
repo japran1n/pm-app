@@ -2445,6 +2445,20 @@ export async function getTaskDetail(
     .eq("blocking_task_id", parsed.data.taskId)
     .order("created_at", { ascending: true });
 
+  // F161 follow-through (AS-287, AS-288): this task's full current
+  // assignee set, oldest-first — same ordering `setTaskAssigneesCore`'s
+  // mirror rule and the board RPC's `assignee_ids` column both use (see
+  // that RPC's migration for the identical tie-break), so the detail
+  // sheet's assignee picker shows the same set/order as the card it was
+  // opened from. Fetched here in getTaskDetail's existing single
+  // detail-fetch, same "one query per section, no per-row round trip"
+  // convention as every other section above.
+  const assigneesQuery = admin
+    .from("task_assignees")
+    .select("user_id")
+    .eq("task_id", parsed.data.taskId)
+    .order("created_at", { ascending: true });
+
   const [
     commentsResult,
     attachmentsResult,
@@ -2453,6 +2467,7 @@ export async function getTaskDetail(
     checklistResult,
     blockedByResult,
     blocksResult,
+    assigneesResult,
   ] = await Promise.all([
     admin
       .from("comments")
@@ -2470,6 +2485,7 @@ export async function getTaskDetail(
     checklistQuery,
     blockedByQuery,
     blocksQuery,
+    assigneesQuery,
   ]);
 
   if (commentsResult.error) {
@@ -2542,6 +2558,17 @@ export async function getTaskDetail(
     console.error(
       "getTaskDetail: blocks dependencies fetch failed:",
       blocksResult.error,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong loading this task. Please try again.",
+    };
+  }
+
+  if (assigneesResult.error) {
+    console.error(
+      "getTaskDetail: assignees fetch failed:",
+      assigneesResult.error,
     );
     return {
       ok: false,
@@ -2628,6 +2655,12 @@ export async function getTaskDetail(
         status: taskRow.status as TaskDetailSheetTask["status"],
         priority: taskRow.priority as TaskDetailSheetTask["priority"],
         assigneeId: taskRow.assignee_id,
+        // F161 follow-through (AS-287, AS-288): see assigneesQuery above
+        // — feeds the detail sheet's UserAvatarGroup header and its
+        // multi-select assignee picker (both read/write this same set via
+        // setTaskAssignees, never the deprecated single `assigneeId`
+        // directly, once this field is populated).
+        assigneeIds: (assigneesResult.data ?? []).map((row) => row.user_id),
         dueDate: taskRow.due_date,
         tags: taskRow.tags ?? [],
         // F146 (AS-258): see this function's task+project select above.
