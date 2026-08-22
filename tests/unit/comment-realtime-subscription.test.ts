@@ -330,6 +330,27 @@ describe("reconcileComment (AS-101, AS-102)", () => {
     expect(next).toEqual([baseComments[1]]);
   });
 
+  // F197 (AS-362): a comment_edited broadcast is translated by
+  // subscribeToCommentsRealtime into an UPDATE-shaped CommentRealtimeEvent
+  // (same shape this file's updateEvent() helper already builds), so a
+  // live edit by the comment's own author replaces the existing entry for
+  // every other viewer with the task open, without a manual refresh.
+  it("test_AS_362_replaces_comment_content_and_carries_edited_at_on_an_edit_update_event", () => {
+    const event = updateEvent({
+      id: "c1",
+      text: "First comment, now edited",
+      edited_at: "2026-08-18T00:20:00Z",
+    });
+
+    const next = reconcileComment(baseComments, event);
+
+    const updated = next.find((c) => c.id === "c1");
+    expect(updated?.text).toBe("First comment, now edited");
+    expect(updated?.editedAt).toBe("2026-08-18T00:20:00Z");
+    // The other, untouched comment is unaffected.
+    expect(next.find((c) => c.id === "c2")).toEqual(baseComments[1]);
+  });
+
   it("AS_101_removes_comment_on_hard_delete_event", () => {
     const event = {
       eventType: "DELETE",
@@ -430,6 +451,8 @@ describe("reconcileComment (AS-101, AS-102)", () => {
         ],
       },
       createdAt: "2026-08-18T00:02:00Z",
+      // F197 (AS-362): never-edited comments carry editedAt: null.
+      editedAt: null,
     });
   });
 
@@ -559,6 +582,8 @@ describe("reconcileComment (AS-101, AS-102)", () => {
         ],
       },
       createdAt: "2026-08-18T00:00:00Z",
+      // F197 (AS-362): never-edited comments carry editedAt: null.
+      editedAt: null,
     });
     // c2, untouched by this restore, remains.
     expect(next.find((c) => c.id === "c2")).toEqual(baseComments[1]);

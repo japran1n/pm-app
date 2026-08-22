@@ -9,6 +9,7 @@ import {
   addCommentSchema,
   commentBodyJsonSchema,
   deleteCommentSchema,
+  editCommentSchema,
   restoreCommentSchema,
 } from "@/lib/validation/comments";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
@@ -759,6 +760,222 @@ export async function restoreComment(
       text: restored.text,
       bodyJson: restoredBodyJson,
       createdAt: restored.created_at,
+    },
+  };
+}
+
+export type EditCommentResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        taskId: string;
+        userId: string;
+        text: string;
+        bodyJson: JSONContent;
+        editedAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Edits a comment's content (F197: AS-362, AS-364). Pattern mirrors
+// deleteComment/restoreComment's shape (Zod-validated input, membership
+// re-checked server-side, admin client for the write, discriminated-union
+// return, generic user-facing errors) but with a stricter authorization
+// rule than either of those siblings: AS-364's "cannot edit someone else's
+// comment" is deliberately author-only, NOT author-or-admin. Per this
+// feature's clarification Notes ("Admins deliberately cannot edit other
+// people's words — only delete") — confirmed and recorded here as the
+// resolved reading, since editing changes someone's own words in a way
+// deleting/hiding them does not. See this feature's handoff, Decisions
+// made, and supabase/migrations/20260823000000_comment_edit.sql for the
+// matching database-level trigger that enforces the same author-only rule
+// against a direct API call bypassing this action entirely (AS-364's
+// "including via direct API").
+//
+// The comment's owning task/project/workspace is looked up server-side
+// (never trusted from the client), same convention as every sibling
+// action in this file.
+export async function editComment(
+  commentId: string,
+  text: string,
+  bodyJson?: JSONContent | null,
+): Promise<EditCommentResult> {
+  const parsed = editCommentSchema.safeParse({ commentId, text });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter a valid comment.",
+    };
+  }
+
+  // Same "structural validation only, RichTextRenderer's sanitiseDocument
+  // is the real security boundary on every render" convention as
+  // addComment above.
+  const bodyJsonParsed = bodyJson
+    ? commentBodyJsonSchema.safeParse(bodyJson)
+    : null;
+  const validatedBodyJson: JSONContent = bodyJsonParsed?.success
+    ? (bodyJsonParsed.data as JSONContent)
+    : docFromPlainText(parsed.data.text);
+
+  const projectedText =
+    extractPlainText(validatedBodyJson) || parsed.data.text;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a comment." };
+  }
+
+  const admin = createAdminClient();
+
+  // A soft-deleted comment behaves as "not found" for editing, same
+  // convention as deleteComment's own lookup.
+  const { data: commentRow, error: commentError } = await admin
+    .from("comments")
+    .select("id, user_id, deleted_at, tasks(id, projects(workspace_id))")
+    .eq("id", parsed.data.commentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (commentError || !commentRow) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  const task = commentRow.tasks as
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+  const project = taskRow?.projects;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+  const commentTaskId = taskRow?.id;
+
+  if (!workspaceId || !commentTaskId) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  // AS-362/AS-364: author-only, no admin/owner override (see this
+  // function's doc comment above for why this deliberately differs from
+  // deleteComment/restoreComment's author-or-admin rule).
+  if (commentRow.user_id !== user.id) {
+    return {
+      ok: false,
+      error: "You can only edit your own comments.",
+    };
+  }
+
+  // Even the author must still be an active, writable member (defense in
+  // depth — mirrors deleteComment/restoreComment's own author-path checks:
+  // a removed member or one demoted to viewer loses edit rights on their
+  // old comments too).
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this comment.",
+    };
+  }
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit comments.",
+    };
+  }
+
+  const editedAt = new Date().toISOString();
+
+  const { data: updated, error: updateError } = await admin
+    .from("comments")
+    .update({
+      text: projectedText,
+      body_json: validatedBodyJson,
+      body_text: projectedText,
+      edited_at: editedAt,
+    })
+    .eq("id", parsed.data.commentId)
+    .select("id, task_id, user_id, text, body_json, edited_at")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("editComment: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // F104-style realtime delivery: postgres_changes UPDATE subscriptions
+  // are not relied on for this table (see deleteComment/restoreComment's
+  // doc comments for the confirmed AS-101 class of bug), so an edit is
+  // broadcast the same way a restore is — the full updated row, so
+  // reconcileComment's UPDATE branch (lib/tasks/reconcile-realtime-comment.ts)
+  // can replace the local copy without a second round trip.
+  try {
+    const broadcastChannel = supabase.channel(`comments:${commentTaskId}`);
+    await broadcastChannel.send({
+      type: "broadcast",
+      event: "comment_edited",
+      payload: {
+        id: updated.id,
+        task_id: updated.task_id,
+        user_id: updated.user_id,
+        text: updated.text,
+        body_json: validatedBodyJson,
+        edited_at: updated.edited_at,
+      },
+    });
+    await supabase.removeChannel(broadcastChannel);
+  } catch (broadcastError) {
+    console.error(
+      "editComment: broadcast failed (non-fatal):",
+      broadcastError,
+    );
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "editComment: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      taskId: updated.task_id,
+      userId: updated.user_id,
+      text: updated.text,
+      bodyJson: (updated.body_json as JSONContent | null) ?? validatedBodyJson,
+      editedAt: updated.edited_at as string,
     },
   };
 }

@@ -127,6 +127,29 @@ export function subscribeToCommentsRealtime(
         } as unknown as CommentRealtimeEvent);
       },
     )
+    // F197 (AS-362): a symmetrical `comment_edited` broadcast, sent by
+    // lib/actions/comments.ts's editComment right after its content UPDATE
+    // succeeds. Same rationale as comment_restored above — postgres_changes
+    // is only subscribed to `event: "INSERT"`, so an edit (also an UPDATE
+    // under the hood) would never reach other subscribers via
+    // postgres_changes at all. Translated into an UPDATE-shaped event so
+    // reconcileComment's existing "replace by id" branch handles it without
+    // a new reducer path.
+    .on<CommentRealtimeRow>(
+      "broadcast",
+      { event: "comment_edited" },
+      (message) => {
+        const row = message?.payload;
+        if (!row || !row.id) return;
+        onChange({
+          eventType: "UPDATE",
+          schema: "public",
+          table: "comments",
+          new: row,
+          old: {},
+        } as unknown as CommentRealtimeEvent);
+      },
+    )
     .subscribe();
 
   return () => {

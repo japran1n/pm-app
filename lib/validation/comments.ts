@@ -53,3 +53,18 @@ export const restoreCommentSchema = z.object({
 });
 
 export type RestoreCommentInput = z.infer<typeof restoreCommentSchema>;
+
+// Validates editComment input (F197: AS-362, AS-364). `text` mirrors
+// addCommentSchema's own rules (trimmed, non-empty, same max length) since
+// an edit must satisfy the exact same comments_text_not_empty CHECK
+// constraint a new comment does.
+export const editCommentSchema = z.object({
+  commentId: z.string().uuid("Invalid comment."),
+  text: z
+    .string()
+    .trim()
+    .min(1, "Comment cannot be empty.")
+    .max(10000, "Comment must be 10000 characters or fewer."),
+});
+
+export type EditCommentInput = z.infer<typeof editCommentSchema>;

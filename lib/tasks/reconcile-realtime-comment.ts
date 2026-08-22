@@ -57,6 +57,11 @@ export type CommentRealtimeRow = {
   // once the DB migration has run; the fallback below only matters for
   // synthetic/older test payloads.
   body_json?: JSONContent | null;
+  // F197 (AS-362): present on a `comment_edited` broadcast payload (and on
+  // any future live row that has been edited); absent/undefined for a
+  // comment that's never been edited, same "optional, older/synthetic
+  // payloads still satisfy this type" convention as body_json above.
+  edited_at?: string | null;
 };
 
 export type CommentRealtimeEvent =
@@ -76,6 +81,7 @@ function toTaskComment(row: CommentRealtimeRow): TaskComment {
     // initial page fetch.
     bodyJson: row.body_json ?? docFromPlainText(row.text),
     createdAt: row.created_at,
+    editedAt: row.edited_at ?? null,
   };
 }
 

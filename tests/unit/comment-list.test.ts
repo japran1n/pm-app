@@ -113,4 +113,43 @@ describe("CommentList (F060: AS-096, AS-097)", () => {
 
     expect(html).toContain("No comments yet");
   });
+
+  // F197 (AS-362, AS-364): the edit affordance is UI-only guidance — the
+  // real enforcement is editComment's own server-side author-only check
+  // (lib/actions/comments.ts). This SSR render (no click simulation) only
+  // verifies the button's presence/absence tracks authorship, mirroring how
+  // this same file already verifies canDelete's affordance indirectly via
+  // currentUserId/currentUserRole props.
+  it("test_AS_362_edit_button_shown_for_the_comments_own_author", () => {
+    const html = renderToStaticMarkup(
+      createElement(CommentList, {
+        taskId: "t1",
+        comments: COMMENTS,
+        members: MEMBERS,
+        currentUserId: "u1",
+        currentUserRole: "member",
+      }),
+    );
+
+    expect(html).toContain('aria-label="Edit comment"');
+  });
+
+  it("test_AS_364_edit_button_not_shown_for_a_different_member_including_admin", () => {
+    // Viewer is u4: not the author of any seeded comment (authors are
+    // u1/u2/u3), even as an admin — AS-364's author-only rule means the
+    // edit affordance never appears for anyone but the comment's own
+    // author, unlike the delete affordance which does show for
+    // admins/owners.
+    const html = renderToStaticMarkup(
+      createElement(CommentList, {
+        taskId: "t1",
+        comments: COMMENTS,
+        members: MEMBERS,
+        currentUserId: "u4",
+        currentUserRole: "admin",
+      }),
+    );
+
+    expect(html).not.toContain('aria-label="Edit comment"');
+  });
 });

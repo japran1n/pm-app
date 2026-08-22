@@ -191,6 +191,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
+          edited_at: string | null
           id: string
           task_id: string
           text: string
@@ -202,6 +203,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          edited_at?: string | null
           id?: string
           task_id: string
           text: string
@@ -213,6 +215,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
+          edited_at?: string | null
           id?: string
           task_id?: string
           text?: string

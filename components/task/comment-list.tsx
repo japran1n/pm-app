@@ -43,11 +43,16 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, MessageSquare, Trash2 } from "lucide-react";
+import { Loader2, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { JSONContent } from "@tiptap/react";
 
-import { addComment, deleteComment, restoreComment } from "@/lib/actions/comments";
+import {
+  addComment,
+  deleteComment,
+  editComment,
+  restoreComment,
+} from "@/lib/actions/comments";
 import { showUndoToast } from "@/lib/toast/undo-toast";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
@@ -127,6 +132,10 @@ export type TaskComment = {
    * rendering never needs its own separate fallback branch. */
   bodyJson?: JSONContent | null;
   createdAt: string;
+  /** F197 (AS-362): timestamp of the comment's most recent edit, or
+   * null/undefined if it has never been edited. Drives the "(edited)"
+   * indicator next to the timestamp. */
+  editedAt?: string | null;
 };
 
 export type CommentListMember = {
@@ -217,6 +226,15 @@ export function CommentList({
     null,
   );
   const [, startDeleteTransition] = useTransition();
+  // F197 (AS-362): the comment currently in inline edit mode, and its
+  // in-progress draft. Only one comment can be edited at a time — opening
+  // a second edit implicitly discards an unsaved first one, same
+  // single-draft convention as the add-comment composer above.
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(
+    null,
+  );
+  const [editDraft, setEditDraft] = useState<JSONContent | null>(null);
+  const [isSavingEdit, startEditTransition] = useTransition();
 
   // F062 (AS-101, AS-102): reconcile every Realtime postgres_changes event
   // for this task's comments into local state via the pure
@@ -240,6 +258,53 @@ export function CommentList({
   function canDelete(comment: TaskComment): boolean {
     if (!currentUserId) return false;
     return comment.userId === currentUserId || isAdminOrOwner;
+  }
+
+  // F197 (AS-362, AS-364): unlike canDelete, deliberately author-only — no
+  // admin/owner override. This mirrors editComment's own server-side rule
+  // (lib/actions/comments.ts's doc comment has the full rationale); this
+  // check only controls whether the edit affordance is shown, the server
+  // action independently re-enforces it regardless.
+  function canEdit(comment: TaskComment): boolean {
+    if (!currentUserId || !canPost) return false;
+    return comment.userId === currentUserId;
+  }
+
+  function startEditing(comment: TaskComment) {
+    setEditingCommentId(comment.id);
+    setEditDraft(comment.bodyJson ?? docFromPlainText(comment.text));
+  }
+
+  function cancelEditing() {
+    setEditingCommentId(null);
+    setEditDraft(null);
+  }
+
+  function saveEdit(commentId: string) {
+    const plainText = extractPlainText(editDraft);
+    if (!plainText) return;
+
+    startEditTransition(async () => {
+      const result = await editComment(commentId, plainText, editDraft);
+      if (result.ok) {
+        setLocalComments((previous) =>
+          previous.map((comment) =>
+            comment.id === commentId
+              ? {
+                  ...comment,
+                  text: result.data.text,
+                  bodyJson: result.data.bodyJson,
+                  editedAt: result.data.editedAt,
+                }
+              : comment,
+          ),
+        );
+        setEditingCommentId(null);
+        setEditDraft(null);
+      } else {
+        toast.error(result.error);
+      }
+    });
   }
 
   function handleDelete(commentId: string) {
@@ -286,6 +351,8 @@ export function CommentList({
     setSyncedTaskId(taskId);
     setLocalComments(comments);
     setDraft(null);
+    setEditingCommentId(null);
+    setEditDraft(null);
   }
 
   const orderedComments = sortedOldestFirst(localComments);
@@ -355,13 +422,34 @@ export function CommentList({
                   {formatDistanceToNow(new Date(comment.createdAt), {
                     addSuffix: true,
                   })}
+                  {/* F197 (AS-362): a visible "(edited)" marker so other
+                   * viewers know the content changed since it was
+                   * posted — the actual authorization is server-side, this
+                   * is purely a transparency affordance. */}
+                  {comment.editedAt ? " (edited)" : ""}
                 </span>
+                {canEdit(comment) && editingCommentId !== comment.id && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    aria-label="Edit comment"
+                    onClick={() => startEditing(comment)}
+                  >
+                    <Pencil className="size-3.5" aria-hidden="true" />
+                  </Button>
+                )}
                 {canDelete(comment) && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="ml-auto size-6"
+                    className={
+                      canEdit(comment) && editingCommentId !== comment.id
+                        ? "size-6"
+                        : "ml-auto size-6"
+                    }
                     disabled={deletingCommentId === comment.id}
                     aria-label="Delete comment"
                     onClick={() => handleDelete(comment.id)}
@@ -374,7 +462,74 @@ export function CommentList({
                   </Button>
                 )}
               </div>
-              {richText ? (
+              {editingCommentId === comment.id ? (
+                // F197: inline edit mode, reusing the shared RichTextEditor
+                // exactly as the add-comment composer does above. Keyboard
+                // conventions match this codebase's established editor
+                // shortcuts (F169/F172): Escape cancels without saving,
+                // Cmd/Ctrl+Enter saves — caught here on the wrapping div
+                // since keydown bubbles up from the editor's contentEditable
+                // root, so no change to the shared, off-limits
+                // rich-text-editor.tsx component is needed.
+                <div
+                  className="flex flex-col gap-2"
+                  onKeyDown={(keyDownEvent) => {
+                    if (keyDownEvent.key === "Escape") {
+                      keyDownEvent.preventDefault();
+                      cancelEditing();
+                    } else if (
+                      keyDownEvent.key === "Enter" &&
+                      (keyDownEvent.metaKey || keyDownEvent.ctrlKey)
+                    ) {
+                      keyDownEvent.preventDefault();
+                      saveEdit(comment.id);
+                    }
+                  }}
+                >
+                  {richText ? (
+                    <richText.RichTextEditor
+                      content={editDraft}
+                      onChange={setEditDraft}
+                      disabled={isSavingEdit}
+                      aria-label="Edit comment"
+                    />
+                  ) : (
+                    <input
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      value={extractPlainText(editDraft)}
+                      disabled={isSavingEdit}
+                      onChange={(changeEvent) =>
+                        setEditDraft(
+                          docFromPlainText(changeEvent.target.value),
+                        )
+                      }
+                    />
+                  )}
+                  <div className="flex gap-2 self-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isSavingEdit}
+                      onClick={cancelEditing}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={isSavingEdit || !extractPlainText(editDraft)}
+                      onClick={() => saveEdit(comment.id)}
+                    >
+                      {isSavingEdit ? (
+                        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              ) : richText ? (
                 <richText.RichTextRenderer
                   content={comment.bodyJson ?? docFromPlainText(comment.text)}
                   aria-label={`Comment by ${authorLabel(comment.userId, members)}`}
