@@ -180,6 +180,21 @@ export function canManageProjectMembers(ctx: PermissionContext): boolean {
   return ctx.projectRole === "lead";
 }
 
+// F183 (AS-331 UI half): renaming/deleting a task template. Mirrors the
+// exact server-side rule `renameTemplate`/`deleteTemplate`
+// (lib/actions/templates.ts, F182) already re-check: the template's
+// creator, or a workspace admin/owner. `isResourceOwner` (this file, top)
+// is reused rather than a bespoke ownership comparison, and this predicate
+// is the single source both the templates list UI (hide/disable) and any
+// future server-side caller can share — same AS-230 convention as every
+// other predicate in this module. The server remains the real enforcement
+// boundary (RLS + this same rule re-checked in the Server Action); this
+// predicate only decides what the UI shows.
+export function canManageTemplate(ctx: PermissionContext): boolean {
+  if (ctx.role === "owner" || ctx.role === "admin") return true;
+  return isResourceOwner(ctx);
+}
+
 // Switching a project between "workspace" and "private" visibility.
 // Owner/admin only — the real boundary is the DB-level
 // `enforce_project_visibility_change_role` trigger (F132, AS-229); this

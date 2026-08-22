@@ -95,8 +95,12 @@ import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import {
   canDeleteTask,
   canEditTask,
+  canWrite,
   type WorkspaceRole,
 } from "@/lib/auth/permissions";
+// F183 (AS-328 UI half): "Save as template" trigger, next to "Delete
+// task" in this Sheet's footer.
+import { SaveAsTemplateDialog } from "@/components/task/save-as-template-dialog";
 import { useProjectRole } from "@/components/auth/membership-provider";
 import { TagsEditor } from "@/components/task/tags-editor";
 import {
@@ -484,6 +488,17 @@ export function TaskDetailSheet({
   const editDisabledTitle = canEdit
     ? undefined
     : "You don't have permission to edit this task.";
+  // F183 (AS-328 UI half): saving a template is a write, gated by the same
+  // generic canWrite predicate saveTaskAsTemplate re-checks server-side
+  // (viewers are read-only). `undefined` role treated as permissive,
+  // matching this Sheet's own canEdit/canDelete and NewTaskDialog's
+  // convention above.
+  const canSaveTemplate = currentUserRole
+    ? canWrite({ role: currentUserRole })
+    : true;
+  const saveTemplateDisabledTitle = canSaveTemplate
+    ? undefined
+    : "You don't have permission to save templates.";
 
   // Re-sync local edit state whenever the sheet is opened for a (possibly
   // different) task, mirroring EditProjectDialog's handleOpenChange reset
@@ -1187,6 +1202,12 @@ export function TaskDetailSheet({
             </div>
 
             <SheetFooter>
+              <SaveAsTemplateDialog
+                taskId={task.id}
+                taskTitle={task.title}
+                disabled={!canSaveTemplate}
+                disabledTitle={saveTemplateDisabledTitle}
+              />
               <Button
                 type="button"
                 variant="destructive"

@@ -43,6 +43,8 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import { NewTaskDialog } from "@/components/task/new-task-dialog";
+import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
+import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
 import type { UserAvatarPerson } from "@/components/user-avatar";
 
 const VALID_STATUSES = new Set(["todo", "in_progress", "in_review", "done"]);
@@ -120,6 +122,12 @@ export default async function ProjectListPage({
     ? await getWorkspaceMembers(workspace.id)
     : { active: [], pending: [] };
 
+  // F183 (AS-330 UI half): same fetch-and-pass-down pattern as the board
+  // page's own templates prop.
+  const templates = workspace
+    ? await getWorkspaceTaskTemplateOptions(workspace.id)
+    : [];
+
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
@@ -159,7 +167,10 @@ export default async function ProjectListPage({
           entry point rather than relying on the Board view's. */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <ListFilters assigneeOptions={assigneeOptions} />
-        <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+        <div className="flex items-center gap-2">
+          <NewFromTemplateButton projectId={projectId} templates={templates} />
+          <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+        </div>
       </div>
       <TaskListTable
         tasks={tasks}

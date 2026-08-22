@@ -13,6 +13,7 @@ import {
   Menu,
   Settings,
   Archive,
+  LayoutTemplate,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -66,13 +67,23 @@ function navItems(
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
     { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
+    // F183: "Templates" nav item, gated to non-guests the same way
+    // "Members"/"Archive" already are — a guest never sees an entry point
+    // to /w/[workspaceSlug]/templates from the sidebar; that page
+    // independently redirects a guest who navigates there directly.
+    { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
     ...(canManageWorkspace
       ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
       : []),
   ];
 
   return isGuest
-    ? items.filter((item) => item.label !== "Members" && item.label !== "Archive")
+    ? items.filter(
+        (item) =>
+          item.label !== "Members" &&
+          item.label !== "Archive" &&
+          item.label !== "Templates",
+      )
     : items;
 }
 

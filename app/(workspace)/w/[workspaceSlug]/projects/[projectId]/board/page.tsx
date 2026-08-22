@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProjectBoardTasks } from "@/lib/queries/tasks";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
+import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
 import { Board } from "@/components/board/board";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -61,6 +62,13 @@ export default async function ProjectBoardPage({
     ? await getWorkspaceMembers(workspace.id)
     : { active: [], pending: [] };
 
+  // F183 (AS-330 UI half): task templates available for "New from
+  // template" — resolved once here, same fetch-and-pass-down pattern as
+  // assigneeOptions above.
+  const templates = workspace
+    ? await getWorkspaceTaskTemplateOptions(workspace.id)
+    : [];
+
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
@@ -97,7 +105,11 @@ export default async function ProjectBoardPage({
 
   if (tasks.length === 0) {
     return (
-      <BoardEmptyState projectId={projectId} assigneeOptions={assigneeOptions} />
+      <BoardEmptyState
+        projectId={projectId}
+        assigneeOptions={assigneeOptions}
+        templates={templates}
+      />
     );
   }
 
@@ -109,6 +121,7 @@ export default async function ProjectBoardPage({
       members={detailSheetMembers}
       assignees={assignees}
       timezone={timezone}
+      templates={templates}
     />
   );
 }

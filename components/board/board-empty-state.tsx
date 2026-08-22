@@ -4,6 +4,8 @@ import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
 } from "@/components/task/new-task-dialog";
+import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
+import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 
 // F032 (AS-041): the empty state shown on a project's Board view when it
 // has zero tasks. Built as a reusable component (not inline JSX) because
@@ -25,9 +27,13 @@ import {
 export function BoardEmptyState({
   projectId,
   assigneeOptions,
+  templates = [],
 }: {
   projectId: string;
   assigneeOptions: NewTaskDialogAssigneeOption[];
+  /** F183 (AS-330 UI half): task templates available to create from —
+   * see board.tsx's own doc comment on the same prop. */
+  templates?: TaskTemplatePickerOption[];
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed py-16 text-center">
@@ -43,11 +49,14 @@ export function BoardEmptyState({
           Create your first task to start tracking work on the board.
         </p>
       </div>
-      <NewTaskDialog
-        projectId={projectId}
-        assigneeOptions={assigneeOptions}
-        triggerLabel="Create task"
-      />
+      <div className="flex items-center gap-2">
+        <NewFromTemplateButton projectId={projectId} templates={templates} />
+        <NewTaskDialog
+          projectId={projectId}
+          assigneeOptions={assigneeOptions}
+          triggerLabel="Create task"
+        />
+      </div>
     </div>
   );
 }

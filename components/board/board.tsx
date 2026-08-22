@@ -53,6 +53,8 @@ import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
 } from "@/components/task/new-task-dialog";
+import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
+import type { TaskTemplatePickerOption } from "@/lib/queries/templates";
 import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
 import {
@@ -76,6 +78,7 @@ export function Board({
   members = [],
   assignees,
   timezone,
+  templates = [],
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -125,6 +128,12 @@ export function Board({
    * so a page that forgets it fails to compile instead of silently
    * rendering in UTC. */
   timezone: string;
+  /** F183 (AS-330 UI half): task templates available to create from,
+   * server-fetched by the board page (lib/queries/templates.ts's
+   * getWorkspaceTaskTemplateOptions) and passed down — empty array means
+   * "New from template" is not rendered at all rather than shown disabled
+   * with nothing to pick. */
+  templates?: TaskTemplatePickerOption[];
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -348,7 +357,11 @@ export function Board({
           own toolbar even once tasks already exist — previously the only
           create-task entry point was the empty state, which disappears
           the moment a project has its first task. */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {/* F183 (AS-330 UI half): "New from template", next to "New
+            Task" — this toolbar is the closest thing this board has to a
+            quick-add entry point. */}
+        <NewFromTemplateButton projectId={projectId} templates={templates} />
         <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
       </div>
 
