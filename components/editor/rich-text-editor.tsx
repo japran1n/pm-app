@@ -55,6 +55,10 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { transformPastedHtml } from "@/lib/editor/paste-rules"
+import {
+  createMentionExtension,
+  type MentionSuggestionItem,
+} from "@/components/editor/mention-extension"
 
 /**
  * Shared extension set for both the editable and read-only render paths.
@@ -133,6 +137,7 @@ function taskItemIdPlugin() {
 function sharedExtensions({
   assignTaskItemIds = false,
   onReadOnlyChecked,
+  getMentionItems,
 }: {
   assignTaskItemIds?: boolean
   /** F173 (AS-311): fired when a checkbox is clicked in a non-editable
@@ -140,6 +145,12 @@ function sharedExtensions({
    * toggle (Tiptap's own built-in behaviour for a denied/failed change) —
    * see `RichTextRenderer` below for the actual persistence call. */
   onReadOnlyChecked?: (node: ProseMirrorNode, checked: boolean) => boolean
+  /** F203 (AS-371, AS-372, AS-373): a live getter for the current
+   * mention-suggestion source. Omitted entirely means the Mention
+   * extension isn't registered at all — `@` types as a literal character,
+   * same as before this feature — so callers that don't pass
+   * `mentionSuggestions` (RichTextEditorProps) see no behaviour change. */
+  getMentionItems?: () => MentionSuggestionItem[]
 } = {}) {
   const taskItemExtension = assignTaskItemIds
     ? TaskItemWithId.extend({
@@ -160,6 +171,9 @@ function sharedExtensions({
     taskItemExtension.configure(
       onReadOnlyChecked ? { onReadOnlyChecked } : {},
     ),
+    ...(getMentionItems
+      ? [createMentionExtension({ getItems: getMentionItems })]
+      : []),
   ]
 }
 
@@ -175,6 +189,12 @@ export interface RichTextEditorProps {
   disabled?: boolean
   className?: string
   "aria-label"?: string
+  /** F203 (AS-371, AS-372, AS-373): the @-mention suggestion source,
+   * already scoped by the caller (e.g. a project's members) and fetched
+   * server-side per this project's data-shape convention — never queried
+   * client-side here. Omitted/empty disables the mention picker entirely
+   * (see `sharedExtensions`'s `getMentionItems` doc comment). */
+  mentionSuggestions?: MentionSuggestionItem[]
 }
 
 /**
@@ -318,6 +338,7 @@ export function RichTextEditor({
   disabled,
   className,
   "aria-label": ariaLabel = "Rich text editor",
+  mentionSuggestions,
 }: RichTextEditorProps) {
   // F172 (AS-308): Cmd/Ctrl+Shift+V is the standard "paste as plain text"
   // override. Modifier state isn't exposed on the native `paste` event, so
@@ -327,7 +348,19 @@ export function RichTextEditor({
   const plainTextPasteRef = useRef(false)
 
   const editor = useEditor({
-    extensions: sharedExtensions({ assignTaskItemIds: true }),
+    extensions: sharedExtensions({
+      assignTaskItemIds: true,
+      // F203: a plain closure over this render's `mentionSuggestions` —
+      // same convention `onReadOnlyChecked` below already uses for a
+      // callback prop threaded into `sharedExtensions`. `sharedExtensions`
+      // re-runs on every render (`useEditor`'s own `mostRecentOptions`
+      // tracks the latest `options` object each render), so this always
+      // reflects the current prop rather than whatever was true when the
+      // editor instance was first constructed.
+      getMentionItems: mentionSuggestions
+        ? () => mentionSuggestions
+        : undefined,
+    }),
     content: content ?? undefined,
     editable: !disabled,
     immediatelyRender: false,
@@ -454,6 +487,12 @@ export interface RichTextRendererProps {
     itemId: string | null,
     checked: boolean,
   ) => boolean | Promise<boolean>
+  /** F203 (AS-373): resolves a stored mention's CURRENT display name —
+   * see mention-extension.ts's file doc comment for why this is never
+   * read from anything persisted on the node itself. Omitted/empty means
+   * any mention chip in this content renders with the raw user id (the
+   * safe "something rather than nothing" fallback). */
+  mentionSuggestions?: MentionSuggestionItem[]
 }
 
 // F171 (AS-307, AS-309): the render-time security boundary. This is the
@@ -496,6 +535,8 @@ const ALLOWED_NODE_TYPES = new Set([
   // F173 (AS-311): inline checkbox lists.
   "taskList",
   "taskItem",
+  // F203 (AS-373): @-mention chips.
+  "mention",
 ])
 
 const ALLOWED_MARK_TYPES = new Set(["bold", "italic", "code", "link", "strike"])
@@ -586,6 +627,17 @@ function sanitiseNode(node: unknown): JSONContent | null {
     }
   }
 
+  // F203 (AS-373): only `id` (a non-empty string) ever survives — `label`
+  // is deliberately never accepted here either, same "rebuild attrs from
+  // scratch" rule as every other node/mark, and the same reason it's
+  // never written by mention-extension.ts's `command` in the first place:
+  // the display name is always resolved live from `mentionSuggestions`,
+  // never trusted from stored/untrusted JSON.
+  if (n.type === "mention") {
+    const id = n.attrs?.id
+    result.attrs = { id: typeof id === "string" && id.length > 0 ? id : null }
+  }
+
   if (Array.isArray(n.marks) && n.marks.length > 0) {
     const marks = n.marks
       .map(sanitiseMark)
@@ -633,11 +685,16 @@ export function RichTextRenderer({
   className,
   "aria-label": ariaLabel = "Rich text content",
   onToggleTaskItem,
+  mentionSuggestions,
 }: RichTextRendererProps) {
   const safeContent = sanitiseDocument(content)
 
   const editor = useEditor({
     extensions: sharedExtensions({
+      // F203: same plain-closure convention as `RichTextEditor` above.
+      getMentionItems: mentionSuggestions
+        ? () => mentionSuggestions
+        : undefined,
       // F173 (AS-311): read-only checkbox toggling. Optimistic by design —
       // this handler always accepts the click at the DOM level (returns
       // `true`) and hands off persistence to `onToggleTaskItem`; the

@@ -101,11 +101,13 @@ type RichTextEditorModule = {
     placeholder?: string;
     "aria-label"?: string;
     className?: string;
+    mentionSuggestions?: { id: string; label: string }[];
   }) => React.ReactElement | null;
   RichTextRenderer: (props: {
     content?: JSONContent | null;
     className?: string;
     "aria-label"?: string;
+    mentionSuggestions?: { id: string; label: string }[];
   }) => React.ReactElement | null;
 };
 
@@ -232,6 +234,16 @@ export function CommentList({
    * regardless, this only controls UI affordance. */
   currentUserRole?: WorkspaceRole;
 }) {
+  // F203 (AS-371, AS-372, AS-373): the @-mention suggestion source is the
+  // same `members` list this component already receives as a prop (no new
+  // query — see mention-extension.ts's file doc comment for why reusing
+  // this is the simpler, single-source-of-truth option). Recomputed only
+  // when `members` changes, not on every render.
+  const mentionSuggestions = members.map((member) => ({
+    id: member.userId,
+    label: member.name || member.email || member.userId,
+  }));
+
   const [localComments, setLocalComments] = useState(comments);
   // Tracks which task's comments are currently loaded into local state, so
   // it can be re-synced below without an Effect — same "adjust state
@@ -577,6 +589,7 @@ export function CommentList({
                       onChange={setEditDraft}
                       disabled={isSavingEdit}
                       aria-label="Edit comment"
+                      mentionSuggestions={mentionSuggestions}
                     />
                   ) : (
                     <input
@@ -618,6 +631,7 @@ export function CommentList({
                 <richText.RichTextRenderer
                   content={comment.bodyJson ?? docFromPlainText(comment.text)}
                   aria-label={`Comment by ${authorLabel(comment.userId, members)}`}
+                  mentionSuggestions={mentionSuggestions}
                 />
               ) : (
                 // F174: pre-hydration fallback, identical to this
@@ -657,6 +671,7 @@ export function CommentList({
             disabled={isSubmitting || !canPost}
             placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
             aria-label="Add a comment"
+            mentionSuggestions={mentionSuggestions}
           />
         ) : (
           // F174: pre-hydration fallback — a plain input bound to the
