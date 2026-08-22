@@ -9,6 +9,7 @@ import {
   addCommentSchema,
   commentBodyJsonSchema,
   deleteCommentSchema,
+  restoreCommentSchema,
 } from "@/lib/validation/comments";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
 import {
@@ -480,6 +481,250 @@ export async function deleteComment(
     data: {
       id: deleted.id,
       deletedAt: deleted.deleted_at,
+    },
+  };
+}
+
+export type RestoreCommentResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        taskId: string;
+        userId: string;
+        text: string;
+        bodyJson: JSONContent;
+        createdAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Restores a soft-deleted comment (F191: AS-346). Pattern and
+// authorization rule mirror deleteComment above exactly (same
+// "author OR workspace admin/owner" gate, F127's canWrite re-check for the
+// author path, same server-side owning-task/project/workspace lookup, same
+// discriminated-union / generic-error convention) — restoring is treated
+// as the inverse of the same permission decision that let someone delete
+// in the first place, which is also this feature's own clarified default
+// (F191 clarification: "same class of problem" as F104's delete-broadcast
+// fix, mirrored here for symmetry rather than inventing a separate rule).
+//
+// Unlike deleteComment's lookup (`.is("deleted_at", null)`, so an
+// already-deleted comment behaves as "not found"), this lookup has NO
+// deleted_at filter — it must find the row precisely because it IS
+// deleted. A row that exists but is already active (deleted_at already
+// null) is treated as a no-op success per this feature's own Clarified
+// "empty / zero state" answer (inherited from the shared action-archetype
+// defaults in the clarification file): restoring something that's already
+// restored isn't an error, and the UI shows no error toast for it.
+export async function restoreComment(
+  commentId: string,
+): Promise<RestoreCommentResult> {
+  const parsed = restoreCommentSchema.safeParse({ commentId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid comment.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to restore a comment." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: commentRow, error: commentError } = await admin
+    .from("comments")
+    .select(
+      "id, task_id, user_id, text, body_json, created_at, deleted_at, tasks(id, projects(workspace_id))",
+    )
+    .eq("id", parsed.data.commentId)
+    .maybeSingle();
+
+  if (commentError || !commentRow) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  const task = commentRow.tasks as
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }
+    | {
+        id: string;
+        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+      }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+  const project = taskRow?.projects;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+  const commentTaskId = taskRow?.id;
+
+  if (!workspaceId || !commentTaskId) {
+    return { ok: false, error: "Comment not found." };
+  }
+
+  const isAuthor = commentRow.user_id === user.id;
+
+  // Same three-way rule as deleteComment (AS-098/AS-099/AS-100's
+  // counterpart for restore, both covered by AS-346's "author or admin"
+  // wording): the comment's own author, or a workspace admin/owner, may
+  // restore it. Any other regular member is rejected server-side even if
+  // they call this action directly.
+  if (!isAuthor) {
+    const adminMembership = await requireWorkspaceAdmin(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!adminMembership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to restore this comment.",
+      };
+    }
+  } else {
+    const membership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (!membership.ok) {
+      return {
+        ok: false,
+        error: "You don't have permission to restore this comment.",
+      };
+    }
+    // F128 (AS-216, AS-217): mirrors deleteComment's own author-path
+    // canWrite re-check — a member since demoted to viewer loses restore
+    // rights on their own old comments too.
+    if (!canWrite({ role: membership.role })) {
+      return {
+        ok: false,
+        error: "Viewers don't have permission to restore comments.",
+      };
+    }
+  }
+
+  const bodyJson: JSONContent =
+    (commentRow.body_json as JSONContent | null) ??
+    docFromPlainText(commentRow.text);
+
+  // No-op: already active, nothing to write. Per this feature's Clarified
+  // "empty / zero state" default, this returns ok without a database
+  // write and without the caller needing to distinguish it from a real
+  // restore.
+  if (!commentRow.deleted_at) {
+    return {
+      ok: true,
+      data: {
+        id: commentRow.id,
+        taskId: commentRow.task_id,
+        userId: commentRow.user_id,
+        text: commentRow.text,
+        bodyJson,
+        createdAt: commentRow.created_at,
+      },
+    };
+  }
+
+  const { data: restored, error: restoreError } = await admin
+    .from("comments")
+    .update({ deleted_at: null, deleted_by: null })
+    .eq("id", parsed.data.commentId)
+    .select("id, task_id, user_id, text, body_json, created_at, deleted_at")
+    .single();
+
+  if (restoreError || !restored || restored.deleted_at !== null) {
+    console.error("restoreComment: update failed:", restoreError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const restoredBodyJson: JSONContent =
+    (restored.body_json as JSONContent | null) ?? bodyJson;
+
+  // Realtime delivery mirrors F104's fix for the exact same class of bug
+  // (see lib/tasks/subscribe-comments-realtime.ts's doc comment):
+  // postgres_changes on this channel only subscribes to `event: "INSERT"`
+  // (UPDATE is not subscribed at all, precisely because of the delete-side
+  // RLS-on-NEW-row failure F104 fixed) — so a restore, which is also an
+  // UPDATE under the hood, would NEVER reach postgres_changes subscribers
+  // regardless of whether the NEW row now passes
+  // comments_select_active_members. Broadcast is therefore the only
+  // delivery path for this event, same as comment_deleted, kept
+  // symmetrical on purpose rather than trying to special-case restore onto
+  // postgres_changes UPDATE (which would also resurrect the exact delete
+  // bug for every OTHER still-deleted UPDATE variant, since Realtime
+  // cannot distinguish "this specific UPDATE" from "some UPDATE" at the
+  // subscription-filter level). The full comment row is sent (not just an
+  // id) so the client's INSERT-shaped reconciliation
+  // (lib/tasks/reconcile-realtime-comment.ts's `reconcileComment`, which
+  // appends when the id isn't already present in local state) can
+  // reconstruct the comment without a second round trip.
+  try {
+    const broadcastChannel = supabase.channel(`comments:${commentTaskId}`);
+    await broadcastChannel.send({
+      type: "broadcast",
+      event: "comment_restored",
+      payload: {
+        id: restored.id,
+        task_id: restored.task_id,
+        user_id: restored.user_id,
+        text: restored.text,
+        body_json: restoredBodyJson,
+        created_at: restored.created_at,
+      },
+    });
+    await supabase.removeChannel(broadcastChannel);
+  } catch (broadcastError) {
+    // Non-fatal: the restore itself already succeeded — same rationale as
+    // deleteComment's broadcast try/catch above. A reload always reflects
+    // the real deleted_at state via RLS regardless of whether this
+    // broadcast is delivered.
+    console.error(
+      "restoreComment: broadcast failed (non-fatal):",
+      broadcastError,
+    );
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "restoreComment: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: restored.id,
+      taskId: restored.task_id,
+      userId: restored.user_id,
+      text: restored.text,
+      bodyJson: restoredBodyJson,
+      createdAt: restored.created_at,
     },
   };
 }

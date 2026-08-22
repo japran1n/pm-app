@@ -9,6 +9,8 @@ import { FileText, MessageSquare } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import type { TrashItem } from "@/lib/queries/trash";
+import { RestoreCommentButton } from "@/components/trash/restore-comment-button";
+import { TrashRestoreButton } from "@/components/trash/trash-restore-button";
 
 export function trashItemDateLabel(
   isoDate: string,
@@ -61,6 +63,13 @@ export function TrashList({
               {item.deletedByName ? ` by ${item.deletedByName}` : ""}
             </p>
           </div>
+          {/* F189 (AS-344, AS-351) restores a task; F191 (AS-346)
+              restores a comment — each row gets the control for its own
+              type, wired to its own Server Action. */}
+          {item.type === "task" && <TrashRestoreButton taskId={item.id} />}
+          {item.type === "comment" && (
+            <RestoreCommentButton commentId={item.id} />
+          )}
         </li>
       ))}
     </ul>

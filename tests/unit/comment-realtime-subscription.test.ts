@@ -184,6 +184,75 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  // F191 (AS-346): restoreComment's realtime delivery mirrors deleteComment's
+  // broadcast-based fix exactly, but with the opposite payload shape (a
+  // full row, translated to an INSERT-shaped event) since restoring
+  // reconstructs a comment rather than removing one.
+  it("F191: also subscribes to broadcast event comment_restored on the same channel", () => {
+    const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    expect(channelCalls).toEqual(["comments:task-123"]);
+    const restoredCall = onCalls.find(
+      (c) => c.event === "broadcast" && (c.filter as { event?: string }).event === "comment_restored",
+    );
+    expect(restoredCall).toBeDefined();
+  });
+
+  it("F191: translates a comment_restored broadcast message into an INSERT-shaped event carrying the full comment row", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    const restoredCall = onCalls.find(
+      (c) => c.event === "broadcast" && (c.filter as { event?: string }).event === "comment_restored",
+    )!;
+
+    const row = {
+      id: "c1",
+      task_id: "task-123",
+      user_id: "u1",
+      text: "restored comment",
+      created_at: "2026-08-18T00:00:00Z",
+      deleted_at: null,
+    };
+
+    restoredCall.callback({
+      type: "broadcast",
+      event: "comment_restored",
+      payload: row,
+    });
+
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        eventType: "INSERT",
+        new: row,
+      }),
+    );
+  });
+
+  it("F191: a comment_restored broadcast message missing payload.id is ignored (no onChange call)", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToCommentsRealtime(supabase as never, "task-123", onChange);
+
+    const restoredCall = onCalls.find(
+      (c) => c.event === "broadcast" && (c.filter as { event?: string }).event === "comment_restored",
+    )!;
+
+    restoredCall.callback({
+      type: "broadcast",
+      event: "comment_restored",
+      payload: {},
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("returns an unsubscribe function that removes the channel", () => {
     const { supabase, removedChannels, channelObject } = createMockSupabaseClient();
 
@@ -445,6 +514,54 @@ describe("reconcileComment (AS-101, AS-102)", () => {
     );
 
     expect(rendered.map((c) => c.id)).toEqual(["c-early", "c1", "c2", "c-late"]);
+  });
+
+  // F191 (AS-346): the restore counterpart of AS-101's removal path — a
+  // comment restored by any viewer (author or admin) reappears in a
+  // *different* viewer's already-open task view the moment the
+  // comment_restored-derived INSERT-shaped event arrives, without that
+  // viewer refreshing. Uses the same INSERT-append branch AS-103 already
+  // exercises (restoreComment's broadcast is translated to this same
+  // event shape by subscribeToCommentsRealtime), confirming reconcileComment
+  // itself needs no restore-specific branch.
+  it("AS_346_reintroduces_a_restored_comment_into_a_different_viewers_open_task_view", () => {
+    // Simulates: c1 was soft-deleted and is therefore already absent from
+    // this viewer's local state (same as reconcileComment's own DELETE
+    // path would have produced).
+    const postDeleteState: TaskComment[] = [baseComments[1]];
+
+    const restoreEvent = {
+      eventType: "INSERT",
+      schema: "public",
+      table: "comments",
+      new: {
+        id: "c1",
+        task_id: "task-1",
+        user_id: "u1",
+        text: "First comment",
+        created_at: "2026-08-18T00:00:00Z",
+        deleted_at: null,
+      },
+      old: {},
+    } as unknown as CommentRealtimeEvent;
+
+    const next = reconcileComment(postDeleteState, restoreEvent);
+
+    expect(next.find((c) => c.id === "c1")).toEqual({
+      id: "c1",
+      taskId: "task-1",
+      userId: "u1",
+      text: "First comment",
+      bodyJson: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "First comment" }] },
+        ],
+      },
+      createdAt: "2026-08-18T00:00:00Z",
+    });
+    // c2, untouched by this restore, remains.
+    expect(next.find((c) => c.id === "c2")).toEqual(baseComments[1]);
   });
 
   it("is a no-op when the DELETE payload has no old.id", () => {

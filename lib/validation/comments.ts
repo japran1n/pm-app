@@ -41,3 +41,15 @@ export const deleteCommentSchema = z.object({
 });
 
 export type DeleteCommentInput = z.infer<typeof deleteCommentSchema>;
+
+// Validates restoreComment input (F191: AS-346). Same shape as
+// deleteCommentSchema — kept as its own named export (rather than reusing
+// deleteCommentSchema directly at the call site) so restoreComment's
+// intent reads clearly at its own call site, mirroring the
+// deleteTaskSchema/restoreTaskSchema convention this codebase already uses
+// for the task-restore counterpart.
+export const restoreCommentSchema = z.object({
+  commentId: z.string().uuid("Invalid comment."),
+});
+
+export type RestoreCommentInput = z.infer<typeof restoreCommentSchema>;

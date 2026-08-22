@@ -54,6 +54,20 @@
 // handle (a DELETE-shaped event, `old: { id }`) so the reducer and its
 // existing tests don't need a second code path for "how a comment gets
 // removed."
+//
+// F191 (AS-346): a symmetrical `comment_restored` broadcast, sent by
+// lib/actions/comments.ts's restoreComment right after its restore UPDATE
+// succeeds. Restoring is also an UPDATE under the hood, and postgres_changes
+// is only subscribed to `event: "INSERT"` above (not UPDATE at all) —
+// precisely because of the same RLS-on-NEW-row class of bug F104 already
+// worked around for delete — so a restore would never reach subscribers
+// via postgres_changes regardless of whether the NEW row now passes
+// comments_select_active_members. Broadcast is therefore the only
+// delivery path here too. The payload carries the full comment row (not
+// just an id) and is translated into an INSERT-shaped
+// `CommentRealtimeEvent`, so `reconcileComment`'s existing "append if not
+// already present" branch reconstructs the comment without a second code
+// path or a second round trip.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -95,6 +109,21 @@ export function subscribeToCommentsRealtime(
           table: "comments",
           old: { id: deletedId },
           new: {},
+        } as unknown as CommentRealtimeEvent);
+      },
+    )
+    .on<CommentRealtimeRow>(
+      "broadcast",
+      { event: "comment_restored" },
+      (message) => {
+        const row = message?.payload;
+        if (!row || !row.id) return;
+        onChange({
+          eventType: "INSERT",
+          schema: "public",
+          table: "comments",
+          new: row,
+          old: {},
         } as unknown as CommentRealtimeEvent);
       },
     )
