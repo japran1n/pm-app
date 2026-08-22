@@ -1,0 +1,705 @@
+"use server";
+
+// F182 (AS-330, AS-331, AS-332): task-template create/apply/rename/delete
+// Server Actions. Templates (F181's `task_templates` table, `kind='task'`)
+// are snapshots, not live links — applying a template pre-fills a new
+// task's fields once, at creation time; there is no ongoing relationship
+// between a created task and the template it came from (AS-332), and no
+// FK from `tasks` back to `task_templates`.
+//
+// Pattern mirrors every sibling action in lib/actions/tasks.ts: Zod at the
+// boundary, requireActiveMembership + lib/auth/permissions.ts predicates
+// re-checked server-side (defense in depth — RLS on `task_templates`,
+// F181's migration, also enforces workspace scoping and creator-or-admin
+// writes), admin client for the actual read/write, discriminated-union
+// return, generic user-facing errors with details only logged server-side.
+
+import { revalidatePath } from "next/cache";
+
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  saveTaskAsTemplateSchema,
+  createTaskFromTemplateSchema,
+  renameTemplateSchema,
+  deleteTemplateSchema,
+  taskTemplatePayloadSchema,
+  type TaskTemplatePayload,
+} from "@/lib/validation/templates";
+import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { canWrite } from "@/lib/auth/permissions";
+import { calculatePosition } from "@/lib/board/position";
+import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
+import type { Json } from "@/lib/supabase/database.types";
+
+// --- saveTaskAsTemplate -----------------------------------------------------
+
+export type SaveTaskAsTemplateResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        name: string;
+        workspaceId: string;
+      };
+    }
+  | { ok: false; error: string };
+
+// Snapshots a task's clonable fields (the SAME allow-list F176's
+// cloneTaskFields/F180's duplicateTask use: title, description,
+// description_json, priority, checklistItems, estimate_minutes, tags —
+// plus assigneeIds, saved into the payload so createTaskFromTemplate can
+// offer to pre-fill assignees) into a new `task_templates` row, scoped to
+// the task's own workspace (never a workspace supplied by the client).
+export async function saveTaskAsTemplate(
+  taskId: string,
+  name: string,
+): Promise<SaveTaskAsTemplateResult> {
+  const parsed = saveTaskAsTemplateSchema.safeParse({ taskId, name });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to save a template." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: sourceRow, error: sourceError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, title, description, description_json, priority, tags, estimate_minutes, deleted_at, projects(workspace_id)",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (sourceError || !sourceRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = sourceRow.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to save a template from this task.",
+    };
+  }
+
+  // Saving a template is a write (it creates a new row) — gated the same
+  // way createTask/duplicateTask gate their own writes (AS-216/AS-217:
+  // viewers are read-only).
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to save templates.",
+    };
+  }
+
+  const [assigneesResult, checklistResult] = await Promise.all([
+    admin
+      .from("task_assignees")
+      .select("user_id, created_at")
+      .eq("task_id", parsed.data.taskId)
+      .order("created_at", { ascending: true }),
+    admin
+      .from("checklist_items")
+      .select("content, position")
+      .eq("task_id", parsed.data.taskId)
+      .order("position", { ascending: true }),
+  ]);
+
+  const cloned = cloneTaskFields({
+    title: sourceRow.title,
+    description: sourceRow.description,
+    description_json: sourceRow.description_json,
+    assigneeIds: (assigneesResult.data ?? []).map(
+      (row) => row.user_id as string,
+    ),
+    priority: sourceRow.priority,
+    checklistItems: (checklistResult.data ?? []).map((row) => ({
+      content: row.content as string,
+      position: row.position as number,
+    })),
+    estimate_minutes: sourceRow.estimate_minutes,
+  });
+
+  const payload: TaskTemplatePayload = {
+    title: cloned.title,
+    description: cloned.description,
+    description_json: cloned.description_json,
+    priority: cloned.priority as TaskTemplatePayload["priority"],
+    checklistItems: cloned.checklistItems,
+    estimate_minutes: cloned.estimate_minutes,
+    tags: sourceRow.tags ?? [],
+    assigneeIds: cloned.assigneeIds,
+  };
+
+  const { data: inserted, error: insertError } = await admin
+    .from("task_templates")
+    .insert({
+      workspace_id: workspaceId,
+      kind: "task",
+      name: parsed.data.name,
+      payload: payload as unknown as Json,
+      created_by: user.id,
+    })
+    .select("id, name, workspace_id")
+    .single();
+
+  if (insertError || !inserted) {
+    console.error("saveTaskAsTemplate: insert failed:", insertError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "saveTaskAsTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: inserted.id,
+      name: inserted.name,
+      workspaceId: inserted.workspace_id,
+    },
+  };
+}
+
+// --- createTaskFromTemplate -------------------------------------------------
+
+export type CreateTaskFromTemplateResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        projectId: string;
+        title: string;
+        status: string;
+        number: number;
+        // The assignee ids actually applied to the new task, after
+        // dropping any from the template's saved payload who are no
+        // longer members of the target workspace (per this feature's
+        // spec: "resolves assignees that are no longer members by
+        // dropping them rather than failing").
+        assigneeIds: string[];
+        droppedAssigneeIds: string[];
+      };
+    }
+  | { ok: false; error: string };
+
+// Creates a new task pre-filled from a template's saved payload
+// (AS-330). The new task gets its own key/number via the SAME atomic
+// mechanism every other task-creation path in this codebase relies on
+// (F145's `assign_task_key` trigger, which fires on any `tasks` insert
+// that doesn't supply `number` — never manually computed here, exactly
+// like createTaskForUser/duplicateTask in lib/actions/tasks.ts).
+//
+// Dropped-assignee handling (explicit spec instruction, easy to miss):
+// the template's saved assigneeIds are re-checked against ACTIVE
+// membership of the TARGET workspace (the project the task is being
+// created into) at apply-time, not at save-time — a template can be
+// saved once and reused indefinitely, and membership can change in
+// between. Any assignee id that is no longer an active member is
+// silently dropped from the created task rather than failing the whole
+// creation; the dropped ids are still returned in the result so a caller
+// (UI) can optionally surface a non-blocking notice, but a plain create
+// failure is never raised for this reason.
+export async function createTaskFromTemplate(
+  templateId: string,
+  projectId: string,
+  status?: "todo" | "in_progress" | "in_review" | "done",
+): Promise<CreateTaskFromTemplateResult> {
+  const parsed = createTaskFromTemplateSchema.safeParse({
+    templateId,
+    projectId,
+    status,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: "You must be signed in to create a task from a template.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at")
+    .eq("id", parsed.data.projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    projectRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to create a task in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to create tasks.",
+    };
+  }
+
+  const { data: templateRow, error: templateError } = await admin
+    .from("task_templates")
+    .select("id, workspace_id, kind, payload")
+    .eq("id", parsed.data.templateId)
+    .maybeSingle();
+
+  if (templateError || !templateRow) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  if (templateRow.kind !== "task") {
+    return { ok: false, error: "This template is not a task template." };
+  }
+
+  // A template must be applied within its own workspace — the same
+  // workspace-scoping rule every other cross-entity lookup in this
+  // codebase enforces server-side rather than trusting a client-supplied
+  // projectId to already belong to the right workspace.
+  if (templateRow.workspace_id !== projectRow.workspace_id) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  const payloadParsed = taskTemplatePayloadSchema.safeParse(
+    templateRow.payload,
+  );
+
+  if (!payloadParsed.success) {
+    console.error(
+      "createTaskFromTemplate: stored payload failed schema validation:",
+      payloadParsed.error,
+    );
+    return {
+      ok: false,
+      error: "This template's saved data is invalid. Please re-save it.",
+    };
+  }
+
+  const payload = payloadParsed.data;
+
+  // AS-330 setup / dropped-assignee handling: re-verify each saved
+  // assignee id is still an active member of the TARGET workspace, and
+  // silently drop any that are not, rather than failing the whole
+  // create.
+  const membershipChecks = await Promise.all(
+    payload.assigneeIds.map(async (assigneeId) => ({
+      assigneeId,
+      membership: await requireActiveMembership(
+        admin,
+        projectRow.workspace_id,
+        assigneeId,
+      ),
+    })),
+  );
+
+  const resolvedAssigneeIds = membershipChecks
+    .filter((entry) => entry.membership.ok)
+    .map((entry) => entry.assigneeId);
+  const droppedAssigneeIds = membershipChecks
+    .filter((entry) => !entry.membership.ok)
+    .map((entry) => entry.assigneeId);
+
+  const targetStatus = parsed.data.status ?? "todo";
+
+  const { data: lastInColumn } = await admin
+    .from("tasks")
+    .select("position")
+    .eq("project_id", parsed.data.projectId)
+    .eq("status", targetStatus)
+    .is("deleted_at", null)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const newTaskPosition = calculatePosition(
+    lastInColumn?.position ?? null,
+    null,
+  );
+
+  const { data: inserted, error: insertError } = await admin
+    .from("tasks")
+    .insert({
+      project_id: parsed.data.projectId,
+      title: payload.title,
+      description: payload.description,
+      description_json: payload.description_json as Json,
+      status: targetStatus,
+      priority: payload.priority,
+      tags: payload.tags,
+      estimate_minutes: payload.estimate_minutes,
+      author_id: user.id,
+      position: newTaskPosition,
+      // No `number`/key supplied: F145's assign_task_key trigger assigns
+      // this new row its own project-sequential number on insert — the
+      // template payload never carries a key/number to copy (it isn't in
+      // taskTemplatePayloadSchema's shape at all).
+    })
+    .select("id, project_id, title, status, position, number")
+    .single();
+
+  if (insertError || !inserted) {
+    console.error("createTaskFromTemplate: insert failed:", insertError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (payload.checklistItems.length > 0) {
+    const { error: checklistInsertError } = await admin
+      .from("checklist_items")
+      .insert(
+        payload.checklistItems.map((item) => ({
+          task_id: inserted.id,
+          content: item.content,
+          position: item.position,
+        })),
+      );
+    if (checklistInsertError) {
+      console.error(
+        "createTaskFromTemplate: checklist insert failed:",
+        checklistInsertError,
+      );
+    }
+  }
+
+  if (resolvedAssigneeIds.length > 0) {
+    const { error: assigneeInsertError } = await admin
+      .from("task_assignees")
+      .insert(
+        resolvedAssigneeIds.map((assigneeId) => ({
+          task_id: inserted.id,
+          user_id: assigneeId,
+          assigned_by: user.id,
+        })),
+      );
+    if (assigneeInsertError) {
+      console.error(
+        "createTaskFromTemplate: assignee insert failed:",
+        assigneeInsertError,
+      );
+    } else {
+      await admin
+        .from("tasks")
+        .update({ assignee_id: resolvedAssigneeIds[0] ?? null })
+        .eq("id", inserted.id);
+    }
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", projectRow.workspace_id)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "createTaskFromTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: inserted.id,
+      projectId: inserted.project_id,
+      title: inserted.title,
+      status: inserted.status,
+      number: inserted.number,
+      assigneeIds: resolvedAssigneeIds,
+      droppedAssigneeIds,
+    },
+  };
+}
+
+// --- renameTemplate ----------------------------------------------------------
+
+export type RenameTemplateResult =
+  | { ok: true; data: { id: string; name: string } }
+  | { ok: false; error: string };
+
+// AS-331: only the template's creator OR a workspace admin/owner may
+// rename it. RLS on `task_templates` (F181's
+// task_templates_update_owner_or_admin policy) already enforces this
+// exact rule at the database layer; this re-checks it explicitly
+// server-side first (defense in depth, same convention as every sibling
+// action in this file) so a permission failure maps to a specific
+// message instead of a raw RLS-denied error surfacing from the admin
+// client (which bypasses RLS entirely, so the app-level check here is
+// the ONLY enforcement this action itself performs — consistent with
+// every other admin-client-using action in this codebase).
+export async function renameTemplate(
+  templateId: string,
+  newName: string,
+): Promise<RenameTemplateResult> {
+  const parsed = renameTemplateSchema.safeParse({
+    templateId,
+    name: newName,
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template details.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to rename a template." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: templateRow, error: templateError } = await admin
+    .from("task_templates")
+    .select("id, workspace_id, created_by")
+    .eq("id", parsed.data.templateId)
+    .maybeSingle();
+
+  if (templateError || !templateRow) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    templateRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to rename this template.",
+    };
+  }
+
+  const isCreator = templateRow.created_by === user.id;
+  const isAdminOrOwner =
+    membership.role === "owner" || membership.role === "admin";
+
+  if (!isCreator && !isAdminOrOwner) {
+    return {
+      ok: false,
+      error: "Only the template's creator or a workspace admin can rename it.",
+    };
+  }
+
+  const { data: updated, error: updateError } = await admin
+    .from("task_templates")
+    .update({ name: parsed.data.name })
+    .eq("id", parsed.data.templateId)
+    .select("id, name")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("renameTemplate: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", templateRow.workspace_id)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "renameTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true, data: { id: updated.id, name: updated.name } };
+}
+
+// --- deleteTemplate ----------------------------------------------------------
+
+export type DeleteTemplateResult =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: string };
+
+// AS-331 (same permission rule as renameTemplate: creator or workspace
+// admin/owner only). AS-332: deleting a template does not affect any task
+// previously created from it — there is no FK from `tasks` back to
+// `task_templates` at all (a created task is a fully independent row;
+// the template was only read once, at createTaskFromTemplate time, to
+// pre-fill the new row's columns). This action's DELETE statement only
+// ever targets `task_templates`; it never touches `tasks`.
+export async function deleteTemplate(
+  templateId: string,
+): Promise<DeleteTemplateResult> {
+  const parsed = deleteTemplateSchema.safeParse({ templateId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid template.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete a template." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: templateRow, error: templateError } = await admin
+    .from("task_templates")
+    .select("id, workspace_id, created_by")
+    .eq("id", parsed.data.templateId)
+    .maybeSingle();
+
+  if (templateError || !templateRow) {
+    return { ok: false, error: "Template not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    templateRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to delete this template.",
+    };
+  }
+
+  const isCreator = templateRow.created_by === user.id;
+  const isAdminOrOwner =
+    membership.role === "owner" || membership.role === "admin";
+
+  if (!isCreator && !isAdminOrOwner) {
+    return {
+      ok: false,
+      error: "Only the template's creator or a workspace admin can delete it.",
+    };
+  }
+
+  const { error: deleteError } = await admin
+    .from("task_templates")
+    .delete()
+    .eq("id", parsed.data.templateId);
+
+  if (deleteError) {
+    console.error("deleteTemplate: delete failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", templateRow.workspace_id)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+    } catch (revalidateError) {
+      console.error(
+        "deleteTemplate: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return { ok: true, data: { id: parsed.data.templateId } };
+}
