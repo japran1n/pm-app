@@ -134,7 +134,8 @@ export type TaskDetailSheetTask = {
    * document (F170's `tasks.description_json`, always kept in sync with
    * `description` by a DB trigger — see F170's handoff). Rendered
    * read-only through RichTextRenderer's allow-listed schema below,
-   * NEVER via `dangerouslySetInnerHTML`. Optional so a caller/fixture
+   * NEVER via the raw-HTML-injection prop React provides for bypassing
+   * its escaping. Optional so a caller/fixture
    * that hasn't been updated yet still renders (falls back to showing
    * nothing extra beyond the plain-text description already shown by the
    * editable Textarea). Untrusted, previously-stored content — treated
