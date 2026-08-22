@@ -1052,6 +1052,19 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      purge_comment: {
+        Args: { p_comment_id: string }
+        Returns: {
+          id: string
+        }[]
+      }
+      purge_task: {
+        Args: { p_task_id: string }
+        Returns: {
+          attachment_paths: string[]
+          id: string
+        }[]
+      }
       recurrence_next_due_date: {
         Args: { p_from_date: string; p_rule: Json }
         Returns: string

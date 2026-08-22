@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceTrash } from "@/lib/queries/trash";
 import { TrashFilters } from "@/components/trash/trash-filters";
 import { TrashList } from "@/components/trash/trash-list";
+import { canPurge as canPurgePredicate } from "@/lib/auth/permissions";
 
 // F188 (AS-343, AS-347, AS-352): the workspace trash view — every deleted
 // task and deleted comment (`deleted_at IS NOT NULL`) visible to the
@@ -151,7 +152,11 @@ export default async function TrashPage({
       )}
 
       {!loadError && items.length > 0 && (
-        <TrashList items={items} dateFormatter={dateFormatter} />
+        <TrashList
+          items={items}
+          dateFormatter={dateFormatter}
+          canPurge={canPurgePredicate({ role })}
+        />
       )}
     </div>
   );

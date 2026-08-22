@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import type { TrashItem } from "@/lib/queries/trash";
 import { RestoreCommentButton } from "@/components/trash/restore-comment-button";
 import { TrashRestoreButton } from "@/components/trash/trash-restore-button";
+import { PurgeDialog } from "@/components/trash/purge-dialog";
 
 export function trashItemDateLabel(
   isoDate: string,
@@ -22,9 +23,17 @@ export function trashItemDateLabel(
 export function TrashList({
   items,
   dateFormatter,
+  canPurge = false,
 }: {
   items: TrashItem[];
   dateFormatter: Intl.DateTimeFormat;
+  // F192 (AS-348): only a workspace owner sees the permanent-delete
+  // control — the real enforcement boundary is purgeTrashItem's own
+  // server-side `canPurge` re-check (lib/actions/purge.ts), this prop
+  // only controls whether the button renders at all. Defaults to false
+  // so every existing call site (and this component's own unit tests,
+  // F188/F189) that doesn't pass it keeps its prior behaviour unchanged.
+  canPurge?: boolean;
 }) {
   return (
     <ul className="flex flex-col divide-y rounded-lg border">
@@ -66,10 +75,19 @@ export function TrashList({
           {/* F189 (AS-344, AS-351) restores a task; F191 (AS-346)
               restores a comment — each row gets the control for its own
               type, wired to its own Server Action. */}
-          {item.type === "task" && <TrashRestoreButton taskId={item.id} />}
-          {item.type === "comment" && (
-            <RestoreCommentButton commentId={item.id} />
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {item.type === "task" && <TrashRestoreButton taskId={item.id} />}
+            {item.type === "comment" && (
+              <RestoreCommentButton commentId={item.id} />
+            )}
+            {canPurge && (
+              <PurgeDialog
+                itemId={item.id}
+                itemType={item.type}
+                itemLabel={item.label}
+              />
+            )}
+          </div>
         </li>
       ))}
     </ul>
