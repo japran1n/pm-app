@@ -190,6 +190,7 @@ export type Database = {
           body_text: string | null
           created_at: string
           deleted_at: string | null
+          deleted_by: string | null
           id: string
           task_id: string
           text: string
@@ -200,6 +201,7 @@ export type Database = {
           body_text?: string | null
           created_at?: string
           deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           task_id: string
           text: string
@@ -210,6 +212,7 @@ export type Database = {
           body_text?: string | null
           created_at?: string
           deleted_at?: string | null
+          deleted_by?: string | null
           id?: string
           task_id?: string
           text?: string
@@ -525,6 +528,7 @@ export type Database = {
           author_id: string
           created_at: string
           deleted_at: string | null
+          deleted_by: string | null
           deleted_via_task_id: string | null
           description: string | null
           description_json: Json | null
@@ -553,6 +557,7 @@ export type Database = {
           author_id: string
           created_at?: string
           deleted_at?: string | null
+          deleted_by?: string | null
           deleted_via_task_id?: string | null
           description?: string | null
           description_json?: Json | null
@@ -581,6 +586,7 @@ export type Database = {
           author_id?: string
           created_at?: string
           deleted_at?: string | null
+          deleted_by?: string | null
           deleted_via_task_id?: string | null
           description?: string | null
           description_json?: Json | null
@@ -888,13 +894,21 @@ export type Database = {
         Args: { target_comment_id: string }
         Returns: boolean
       }
-      cascade_delete_task: {
-        Args: { p_task_id: string }
-        Returns: {
-          deleted_at: string
-          id: string
-        }[]
-      }
+      cascade_delete_task:
+        | {
+            Args: { p_task_id: string }
+            Returns: {
+              deleted_at: string
+              id: string
+            }[]
+          }
+        | {
+            Args: { p_deleted_by?: string; p_task_id: string }
+            Returns: {
+              deleted_at: string
+              id: string
+            }[]
+          }
       create_project_from_template: {
         Args: {
           p_created_by: string
@@ -1056,6 +1070,7 @@ export type Database = {
           author_id: string
           created_at: string
           deleted_at: string | null
+          deleted_by: string | null
           deleted_via_task_id: string | null
           description: string | null
           description_json: Json | null

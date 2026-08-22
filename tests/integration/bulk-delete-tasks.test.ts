@@ -327,6 +327,23 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.deleted_at).not.toBeNull();
     });
 
+    it("F188 follow-through: bulkDeleteTasks stamps deleted_by with the caller's id (trash view's AS-347 depends on this)", async () => {
+      const { bulkDeleteTasks } = await import("@/lib/actions/tasks");
+      const taskA = await makeTask();
+
+      currentTestUserId = memberUserId;
+
+      const result = await bulkDeleteTasks([taskA]);
+      expect(result.ok).toBe(true);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("deleted_by")
+        .eq("id", taskA)
+        .single();
+      expect(row?.deleted_by).toBe(memberUserId);
+    });
+
     it("AS-340: a task in a private project the caller isn't a member of is rejected by KEY-lookup-able id, while a permitted task in the same call still succeeds and isn't rolled back", async () => {
       const { bulkDeleteTasks } = await import("@/lib/actions/tasks");
       const permittedTask = await makeTask(projectId);

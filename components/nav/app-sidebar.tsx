@@ -14,6 +14,7 @@ import {
   Settings,
   Archive,
   LayoutTemplate,
+  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -72,6 +73,12 @@ function navItems(
     // to /w/[workspaceSlug]/templates from the sidebar; that page
     // independently redirects a guest who navigates there directly.
     { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
+    // F188 (AS-343..352): "Trash" nav item, gated to non-guests the same
+    // way "Members"/"Archive"/"Templates" already are — a guest never
+    // sees an entry point to /w/[workspaceSlug]/trash from the sidebar;
+    // that page independently redirects a guest who navigates there
+    // directly (mirrors F142's archive page pattern exactly).
+    { href: `/w/${workspaceSlug}/trash`, label: "Trash", icon: Trash2 },
     ...(canManageWorkspace
       ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
       : []),
@@ -82,7 +89,8 @@ function navItems(
         (item) =>
           item.label !== "Members" &&
           item.label !== "Archive" &&
-          item.label !== "Templates",
+          item.label !== "Templates" &&
+          item.label !== "Trash",
       )
     : items;
 }

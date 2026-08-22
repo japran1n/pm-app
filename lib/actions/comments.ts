@@ -398,9 +398,11 @@ export async function deleteComment(
     }
   }
 
+  // F188/AS-347: `deleted_by` stamped on the same update as `deleted_at`
+  // so the trash view can show who deleted this comment.
   const { data: deleted, error: deleteError } = await admin
     .from("comments")
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: new Date().toISOString(), deleted_by: user.id })
     .eq("id", parsed.data.commentId)
     .select("id, deleted_at")
     .single();

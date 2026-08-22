@@ -1315,9 +1315,12 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
 
   // AS-267: single atomic RPC call — soft-deletes this task AND cascades
   // to any live children in one transaction (see doc comment above).
+  // F188/AS-347: `p_deleted_by` is stamped inside the same RPC call (see
+  // 20260822210000_cascade_delete_task_deleted_by.sql's doc comment) so
+  // the trash view can show who deleted this task without a second write.
   const { data: cascadeRows, error: deleteError } = await admin.rpc(
     "cascade_delete_task",
-    { p_task_id: parsed.data.taskId },
+    { p_task_id: parsed.data.taskId, p_deleted_by: user.id },
   );
 
   const deleted = cascadeRows?.[0];
@@ -3813,9 +3816,12 @@ export async function bulkDeleteTasks(
 
   // The one real delete write: a single `UPDATE ... WHERE id = ANY(...)`
   // statement, per this feature's Clarified performance-budget answer.
+  // F188/AS-347: `deleted_by` is stamped on the same UPDATE that sets
+  // `deleted_at`, so the trash view can show who deleted every task in
+  // this call — no second write needed.
   const { data: deletedRows, error: deleteError } = await admin
     .from("tasks")
-    .update({ deleted_at: deletedAt })
+    .update({ deleted_at: deletedAt, deleted_by: user.id })
     .in("id", allowedIds)
     .is("deleted_at", null)
     .select("id");
@@ -3845,7 +3851,7 @@ export async function bulkDeleteTasks(
   if (succeededIds.length > 0) {
     const { error: cascadeError } = await admin
       .from("tasks")
-      .update({ deleted_at: deletedAt })
+      .update({ deleted_at: deletedAt, deleted_by: user.id })
       .in("parent_task_id", succeededIds)
       .is("deleted_at", null);
 

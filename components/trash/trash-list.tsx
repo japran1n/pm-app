@@ -1,0 +1,68 @@
+// F188 (AS-343, AS-347): the read-only list of deleted tasks/comments
+// rendered by the trash page. A plain Server Component (no interaction of
+// its own — the type filter lives in the sibling client `TrashFilters`
+// component, per this feature's Clarified "Client Component only for
+// interaction" answer); this stays a pure presentational function so it
+// can be unit-tested without any client-runtime setup.
+
+import { FileText, MessageSquare } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import type { TrashItem } from "@/lib/queries/trash";
+
+export function trashItemDateLabel(
+  isoDate: string,
+  formatter: Intl.DateTimeFormat,
+): string {
+  return formatter.format(new Date(isoDate));
+}
+
+export function TrashList({
+  items,
+  dateFormatter,
+}: {
+  items: TrashItem[];
+  dateFormatter: Intl.DateTimeFormat;
+}) {
+  return (
+    <ul className="flex flex-col divide-y rounded-lg border">
+      {items.map((item) => (
+        <li
+          key={`${item.type}-${item.id}`}
+          className="flex items-start gap-3 p-4"
+        >
+          <div
+            aria-hidden="true"
+            className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted"
+          >
+            {item.type === "task" ? (
+              <FileText className="size-4 text-muted-foreground" />
+            ) : (
+              <MessageSquare className="size-4 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">
+                {item.type === "task" ? "Task" : "Comment"}
+              </Badge>
+              {item.taskKey && (
+                <span className="font-mono text-xs text-muted-foreground">
+                  {item.taskKey}
+                </span>
+              )}
+              <span className="truncate text-sm font-medium">
+                {item.label}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              From {item.projectName} — deleted{" "}
+              {trashItemDateLabel(item.deletedAt, dateFormatter)}
+              {item.deletedByName ? ` by ${item.deletedByName}` : ""}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
