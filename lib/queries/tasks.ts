@@ -31,6 +31,7 @@ import type { TaskCardTask } from "@/components/task/task-card";
 // the RPC's already-counted totals into the same done/total/percent
 // shape as before.
 import { computeTaskCompletion } from "@/lib/tasks/completion";
+import type { RecurrenceRule } from "@/lib/recurrence/next-date";
 
 // F146 (AS-258): every embedded `projects` relation below can come back
 // from PostgREST as either a single object or a one-element array
@@ -99,6 +100,9 @@ export async function getProjectBoardTasks(
     // array (possibly empty), never null — see that migration's own
     // comment for the coalesce.
     assignee_ids: string[];
+    // F179 follow-up: added to the RPC's return in
+    // 20260822170000_rpc_project_board_tasks_recurrence.sql.
+    recurrence: RecurrenceRule | null;
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -152,6 +156,11 @@ export async function getProjectBoardTasks(
       // feeds TaskCard's UserAvatarGroup. See TaskCardTask.assigneeIds'
       // doc comment for the "always an array" contract.
       assigneeIds: task.assignee_ids ?? [],
+      // F179 follow-up (AS-317): straight off the RPC row — no coercion
+      // needed, TaskCardTask.recurrence already treats null/undefined
+      // identically (no indicator rendered), same convention as
+      // estimateMinutes above.
+      recurrence: task.recurrence,
     };
   });
 }
@@ -259,7 +268,10 @@ export async function getProjectListTasks(
       // added so the list view's `TaskCard`s also receive the full
       // assignee set, same as the board view's RPC — one embedded join,
       // no per-row fetch.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects(key), task_assignees(user_id)",
+      // F179 follow-up (AS-317): `recurrence` added so the list view's
+      // `TaskCard`s also receive real recurrence data, same as the board
+      // view.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects(key), task_assignees(user_id)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -325,6 +337,8 @@ export async function getProjectListTasks(
     // never object-or-array), so no `firstRelated`-style normalization is
     // needed here.
     assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
+    // F179 follow-up (AS-317): see this function's select above.
+    recurrence: task.recurrence as RecurrenceRule | null,
   }));
 }
 
@@ -370,7 +384,10 @@ export async function getWorkspaceListTasks(
       // F161 follow-through (AS-287, AS-288): `task_assignees(user_id)`
       // added so the dashboard's `TaskCard`s also receive the full
       // assignee set, same as the board/list views.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id)",
+      // F179 follow-up (AS-317): `recurrence` added so the dashboard's
+      // `TaskCard`s also receive real recurrence data, same as the
+      // board/list views.
+      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -431,5 +448,7 @@ export async function getWorkspaceListTasks(
     // F161 follow-through (AS-287, AS-288): see getProjectListTasks above
     // for why no `firstRelated` normalization is needed here.
     assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
+    // F179 follow-up (AS-317): see this function's select above.
+    recurrence: task.recurrence as RecurrenceRule | null,
   }));
 }

@@ -39,6 +39,56 @@ tests/integration/recurrence-remove-stops-occurrence.test.ts (new — AS-318, AS
 - **The task card's repeat indicator has no live data source yet.** `TaskCard`'s `TaskCardTask.recurrence` field and the render logic are fully built and tested (AS-317, component-level), but the queries that actually populate cards in production — `lib/queries/tasks.ts`'s `getProjectListTasks`/`getWorkspaceListTasks` (plain `.select()` calls, easy to extend) and, more involved, the board's `project_board_tasks` Postgres RPC (`getProjectBoardTasks`, which needed its own migration to add `estimate_minutes` per F167's handoff precedent) — do not yet select `recurrence`. Until a follow-up feature adds `recurrence` to those three query paths (and, for the board RPC specifically, a new migration mirroring `20260822040000_rpc_project_board_tasks_estimate_minutes.sql`'s pattern), every real card in the app will render with `recurrence: undefined` and never show the indicator, even for a genuinely recurring task. This was out of the feature spec's named "Files (approximate)" list (`recurrence-editor.tsx`, `task-detail-sheet.tsx`, `task-card.tsx` only) and is reported here rather than silently expanded, per this feature's own scope-boundary answer. SUGGESTED FOLLOWUP: a small feature ("wire recurrence into the board/list card queries") that adds `recurrence` to the three query selects above (and a matching RPC migration for the board), with a render+integration test proving a real recurring task's card shows the indicator end-to-end through the actual query path, not just the component in isolation.
 - **No Playwright/browser-preview screenshot was captured.** This feature's own "manual verification" definition-of-done answer calls for a browser-preview screenshot at desktop and 375px for UI features; no dev/preview server was started for this session (headless CLI environment, no visual harness invoked), and the render-test coverage (`renderToStaticMarkup`, no jsdom, same convention as F167's `task-card-over-estimate-indicator-render.test.ts`) was judged sufficient evidence for AS-317's component-level claim given the time budget. A future pass through this feature (or its scrutiny review) that has browser-preview access should capture the two screenshots this component's Definition of done still calls for.
 
+## Follow-up fix
+
+Executed the "Out-of-scope work needed" item above: wired `recurrence`
+through the board/list/dashboard query layer, the same class of gap
+F167's own follow-up fix closed for `estimate_minutes`, mirroring that
+fix's exact pattern.
+
+Files changed:
+- `lib/queries/tasks.ts` — `getProjectBoardTasks` (via its
+  `get_project_board_tasks` RPC — see migration below), `getProjectListTasks`,
+  and `getWorkspaceListTasks` all now select `recurrence` and map it to
+  `TaskCardTask.recurrence` (straight passthrough, no coercion — a
+  null/undefined `recurrence` already means "no active rule" identically on
+  both sides, same convention as `estimateMinutes`). `getTaskDetail`
+  (`lib/actions/tasks.ts`) already selected `recurrence` as of F179's
+  original implementation (it needed the value for the detail sheet's
+  picker) — verified this before starting rather than assuming it, per the
+  task brief's instruction; no change was needed there.
+- `supabase/migrations/20260822170000_rpc_project_board_tasks_recurrence.sql`
+  (new) — `getProjectBoardTasks` reads through the `get_project_board_tasks`
+  Postgres RPC, not a raw `.select(...)`, so wiring this required a
+  migration: `drop function` + recreate with one added OUT column
+  (`recurrence jsonb`) and one added select-list entry (`t.recurrence`) —
+  FROM/JOIN/WHERE/ORDER BY and every previously-added column
+  (`estimate_minutes`, `assignee_ids`) otherwise byte-for-byte unchanged
+  from the prior migration
+  (`20260822070000_rpc_project_board_tasks_assignee_ids.sql`). Applied to
+  the real linked project via `supabase db push --linked` (the CLI session
+  was already authenticated this time, no keychain token extraction
+  needed).
+- `tests/integration/recurrence-query-wiring.test.ts` (new) — seeds one
+  task with `recurrence: { freq: "weekly", interval: 2 }` and one with none
+  via the admin client, then calls `getProjectBoardTasks`,
+  `getProjectListTasks`, `getWorkspaceListTasks`, and `getTaskDetail`
+  against the real linked Supabase project and asserts each returns the
+  real rule (or `null`, never a fabricated rule, for the unset task); a
+  final test renders a real `TaskCard` with the board query's actual
+  output and asserts the recurring task's card shows the icon+text repeat
+  indicator while the non-recurring task's card shows none — proving the
+  round trip end-to-end through the real query path into the real
+  component, not just the component in isolation against a hand-built
+  prop. 6 assertions, all passing in isolation.
+
+Commands run: `npx vitest run tests/integration/recurrence-query-wiring.test.ts` (0, 5/5 passed — note: 5 `it` blocks, 6 assertions across them); `npx vitest run tests/integration/recurrence-query-wiring.test.ts tests/integration/create-task.test.ts tests/integration/board-columns-render.test.ts tests/integration/list-view-render.test.ts tests/integration/estimate-minutes-query-wiring.test.ts` (0, 20/20 passed — no regression from the added select column/RPC output column); `npx tsc --noEmit` (0); `npx eslint .` (0 errors, same 2 pre-existing unrelated warnings this mission's prior handoffs already noted, in `lib/queries/search.ts` and `tests/unit/invite-member-pagination.test.ts`); `npm run test` full suite (23 files failed / 171 passed, 11 tests failed / 1237 passed / 78 skipped — every failure is the same pre-existing Supabase Auth `429 Request rate limit reached`/timeout condition already documented across this mission's handoffs (F166, F167, F175, F177, F179's own original run), all in `workspace-members-list.test.ts`/`workspace-role-expansion.test.ts` and similar files this follow-up never touched; not a regression).
+
+Now that this is wired, the recurrence indicator built by F179's original
+implementation is reachable end-to-end from the board, list, and dashboard
+`TaskCard`s (and was already reachable from the task detail sheet) for any
+task that has an active `recurrence` rule.
+
 ## Blockers
 (none — Status is COMPLETE)
 
