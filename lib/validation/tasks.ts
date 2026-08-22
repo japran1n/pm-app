@@ -205,6 +205,16 @@ export const deleteTaskSchema = z.object({
 
 export type DeleteTaskInput = z.infer<typeof deleteTaskSchema>;
 
+// Validates restoreTask input (F189: AS-344, AS-351). Same shape as
+// deleteTaskSchema — restore has no other caller-supplied fields, it
+// always restores the task to its OWN recorded project/status, never a
+// caller-chosen destination.
+export const restoreTaskSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+});
+
+export type RestoreTaskInput = z.infer<typeof restoreTaskSchema>;
+
 // Validates updateTaskTags input (F041: AS-065, AS-066). Mirrors the
 // `tags text[] not null default '{}'` column from
 // supabase/migrations/20260818013434_create_tasks.sql. Each tag must be a

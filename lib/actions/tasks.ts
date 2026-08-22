@@ -12,6 +12,7 @@ import {
   setTaskAssigneesSchema,
   editTaskSchema,
   deleteTaskSchema,
+  restoreTaskSchema,
   updateTaskTagsSchema,
   moveTaskStatusSchema,
   reorderTaskSchema,
@@ -1356,6 +1357,313 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
     data: {
       id: deleted.id,
       deletedAt: deleted.deleted_at,
+    },
+  };
+}
+
+export type RestoreTaskResult =
+  | {
+      ok: true;
+      data: {
+        id: string;
+        projectId: string;
+        status: string;
+        position: number;
+        // AS-344's "status no longer exists" fallback edge case (see this
+        // function's doc comment): true only when the task's recorded
+        // status somehow wasn't a valid column and had to be reset to the
+        // project's first not-started column, so the caller can surface a
+        // "status was reset" notice. Always false today (status is a
+        // fixed DB CHECK-constrained enum — see moveTaskStatusSchema —
+        // this branch has no reachable trigger until a future
+        // caller-defined-columns feature, F218, lands), but the field
+        // exists so the UI never has to guess.
+        statusWasReset: boolean;
+      };
+    }
+  | { ok: false; error: string };
+
+// Restores a soft-deleted task (F189: AS-344, AS-351). Pattern mirrors
+// deleteTask/editTask above: Zod-validated input, membership re-checked
+// server-side (defense in depth, AS-143), admin client used for the
+// actual update, discriminated union return, generic user-facing errors
+// with details only logged server-side (AS-146).
+//
+// AS-344: a restored task returns to its ORIGINAL project (project_id is
+// never changed by this action — there is no field for it, same "no
+// field to carry a destination" convention editTask's AS-060 doc comment
+// already established) and its original status. Position is the one
+// field that is NOT restored verbatim: this feature's own worker brief
+// explicitly calls out that the task's old position may now collide with
+// other tasks' positions since time has passed (new tasks may have been
+// created or reordered into that same slot while this task sat deleted),
+// so a brand-new valid position is computed here via
+// lib/board/position.ts's calculatePosition, appended to the END of the
+// task's (project, status) column — the exact same "append to the end"
+// convention createTask already uses for a newly created task (see that
+// function's own position doc comment above) — never the stale value
+// read back from the row.
+//
+// Status fallback (per this feature's Files/Clarified implementation,
+// "if the task's original status no longer exists, fall back to the
+// project's first not-started column and say so"): `status` is a fixed,
+// DB CHECK-constrained enum today (tasks_status_check,
+// supabase/migrations/20260818013434_create_tasks.sql) — every row's
+// `status` is therefore ALWAYS one of the four known values, so this
+// fallback branch can never actually trigger yet (caller-defined board
+// columns are a later feature, F218, not built). The fallback is still
+// implemented per the spec's explicit instruction (defensive, and ready
+// the day F218 lands): any status value that isn't one of the four known
+// columns falls back to "todo" (the fixed set's first not-started
+// column), and `statusWasReset: true` is returned so the caller can show
+// a toast.
+//
+// AS-351: restoring into an ARCHIVED project (an archived project is
+// simply a project with `deleted_at` set — F142/AS-249 reuses the same
+// soft-delete column rather than a second, parallel "archived" flag, per
+// that feature's own migration doc comment) must NOT un-archive the
+// project. This function never reads OR writes any column on `projects`
+// other than looking up `workspace_id` (for the membership check) and
+// `deleted_at` is deliberately never part of that lookup's select list,
+// and never appears anywhere in this function's write path — there is no
+// code here that could touch `projects.deleted_at` even by accident. A
+// task inside an archived project restores exactly like a task in any
+// other project; it simply becomes visible again inside that (still
+// archived) project's own task list, the same way any other live task in
+// an archived project already behaves — archiving a project does not
+// itself hide its own tasks from that project's own board (only from
+// cross-project aggregates, per AS-129/AS-174's `p.deleted_at is null`
+// exclusions), so a restored task inside an archived project is
+// consistent with every other task already sitting in that project.
+//
+// Cascade restore (reverses F149's `cascade_delete_task` RPC precisely,
+// per this feature's own instruction): a task cascade-deleted alongside
+// ITS parent (F149's single-task `deleteTask` path — see that function's
+// doc comment) has `deleted_via_task_id` stamped to the parent's id. When
+// the parent is restored here, every still-deleted child whose
+// `deleted_via_task_id` equals this task's id is restored too, each
+// getting its own fresh end-of-column position in ITS OWN (project,
+// status) column — a child's status is untouched by its parent's
+// restore, it simply becomes visible again in whichever column it was
+// in. This is deliberately NOT the same as F187's bulk-delete cascade:
+// children soft-deleted as a side effect of `bulkDeleteTasks` never had
+// `deleted_via_task_id` stamped in the first place (F187's own documented
+// gap, restated in F188's handoff) — this function has no way to
+// distinguish those from an independently-deleted child and does not try
+// to; only rows whose `deleted_via_task_id` correctly points back to
+// THIS task are restored. A task with no cascade-deleted children is
+// unaffected by this step (the children query simply returns zero rows).
+//
+// Zero-state: a task that is not currently soft-deleted (already restored,
+// or never deleted) behaves as "not found" here, mirroring every other
+// action in this file's "deleted_at is null means not found for a
+// delete-scoped lookup" convention, inverted for a restore-scoped lookup
+// (`deleted_at is NOT null` required).
+export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
+  const parsed = restoreTaskSchema.safeParse({ taskId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to restore a task." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning workspace (via its project) so membership is
+  // checked against the real workspace, never one supplied by the caller.
+  // Only a currently soft-deleted task is eligible — a live (never-
+  // deleted or already-restored) task behaves as "not found", the inverse
+  // of deleteTask's own lookup convention. AS-351: `projects.deleted_at`
+  // is deliberately not selected here — this function has no reason to
+  // branch on whether the project is archived, and selecting it would
+  // invite a future edit to accidentally start writing it.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id)",
+    )
+    .eq("id", parsed.data.taskId)
+    .not("deleted_at", "is", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = Array.isArray(taskRow.projects)
+    ? taskRow.projects[0]
+    : taskRow.projects;
+  const workspaceId = project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  // Defense in depth (AS-143): re-check the caller is an active member of
+  // the task's workspace, server-side. Same "any active role, no per-task
+  // ownership check" model as deleteTask (AS-055).
+  const membership = await requireActiveMembership(
+    admin,
+    workspaceId,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      ok: false,
+      error: "You don't have permission to restore this task.",
+    };
+  }
+
+  // F128 (AS-216, AS-217): viewers are read-only, same gate deleteTask
+  // uses for the exact same "any active role but viewer" model.
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to restore tasks.",
+    };
+  }
+
+  const KNOWN_STATUSES = ["todo", "in_progress", "in_review", "done"] as const;
+  const NOT_STARTED_FALLBACK_STATUS: (typeof KNOWN_STATUSES)[number] = "todo";
+
+  const statusWasReset = !(KNOWN_STATUSES as readonly string[]).includes(
+    taskRow.status,
+  );
+  const resolvedStatus = statusWasReset
+    ? NOT_STARTED_FALLBACK_STATUS
+    : (taskRow.status as (typeof KNOWN_STATUSES)[number]);
+
+  // Position (per this function's doc comment): append to the end of the
+  // resolved (project, status) column among currently LIVE tasks — the
+  // task's old, stale position is never reused.
+  const { data: lastInColumn } = await admin
+    .from("tasks")
+    .select("position")
+    .eq("project_id", taskRow.project_id)
+    .eq("status", resolvedStatus)
+    .is("deleted_at", null)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const newPosition = calculatePosition(lastInColumn?.position ?? null, null);
+
+  const { data: updated, error: updateError } = await admin
+    .from("tasks")
+    .update({
+      deleted_at: null,
+      deleted_by: null,
+      status: resolvedStatus,
+      position: newPosition,
+    })
+    .eq("id", parsed.data.taskId)
+    .select("id, project_id, status, position")
+    .single();
+
+  if (updateError || !updated) {
+    console.error("restoreTask: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // Cascade restore (see this function's doc comment above): only the
+  // still-deleted children whose `deleted_via_task_id` points back to
+  // THIS task — never a bulk-deleted sibling with no such provenance.
+  // Bounded by the number of one-level children a single task can have
+  // (F148's one-level nesting limit), never an unbounded set, so a small
+  // per-child loop here (each child needs its OWN end-of-column position,
+  // which a single multi-row `.update()` can't express with per-row
+  // values) stays well within a "no unbounded per-row loop of network
+  // calls" reading of this feature's inherited performance-budget answer.
+  const { data: cascadedChildren } = await admin
+    .from("tasks")
+    .select("id, status")
+    .eq("deleted_via_task_id", parsed.data.taskId)
+    .not("deleted_at", "is", null);
+
+  for (const child of cascadedChildren ?? []) {
+    const childStatusWasReset = !(KNOWN_STATUSES as readonly string[]).includes(
+      child.status,
+    );
+    const childResolvedStatus = childStatusWasReset
+      ? NOT_STARTED_FALLBACK_STATUS
+      : (child.status as (typeof KNOWN_STATUSES)[number]);
+
+    const { data: lastInChildColumn } = await admin
+      .from("tasks")
+      .select("position")
+      .eq("project_id", taskRow.project_id)
+      .eq("status", childResolvedStatus)
+      .is("deleted_at", null)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const childPosition = calculatePosition(
+      lastInChildColumn?.position ?? null,
+      null,
+    );
+
+    const { error: childUpdateError } = await admin
+      .from("tasks")
+      .update({
+        deleted_at: null,
+        deleted_by: null,
+        deleted_via_task_id: null,
+        status: childResolvedStatus,
+        position: childPosition,
+      })
+      .eq("id", child.id);
+
+    if (childUpdateError) {
+      console.error(
+        "restoreTask: cascaded-child restore failed (non-fatal, parent already restored):",
+        childUpdateError,
+      );
+    }
+  }
+
+  const { data: workspaceRow } = await admin
+    .from("workspaces")
+    .select("slug")
+    .eq("id", workspaceId)
+    .maybeSingle();
+
+  if (workspaceRow?.slug) {
+    try {
+      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      revalidatePath(`/w/${workspaceRow.slug}/trash`);
+    } catch (revalidateError) {
+      // Non-fatal cache-freshness rationale, same as createTask above.
+      console.error(
+        "restoreTask: revalidatePath failed (non-fatal):",
+        revalidateError,
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    data: {
+      id: updated.id,
+      projectId: updated.project_id,
+      status: updated.status,
+      position: updated.position,
+      statusWasReset,
     },
   };
 }
