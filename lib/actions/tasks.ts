@@ -21,6 +21,7 @@ import {
   toggleDescriptionChecklistItemSchema,
   duplicateTaskSchema,
   bulkUpdateTasksSchema,
+  bulkDeleteTasksSchema,
   type EditTaskUpdates,
   type BulkUpdateTasksUpdates,
 } from "@/lib/validation/tasks";
@@ -3639,6 +3640,229 @@ export async function bulkUpdateTasks(
       admin,
       workspaceId,
       "bulkUpdateTasks",
+    );
+  }
+
+  return { ok: true, data: { succeededIds, failedIds } };
+}
+
+// ---------------------------------------------------------------------
+// F187 (AS-339, AS-340): bulk soft-delete from the list view's multi-select
+// (F185's <TaskListTable> row checkboxes + <BulkActionBar>). Sibling action
+// to bulkUpdateTasks above — same shape, same per-task authorization
+// pattern (loadBulkTaskAuthContexts, one membership check per distinct
+// workspace, one extra project_members query covering every private
+// project in the call), same "a forbidden task is excluded and reported,
+// never fails the whole batch" resolution (AS-340 is this feature's
+// version of AS-341's precedent — see this feature's handoff Decisions
+// Made for why this deliberately reuses that exact pattern rather than
+// inventing a new one).
+// ---------------------------------------------------------------------
+
+export type BulkDeleteTasksResult =
+  | {
+      ok: true;
+      data: {
+        // Ids actually soft-deleted (deleted_at set). AS-339's "N tasks
+        // all get deleted via one action" is proven by this list matching
+        // the caller-permitted subset of the input, not by every input id
+        // necessarily appearing here.
+        succeededIds: string[];
+        // AS-340: a task the caller isn't authorized to delete (not
+        // found, already soft-deleted, or in a private project they have
+        // no access to) is excluded from the delete and reported here —
+        // it does NOT fail the whole batch. Every other, permitted task
+        // in the same call is still deleted. The UI (bulk-delete-action.tsx)
+        // resolves these ids to "PROJECTKEY-number" via formatTaskKey
+        // before showing them to the user — never a raw uuid.
+        failedIds: { id: string; reason: string }[];
+      };
+    }
+  | { ok: false; error: string };
+
+// This is a SOFT delete only — sets `deleted_at`, never issues a real
+// DELETE, exactly matching deleteTask's existing single-task convention
+// (see that function's doc comment above) and this feature's own
+// Clarified-implementation instruction (confirmation copy must say
+// "trash", not "delete forever").
+//
+// AS-267 cascade parity (F149): deleteTask cascades to a task's live
+// children via the single-task `cascade_delete_task` RPC (one atomic
+// transaction). This action deliberately does NOT call that RPC per
+// selected task — doing so would be a per-row loop of network calls,
+// which this feature's Clarified performance-budget answer explicitly
+// forbids ("never a per-row loop of network calls"). Instead, cascading
+// to children of every deleted task in this call is done as a SECOND
+// batch UPDATE (`parent_task_id = ANY(allowedIds)`), covering every
+// affected child in one statement regardless of how many parents were in
+// the selection — two statements total for the whole call, not two per
+// task. This is not wrapped in a single database transaction the way
+// cascade_delete_task's PL/pgSQL body is (no new migration/RPC is in this
+// feature's Files scope — see the handoff's Out-of-scope section), so a
+// crash between the two UPDATEs is a narrower window than the equivalent
+// risk cascade_delete_task's own doc comment describes for the
+// single-task path, but is not fully eliminated here; flagged in the
+// handoff rather than silently left undocumented.
+export async function bulkDeleteTasks(
+  taskIds: string[],
+): Promise<BulkDeleteTasksResult> {
+  const parsed = bulkDeleteTasksSchema.safeParse({ taskIds });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid bulk delete.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to delete tasks." };
+  }
+
+  const admin = createAdminClient();
+  const contexts = await loadBulkTaskAuthContexts(admin, parsed.data.taskIds);
+
+  const failedIds: { id: string; reason: string }[] = [];
+  for (const id of parsed.data.taskIds) {
+    if (!contexts.has(id)) {
+      failedIds.push({ id, reason: "Task not found." });
+    }
+  }
+
+  // One membership check per distinct workspace touched by this call,
+  // never per task (same performance-budget rationale as
+  // bulkUpdateTasks).
+  const distinctWorkspaceIds = new Set(
+    [...contexts.values()].map((c) => c.workspaceId),
+  );
+  const roleByWorkspace = new Map<string, WorkspaceRole>();
+  for (const workspaceId of distinctWorkspaceIds) {
+    const membership = await requireActiveMembership(
+      admin,
+      workspaceId,
+      user.id,
+    );
+    if (membership.ok) {
+      roleByWorkspace.set(workspaceId, membership.role);
+    }
+  }
+
+  // Private-project visibility (AS-290's rule, re-applied here exactly as
+  // bulkUpdateTasks does): one extra query covering every private project
+  // touched by this call, not one per task.
+  const privateProjectIds = new Set(
+    [...contexts.values()]
+      .filter((c) => c.visibility === "private")
+      .map((c) => c.projectId),
+  );
+  const explicitMemberProjectIds = new Set<string>();
+  if (privateProjectIds.size > 0) {
+    const { data: memberRows } = await admin
+      .from("project_members")
+      .select("project_id")
+      .in("project_id", [...privateProjectIds])
+      .eq("user_id", user.id);
+    for (const row of memberRows ?? []) {
+      explicitMemberProjectIds.add(row.project_id as string);
+    }
+  }
+
+  const allowedIds: string[] = [];
+  for (const [id, context] of contexts) {
+    const role = roleByWorkspace.get(context.workspaceId);
+    if (!role) {
+      failedIds.push({ id, reason: "You are not a member of this workspace." });
+      continue;
+    }
+    // AS-055/F128 (AS-216, AS-217): viewers are read-only — deliberately
+    // `canWrite`, not `canEditTask`, matching deleteTask's own permission
+    // gate above exactly (delete has no per-task ownership restriction,
+    // only "not a viewer").
+    if (!canWrite({ role })) {
+      failedIds.push({
+        id,
+        reason: "You don't have permission to delete this task.",
+      });
+      continue;
+    }
+    if (
+      context.visibility === "private" &&
+      role !== "owner" &&
+      role !== "admin" &&
+      !explicitMemberProjectIds.has(context.projectId)
+    ) {
+      failedIds.push({
+        id,
+        reason: "You don't have access to this task's project.",
+      });
+      continue;
+    }
+    allowedIds.push(id);
+  }
+
+  if (allowedIds.length === 0) {
+    return { ok: true, data: { succeededIds: [], failedIds } };
+  }
+
+  const deletedAt = new Date().toISOString();
+
+  // The one real delete write: a single `UPDATE ... WHERE id = ANY(...)`
+  // statement, per this feature's Clarified performance-budget answer.
+  const { data: deletedRows, error: deleteError } = await admin
+    .from("tasks")
+    .update({ deleted_at: deletedAt })
+    .in("id", allowedIds)
+    .is("deleted_at", null)
+    .select("id");
+
+  if (deleteError) {
+    console.error("bulkDeleteTasks: delete failed:", deleteError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const succeededIds = (deletedRows ?? []).map((row) => row.id as string);
+
+  // AS-267 cascade parity (partial — see this function's doc comment and
+  // this feature's handoff Out-of-scope note): soft-deletes every
+  // currently-live direct child of any task just deleted, in one second
+  // statement covering every affected parent, so no child is left visible
+  // on the board under a now-deleted parent. Unlike the single-task
+  // cascade_delete_task RPC, this does NOT stamp `deleted_via_task_id`
+  // (that requires a per-row column-to-column assignment the Supabase JS
+  // `.update()` builder can't express without a new RPC, which is outside
+  // this feature's Files scope) — a child cascaded here is soft-deleted
+  // exactly like its parent, just without F189's future restore-cascade
+  // provenance marker. Flagged in the handoff rather than silently
+  // claiming full parity with deleteTask's cascade.
+  if (succeededIds.length > 0) {
+    const { error: cascadeError } = await admin
+      .from("tasks")
+      .update({ deleted_at: deletedAt })
+      .in("parent_task_id", succeededIds)
+      .is("deleted_at", null);
+
+    if (cascadeError) {
+      console.error(
+        "bulkDeleteTasks: child cascade update failed (non-fatal, parents already deleted):",
+        cascadeError,
+      );
+    }
+  }
+
+  for (const workspaceId of distinctWorkspaceIds) {
+    if (!roleByWorkspace.has(workspaceId)) continue;
+    await revalidateWorkspaceForTaskAssignment(
+      admin,
+      workspaceId,
+      "bulkDeleteTasks",
     );
   }
 

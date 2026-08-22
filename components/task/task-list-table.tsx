@@ -80,6 +80,10 @@ import { BulkActionBar } from "@/components/task/bulk-action-bar";
 // <BulkActionBar>'s children slot — see that component for the rest of
 // the F185/F186 wiring contract.
 import { BulkStatusAction } from "@/components/task/bulk-status-action";
+// F187 (AS-339, AS-340): the second bulk action rendered into
+// <BulkActionBar>'s children slot — soft-deletes the selection after a
+// confirmation naming the count.
+import { BulkDeleteAction } from "@/components/task/bulk-delete-action";
 
 export function TaskListTable({
   tasks,
@@ -422,6 +426,16 @@ export function TaskListTable({
     <BulkActionBar selectedCount={selectedCount} onClear={clearSelection}>
       <BulkStatusAction
         selectedIds={Array.from(selectedIds)}
+        onDone={clearSelection}
+      />
+      <BulkDeleteAction
+        selectedTasks={tasks
+          .filter((task) => selectedIds.has(task.id))
+          .map((task) => ({
+            id: task.id,
+            projectKey: task.projectKey,
+            number: task.number,
+          }))}
         onDone={clearSelection}
       />
     </BulkActionBar>

@@ -367,3 +367,20 @@ export const bulkUpdateTasksSchema = z
 
 export type BulkUpdateTasksInput = z.infer<typeof bulkUpdateTasksSchema>;
 export type BulkUpdateTasksUpdates = BulkUpdateTasksInput["updates"];
+
+// Validates bulkDeleteTasks input (F187: AS-339, AS-340). Same shape as
+// bulkUpdateTasksSchema's `taskIds` field (same 200-task cap and
+// no-duplicates rule, for the same reasons documented on that schema —
+// this is a sibling bulk action over the same list-view selection), minus
+// the `updates` object since a delete has no fields to choose.
+export const bulkDeleteTasksSchema = z.object({
+  taskIds: z
+    .array(z.string().uuid("Invalid task."))
+    .min(1, "Select at least one task.")
+    .max(200, "You can delete at most 200 tasks at once.")
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "Duplicate tasks in selection.",
+    }),
+});
+
+export type BulkDeleteTasksInput = z.infer<typeof bulkDeleteTasksSchema>;
