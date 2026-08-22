@@ -27,6 +27,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -71,6 +72,10 @@ import {
 // shared avatar component instead of plain text.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 import { UserAvatarGroup } from "@/components/user-avatar-group";
+// F185 (AS-334/335/336): row checkboxes, select-all, and the floating
+// action bar shown while the selection is non-empty.
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkActionBar } from "@/components/task/bulk-action-bar";
 
 export function TaskListTable({
   tasks,
@@ -127,6 +132,65 @@ export function TaskListTable({
 }) {
   const taskDetailSheet = useTaskDetailSheet();
 
+  // F185 (AS-334/335/336/342): client-side selection state, scoped to
+  // exactly the `tasks` prop this component was handed — since `tasks`
+  // already IS the caller's currently-filtered/sorted result set (the
+  // project List page and dashboard table both apply status/priority/
+  // assignee filters server-side before this component ever renders), a
+  // "select all" here can never reach beyond what the active filters
+  // matched (AS-335) without this component needing to know anything
+  // about filters itself.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Anchor row for shift-click range selection — the last row clicked
+  // WITHOUT the shift key held, per the standard "click A, shift-click B,
+  // everything between A and B (inclusive) gets selected" file-manager
+  // convention this feature's spec asks for.
+  const lastClickedIndexRef = useRef<number | null>(null);
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function toggleRow(taskId: string, index: number, shiftKey: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastClickedIndexRef.current !== null) {
+        const start = Math.min(lastClickedIndexRef.current, index);
+        const end = Math.max(lastClickedIndexRef.current, index);
+        // Range selection always ADDS the range (never toggles off) —
+        // matches the common shift-click convention and avoids surprising
+        // partial-deselection behaviour when the range overlaps an
+        // already-selected row.
+        for (let i = start; i <= end; i += 1) {
+          const id = tasks[i]?.id;
+          if (id) next.add(id);
+        }
+      } else {
+        if (next.has(taskId)) {
+          next.delete(taskId);
+        } else {
+          next.add(taskId);
+        }
+        lastClickedIndexRef.current = index;
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    if (checked) {
+      // AS-335: selects exactly `tasks` — the already-filtered set this
+      // component received, never a wider/unfiltered fetch.
+      setSelectedIds(new Set(tasks.map((task) => task.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  }
+
+  const selectedCount = selectedIds.size;
+  const allSelected = tasks.length > 0 && selectedCount === tasks.length;
+  const someSelected = selectedCount > 0 && !allSelected;
+
   function handleTaskDeleted(deletedTaskId: string) {
     // No local task-list state here (this component receives `tasks` as a
     // prop from the Server Component page, which re-fetches via
@@ -169,6 +233,18 @@ export function TaskListTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10">
+              <Checkbox
+                aria-label={
+                  allSelected
+                    ? `Deselect all ${tasks.length} tasks`
+                    : `Select all ${tasks.length} tasks`
+                }
+                checked={allSelected}
+                indeterminate={someSelected}
+                onCheckedChange={(checked) => toggleSelectAll(Boolean(checked))}
+              />
+            </TableHead>
             <TableHead>Key</TableHead>
             <TableHead>Title</TableHead>
             <TableHead>Status</TableHead>
@@ -180,8 +256,9 @@ export function TaskListTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((task) => {
+          {tasks.map((task, index) => {
             const overdue = isOverdue(task.dueDate, task.status, timezone);
+            const isSelected = selectedIds.has(task.id);
             const assignee = task.assigneeId
               ? assignees.get(task.assigneeId)
               : null;
@@ -204,6 +281,7 @@ export function TaskListTable({
               <TableRow
                 key={task.id}
                 data-task-id={task.id}
+                data-selected={isSelected || undefined}
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer"
@@ -215,6 +293,28 @@ export function TaskListTable({
                   }
                 }}
               >
+                {/* F185 (AS-334): row checkbox — stops propagation so
+                    ticking it doesn't also open the detail sheet
+                    underneath, same pattern as the Status cell above. */}
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <Checkbox
+                    aria-label={`Select ${task.title}`}
+                    checked={isSelected}
+                    onCheckedChange={() => {}}
+                    onClick={(event) => {
+                      // Native shift-click range selection needs the raw
+                      // DOM event's shiftKey — Base UI's onCheckedChange
+                      // doesn't forward keyboard-modifier state, so the
+                      // selection logic itself lives in this onClick
+                      // handler instead.
+                      toggleRow(
+                        task.id,
+                        index,
+                        (event as unknown as ReactMouseEvent).shiftKey,
+                      );
+                    }}
+                  />
+                </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {taskKey ?? "—"}
                 </TableCell>
@@ -311,6 +411,11 @@ export function TaskListTable({
       timezone={timezone}
       onOpenTask={taskDetailSheet.openTask}
     />
+
+    {/* F185 (AS-336/342): only rendered while the selection is non-empty;
+        `onClear` is the same programmatic-clear mechanism F186/F187's
+        bulk actions will call once their mutation completes. */}
+    <BulkActionBar selectedCount={selectedCount} onClear={clearSelection} />
     </>
   );
 }
