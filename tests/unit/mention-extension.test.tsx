@@ -585,7 +585,19 @@ describe("F314: a member rename repaints an already-rendered mention chip", () =
     expect(container.querySelector(".ProseMirror")).not.toBe(nodeBeforeRename);
   });
 
-  it("test_AS_373_editor_side_rename_also_recreates_when_pristine", async () => {
+  // F317: `RichTextEditor` (the editable composer) still recreates its
+  // `Editor` instance on a rename, same as `RichTextRenderer` above — see
+  // the F317 note above the `useEditor` call in rich-text-editor.tsx for
+  // why an always-live mutable box (which would have avoided this
+  // recreation) was tried and rejected due to this codebase's React
+  // Compiler-backed ESLint rules. What changed is that the recreation key
+  // is no longer gated behind "only while pristine" (that gate is what
+  // caused the regression this feature fixes) — it now always advances
+  // immediately when the candidate set changes, and the freshly created
+  // instance restores the previous selection (see `onCreate` in
+  // rich-text-editor.tsx), so the visible cursor position survives even
+  // though the underlying DOM node does not.
+  it("test_AS_373_editor_side_rename_recreates_the_editor_and_the_picker_sees_the_new_name", async () => {
     const { rerender, container } = render(
       createElement(RichTextEditor, {
         mentionSuggestions: [{ id: "u-1", label: "Ada Lovelace" }],
@@ -603,17 +615,30 @@ describe("F314: a member rename repaints an already-rendered mention chip", () =
     );
 
     await waitFor(() => {
-      const nodeNow = container.querySelector(".ProseMirror");
-      expect(nodeNow).not.toBe(nodeBefore);
+      expect(container.querySelector(".ProseMirror")).not.toBe(nodeBefore);
     });
   });
 });
 
-// F314 — Issue 3: async candidate-population must not blow away
-// in-progress user work (focus/typing) that started before the real
-// candidate list arrived.
-describe("F314: an in-progress edit is not lost when mentionSuggestions populates late", () => {
-  it("test_AS_371_focusing_the_editor_before_candidates_arrive_prevents_a_later_rebuild", async () => {
+// F317 (fixes the F314 "pristine window" mitigation — 4th scrutiny pass):
+// F314's fix for the async-candidate-population race worked by blocking
+// the mention-suggestions recreation key from ever advancing again once
+// the editor had been focused or edited. That "protection" was itself the
+// bug: since every real caller starts with `[]` and populates candidates
+// asynchronously after mount, a user who simply clicked into the composer
+// (a completely normal thing to do) before that fetch resolved would
+// PERMANENTLY freeze the picker's candidate source on the empty initial
+// array — "@" would show "No matching members" forever, with no recovery
+// short of unmounting the whole component.
+//
+// The fix (rich-text-editor.tsx) removes the pristine/focus gate entirely
+// — the recreation key always advances the moment the candidate set
+// changes, regardless of focus state, so there is no code path left that
+// can freeze the picker. The one-time recreation this causes restores the
+// user's cursor position (best-effort; a fresh undo-history stack is the
+// accepted smaller cost — see the file's F317 comment).
+describe("F317: focusing the editor before candidates arrive no longer freezes the picker", () => {
+  it("test_AS_371_focusing_before_candidates_arrive_does_not_prevent_a_later_rebuild_from_picking_up_real_candidates", async () => {
     const { rerender, container } = render(
       createElement(RichTextEditor, { mentionSuggestions: [] }),
     );
@@ -625,65 +650,94 @@ describe("F314: an in-progress edit is not lost when mentionSuggestions populate
     // Simulates the user clicking into the composer before the async
     // `getMentionCandidates` fetch has resolved — a real DOM focus event
     // dispatched at the ProseMirror view's own DOM node, which is exactly
-    // what Tiptap's Editor listens on to fire its `onFocus` callback.
+    // what Tiptap's Editor listens on to fire its `onFocus` callback. Under
+    // F314's now-removed gate, this permanently blocked the rebuild below.
     fireEvent.focus(nodeBeforeFocus);
 
-    // The candidate list now arrives (the real async sequence every
-    // caller uses) — this must NOT rebuild the editor out from under the
-    // now-focused user.
+    // The candidate list now arrives (the real async sequence every real
+    // caller uses) — this MUST still rebuild the editor with the real
+    // candidates, proving focusing early no longer freezes anything.
     rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
 
-    // Give any (incorrect) async recreation a chance to happen before
-    // asserting it didn't.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(container.querySelector(".ProseMirror")).toBe(nodeBeforeFocus);
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).not.toBe(nodeBeforeFocus);
+    });
   });
 
-  it("test_AS_371_an_edit_made_before_candidates_arrive_survives_the_later_mentionSuggestions_update", async () => {
-    const onChange = vi.fn();
-    const { rerender, container } = render(
-      createElement(RichTextEditor, { mentionSuggestions: [], onChange }),
+  // The exact regression scenario the 4th scrutiny pass found: mount with
+  // empty candidates, focus (simulating a user click), THEN populate
+  // candidates via a re-render, THEN type "@" — the picker must show the
+  // real candidates, never "No matching members" forever. This drives the
+  // REAL recreation mechanism `rich-text-editor.tsx`'s `RichTextEditor` now
+  // uses (a `deps`-keyed `useEditor` whose `getItems` closes over the
+  // current `mentionSuggestions` prop, recreated with no pristine/focus
+  // gating), via the same harness pattern as the "F314: the real Tiptap
+  // Suggestion plugin lists and narrows candidates" block above, so this is
+  // a direct proof of the fixed mechanism rather than of `RichTextEditor`'s
+  // unrelated internals (toolbar, paste handling, etc.).
+  it("test_AS_371_regression_focus_before_candidates_then_populate_then_at_shows_real_candidates", async () => {
+    function RecreatingTestEditor({
+      suggestions,
+      editorRef,
+    }: {
+      suggestions: MentionSuggestionItem[];
+      editorRef: { current: import("@tiptap/react").Editor | null };
+    }) {
+      const key = suggestions.map((item) => `${item.id}:${item.label}`).join(" ");
+      const editor = useEditor(
+        {
+          extensions: [
+            StarterKit,
+            createMentionExtension({ getItems: () => suggestions }),
+          ],
+          content: "<p></p>",
+          immediatelyRender: false,
+        },
+        [key],
+      );
+      editorRef.current = editor;
+      if (!editor) return null;
+      return createElement(EditorContent, { editor });
+    }
+
+    const editorRef: { current: import("@tiptap/react").Editor | null } = {
+      current: null,
+    };
+    const { rerender } = render(
+      createElement(RecreatingTestEditor, { suggestions: [], editorRef }),
+    );
+    await waitFor(() => expect(editorRef.current).toBeTruthy());
+    const nodeBeforeFocus = document.querySelector(".ProseMirror") as HTMLElement;
+
+    // User clicks into the composer before candidates have resolved — this
+    // is exactly what used to freeze the picker's candidate source on `[]`
+    // forever once F314's (now-removed) "pristine window" gate engaged.
+    fireEvent.focus(nodeBeforeFocus);
+
+    // Candidates arrive shortly after, as they do in every real caller —
+    // this must still trigger a rebuild with the real candidates.
+    rerender(
+      createElement(RecreatingTestEditor, { suggestions: MEMBERS, editorRef }),
     );
     await waitFor(() => {
-      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+      expect(document.querySelector(".ProseMirror")).not.toBe(nodeBeforeFocus);
     });
-    const pm = container.querySelector(".ProseMirror") as HTMLElement;
 
-    // A real ProseMirror content change dispatched directly at the DOM
-    // node's owning view, standing in for the user having typed something
-    // during the pristine window (see the file-level note on why
-    // simulated keyboard/input DOM events into contenteditable are not
-    // reliable in jsdom — dispatching a `beforeinput`-driven edit isn't
-    // reliable either, so this proves the *pristine-tracking contract*
-    // itself: `onUpdate` — the exact hook the fix flips `pristineRef` from
-    // — having fired at all is what must stop a later rebuild).
-    fireEvent.focus(pm);
-
-    rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
-    await new Promise((resolve) => setTimeout(resolve, 10));
-
-    // No rebuild occurred — same DOM node, so any cursor/selection/undo
-    // history the user had is intact (a rebuild would have produced a
-    // brand new `.ProseMirror` node and reset all three).
-    expect(container.querySelector(".ProseMirror")).toBe(pm);
-  });
-
-  it("test_AS_371_pristine_editor_still_recreates_once_candidates_finally_arrive", async () => {
-    // Guards the other side of the mitigation: an editor nobody has
-    // touched yet must still pick up the real candidate list once it
-    // arrives — the fix must not accidentally freeze the key forever.
-    const { rerender, container } = render(
-      createElement(RichTextEditor, { mentionSuggestions: [] }),
-    );
+    // Typing "@" now must show the REAL candidate list, not the frozen
+    // empty one — driven through the real Suggestion plugin via a genuine
+    // ProseMirror transaction (simulated contenteditable keyboard events
+    // are unreliable in jsdom, see the file-level note above).
+    act(() => {
+      editorRef.current?.commands.insertContent("@");
+    });
     await waitFor(() => {
-      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+      expect(document.querySelector('[role="listbox"]')).toBeInTheDocument();
     });
-    const nodeBefore = container.querySelector(".ProseMirror");
-
-    rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
-
-    await waitFor(() => {
-      expect(container.querySelector(".ProseMirror")).not.toBe(nodeBefore);
-    });
+    const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+    expect(within(listbox).getAllByRole("option")).toHaveLength(MEMBERS.length);
+    expect(
+      within(listbox).getByRole("option", { name: "Ada Lovelace" }),
+    ).toBeInTheDocument();
+    expect(within(listbox).queryByText("No matching members")).not.toBeInTheDocument();
   });
 });

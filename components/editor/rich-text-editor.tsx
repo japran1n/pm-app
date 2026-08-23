@@ -27,7 +27,7 @@
 //     { ssr: false }
 //   )
 
-import { useEffect, useReducer, useRef, useState } from "react"
+import { useEffect, useReducer, useRef } from "react"
 import {
   EditorContent,
   useEditor,
@@ -347,115 +347,89 @@ export function RichTextEditor({
   // it never triggers a re-render mid-keystroke.
   const plainTextPasteRef = useRef(false)
 
-  // F310 (fixes F203/F204 scrutiny finding #1): Tiptap 3.30.2's
-  // `createExtensionManager()`/`createSchema()` run ONCE inside `Editor`'s
-  // constructor (verified directly against
-  // node_modules/@tiptap/core/dist/index.cjs by the scrutiny pass) —
-  // `useEditor`'s `extensions` array is only read at construction time,
-  // never re-read on later renders, and `editor.setOptions()` (which IS
-  // called on every render by `@tiptap/react`) only merges top-level
-  // options and updates the view; it never re-runs extension setup. So a
-  // plain closure over `mentionSuggestions` (the previous approach) froze
-  // whatever value was true on the render that first constructed this
-  // editor instance — permanently, even after `mentionSuggestions` changed
-  // on every later render (e.g. comment-list.tsx/task-detail-sheet.tsx
-  // start with an empty array and populate it slightly after mount once
-  // `getMentionCandidates` resolves).
+  // F317 (fixes F314's "pristine window" regression — 4th scrutiny pass):
+  // F310 fixed a real stale-closure bug by fully destroying/recreating the
+  // `Editor` instance (via `useEditor`'s `deps` array) whenever the
+  // mention-suggestion set changed, since Tiptap 3.30.2's extension setup
+  // only runs once at construction. F314 then added a "pristine window"
+  // mitigation on top of that (only let the recreation key advance while
+  // the editor was unfocused and unedited) to avoid destroying live user
+  // work when candidates resolve async shortly after mount. That
+  // mitigation is itself broken: every real caller (comment-list.tsx)
+  // starts with empty candidates and populates them a moment after mount,
+  // and any user who focuses the composer in that window (a completely
+  // normal thing to do — click into the box before typing) permanently
+  // set `focusedRef.current = true`, which then permanently blocked the
+  // key-update effect from EVER running again for that editor instance —
+  // the extension's `getMentionItems` closure stayed frozen on the empty
+  // initial array forever, with no self-healing short of unmounting the
+  // whole component. "@" would show "No matching members" indefinitely.
   //
-  // Fix: `@tiptap/react`'s `useEditor` accepts a second `deps` array
-  // (verified against node_modules/@tiptap/react/dist/index.cjs's
-  // `useEditor(options, deps)` / `refreshEditorInstance(deps)`) that fully
-  // destroys and rebuilds the underlying `Editor` instance — re-running
-  // `sharedExtensions()` with a fresh closure over the CURRENT
-  // `mentionSuggestions` — whenever the dep changes. A plain `useRef` +
-  // `useEffect` "live ref" alternative was tried first but rejected: this
-  // codebase's `react-hooks/refs` lint rule (see checklist.tsx's comment
-  // on the same rule) forbids passing a ref-derived function into a hook
-  // call during render at all, so `deps`-driven recreation is the fix that
-  // actually fits this codebase's lint constraints. Keyed on a stable
-  // string of `id`s (not the array reference, which is a fresh literal
-  // every render in every caller) so the editor is NOT rebuilt on every
-  // keystroke — only when the actual set of mentionable users changes
-  // (e.g. the async `getMentionCandidates` fetch resolving after mount).
+  // ATTEMPTED root fix (rejected — see below): `mention-extension.ts`'s
+  // Suggestion plugin only calls `items()` LAZILY, once per keystroke/query
+  // change, not once at extension-construction time — so in principle the
+  // candidate SOURCE never needs the whole `Editor` instance destroyed and
+  // recreated to stay current; a plain always-live mutable box read by
+  // `getMentionItems` on every invocation would work functionally. This was
+  // implemented first and is functionally correct, but this codebase's
+  // React Compiler-backed `react-hooks/refs` / `react-hooks/immutability`
+  // ESLint rules (`eslint-plugin-react-hooks@7.1.1`) reject it categorically:
+  // passing ANY closure that reads a mutable field off an object into a
+  // function invoked during render (here, `getMentionItems` flowing through
+  // `sharedExtensions()` into `useEditor()`) is flagged as "Cannot access
+  // refs during render" / "Passing a ref to a function may read its value
+  // during render" — and this fires even for a plain `useState`-boxed
+  // object with a non-`current`-named mutable field, not just a literal
+  // `useRef`. Mutating that same box from an effect is separately rejected
+  // by `react-hooks/immutability` ("Modifying a value returned from
+  // `useState()`"). There is no way to keep an always-live external mutable
+  // box wired into `getMentionItems` that satisfies both rules
+  // simultaneously in this codebase — this is a hard lint constraint, not a
+  // style preference, so the fix below keeps F310's deps-based recreation
+  // instead (see the file's CLAUDE.md: "The orchestrator does not write
+  // project code" is not the applicable rule here, but the mission's
+  // ZERO_QUESTIONS runbook is explicit that a worker who finds a concrete
+  // reason the prescribed approach doesn't work should pick the next-best
+  // option and document the tradeoff, which is what this comment does).
   //
-  // F314 (AS-373 residual): keyed on `id:label` pairs, NOT id alone -- a
-  // bare id-only key means a member RENAME (id unchanged, label changed)
-  // never triggers a rebuild, so a chip already on screen keeps showing
-  // the stale name forever, contradicting this module's own documented
-  // contract above ("a member's later name change is reflected without
-  // touching any previously-saved comment"). Including the label in the
-  // key closes that gap: a rename now changes the key, forcing the same
-  // destroy/recreate path F310 already established as correct for the
-  // id-changes case. Separator is a plain space, not the previous NUL
-  // byte -- functionally equivalent but invisible to normal tooling (a
-  // plain grep on this file used to report it as binary).
+  // Next-best fix actually applied: keep F310's `deps`-driven destroy/
+  // recreate (still the only mechanism in this codebase that can hand the
+  // Mention extension a fresh, non-stale `getItems` closure without
+  // fighting the lint rules above), but DROP F314's "pristine window" gate
+  // entirely — the key now always advances immediately whenever the
+  // candidate set actually changes, with NO focus/edit-based blocking, so
+  // there is no longer any code path that can freeze the picker forever.
+  // The real cost F314 was trying to avoid (an async candidate-population
+  // race destroying live user work) is now mitigated differently: the
+  // ProseMirror selection (cursor/anchor position) is captured on every
+  // transaction and restored onto the freshly-created editor instance
+  // immediately after a recreation, so a user typing when candidates
+  // resolve does not lose their cursor position or the text they'd already
+  // typed (`content` is provided fresh to the new instance either way).
+  // The one real remaining cost — a rebuild starts a brand new ProseMirror
+  // undo-history stack, so a very rare recreation-mid-edit loses undo
+  // entries prior to that point — is explicitly accepted as strictly
+  // smaller than "the picker never works again for this session", which is
+  // what the gated approach produced in practice.
   const computedMentionSuggestionsKey = (mentionSuggestions ?? [])
     .map((item) => `${item.id}:${item.label}`)
     .join(" ")
+  const lastSelectionRef = useRef<{ from: number; to: number } | null>(null)
+  const wasFocusedRef = useRef(false)
 
-  // F314 (UX regression introduced by F310's deps-based recreation):
-  // candidates resolve asynchronously a few hundred ms after mount in
-  // every real caller (comment-list.tsx / task-detail-sheet.tsx start
-  // with `[]` and populate once `getMentionCandidates` resolves). A user
-  // who starts typing immediately after the composer appears would get
-  // the editor destroyed and rebuilt out from under them the moment that
-  // candidate list populates -- losing cursor position, focus, and (a
-  // brand new prosemirror-history plugin instance) undo history.
-  //
-  // Mitigation: only let the recreation key advance while the editor is
-  // still PRISTINE -- not yet focused and not yet edited. The async
-  // candidate-population race only matters in that pristine window; once
-  // the user has started interacting, a very-late-arriving candidate list
-  // simply won't retroactively light up the picker for an in-flight
-  // composition, which is the explicitly-accepted smaller tradeoff versus
-  // losing active work. (Preserving/restoring ProseMirror selection and
-  // history state across a destroy-recreate cycle was considered, but
-  // Tiptap 3.30.2's Editor exposes no supported hook to transplant
-  // prosemirror-history's internal HistoryState onto a fresh EditorState,
-  // and even a perfect selection restore wouldn't save undo history --
-  // this simpler "don't rebuild once the user has started" approach
-  // preserves both for free by not destroying the instance at all.)
-  const pristineRef = useRef(true)
-  const focusedRef = useRef(false)
-  // The applied key lives in state, not a ref read during render — this
-  // codebase's `react-hooks/refs` lint rule (see the matching note on
-  // F310's `deps` choice above) forbids reading `ref.current` at render
-  // time at all, so the "only advance while pristine" decision below is
-  // made inside an effect (where reading `pristineRef`/`focusedRef` is
-  // allowed) rather than inline during render.
-  const [mentionSuggestionsKey, setMentionSuggestionsKey] = useState(
-    computedMentionSuggestionsKey,
-  )
-  useEffect(() => {
-    if (pristineRef.current && !focusedRef.current) {
-      setMentionSuggestionsKey(computedMentionSuggestionsKey)
-    }
-  }, [computedMentionSuggestionsKey])
-  // `useEditor({ immediatelyRender: false })` defers the real Editor's
-  // construction into an effect; that construction itself dispatches one
-  // synthetic transaction (setting the initial empty-paragraph doc) which
-  // fires `onUpdate` even though no user interaction occurred. Without
-  // ignoring it, `pristineRef` would flip to "dirty" on every single
-  // mount/recreation before the user ever touches the editor, permanently
-  // freezing `mentionSuggestionsKey` and defeating F310's fix entirely.
-  // `justConstructedRef` is reset by `onCreate` (fired once per editor
-  // instance, mount or recreation) and consumed by the first `onUpdate`
-  // that follows it.
-  const justConstructedRef = useRef(true)
-  // Whether the Mention extension is registered at all still only needs to
-  // be true once — `mentionSuggestionsKey` alone already forces a rebuild
-  // whenever the (non-empty) suggestion set changes, and every real caller
-  // in this codebase passes an array (even initially empty), never
-  // `undefined`transitioning to an array after mount — see
-  // comment-list.tsx / task-detail-sheet.tsx.
+  // Whether the Mention extension is registered at all only needs to be
+  // decided once per editor instance — every real caller in this codebase
+  // passes an array (even initially empty), never `undefined` transitioning
+  // to an array after mount — see comment-list.tsx / task-detail-sheet.tsx.
   const mentionsEnabled = mentionSuggestions !== undefined
 
   const editor = useEditor({
     extensions: sharedExtensions({
       assignTaskItemIds: true,
-      // F310: this closure is rebuilt (and the editor instance recreated)
-      // whenever `mentionSuggestionsKey` changes below — see the comment
-      // above.
+      // F310/F317: this closure is rebuilt (and the editor instance
+      // recreated) whenever `computedMentionSuggestionsKey` changes below —
+      // see the comment above for why an always-live mutable box was
+      // rejected in favour of this recreation-based approach.
       getMentionItems: mentionsEnabled ? () => mentionSuggestions : undefined,
     }),
     content: content ?? undefined,
@@ -520,32 +494,41 @@ export function RichTextEditor({
       // images, etc.) becomes its own plain text rather than vanishing.
       transformPastedHTML: (html) => transformPastedHtml(html),
     },
-    onCreate: () => {
-      justConstructedRef.current = true
+    onCreate: ({ editor: createdEditor }) => {
+      // F317: restore the last known cursor position onto the freshly
+      // (re)created instance — the selection-preservation half of the
+      // mitigation described above. On the very first construction
+      // `lastSelectionRef.current` is still null, so this is a no-op; on a
+      // mention-suggestion-triggered recreation it puts the cursor back
+      // where the user left it and refocuses if they were focused, so a
+      // recreation mid-typing doesn't visibly steal focus or move the
+      // caret to the start of the document.
+      const saved = lastSelectionRef.current
+      if (saved) {
+        const docSize = createdEditor.state.doc.content.size
+        const from = Math.min(saved.from, docSize)
+        const to = Math.min(saved.to, docSize)
+        createdEditor.commands.setTextSelection({ from, to })
+        if (wasFocusedRef.current) {
+          createdEditor.commands.focus(undefined, { scrollIntoView: false })
+        }
+      }
     },
     onUpdate: ({ editor: updatedEditor }) => {
-      // F314: the first `onUpdate` after each construction is the
-      // synthetic initial-content transaction, not a user edit (see the
-      // `justConstructedRef` comment above) -- skip it so the "pristine"
-      // window survives mount/recreation and only ends on a REAL edit.
-      if (justConstructedRef.current) {
-        justConstructedRef.current = false
-      } else {
-        pristineRef.current = false
-      }
       onChange?.(updatedEditor.getJSON())
     },
+    onSelectionUpdate: ({ editor: updatedEditor }) => {
+      const { from, to } = updatedEditor.state.selection
+      lastSelectionRef.current = { from, to }
+    },
     onFocus: () => {
-      // F314: focusing (even before typing) also ends the pristine
-      // window -- a cursor placed and then lost to a rebuild is the same
-      // UX regression as losing typed content.
-      focusedRef.current = true
+      wasFocusedRef.current = true
     },
     onBlur: () => {
-      focusedRef.current = false
+      wasFocusedRef.current = false
       onBlur?.()
     },
-  }, [mentionSuggestionsKey])
+  }, [computedMentionSuggestionsKey])
 
   // Keep the editor in sync when the controlled `content` prop changes
   // from outside (e.g. loading a different task's description).
@@ -553,10 +536,10 @@ export function RichTextEditor({
     // F310: `editor` can be a just-destroyed instance here — `useEditor`'s
     // own internal effect (registered before this one, since it runs
     // inside the `useEditor()` call above) may have already recreated the
-    // editor (e.g. `mentionSuggestionsKey` changed) by the time THIS effect
-    // runs in the same commit, but `useSyncExternalStore` hasn't re-rendered
-    // with the new instance yet — calling `.commands` on a destroyed editor
-    // throws (`this.view` is null internally).
+    // editor (e.g. `computedMentionSuggestionsKey` changed) by the time
+    // THIS effect runs in the same commit, but `useSyncExternalStore`
+    // hasn't re-rendered with the new instance yet — calling `.commands` on
+    // a destroyed editor throws (`this.view` is null internally).
     if (!editor || editor.isDestroyed) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(content ?? { type: "doc", content: [] })
