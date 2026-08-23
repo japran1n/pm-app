@@ -176,7 +176,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 - F318 fix-stale-handlekeydown-after-editor-recreation — AS-378 [CLARIFIED-AUTO] [COMPLETE]
 - F319 wire-edittask-watcher-fanout-for-remaining-fields — AS-294 [CLARIFIED-AUTO] [COMPLETE]
-- F320 fifth-pass-majors-cleanup-bundle — AS-376, AS-358, AS-389, AS-369 [CLARIFIED-AUTO]
+- F320 fifth-pass-majors-cleanup-bundle — AS-376, AS-358, AS-389, AS-369 [CLARIFIED-AUTO] [COMPLETE]
 - F314 fix-mention-picker-real-coverage-rename-repaint-and-focus-loss — AS-371, AS-372, AS-373, AS-378 [CLARIFIED-AUTO] [COMPLETE]
 - F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO] [COMPLETE]
 
