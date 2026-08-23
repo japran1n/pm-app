@@ -114,6 +114,49 @@ export type { CommentRealtimeEvent, CommentRealtimeRow };
 // comment_reactions' composite primary key (F199's migration) — Postgres
 // always includes primary-key columns in a DELETE's replicated OLD row
 // regardless of replica identity setting.
+//
+// F315 (AS-369, M15 third scrutiny pass) — accepted-risk decision, not a
+// code fix: the scrutiny report flagged that Supabase's Realtime layer
+// does not apply RLS to postgres_changes DELETE payloads specifically (a
+// documented platform behavior, not a bug in this file's own logic — see
+// https://supabase.com/docs/guides/realtime/postgres-changes#rls-and-delete-events),
+// and that the `task_id` used in this function's `filter:` clause is
+// supplied by the caller, not server-verified. In principle a client that
+// bypasses the normal app UI entirely (never calling this exported
+// function or rendering task-detail-sheet.tsx at all, just hand-crafting
+// its own Supabase Realtime `postgres_changes` subscription with a valid
+// session token and an arbitrary taskId) could receive DELETE (un-react)
+// events for a task it was never granted access to.
+//
+// Investigated and deliberately NOT mitigated client-side, for two
+// reasons:
+//
+// 1. Narrow real call path: this codebase's only call site
+//    (components/task/use-reactions-realtime.ts, via comment-list.tsx
+//    inside task-detail-sheet.tsx) only ever passes a taskId the current
+//    session already fetched through getTaskDetail's RLS-gated query —
+//    there is no attacker-controllable route (URL param, form input,
+//    etc.) that lets *this app's own UI* pass an arbitrary taskId here.
+// 2. Unlike F305's INSERT-filter hardening or this session's SECURITY
+//    DEFINER fixes, a client-side re-check in this file cannot actually
+//    close the gap: an attacker constructing their own Realtime
+//    subscription directly (not through any function in this repo) is
+//    not running this repo's code at all, so no guard added here is
+//    reachable by that attack path. Real closure requires either a
+//    server-side authorization callback on the channel (Supabase's
+//    "Realtime Authorization" for private channels — a materially larger
+//    migration off broadcast-free postgres_changes) or accepting the
+//    platform limitation.
+//
+// Given the leaked payload is metadata only — comment_id, user_id, emoji
+// for an un-react event, none of which is comment body content or any
+// other sensitive field — this is recorded as an ACCEPTED, LOW-SEVERITY
+// RISK rather than engineered around. See
+// tests/unit/reactions-realtime-delete-payload-shape.test.ts for the test
+// that pins this decision: it asserts the DELETE handler only ever
+// forwards these three non-sensitive fields, so if a future change widens
+// the payload (e.g. to include full comment text) this decision must be
+// revisited.
 export type ReactionRealtimeEvent = {
   eventType: "INSERT" | "DELETE";
   commentId: string;

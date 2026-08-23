@@ -41,7 +41,33 @@ export function useReactionsRealtime(
   useEffect(() => {
     if (!taskId) return;
 
-    const supabase = createClient();
+    // F315 (AS-214 regression fix): createClient() throws synchronously
+    // when NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+    // aren't present (e.g. a jsdom unit test environment that never loads
+    // .env, as opposed to real browser/SSR contexts, which always have
+    // these injected at build time). There's no established
+    // "client construction might fail" guard elsewhere in this codebase
+    // (lib/supabase/client.ts, use-comments-realtime.ts, and every other
+    // caller assume env vars are always present in real environments) —
+    // this hook is the one exception because it happens to get mounted,
+    // unmocked, inside tests/unit/user-avatar.test.tsx's real DOM render
+    // of comment-list.tsx. Skip the subscription non-fatally rather than
+    // throwing and crashing the host component's render; this cannot
+    // change real production behavior since the env vars are always
+    // present there.
+    let supabase;
+    try {
+      supabase = createClient();
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          "useReactionsRealtime: skipping subscription, Supabase client unavailable",
+          error,
+        );
+      }
+      return;
+    }
+
     const unsubscribe = subscribeToReactionsRealtime(
       supabase,
       taskId,

@@ -69,6 +69,7 @@ describe.skipIf(!haveAdminCreds)(
     let actorClient: SupabaseClient;
     let assigneeUserId: string;
     let mentionedUserId: string;
+    let watcherUserId: string;
     const createdUserIds: string[] = [];
 
     beforeAll(async () => {
@@ -126,6 +127,9 @@ describe.skipIf(!haveAdminCreds)(
 
       const mentioned = await createActiveMember("mentioned");
       mentionedUserId = mentioned.userId;
+
+      const watcher = await createActiveMember("watcher");
+      watcherUserId = watcher.userId;
     });
 
     afterAll(async () => {
@@ -224,6 +228,57 @@ describe.skipIf(!haveAdminCreds)(
         .eq("user_id", mentionedUserId);
       expect(watcherRows).toHaveLength(1);
       expect(watcherRows?.[0].is_watching).toBe(true);
+    });
+
+    // F315 (AS-382 follow-up, M15 third scrutiny pass): the only prior
+    // coverage of a watcher receiving a `comment_reply` notification was a
+    // NEGATIVE preference-gating test
+    // (tests/integration/notification-preferences-fanout.test.ts's
+    // test_AS_391_disabling_comment_reply_in_app_...), which proves a
+    // watcher who *disabled* comment_reply notifications gets none — that
+    // assertion would still pass vacuously even if the comment_reply
+    // fan-out path were deleted outright, since "no fan-out at all" also
+    // produces zero rows. This is the missing POSITIVE proof: a real
+    // active watcher (not the commenter, not mentioned) with default
+    // (enabled) preferences gets a real `comment_reply` notification row
+    // when someone else comments, against the real Supabase project.
+    it("test_AS_382_a_plain_comment_from_someone_else_notifies_an_existing_watcher_with_a_real_comment_reply_notification_row", async () => {
+      sessionClientForMock = actorClient;
+      const { addComment } = await import("@/lib/actions/comments");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F315 comment_reply positive task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      // Seed watcherUserId as an active watcher — not the commenter (actor
+      // posts the comment below) and not mentioned, so any notification
+      // they receive is exactly the comment_reply kind under test.
+      const { error: watcherErr } = await adminClient.from("task_watchers").upsert(
+        { task_id: task.id, user_id: watcherUserId, is_watching: true },
+        { onConflict: "task_id,user_id" },
+      );
+      if (watcherErr) throw new Error(`Failed to seed watcher: ${watcherErr.message}`);
+
+      const result = await addComment(task.id, "no mentions, just a reply", {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "no mentions, just a reply" }] }],
+      } as never);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("user_id, kind, actor_id, task_id, comment_id")
+        .eq("task_id", task.id)
+        .eq("kind", "comment_reply")
+        .eq("user_id", watcherUserId);
+      expect(readErr).toBeNull();
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].actor_id).toBe(actorUserId);
+      expect(rows?.[0].comment_id).toBe(result.data.id);
     });
 
     // F311 (AS-381 fix): editComment never wired up the same fan-out
