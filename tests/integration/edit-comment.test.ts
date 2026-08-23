@@ -460,6 +460,118 @@ describe.skipIf(!haveAdminCreds)("editComment (F197: AS-362, AS-364)", () => {
     expect(row?.edited_at).toBeNull();
   });
 
+  it("AS-364 (F302 fix): a workspace admin's two-step authorship-takeover attempt (reassign user_id, then rewrite body) is rejected at step 1, so the body-guard window never opens", async () => {
+    const commentId = await makeComment("takeover target original text");
+
+    const adminApiClient = createClient(SUPABASE_URL!, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInErr } = await adminApiClient.auth.signInWithPassword({
+      email: adminEmail,
+      password,
+    });
+    if (signInErr) {
+      throw new Error(`Failed to sign in admin test user: ${signInErr.message}`);
+    }
+
+    // Step 1: attempt to reassign authorship to the admin's own id. Before
+    // the F302 fix, this alone did not touch body_text/body_json/text, so
+    // the pre-F302 trigger's guard never fired and this UPDATE succeeded
+    // (the pre-existing comments_update_author_or_admin RLS policy already
+    // permits an admin's UPDATE of any column).
+    const { error: reassignErr } = await adminApiClient
+      .from("comments")
+      .update({ user_id: adminUserId })
+      .eq("id", commentId);
+    expect(reassignErr).not.toBeNull();
+
+    const { data: afterStep1 } = await adminClient
+      .from("comments")
+      .select("user_id")
+      .eq("id", commentId)
+      .single();
+    expect(afterStep1?.user_id).toBe(authorUserId);
+
+    // Step 2 (would only have been reachable if step 1 had silently
+    // succeeded): rewrite the body now that OLD.user_id would equal the
+    // admin's own auth.uid(). Confirm it is still rejected and the
+    // original content is untouched either way.
+    const { error: rewriteErr } = await adminApiClient
+      .from("comments")
+      .update({ text: "hijacked via takeover", body_text: "hijacked via takeover" })
+      .eq("id", commentId);
+    expect(rewriteErr).not.toBeNull();
+
+    const { data: finalRow } = await adminClient
+      .from("comments")
+      .select("user_id, text, edited_at")
+      .eq("id", commentId)
+      .single();
+    expect(finalRow?.user_id).toBe(authorUserId);
+    expect(finalRow?.text).toBe("takeover target original text");
+    expect(finalRow?.edited_at).toBeNull();
+  });
+
+  it("AS-364 (F302 fix): a non-author cannot stamp edited_at on someone else's comment via a direct API call", async () => {
+    const commentId = await makeComment("edited_at stamp target");
+
+    const otherMemberClient = createClient(SUPABASE_URL!, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInErr } = await otherMemberClient.auth.signInWithPassword({
+      email: otherMemberEmail,
+      password,
+    });
+    if (signInErr) {
+      throw new Error(`Failed to sign in other-member test user: ${signInErr.message}`);
+    }
+
+    const { error: stampErr } = await otherMemberClient
+      .from("comments")
+      .update({ edited_at: new Date().toISOString() })
+      .eq("id", commentId);
+
+    // A plain member is already filtered out by the pre-existing RLS
+    // policy (0 rows, no error) before the trigger even runs; the
+    // assertion that matters is that edited_at is untouched either way.
+    void stampErr;
+
+    const { data: row } = await adminClient
+      .from("comments")
+      .select("edited_at")
+      .eq("id", commentId)
+      .single();
+    expect(row?.edited_at).toBeNull();
+  });
+
+  it("AS-364 (F302 fix): a workspace admin cannot stamp edited_at on another member's comment via a direct API call — blocked by the trigger even though RLS alone would allow the UPDATE", async () => {
+    const commentId = await makeComment("admin edited_at stamp target");
+
+    const adminApiClient = createClient(SUPABASE_URL!, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInErr } = await adminApiClient.auth.signInWithPassword({
+      email: adminEmail,
+      password,
+    });
+    if (signInErr) {
+      throw new Error(`Failed to sign in admin test user: ${signInErr.message}`);
+    }
+
+    const { error: stampErr } = await adminApiClient
+      .from("comments")
+      .update({ edited_at: new Date().toISOString() })
+      .eq("id", commentId);
+    expect(stampErr).not.toBeNull();
+
+    const { data: row } = await adminClient
+      .from("comments")
+      .select("edited_at")
+      .eq("id", commentId)
+      .single();
+    expect(row?.edited_at).toBeNull();
+  });
+
   it("an already soft-deleted comment is treated as not found by editComment", async () => {
     const { editComment } = await import("@/lib/actions/comments");
     const commentId = await makeComment("about to be deleted");

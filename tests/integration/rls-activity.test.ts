@@ -292,5 +292,44 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       expect(verify?.id).toBe(firstEntryId);
     });
+
+    // F302 (D1/FU-2, AS-357): forgery/injection regression test. An
+    // authenticated but real (non-service-role) session — even one with
+    // no relationship to this workspace at all, so it cannot see the
+    // task — must NOT be able to forge a system-attributed activity
+    // entry on it by simply passing p_system => true. Before the F302
+    // fix, this exact call succeeded and wrote a row (the only
+    // remaining check was that the task existed at all).
+    it("AS-357 (F302 forgery fix): an authenticated outsider passing p_system => true is rejected and writes no row", async () => {
+      const { data: beforeCount } = await adminClient
+        .from("task_activity")
+        .select("id", { count: "exact", head: true })
+        .eq("task_id", taskId);
+      void beforeCount;
+
+      const { data: rowsBefore } = await adminClient
+        .from("task_activity")
+        .select("id")
+        .eq("task_id", taskId);
+      const countBefore = (rowsBefore ?? []).length;
+
+      const { data, error } = await outsiderClient.rpc("write_task_activity_entry", {
+        p_task_id: taskId,
+        p_kind: "field_changed",
+        p_field: "status",
+        p_old_value: "todo",
+        p_new_value: "done",
+        p_system: true,
+      });
+
+      expect(error).not.toBeNull();
+      expect(data).toBeFalsy();
+
+      const { data: rowsAfter } = await adminClient
+        .from("task_activity")
+        .select("id")
+        .eq("task_id", taskId);
+      expect((rowsAfter ?? []).length).toBe(countBefore);
+    });
   },
 );
