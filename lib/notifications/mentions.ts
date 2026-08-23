@@ -15,15 +15,18 @@
 // clarification, and its own explicit note that the diff IS the whole
 // feature).
 //
-// Pure diffing only: this module has NO Supabase/network access and knows
-// nothing about how a notification is actually delivered. Delivery
-// (F206-F212, this mission's notification fan-out chain) does not exist
-// yet in this repo. `notifyNewlyMentionedUsers` below is therefore a
-// documented no-op stub — it returns the diffed ids for a future F207 to
-// consume, and logs them (dev-visibility only), but sends nothing. Do NOT
-// build real notification delivery here; that is out of scope for F205.
+// The diffing functions below (extractMentionIds, extractNewlyMentionedIds)
+// remain pure — no Supabase/network access, per F205's original design.
+// `notifyNewlyMentionedUsers` is F207's real implementation of the seam
+// F205 left open: it delivers a notification (via F206's
+// create_notification RPC, through F207's computeFanoutRecipients for the
+// actor-exclusion/kind computation) for each newly-mentioned, still-
+// visible id.
 
 import type { JSONContent } from "@tiptap/react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
+import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 
 /** Walks a Tiptap JSONContent tree collecting every `mention` node's
  * `attrs.id`. Deliberately duplicated from
@@ -85,41 +88,98 @@ export function extractNewlyMentionedIds(
 }
 
 /**
- * Documented no-op stub. F206-F212 (this mission's notification fan-out
- * chain) have not been built yet — there is no notifications table, no
- * delivery mechanism, and no in-app/email surface for this feature to call
- * into. Rather than either (a) building a delivery mechanism here, which
- * is explicitly out of scope for F205, or (b) silently dropping the
- * newly-mentioned ids on the floor with no trace at all, this function is
- * the single, obvious seam a future F207 worker can replace: swap this
- * function's body for a real enqueue/send call and every call site
- * (lib/actions/tasks.ts's editTask) keeps working unchanged.
+ * F207: the real implementation of the seam F205 deliberately left as a
+ * no-op stub (see this function's git history / the F205 handoff) — the
+ * notification fan-out chain (F206's `create_notification` RPC, F207's
+ * `computeFanoutRecipients`) now exists, so this notifies every newly-
+ * mentioned user (AS-374, AS-381) except the author themselves (AS-384),
+ * and additionally promotes a mentioned non-watcher to watcher (AS-375),
+ * same durable `ignoreDuplicates` upsert pattern as
+ * `lib/actions/comments.ts`'s addComment auto-watch/mention block — an
+ * existing explicit unwatch is never overridden.
  *
- * Never throws — a missing/future notification system must never fail the
- * description save itself, mirroring every other "non-fatal side effect"
- * in this codebase (see e.g. lib/actions/tasks.ts's editTask
- * writeTaskFieldChanges try/catch).
+ * `newlyMentionedUserIds` must already be the *visibility-checked* set
+ * (the caller, `editTask`, diffs `sanitiseMentionsForVisibility`'s output,
+ * never the raw client input — see that call site's doc comment) so a
+ * mention stripped for visibility is never notified either.
+ *
+ * Never throws — a notification failure must never fail the description
+ * save itself, mirroring every other "non-fatal side effect" in this
+ * codebase (see e.g. lib/actions/tasks.ts's editTask
+ * writeTaskFieldChanges try/catch). `supabase` is the caller's own
+ * authenticated session client (not the admin/service-role client) so
+ * `create_notification`'s SECURITY DEFINER function can pin `actor_id` to
+ * `auth.uid()` server-side (F206's spoofing fix); `admin` is used only for
+ * the watcher-promotion upsert, which must bypass RLS to write a row on
+ * behalf of someone other than the caller.
  */
 export async function notifyNewlyMentionedUsers(params: {
   taskId: string;
+  workspaceId: string;
   authorId: string;
   newlyMentionedUserIds: string[];
+  supabase: SupabaseClient<Database>;
+  admin: SupabaseClient<Database>;
 }): Promise<{ notified: string[] }> {
   if (params.newlyMentionedUserIds.length === 0) {
     return { notified: [] };
   }
 
-  // TODO(F207): replace this log with a real notification enqueue once the
-  // notification fan-out chain (F206-F212) exists. See this file's top
-  // doc comment.
-  console.log(
-    "[F205 stub] would notify newly mentioned users on task description save:",
-    {
-      taskId: params.taskId,
-      authorId: params.authorId,
-      newlyMentionedUserIds: params.newlyMentionedUserIds,
-    },
-  );
+  const recipients = computeFanoutRecipients({
+    type: "mentioned",
+    actorId: params.authorId,
+    mentionedIds: params.newlyMentionedUserIds,
+  });
 
-  return { notified: params.newlyMentionedUserIds };
+  const notified: string[] = [];
+
+  for (const recipient of recipients ?? []) {
+    try {
+      const { error } = await params.supabase.rpc("create_notification", {
+        p_user_id: recipient.userId,
+        p_workspace_id: params.workspaceId,
+        p_kind: recipient.kind,
+        p_task_id: params.taskId,
+      });
+      if (error) {
+        console.error(
+          "notifyNewlyMentionedUsers: create_notification RPC failed (non-fatal):",
+          error,
+        );
+        continue;
+      }
+      notified.push(recipient.userId);
+    } catch (notifyError) {
+      console.error(
+        "notifyNewlyMentionedUsers: create_notification RPC threw (non-fatal):",
+        notifyError,
+      );
+    }
+  }
+
+  // AS-375: a mentioned non-watcher becomes a watcher. Never overrides an
+  // existing row (including an explicit prior unwatch) — see this
+  // function's doc comment above.
+  const mentionRecipientIds = params.newlyMentionedUserIds.filter(
+    (id) => id !== params.authorId,
+  );
+  if (mentionRecipientIds.length > 0) {
+    try {
+      await params.admin.from("task_watchers").upsert(
+        mentionRecipientIds.map((id) => ({
+          task_id: params.taskId,
+          user_id: id,
+          is_watching: true,
+        })),
+        { onConflict: "task_id,user_id", ignoreDuplicates: true },
+      );
+    } catch (watcherError) {
+      console.error(
+        "notifyNewlyMentionedUsers: watcher-promotion upsert failed (non-fatal):",
+        watcherError,
+      );
+    }
+  }
+
+  return { notified };
 }

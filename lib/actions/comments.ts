@@ -17,6 +17,8 @@ import {
   sanitiseMentionsForVisibility,
   resolveVisibleMentionIds,
 } from "@/lib/comments/mentions";
+import { extractMentionIds } from "@/lib/notifications/mentions";
+import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -252,6 +254,70 @@ export async function addComment(
     console.error(
       "addComment: auto-watch upsert failed (non-fatal):",
       watcherError,
+    );
+  }
+
+  // F207 (AS-374, AS-375, AS-381, AS-382, AS-384): notify the task's
+  // active watchers (comment_reply) and any mentioned users who actually
+  // survived F204's visibility strip (mention — mentionSafeBodyJson, never
+  // the raw client input, so a stripped mention never notifies), excluding
+  // the commenter themselves. A mentioned non-watcher additionally becomes
+  // a watcher (AS-375), same durable `ignoreDuplicates` upsert pattern as
+  // the auto-watch-on-comment block above — an existing explicit unwatch
+  // is never overridden. Entirely non-fatal: the comment itself already
+  // succeeded above.
+  try {
+    const mentionedIds = Array.from(extractMentionIds(mentionSafeBodyJson));
+
+    const { data: watcherRows } = await admin
+      .from("task_watchers")
+      .select("user_id")
+      .eq("task_id", parsed.data.taskId)
+      .eq("is_watching", true);
+    const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
+
+    const recipients = computeFanoutRecipients({
+      type: "commented",
+      actorId: user.id,
+      watcherIds,
+      mentionedIds,
+    });
+
+    for (const recipient of recipients ?? []) {
+      try {
+        await supabase.rpc("create_notification", {
+          p_user_id: recipient.userId,
+          p_workspace_id: workspaceId,
+          p_kind: recipient.kind,
+          p_task_id: parsed.data.taskId,
+          p_comment_id: inserted.id,
+        });
+      } catch (notifyError) {
+        console.error(
+          "addComment: create_notification RPC failed (non-fatal):",
+          notifyError,
+        );
+      }
+    }
+
+    // AS-375: a mentioned non-watcher becomes a watcher. Never overrides
+    // an existing row (including an explicit prior unwatch) — see this
+    // block's doc comment above.
+    const mentionRecipientIds = mentionedIds.filter((id) => id !== user.id);
+    if (mentionRecipientIds.length > 0) {
+      await admin.from("task_watchers").upsert(
+        mentionRecipientIds.map((id) => ({
+          task_id: parsed.data.taskId,
+          user_id: id,
+          is_watching: true,
+        })),
+        { onConflict: "task_id,user_id", ignoreDuplicates: true },
+      );
+    }
+  } catch (fanoutError) {
+    console.error(
+      "addComment: notification fan-out failed (non-fatal):",
+      fanoutError,
     );
   }
 

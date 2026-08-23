@@ -40,6 +40,7 @@ import {
   extractNewlyMentionedIds,
   notifyNewlyMentionedUsers,
 } from "@/lib/notifications/mentions";
+import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
@@ -807,6 +808,44 @@ async function setTaskAssigneesCore(
 
   const mirror = await syncMirrorAssigneeId(admin, taskId);
 
+  // F207 (AS-380, AS-384): notify every newly-added assignee
+  // (`toAdd` — never a re-notify of someone already assigned, and never
+  // the actor themselves, per computeFanoutRecipients's actor-exclusion).
+  // Non-fatal, same convention as every other post-write side effect in
+  // this function — the assignment itself already succeeded above. Uses
+  // the caller's own authenticated session (`supabase`, not `admin`) so
+  // `create_notification`'s SECURITY DEFINER function can pin `actor_id`
+  // to `auth.uid()` server-side (F206's spoofing fix) — an admin/service-
+  // role call would have no `auth.uid()` and would be rejected as
+  // unauthenticated for a non-system notification.
+  try {
+    const recipients = computeFanoutRecipients({
+      type: "assigned",
+      actorId: userId,
+      assigneeIds: toAdd,
+    });
+    for (const recipient of recipients ?? []) {
+      try {
+        await supabase.rpc("create_notification", {
+          p_user_id: recipient.userId,
+          p_workspace_id: context.workspaceId,
+          p_kind: recipient.kind,
+          p_task_id: taskId,
+        });
+      } catch (notifyError) {
+        console.error(
+          "setTaskAssigneesCore: create_notification RPC failed (non-fatal):",
+          notifyError,
+        );
+      }
+    }
+  } catch (fanoutError) {
+    console.error(
+      "setTaskAssigneesCore: notification fan-out failed (non-fatal):",
+      fanoutError,
+    );
+  }
+
   // F195 (AS-354, AS-355): record the assignee change via the mirror
   // column's before/after value — the single column every reader
   // (including this feature) already treats as the task's canonical
@@ -1284,8 +1323,11 @@ export async function editTask(
       );
       await notifyNewlyMentionedUsers({
         taskId: parsed.data.taskId,
+        workspaceId,
         authorId: user.id,
         newlyMentionedUserIds,
+        supabase,
+        admin,
       });
     } catch (notifyError) {
       console.error(
@@ -2251,6 +2293,47 @@ export async function moveTaskStatus(
     console.error(
       "moveTaskStatus: writeTaskFieldChanges failed (non-fatal):",
       activityError,
+    );
+  }
+
+  // F207 (AS-294, AS-382, AS-384): a status change notifies the task's
+  // current active watchers (excluding the actor). Non-fatal, same
+  // convention as writeTaskFieldChanges above. Uses the caller's own
+  // session (`supabase`) so create_notification pins actor_id to
+  // auth.uid() server-side — see setTaskAssigneesCore's identical
+  // rationale above.
+  try {
+    const { data: watcherRows } = await admin
+      .from("task_watchers")
+      .select("user_id")
+      .eq("task_id", parsed.data.taskId)
+      .eq("is_watching", true);
+    const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
+
+    const recipients = computeFanoutRecipients({
+      type: "status_changed",
+      actorId: user.id,
+      watcherIds,
+    });
+    for (const recipient of recipients ?? []) {
+      try {
+        await supabase.rpc("create_notification", {
+          p_user_id: recipient.userId,
+          p_workspace_id: workspaceId,
+          p_kind: recipient.kind,
+          p_task_id: parsed.data.taskId,
+        });
+      } catch (notifyError) {
+        console.error(
+          "moveTaskStatus: create_notification RPC failed (non-fatal):",
+          notifyError,
+        );
+      }
+    }
+  } catch (fanoutError) {
+    console.error(
+      "moveTaskStatus: notification fan-out failed (non-fatal):",
+      fanoutError,
     );
   }
 

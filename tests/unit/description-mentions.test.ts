@@ -92,27 +92,110 @@ describe("AS-378: mentions work in task descriptions as well as comments", () =>
     ]);
   });
 
-  it("test_AS_378_notifyNewlyMentionedUsers_is_a_no_op_stub_that_never_throws_and_returns_the_diffed_ids", async () => {
-    // F206-F212 (the notification fan-out chain) do not exist yet in this
-    // repo — this proves the documented no-op stub behaves exactly as
-    // specified: it resolves (never throws), and echoes back the ids for
-    // a future F207 to consume, without attempting any real delivery.
+  // F207: notifyNewlyMentionedUsers is no longer a stub — it delivers a
+  // real `create_notification` RPC call (via the caller's session client)
+  // per newly-mentioned id, excluding the author (AS-384), and promotes
+  // each mentioned non-watcher (via the admin client) per AS-375.
+  function fakeClients() {
+    const rpcCalls: unknown[] = [];
+    const supabase = {
+      rpc: async (name: string, args: unknown) => {
+        rpcCalls.push({ name, args });
+        return { data: null, error: null };
+      },
+    };
+    const upsertCalls: unknown[] = [];
+    const admin = {
+      from: () => ({
+        upsert: async (rows: unknown) => {
+          upsertCalls.push(rows);
+          return { data: null, error: null };
+        },
+      }),
+    };
+    return { supabase, admin, rpcCalls, upsertCalls };
+  }
+
+  it("test_AS_374_AS_381_notifyNewlyMentionedUsers_delivers_a_mention_notification_per_newly_mentioned_id", async () => {
+    const { supabase, admin, rpcCalls } = fakeClients();
+
     const result = await notifyNewlyMentionedUsers({
       taskId: "task-1",
+      workspaceId: "workspace-1",
       authorId: "author-1",
       newlyMentionedUserIds: ["alice", "bob"],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase: supabase as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
     });
 
-    expect(result).toEqual({ notified: ["alice", "bob"] });
+    expect(result.notified.sort()).toEqual(["alice", "bob"]);
+    expect(rpcCalls).toHaveLength(2);
+    expect(
+      rpcCalls.every(
+        (call) =>
+          (call as { name: string }).name === "create_notification" &&
+          (call as { args: { p_kind: string } }).args.p_kind === "mention",
+      ),
+    ).toBe(true);
+  });
+
+  it("test_AS_384_notifyNewlyMentionedUsers_never_notifies_the_author_of_their_own_mention", async () => {
+    const { supabase, admin, rpcCalls } = fakeClients();
+
+    const result = await notifyNewlyMentionedUsers({
+      taskId: "task-1",
+      workspaceId: "workspace-1",
+      authorId: "author-1",
+      // author-1 mentioned themselves alongside alice.
+      newlyMentionedUserIds: ["author-1", "alice"],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase: supabase as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
+    });
+
+    expect(result.notified).toEqual(["alice"]);
+    expect(rpcCalls).toHaveLength(1);
+  });
+
+  it("test_AS_375_notifyNewlyMentionedUsers_promotes_each_mentioned_non_watcher_to_watcher", async () => {
+    const { supabase, admin, upsertCalls } = fakeClients();
+
+    await notifyNewlyMentionedUsers({
+      taskId: "task-1",
+      workspaceId: "workspace-1",
+      authorId: "author-1",
+      newlyMentionedUserIds: ["alice"],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase: supabase as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
+    });
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(upsertCalls[0]).toEqual([
+      { task_id: "task-1", user_id: "alice", is_watching: true },
+    ]);
   });
 
   it("test_AS_378_notifyNewlyMentionedUsers_no_ops_cleanly_when_nothing_is_newly_mentioned", async () => {
+    const { supabase, admin, rpcCalls, upsertCalls } = fakeClients();
+
     const result = await notifyNewlyMentionedUsers({
       taskId: "task-1",
+      workspaceId: "workspace-1",
       authorId: "author-1",
       newlyMentionedUserIds: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase: supabase as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      admin: admin as any,
     });
 
     expect(result).toEqual({ notified: [] });
+    expect(rpcCalls).toHaveLength(0);
+    expect(upsertCalls).toHaveLength(0);
   });
 });
