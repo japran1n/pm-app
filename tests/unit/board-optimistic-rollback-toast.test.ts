@@ -43,6 +43,7 @@ vi.mock("@/lib/actions/tasks", () => ({
 // context mounted (same "no jsdom" constraint noted above).
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import { Board } from "@/components/board/board";

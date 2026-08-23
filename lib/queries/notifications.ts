@@ -48,6 +48,13 @@ export type NotificationListItem = {
      * omitting the row (AS-385's simpler-option default: the notification
      * itself is still real history for its owner, so it stays listed). */
     title: string | null;
+    /** AS-386 follow-up: the task's project id, so the panel can link
+     * straight to `/w/{slug}/projects/{projectId}/board?taskId={id}`
+     * (the board page's `useTaskDetailSheet` deep-link) instead of the
+     * search page. Null when the task's project itself is gone/
+     * unresolvable — the panel falls back to the search link in that
+     * case only. */
+    projectId: string | null;
   } | null;
 };
 
@@ -109,7 +116,7 @@ export async function getNotificationsForWorkspace(
     taskIds.length
       ? supabase
           .from("tasks")
-          .select("id, title, number, deleted_at, projects(key)")
+          .select("id, title, number, project_id, deleted_at, projects(key)")
           .in("id", taskIds)
       : Promise.resolve({ data: [], error: null }),
     resolvePeople(actorIds),
@@ -135,6 +142,11 @@ export async function getNotificationsForWorkspace(
           // on the query above) but are shown as "deleted task" per this
           // feature's simpler-option fallback, not silently dropped.
           title: task.deleted_at ? null : task.title,
+          // AS-386 follow-up: null out the project id for a soft-deleted
+          // task too, same as `title` above, so the panel's taskHref
+          // helper falls back to the search link rather than linking to
+          // a board deep-link for a task that no longer really exists.
+          projectId: task.deleted_at ? null : task.project_id,
         },
       ];
     }),

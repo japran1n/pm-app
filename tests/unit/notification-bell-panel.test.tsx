@@ -41,7 +41,7 @@ const NEWEST: NotificationListItem = {
   createdAt: NOW.toISOString(),
   readAt: null,
   actor: { id: "u1", name: "Alice", email: "alice@example.com", avatarUrl: null },
-  task: { id: "t1", key: "PM-1", title: "Newest task" },
+  task: { id: "t1", key: "PM-1", title: "Newest task", projectId: "proj-1" },
 };
 
 const OLDER: NotificationListItem = {
@@ -50,7 +50,7 @@ const OLDER: NotificationListItem = {
   createdAt: EARLIER.toISOString(),
   readAt: null,
   actor: { id: "u2", name: "Bob", email: "bob@example.com", avatarUrl: null },
-  task: { id: "t2", key: "PM-2", title: "Older task" },
+  task: { id: "t2", key: "PM-2", title: "Older task", projectId: "proj-2" },
 };
 
 describe("NotificationBell (F208: AS-379)", () => {
@@ -216,6 +216,42 @@ describe("NotificationPanel (F208: AS-385, AS-386, AS-387)", () => {
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalledTimes(1));
     expect(onUnreadCountChange).toHaveBeenLastCalledWith(2);
+  });
+
+  it("test_AS_386_a_notification_with_a_resolvable_task_and_project_links_to_the_board_deep_link_not_search", () => {
+    render(
+      createElement(NotificationPanel, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        initialNotifications: [NEWEST],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    const link = screen.getByRole("link", { name: /Alice/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/w/acme/projects/proj-1/board?taskId=t1",
+    );
+  });
+
+  it("test_AS_386_negative_a_notification_whose_task_project_id_is_unresolvable_falls_back_to_the_search_link", () => {
+    const notificationWithoutProject: NotificationListItem = {
+      ...NEWEST,
+      task: { id: "t1", key: "PM-1", title: "Newest task", projectId: null },
+    };
+
+    render(
+      createElement(NotificationPanel, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        initialNotifications: [notificationWithoutProject],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    const link = screen.getByRole("link", { name: /Alice/i });
+    expect(link).toHaveAttribute("href", "/w/acme/search?q=PM-1");
   });
 
   it("test_AS_387_the_mark_all_button_is_disabled_when_there_is_nothing_unread", () => {

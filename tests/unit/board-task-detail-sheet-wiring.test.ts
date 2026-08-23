@@ -49,6 +49,7 @@ vi.mock("@/lib/actions/tasks", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 import { Board } from "@/components/board/board";
@@ -154,6 +155,15 @@ describe("Board wires TaskCard clicks to TaskDetailSheet (bugfix)", () => {
     );
     expect(useTaskDetailSheetSource).toMatch(
       /const result = await getTaskDetail\(taskId\);/,
+    );
+  });
+
+  it("reads a `?taskId=` search param and opens that task's detail sheet on mount (AS-386 follow-up)", () => {
+    expect(boardSource).toMatch(
+      /const requestedTaskId = searchParams\.get\("taskId"\);/,
+    );
+    expect(boardSource).toMatch(
+      /taskDetailSheet\.openTask\(requestedTaskId\);/,
     );
   });
 });

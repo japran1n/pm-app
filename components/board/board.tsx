@@ -26,7 +26,8 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -167,6 +168,31 @@ export function Board({
   // over this default so an existing/future caller can override it.
   const taskDetailSheet = useTaskDetailSheet();
   const handleCardClick = onCardClick ?? taskDetailSheet.openTask;
+
+  // AS-386 follow-up (F208's own handoff flagged this gap): a `?taskId=`
+  // query param, when present and matching a task actually on this
+  // board, opens that task's detail sheet on first render — the same
+  // `openTask` path a card click already uses, so this is purely an
+  // additional trigger, not a second implementation. Guarded to fire
+  // once (`sheetOpenedFromUrlRef`-equivalent via the effect's own `open`
+  // check below is intentionally omitted — `taskDetailSheet.openTask` is
+  // idempotent/safe to call again on a re-render with the same id since
+  // it just resets to the same loading state) but only runs when nothing
+  // is already open, so it never fights a user who has since clicked a
+  // different card or closed the sheet themselves. Only used when the
+  // caller lets the board own its own click handling (no `onCardClick`
+  // override) — a caller that supplies its own click handler also owns
+  // its own deep-link behavior, if any.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    if (onCardClick) return;
+    const requestedTaskId = searchParams.get("taskId");
+    if (!requestedTaskId) return;
+    if (taskDetailSheet.open) return;
+    if (!tasks.some((t) => t.id === requestedTaskId)) return;
+    taskDetailSheet.openTask(requestedTaskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // F158 (AS-280, AS-281): the shared guard used by handleDragEnd below —
   // see lib/tasks/blocked-guard.ts's isDoneStatus doc comment for the full

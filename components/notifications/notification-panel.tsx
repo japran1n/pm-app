@@ -55,18 +55,22 @@ function taskLabel(task: NotificationListItem["task"]): string {
   return task.key ? `${task.key} ${task.title}` : task.title;
 }
 
+// AS-386 follow-up: the board page now reads a `?taskId=` query param and
+// opens that task's detail sheet on mount (components/board/board.tsx),
+// so a notification with a resolvable task + project now links straight
+// there instead of the workspace search page. The search-page link is
+// kept as a fallback ONLY for the genuinely unresolvable case — the task
+// itself is gone (`title === null`) or its project id couldn't be
+// resolved (e.g. the project itself was deleted alongside it) — since a
+// board URL with no `projectId` segment can't be built at all.
 function taskHref(
   workspaceSlug: string,
   task: NotificationListItem["task"],
 ): string | null {
-  // Out-of-scope (see this feature's handoff): there is no deep-link
-  // route yet that opens a specific task's detail sheet from a bare URL
-  // — board/list pages hold the open task purely in client state
-  // (components/board/board.tsx's onCardClick), not a URL search param.
-  // Navigating to the workspace search page pre-filled with this task's
-  // key is the closest reachable "item" today without touching board/list
-  // page internals, which this feature's Files list does not include.
   if (!task || task.title === null) return null;
+  if (task.projectId) {
+    return `/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${encodeURIComponent(task.id)}`;
+  }
   return task.key
     ? `/w/${workspaceSlug}/search?q=${encodeURIComponent(task.key)}`
     : null;
