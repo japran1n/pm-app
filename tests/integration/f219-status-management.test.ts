@@ -588,5 +588,108 @@ describe.skipIf(!haveAdminCreds)(
       expect(task?.status).toBe("Waiting on Vendor");
       expect(task?.status_id).toBe(created.data.id);
     });
+
+    // ------------------------------------------------------------------
+    // Orchestrator-reported blocker: the AS-415 last-column guard must not
+    // fire during a project's own ON DELETE CASCADE — it must only guard
+    // a genuine standalone column delete. Reproduced directly against the
+    // linked DB pre-fix (service-role client, no app-layer code in the
+    // path): seeding the default four columns, then hard-deleting the
+    // project, raised {"code":"P0001","message":"A project must have at
+    // least one board column."} — project hard-delete was impossible.
+    // Fixed by supabase/migrations/
+    // 20260824030000_project_statuses_cascade_delete_fix.sql.
+    // ------------------------------------------------------------------
+
+    it("regression: hard-deleting a project succeeds and cascades away its board columns, even though it seeds with four (never fewer than one) columns", async () => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F219 Cascade-delete Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "workspace",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+
+      const { data: seeded } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(seeded?.length).toBe(4);
+
+      // Hard delete the project itself (not via createdProjectIds/afterAll
+      // — this IS the assertion, so it must run and be checked here, not
+      // deferred to teardown).
+      const { error: deleteProjectError } = await adminClient
+        .from("projects")
+        .delete()
+        .eq("id", proj.id);
+
+      expect(deleteProjectError).toBeNull();
+
+      const { data: remainingStatuses } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(remainingStatuses ?? []).toHaveLength(0);
+
+      const { data: remainingProject } = await adminClient
+        .from("projects")
+        .select("id")
+        .eq("id", proj.id)
+        .maybeSingle();
+      expect(remainingProject).toBeNull();
+    });
+
+    it("AS-415 regression: a standalone delete of a project's last remaining column is still rejected (the cascade fix did not weaken the guard for real column deletes)", async () => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F219 Standalone-guard Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "workspace",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      const { data: statuses } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", proj.id)
+        .order("position", { ascending: true });
+      const toDelete = (statuses ?? []).slice(0, 3).map((s) => s.id);
+      await adminClient.from("project_statuses").delete().in("id", toDelete);
+
+      const { data: remaining } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(remaining?.length).toBe(1);
+      const lastColumnId = remaining![0].id;
+
+      // The project row itself still exists here, unlike the cascade
+      // test above — this is a genuine standalone delete of the last
+      // column, which must still be rejected.
+      const { error: deleteError } = await adminClient
+        .from("project_statuses")
+        .delete()
+        .eq("id", lastColumnId);
+      expect(deleteError).not.toBeNull();
+
+      const { data: stillThere } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("id", lastColumnId)
+        .maybeSingle();
+      expect(stillThere).not.toBeNull();
+    });
   },
 );
