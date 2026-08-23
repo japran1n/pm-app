@@ -12,7 +12,8 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
 export type LogTimeEntryResult =
   | {
@@ -96,7 +97,7 @@ export async function logTimeEntry(
   // convention.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects(workspace_id)")
+    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -106,12 +107,11 @@ export async function logTimeEntry(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string }
+    | { workspace_id: string; visibility: string }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -138,6 +138,28 @@ export async function logTimeEntry(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to log time.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // task's project themselves, not just be an active workspace member —
+  // see isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Same generic message as the role
+  // failure above so a private project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to log time.",
@@ -253,7 +275,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
   // treated as not found, same convention as logTimeEntry.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects(workspace_id)")
+    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -263,12 +285,11 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string }
+    | { workspace_id: string; visibility: string }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -293,6 +314,28 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to track time.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // task's project themselves, not just be an active workspace member —
+  // see isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Same generic message as the role
+  // failure above so a private project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to track time.",
@@ -448,7 +491,9 @@ export async function editTimeEntry(
   // the caller.
   const { data: entryRow, error: entryError } = await admin
     .from("time_entries")
-    .select("id, user_id, task_id, tasks(deleted_at, projects(workspace_id))")
+    .select(
+      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+    )
     .eq("id", parsed.data.entryId)
     .maybeSingle();
 
@@ -457,8 +502,22 @@ export async function editTimeEntry(
   }
 
   const task = entryRow.tasks as
-    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }
-    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
 
@@ -467,9 +526,8 @@ export async function editTimeEntry(
   }
 
   const project = taskRow.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -484,6 +542,28 @@ export async function editTimeEntry(
   // AS-169: author-only, no admin/owner override. Checked after (and in
   // addition to) the active-membership re-check above — both must hold.
   if (!membership.ok || entryRow.user_id !== user.id) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this time entry.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // entry's task's project themselves, not just be an active workspace
+  // member. Same generic message this function already returns for a
+  // permission failure, so a private project's existence is never
+  // disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "You don't have permission to edit this time entry.",
@@ -576,7 +656,9 @@ export async function deleteTimeEntry(
 
   const { data: entryRow, error: entryError } = await admin
     .from("time_entries")
-    .select("id, user_id, task_id, tasks(deleted_at, projects(workspace_id))")
+    .select(
+      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+    )
     .eq("id", parsed.data.entryId)
     .maybeSingle();
 
@@ -585,8 +667,22 @@ export async function deleteTimeEntry(
   }
 
   const task = entryRow.tasks as
-    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }
-    | { deleted_at: string | null; projects: { workspace_id: string } | { workspace_id: string }[] | null }[]
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
 
@@ -595,9 +691,8 @@ export async function deleteTimeEntry(
   }
 
   const project = taskRow.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -608,6 +703,7 @@ export async function deleteTimeEntry(
   // Author check is independent of (and cheaper than) the admin check —
   // only fall through to requireWorkspaceAdmin (which still re-verifies
   // active membership itself) when the caller isn't the author.
+  let deleteCallerRole: WorkspaceRole;
   if (!isAuthor) {
     const adminMembership = await requireWorkspaceAdmin(
       admin,
@@ -620,6 +716,7 @@ export async function deleteTimeEntry(
         error: "You don't have permission to delete this time entry.",
       };
     }
+    deleteCallerRole = adminMembership.role;
   } else {
     // Author still must be an active member of the workspace (AS-143
     // defense in depth), same convention as editTimeEntry above.
@@ -643,6 +740,29 @@ export async function deleteTimeEntry(
         error: "Viewers don't have permission to delete time entries.",
       };
     }
+    deleteCallerRole = membership.role;
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller (author or admin) must be
+  // able to SEE this entry's task's project themselves, not just be an
+  // active workspace member. Same generic message this function already
+  // returns for a permission failure, so a private project's existence is
+  // never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      deleteCallerRole,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "You don't have permission to delete this time entry.",
+    };
   }
 
   const { error: deleteError } = await admin

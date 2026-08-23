@@ -28,8 +28,9 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
 export type AddCommentResult =
   | {
@@ -176,6 +177,25 @@ export async function addComment(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to comment.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // task's project themselves, not just be an active workspace member —
+  // see isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Same generic message as the role
+  // failure above so a private project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      { projectId: taskRow.project_id, visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace" },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to comment.",
@@ -488,6 +508,7 @@ export async function deleteComment(
   // role. AS-100: a workspace admin/owner may delete any comment in their
   // workspace, regardless of authorship. AS-099: anyone else — a
   // different regular member — is rejected.
+  let callerRole: WorkspaceRole;
   if (!isAuthor) {
     const adminMembership = await requireWorkspaceAdmin(
       admin,
@@ -500,6 +521,7 @@ export async function deleteComment(
         error: "You don't have permission to delete this comment.",
       };
     }
+    callerRole = adminMembership.role;
   } else {
     // Even the author must still be an active member (defense in depth —
     // e.g. a removed member should not retain delete rights on their old
@@ -527,6 +549,50 @@ export async function deleteComment(
       return {
         ok: false,
         error: "Viewers don't have permission to delete comments.",
+      };
+    }
+    callerRole = membership.role;
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller (author or admin) must be
+  // able to SEE this comment's task's project themselves, not just be an
+  // active workspace member — see isProjectVisibleToCaller's doc comment
+  // in lib/actions/project-visibility.ts. Re-checked here (after both
+  // authorization branches above resolve, whichever path was taken) using
+  // the SAME generic message this function already returns for a
+  // permission failure, so a private project's existence is never
+  // disclosed.
+  {
+    const { data: visProjectRow } = await admin
+      .from("tasks")
+      .select("project_id, projects(visibility)")
+      .eq("id", commentTaskId)
+      .maybeSingle();
+    const visProject = visProjectRow?.projects as
+      | { visibility: string }
+      | { visibility: string }[]
+      | null
+      | undefined;
+    const visProjectRowResolved = Array.isArray(visProject)
+      ? visProject[0]
+      : visProject;
+    if (
+      !visProjectRow?.project_id ||
+      !(await isProjectVisibleToCaller(
+        admin,
+        {
+          projectId: visProjectRow.project_id,
+          visibility:
+            (visProjectRowResolved?.visibility as "workspace" | "private") ??
+            "workspace",
+        },
+        user.id,
+        callerRole,
+      ))
+    ) {
+      return {
+        ok: false,
+        error: "You don't have permission to delete this comment.",
       };
     }
   }
@@ -692,7 +758,7 @@ export async function restoreComment(
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
     .select(
-      "id, task_id, user_id, text, body_json, created_at, deleted_at, tasks(id, projects(workspace_id))",
+      "id, task_id, user_id, text, body_json, created_at, deleted_at, tasks(id, project_id, projects(workspace_id, visibility))",
     )
     .eq("id", parsed.data.commentId)
     .maybeSingle();
@@ -704,21 +770,29 @@ export async function restoreComment(
   const task = commentRow.tasks as
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
   const commentTaskId = taskRow?.id;
+  const commentProjectId = taskRow?.project_id;
 
-  if (!workspaceId || !commentTaskId) {
+  if (!workspaceId || !commentTaskId || !commentProjectId) {
     return { ok: false, error: "Comment not found." };
   }
 
@@ -729,6 +803,7 @@ export async function restoreComment(
   // wording): the comment's own author, or a workspace admin/owner, may
   // restore it. Any other regular member is rejected server-side even if
   // they call this action directly.
+  let restoreCallerRole: WorkspaceRole;
   if (!isAuthor) {
     const adminMembership = await requireWorkspaceAdmin(
       admin,
@@ -741,6 +816,7 @@ export async function restoreComment(
         error: "You don't have permission to restore this comment.",
       };
     }
+    restoreCallerRole = adminMembership.role;
   } else {
     const membership = await requireActiveMembership(
       admin,
@@ -762,6 +838,30 @@ export async function restoreComment(
         error: "Viewers don't have permission to restore comments.",
       };
     }
+    restoreCallerRole = membership.role;
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller (author or admin) must be
+  // able to SEE this comment's task's project themselves, not just be an
+  // active workspace member — see isProjectVisibleToCaller's doc comment
+  // in lib/actions/project-visibility.ts. Same generic message this
+  // function already returns for a permission failure, so a private
+  // project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: commentProjectId,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      restoreCallerRole,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "You don't have permission to restore this comment.",
+    };
   }
 
   const bodyJson: JSONContent =
@@ -1018,6 +1118,28 @@ export async function editComment(
     };
   }
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit comments.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // comment's task's project themselves, not just be an active workspace
+  // member — see isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Same generic message as the role
+  // failure above so a private project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: commentProjectId,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to edit comments.",

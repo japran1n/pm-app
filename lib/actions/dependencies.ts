@@ -11,6 +11,7 @@ import {
 } from "@/lib/validation/dependencies";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { formatTaskKey, parseTaskKeyQuery } from "@/lib/tasks/task-key";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
 // F156: createDependency (AS-278). Mirrors lib/actions/checklist.ts's
 // shape: Zod-validated input, membership re-checked server-side (defense
@@ -513,9 +514,9 @@ export async function getDependencyCandidates(
   // search), same boundary lib/queries/search.ts's searchWorkspaceTasks
   // enforces for workspace search — a project in another workspace can
   // never appear here because it is never fetched in the first place.
-  const { data: projects, error: projectsError } = await admin
+  const { data: allProjects, error: projectsError } = await admin
     .from("projects")
-    .select("id, key")
+    .select("id, key, visibility")
     .eq("workspace_id", task.workspaceId)
     .is("deleted_at", null);
 
@@ -529,6 +530,30 @@ export async function getDependencyCandidates(
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  // F323 (AS-227, AS-228, AS-229): a private project the caller cannot see
+  // must never surface a candidate task in this picker — see
+  // isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Filtered here (rather than per-task
+  // below) so a candidate task from an invisible project is excluded
+  // before ever being fetched.
+  const visibilityChecks = await Promise.all(
+    (allProjects ?? []).map(async (p) => ({
+      project: p,
+      visible: await isProjectVisibleToCaller(
+        admin,
+        {
+          projectId: p.id,
+          visibility: (p.visibility as "workspace" | "private") ?? "workspace",
+        },
+        user.id,
+        membership.role,
+      ),
+    })),
+  );
+  const projects = visibilityChecks
+    .filter((entry) => entry.visible)
+    .map((entry) => entry.project);
 
   const projectIds = (projects ?? []).map((p) => p.id);
 

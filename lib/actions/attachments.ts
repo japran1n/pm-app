@@ -13,7 +13,8 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite } from "@/lib/auth/permissions";
+import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
 // Storage bucket + path convention fixed by F064
 // (supabase/migrations/20260818050100_create_attachments.sql): bucket
@@ -147,7 +148,7 @@ export async function uploadAttachmentForUser(
   // addComment.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects(workspace_id)")
+    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -157,12 +158,11 @@ export async function uploadAttachmentForUser(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string }
+    | { workspace_id: string; visibility: string }[]
     | null;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -190,6 +190,28 @@ export async function uploadAttachmentForUser(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to upload files.",
+    };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
+  // task's project themselves, not just be an active workspace member —
+  // see isProjectVisibleToCaller's doc comment in
+  // lib/actions/project-visibility.ts. Same generic message as the role
+  // failure above so a private project's existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      userId,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to upload files.",
@@ -334,7 +356,9 @@ export async function getAttachmentSignedUrl(
 
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
-    .select("id, file_url, tasks(deleted_at, projects(workspace_id))")
+    .select(
+      "id, file_url, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+    )
     .eq("id", attachmentId)
     .maybeSingle();
 
@@ -344,19 +368,26 @@ export async function getAttachmentSignedUrl(
 
   const task = attachmentRow.tasks as
     | {
+        project_id: string;
         deleted_at: string | null;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }
     | {
+        project_id: string;
         deleted_at: string | null;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!taskRow || taskRow.deleted_at || !workspaceId) {
     return { ok: false, error: "Attachment not found." };
@@ -373,6 +404,26 @@ export async function getAttachmentSignedUrl(
 
   if (!membership.ok) {
     return { ok: false, error: "You don't have permission to view this file." };
+  }
+
+  // F323 (AS-227, AS-228, AS-229): read-path confidentiality — the caller
+  // must be able to SEE this attachment's task's project themselves, not
+  // just be an active workspace member. Returns the SAME "Attachment not
+  // found" message this function already uses for a genuinely missing
+  // attachment (never a permission-denied message), so a read-path leak
+  // never even confirms the attachment exists.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
+    return { ok: false, error: "Attachment not found." };
   }
 
   const { data: signedUrlData, error: signedUrlError } = await admin.storage
@@ -467,7 +518,9 @@ export async function deleteAttachment(
   // are based on real server-side data, never client-supplied fields.
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
-    .select("id, file_url, uploaded_by, tasks(deleted_at, projects(workspace_id))")
+    .select(
+      "id, file_url, uploaded_by, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+    )
     .eq("id", parsed.data.attachmentId)
     .maybeSingle();
 
@@ -477,19 +530,26 @@ export async function deleteAttachment(
 
   const task = attachmentRow.tasks as
     | {
+        project_id: string;
         deleted_at: string | null;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }
     | {
+        project_id: string;
         deleted_at: string | null;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
 
   if (!taskRow || !workspaceId) {
     return { ok: false, error: "Attachment not found." };
@@ -499,6 +559,7 @@ export async function deleteAttachment(
 
   // AS-110: the uploader may always delete their own attachment. AS-111:
   // anyone else needs to be an admin/owner of the workspace.
+  let deleteCallerRole: WorkspaceRole;
   if (!isUploader) {
     const adminMembership = await requireWorkspaceAdmin(
       admin,
@@ -511,6 +572,7 @@ export async function deleteAttachment(
         error: "You don't have permission to delete this attachment.",
       };
     }
+    deleteCallerRole = adminMembership.role;
   } else {
     // Even the uploader must still be an active member (defense in depth
     // — e.g. a removed member should not retain delete rights on their
@@ -535,6 +597,29 @@ export async function deleteAttachment(
         error: "Viewers don't have permission to delete attachments.",
       };
     }
+    deleteCallerRole = membership.role;
+  }
+
+  // F323 (AS-227, AS-228, AS-229): the caller (uploader or admin) must be
+  // able to SEE this attachment's task's project themselves, not just be
+  // an active workspace member. Same generic message this function
+  // already returns for a permission failure, so a private project's
+  // existence is never disclosed.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      deleteCallerRole,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "You don't have permission to delete this attachment.",
+    };
   }
 
   // Storage-first (see the AS-114 rationale in this function's doc
