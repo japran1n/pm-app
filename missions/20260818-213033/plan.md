@@ -120,13 +120,13 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ## M15 — Collaboration: activity, comments, mentions, notifications, email
 
-- F194 db-schema-activity — AS-353, AS-357, AS-359 [CLARIFIED-AUTO]
-- F195 activity-writer — AS-354, AS-355, AS-356, AS-360 [CLARIFIED-AUTO]
-- F196 activity-feed-ui — AS-358, AS-361 [CLARIFIED-AUTO]
-- F197 comment-edit-action — AS-362, AS-364 [CLARIFIED-AUTO]
-- F198 comment-edited-indicator — AS-363 [CLARIFIED-AUTO]
-- F199 db-schema-comment-reactions — AS-365, AS-368, AS-370 [CLARIFIED-AUTO]
-- F200 reaction-actions — AS-367 [CLARIFIED-AUTO]
+- F194 db-schema-activity — AS-353, AS-357, AS-359 [CLARIFIED-AUTO] [COMPLETE]
+- F195 activity-writer — AS-354, AS-355, AS-356, AS-360 [CLARIFIED-AUTO] [COMPLETE]
+- F196 activity-feed-ui — AS-358, AS-361 [CLARIFIED-AUTO] [COMPLETE]
+- F197 comment-edit-action — AS-362, AS-364 [CLARIFIED-AUTO] [COMPLETE]
+- F198 comment-edited-indicator — AS-363 [CLARIFIED-AUTO] [COMPLETE]
+- F199 db-schema-comment-reactions — AS-365, AS-368, AS-370 [CLARIFIED-AUTO] [COMPLETE]
+- F200 reaction-actions — AS-367 [CLARIFIED-AUTO] [COMPLETE]
 - F201 reaction-ui — AS-366 [CLARIFIED-AUTO] [COMPLETE]
 - F202 reaction-realtime — AS-369 [CLARIFIED-AUTO] [COMPLETE]
 - F203 mention-extension — AS-371, AS-372, AS-373 [CLARIFIED-AUTO] [COMPLETE]
