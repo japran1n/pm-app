@@ -135,7 +135,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F206 db-schema-notifications — AS-389, AS-392 [CLARIFIED-AUTO] [COMPLETE]
 - F207 notification-fanout — AS-294, AS-374, AS-375, AS-380, AS-381, AS-382, AS-384 [CLARIFIED-AUTO] [COMPLETE]
 - F208 notification-bell-panel — AS-379, AS-385, AS-386, AS-387 [CLARIFIED-AUTO] [COMPLETE]
-- F209 notification-realtime — AS-388 [CLARIFIED-AUTO]
+- F209 notification-realtime — AS-388 [CLARIFIED-AUTO] [COMPLETE]
 - F210 notification-deleted-target — AS-390 [CLARIFIED-AUTO]
 - F211 notification-preferences — AS-391, AS-396 [CLARIFIED-AUTO]
 - F212 overdue-notification-job — AS-383 [CLARIFIED-AUTO]
