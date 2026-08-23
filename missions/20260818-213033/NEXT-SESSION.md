@@ -4,6 +4,31 @@ _Written 2026-08-23, session paused mid-work at the user's explicit request
 ("završi minimalno da zamrznemo milestone"). Read this file first; run-log.md's
 bottom entries give full detail on anything summarized here._
 
+## >>> START HERE: user's explicit instruction for the next session <<<
+
+The user has explicitly decided to **work M16 next, and come back to finish
+M15 later** (recorded in run-log.md at 2026-08-23T15:20Z). This is a
+deliberate, informed deviation from this mission's own hard rule 4 ("each
+milestone boundary gates the next — don't advance until scrutiny+ux are
+GREEN") — do NOT refuse to start M16 on the grounds that M15 isn't closed,
+and do NOT silently mark M15 GREEN or skip/forget it either. Just proceed:
+
+1. Start M16 (Views: custom statuses, swimlanes, saved views, My Tasks,
+   calendar, timeline — F218 onward). Follow the exact same rigor as every
+   other feature/milestone in this mission: read each feature's spec +
+   clarification file, spawn a worker, independently verify (read the real
+   diff, run the real commands yourself, don't trust the handoff alone),
+   log to run-log.md, tag plan.md, commit — then move to the next feature.
+2. When M16's own features are all done, run ITS scrutiny/ux validator pass
+   before advancing further, same as any milestone.
+3. **M15 stays open and unfinished in the background.** The "Where things
+   stand" section below (F310 in progress/unverified, F311/F312 not
+   started, a mandatory third scrutiny pass, then a UX validator pass) is
+   still exactly what M15 needs whenever the user asks to return to it —
+   nothing in it has changed just because M16 started. Don't let M16 work
+   accidentally touch or "helpfully" fix M15-adjacent files without going
+   through this same process.
+
 ## Where things stand
 
 **M10–M14 are fully complete** (verified in prior sessions; M10 has 5
