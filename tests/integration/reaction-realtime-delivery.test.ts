@@ -332,5 +332,86 @@ describe.skipIf(!haveAdminCreds)(
       },
       15000,
     );
+
+    it(
+      "test_AS_369_the_subscription_is_scoped_at_the_transport_level_a_second_tasks_channel_never_receives_a_reaction_event_for_this_task",
+      async () => {
+        // F305 (AS-369 fix): before this fix, subscribeToReactionsRealtime
+        // registered no `filter` at all, so ANY authenticated client's
+        // channel received every comment_reactions change in the database
+        // regardless of which task it subscribed for. This proves the fix
+        // is a genuine server-side/RLS-adjacent postgres_changes filter
+        // (task_id=eq.<taskId>), not merely client-side narrowing: an
+        // independent channel subscribed for a DIFFERENT, unrelated task
+        // must never see an event for this test's task/comment, even
+        // though the subscribing session is otherwise authenticated and
+        // able to see both tasks.
+        const { toggleReaction } = await import("@/lib/actions/comment-reactions");
+        const { subscribeToReactionsRealtime } = await import(
+          "@/lib/tasks/subscribe-comments-realtime"
+        );
+
+        const otherTaskId = "00000000-0000-0000-0000-000000000000";
+        let leaked: unknown = null;
+
+        const unsubscribeOther = subscribeToReactionsRealtime(
+          subscriberClient,
+          otherTaskId,
+          (event) => {
+            leaked = event;
+          },
+        );
+
+        // A channel name distinct from the shared `comment_reactions:${taskId}`
+        // channel the previous test in this file already subscribed and
+        // left open — the Supabase client refuses to add new
+        // postgres_changes callbacks to a channel object that's already
+        // subscribed.
+        const scopedChannel = subscriberClient.channel(
+          `f305-scoping-check:${taskId}`,
+        );
+
+        try {
+          const received = await new Promise<boolean>((resolve, reject) => {
+            const timeout = setTimeout(() => resolve(false), 6000);
+
+            scopedChannel
+              .on(
+                "postgres_changes",
+                {
+                  event: "INSERT",
+                  schema: "public",
+                  table: "comment_reactions",
+                  filter: `task_id=eq.${taskId}`,
+                },
+                (payload: { new: { comment_id: string } }) => {
+                  if (payload.new.comment_id !== commentId) return;
+                  clearTimeout(timeout);
+                  resolve(true);
+                },
+              )
+              .subscribe((status, err) => {
+                if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                  clearTimeout(timeout);
+                  reject(err ?? new Error(`subscribe failed: ${status}`));
+                  return;
+                }
+                if (status === "SUBSCRIBED") {
+                  void toggleReaction(commentId, "🚀");
+                }
+              });
+          });
+
+          expect(received).toBe(true);
+          // The channel scoped to a different task never got the event —
+          // the filter is applied before delivery, not after.
+          expect(leaked).toBeNull();
+        } finally {
+          unsubscribeOther();
+          await subscriberClient.removeChannel(scopedChannel);
+        }
+      },
+      15000,
+    );
   },
 );

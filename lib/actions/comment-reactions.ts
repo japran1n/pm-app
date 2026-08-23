@@ -158,6 +158,12 @@ export async function toggleReaction(
     comment_id: parsed.data.commentId,
     user_id: user.id,
     emoji: parsed.data.emoji,
+    // F305 (AS-369): denormalized from the comment's own task_id so the
+    // reactions realtime subscription can filter server-side on
+    // `task_id=eq.<taskId>`. RLS's comment_reactions_insert_self (F305
+    // migration) independently re-verifies this matches the comment's
+    // real task_id, so a caller can't smuggle a mismatched value in.
+    task_id: check.taskId,
   };
 
   const { error: insertError } = await supabase

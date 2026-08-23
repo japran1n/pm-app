@@ -86,16 +86,19 @@ export type { CommentRealtimeEvent, CommentRealtimeRow };
 // shape, and keeping it separate avoids widening subscribeToCommentsRealtime's
 // existing, already-tested `CommentRealtimeEvent` contract.
 //
-// comment_reactions has no task_id column (F199's migration), so unlike
-// the comments channel above, postgres_changes can't be given a
-// `filter: task_id=eq.<taskId>` clause directly. This channel therefore
-// subscribes to ALL comment_reactions changes (RLS — comment_reactions_
-// select_visible, F199 — still governs which rows a client is even sent)
-// and the caller (components/task/use-reactions-realtime.ts's consumer,
-// comment-list.tsx) filters client-side by checking the event's commentId
-// against the task's already-loaded comment ids, the same "narrow inside
-// the component that already has the scoping context" shape F049's board
-// channel uses for out-of-scope project rows.
+// F305 (AS-369 fix): comment_reactions now carries a denormalized
+// task_id column (F305's migration), so this channel is filtered
+// server-side with `filter: task_id=eq.<taskId>`, exactly mirroring how
+// subscribeToCommentsRealtime below filters `comments` on
+// `task_id=eq.<taskId>`. Previously this subscription had no filter at
+// all: every authenticated client received every reaction change in the
+// entire database, and because Supabase does not apply RLS to DELETE
+// payloads, an un-react on a comment the subscriber couldn't see still
+// leaked comment_id/user_id/emoji to them — a real cross-tenant data
+// leak. Client-side filtering (what this channel did before) narrows
+// what the *component* reacts to, but does not stop the *transport* from
+// sending the row in the first place, so it wasn't a sufficient fix on
+// its own; the task_id filter below is the actual security boundary.
 //
 // Both INSERT and DELETE are usable via plain postgres_changes here
 // (unlike comments' F104 workaround): comment_reactions_select_visible's
@@ -143,12 +146,22 @@ export function subscribeToReactionsRealtime(
     .channel(`comment_reactions:${taskId}`)
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "comment_reactions" },
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "comment_reactions",
+        filter: `task_id=eq.${taskId}`,
+      },
       forward("INSERT"),
     )
     .on(
       "postgres_changes",
-      { event: "DELETE", schema: "public", table: "comment_reactions" },
+      {
+        event: "DELETE",
+        schema: "public",
+        table: "comment_reactions",
+        filter: `task_id=eq.${taskId}`,
+      },
       forward("DELETE"),
     )
     .subscribe();

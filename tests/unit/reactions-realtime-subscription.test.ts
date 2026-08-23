@@ -55,7 +55,7 @@ function createMockSupabaseClient() {
 }
 
 describe("subscribeToReactionsRealtime (AS-369)", () => {
-  it("subscribes on a per-task channel to postgres_changes INSERT and DELETE on comment_reactions", () => {
+  it("test_AS_369_subscribes_on_a_per_task_channel_filtered_server_side_to_that_tasks_task_id", () => {
     const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
     const onChange = vi.fn();
 
@@ -73,6 +73,7 @@ describe("subscribeToReactionsRealtime (AS-369)", () => {
       event: "INSERT",
       schema: "public",
       table: "comment_reactions",
+      filter: "task_id=eq.task-123",
     });
 
     const deleteCall = onCalls.find(
@@ -85,7 +86,22 @@ describe("subscribeToReactionsRealtime (AS-369)", () => {
       event: "DELETE",
       schema: "public",
       table: "comment_reactions",
+      filter: "task_id=eq.task-123",
     });
+  });
+
+  it("test_AS_369_a_different_tasks_channel_is_filtered_to_its_own_task_id_not_the_first_tasks", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+
+    subscribeToReactionsRealtime(supabase as never, "task-a", vi.fn());
+    subscribeToReactionsRealtime(supabase as never, "task-b", vi.fn());
+
+    const filters = onCalls
+      .filter((c) => c.event === "postgres_changes")
+      .map((c) => (c.filter as { filter?: string }).filter);
+    expect(filters).toContain("task_id=eq.task-a");
+    expect(filters).toContain("task_id=eq.task-b");
+    expect(filters).not.toContain(undefined);
   });
 
   it("test_AS_369_forwards_an_INSERT_payload_as_a_flat_reaction_added_event", () => {
@@ -192,9 +208,7 @@ describe("comment-list.tsx's reaction-event reconciliation (AS-369)", () => {
   function reconcileReaction(
     comments: { id: string; reactions?: { emoji: string; userIds: string[] }[] }[],
     event: { eventType: "INSERT" | "DELETE"; commentId: string; userId: string; emoji: string },
-    currentUserId?: string,
   ) {
-    if (currentUserId && event.userId === currentUserId) return comments;
     return comments.map((comment) =>
       comment.id === event.commentId
         ? {
@@ -216,11 +230,12 @@ describe("comment-list.tsx's reaction-event reconciliation (AS-369)", () => {
   ];
 
   it("test_AS_369_a_reaction_added_by_another_viewer_is_folded_into_local_state", () => {
-    const next = reconcileReaction(
-      baseComments,
-      { eventType: "INSERT", commentId: "c1", userId: "u2", emoji: "👍" },
-      "u1",
-    );
+    const next = reconcileReaction(baseComments, {
+      eventType: "INSERT",
+      commentId: "c1",
+      userId: "u2",
+      emoji: "👍",
+    });
 
     expect(next.find((c) => c.id === "c1")?.reactions).toEqual([
       { emoji: "👍", userIds: ["u2"] },
@@ -230,34 +245,60 @@ describe("comment-list.tsx's reaction-event reconciliation (AS-369)", () => {
   });
 
   it("test_AS_369_a_reaction_removed_by_another_viewer_is_folded_into_local_state", () => {
-    const next = reconcileReaction(
-      baseComments,
-      { eventType: "DELETE", commentId: "c2", userId: "u9", emoji: "🎉" },
-      "u1",
-    );
+    const next = reconcileReaction(baseComments, {
+      eventType: "DELETE",
+      commentId: "c2",
+      userId: "u9",
+      emoji: "🎉",
+    });
 
     expect(next.find((c) => c.id === "c2")?.reactions).toEqual([]);
   });
 
-  it("test_AS_369_does_not_echo_the_current_users_own_toggle_a_second_time", () => {
-    const next = reconcileReaction(
-      baseComments,
-      { eventType: "INSERT", commentId: "c1", userId: "u1", emoji: "👍" },
-      "u1",
-    );
+  it("test_AS_369_a_second_tab_for_the_same_user_receives_and_applies_their_own_reaction_event", () => {
+    // F305 (AS-369 fix): self-events used to be dropped unconditionally,
+    // which meant a user's second browser tab never synced a reaction
+    // made in the first tab until a manual reload. Now the event is
+    // folded in like any other, and since applyReactionToggle is
+    // idempotent, the originating tab (which already applied this
+    // optimistically) sees no user-visible change either.
+    const next = reconcileReaction(baseComments, {
+      eventType: "INSERT",
+      commentId: "c1",
+      userId: "u1",
+      emoji: "👍",
+    });
 
-    // Skipped entirely — state is untouched by this echoed event, since
-    // handleReactionsChange (the optimistic path) already applied it.
-    expect(next).toBe(baseComments);
-    expect(next.find((c) => c.id === "c1")?.reactions).toEqual([]);
+    expect(next.find((c) => c.id === "c1")?.reactions).toEqual([
+      { emoji: "👍", userIds: ["u1"] },
+    ]);
+  });
+
+  it("test_AS_369_reapplying_the_same_users_own_already_applied_toggle_is_idempotent", () => {
+    const alreadyApplied = [
+      { id: "c1", reactions: [{ emoji: "👍", userIds: ["u1"] }] },
+    ];
+    const next = reconcileReaction(alreadyApplied, {
+      eventType: "INSERT",
+      commentId: "c1",
+      userId: "u1",
+      emoji: "👍",
+    });
+
+    // No duplicate entry — the current tab's optimistic update and the
+    // echoed Realtime event converge to the same state.
+    expect(next.find((c) => c.id === "c1")?.reactions).toEqual([
+      { emoji: "👍", userIds: ["u1"] },
+    ]);
   });
 
   it("test_AS_369_an_event_for_a_comment_not_in_local_state_is_a_no_op", () => {
-    const next = reconcileReaction(
-      baseComments,
-      { eventType: "INSERT", commentId: "c-unknown", userId: "u2", emoji: "👍" },
-      "u1",
-    );
+    const next = reconcileReaction(baseComments, {
+      eventType: "INSERT",
+      commentId: "c-unknown",
+      userId: "u2",
+      emoji: "👍",
+    });
 
     expect(next).toEqual(baseComments);
   });

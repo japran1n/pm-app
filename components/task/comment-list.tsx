@@ -346,15 +346,18 @@ export function CommentList({
   // below) — a reaction added/removed by *another* viewer shows up here
   // without a manual refresh.
   //
-  // Guard against echoing the caller's own update: this viewer's own
-  // toggle is already applied optimistically by handleReactionsChange the
-  // instant toggleReaction resolves, so folding the resulting Realtime
-  // event a second time here would be a harmless no-op at best (the
-  // reducer is idempotent for a repeat add/remove of the same user+emoji)
-  // but is skipped outright to avoid any redundant re-render/flicker
-  // between the optimistic update and the event arriving over the wire.
+  // F305 (AS-369 fix): self-events are NOT dropped anymore. This
+  // viewer's own toggle from *this* tab is already applied optimistically
+  // by handleReactionsChange, and folding the resulting Realtime event a
+  // second time here is a harmless no-op (applyReactionToggle is
+  // idempotent for a repeat add/remove of the same user+emoji) -- but a
+  // SECOND browser tab for the same user has no local optimistic state to
+  // no-op against, and previously never synced a reaction made in the
+  // first tab until a manual reload because this handler unconditionally
+  // dropped every event from the current user. Now that the subscription
+  // is scoped per-task (task_id filter, see subscribeToReactionsRealtime)
+  // there's no reason to special-case self-events at all.
   useReactionsRealtime(taskId, (event) => {
-    if (currentUserId && event.userId === currentUserId) return;
     setLocalComments((previous) =>
       previous.map((comment) =>
         comment.id === event.commentId
