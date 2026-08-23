@@ -347,19 +347,54 @@ export function RichTextEditor({
   // it never triggers a re-render mid-keystroke.
   const plainTextPasteRef = useRef(false)
 
+  // F310 (fixes F203/F204 scrutiny finding #1): Tiptap 3.30.2's
+  // `createExtensionManager()`/`createSchema()` run ONCE inside `Editor`'s
+  // constructor (verified directly against
+  // node_modules/@tiptap/core/dist/index.cjs by the scrutiny pass) —
+  // `useEditor`'s `extensions` array is only read at construction time,
+  // never re-read on later renders, and `editor.setOptions()` (which IS
+  // called on every render by `@tiptap/react`) only merges top-level
+  // options and updates the view; it never re-runs extension setup. So a
+  // plain closure over `mentionSuggestions` (the previous approach) froze
+  // whatever value was true on the render that first constructed this
+  // editor instance — permanently, even after `mentionSuggestions` changed
+  // on every later render (e.g. comment-list.tsx/task-detail-sheet.tsx
+  // start with an empty array and populate it slightly after mount once
+  // `getMentionCandidates` resolves).
+  //
+  // Fix: `@tiptap/react`'s `useEditor` accepts a second `deps` array
+  // (verified against node_modules/@tiptap/react/dist/index.cjs's
+  // `useEditor(options, deps)` / `refreshEditorInstance(deps)`) that fully
+  // destroys and rebuilds the underlying `Editor` instance — re-running
+  // `sharedExtensions()` with a fresh closure over the CURRENT
+  // `mentionSuggestions` — whenever the dep changes. A plain `useRef` +
+  // `useEffect` "live ref" alternative was tried first but rejected: this
+  // codebase's `react-hooks/refs` lint rule (see checklist.tsx's comment
+  // on the same rule) forbids passing a ref-derived function into a hook
+  // call during render at all, so `deps`-driven recreation is the fix that
+  // actually fits this codebase's lint constraints. Keyed on a stable
+  // string of `id`s (not the array reference, which is a fresh literal
+  // every render in every caller) so the editor is NOT rebuilt on every
+  // keystroke — only when the actual set of mentionable users changes
+  // (e.g. the async `getMentionCandidates` fetch resolving after mount).
+  const mentionSuggestionsKey = (mentionSuggestions ?? [])
+    .map((item) => item.id)
+    .join(" ")
+  // Whether the Mention extension is registered at all still only needs to
+  // be true once — `mentionSuggestionsKey` alone already forces a rebuild
+  // whenever the (non-empty) suggestion set changes, and every real caller
+  // in this codebase passes an array (even initially empty), never
+  // `undefined`transitioning to an array after mount — see
+  // comment-list.tsx / task-detail-sheet.tsx.
+  const mentionsEnabled = mentionSuggestions !== undefined
+
   const editor = useEditor({
     extensions: sharedExtensions({
       assignTaskItemIds: true,
-      // F203: a plain closure over this render's `mentionSuggestions` —
-      // same convention `onReadOnlyChecked` below already uses for a
-      // callback prop threaded into `sharedExtensions`. `sharedExtensions`
-      // re-runs on every render (`useEditor`'s own `mostRecentOptions`
-      // tracks the latest `options` object each render), so this always
-      // reflects the current prop rather than whatever was true when the
-      // editor instance was first constructed.
-      getMentionItems: mentionSuggestions
-        ? () => mentionSuggestions
-        : undefined,
+      // F310: this closure is rebuilt (and the editor instance recreated)
+      // whenever `mentionSuggestionsKey` changes below — see the comment
+      // above.
+      getMentionItems: mentionsEnabled ? () => mentionSuggestions : undefined,
     }),
     content: content ?? undefined,
     editable: !disabled,
@@ -429,22 +464,29 @@ export function RichTextEditor({
     onBlur: () => {
       onBlur?.()
     },
-  })
+  }, [mentionSuggestionsKey])
 
   // Keep the editor in sync when the controlled `content` prop changes
   // from outside (e.g. loading a different task's description).
   useEffect(() => {
-    if (!editor) return
+    // F310: `editor` can be a just-destroyed instance here — `useEditor`'s
+    // own internal effect (registered before this one, since it runs
+    // inside the `useEditor()` call above) may have already recreated the
+    // editor (e.g. `mentionSuggestionsKey` changed) by the time THIS effect
+    // runs in the same commit, but `useSyncExternalStore` hasn't re-rendered
+    // with the new instance yet — calling `.commands` on a destroyed editor
+    // throws (`this.view` is null internally).
+    if (!editor || editor.isDestroyed) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(content ?? { type: "doc", content: [] })
     if (current !== next) {
       editor.commands.setContent(content ?? null, { emitUpdate: false })
     }
-     
+
   }, [content, editor])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
     editor.setEditable(!disabled)
   }, [editor, disabled])
 
@@ -689,12 +731,25 @@ export function RichTextRenderer({
 }: RichTextRendererProps) {
   const safeContent = sanitiseDocument(content)
 
+  // F310: same `deps`-driven recreation fix as `RichTextEditor` above — a
+  // stale closure here is what produced the "persisted mentions render as
+  // grey `Former member` after reload" symptom: freshly-loaded
+  // `mentionSuggestions` arriving after this renderer's editor was first
+  // constructed was never reflected in `resolveMentionDisplay`'s lookups
+  // (called from the Mention extension's `renderHTML`/`renderText`, which
+  // close over whatever `getMentionItems` returned at construction time),
+  // so a mention id that WAS in the up-to-date list still rendered as
+  // unresolved.
+  const mentionSuggestionsKey = (mentionSuggestions ?? [])
+    .map((item) => item.id)
+    .join(" ")
+  const mentionsEnabled = mentionSuggestions !== undefined
+
   const editor = useEditor({
     extensions: sharedExtensions({
-      // F203: same plain-closure convention as `RichTextEditor` above.
-      getMentionItems: mentionSuggestions
-        ? () => mentionSuggestions
-        : undefined,
+      // F310: this closure is rebuilt (and the editor instance recreated)
+      // whenever `mentionSuggestionsKey` changes below.
+      getMentionItems: mentionsEnabled ? () => mentionSuggestions : undefined,
       // F173 (AS-311): read-only checkbox toggling. Optimistic by design —
       // this handler always accepts the click at the DOM level (returns
       // `true`) and hands off persistence to `onToggleTaskItem`; the
@@ -727,10 +782,13 @@ export function RichTextRenderer({
         class: "prose prose-sm dark:prose-invert max-w-none",
       },
     },
-  })
+  }, [mentionSuggestionsKey])
 
   useEffect(() => {
-    if (!editor) return
+    // F310: see the matching comment in `RichTextEditor` above — `editor`
+    // can be a just-destroyed instance in the same commit that
+    // `mentionSuggestionsKey` triggers a recreation.
+    if (!editor || editor.isDestroyed) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(safeContent)
     if (current !== next) {
