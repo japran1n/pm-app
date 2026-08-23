@@ -152,7 +152,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F303 wire-comment-metadata-and-reactions-into-task-detail — AS-363, AS-365, AS-366 [CLARIFIED-AUTO] [COMPLETE]
 - F304 fix-notification-error-swallowing-and-comment-link — AS-374, AS-386 [CLARIFIED-AUTO] [COMPLETE]
 - F305 fix-reactions-soft-delete-and-realtime-leak — AS-369, AS-370 [CLARIFIED-AUTO] [COMPLETE]
-- F306 fan-out-activity-and-notifications-from-remaining-mutation-paths — AS-294, AS-353, AS-355, AS-380, AS-382 [CLARIFIED-AUTO]
+- F306 fan-out-activity-and-notifications-from-remaining-mutation-paths — AS-294, AS-353, AS-355, AS-380, AS-382 [CLARIFIED-AUTO] [COMPLETE]
 - F307 reconcile-notification-preferences-ui-and-mark-as396-blocked — AS-391, AS-396 [CLARIFIED-AUTO]
 - F308 m15-quality-cleanup-bundle — AS-361, AS-373 [CLARIFIED-AUTO]
 
