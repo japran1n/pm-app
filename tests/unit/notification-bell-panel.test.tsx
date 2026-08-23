@@ -9,17 +9,37 @@ import "@testing-library/jest-dom/vitest";
 
 const markNotificationReadMock = vi.fn();
 const markAllNotificationsReadMock = vi.fn();
+const getNotificationSnapshotMock = vi.fn();
 const toastErrorMock = vi.fn();
 
 vi.mock("@/lib/actions/notifications", () => ({
   markNotificationRead: (...args: unknown[]) => markNotificationReadMock(...args),
   markAllNotificationsRead: (...args: unknown[]) => markAllNotificationsReadMock(...args),
+  getNotificationSnapshot: (...args: unknown[]) => getNotificationSnapshotMock(...args),
 }));
 
 vi.mock("sonner", () => ({
   toast: {
     error: (...args: unknown[]) => toastErrorMock(...args),
     success: vi.fn(),
+  },
+}));
+
+// F209 (AS-388): capture the onInsert callback NotificationBell registers
+// with the realtime hook so tests can simulate a live Realtime insert
+// without a real Supabase WebSocket — mirrors how the channel wiring
+// itself is unit-tested in isolation in
+// tests/unit/notifications-realtime-subscription.test.ts. The hook's own
+// mount/unmount lifecycle glue is intentionally not re-tested here.
+let capturedOnInsert: ((event: { workspaceId: string }) => void) | null =
+  null;
+
+vi.mock("@/components/notifications/use-notifications-realtime", () => ({
+  useNotificationsRealtime: (
+    _userId: string | null | undefined,
+    onInsert: (event: { workspaceId: string }) => void,
+  ) => {
+    capturedOnInsert = onInsert;
   },
 }));
 
@@ -30,6 +50,7 @@ import type { NotificationListItem } from "@/lib/queries/notifications";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  capturedOnInsert = null;
 });
 
 const NOW = new Date();
@@ -268,5 +289,67 @@ describe("NotificationPanel (F208: AS-385, AS-386, AS-387)", () => {
       screen.getByRole("button", { name: /mark all as read/i }),
     ).toBeDisabled();
     expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("NotificationBell realtime reconciliation (F209: AS-388)", () => {
+  it("test_AS_388_a_realtime_insert_for_the_active_workspace_reconciles_the_badge_from_the_server_snapshot", async () => {
+    getNotificationSnapshotMock.mockResolvedValue({
+      ok: true,
+      list: [NEWEST, OLDER],
+      unreadCount: 6,
+    });
+
+    render(
+      createElement(NotificationBell, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        currentUserId: "u-current",
+        initialNotifications: [OLDER],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    // Starts at the server-fetched initial count.
+    expect(
+      screen.getByRole("button", { name: /notifications, 1 unread/i }),
+    ).toBeInTheDocument();
+
+    // Simulate a live Realtime INSERT for the active workspace — the bell
+    // re-fetches the server-authoritative snapshot rather than blindly
+    // incrementing a local counter.
+    expect(capturedOnInsert).not.toBeNull();
+    capturedOnInsert!({ workspaceId: "w1" });
+
+    await waitFor(() => expect(getNotificationSnapshotMock).toHaveBeenCalledWith("w1"));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /notifications, 6 unread/i }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("test_AS_388_negative_a_realtime_insert_for_a_different_workspace_does_not_reconcile", async () => {
+    render(
+      createElement(NotificationBell, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        currentUserId: "u-current",
+        initialNotifications: [OLDER],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    expect(capturedOnInsert).not.toBeNull();
+    capturedOnInsert!({ workspaceId: "some-other-workspace" });
+
+    // Give any accidental async work a tick to run, then assert nothing
+    // changed and no snapshot fetch happened for the wrong workspace.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getNotificationSnapshotMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /notifications, 1 unread/i }),
+    ).toBeInTheDocument();
   });
 });

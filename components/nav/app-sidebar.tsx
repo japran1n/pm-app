@@ -137,6 +137,7 @@ function SidebarContent({
         <NotificationBell
           workspaceSlug={workspaceSlug}
           workspaceId={currentWorkspaceId}
+          currentUserId={currentUser.id}
           initialNotifications={initialNotifications}
           initialUnreadCount={initialUnreadCount}
         />
@@ -290,6 +291,7 @@ export function AppSidebar({
         <NotificationBell
           workspaceSlug={workspaceSlug}
           workspaceId={currentWorkspaceId}
+          currentUserId={currentUser.id}
           initialNotifications={initialNotifications}
           initialUnreadCount={initialUnreadCount}
         />

@@ -1,0 +1,299 @@
+// Playwright e2e test for F209 (AS-388: the unread count updates live
+// without a reload) — the genuine live-interaction half of this
+// feature's coverage. Everything provable without a real browser +
+// real Realtime transport (subscription channel/table/filter wiring,
+// the server-snapshot reconciliation contract) is already covered by
+// tests/unit/notifications-realtime-subscription.test.ts and
+// tests/unit/notification-bell-panel.test.tsx's "NotificationBell
+// realtime reconciliation" describe block; this file instead drives the
+// REAL running app, in a REAL browser, against the REAL linked Supabase
+// project, to prove the thing neither of those can: that a genuinely
+// live INSERT into `notifications` is delivered over the wire to an
+// already-open page and updates the bell's badge with NO reload.
+//
+// Two independent Playwright browser contexts stand in for "user A" and
+// "user B" per the feature spec's own named scenario ("user A assigns a
+// task, user B's badge increments without a reload") — user B is the one
+// actually driven through the browser (F208's bell is mounted in the
+// per-workspace sidebar and reachable, so this is a genuine live-UI
+// proof, not a data-layer stand-in); "user A assigns a task" is
+// represented here by an admin-client INSERT into `notifications`
+// exactly matching the shape `public.create_notification()` (F206) would
+// produce for a `task_assigned` event, which is precisely the row F207's
+// real assignment fan-out writes — AS-388 is about whether a new row
+// arriving updates the badge live, not about re-proving F207's own
+// fan-out logic (already covered by tests/integration/
+// notification-fanout.test.ts) or the assignee-picker UI (out of this
+// feature's scope).
+//
+// Seeding + real magic-link auth (admin.generateLink -> follow the link
+// in the real browser -> capture the implicit-flow tokens from the
+// redirect fragment -> inject them into the same `sb-<project-ref>-auth-
+// token` cookie `@supabase/ssr`'s server client reads) is the exact
+// technique tests/e2e/templates-ui.spec.ts/checklist-ui.spec.ts already
+// established — see either file for the full rationale, not re-explained
+// line-by-line here.
+
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { test, expect, type Page } from "@playwright/test";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+function loadDotEnv() {
+  const path = join(process.cwd(), ".env");
+  if (!existsSync(path)) return;
+  const contents = readFileSync(path, "utf8");
+  for (const line of contents.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadDotEnv();
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY);
+if (process.env.CI && !haveAdminCreds) {
+  throw new Error(
+    "F209: missing Supabase credentials required to run this suite in CI (haveAdminCreds is false). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY as GitHub Actions repository secrets.",
+  );
+}
+
+function projectRefFromUrl(url: string): string {
+  const host = new URL(url).hostname;
+  return host.split(".")[0];
+}
+
+test.describe("Notification bell live badge (F209: AS-388)", () => {
+  test.skip(!haveAdminCreds, "requires SUPABASE_SECRET_KEY for admin seeding");
+
+  let adminClient: SupabaseClient;
+  const createdNotificationIds: string[] = [];
+  const createdTaskIds: string[] = [];
+  const createdProjectIds: string[] = [];
+  const createdWorkspaceIds: string[] = [];
+  const createdUserIds: string[] = [];
+
+  let workspaceSlug: string;
+  let workspaceId: string;
+  let projectId: string;
+  let taskId: string;
+  let actorUserId: string; // "user A"
+  let recipientUserId: string; // "user B" — the one driven through the browser
+  let recipientEmail: string;
+
+  test.beforeAll(async () => {
+    adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    workspaceSlug = `f209-notifications-${uniqueSuffix}`;
+
+    const { data: ws, error: wsErr } = await adminClient
+      .from("workspaces")
+      .insert({ name: "F209 Test Workspace", slug: workspaceSlug })
+      .select("id")
+      .single();
+    if (wsErr || !ws) {
+      throw new Error(`Failed to create test workspace: ${wsErr?.message}`);
+    }
+    workspaceId = ws.id;
+    createdWorkspaceIds.push(workspaceId);
+
+    const { data: actorAuth, error: actorAuthErr } =
+      await adminClient.auth.admin.createUser({
+        email: `f209-actor-${uniqueSuffix}@example.com`,
+        email_confirm: true,
+      });
+    if (actorAuthErr || !actorAuth.user) {
+      throw new Error(`Failed to create actor user: ${actorAuthErr?.message}`);
+    }
+    actorUserId = actorAuth.user.id;
+    createdUserIds.push(actorUserId);
+
+    recipientEmail = `f209-recipient-${uniqueSuffix}@example.com`;
+    const { data: recipientAuth, error: recipientAuthErr } =
+      await adminClient.auth.admin.createUser({
+        email: recipientEmail,
+        email_confirm: true,
+      });
+    if (recipientAuthErr || !recipientAuth.user) {
+      throw new Error(
+        `Failed to create recipient user: ${recipientAuthErr?.message}`,
+      );
+    }
+    recipientUserId = recipientAuth.user.id;
+    createdUserIds.push(recipientUserId);
+
+    const { error: membersErr } = await adminClient
+      .from("workspace_members")
+      .insert([
+        { workspace_id: workspaceId, user_id: actorUserId, role: "member", status: "active" },
+        { workspace_id: workspaceId, user_id: recipientUserId, role: "member", status: "active" },
+      ]);
+    if (membersErr) {
+      throw new Error(`Failed to seed members: ${membersErr.message}`);
+    }
+
+    const { data: proj, error: projErr } = await adminClient
+      .from("projects")
+      .insert({
+        workspace_id: workspaceId,
+        name: `F209 Project ${uniqueSuffix}`,
+        created_by: actorUserId,
+      })
+      .select("id")
+      .single();
+    if (projErr || !proj) {
+      throw new Error(`Failed to create test project: ${projErr?.message}`);
+    }
+    projectId = proj.id;
+    createdProjectIds.push(projectId);
+
+    const { data: task, error: taskErr } = await adminClient
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: `F209 Assigned Task ${uniqueSuffix}`,
+        author_id: actorUserId,
+        status: "todo",
+        position: 100,
+      })
+      .select("id")
+      .single();
+    if (taskErr || !task) {
+      throw new Error(`Failed to create test task: ${taskErr?.message}`);
+    }
+    taskId = task.id;
+    createdTaskIds.push(taskId);
+  });
+
+  test.afterAll(async () => {
+    for (const notificationId of createdNotificationIds) {
+      await adminClient.from("notifications").delete().eq("id", notificationId);
+    }
+    for (const tId of createdTaskIds) {
+      await adminClient.from("tasks").delete().eq("id", tId);
+    }
+    for (const pId of createdProjectIds) {
+      await adminClient.from("projects").delete().eq("id", pId);
+    }
+    for (const wsId of createdWorkspaceIds) {
+      await adminClient.from("workspace_members").delete().eq("workspace_id", wsId);
+      await adminClient.from("workspaces").delete().eq("id", wsId);
+    }
+    for (const userId of createdUserIds) {
+      await adminClient.auth.admin.deleteUser(userId);
+    }
+  });
+
+  // Same real-magic-link-then-cookie-injection technique as this
+  // codebase's other e2e specs — see templates-ui.spec.ts for the full
+  // rationale.
+  async function loginAsRecipient(page: Page, baseURL: string) {
+    const { data: linkData, error: linkErr } =
+      await adminClient.auth.admin.generateLink({
+        type: "magiclink",
+        email: recipientEmail,
+        options: { redirectTo: `${baseURL}/auth/callback` },
+      });
+    if (linkErr || !linkData?.properties?.action_link) {
+      throw new Error(`Failed to generate magic link: ${linkErr?.message}`);
+    }
+
+    await page.goto(linkData.properties.action_link);
+    await page.waitForURL(/\/sign-in\?error=auth_failed#/, {
+      timeout: 15_000,
+    });
+
+    const fragment = new URL(page.url()).hash.slice(1);
+    const params = new URLSearchParams(fragment);
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    const expiresIn = params.get("expires_in");
+    const expiresAt = params.get("expires_at");
+    if (!accessToken || !refreshToken) {
+      throw new Error(
+        `Magic link redirect did not carry session tokens: ${page.url()}`,
+      );
+    }
+
+    const projectRef = projectRefFromUrl(SUPABASE_URL!);
+    const session = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "bearer",
+      expires_in: expiresIn ? Number(expiresIn) : 3600,
+      expires_at: expiresAt
+        ? Number(expiresAt)
+        : Math.floor(Date.now() / 1000) + 3600,
+      user: { id: recipientUserId, email: recipientEmail },
+    };
+    const cookieValue =
+      "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
+
+    await page.context().addCookies([
+      {
+        name: `sb-${projectRef}-auth-token`,
+        value: cookieValue,
+        url: baseURL,
+      },
+    ]);
+
+    await page.goto(`${baseURL}/w/${workspaceSlug}`);
+    await page.waitForURL(`**/w/${workspaceSlug}`, { timeout: 15_000 });
+  }
+
+  test("AS-388: a new notification for the signed-in user increments the bell's badge live, with no reload", async ({
+    page,
+    baseURL,
+  }) => {
+    await loginAsRecipient(page, baseURL!);
+
+    const bell = page.getByRole("button", { name: "Notifications" });
+    await expect(bell).toBeVisible();
+
+    // "user A assigns a task" -> a `task_assigned` notification row lands
+    // for "user B" — the exact shape F207's real assignment fan-out
+    // writes via public.create_notification() (F206's SECURITY DEFINER
+    // function; used directly here via the admin client for a
+    // deterministic, single-row trigger rather than driving the full
+    // multi-assignee picker UI, which is out of this feature's scope).
+    const { data: rpcResult, error: rpcErr } = await adminClient.rpc(
+      "create_notification",
+      {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceId,
+        p_kind: "task_assigned",
+        p_actor_id: actorUserId,
+        p_task_id: taskId,
+      },
+    );
+    if (rpcErr) {
+      throw new Error(`Failed to create notification: ${rpcErr.message}`);
+    }
+    const createdNotification = rpcResult as { id: string };
+    createdNotificationIds.push(createdNotification.id);
+
+    // No reload, no manual re-fetch trigger from the test — this must be
+    // the app's own Realtime subscription + reconciliation picking up the
+    // live insert (tab-focus reconciliation is a client-side fallback,
+    // not what's exercised here: the page never loses focus).
+    await expect(
+      page.getByRole("button", { name: "Notifications, 1 unread" }),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Prepended into the (now-open) panel too.
+    await bell.click();
+    await expect(page.getByText(/assigned you to/i)).toBeVisible();
+  });
+});

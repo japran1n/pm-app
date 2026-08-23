@@ -21,6 +21,10 @@ import {
   markNotificationReadSchema,
   markAllNotificationsReadSchema,
 } from "@/lib/validation/notifications";
+import {
+  getNotificationsForWorkspace,
+  type NotificationListItem,
+} from "@/lib/queries/notifications";
 
 export type MarkNotificationReadResult =
   | { ok: true }
@@ -127,4 +131,45 @@ export async function markAllNotificationsRead(
   }
 
   return { ok: true };
+}
+
+export type NotificationSnapshotResult =
+  | { ok: true; list: NotificationListItem[]; unreadCount: number }
+  | { ok: false; error: string };
+
+// F209 (AS-388): a fresh, server-authoritative snapshot of the caller's
+// notification inbox for `workspaceId` — the single source of truth this
+// feature's realtime hook and tab-focus reconciliation both call through,
+// rather than each maintaining its own incremented/decremented copy of
+// the unread count. This is the exact same query
+// components/notifications/notification-bell.tsx's initial server-side
+// render already uses (lib/queries/notifications.ts's
+// getNotificationsForWorkspace) — no second read path, no second source
+// of truth, per the clarified "simpler option" ambiguity answer:
+//
+// - Realtime INSERT event arrives (subscription-level user_id scoping,
+//   see subscribe-notifications-realtime.ts) -> re-fetch this snapshot
+//   -> badge + panel list both update from real server state, not from a
+//   client-side `+1` that could drift.
+// - Tab regains focus/visibility -> re-fetch this snapshot -> self-heals
+//   a badge that a missed Realtime event (e.g. a dropped WebSocket while
+//   the tab was backgrounded) could otherwise have left permanently
+//   wrong.
+export async function getNotificationSnapshot(
+  workspaceId: string,
+): Promise<NotificationSnapshotResult> {
+  const parsed = markAllNotificationsReadSchema.safeParse({ workspaceId });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid workspace.",
+    };
+  }
+
+  const { list, unreadCount } = await getNotificationsForWorkspace(
+    parsed.data.workspaceId,
+  );
+
+  return { ok: true, list, unreadCount };
 }

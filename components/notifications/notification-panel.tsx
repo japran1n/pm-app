@@ -83,6 +83,8 @@ export function NotificationPanel({
   initialUnreadCount,
   onUnreadCountChange,
   emptyStateClassName,
+  liveSnapshot,
+  liveSnapshotVersion,
 }: {
   workspaceSlug: string;
   workspaceId: string;
@@ -93,11 +95,45 @@ export function NotificationPanel({
    * second fetch. */
   onUnreadCountChange?: (nextCount: number) => void;
   emptyStateClassName?: string;
+  /** F209 (AS-388): a fresh server snapshot pushed down from
+   * NotificationBell after a Realtime insert or a tab-focus
+   * reconciliation (see lib/actions/notifications.ts's
+   * getNotificationSnapshot). Optional and undefined by default so every
+   * pre-F209 caller/test that doesn't pass it keeps behaving exactly as
+   * before — this panel stays the sole owner of its `notifications`
+   * state otherwise. When `liveSnapshotVersion` changes and `liveSnapshot`
+   * is present, that snapshot REPLACES local state wholesale: it's the
+   * server-authoritative truth (same query the initial render used), so
+   * there is no second, independently-maintained copy to drift from it. */
+  liveSnapshot?: { list: NotificationListItem[]; unreadCount: number } | null;
+  liveSnapshotVersion?: number;
 }) {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [isMarkingAll, startMarkAllTransition] = useTransition();
+
+  // AS-388: a Realtime insert or tab-focus reconciliation up in
+  // NotificationBell resolves into a fresh server snapshot; when it
+  // changes, this open panel adopts it directly instead of a second
+  // client-maintained list/counter. Adjusted during render (React's
+  // documented "adjusting state when a prop changes" pattern —
+  // https://react.dev/learn/you-might-not-need-an-effect) rather than in
+  // a useEffect, so the panel never briefly commits/paints the stale
+  // list before catching up a tick later.
+  const [appliedSnapshotVersion, setAppliedSnapshotVersion] = useState(
+    liveSnapshotVersion,
+  );
+  if (
+    liveSnapshot &&
+    liveSnapshotVersion !== undefined &&
+    liveSnapshotVersion !== appliedSnapshotVersion
+  ) {
+    setAppliedSnapshotVersion(liveSnapshotVersion);
+    setNotifications(liveSnapshot.list);
+    setUnreadCount(liveSnapshot.unreadCount);
+    onUnreadCountChange?.(liveSnapshot.unreadCount);
+  }
 
   function updateUnreadCount(next: number) {
     setUnreadCount(next);
