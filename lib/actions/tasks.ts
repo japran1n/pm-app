@@ -3184,7 +3184,11 @@ export async function getTaskDetail(
   ] = await Promise.all([
     admin
       .from("comments")
-      .select("id, task_id, user_id, text, created_at")
+      // F303 follow-up (D3/FU-1, AS-363): `edited_at` and `body_json`
+      // added — previously omitted, which is why the "(edited)" marker and
+      // rich-text body only ever survived within the posting session and
+      // silently reverted on reload (getTaskDetail never carried them).
+      .select("id, task_id, user_id, text, body_json, created_at, edited_at")
       .eq("task_id", parsed.data.taskId)
       .is("deleted_at", null)
       .order("created_at", { ascending: true }),
@@ -3212,6 +3216,50 @@ export async function getTaskDetail(
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
     };
+  }
+
+  // F303 follow-up (D3/FU-1, AS-365, AS-366): batched fetch of every
+  // comment's reactions in ONE query (not one query per comment — same
+  // batch-then-group-in-TS convention as
+  // lib/comments/mentions.ts's resolveVisibleMentionIds and
+  // lib/queries/notifications.ts's actor/task batching), grouped here by
+  // `comment_id` then `emoji` into exactly `CommentReactionSummary`'s
+  // shape (components/task/comment-reactions.tsx) so `TaskComment.reactions`
+  // is directly assignable with no second, incompatible shape. Skipped
+  // entirely when this task has no comments (nothing to react to).
+  const commentIds = (commentsResult.data ?? []).map((row) => row.id);
+  const reactionsByCommentId = new Map<string, Map<string, string[]>>();
+  if (commentIds.length > 0) {
+    const { data: reactionRows, error: reactionsError } = await admin
+      .from("comment_reactions")
+      .select("comment_id, user_id, emoji")
+      .in("comment_id", commentIds)
+      .order("created_at", { ascending: true });
+
+    if (reactionsError) {
+      console.error(
+        "getTaskDetail: reactions fetch failed:",
+        reactionsError,
+      );
+      return {
+        ok: false,
+        error: "Something went wrong loading this task. Please try again.",
+      };
+    }
+
+    for (const row of reactionRows ?? []) {
+      let byEmoji = reactionsByCommentId.get(row.comment_id);
+      if (!byEmoji) {
+        byEmoji = new Map<string, string[]>();
+        reactionsByCommentId.set(row.comment_id, byEmoji);
+      }
+      const userIds = byEmoji.get(row.emoji);
+      if (userIds) {
+        userIds.push(row.user_id);
+      } else {
+        byEmoji.set(row.emoji, [row.user_id]);
+      }
+    }
   }
 
   if (attachmentsResult.error) {
@@ -3489,7 +3537,19 @@ export async function getTaskDetail(
         taskId: row.task_id,
         userId: row.user_id,
         text: row.text,
+        // F303 follow-up (D3/FU-1, AS-363): body_json/edited_at now
+        // actually selected above — this is the read-path fix that makes
+        // the "(edited)" marker and rich-text body survive a reload.
+        bodyJson: row.body_json as TaskComment["bodyJson"],
         createdAt: row.created_at,
+        editedAt: row.edited_at,
+        // F303 follow-up (D3/FU-1, AS-365, AS-366): from the batched fetch
+        // above, converted into CommentReactionSummary's exact shape.
+        // Falls back to [] for a comment with no reactions, same
+        // "always an array" convention as assigneeIds/watcherIds above.
+        reactions: Array.from(
+          reactionsByCommentId.get(row.id)?.entries() ?? [],
+        ).map(([emoji, userIds]) => ({ emoji, userIds })),
       })),
       attachments,
       currentUserId: user.id,
