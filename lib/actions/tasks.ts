@@ -41,6 +41,7 @@ import {
   notifyNewlyMentionedUsers,
 } from "@/lib/notifications/mentions";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
+import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
@@ -819,11 +820,17 @@ async function setTaskAssigneesCore(
   // role call would have no `auth.uid()` and would be rejected as
   // unauthenticated for a non-system notification.
   try {
-    const recipients = computeFanoutRecipients({
+    const computedRecipients = computeFanoutRecipients({
       type: "assigned",
       actorId: userId,
       assigneeIds: toAdd,
     });
+    // F211 (AS-391): drop recipients who have this kind's in-app channel
+    // disabled before ever calling create_notification.
+    const recipients = await filterRecipientsByInAppPreference(
+      admin,
+      computedRecipients ?? [],
+    );
     for (const recipient of recipients ?? []) {
       try {
         await supabase.rpc("create_notification", {
@@ -2310,11 +2317,17 @@ export async function moveTaskStatus(
       .eq("is_watching", true);
     const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
 
-    const recipients = computeFanoutRecipients({
+    const computedRecipients = computeFanoutRecipients({
       type: "status_changed",
       actorId: user.id,
       watcherIds,
     });
+    // F211 (AS-391): drop recipients who have this kind's in-app channel
+    // disabled before ever calling create_notification.
+    const recipients = await filterRecipientsByInAppPreference(
+      admin,
+      computedRecipients ?? [],
+    );
     for (const recipient of recipients ?? []) {
       try {
         await supabase.rpc("create_notification", {

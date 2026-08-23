@@ -267,6 +267,57 @@ export type Database = {
           },
         ]
       }
+      notification_preferences: {
+        Row: {
+          comment_reply_email: boolean
+          comment_reply_in_app: boolean
+          created_at: string
+          email_enabled: boolean
+          mention_email: boolean
+          mention_in_app: boolean
+          task_assigned_email: boolean
+          task_assigned_in_app: boolean
+          task_due_soon_email: boolean
+          task_due_soon_in_app: boolean
+          updated_at: string
+          user_id: string
+          watcher_update_email: boolean
+          watcher_update_in_app: boolean
+        }
+        Insert: {
+          comment_reply_email?: boolean
+          comment_reply_in_app?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          mention_email?: boolean
+          mention_in_app?: boolean
+          task_assigned_email?: boolean
+          task_assigned_in_app?: boolean
+          task_due_soon_email?: boolean
+          task_due_soon_in_app?: boolean
+          updated_at?: string
+          user_id: string
+          watcher_update_email?: boolean
+          watcher_update_in_app?: boolean
+        }
+        Update: {
+          comment_reply_email?: boolean
+          comment_reply_in_app?: boolean
+          created_at?: string
+          email_enabled?: boolean
+          mention_email?: boolean
+          mention_in_app?: boolean
+          task_assigned_email?: boolean
+          task_assigned_in_app?: boolean
+          task_due_soon_email?: boolean
+          task_due_soon_in_app?: boolean
+          updated_at?: string
+          user_id?: string
+          watcher_update_email?: boolean
+          watcher_update_in_app?: boolean
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           actor_id: string | null

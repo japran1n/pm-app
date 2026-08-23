@@ -27,6 +27,7 @@ import type { JSONContent } from "@tiptap/react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
+import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 
 /** Walks a Tiptap JSONContent tree collecting every `mention` node's
  * `attrs.id`. Deliberately duplicated from
@@ -125,11 +126,18 @@ export async function notifyNewlyMentionedUsers(params: {
     return { notified: [] };
   }
 
-  const recipients = computeFanoutRecipients({
+  const computedRecipients = computeFanoutRecipients({
     type: "mentioned",
     actorId: params.authorId,
     mentionedIds: params.newlyMentionedUserIds,
   });
+
+  // F211 (AS-391): drop recipients who have this kind's in-app channel
+  // disabled before ever calling create_notification.
+  const recipients = await filterRecipientsByInAppPreference(
+    params.admin,
+    computedRecipients ?? [],
+  );
 
   const notified: string[] = [];
 

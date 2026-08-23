@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "@/components/profile/profile-form";
+import { NotificationPreferencesForm } from "@/components/notifications/preferences-form";
+import { getNotificationPreferences } from "@/lib/actions/notification-preferences";
 
 // F123 (AS-202): the profile settings page — display name, avatar upload
 // with live preview, and timezone. Server Component for data loading, per
@@ -64,6 +66,36 @@ export default async function ProfileSettingsPage() {
   // list and the server-side check agree on what's selectable.
   const timezones = ["UTC", ...Intl.supportedValuesOf("timeZone")];
 
+  // F211 (AS-391, AS-396): notification preferences, loaded server-side
+  // and passed down as typed props, same pattern as the profile fields
+  // above. getNotificationPreferences already fails open to this
+  // feature's documented defaults if the row is somehow missing, so
+  // `preferencesResult.ok` is only ever false on a genuine auth/read
+  // error (already unreachable here — `user` is confirmed above), not on
+  // "no row yet".
+  const preferencesResult = await getNotificationPreferences();
+  if (!preferencesResult.ok) {
+    console.error(
+      "ProfileSettingsPage: failed to load notification preferences:",
+      preferencesResult.error,
+    );
+  }
+  const notificationPreferences = preferencesResult.ok
+    ? preferencesResult.data
+    : {
+        mentionInApp: true,
+        mentionEmail: true,
+        taskAssignedInApp: true,
+        taskAssignedEmail: true,
+        commentReplyInApp: true,
+        commentReplyEmail: false,
+        watcherUpdateInApp: true,
+        watcherUpdateEmail: false,
+        taskDueSoonInApp: true,
+        taskDueSoonEmail: false,
+        emailEnabled: true,
+      };
+
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
@@ -81,6 +113,17 @@ export default async function ProfileSettingsPage() {
         avatarUrl={profile?.avatar_url ?? null}
         timezone={timezone}
         timezones={timezones}
+      />
+
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">Notifications</h2>
+        <p className="text-sm text-muted-foreground">
+          Choose which notifications you receive, and how.
+        </p>
+      </div>
+
+      <NotificationPreferencesForm
+        initialPreferences={notificationPreferences}
       />
     </div>
   );

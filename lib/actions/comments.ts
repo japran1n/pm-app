@@ -19,6 +19,7 @@ import {
 } from "@/lib/comments/mentions";
 import { extractMentionIds } from "@/lib/notifications/mentions";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
+import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -276,12 +277,21 @@ export async function addComment(
       .eq("is_watching", true);
     const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
 
-    const recipients = computeFanoutRecipients({
+    const computedRecipients = computeFanoutRecipients({
       type: "commented",
       actorId: user.id,
       watcherIds,
       mentionedIds,
     });
+
+    // F211 (AS-391): drop recipients who have this kind's in-app channel
+    // disabled before ever calling create_notification, so a disabled
+    // preference means no row is ever written, not merely a row the UI
+    // happens to hide.
+    const recipients = await filterRecipientsByInAppPreference(
+      admin,
+      computedRecipients ?? [],
+    );
 
     for (const recipient of recipients ?? []) {
       try {
