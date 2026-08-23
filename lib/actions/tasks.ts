@@ -1406,6 +1406,64 @@ export async function editTask(
       },
     );
     await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
+
+    // F319 (AS-294): watchers are notified of a task's activity generally,
+    // not just status changes (moveTaskStatus, above) and comments
+    // (addComment) — a title/priority/due-date/estimate edit is exactly as
+    // much "activity on a watched task" as those, per this feature's
+    // Clarified implementation. Scoped to the SAME set of fields
+    // diffTaskFields/writeTaskFieldChanges just activity-logged above (not
+    // every possible internal field), and only fires when `changes` is
+    // non-empty — a no-op save (re-saving identical values) produces zero
+    // diffed changes and therefore zero notifications, matching this
+    // codebase's "diff first, only act on real changes" convention.
+    // Reuses the "status_changed" fan-out event (-> `watcher_update` kind)
+    // rather than inventing a new NotificationKind: the notification's
+    // purpose ("something about a task I'm watching changed") is identical
+    // regardless of which specific field changed, same as moveTaskStatus's
+    // block below. Non-fatal, same convention as writeTaskFieldChanges
+    // itself.
+    if (changes.length > 0) {
+      try {
+        const { data: watcherRows } = await admin
+          .from("task_watchers")
+          .select("user_id")
+          .eq("task_id", parsed.data.taskId)
+          .eq("is_watching", true);
+        const watcherIds = (watcherRows ?? []).map(
+          (row) => row.user_id as string,
+        );
+
+        const computedRecipients = computeFanoutRecipients({
+          type: "status_changed",
+          actorId: user.id,
+          watcherIds,
+        });
+        // F211 (AS-391): drop recipients who have this kind's in-app
+        // channel disabled before ever calling create_notification.
+        const recipients = await filterRecipientsByInAppPreference(
+          admin,
+          computedRecipients ?? [],
+        );
+        for (const recipient of recipients ?? []) {
+          await createNotification(
+            supabase,
+            {
+              userId: recipient.userId,
+              workspaceId,
+              kind: recipient.kind,
+              taskId: parsed.data.taskId,
+            },
+            "editTask",
+          );
+        }
+      } catch (fanoutError) {
+        console.error(
+          "editTask: notification fan-out failed (non-fatal):",
+          fanoutError,
+        );
+      }
+    }
   } catch (activityError) {
     console.error(
       "editTask: writeTaskFieldChanges failed (non-fatal):",
