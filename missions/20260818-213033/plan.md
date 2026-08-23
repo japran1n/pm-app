@@ -168,7 +168,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F313 fix-template-copy-mention-bypass-and-getmentioncandidates-rejection — AS-376 [CLARIFIED-AUTO] [COMPLETE]
 - F316 fix-create-project-from-template-mention-bypass — AS-376 [CLARIFIED-AUTO]
 - F314 fix-mention-picker-real-coverage-rename-repaint-and-focus-loss — AS-371, AS-372, AS-373, AS-378 [CLARIFIED-AUTO] [COMPLETE]
-- F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO]
+- F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
 
