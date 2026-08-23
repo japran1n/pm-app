@@ -151,6 +151,24 @@ grant execute on function public.notify_overdue_task_assignees() to postgres, se
 -- rationale (this feature's spec: "the sweep runs hourly", explicitly
 -- named in the Notes/Clarified-implementation ambiguity-resolution text
 -- above -- not a worker's own interval choice this time).
+--
+-- Idempotency (F308/FU-12 item 8): `cron.schedule(job_name, schedule,
+-- command)` -- the named-job four-argument form used here, not the
+-- older nameless three-argument overload -- is idempotent BY NAME as of
+-- pg_cron 1.4+: re-running it with the same job_name UPDATES the existing
+-- job's schedule/command in place rather than erroring or inserting a
+-- second row into cron.job. This project's linked instance runs pg_cron
+-- 1.6.4 (`select extversion from pg_extension where extname = 'pg_cron'`,
+-- checked via the Management API SQL endpoint this feature's own test
+-- suite already uses), well past that threshold, and `select jobname,
+-- schedule, active from cron.job where jobname =
+-- 'notify-overdue-task-assignees'` against the linked project confirms
+-- exactly one row exists with this schedule -- no duplicate from this
+-- migration having already been applied once. No explicit
+-- cron.unschedule() guard is needed as a result; see the new
+-- "cron schedule is registered" test in
+-- tests/integration/overdue-notification-sweep.test.ts (F308) for the
+-- ongoing regression check.
 select cron.schedule(
   'notify-overdue-task-assignees',
   '0 * * * *',

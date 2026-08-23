@@ -39,16 +39,23 @@
 // feature's Draft scope: "Load a bounded window ... with a load-more
 // control").
 //
-// AS-361: grouped by day with readable relative timestamps, computed in
-// the user's timezone via lib/time/user-timezone.ts's shared
-// todayInTimeZone/startOfDayInTimeZone (F124/F275's infrastructure) —
-// never UTC, never the browser's ambient zone. All of the actual
-// day-bucketing/label logic lives in the pure, independently unit-tested
-// groupTaskActivityEntriesByDay (lib/activity/format-task-activity-entry.ts)
-// — this component only renders what that function returns.
+// AS-361: grouped by day (the day boundary computed in the user's
+// timezone via lib/time/user-timezone.ts's shared todayInTimeZone/
+// startOfDayInTimeZone, F124/F275's infrastructure — never UTC, never the
+// browser's ambient zone; that day-bucketing/label logic lives in the
+// pure, independently unit-tested groupTaskActivityEntriesByDay in
+// lib/activity/format-task-activity-entry.ts), AND each entry's own
+// timestamp is rendered as a relative time ("2 hours ago") via
+// date-fns's formatDistanceToNow — the same helper comment-list.tsx and
+// notification-panel.tsx already use for their own per-item timestamps
+// (F308/FU-12: this used to render an absolute clock time here; fixed to
+// match the assertion text instead of re-interpreting it). The exact
+// absolute time is still available via this <time> element's `title`
+// attribute for anyone who hovers.
 
 import { useEffect, useState } from "react";
 import { Loader2, History } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 import { getTaskActivityFeed } from "@/lib/actions/task-activity";
 import {
@@ -63,6 +70,7 @@ import {
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { TaskDetailSheetMember } from "@/components/task/task-detail-sheet";
 
 /** Same "name -> email -> id" fallback chain personLabel/authorLabel use
  * elsewhere in this Sheet (comment-list.tsx's own authorLabel) — kept as
@@ -73,6 +81,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 function actorDisplayLabel(row: TaskActivityRow): string | null {
   if (!row.actorId) return null; // system entry — formatTaskActivityEntry renders "System"
   return row.actorName || row.actorEmail || row.actorId;
+}
+
+/** F308 (FU-12 item 2): resolves an assignee-change entry's user id to a
+ * display label from the workspace `members` list — same "name -> email ->
+ * id" fallback chain as `actorDisplayLabel`/task-detail-sheet's own
+ * memberLabel. A user id with no matching member (e.g. a former member
+ * who's since lost access) still falls back to the raw id rather than
+ * silently producing "someone" for a real, resolvable-elsewhere id. */
+function makeResolveAssigneeLabel(
+  members: TaskDetailSheetMember[],
+): (userId: string) => string | null {
+  return (userId: string) => {
+    const member = members.find((m) => m.userId === userId);
+    if (!member) return userId;
+    return member.name || member.email || member.userId;
+  };
 }
 
 function actorPerson(row: TaskActivityRow): UserAvatarPerson | null {
@@ -88,12 +112,21 @@ function actorPerson(row: TaskActivityRow): UserAvatarPerson | null {
 export function ActivityFeed({
   taskId,
   timezone,
+  members = [],
 }: {
   taskId: string;
   /** F124/F275: the viewer's IANA timezone, same prop task-detail-sheet.tsx
    * already threads through to every other timezone-aware surface in this
    * Sheet (isOverdue, formatDueDate). */
   timezone: string;
+  /** F308 (FU-12 item 2): workspace members, used to resolve an
+   * assignee-change entry's old/new user id into a real display name
+   * (same "name -> email -> id" fallback chain as memberLabel/
+   * authorLabel elsewhere in this Sheet) instead of the generic
+   * "someone" placeholder. Optional/defaulted so existing callers/tests
+   * that don't pass it still render (assignee entries just fall back to
+   * "someone", same as before this fix). */
+  members?: TaskDetailSheetMember[];
 }) {
   const [rows, setRows] = useState<TaskActivityRow[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -179,6 +212,7 @@ export function ActivityFeed({
   // AS-358: rows already arrive newest-first from the query; the group
   // function preserves that ordering, it does not re-sort.
   const groups = groupTaskActivityEntriesByDay(rows, timezone);
+  const resolveAssigneeLabel = makeResolveAssigneeLabel(members);
 
   return (
     <div className="flex flex-col gap-4">
@@ -197,6 +231,7 @@ export function ActivityFeed({
                 newValue: row.newValue,
                 actorLabel: actorDisplayLabel(row),
                 timeZone: timezone,
+                resolveAssigneeLabel,
               });
 
               return (
@@ -214,9 +249,12 @@ export function ActivityFeed({
                   <span className="flex-1">{sentence}</span>
                   <time
                     dateTime={row.createdAt}
+                    title={formatTaskActivityTime(row.createdAt, timezone)}
                     className="shrink-0 text-xs text-muted-foreground"
                   >
-                    {formatTaskActivityTime(row.createdAt, timezone)}
+                    {formatDistanceToNow(new Date(row.createdAt), {
+                      addSuffix: true,
+                    })}
                   </time>
                 </li>
               );

@@ -303,6 +303,18 @@ export function CommentList({
       label: member.name || member.email || member.userId,
     }));
 
+  // F308 (FU-12 item 3, AS-373): resolves a mention node's id to its live
+  // display label for extractPlainText's projection — same member/label
+  // source `mentionSuggestions` above already uses, just widened to the
+  // full `members` list (not filtered to `visibleMentionIds`) so a
+  // mention this composer instance can't currently re-suggest (e.g. the
+  // mentioned member just lost project access) still resolves to a real
+  // name rather than falling back to the raw id.
+  const resolveMentionLabel = (userId: string): string | null => {
+    const member = members.find((m) => m.userId === userId);
+    return member ? member.name || member.email || member.userId : null;
+  };
+
   const [localComments, setLocalComments] = useState(comments);
   // Tracks which task's comments are currently loaded into local state, so
   // it can be re-synced below without an Effect — same "adjust state
@@ -409,7 +421,7 @@ export function CommentList({
   }
 
   function saveEdit(commentId: string) {
-    const plainText = extractPlainText(editDraft);
+    const plainText = extractPlainText(editDraft, resolveMentionLabel);
     if (!plainText) return;
 
     startEditTransition(async () => {
@@ -498,7 +510,7 @@ export function CommentList({
   }
 
   const orderedComments = sortedOldestFirst(localComments);
-  const draftPlainText = extractPlainText(draft);
+  const draftPlainText = extractPlainText(draft, resolveMentionLabel);
 
   // F304 (AS-374 follow-up): scroll to and briefly highlight the comment
   // requested via the notification deep-link, once it's actually
@@ -683,7 +695,7 @@ export function CommentList({
                   ) : (
                     <input
                       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                      value={extractPlainText(editDraft)}
+                      value={extractPlainText(editDraft, resolveMentionLabel)}
                       disabled={isSavingEdit}
                       onChange={(changeEvent) =>
                         setEditDraft(
@@ -705,7 +717,9 @@ export function CommentList({
                     <Button
                       type="button"
                       size="sm"
-                      disabled={isSavingEdit || !extractPlainText(editDraft)}
+                      disabled={
+                        isSavingEdit || !extractPlainText(editDraft, resolveMentionLabel)
+                      }
                       onClick={() => saveEdit(comment.id)}
                     >
                       {isSavingEdit ? (

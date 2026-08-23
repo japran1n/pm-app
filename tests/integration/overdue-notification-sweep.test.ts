@@ -288,5 +288,25 @@ describe.skipIf(!haveMgmtCreds)(
       `);
       expect(notifications).toHaveLength(0);
     });
+
+    // F308 (FU-12 item 7): every other test in this suite calls
+    // notify_overdue_task_assignees() directly by hand -- none of them
+    // query cron.job, so deleting the `cron.schedule(...)` call from
+    // 20260823050000_overdue_notification_sweep.sql's migration wouldn't
+    // fail any test here. This one queries cron.job directly (the same
+    // Management-API-SQL-bypass path this whole suite already uses, per
+    // this file's own header comment) to confirm the scheduled job
+    // itself is actually registered with the expected hourly schedule.
+    it("registers the notify-overdue-task-assignees hourly cron job", async () => {
+      const jobs = await sql<{ jobname: string; schedule: string; active: boolean }>(`
+        select jobname, schedule, active
+        from cron.job
+        where jobname = 'notify-overdue-task-assignees';
+      `);
+
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].schedule).toBe("0 * * * *");
+      expect(jobs[0].active).toBe(true);
+    });
   },
 );

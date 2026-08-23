@@ -1314,7 +1314,11 @@ export function TaskDetailSheet({
                   />
                 </TabsContent>
                 <TabsContent value="activity">
-                  <ActivityFeed taskId={task.id} timezone={timezone} />
+                  <ActivityFeed
+                    taskId={task.id}
+                    timezone={timezone}
+                    members={members}
+                  />
                 </TabsContent>
               </Tabs>
 

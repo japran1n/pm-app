@@ -189,18 +189,21 @@ export type Database = {
           comment_id: string
           created_at: string
           emoji: string
+          task_id: string
           user_id: string
         }
         Insert: {
           comment_id: string
           created_at?: string
           emoji: string
+          task_id: string
           user_id: string
         }
         Update: {
           comment_id?: string
           created_at?: string
           emoji?: string
+          task_id?: string
           user_id?: string
         }
         Relationships: [
@@ -209,6 +212,20 @@ export type Database = {
             columns: ["comment_id"]
             isOneToOne: false
             referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_reactions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_reactions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]
@@ -1114,6 +1131,7 @@ export type Database = {
           p_comment_id?: string
           p_kind: string
           p_payload?: Json
+          p_system?: boolean
           p_task_id?: string
           p_user_id: string
           p_workspace_id: string
@@ -1280,6 +1298,7 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      notify_overdue_task_assignees: { Args: never; Returns: number }
       purge_comment: {
         Args: { p_comment_id: string }
         Returns: {

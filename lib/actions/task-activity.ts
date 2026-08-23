@@ -55,5 +55,15 @@ export async function getTaskActivityFeed(
   }
 
   const page = await getTaskActivityPage(parsed.data.taskId, limit);
+  // F308 (FU-12 item 6): a real query failure inside getTaskActivityPage
+  // sets `page.error` (distinct from a genuine "zero rows" empty page,
+  // which never sets it) — propagate that as this action's own `ok:
+  // false` so ActivityFeed's existing error-vs-empty branching (it
+  // already renders a distinct "Retry" state for `ok: false`) covers this
+  // case too, instead of a transient DB failure rendering as "No activity
+  // yet."
+  if (page.error) {
+    return { ok: false, error: page.error };
+  }
   return { ok: true, data: page };
 }

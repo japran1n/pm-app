@@ -95,7 +95,18 @@ const DEFAULT_LIMIT = 20;
 export async function getNotificationsForWorkspace(
   workspaceId: string,
   limit: number = DEFAULT_LIMIT,
-): Promise<{ list: NotificationListItem[]; unreadCount: number }> {
+): Promise<{
+  list: NotificationListItem[];
+  unreadCount: number;
+  /** F308 (FU-12 item 6): set only when the main notifications query
+   * itself failed (a real DB/network error) — never for "signed out" or
+   * a genuine zero-row result, both of which are legitimate empty states.
+   * Lets a caller (getNotificationSnapshot / the bell) tell "the badge is
+   * 0 because there's nothing to show" apart from "the badge is 0 because
+   * the fetch that would have told us otherwise just failed," per this
+   * mission's "typed error, caller decides how to surface it" convention. */
+  error?: string;
+}> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -114,7 +125,11 @@ export async function getNotificationsForWorkspace(
 
   if (error) {
     console.error("getNotificationsForWorkspace: fetch failed:", error);
-    return { list: [], unreadCount: 0 };
+    return {
+      list: [],
+      unreadCount: 0,
+      error: "Couldn't load notifications.",
+    };
   }
 
   // F210: fetched separately from `rows` (no `limit`) because unreadCount

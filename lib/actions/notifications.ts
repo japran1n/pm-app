@@ -167,9 +167,18 @@ export async function getNotificationSnapshot(
     };
   }
 
-  const { list, unreadCount } = await getNotificationsForWorkspace(
+  const { list, unreadCount, error } = await getNotificationsForWorkspace(
     parsed.data.workspaceId,
   );
+
+  // F308 (FU-12 item 6): a real query failure inside
+  // getNotificationsForWorkspace propagates as this action's own `ok:
+  // false` (see NotificationBell's reconcile — it now distinguishes this
+  // from "genuinely zero notifications" instead of both collapsing into
+  // the same silent no-op).
+  if (error) {
+    return { ok: false, error };
+  }
 
   return { ok: true, list, unreadCount };
 }

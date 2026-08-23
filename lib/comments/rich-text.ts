@@ -50,9 +50,26 @@ export function docFromPlainText(text: string): JSONContent {
  * across top-level blocks with a blank line. Used both for the legacy
  * `comments.text` / `body_text` columns (defense-in-depth server-side
  * recomputation, never trusts a client-supplied plain-text value alone)
- * and for the composer's submit-button-enabled / empty-comment check. */
+ * and for the composer's submit-button-enabled / empty-comment check.
+ *
+ * F308 (FU-12 item 3, AS-373): a `mention` node (F203's
+ * mention-extension.ts — id-only attrs, `{ id: string }`, deliberately no
+ * stored label to avoid a stale display name) now also contributes text
+ * here, so a comment consisting ONLY of a mention (e.g. "@Alice", no
+ * other words) projects to non-empty plain text instead of "" — before
+ * this fix, such a comment silently disabled the composer's Post button
+ * (the same empty-comment guard `comments_text_not_empty` enforces
+ * server-side) even though it's a perfectly valid comment. `resolveLabel`
+ * lets a caller that has live member data (comment-list.tsx's
+ * `mentionSuggestions`) project the mention's real current display name;
+ * omitted (e.g. this module's other caller, lib/actions/comments.ts's
+ * server-side recompute, which has no member list in scope at that call
+ * site) falls back to "@<id>" — still guaranteed non-empty, which is the
+ * only thing that call site's fallback-to-client-text logic actually
+ * depends on. */
 export function extractPlainText(
   content: JSONContent | null | undefined,
+  resolveLabel?: (userId: string) => string | null,
 ): string {
   if (!content || typeof content !== "object") return "";
 
@@ -60,6 +77,13 @@ export function extractPlainText(
     if (!node || typeof node !== "object") return "";
     if (node.type === "text") {
       return typeof node.text === "string" ? node.text : "";
+    }
+    if (node.type === "mention") {
+      const id =
+        typeof node.attrs?.id === "string" ? (node.attrs.id as string) : null;
+      if (!id) return "";
+      const label = resolveLabel?.(id) ?? id;
+      return `@${label}`;
     }
     if (Array.isArray(node.content)) {
       return node.content.map(collect).join("");

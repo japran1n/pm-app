@@ -30,6 +30,18 @@ import type { Json } from "@/lib/supabase/database.types";
 
 export const DEFAULT_TASK_ACTIVITY_PAGE_SIZE = 20;
 
+// F308 (FU-12 item 4): a hard server-side cap on `limit`, independent of
+// whatever a caller (ultimately the client-supplied "load more" bump in
+// components/task/activity-feed.tsx) asks for — that component only ever
+// grows `limit` by DEFAULT_TASK_ACTIVITY_PAGE_SIZE increments today, but
+// this function is reached via a Server Action a modified/malicious
+// client could call directly with an arbitrary `limit`. Capped at 200 —
+// 10x this feed's own default window and 2x getAuditLogPage's (F141)
+// DEFAULT_AUDIT_PAGE_SIZE, generous enough that no legitimate "load more"
+// click sequence would ever hit it in a real task's activity history,
+// while still bounding the query.
+export const MAX_TASK_ACTIVITY_PAGE_SIZE = 200;
+
 // F194's closed `kind` CHECK-constraint vocabulary, reproduced here as a
 // type so a row's `kind` is never treated as an arbitrary string by
 // anything downstream of this query (the sentence-building helper in
@@ -61,21 +73,38 @@ export type TaskActivityRow = {
 export type TaskActivityPage = {
   rows: TaskActivityRow[];
   hasMore: boolean;
+  /** F308 (FU-12 item 6): set only when the underlying query actually
+   * failed (a real DB/network error), never for a genuine "this task has
+   * no activity yet" result — lets a caller (activity-feed.tsx) render a
+   * visibly different state for "something went wrong" vs. "zero rows,
+   * legitimately," per this mission's "typed error or null, caller
+   * decides how to surface it" convention, instead of both cases
+   * collapsing into the same empty array. */
+  error?: string;
 };
 
 /**
  * Fetches a bounded, reverse-chronological (AS-358: newest first) window of
  * `task_activity` rows for one task, with actor display data resolved.
- * Returns `{ rows: [], hasMore: false }` — never throws — for a task the
- * caller's session cannot see (RLS silently returns zero rows) or for any
- * other empty result, matching this module's "never crash a render"
- * convention shared with lib/time/user-timezone.ts.
+ * Returns `{ rows: [], hasMore: false }` for a task the caller's session
+ * cannot see (RLS silently returns zero rows) or any other genuine empty
+ * result — never throws. A real query failure instead returns
+ * `{ rows: [], hasMore: false, error: <message> }` (F308/FU-12 item 6) so
+ * the caller can distinguish "no activity" from "the fetch failed."
  */
 export async function getTaskActivityPage(
   taskId: string,
   limit: number = DEFAULT_TASK_ACTIVITY_PAGE_SIZE,
 ): Promise<TaskActivityPage> {
   const supabase = await createClient();
+
+  // F308 (FU-12 item 4): clamp a caller-supplied `limit` to a hard server
+  // cap, independent of what the client asked for — see
+  // MAX_TASK_ACTIVITY_PAGE_SIZE's own doc comment.
+  const boundedLimit = Math.max(
+    1,
+    Math.min(limit, MAX_TASK_ACTIVITY_PAGE_SIZE),
+  );
 
   const { data, error } = await supabase
     .from("task_activity")
@@ -85,16 +114,20 @@ export async function getTaskActivityPage(
     // AS-358: fetch one extra row to detect "more entries exist beyond
     // this window" without a separate count query — same technique
     // getAuditLogPage (F141) uses.
-    .limit(limit + 1);
+    .limit(boundedLimit + 1);
 
   if (error) {
     console.error("getTaskActivityPage: fetch failed:", error);
-    return { rows: [], hasMore: false };
+    return {
+      rows: [],
+      hasMore: false,
+      error: "Couldn't load activity. Try again.",
+    };
   }
 
   const allRows = data ?? [];
-  const hasMore = allRows.length > limit;
-  const pageRows = hasMore ? allRows.slice(0, limit) : allRows;
+  const hasMore = allRows.length > boundedLimit;
+  const pageRows = hasMore ? allRows.slice(0, boundedLimit) : allRows;
 
   const actorIds = Array.from(
     new Set(

@@ -48,9 +48,20 @@ export function NotificationBell({
   // getNotificationSnapshot, the exact query the initial SSR used)
   // rather than incrementing a client-side counter, so a missed Realtime
   // event can never leave the badge permanently wrong.
+  // F308 (FU-12 item 6): distinguishes "reconcile failed" from "reconcile
+  // succeeded, badge is legitimately 0" — surfaced as a small visible
+  // indicator on the trigger button rather than a silently-stale badge,
+  // per this mission's "typed error, caller decides how to surface it"
+  // convention.
+  const [reconcileFailed, setReconcileFailed] = useState(false);
+
   const reconcile = useCallback(async () => {
     const result = await getNotificationSnapshot(workspaceId);
-    if (!result.ok) return;
+    if (!result.ok) {
+      setReconcileFailed(true);
+      return;
+    }
+    setReconcileFailed(false);
     setUnreadCount(result.unreadCount);
     setLiveSnapshot({ list: result.list, unreadCount: result.unreadCount });
     setLiveSnapshotVersion((version) => version + 1);
@@ -107,20 +118,36 @@ export function NotificationBell({
             size="icon"
             className="relative"
             aria-label={
-              unreadCount > 0
-                ? `Notifications, ${unreadCount} unread`
-                : "Notifications"
+              reconcileFailed
+                ? "Notifications, sync failed"
+                : unreadCount > 0
+                  ? `Notifications, ${unreadCount} unread`
+                  : "Notifications"
+            }
+            title={
+              reconcileFailed
+                ? "Couldn't sync notifications — showing the last known state."
+                : undefined
             }
           >
             <Bell className="size-4" aria-hidden="true" />
-            {/* AS-379: a bell shows the unread count. */}
-            {unreadCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none"
-              >
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </Badge>
+            {/* AS-379: a bell shows the unread count. F308/FU-12 item 6: a
+                failed reconcile shows a distinct muted-outline dot instead
+                of either a stale count badge or silence. */}
+            {reconcileFailed ? (
+              <span
+                className="absolute -top-1 -right-1 size-2.5 rounded-full border border-background bg-muted-foreground"
+                aria-hidden="true"
+              />
+            ) : (
+              unreadCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-1 -right-1 h-4 min-w-4 rounded-full px-1 text-[10px] leading-none"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )
             )}
           </Button>
         }
