@@ -1,92 +1,187 @@
 # Next session — start here
 
-_Written 2026-08-22, end of session. Read this file first; run-log.md's bottom entries give
-full detail on anything summarized here._
+_Written 2026-08-23, session paused mid-work at the user's explicit request
+("završi minimalno da zamrznemo milestone"). Read this file first; run-log.md's
+bottom entries give full detail on anything summarized here._
 
 ## Where things stand
 
-**M10, M11 (10/10), M12, M13 (+ follow-up), and M14 (all 25 features, F169–F193) are ALL
-fully complete and independently verified.**
+**M10–M14 are fully complete** (verified in prior sessions; M10 has 5
+follow-up fixes landed but was never re-run through a fresh scrutiny pass to
+confirm a formal GREEN — see "Known gaps" below).
 
-**M15 (Collaboration) is in progress:**
-- F194–F196 (activity feed chain) — **complete.**
-- F197–F198 (comment-edit chain) — **complete.**
-- F199–F200 (reactions chain, part 1) — **complete** (`comment_reactions` table, `toggleReaction`
-  action). F200's worker stalled mid-session before committing; the orchestrator verified its
-  already-correct work directly and committed it rather than re-running the feature — see
-  run-log.md's 2026-08-22T23:13Z entry.
-- **F201 (reaction UI) is next**, then F202 (live reactions via realtime), which closes the
-  reactions chain and this mission-2 mini-arc.
-- Still to come in M15 after that: F203–F205 (@mentions), F206–F212 (notifications:
-  db-schema, fan-out, bell panel, realtime, deleted-target handling, preferences, overdue job).
-  F213–F217 (email) are `[SKIPPED]` — Resend not connected, user's own 2026-08-18 decision, do
-  not attempt.
+**M15 (Collaboration) is NOT closed.** All 32 base features (F194–F212, +
+F213–F217 deliberately `[SKIPPED]`, Resend not connected) were built, but the
+milestone has failed **two consecutive scrutiny validation passes**:
 
-## Known infra state
+- **Pass 1** (28 PASS / 11 FAIL / 2 INCONCLUSIVE, 9 blockers) — addressed by
+  8 follow-up features **F301–F308, all COMPLETE and independently
+  verified** (real security fixes: activity-log forgery hole in
+  `write_task_activity_entry`, comment-authorship-reassignment hole,
+  reactions-on-soft-deleted-comments leak, reactions-realtime cross-tenant
+  leak, notification-error-swallowing, plus the "built but not wired"
+  `getTaskDetail` read-path gap and several fan-out gaps).
+- **Pass 2** (37 PASS / 7 FAIL / 10 DEFERRED, 5 blockers) — found F301–F308
+  genuinely fixed most of pass 1's findings, but surfaced **a new class of
+  defect** plus **one critical miss of my own**:
+  1. **F309 — DONE, verified.** `create_notification`'s `p_system` branch
+     was still unconditional (`if p_system then`, not `if p_system and
+     auth.uid() is null then`) — I had fixed this exact bug class in
+     `write_task_activity_entry` (F302) earlier the same session and missed
+     that `create_notification` itself (which I'd also touched twice
+     today, in F206 and its own earlier spoofing fix) still had it. Any
+     authenticated client could inject a "System" notification into any
+     workspace member's inbox. **Closed and verified** — migration
+     `20260823100000_fix_create_notification_system_bypass.sql`, 13/13
+     real-Supabase tests passing, confirmed F212's legitimate cron caller
+     unaffected.
+  2. **F310 — IN PROGRESS, UNVERIFIED. Resume here first.** The mention
+     picker/chip rendering is broken end-to-end: `RichTextEditor`'s
+     `getMentionItems: () => mentionSuggestions` closure is captured once
+     at Tiptap `Editor` construction time (verified against
+     `node_modules/@tiptap/core`'s actual source — `createExtensionManager`
+     runs once in the constructor, `setOptions()` never re-runs it) and
+     never updates, so typing `@` shows an empty picker forever (callers
+     start with an empty `mentionSuggestions` and populate it async after
+     mount), AND persisted mentions render as grey "Former member" forever
+     after reload for the same stale-closure reason on the render side.
+     This hollows out AS-371/372/373/376/377/378.
+     - **Uncommitted work already done** (committed as WIP at `3c25094`,
+       tagged `[UNVERIFIED]`): `components/editor/rich-text-editor.tsx`'s
+       `useEditor` call now passes a `deps` array keyed on a joined string
+       of mention-candidate ids, so the editor instance rebuilds (and its
+       closure refreshes) whenever the real candidate list changes after
+       mount. `tests/unit/mention-extension.test.tsx` was also touched
+       (likely adding the "starts empty, populates after mount" test the
+       scrutiny report explicitly asked for — check its diff).
+     - **NOT done yet**: the render-time half of the same bug class — F203's
+       `resolveMentionLabel` and F204's `resolveMentionDisplay`
+       (`components/editor/mention-extension.ts`) need the same "read
+       current data, not a frozen closure" treatment so a mention that IS
+       resolvable in freshly-loaded data actually renders correctly instead
+       of staying grey. Read the scrutiny report's finding #1 in full
+       (`missions/20260818-213033/milestones/M15-scrutiny.md`) for the
+       exact reasoning before continuing.
+     - **NOT done yet**: `npx tsc --noEmit`, `npx eslint .`, and running the
+       mention test suite (`mention-extension.test.tsx`,
+       `comment-mentions.test.ts`, `mention-picker-narrowing.test.tsx`,
+       `description-mentions.test.ts`) have not been run against this
+       change at all this session. Do this FIRST before trusting or
+       extending the WIP commit — it may not even compile/pass yet.
+  3. **F311 — NOT STARTED.** `editComment` (lib/actions/comments.ts) calls
+     `sanitiseMentionsForVisibility` but never `computeFanoutRecipients`/
+     `createNotification`/watcher-upsert — mentioning someone by *editing*
+     a comment (as opposed to posting a new one) notifies nobody. `addComment`
+     already does this correctly (F207); `editComment` needs the same
+     wiring. Assertion: AS-381.
+  4. **F312 — NOT STARTED.** ~40 integration test files die on a 10-second
+     `beforeAll`/`afterAll` hook timeout under full-suite contention, and
+     vitest reports those as **skipped**, not failed — meaning a canonical
+     `npm run test` run silently never executes the primary evidence for
+     AS-358/359/360/374/375/380/381/382/384. The scrutiny validator
+     confirmed this is pure contention (each affected file passes cleanly
+     run alone) — not a code regression — but it's a real process risk:
+     nobody can currently trust a canonical full-suite run to catch a real
+     regression, which is how some of this session's earlier bugs went
+     unnoticed. Needs either `vitest`'s `hookTimeout` raised, or the
+     integration suite run with reduced concurrency
+     (`--pool=forks --poolOptions.forks.singleFork` or similar), or a
+     shared-test-user-pool pattern to cut down how many
+     `auth.admin.createUser` calls happen concurrently. This is
+     infra/process work, not a product feature — use judgment on scope.
+  5. **AS-396 bookkeeping** — already correctly handled by F307 (recorded
+     BLOCKED-on-F213-F217 in run-log.md, not falsely green). Pass 2
+     confirmed this was the right call. No further action needed unless
+     F213-F217 land.
 
-`SUPABASE_ACCESS_TOKEN` is set in `.env` and has worked reliably for the CLI (`supabase db
-push`, `migration list --linked`, `gen types typescript`) for essentially every worker across
-M14 and M15 so far. Supabase MCP is still "Pending approval" (needs the user's own interactive
-OAuth step) — not urgent, the CLI path works fine.
+Both F309 and F310's partial work are visible in `plan.md` under "M15
+scrutiny re-validation follow-ups" — F309 is tagged `[COMPLETE]`, F310/F311/
+F312 are NOT tagged yet.
 
-## Recurring patterns worth knowing before continuing
+## Exact resume sequence
 
-1. **"Built but not wired to real data" gap.** Multiple features this session (F167, F135's
-   `canDeleteTask`, F179's card indicator) shipped UI/logic that worked in isolation but wasn't
-   actually fed by the real page-level query. F165, F189, and F196 all explicitly avoided this
-   by wiring their queries end-to-end from the start — hold every future feature to that
-   standard. When a worker's own handoff flags this kind of gap, close it immediately with a
-   scoped follow-up (this session did that successfully every time, e.g. F167's and F179's
-   follow-up fixes).
-2. **Workers stall or hit transient API errors mid-task fairly often** (roughly 1 in 4-5 this
-   session). This is NOT a real failure — resume with an explicit "read current state first,
-   don't assume" instruction, or (as with F200) if the work left behind is already complete and
-   verifiable, the orchestrator can verify and commit it directly rather than re-running the
-   whole feature.
-3. **Migrations that change an RPC's OUT-parameter shape need `drop function` + `create
-   function`, not `create or replace`** — Postgres refuses the latter. Recurred across
-   F161/F167/F168/F179's follow-up fixes.
-4. **Full-suite test runs show two classes of pre-existing, non-regression flakiness**:
-   Supabase Auth `Request rate limit reached` under concurrent test-user sign-ins, and
-   occasional `JWT issued at future` clock-skew errors. Always re-run the SPECIFIC failing
-   file(s) alone before concluding a regression — but don't reflexively assume every failure is
-   this either; this session found and fixed several real regressions this way too (F140's
-   stale test mock, F171's XSS-audit false positive).
-5. **Handoff files are sometimes left untracked by workers** (their own commit doesn't `git add`
-   them) — check `git status` after every worker and commit the handoff separately if needed.
-6. **Trust but verify, always** — this session repeatedly caught workers' incorrect "pre-existing,
-   unrelated" dismissals of real regressions (F138/F142 on F140's mock breakage), false "tsc
-   clean" claims (F135), and unverified claims about query wiring. Never mark a feature done
-   without independently running tsc/eslint/tests yourself and reading the actual diff for
-   anything security- or correctness-sensitive.
+1. `git status` / `git log -5` to confirm you're picking up at commit
+   `ca36283` (or later) with `3c25094`'s WIP diff already in history.
+2. Finish F310:
+   a. Run `npx tsc --noEmit` and `npx eslint .` against the current WIP
+      state — fix anything broken.
+   b. Read `components/editor/mention-extension.ts`'s `resolveMentionLabel`
+      and `resolveMentionDisplay` and apply the equivalent "read current
+      data live" fix for the render path (not just the picker/insert path
+      already touched).
+   c. Run the full mention test suite (see file list above) — all must
+      pass, including whatever new "starts empty, populates after mount"
+      test was already added to `mention-extension.test.tsx`.
+   d. Verify the fix actually closes the "grey Former member forever"
+      symptom with a real assertion, not just that the picker test passes.
+   e. Log to `run-log.md`, tag `plan.md`'s F310 line `[COMPLETE]`, commit
+      (this will likely be a normal `fix(F310): ...` commit superseding/
+      building on the `3c25094` WIP commit — do not just re-tag the WIP
+      commit as done without actually running the verification above).
+3. F311 (editComment fan-out) — spawn a worker mirroring F207's `addComment`
+   fan-out wiring, applied to `editComment`. Should be a small, well-scoped
+   fix given F207/F304's shared helpers (`computeFanoutRecipients`,
+   `createNotification`) already exist and just need a second call site.
+4. F312 (test suite hook-timeout stabilization) — investigate and fix per
+   the description above. Use judgment on the exact mechanism.
+5. Re-run the scrutiny-validator subagent for M15 a THIRD time. Do not
+   assume pass 2's remaining findings are the only ones — a third pass is
+   mandatory per this mission's own hard rules ("do not advance to the UX
+   validator until scrutiny is fully green, no FAIL").
+6. Only once scrutiny is GREEN: spawn the ux-validator subagent for M15.
+7. Once both are GREEN: mark M15 GREEN in `plan.md`, then proceed to M16
+   (Views, F218 onward) — read `missions/20260818-213033/plan.md` around
+   F218 and the corresponding `features/`/`clarifications/` files.
 
-## Next work (in order, per the mission plan)
+## Known gaps outside M15 (lower priority, noted for completeness)
 
-1. **F201 (reaction UI)** — reaction chips under comments (emoji + count, caller's own reaction
-   marked, accessible reactor-names tooltip/popover, keyboard-operable emoji picker limited to
-   `REACTION_EMOJI_ALLOWLIST` from `lib/validation/comment-reactions.ts`).
-2. **F202 (live reactions)** — realtime delivery of reactions to other viewers, mirroring
-   `comment_edited`'s broadcast pattern from F197 (recall: `postgres_changes` may be
-   INSERT-only on this channel per F104's earlier fix — check whether a Broadcast event is
-   needed here too, the same way F191 needed one for comment restore).
-3. **F203–F205 (@mentions)**, **F206–F212 (notifications)** — rest of M15.
-4. **M16 — Views** (F218–F240, 23 features): custom statuses, swimlanes, saved views, My Tasks,
-   calendar, timeline. Note: F218 is a dependency several M14 features (F184's
-   project-from-template) explicitly deferred against — once F218 lands, revisit those
-   features' "Out-of-scope" notes for what needs extending.
-5. **M17 — UX polish, attachments & navigation** (F241–F267, 27 features).
-6. **M18 — Final QA** (F268–F272, 5 features).
+- **M10** had 5 scrutiny-found follow-ups (F273–F278), all individually
+  fixed and verified, but the milestone was never re-run through a fresh
+  scrutiny pass to confirm a formal GREEN, and no milestone has ever had a
+  **UX validator** report at all (M10 nor M15). This is a process gap
+  worth closing eventually, not urgent.
+- F278 (M10) requires the user to add 3 GitHub Actions repository secrets
+  before CI will actually go green — this cannot be done by the
+  orchestrator; flagged, not forgotten.
+- One stray handoff exists for **F280** (M19, extension milestone) marked
+  COMPLETE despite M19 not having formally started — worth a quick
+  `cat missions/20260818-213033/handoffs/F280-handoff.md` + `git log
+  --all --oneline -- '*F280*'` sanity check at some point to understand
+  whether this is real prior work or a stray/erroneous artifact, but not
+  blocking anything right now.
 
-Read each feature's spec/clarification file under `missions/20260818-213033/features/` and
-`clarifications/` before delegating, exactly as done throughout this session.
+## Recurring patterns worth knowing before continuing (carried over, still true)
 
-## Standing process rules (unchanged, still enforced every feature)
-
-- Orchestrator never writes project code directly — always spawn a worker (in-process subagent,
-  told to read `.claude/agents/worker.md` first). The one exception this session (F200) was
-  committing a stalled worker's already-complete, independently-verified work rather than
-  discarding it — not writing new code, just finishing the paperwork on work already done.
-- After every worker: verify independently before marking anything done — check `git status`,
-  read the actual diff, run the relevant test suite, and only then log to run-log.md and commit.
-- Dev login for manual testing: `http://localhost:3000/dev-login?email=sasa@goodguys.se` (only
-  works when a dev server is actually running — start one via the browser-preview tool).
+1. **"Built but not wired to real data"** recurs across this mission
+   (F167/F179 in earlier sessions; `getTaskDetail`'s comment
+   metadata/reactions in this session, fixed by F303; now the mention
+   picker's frozen-closure bug in F310). Always check the REAL read/write
+   path a feature depends on, not just that its own isolated tests pass —
+   this class of bug consistently escapes unit tests that supply data as a
+   hand-built prop instead of exercising the real fetch.
+2. **Workers occasionally make false "tsc/eslint clean" claims.** Caught
+   once for real this session (F304's integration test had a genuine
+   `TS7006` implicit-any error the worker's own report claimed was clean).
+   Always run these commands yourself, never trust the report alone.
+3. **Security holes hide in `p_system`-style "is this a real backend
+   caller" flags.** Two separate SECURITY DEFINER functions
+   (`write_task_activity_entry`, `create_notification`) both shipped with
+   a caller-controlled boolean that bypassed auth checks when true, with
+   no verification that the caller genuinely had no session. Any future
+   SECURITY DEFINER function with a similar "system/service" escape hatch
+   needs the SAME scrutiny: `<flag> and auth.uid() is null`, never a bare
+   `<flag>`.
+4. **Full-suite `npm run test` runs are currently unreliable** — both
+   genuine Supabase Auth rate-limiting/PostgREST connectivity flakiness
+   (documented pattern, present since earlier sessions) AND (per F312's
+   finding) a hook-timeout-under-contention issue that makes vitest
+   silently skip rather than fail affected files. Always re-run a
+   SPECIFIC file alone before concluding a full-suite failure is either a
+   real regression or safe-to-ignore noise — never assume either without
+   checking.
+5. **Trust but verify, always** — this session repeatedly caught real
+   defects a worker's own handoff claimed were fixed (F309's incomplete
+   mirror of F302's pattern; F310's underlying bug entirely, on a fresh
+   scrutiny pass, after F203/F204's original handoffs both claimed the
+   mention system worked). Never mark a feature or milestone done without
+   independently reading the actual diff and running the actual commands.
