@@ -156,6 +156,13 @@ notifications, timezone) exists. No feature work beyond identity.
 - F307 reconcile-notification-preferences-ui-and-mark-as396-blocked — AS-391, AS-396 [CLARIFIED-AUTO] [COMPLETE]
 - F308 m15-quality-cleanup-bundle — AS-361, AS-373 [CLARIFIED-AUTO] [COMPLETE]
 
+### M15 scrutiny re-validation follow-ups (2026-08-23, from missions/20260818-213033/milestones/M15-scrutiny.md pass 2)
+
+- F309 fix-create-notification-p-system-forgery-bypass — AS-389 [CLARIFIED-AUTO]
+- F310 fix-frozen-mention-picker-and-stale-mention-chip-rendering — AS-371, AS-372, AS-373, AS-376, AS-377, AS-378 [CLARIFIED-AUTO]
+- F311 wire-editcomment-mention-fanout — AS-381 [CLARIFIED-AUTO]
+- F312 stabilize-integration-suite-hook-timeouts — AS-358, AS-359, AS-360, AS-374, AS-375, AS-380, AS-381, AS-382, AS-384 [CLARIFIED-AUTO]
+
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
 
 - F218 db-schema-project-statuses — AS-403, AS-407, AS-408 [CLARIFIED-AUTO]
