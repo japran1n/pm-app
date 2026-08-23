@@ -145,6 +145,17 @@ notifications, timezone) exists. No feature work beyond identity.
 - F216 digest-query — AS-397, AS-398 [SKIPPED — Resend not connected; deferred by user 2026-08-18]
 - F217 digest-schedule — AS-399, AS-400 [SKIPPED — Resend not connected; deferred by user 2026-08-18]
 
+### M15 scrutiny follow-ups (2026-08-23, from missions/20260818-213033/milestones/M15-scrutiny.md)
+
+- F301 fix-description-mentions-test-regression — AS-374, AS-375, AS-381, AS-384 [CLARIFIED-AUTO]
+- F302 close-activity-forgery-and-comment-edit-trigger-holes — AS-357, AS-364 [CLARIFIED-AUTO]
+- F303 wire-comment-metadata-and-reactions-into-task-detail — AS-363, AS-365, AS-366 [CLARIFIED-AUTO]
+- F304 fix-notification-error-swallowing-and-comment-link — AS-374, AS-386 [CLARIFIED-AUTO]
+- F305 fix-reactions-soft-delete-and-realtime-leak — AS-369, AS-370 [CLARIFIED-AUTO]
+- F306 fan-out-activity-and-notifications-from-remaining-mutation-paths — AS-294, AS-353, AS-355, AS-380, AS-382 [CLARIFIED-AUTO]
+- F307 reconcile-notification-preferences-ui-and-mark-as396-blocked — AS-391, AS-396 [CLARIFIED-AUTO]
+- F308 m15-quality-cleanup-bundle — AS-361, AS-373 [CLARIFIED-AUTO]
+
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
 
 - F218 db-schema-project-statuses — AS-403, AS-407, AS-408 [CLARIFIED-AUTO]
