@@ -160,7 +160,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 - F309 fix-create-notification-p-system-forgery-bypass — AS-389 [CLARIFIED-AUTO] [COMPLETE]
 - F310 fix-frozen-mention-picker-and-stale-mention-chip-rendering — AS-371, AS-372, AS-373, AS-376, AS-377, AS-378 [CLARIFIED-AUTO] [COMPLETE]
-- F311 wire-editcomment-mention-fanout — AS-381 [CLARIFIED-AUTO]
+- F311 wire-editcomment-mention-fanout — AS-381 [CLARIFIED-AUTO] [COMPLETE]
 - F312 stabilize-integration-suite-hook-timeouts — AS-358, AS-359, AS-360, AS-374, AS-375, AS-380, AS-381, AS-382, AS-384 [CLARIFIED-AUTO]
 
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
