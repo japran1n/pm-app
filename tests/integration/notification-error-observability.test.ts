@@ -137,7 +137,7 @@ describe.skipIf(!haveAdminCreds)(
       // The core regression assertion: the failure was actually observed
       // (logged), not silently dropped.
       expect(errorSpy).toHaveBeenCalled();
-      const loggedCall = errorSpy.mock.calls.find((call) =>
+      const loggedCall = errorSpy.mock.calls.find((call: unknown[]) =>
         String(call[0]).includes("create_notification"),
       );
       expect(loggedCall).toBeDefined();
