@@ -148,6 +148,7 @@ describe.skipIf(!haveAdminCreds)(
         p_workspace_id: workspaceId,
         p_kind: "mention",
         p_actor_id: otherUserId,
+        p_system: true,
       });
       if (createErr || !created) {
         throw new Error(`Failed to seed notification via RPC: ${createErr?.message}`);
@@ -222,6 +223,40 @@ describe.skipIf(!haveAdminCreds)(
       void error;
     });
 
+    it("test_AS_389_negative_a_caller_with_no_membership_in_the_target_workspace_cannot_create_a_notification_there_at_all", async () => {
+      // Follow-up fix: the RPC now requires the CALLER (not just the
+      // recipient) to be an active member of the target workspace.
+      // The outsider session has zero membership in `workspaceId`, so
+      // any attempt to raise a notification there -- for any recipient,
+      // including themselves -- must raise.
+      const { error } = await outsiderSessionClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceId,
+        p_kind: "mention",
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it("test_AS_389_negative_a_workspace_member_cannot_spoof_an_arbitrary_actor_id_via_the_RPC", async () => {
+      // Follow-up fix: the RPC now ignores any client-supplied
+      // p_actor_id for a non-system call and pins actor_id to the
+      // caller's own auth.uid() instead. `otherSessionClient` IS a
+      // member of the workspace (so the call itself succeeds), but
+      // attempts to impersonate `recipientUserId` as the actor -- the
+      // resulting row must show `otherUserId` (the real caller), not
+      // the spoofed value.
+      const { data: created, error } = await otherSessionClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceId,
+        p_kind: "mention",
+        p_actor_id: recipientUserId,
+      });
+      expect(error).toBeNull();
+      const row = created as { id: string; actor_id: string | null };
+      expect(row.actor_id).toBe(otherUserId);
+      expect(row.actor_id).not.toBe(recipientUserId);
+    });
+
     it("test_AS_389_a_user_can_mark_their_own_notification_read_via_UPDATE", async () => {
       const { data, error } = await recipientSessionClient
         .from("notifications")
@@ -250,6 +285,7 @@ describe.skipIf(!haveAdminCreds)(
         p_user_id: recipientUserId,
         p_workspace_id: workspaceId,
         p_kind: "task_due_soon",
+        p_system: true,
       });
       expect(staleErr).toBeNull();
       const staleId = (stale as { id: string }).id;
