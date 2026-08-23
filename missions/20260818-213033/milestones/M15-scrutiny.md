@@ -1,23 +1,43 @@
-# M15 scrutiny — PASS 3 (adversarial re-validation after F309–F312)
+# M15 scrutiny — PASS 4 (adversarial re-validation after F313–F316)
 
 Date: 2026-08-23
 Milestone: M15 — Collaboration: activity, comments, mentions, notifications, email
-Scope: AS-353 … AS-402 (50 assertions)
+Scope: AS-353 … AS-402 (+ AS-294, + AS-214 as a cross-milestone regression check)
 Method: 3 independent parallel code reviewers given assertion text + file scope only
-(no handoffs, no run-log, no prior report), plus my own direct verification of the
-four F309–F312 fixes, plus a full `npx vitest run`, `npx eslint .`, `npx tsc --noEmit`.
+(no handoff, no run-log, no prior report), plus my own direct tracing of the F313/F314/
+F316 diffs, plus `npx tsc --noEmit`, `npx eslint .`, `npx vitest run tests/unit`, and a
+full `npx vitest run`.
 
-## VERDICT: **FAIL** — 35 PASS / 5 FAIL / 1 INCONCLUSIVE / 9 DEFERRED. 3 blockers, 6 majors.
+## VERDICT: **FAIL** — 38 PASS / 3 FAIL / 1 INCONCLUSIVE / 9 DEFERRED. 2 blockers, 5 majors.
 
-Improvement over pass 2 (37/7/10) is real but the tally is misleading: pass 2's raw
-counts included AS-393–402 in a different bucket. Substantively, F309 and F311 are
-genuine, verified fixes. F310 is a *real* mechanism fix with two unfixed side effects
-and no behavioural evidence. **F312's stated root cause is factually false** and it
-should not be credited with restoring any evidence.
+Trend: pass 1 (11 FAIL / 9 blockers) → pass 2 (7 FAIL / 5 blockers) → pass 3 (5 FAIL /
+3 blockers) → pass 4 (3 FAIL / 2 blockers). Real, monotonic progress.
 
-Additionally, and independent of any single assertion: **the full test suite is RED**
-(9 failed files / 18 failed tests / 1 unhandled rejection, exit 1). A milestone cannot
-be declared GREEN on a red suite. One of those failures is an M15-caused regression.
+What is genuinely fixed and independently re-confirmed this pass:
+- **F313/F316 (AS-376)** — I read both diffs directly. `createTaskFromTemplate`
+  sanitises against the *target* project's real `visibility` and fails the write on a
+  visibility-check error; `createProjectFromTemplate` runs a post-RPC sanitisation pass.
+  A reviewer independently enumerated *every* `body_json`/`description_json` writer in
+  `lib/` and `supabase/migrations/` and found no remaining user-authored bypass.
+- **F315 (AS-214)** — `tests/unit/user-avatar.test.tsx` now 10/10. The
+  `use-reactions-realtime.ts` crash is gone. Cross-milestone regression closed.
+- **F315 (AS-382)** — the positive proof is real: `notification-fanout.test.ts:245`
+  asserts `toHaveLength(1)` for a `comment_reply` row landing on a non-author watcher.
+  It would fail if the comment fan-out were deleted. Pass 3's vacuous-coverage finding
+  is resolved.
+- **F314 (AS-371/372 test coverage)** — real behavioural coverage now exists:
+  `tests/unit/mention-extension.test.tsx:405-538` mounts a live `useEditor` +
+  `EditorContent` tree with the real `createMentionExtension`, dispatches a genuine
+  ProseMirror transaction (`insertContent("@")`), and asserts the actual
+  `ReactRenderer`-mounted `[role="listbox"]` contents, including narrowing by query and
+  exclusion of an out-of-scope member. Pass 3's B1 ("no test observes the picker") is
+  correctly answered *at the extension level*.
+
+What is newly broken, and is the reason this pass still fails:
+
+**F314's issue-3 mitigation introduced a worse user-visible bug than the one it fixed,
+and its tests assert the broken behaviour as correct.** I traced this myself before any
+reviewer reported it; a reviewer then reproduced the same trace independently.
 
 ---
 
@@ -25,129 +45,265 @@ be declared GREEN on a red suite. One of those failures is an M15-caused regress
 
 | ID | Result | Reason |
 |---|---|---|
-| AS-353 | PASS | Per-task feed rendered for every task via the shared detail sheet; `created_at desc`; real-DB coverage. Minor: `deleteTask`/`bulkDelete`/`bulkRestore`/`promoteSubtask`/`updateTaskTags`/`reorderTask`/`duplicateTask` still write no entry, while `restoreTask` does — the feed shows a status "set" with no preceding delete. |
-| AS-354 | PASS | Actor pinned server-side to `auth.uid()` in the RPC; callers use the session client. |
-| AS-355 | PASS | All six fields have a real writer (title/priority/due/estimate via `editTask`; status via `moveTaskStatus`/`moveAndReorderTask`/`bulkUpdateTasks`; assignees via `setTaskAssigneesCore` diffing the real join table). Unit tests assert literal sentences, not helper round-trips. |
-| AS-356 | PASS | `comment_added`/`comment_deleted` land in the same table and feed. Minor: `restoreComment` writes nothing, so a restored comment keeps a permanent "deleted a comment" entry. |
-| AS-357 | PASS | No UPDATE/DELETE policy on `task_activity` at all; proven with real member sessions (0 rows affected, row verified unchanged via admin). F302's `p_system and auth.uid() is null` guard holds with a live regression test. |
-| AS-358 | PASS | `limit+1` `hasMore` probe + server clamp + "Load more"; real rows, monotonic `created_at desc` asserted. Minor: no test proves page 2 actually contains *older* entries than page 1 — `hasMore` is a proxy. |
-| AS-359 | PASS | SELECT policy `using (public.is_task_visible_to(task_id))`; real outsider session sees `[]` and the RPC write is rejected. |
-| AS-360 | PASS | Test invokes the real `generate_due_recurring_occurrences()` RPC and asserts `actor_id is null` on the generated row, with a negative control. Strong. |
-| AS-361 | PASS | Day buckets in the viewer's IANA zone; `formatDistanceToNow` labels with absolute time in `title`; test asserts a relative string is present *and* no clock string is. Minor: labels don't re-tick on an open sheet. |
-| AS-362 | PASS | Author gate in the action + RLS + trigger; live test. |
-| AS-363 | PASS | `edited_at` written server-side, selected on both read paths, marker rendered. Minor: exact time only in `title`/`aria-label`; `formatExactEditTime` uses the ambient browser zone, not the user timezone the rest of the app threads through. |
-| AS-364 | PASS | Three layers (action, RLS, hardened `enforce_comment_edit_author_only` trigger rejecting any `user_id` change). |
-| AS-365 | PASS | Self-only INSERT policy is the real boundary; emoji CHECK allow-list mirrored by Zod; impersonation attempt tested. |
-| AS-366 | PASS | Count + accessible Popover/`aria-label` name list; reactions batched into `getTaskDetail` so they survive reload. |
-| AS-367 | PASS | Insert-first / catch `23505` / DELETE; concurrent double-click race covered by a real-DB test. |
-| AS-368 | PASS | Composite PK `(comment_id, user_id, emoji)`; duplicate rejection tested at DB level with a real session. |
-| AS-369 | PASS (major residual) | Live delivery proven end-to-end on the real wire. **But** the `filter: task_id=eq.<uuid>` is chosen by the subscriber — it is scoping, not authorization — and Supabase does not RLS-filter `postgres_changes` DELETE payloads (the migration header admits this). A non-member who knows a task UUID can subscribe and receive un-react events leaking `comment_id`/`user_id`/`emoji`. The scoping test's "outsider" is actually a workspace member, so **no test covers a non-member subscriber at all.** |
-| AS-370 | PASS | `c.deleted_at is null` in the SELECT policy handles the real (soft-delete) path; hard purge cascades; test drives the real `deleteComment` action. |
-| **AS-371** | **FAIL (blocker)** | **No test anywhere drives the actual Tiptap suggestion plugin.** `tests/unit/mention-extension.test.tsx` tests `filterMentionItems` in isolation and renders `MentionList` directly (its own header admits jsdom can't type into ProseMirror); `tests/e2e/` has no mention spec. The F310 editor-side test (`mention-extension.test.tsx:298-322`) asserts only that the `.ProseMirror` DOM node identity changed — i.e. it asserts the *implementation mechanism* (editor recreation), not that typing `@` lists candidates. Per this pass's standard, an implementation-mirroring test is a FAIL even when green. "Picker opens with the right people" is asserted only by construction, never observed. |
-| **AS-372** | **FAIL (blocker)** | Same root cause. `filterMentionItems` is correct and unit-tested, but the keystroke→picker path that AS-372 describes is never exercised. Also a doc/behaviour mismatch: the comment claims name-or-email matching, the code matches `item.label` only. |
-| AS-373 | PASS (major residual) | Chip markup (`data-type="mention"`, primary tint) asserted on real rendered DOM. **Major:** `mentionSuggestionsKey` is `ids.join(...)`, so a member *rename* leaves the deps key identical, no rebuild occurs, and ProseMirror never re-runs `renderHTML` — reproduced empirically: rerendering with `{id:"u-1", label:"Ada Byron"}` still shows `@Ada Lovelace`. This directly falsifies `mention-extension.ts`'s own stated contract ("a member's later name change is reflected without touching any previously-saved comment"). Access *revocation* is caught (id set changes); renames are not. |
-| AS-374 | PASS | `comment_id` persisted and asserted to equal the specific comment's id; `&commentId=` consumed and scroll-highlighted. |
-| AS-375 | PASS | Idempotent `upsert(onConflict:"task_id,user_id", ignoreDuplicates:true)` on all three paths; watcher row read back on the real DB. Minor: those three upserts never destructure `error`, and supabase-js resolves rather than throws — a failed watcher promotion is silently dropped with zero logging, exactly the bug class `create-notification.ts` was written to fix. |
-| **AS-376** | **FAIL (major)** | Server enforcement is solid for `addComment`/`editComment`/`editTask` (fail-the-write on `MentionVisibilityCheckError`, real-DB coverage). **Bypass found:** `lib/actions/templates.ts:401` (and the template-creation copies at :145/:854) inserts a stored template's `description_json` verbatim into a possibly *different* project with **no `sanitiseMentionsForVisibility` call** — a mention of someone with no access to the target project persists as a live chip. "Not offered in the picker" also remains unverifiable for the reason under AS-371. |
-| AS-377 | PASS | `resolveMentionDisplay` → `data-type="mention-unresolved"`, muted span, **no `data-id`** (no UUID leak), matching `renderText`; asserted on real DOM and distinguishable from a broken render. Server strip writes the same literal, so both paths agree. |
-| AS-378 | INCONCLUSIVE | Server half correct and real-DB tested (`editTask` sanitises `descriptionJson` and diffs post-sanitisation). Client half rides the identical untested picker path as AS-371/372, so the assertion's user-facing half is unverified. |
-| AS-379 | PASS | Bell + unread badge mounted in desktop sidebar header and mobile top bar; both states unit-tested. |
-| AS-380 | PASS | Real-DB proof on `assignTask`, plus `bulkUpdate` / `createTask` / `duplicateTask` paths. |
-| **AS-381** | PASS | F311 verified independently: `editComment` selects prior `body_json` at `comments.ts:956`, diffs via `extractNewlyMentionedIds` at `:1114`, notifies + promotes at `:1129-1159`. No silent-no-op path (a failed prior read already returns "Comment not found"). Falsifiable tests both ways: add-mention-via-edit notifies (`notification-fanout.test.ts:239`), remove-mention does not (`:325`), typo-fix does not re-notify (`:314`). |
-| **AS-382** | **FAIL (major)** | Only half covered. The status-change branch is proven (`f306-mutation-fanout.test.ts:232`, board drag → `watcher_update`). The **"or gets a comment"** branch has **no positive test anywhere** — the only `comment_reply` coverage is `notification-preferences-fanout.test.ts:295-326`, a *negative* gating test asserting `rows` is `[]`, which passes just as happily if comment fan-out to watchers were deleted entirely. Textbook vacuous coverage. |
-| AS-383 | PASS | Function, partial unique index and live `cron.job` row all verified against the real DB. Unchanged minors carried from pass 2: `due_date <= today` fires on the due date itself; the INNER join on `notification_preferences` means a user with no preferences row never gets an overdue notification (opposite of the TS fail-open policy); UTC-only. |
-| AS-384 | PASS | Single chokepoint `if (!id || id === event.actorId) continue` in `fanout.ts:123`, applied to every event kind; real-DB proof `expect(actorRows).toEqual([])`. Note the addComment ordering puts the actor in `watcherIds` before fan-out — the guard is the only thing saving it, so it must never be bypassed by a future call site. |
-| AS-385 | PASS | `created_at desc` + actor name + action label + task label; behavioural test. |
-| AS-386 | PASS | Deep link with a search fallback only when unresolvable; optimistic mark-read with revert + `toast.error`; cross-user negative on the real DB. Minor: mark-read fires from `<Link>` `onClick`, so a hard navigation can abandon the in-flight action. |
-| AS-387 | PASS | `markAllNotificationsRead(workspaceId)`; negative test proves it does not touch another member's rows. |
-| AS-388 | PASS | Realtime INSERT with transport-level `user_id=eq.` filter + server-snapshot refetch + focus/visibility reconciliation. |
-| AS-389 | PASS | F309 verified independently and adversarially. Final definition is `if p_system and auth.uid() is null then` (`20260823100000:87`). The obvious follow-on hole — an `anon` caller also having a null `auth.uid()` — is **closed by grants**: `revoke all ... from public` then `grant execute ... to authenticated, service_role`; `anon` is never granted and is not a member of `authenticated`. The 7-arg overload was explicitly dropped at `20260823030000:57`, so no unpatched signature survives. SELECT/UPDATE policies both `user_id = auth.uid()` (UPDATE has a `with check` too); no INSERT/DELETE policy exists. Cross-user read, insert and mark-read all proven to fail against the live project. |
-| AS-390 | PASS | Deleted/soft-deleted/invisible targets collapse to `title: null, projectId: null`; `taskHref` returns null → renders a non-clickable `<button>` labelled "a deleted task". Two live tests. |
-| AS-391 | PASS | Exhaustive `Record<NotificationKind, ...>` makes a missing mapping a compile error, not a silent allow; enforced at all fan-out call sites; RLS self-scoped with negative tests. |
-| AS-392 | PASS | Retention enforced **inside the SELECT policy** (`created_at >= now() - interval '30 days'`), so no query path can leak stale rows; test backdates a real row via admin and asserts the owner sees nothing. |
-| **AS-396** | **FAIL (blocker, carried)** | Unchanged from pass 2 and not addressed by F309–F312. No sender exists (F213–F217 SKIPPED), nothing reads `email_enabled`, and `EMAIL_NOTIFICATIONS_ENABLED = false` hides every email control — a user has no UI to turn email off. The existing round-trip test proves a column persists, not the assertion. |
-| AS-393, 394, 395, 397, 398, 399, 400, 401, 402 | DEFERRED | F213–F217 SKIPPED (Resend not connected, user-deferred 2026-08-18). Out of scope; re-validate when the email chain lands. |
+| AS-353 | PASS (carried) | Not re-examined this pass; verified PASS in passes 2 and 3. Carried minor: `deleteTask`/`bulkDelete`/`promoteSubtask`/`updateTaskTags`/`reorderTask`/`duplicateTask` still write no activity entry. |
+| AS-354 | PASS (carried) | Actor pinned server-side to `auth.uid()` in the RPC. |
+| AS-355 | PASS (carried) | All six field writers verified in pass 3. |
+| AS-356 | PASS (carried) | Carried minor: `restoreComment` writes no entry, so a restored comment keeps a permanent "deleted a comment" entry. |
+| AS-357 | PASS (carried) | No UPDATE/DELETE policy on `task_activity`; F302's `p_system and auth.uid() is null` guard has a live regression test. |
+| AS-358 | PASS (carried) | `limit+1` `hasMore` probe + server clamp. Carried minor: no test proves page 2 contains *older* entries than page 1. |
+| AS-359 | PASS (carried) | SELECT policy `using (public.is_task_visible_to(task_id))`, outsider session proven to see `[]`. |
+| AS-360 | PASS (carried) | Real `generate_due_recurring_occurrences()` RPC invoked; `actor_id is null` asserted with a negative control. |
+| AS-361 | PASS (carried) | Day buckets in the viewer's IANA zone; absolute time in `title`. Carried minor: labels don't re-tick on an open sheet. |
+| AS-362 | PASS (carried) | Author gate in action + RLS + trigger, live test. |
+| AS-363 | PASS (carried) | `edited_at` written server-side and rendered. Carried minor: `formatExactEditTime` uses the ambient browser zone, not the user's threaded timezone. |
+| AS-364 | PASS (carried) | Three layers; hardened `enforce_comment_edit_author_only` trigger rejects any `user_id` change. |
+| AS-365 | PASS (carried) | Self-only INSERT policy + emoji CHECK allow-list mirrored by Zod; impersonation tested. |
+| AS-366 | PASS (carried) | Count + accessible Popover name list; reactions batched into `getTaskDetail` so they survive reload. |
+| AS-367 | PASS (carried) | Insert-first / catch `23505` / DELETE; concurrent double-click race covered by a real-DB test. |
+| AS-368 | PASS (carried) | Composite PK `(comment_id, user_id, emoji)`; duplicate rejection tested at DB level. |
+| AS-369 | PASS (minor residual) | Re-verified this pass. INSERT *and* DELETE both fold into `setLocalComments` via `applyReactionToggle` (`comment-list.tsx:372-388`); `reactions-realtime-subscription.test.ts:232-300` exercises real reducer end-states (other viewer add, other viewer remove, second-tab self-event, idempotent re-apply, unknown-comment no-op) — not payload-shape pinning. **Minors:** (a) the hook's own `useEffect` wiring is never mounted in a test, so a broken `useReactionsRealtime` would not be caught; `reactions-realtime-delete-payload-shape.test.ts:86` only greps for the single call site — implementation-mirroring. (b) F315's `try/catch` around `createClient()` (`use-reactions-realtime.ts:58-69`) warns only when `NODE_ENV !== "production"`, so in production a client-construction failure silently disables reactions realtime with no signal at all. That is a test-environment workaround baked into production code; no other hook in this codebase has one. |
+| AS-370 | PASS (carried) | `c.deleted_at is null` in the SELECT policy; hard purge cascades; test drives the real `deleteComment`. |
+| **AS-371** | **FAIL (blocker)** | See B1. The picker is permanently empty for the entire lifetime of any editor instance the user focuses before the async candidate fetch resolves — the ordinary case, not an exotic one. Two tests (`mention-extension.test.tsx:616`, `:642`) assert this broken state as the desired outcome. Separately, neither `getMentionCandidates` call site has a `.catch`, so an action *rejection* (as opposed to `{ok:false}`) leaves candidates `null` forever plus an unhandled promise rejection. |
+| **AS-372** | **FAIL (major)** | Filtering itself is now genuinely proven through the live plugin (`mention-extension.test.tsx:472-496`) — a real improvement. It fails only as a consequence of B1: filtering a permanently-empty candidate set is not observable behaviour. Secondary, untested: `mention-extension.ts:42` documents matching "on either name or email" but `:50` matches `item.label` only, so typing an email prefix for a member who has a `name` returns nothing. |
+| AS-373 | PASS | Upgraded from pass 3's "PASS (major residual)". F314's `mentionSuggestionsKey` now keys on `` `${id}:${label}` `` at both `rich-text-editor.tsx:392-394` and `:830-832`, and the read-only renderer path is asserted end-to-end (`mention-extension.test.tsx:544-586` — `@Ada Byron` present, `@Ada Lovelace` gone). Pass 3's stale-chip-forever bug is genuinely closed for the display path. Residual minor: the *editor-side* rename test (`:588-609`) still only asserts DOM-node identity changed, and a rename is subject to the same pristine gate as B1. |
+| AS-374 | PASS | Re-verified: `commentId` threaded through `create-notification.ts:60` → panel link `?taskId=…&commentId=…` (`notification-panel.tsx:76-81`) → consumed at `board.tsx:201`. |
+| AS-375 | PASS (minor residual) | Watcher promotion via `ignoreDuplicates` upsert on comment and description paths, both driven off the **sanitised** mention ids, so a stripped mention never becomes a watcher. Carried minor: both upserts are log-only/non-fatal — a failed promotion is invisible. |
+| AS-376 | PASS (major residual) | **Upgraded from pass 3's FAIL.** A reviewer exhaustively enumerated every mention-persisting writer; all user-authoring paths (`addComment`, `editComment`, `editTask`, `createTaskFromTemplate`) sanitise with the correct per-project `visibility` and **fail closed** on a DB error, each with a real behavioural test that forces a hand-crafted non-member mention and asserts the *stored row* contains neither the id nor `"mention"`. **Residual majors** in F316's post-RPC pass (`templates.ts:1127-1180`), which I read directly: it is best-effort only — the re-fetch error, each per-task `MentionVisibilityCheckError`, and each write-back error are all `console.error`-and-continue while the action still returns `ok:true`, so an AS-376 violation can persist permanently with nobody told and nothing retrying; and the re-fetch has no `.limit()`/`.range()` loop while `projectTemplatePayloadSchema` caps nothing, so a template with more tasks than PostgREST's `max-rows` (1000) silently leaves the overflow unsanitised. Low-severity residuals: `duplicateTask` (`tasks.ts:4083/4127`) and the recurrence clone copy `description_json` verbatim with no re-check — same project, so stale-visibility only, and untested. |
+| AS-377 | PASS | Re-verified through the real renderer: `renderHTML` emits a plain `<span data-type="mention-unresolved">` with **no `data-id`** (no UUID leak), asserted at `mention-extension.test.tsx:234-269` and `:382-399` including the no-crash case. |
+| AS-378 | INCONCLUSIVE (major) | The wiring is genuinely present (`task-detail-sheet.tsx:1218-1226` / `:1239-1242`, candidate fetch at `:614-655` mirroring comment-list). But **no test exercises it**: `tests/unit/description-mentions.test.ts`, despite its filename and its `AS-378` test names, tests only `lib/notifications/mentions.ts` diffing — the whole file stays green if `mentionSuggestions` were deleted from `task-detail-sheet.tsx:1225`. It also inherits B1 verbatim, on the surface a user is *most* likely to click into immediately after opening a task. |
+| AS-379 | PASS (carried) | Bell + unread badge in desktop sidebar header and mobile top bar; both states unit-tested. |
+| AS-380 | PASS (carried) | Real-DB proof on `assignTask`, plus `bulkUpdate`/`createTask`/`duplicateTask`. |
+| AS-381 | PASS (carried) | F311 verified in pass 3 with falsifiable tests both directions. |
+| AS-382 | PASS | **Upgraded from pass 3's FAIL.** Both halves now have positive proof: status change at `f306-mutation-fanout.test.ts:232`, comment at `notification-fanout.test.ts:245` (asserts `toHaveLength(1)`, `actor_id`, and `comment_id`). Minor: the suite is `describe.skipIf(!haveAdminCreds)`, mitigated by a hard throw in CI. |
+| AS-383 | PASS (carried) | Function, partial unique index and live `cron.job` row verified. Carried minors: fires on the due date itself; the INNER join on `notification_preferences` means a user with no preferences row never gets an overdue notification (opposite of the TS fail-open policy); UTC-only. |
+| AS-384 | PASS (minor residual) | Re-verified: single chokepoint `fanout.ts:123`, and a reviewer enumerated all 10 call sites (`tasks.ts:402/887/2454/2886/4193/4584/4623`, `comments.ts:301/1120`, `mentions.ts:130`) — every one passes the authenticated caller as `actorId`, and no application code inserts into `notifications` directly. Minor: the DB `create_notification` RPC has **no** self-notify guard (it pins `actor_id` and checks membership but never rejects `p_user_id = auth.uid()`), so AS-384 rests entirely on the TypeScript layer. |
+| AS-385 | PASS (carried) | `created_at desc` + actor name + action label + task label; behavioural test. |
+| AS-386 | PASS (carried) | Deep link with search fallback; optimistic mark-read with revert. Carried minor: mark-read fires from `<Link>` `onClick`, so a hard navigation can abandon the in-flight action. |
+| AS-387 | PASS (carried) | Negative test proves it does not touch another member's rows. |
+| AS-388 | PASS (carried) | Realtime INSERT with transport-level `user_id=eq.` filter + server-snapshot refetch + focus/visibility reconciliation. |
+| AS-389 | PASS (carried) | F309 verified adversarially in pass 3; the `anon` follow-on hole is closed by grants, and the 7-arg overload was dropped. |
+| AS-390 | PASS (carried) | Invisible targets collapse to a non-clickable `<button>` labelled "a deleted task". |
+| AS-391 | PASS (carried) | Exhaustive `Record<NotificationKind, …>` makes a missing mapping a compile error. |
+| AS-392 | PASS (carried) | Retention enforced *inside* the SELECT policy, so no query path can leak stale rows. |
+| **AS-396** | **FAIL (blocker, carried unchanged)** | Re-verified independently this pass and unchanged since pass 2. **No code anywhere reads `email_enabled` or any `*_email` column** — `lib/notifications/preferences.ts:29-52` maps kinds to `*_in_app` only, and `resend` is in `package.json` with zero imports in `lib/`/`app/`/`components/`. **No reachable UI control** — `preferences-form.tsx:41` `const EMAIL_NOTIFICATIONS_ENABLED = false` hides the master switch and the whole email column. The "receives none" half holds *vacuously*; the "a user can turn email notifications off" half is not satisfiable by any user action. The existing round-trip/RLS test proves a column persists, not the assertion — it makes this look covered on a grep. **This is not fixable without F213–F217; see R1.** |
+| AS-393, 394, 395, 397, 398, 399, 400, 401, 402 | DEFERRED | F213–F217 `[SKIPPED]` (Resend not connected, user-deferred 2026-08-18). |
+| AS-294 (cross-ref) | PASS | Same chokepoint; watchers read live (`is_watching = true`) at every status-change site; `editTask` has no `status` in its update payload, so there is no un-fanned-out status mutation path. Positive proof at `f306-mutation-fanout.test.ts:232`. |
+| AS-214 (cross-milestone) | PASS | F315's guard verified. `npx vitest run tests/unit/user-avatar.test.tsx` → 10/10. See M2 below for a swallowed error on the same path. |
 
 ---
 
 ## Blocking findings
 
-### B1 — Mention picker has zero behavioural evidence (blocker; AS-371, AS-372, and the client half of AS-378)
-F310's mechanism is **real** — I verified `refreshEditorInstance` in `node_modules/@tiptap/react/dist/index.js:464-481` genuinely calls `editor.destroy()` then `createEditor()` on deps change, so the `getMentionItems` closure is truly refreshed. But *no test observes the picker*. The one editor-side test added asserts the `.ProseMirror` node identity changed — the implementation's own mechanism. There is no e2e mention spec. The assertions describe user-visible behaviour that has never been executed by any test in this repo, so a regression in `suggestion.items`, `MentionList` mounting, or the `char`/`allowSpaces` config would ship green.
+### B1 — F314's "pristine window" mitigation permanently disables the mention picker (blocker; AS-371, AS-372, client half of AS-378)
 
-### B2 — Full test suite is red (blocker; milestone-level)
-`npx vitest run`: **9 failed files, 18 failed tests, 1 unhandled rejection, exit 1**, 744s.
-Two of these are M15's own:
-- `tests/unit/user-avatar.test.tsx > renders the comment author's avatar in the actual CommentList component` — **deterministic failure**, not a flake: `components/task/use-reactions-realtime.ts:44` (M15/F202) calls `createBrowserClient` unconditionally on mount, which throws `"Your project's URL and API key are required"` in any environment without `NEXT_PUBLIC_SUPABASE_*`. An M15 feature broke a previously-passing test for a *different* milestone's assertion (AS-214), and nothing in M15 covers this crash path.
-- **Unhandled Rejection** in the same run, at `getMentionCandidates lib/actions/comments.ts:1250 → components/task/comment-list.tsx:283` — this is finding B3 below, empirically reproduced by the suite itself.
-The remaining 7 files (`invite-member`, `workspace-role-expansion`, `subtask-*`, `task-assignees-multi`, `perf-budget`, `comment-format-realtime`, `trash-list`) are pre-existing/env/contention failures outside M15, but they mean **no canonical green run exists** for this milestone.
+`components/editor/rich-text-editor.tsx:426-433`:
 
-### B3 — `getMentionCandidates` has a live unhandled-rejection path (blocker-adjacent, promoted to blocker by B2)
-`lib/actions/comments.ts:1310-1314` calls `resolveVisibleMentionIds` **outside** any try/catch, while that function throws `MentionVisibilityCheckError`. The `workspace_members` fetch immediately above *is* error-checked, so the omission is inconsistent, not a design choice. Both consumers call `.then(...)` with **no `.catch`** (`comment-list.tsx:283-290`, `task-detail-sheet.tsx:633-640`). A transient DB error therefore becomes an unhandled promise rejection and `visibleMentionIds` stays `null` forever: the picker silently never opens for that task, with nothing surfaced to the user. Fail-closed for security, but a silently dead feature — and the test run above proves the rejection path is reachable in practice.
+```ts
+const [mentionSuggestionsKey, setMentionSuggestionsKey] = useState(computedMentionSuggestionsKey)
+useEffect(() => {
+  if (pristineRef.current && !focusedRef.current) {
+    setMentionSuggestionsKey(computedMentionSuggestionsKey)
+  }
+}, [computedMentionSuggestionsKey])
+```
 
-## Major findings
+Reproduction, traced in the production code (not hypothetical):
 
-- **M1 (AS-376) — template description mentions bypass sanitisation.** `lib/actions/templates.ts:401` (also :145, :854) copies `description_json` into a possibly different project with no `sanitiseMentionsForVisibility`. A forced mention of a non-member survives into the target project. This is the one server-side hole in an otherwise well-defended set of write paths.
-- **M2 (AS-382) — watcher-gets-a-comment fan-out has only a vacuous negative test.** Delete the feature and the suite stays green.
-- **M3 (AS-373) — mention chips go stale on rename.** deps keyed on ids only; reproduced empirically; contradicts the module's own documented contract.
-- **M4 (F310 side effect) — editor rebuild drops focus and undo history.** Reproduced: mount with `mentionSuggestions: []`, focus `.ProseMirror`, rerender with a populated list → node is replaced, text survives (content is controlled by every caller) but `document.activeElement` returns to `BODY`. Since `getMentionCandidates` resolves a few hundred ms after mount, a user who starts typing immediately is kicked out of the composer mid-keystroke. No test covers this; the existing guard test only checks the no-op case.
-- **M5 (AS-369) — realtime DELETE payloads are not authorization-scoped.** A non-member who knows a task UUID can subscribe and receive un-react events. No test uses a genuine non-member subscriber.
-- **M6 (F312) — the fix's stated root cause is false, and the real silent-skip vector is untouched.** Reproduced in Vitest 4.1.10: a hook timeout marks the *suite* failed (`@vitest/runner/dist/chunk-artifact.js:3137` calls `failTask` before `markTasksAsSkipped`), prints under "Failed Suites", and exits 1. Only the individual tests show as `skip`. So the claim in `vitest.config.ts:30-33`, the F312 handoff, and commit `9474f36` — that a canonical run "could silently never execute that file's assertions" — is wrong; hook timeouts were always loud. F312 removed a visible red failure rather than restoring evidence, and that credit should be struck from the run log. Meanwhile the *actual* green-with-zero-coverage vector — `describe.skipIf(!haveAdminCreds)` across 40+ integration files — is untouched. It is guarded in CI by per-file `process.env.CI` throws, but locally a truncated `.env` yields a fully green run with the entire integration tier skipped. `hookTimeout: 30_000` is pure "wait longer" and does not address the root cause (~40 files each minting fresh Supabase Auth users in `beforeAll`); `maxWorkers: 4` is a genuine but partial mitigation. There is no `retry`, `bail`, `fileParallelism: false`, or `sequence` serialization.
+1. The composer mounts with `mentionSuggestions === []`. `comment-list.tsx:275-304` starts
+   `visibleMentionIds` at `null` and only populates it after the `getMentionCandidates`
+   Server Action round-trips. `task-detail-sheet.tsx:614-655` is identical.
+2. The user clicks into the composer. `onFocus` (`rich-text-editor.tsx:538-543`) sets
+   `focusedRef.current = true`.
+3. Candidates resolve. `computedMentionSuggestionsKey` changes, the effect runs — and is
+   **skipped**.
+4. `mentionSuggestionsKey` stays `""`. The editor is never recreated. The
+   `getMentionItems: () => mentionSuggestions` closure captured at construction
+   (`:459`) keeps returning `[]`.
+5. The user types `@`. The picker opens and renders **"No matching members"**
+   (`mention-list.tsx:100-110`).
 
-## Minor findings
+This is **not self-healing**: `pristineRef` is never reset to `true`, and after a blur the
+effect cannot re-run because its only dependency has not changed again. Mentions are dead
+for that editor instance's entire lifetime; recovery requires closing and reopening the
+task sheet. The trigger is a *focus*, before a single character is typed — not, as the
+code comment at `:396-417` frames it, "an in-flight composition".
 
-- `components/editor/rich-text-editor.tsx` contains **two literal NUL bytes** (offset ~15001 and the renderer's twin), used as the `Array.join()` separator for `mentionSuggestionsKey`. This makes the file *binary* to `grep`, `git diff --word-diff`, and most text tooling — plain `grep -n "useEditor" components/editor/rich-text-editor.tsx` silently returns nothing. Ids are UUIDs; `","` would be equally collision-safe and text-clean.
-- Non-empty `deps` permanently disables `setOptions` (`@tiptap/react` `onRender` only takes that branch when `deps.length === 0`), so `editorProps` — placeholder, `aria-label`, and the `handleKeyDown` closure over `onBlur` — is frozen at construction. `editable` is patched manually; nothing else is. Latent trap.
-- Transient "@Former member" flash: read-only renderers receive the visibility-filtered list, which is `[]` until the fetch resolves, so every existing mention paints grey before flipping to a chip.
-- Watcher-promotion upserts (`comments.ts:336`, `:1152`, `mentions.ts:169`) never destructure `error`; failures are silent and unlogged.
-- Activity writes are `console.error`-and-continue at every call site with no reconciliation, so a transient RPC failure leaves an invisible gap in a feed AS-353/355 describe as covering "every" change. Notifications got a dedicated observability test; activity writes have no equivalent.
-- `rls-notifications.test.ts:205-224` is misnamed ("cannot forge…for another user") and ends in `void error` — it asserts nothing about forgery. `:226-238` carries the real load.
-- `bulkUpdateTasks` diffs only 4 of 6 activity fields (no title/estimate). Correct today because the bulk schema excludes them; silent-drift trap if that widens.
-- An authenticated **active member** can call `create_notification` for any other member of the same workspace with arbitrary `p_kind`/`p_task_id`/`p_payload` — neither caller-vs-recipient nor task-belongs-to-workspace is checked (`rls-notifications.test.ts:240-258` confirms the call succeeds). Actor is honestly pinned, so AS-389 stands, but this enables in-workspace notification spam and a cross-project task-id probe.
-- Lint: 2 warnings, 0 errors (`_titleMatches`, `_columns` unused).
+Two things make this worse than a plain bug:
+
+- **The tests lock it in.** `mention-extension.test.tsx:616-640` fires `focus`, rerenders
+  with populated members, and asserts `container.querySelector(".ProseMirror")` **is the
+  same node** — it is green precisely *because* the picker is broken. `:642-669` is a
+  duplicate of it (its own comment at `:651-659` admits it fires `focus` because a real
+  edit cannot be simulated), not the edit case its name claims.
+- **The recreation machinery is unnecessary for the picker in the first place.** I checked
+  `mention-extension.ts:115-116`: `items: ({query}) => filterMentionItems(getItems(), query)`
+  is invoked lazily per keystroke. If `getMentionItems` read a *ref* holding the latest
+  candidates, the picker would always be current with **zero** editor rebuilds and no
+  pristine gate would be needed at all. The destroy/recreate coupling — and therefore the
+  focus-loss problem F314 was mitigating — is self-inflicted. (Recreation is still
+  arguably needed for `renderHTML` chip *repaint*, i.e. AS-373; that path can keep it.)
+
+Also on this path, unguarded: neither `comment-list.tsx:281-294` nor
+`task-detail-sheet.tsx:630-644` attaches a `.catch`. A Server Action *rejection* leaves
+`visibleMentionIds` at `null` forever and raises an unhandled promise rejection; the
+`{ok:false}` branch sets `[]` with no toast, no log and no retry, so a permissions or
+network failure is indistinguishable from "this project has no members".
+
+There is also a coverage gap independent of the bug: the F314 tests exercise
+`createMentionExtension` through a bespoke harness (`TestMentionEditor`,
+`mention-extension.test.tsx:417-435`) that calls `useEditor(..., [])` with `getItems`
+passed straight in. It **bypasses `RichTextEditor` entirely** — no `mentionSuggestionsKey`,
+no pristine gate, no deps recreation. So it proves "the plugin works if `getItems` is
+correct", never "`RichTextEditor` supplies a correct `getItems` at the moment the user
+types `@`" — which is exactly where the bug lives.
+
+### B2 — AS-396 cannot be satisfied while F213–F217 are skipped (blocker, carried for the third pass)
+
+Unchanged and unchangeable by any M15 follow-up. See the assertion row and R1.
+
+---
+
+## Non-blocking but material findings
+
+### M1 — The full test suite gives no trustworthy integration signal this pass (process finding)
+
+`npx vitest run` (full) is unusable right now: 87 test files reported skipped tests behind
+30 000 ms `beforeAll` hook timeouts, and 97 individual `×` failures accumulated, spread
+across files with **no relation to M15** (`archive-project.test.ts` — M2-era, 6/7 failed;
+`board-columns-render`, `project-list`, `upload-avatar`, `update-profile`, …). Every
+timeout stack bottoms out at `admin.auth.admin.createUser`. This matches the documented
+Supabase Auth admin-operation exhaustion from this session's cumulative load and is **not**
+a code regression — the same files' assertions passed earlier today. I aborted the full
+run rather than let it burn another 30+ minutes producing noise.
+
+The trustworthy signal is the unit suite, which does not touch Supabase:
+`npx vitest run tests/unit` → **101 passed / 2 failed files, 788 passed / 2 failed tests,
+1 error**, 30 s. That is a large improvement on pass 3's "9 failed files / 18 failed tests"
+and shows F313–F316 did not regress the unit layer.
+
+**Consequence for this report:** every assertion whose only evidence is an integration test
+is, strictly, unverified *by execution* this pass; I accepted them on the strength of
+reading the test bodies (checking they are falsifiable, not implementation-mirroring) plus
+their green history. AS-382's newly added positive test in particular was read line by line
+rather than run. This should be re-executed once Supabase Auth recovers.
+
+### M2 — Two unit tests are red, and one M15-path error is silently swallowed
+
+- `tests/unit/trash-list.test.tsx` — 2 failed: `Error: invariant expected app router to be
+  mounted` from `TrashRestoreButton` (`components/trash/trash-restore-button.tsx:22`).
+  **This is an M14 regression, not M15**: F189 introduced `TrashRestoreButton` into
+  `TrashList` without adding a router mock to F188's existing test. It is nonetheless a red
+  suite, and a milestone should not be signed off on one.
+- `tests/unit/fts-tasks.test.ts` — a Supabase-backed *integration* test living in
+  `tests/unit/`; its failure here is M1's infra exhaustion, but its location means it
+  poisons the one suite that is supposed to be hermetic and fast.
+- The unit run emits an unhandled ``Error: `cookies` was called outside a request scope``
+  from `getMentionCandidates` (`comments.ts:1250`) via `comment-list.tsx:283`, and it does
+  **not** fail any file. So `user-avatar.test.tsx` is greener than the code is: a real
+  render-time throw on the mention path is reported and ignored. The same env-absence
+  failure class that motivated F315's guard is still live and unguarded here.
+
+### M3 — Minor defects noted in passing
+
+- `mention-extension.ts:145-156`: the `Escape` branch calls `unmount?.()` /
+  `component?.destroy()` without nulling them, so the subsequent `onExit` (`:157-162`)
+  destroys an already-destroyed `ReactRenderer`.
+- `rich-text-editor.tsx:523-535`: the `justConstructedRef` heuristic assumes exactly one
+  synthetic `onUpdate` per construction. If that synthetic update does not fire for some
+  content shape, the **first real user edit** is swallowed as synthetic and `pristineRef`
+  stays `true` — reintroducing the very mid-typing rebuild F314 set out to prevent. Only
+  one of the two branches is tested.
+- `components/editor/rich-text-editor.tsx` still registers as `data` to `file(1)` because
+  of one legitimate `\x00` inside a control-character regex range. Cosmetic; note that it
+  makes plain `grep` silently return nothing on this file (I hit this) — use `grep -a`.
+- `saveAsTemplate` / `saveProjectAsTemplate` (`templates.ts:147`, `:895`) snapshot
+  `description_json` unsanitised into a workspace-readable `task_templates.payload`. Not an
+  AS-376 violation (every instantiation path re-sanitises), but raw non-member user ids do
+  persist there.
 
 ---
 
 ## Recommended follow-up features
 
-**FU-1 — End-to-end mention picker coverage (closes B1; AS-371, AS-372, AS-378).**
-Add a Playwright spec under `tests/e2e/` that signs in as a real workspace member, opens a task's comment composer, types `@`, and asserts the picker appears listing exactly the members with access to that task's project (and *not* a workspace member without project access), then types characters and asserts the list narrows, then selects an entry and asserts a `data-type="mention"` chip with the correct `data-id` lands in the posted comment. Repeat the same flow in the task *description* editor for AS-378. Critically, the fixture must reproduce the real timing: the candidate list must arrive from `getMentionCandidates` *after* the editor has mounted, which is the exact sequence F310 claims to fix and which no current test observes. The existing jsdom test that asserts `.ProseMirror` node identity changed should be kept but demoted to a supporting unit test, not treated as evidence for AS-371/372.
+**R1 — Re-scope AS-396 out of M15 or unblock it.** AS-396 has now been a blocker for three
+consecutive passes and is not fixable by any code change inside M15: it requires a sender
+(F213–F217, `[SKIPPED]` because Resend was never connected, user-deferred 2026-08-18). No
+worker can close it. Either (a) reclassify AS-396 into the same DEFERRED bucket as
+AS-393–395 and AS-397–402 and re-validate the whole email block together when the Resend
+chain lands, recording the reclassification in the run-log so it is not lost; or (b) run
+`/mission-connect` for Resend and schedule F213–F217. Doing neither guarantees a fourth
+consecutive pass that fails on an assertion nobody can act on. This needs an orchestrator
+decision, not a feature file.
 
-**FU-2 — Fix the deterministic `use-reactions-realtime` unit-test crash and get the suite green (closes B2).**
-`components/task/use-reactions-realtime.ts:44` constructs a Supabase browser client unconditionally on mount, throwing whenever `NEXT_PUBLIC_SUPABASE_*` is absent and taking down any test (or any future SSR/preview context) that renders `CommentList`. Make the hook degrade gracefully — no subscription, no throw — when the client cannot be constructed, and add a test that renders `CommentList` with those env vars unset and asserts it still renders comments. Separately, triage the other 8 red files: `trash-list.test.tsx` (missing app-router mock, deterministic), and the Supabase Auth rate-limit / statement-timeout cluster (`invite-member`, `workspace-role-expansion`, `subtask-*`, `task-assignees-multi`, `perf-budget`, `comment-format-realtime`). The rate-limit cluster is the root cause F312 declined to fix: replace the per-file "mint fresh Supabase Auth users in `beforeAll`" pattern with a pooled/reused set of test users, or serialize the Auth-heavy files. Definition of done is a clean `npx vitest run` exit 0, twice in a row.
+**R2 — Replace the pristine-window gate with a live candidate ref (blocker; AS-371, AS-372,
+AS-378).** Stop coupling the mention picker to editor recreation. Hold the current
+`mentionSuggestions` in a ref that is updated on every render, and pass
+`getMentionItems: () => mentionSuggestionsRef.current` into the extension. Because
+`mention-extension.ts:115` calls `getItems()` lazily on each suggestion query, the picker
+then always sees the latest candidates with no destroy/recreate cycle — which removes both
+the focus/undo-history loss F314 was mitigating *and* the pristine gate that caused this
+regression. Keep a recreation key only if chip repaint (AS-373) still needs it, and if so
+scope it to the read-only `RichTextRenderer`, which cannot be focused or typed into and
+therefore needs no gate. Delete `mention-extension.test.tsx:616-669` (both tests assert the
+broken outcome) and replace them with one that focuses the editor first, resolves
+candidates late, then types `@` through the real plugin and asserts the members are listed.
+Add `.catch` to both `getMentionCandidates` call sites, surfacing the failure (a toast or a
+distinct "couldn't load members" picker state) rather than rendering "No matching members".
 
-**FU-3 — Make `getMentionCandidates` fail loudly instead of silently killing the picker (closes B3).**
-Wrap the `resolveVisibleMentionIds` call in `lib/actions/comments.ts:1310-1314` in the same try/catch the adjacent `workspace_members` fetch already uses, returning a structured error result rather than throwing across the server-action boundary. Add `.catch` handlers at both consumers (`comment-list.tsx:283`, `task-detail-sheet.tsx:633`) that log and surface a non-blocking toast, so a transient failure produces a visible "mentions unavailable" state rather than a permanently `null` candidate list and an unhandled promise rejection. Add a test that forces the visibility check to throw and asserts no unhandled rejection escapes and the composer still functions for plain text.
+**R3 — Cover the mention picker through the production component, and cover AS-378 for
+real (major).** The F314 harness (`TestMentionEditor`) bypasses `RichTextEditor`'s own
+wiring, which is precisely the layer that broke. Add a test that mounts the real
+`RichTextEditor` with `mentionSuggestions` arriving asynchronously (mimicking
+`getMentionCandidates`), types `@` through the real Suggestion plugin, and asserts the
+listbox lists the scoped members — the test that would have caught R2's bug. Add a
+sibling test mounting the *description* editor surface from `task-detail-sheet.tsx` and
+doing the same, since `tests/unit/description-mentions.test.ts` — despite its filename and
+its `AS-378` test names — tests only notification diffing and would stay green if
+`mentionSuggestions` were removed from the description editor entirely. While in the file,
+either implement email matching in `filterMentionItems` or correct the doc comment at
+`mention-extension.ts:42`.
 
-**FU-4 — Sanitise mentions on every template description copy (closes M1; AS-376).**
-Apply `sanitiseMentionsForVisibility` to `description_json` in `lib/actions/templates.ts` at :401 (apply-template-into-project) and at :145/:854 (template creation copies), resolving visibility against the *target* project, not the source. Mirror `editTask`'s convention exactly: catch `MentionVisibilityCheckError` and fail the write rather than persisting a partially-sanitised document. Add a real-DB integration test that stores a template whose description mentions user X, applies it into a project X cannot see, and asserts the persisted `description_json` contains no `data-id` for X.
+**R4 — Harden `createProjectFromTemplate`'s post-RPC sanitisation pass (major; AS-376).**
+The pass at `templates.ts:1127-1180` is best-effort in a way that lets an AS-376 violation
+persist silently: paginate the task re-fetch with a `.range()` loop (or cap
+`projectTemplatePayloadSchema.tasks`) so a template exceeding PostgREST's `max-rows` does
+not leave the overflow unsanitised; read the created project's real `visibility` from the
+row instead of hardcoding `"workspace"`; and stop swallowing every failure — at minimum
+count the failures and surface a warning in the action's result so the user knows the
+project was created but some descriptions were not verified. Add a test that forces a
+write-back failure and asserts the caller learns about it. Separately, run the sanitiser in
+`duplicateTask` (`tasks.ts:4083/4127`) and the recurrence clone, both of which currently
+copy `description_json` verbatim with no re-check, and add the negative test neither has.
 
-**FU-5 — Positive test for watcher-notified-on-comment, and audit for sibling vacuous tests (closes M2; AS-382).**
-Add a real-DB test in which user A watches a task, user B comments, and A receives exactly one `comment_reply` notification with the correct `comment_id` — a test that fails if the fan-out branch is removed. The current only coverage is a negative preference-gating assertion that passes vacuously. While there, sweep the notification and activity suites for the same pattern: any test whose sole assertion is `expect(rows).toEqual([])` needs a positive counterpart proving the non-empty case exists.
+**R5 — Restore a green, hermetic unit suite (major; milestone-level).** Add the missing
+`next/navigation` router mock so `tests/unit/trash-list.test.tsx` passes again — it broke
+when F189 introduced `TrashRestoreButton` into `TrashList` and is an M14 regression that
+has been red across multiple passes without being attributed. Move
+`tests/unit/fts-tasks.test.ts` into `tests/integration/`, where its Supabase dependency
+belongs, so `tests/unit` stays hermetic and fast. Make the unhandled ``cookies`` rejection
+from `getMentionCandidates` in the jsdom environment either fail its test or be explicitly
+stubbed, so it is not silently reported-and-ignored — a real render-time throw on the
+mention path is currently invisible to CI.
 
-**FU-6 — Re-render mention chips on label change, and stop stealing focus on editor rebuild (closes M3 and M4).**
-Two problems with one root: `mentionSuggestionsKey` is keyed on ids alone, so renames never trigger a rebuild, while *any* rebuild destroys focus and undo history. Include the label (and any other rendered field) in the deps key so a rename repaints; then make the rebuild non-destructive by capturing the editor's selection and focus state before `destroy()` and restoring both after `createEditor()`, or by moving the suggestion source behind a mutable options object the extension reads at call time so no rebuild is needed at all. Add tests for: rename repaints the chip; a rebuild triggered while the composer is focused leaves `document.activeElement` on `.ProseMirror` with the caret where it was.
-
-**FU-7 — Authorize realtime reaction DELETE payloads (closes M5; AS-369).**
-`postgres_changes` DELETE payloads are not RLS-filtered, and the `task_id` filter is subscriber-chosen, so knowledge of a task UUID is sufficient to receive un-react events for a project the subscriber cannot see. Move reaction realtime to an authorized private channel (Supabase Realtime authorization / `realtime.messages` RLS) or to a server-emitted broadcast that only fans out to authorized recipients. Add a test with a genuine **non-member** subscriber — the current scoping test's "outsider" is a workspace member, so the leak is untested.
-
-**FU-8 — Correct the F312 record and close the real silent-skip vector (closes M6).**
-Amend `vitest.config.ts:30-33`, the F312 handoff, and the run-log entry to state the verified behaviour: a hook timeout in Vitest 4.1.10 fails the suite and exits 1; nothing was ever silently skipped by that mechanism. Keep `hookTimeout: 30_000` and `maxWorkers: 4` (harmless and mildly beneficial) but stop crediting them with restored evidence. Then address the mechanism that *does* produce green-with-zero-coverage: `describe.skipIf(!haveAdminCreds)` across 40+ integration files. Make a missing-credentials run fail loudly by default (invert the guard so the `throw` is unconditional unless an explicit `ALLOW_SKIP_INTEGRATION=1` opt-out is set), so a truncated `.env` can never yield a falsely green local run.
-
-**FU-9 — Housekeeping (minors).**
-Replace the literal NUL separators in `components/editor/rich-text-editor.tsx` with a printable separator so the file stops registering as binary to `grep`/`git diff`. Handle `error` on the three watcher-promotion upserts. Add observability coverage for swallowed activity-log writes to match the notification path. Rename or delete the no-op `rls-notifications.test.ts:205-224`. Consider tightening `create_notification` to reject a caller notifying a member about a task that caller cannot see. Clear the two lint warnings.
+**R6 — Re-run the integration suite once Supabase Auth recovers (process).** Nothing to
+build; the M15 integration evidence in this report was read rather than executed (M1). A
+clean full `npx vitest run` should gate the milestone before the UX validator, and the
+result should be recorded in the run-log. If a second consecutive session hits
+`auth.admin.createUser` exhaustion, consider a fixture-pooled test user strategy so the
+suite stops creating an auth user per `beforeAll`.
 
 ---
 
-# Appendix — full tool output
+## Command output
 
-## `npx tsc --noEmit`
+### `npx tsc --noEmit`
+
 ```
-(no output)
 TSC exit 0
 ```
 
-## `npx eslint .`
+### `npx eslint .`
+
 ```
 /Users/sasajapranin/Desktop/pm-app/lib/queries/search.ts
   232:27  warning  '_titleMatches' is defined but never used  @typescript-eslint/no-unused-vars
@@ -156,81 +312,72 @@ TSC exit 0
   186:22  warning  '_columns' is defined but never used  @typescript-eslint/no-unused-vars
 
 ✖ 2 problems (0 errors, 2 warnings)
+
+ESLINT exit 0
 ```
 
-## `npx vitest run` (Vitest 4.1.10)
-```
- Test Files  9 failed | 242 passed (251)
-      Tests  18 failed | 1687 passed (1705)
-     Errors  1 error
-   Duration  744.85s
-EXIT 1
-```
+### `npx vitest run tests/unit` (trustworthy signal — no Supabase dependency)
 
-Failed files:
 ```
-tests/unit/trash-list.test.tsx
-tests/unit/user-avatar.test.tsx
-tests/integration/comment-format-realtime.test.ts
-tests/integration/invite-member.test.ts
-tests/integration/perf-budget.test.ts
-tests/integration/subtask-actions.test.ts
-tests/integration/subtask-ui-detail.test.ts
-tests/integration/task-assignees-multi.test.ts
-tests/integration/workspace-role-expansion.test.ts
-```
+ ❯ tests/unit/trash-list.test.tsx (3 tests | 2 failed) 15ms
+     × test_AS_347_renders_the_deleted_tasks_title_project_deleter_and_time 10ms
+     × does not render a deleter name when deletedByName is null (pre-migration/legacy row) 1ms
+ ❯ tests/unit/fts-tasks.test.ts (3 tests | 3 skipped) 30009ms
 
-Failed tests:
-```
-× AS-007: an owner can invite a user by email, creating an invited workspace_members row       4396ms
-× AS-007: an admin can also invite a user by email                                             1612ms
-× AS-007 (failure case): inviting an email that is already invited is rejected cleanly         1776ms
-× AS-007 (side effect): inviting in one workspace does not create or affect a row in another   1852ms
-× AS-238: inviting with role 'admin' creates an invited row that grants that role              1798ms
-× AS-238: inviting with role 'member' creates an invited row that grants that role             1511ms
-× AS-238: inviting with role 'viewer' creates an invited row that grants that role             1718ms
-× AS-238: omitting the role defaults the invite to 'member' (backward compatible)              1607ms
-× AS-238: the granted role survives acceptance — activation only flips status/user_id          1381ms
-× test_AS_347_renders_the_deleted_tasks_title_project_deleter_and_time                            9ms
-× does not render a deleter name when deletedByName is null (pre-migration/legacy row)            1ms
-× renders the comment author's avatar in the actual CommentList component                        14ms
-× test_AS_264_a_promoted_subtask_no_longer_appears_in_its_former_parents_children             30004ms
-× test_AS_267_cascade_provenance_distinguishes_a_child_deleted_before_the_parent_from_cascaded 30003ms
-× AS-289: an assignee can be removed without affecting the others (3 assignees, remove one)   30006ms
-× AS-156: getProjectBoardTasks p95 is under the 500ms budget at v1 scale (80 tasks / 4 cols)   8225ms
-× AS-136: dashboard RPCs (priority/status/overdue counts) p95 is under the 500ms budget       17792ms
-× AS-312: an independent Realtime subscriber on comments:<taskId> receives body_json on INSERT 8194ms
-```
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/unit/fts-tasks.test.ts > F068 full-text search (AS-117, AS-123, AS-124)
+Error: Hook timed out in 30000ms.
+ ❯ tests/unit/fts-tasks.test.ts:75:3
+     75|   beforeAll(async () => {
+     77|       await admin.auth.admin.createUser({
 
-Representative failure detail:
-```
-FAIL  tests/unit/user-avatar.test.tsx > test_AS_214_user_avatar_appears_on_comments
-      > renders the comment author's avatar in the actual CommentList component
-Error: @supabase/ssr: Your project's URL and API key are required to create a Supabase client!
- ❯ createBrowserClient node_modules/@supabase/ssr/src/createBrowserClient.ts:105:10
- ❯ createClient lib/supabase/client.ts:7:10
- ❯ components/task/use-reactions-realtime.ts:44:22
-
-FAIL  tests/unit/trash-list.test.tsx > TrashList (F188: AS-347)
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/unit/trash-list.test.tsx > TrashList (F188: AS-347) > test_AS_347_renders_the_deleted_tasks_title_project_deleter_and_time
+ FAIL  tests/unit/trash-list.test.tsx > TrashList (F188: AS-347) > does not render a deleter name when deletedByName is null (pre-migration/legacy row)
 Error: invariant expected app router to be mounted
+ ❯ useRouter node_modules/next/src/client/components/navigation.ts:169:10
  ❯ TrashRestoreButton components/trash/trash-restore-button.tsx:22:18
+     22|   const router = useRouter();
 
-FAIL  tests/integration/comment-format-realtime.test.ts > AS-312
-AssertionError: expected null not to be null
- ❯ tests/integration/comment-format-realtime.test.ts:350:30
-
-FAIL  tests/integration/workspace-role-expansion.test.ts > AS-238 (x5)
-AssertionError: expected { ok: false, error: "Something went wrong…" }
-                 to deeply equal { ok: true, invitedEmail: … }
-```
-
-Unhandled rejection (1 error):
-```
-⎯⎯⎯⎯ Unhandled Rejection ⎯⎯⎯⎯⎯
+⎯⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯⎯
 Error: `cookies` was called outside a request scope.
  ❯ createClient lib/supabase/server.ts:10:29
  ❯ getMentionCandidates lib/actions/comments.ts:1250:26
  ❯ components/task/comment-list.tsx:283:5
-Serialized Error: { __NEXT_ERROR_CODE: 'E251' }
 This error originated in "tests/unit/user-avatar.test.tsx" test file.
+(does not fail the file)
+
+ Test Files  2 failed | 101 passed (103)
+      Tests  2 failed | 788 passed | 3 skipped (793)
+     Errors  1 error
+   Duration  30.17s
+```
+
+### `npx vitest run tests/unit/user-avatar.test.tsx` (AS-214 cross-milestone check)
+
+```
+ Test Files  1 passed (1)
+      Tests  10 passed (10)
+   Duration  1.53s
+```
+
+### `npx vitest run` (full — ABORTED, infra-degraded, see M1)
+
+```
+ ❯ tests/integration/archive-project.test.ts (7 tests | 6 failed) 238858ms
+     × AS-030: a workspace owner can archive a project (deleted_at is set) 30008ms
+     × AS-030: a workspace admin can archive a project 30004ms
+     × AS-033 (failure case): a plain member cannot archive a project 30004ms
+     × AS-032: an archived project's row remains fully readable ... 30002ms
+     × (side effect) archiving one project does not affect another project's row 30002ms
+     × (failure case) an unauthenticated caller cannot archive a project 30005ms
+ ❯ tests/integration/template-actions.test.ts (13 tests | 13 skipped) 32488ms
+ ❯ tests/integration/project-from-template.test.ts (7 tests | 7 skipped) 38064ms
+ ❯ tests/integration/f313-mention-visibility-followup.test.ts (4 tests | 4 skipped) 31446ms
+ ❯ tests/integration/f316-project-from-template-mentions.test.ts (2 tests | 2 skipped) 33296ms
+ ❯ tests/integration/add-comment.test.ts (4 tests | 4 skipped) 32468ms
+ ... 87 files with 30s beforeAll hook timeouts, 97 accumulated `×` failures,
+     every stack bottoming out at admin.auth.admin.createUser,
+     spread across milestones with no relation to M15.
+ [run aborted — see M1; not a code regression]
 ```
