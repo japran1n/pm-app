@@ -468,6 +468,44 @@ export type Database = {
           },
         ]
       }
+      project_statuses: {
+        Row: {
+          category: string
+          color: string
+          created_at: string
+          id: string
+          name: string
+          position: number
+          project_id: string
+        }
+        Insert: {
+          category: string
+          color: string
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+        }
+        Update: {
+          category?: string
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_statuses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           archived_by: string | null
@@ -764,6 +802,7 @@ export type Database = {
           search_vector: unknown
           start_date: string | null
           status: string
+          status_id: string | null
           tags: string[]
           title: string
           updated_at: string
@@ -793,6 +832,7 @@ export type Database = {
           search_vector?: unknown
           start_date?: string | null
           status?: string
+          status_id?: string | null
           tags?: string[]
           title: string
           updated_at?: string
@@ -822,6 +862,7 @@ export type Database = {
           search_vector?: unknown
           start_date?: string | null
           status?: string
+          status_id?: string | null
           tags?: string[]
           title?: string
           updated_at?: string
@@ -874,6 +915,13 @@ export type Database = {
             columns: ["recurrence_parent_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_status_id_fkey"
+            columns: ["status_id"]
+            isOneToOne: false
+            referencedRelation: "project_statuses"
             referencedColumns: ["id"]
           },
         ]
@@ -1350,6 +1398,7 @@ export type Database = {
           search_vector: unknown
           start_date: string | null
           status: string
+          status_id: string | null
           tags: string[]
           title: string
           updated_at: string
@@ -1360,6 +1409,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      seed_default_project_statuses: {
+        Args: { target_project_id: string }
+        Returns: undefined
       }
       shares_workspace_with: {
         Args: { target_user_id: string }
