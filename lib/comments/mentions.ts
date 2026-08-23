@@ -118,6 +118,32 @@ function stripInvisibleMentions(
   return node;
 }
 
+/**
+ * F320 (AS-376 follow-up, scrutiny pass 5): safe conservative fallback for
+ * batch/multi-document callers (currently only
+ * `createProjectFromTemplate`'s post-RPC pass in lib/actions/templates.ts)
+ * that cannot fail the whole write when `sanitiseMentionsForVisibility`
+ * throws `MentionVisibilityCheckError` for one document in a batch (the
+ * RPC that created the batch already committed atomically — there is
+ * nothing left to roll back for the OTHER documents in the same batch, so
+ * aborting the whole loop is not an option the way it is for a
+ * single-document write like `addComment`/`editComment`/`editTask`).
+ * Leaving that one document's original, unsanitised description in place
+ * on a check failure would silently reintroduce the exact
+ * mention-visibility hole this module exists to close. This strips every
+ * mention node unconditionally (the same "@Former member" fallback text
+ * `stripInvisibleMentions` already uses for an individual invisible
+ * mention) — safe because it can never under-strip, only over-strip
+ * (losing mention formatting on a mention that might actually have been
+ * visible, in the rare case the visibility check itself failed
+ * transiently) — and is not a substitute for `sanitiseMentionsForVisibility`
+ * on the primary/common-case path, only a last-resort fallback after that
+ * call has already thrown.
+ */
+export function stripAllMentions(doc: JSONContent): JSONContent {
+  return stripInvisibleMentions(doc, new Set<string>()) as JSONContent;
+}
+
 /** Generalisation of `public.is_project_visible_to()` for an arbitrary
  * mentioned user id rather than `auth.uid()` — see this file's doc comment.
  * Batched (one workspace_members query + one project_members query for the

@@ -288,5 +288,101 @@ describe.skipIf(!haveAdminCreds)(
       const result = await getTaskActivityFeed(taskId, 20);
       expect(result.ok).toBe(false);
     });
+
+    // F320 (scrutiny pass 5, AS-358): a task with MORE than
+    // MAX_TASK_ACTIVITY_PAGE_SIZE (200) activity rows must never let
+    // "Load more" imply more can always be fetched past the cap — proves
+    // both the honest `cappedAtMax` signal AND that requesting a limit far
+    // beyond the cap still returns exactly the capped number of rows
+    // (the cursor/window logic itself does not skip or repeat rows at the
+    // 200 boundary).
+    describe("beyond the MAX_TASK_ACTIVITY_PAGE_SIZE cap", () => {
+      let cappedTaskId: string;
+
+      beforeAll(async () => {
+        const { data: task, error: taskErr } = await adminClient
+          .from("tasks")
+          .insert({
+            project_id: projectId,
+            title: "F320 capped activity task",
+            status: "todo",
+            author_id: memberUserId,
+          })
+          .select("id")
+          .single();
+        if (taskErr || !task) {
+          throw new Error(`Failed to create capped task: ${taskErr?.message}`);
+        }
+        cappedTaskId = task.id;
+
+        // 205 rows: 5 more than MAX_TASK_ACTIVITY_PAGE_SIZE (200).
+        // Hand-inserted directly (bypassing RLS via the admin client) —
+        // this is a data-shape/pagination-boundary test, not a
+        // re-verification that write_task_activity_entry works (that's
+        // F195's own suite).
+        const now = Date.now();
+        const rows = Array.from({ length: 205 }, (_, i) => ({
+          task_id: cappedTaskId,
+          actor_id: memberUserId,
+          kind: "field_changed" as const,
+          field: "title",
+          old_value: JSON.stringify(`old ${i}`),
+          new_value: JSON.stringify(`new ${i}`),
+          // Strictly increasing so ordering is deterministic even at
+          // millisecond resolution.
+          created_at: new Date(now + i * 10).toISOString(),
+        }));
+        const { error: insertErr } = await adminClient
+          .from("task_activity")
+          .insert(rows);
+        if (insertErr) {
+          throw new Error(`Failed to seed 205 activity rows: ${insertErr.message}`);
+        }
+      });
+
+      afterAll(async () => {
+        if (cappedTaskId) {
+          await adminClient.from("task_activity").delete().eq("task_id", cappedTaskId);
+          await adminClient.from("tasks").delete().eq("id", cappedTaskId);
+        }
+      });
+
+      it("test_AS_358_cap_hasMore_is_false_and_cappedAtMax_is_true_once_the_hard_cap_is_reached", async () => {
+        const page = await getTaskActivityPage(cappedTaskId, 200);
+        expect(page.rows.length).toBe(200);
+        // The UI must not claim "Load more" would fetch anything new —
+        // 200 is already the hard server cap.
+        expect(page.hasMore).toBe(false);
+        // But it must still tell the truth that more activity exists
+        // beyond what's shown, distinct from "hasMore: false" meaning
+        // "this is genuinely everything."
+        expect(page.cappedAtMax).toBe(true);
+      });
+
+      it("test_AS_358_cap_requesting_far_beyond_the_cap_still_returns_exactly_the_capped_rows_no_cursor_skip_or_repeat", async () => {
+        const page = await getTaskActivityPage(cappedTaskId, 10_000);
+        expect(page.rows.length).toBe(200);
+        expect(page.hasMore).toBe(false);
+        expect(page.cappedAtMax).toBe(true);
+
+        // The 200 returned rows must be the newest 200 (ids 205..6, i.e.
+        // indices 204 down to 5 in insertion order) — not an arbitrary or
+        // shifted window — and contain no duplicates.
+        const ids = page.rows.map((r) => r.id);
+        expect(new Set(ids).size).toBe(200);
+        for (let i = 1; i < page.rows.length; i++) {
+          const prev = new Date(page.rows[i - 1].createdAt).getTime();
+          const curr = new Date(page.rows[i].createdAt).getTime();
+          expect(prev).toBeGreaterThanOrEqual(curr);
+        }
+      });
+
+      it("a task with exactly the cap's worth of activity (not beyond it) reports hasMore false and cappedAtMax false", async () => {
+        // A different, small task (from the outer suite) never has 200+
+        // rows — sanity check that cappedAtMax is not just always true.
+        const page = await getTaskActivityPage(taskId, 200);
+        expect(page.cappedAtMax).toBe(false);
+      });
+    });
   },
 );

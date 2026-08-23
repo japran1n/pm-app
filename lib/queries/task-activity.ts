@@ -72,7 +72,25 @@ export type TaskActivityRow = {
 
 export type TaskActivityPage = {
   rows: TaskActivityRow[];
+  /** True only when requesting a LARGER window than this page would
+   * actually return more rows — i.e. "Load more" is a real, useful
+   * action. F320 (scrutiny pass 5, AS-358): once the requested window is
+   * already clamped to `MAX_TASK_ACTIVITY_PAGE_SIZE`, this is always
+   * `false` even if the task genuinely has more activity beyond the cap
+   * — asking for an even bigger window would still be clamped to the
+   * same 200-row cap and return the exact same page, so offering another
+   * "Load more" click would be a lie (nothing further CAN be loaded).
+   * See `cappedAtMax` for that case. */
   hasMore: boolean;
+  /** F320 (scrutiny pass 5, AS-358): true when this task's activity
+   * history is longer than `MAX_TASK_ACTIVITY_PAGE_SIZE` — i.e. there IS
+   * more activity than what's shown, but it is permanently unreachable
+   * through this query's hard server-side cap. Lets the caller
+   * (activity-feed.tsx) render an honest "showing the first 200 items"
+   * notice instead of silently truncating with no indication, now that
+   * `hasMore` no longer implies "Load more" would return anything new
+   * past the cap. */
+  cappedAtMax: boolean;
   /** F308 (FU-12 item 6): set only when the underlying query actually
    * failed (a real DB/network error), never for a genuine "this task has
    * no activity yet" result — lets a caller (activity-feed.tsx) render a
@@ -121,13 +139,25 @@ export async function getTaskActivityPage(
     return {
       rows: [],
       hasMore: false,
+      cappedAtMax: false,
       error: "Couldn't load activity. Try again.",
     };
   }
 
   const allRows = data ?? [];
-  const hasMore = allRows.length > boundedLimit;
-  const pageRows = hasMore ? allRows.slice(0, boundedLimit) : allRows;
+  const moreRowsExist = allRows.length > boundedLimit;
+  const pageRows = moreRowsExist ? allRows.slice(0, boundedLimit) : allRows;
+
+  // F320 (scrutiny pass 5, AS-358): once `boundedLimit` is already clamped
+  // to the hard cap, a bigger requested `limit` would be clamped to the
+  // exact same value and return the exact same page — "Load more" cannot
+  // actually load anything more. `hasMore` must reflect that (false), even
+  // though `moreRowsExist` is true; `cappedAtMax` carries the "there
+  // really is more, but it's unreachable" signal separately so the caller
+  // can be honest about why the control disappeared instead of silently
+  // implying the task's activity ends here.
+  const cappedAtMax = boundedLimit >= MAX_TASK_ACTIVITY_PAGE_SIZE && moreRowsExist;
+  const hasMore = moreRowsExist && !cappedAtMax;
 
   const actorIds = Array.from(
     new Set(
@@ -155,5 +185,5 @@ export async function getTaskActivityPage(
     };
   });
 
-  return { rows, hasMore };
+  return { rows, hasMore, cappedAtMax };
 }

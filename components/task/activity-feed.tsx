@@ -130,6 +130,13 @@ export function ActivityFeed({
 }) {
   const [rows, setRows] = useState<TaskActivityRow[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  // F320 (scrutiny pass 5, AS-358): true when the server's hard
+  // MAX_TASK_ACTIVITY_PAGE_SIZE cap was reached and this task genuinely
+  // has more activity beyond it — "Load more" is hidden in this case
+  // (nothing further CAN be fetched, see getTaskActivityPage's own doc
+  // comment) and this honest notice is shown instead of silently
+  // truncating with no indication.
+  const [cappedAtMax, setCappedAtMax] = useState(false);
   const [limit, setLimit] = useState(DEFAULT_TASK_ACTIVITY_PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -140,6 +147,7 @@ export function ActivityFeed({
     if (result.ok) {
       setRows(result.data.rows);
       setHasMore(result.data.hasMore);
+      setCappedAtMax(result.data.cappedAtMax);
       setError(null);
     } else {
       setError(result.error);
@@ -278,6 +286,12 @@ export function ActivityFeed({
             "Load more"
           )}
         </Button>
+      )}
+
+      {cappedAtMax && (
+        <p className="text-xs text-muted-foreground">
+          Showing the first 200 activity items.
+        </p>
       )}
     </div>
   );

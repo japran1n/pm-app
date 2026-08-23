@@ -220,7 +220,17 @@ describe.skipIf(!haveAdminCreds)(
         .select("id")
         .eq("user_id", otherUserId);
       expect(leaked).toEqual([]);
-      void error;
+      // F320 (scrutiny pass 5, AS-389): this used to `void error;`,
+      // discarding the RPC call's own outcome entirely. The RPC is
+      // expected to SUCCEED here (both the caller and the recipient are
+      // active members of `workspaceId`, and the RPC has no
+      // auth.uid()-vs-p_user_id check by design -- see comment above), so
+      // assert that explicitly rather than silently accepting either
+      // outcome. The leak-proof RLS check above remains the real security
+      // assertion; this just makes sure a future regression that made the
+      // RPC start throwing here (or silently succeed with corrupted
+      // params) would actually be caught instead of ignored.
+      expect(error).toBeNull();
     });
 
     it("test_AS_389_negative_a_caller_with_no_membership_in_the_target_workspace_cannot_create_a_notification_there_at_all", async () => {
@@ -365,6 +375,148 @@ describe.skipIf(!haveAdminCreds)(
         .eq("id", freshNotificationId);
       expect(error).toBeNull();
       expect(data?.length).toBe(1);
+    });
+  },
+);
+
+// F320 (scrutiny pass 5, AS-389): public.create_notification() previously
+// had no check that a provided p_task_id actually belongs to a project
+// inside p_workspace_id — a task id from a completely different workspace
+// could be attached to a notification. This suite proves the new
+// cross-entity consistency check.
+describe.skipIf(!haveAdminCreds)(
+  "create_notification task_id/workspace consistency check (F320, AS-389)",
+  () => {
+    let adminClient: SupabaseClient;
+    let workspaceAId: string;
+    let workspaceBId: string;
+    let recipientUserId: string;
+    let taskInWorkspaceAId: string;
+    let taskInWorkspaceBId: string;
+
+    beforeAll(async () => {
+      adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const { data: wsA, error: wsAErr } = await adminClient
+        .from("workspaces")
+        .insert({ name: "F320 workspace A", slug: `f320-notif-a-${uniqueSuffix}` })
+        .select("id")
+        .single();
+      if (wsAErr || !wsA) throw new Error(`Failed to create workspace A: ${wsAErr?.message}`);
+      workspaceAId = wsA.id;
+
+      const { data: wsB, error: wsBErr } = await adminClient
+        .from("workspaces")
+        .insert({ name: "F320 workspace B", slug: `f320-notif-b-${uniqueSuffix}` })
+        .select("id")
+        .single();
+      if (wsBErr || !wsB) throw new Error(`Failed to create workspace B: ${wsBErr?.message}`);
+      workspaceBId = wsB.id;
+
+      const recipientEmail = `f320-recipient-${uniqueSuffix}@example.com`;
+      const { data: recipientAuth, error: recipientAuthErr } =
+        await adminClient.auth.admin.createUser({
+          email: recipientEmail,
+          password: "Test-password-1!",
+          email_confirm: true,
+        });
+      if (recipientAuthErr || !recipientAuth.user) {
+        throw new Error(`Failed to create recipient user: ${recipientAuthErr?.message}`);
+      }
+      recipientUserId = recipientAuth.user.id;
+
+      const { error: memberAErr } = await adminClient.from("workspace_members").insert({
+        workspace_id: workspaceAId,
+        user_id: recipientUserId,
+        role: "member",
+        status: "active",
+      });
+      if (memberAErr) throw new Error(`Failed to seed membership A: ${memberAErr.message}`);
+
+      const { data: projectA, error: projectAErr } = await adminClient
+        .from("projects")
+        .insert({ workspace_id: workspaceAId, name: "F320 project A" })
+        .select("id")
+        .single();
+      if (projectAErr || !projectA) throw new Error(`Failed to create project A: ${projectAErr?.message}`);
+
+      const { data: projectB, error: projectBErr } = await adminClient
+        .from("projects")
+        .insert({ workspace_id: workspaceBId, name: "F320 project B" })
+        .select("id")
+        .single();
+      if (projectBErr || !projectB) throw new Error(`Failed to create project B: ${projectBErr?.message}`);
+
+      const { data: taskA, error: taskAErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectA.id, title: "F320 task in workspace A", status: "todo", author_id: recipientUserId })
+        .select("id")
+        .single();
+      if (taskAErr || !taskA) throw new Error(`Failed to create task A: ${taskAErr?.message}`);
+      taskInWorkspaceAId = taskA.id;
+
+      const { data: taskB, error: taskBErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectB.id, title: "F320 task in workspace B", status: "todo", author_id: recipientUserId })
+        .select("id")
+        .single();
+      if (taskBErr || !taskB) throw new Error(`Failed to create task B: ${taskBErr?.message}`);
+      taskInWorkspaceBId = taskB.id;
+    });
+
+    afterAll(async () => {
+      for (const wsId of [workspaceAId, workspaceBId]) {
+        if (!wsId) continue;
+        await adminClient.from("notifications").delete().eq("workspace_id", wsId);
+        await adminClient.from("tasks").delete().in(
+          "project_id",
+          (await adminClient.from("projects").select("id").eq("workspace_id", wsId)).data?.map(
+            (p: { id: string }) => p.id,
+          ) ?? [],
+        );
+        await adminClient.from("projects").delete().eq("workspace_id", wsId);
+        await adminClient.from("workspace_members").delete().eq("workspace_id", wsId);
+        await adminClient.from("workspaces").delete().eq("id", wsId);
+      }
+    });
+
+    it("test_AS_389_negative_create_notification_rejects_a_task_id_from_a_different_workspace", async () => {
+      const { error } = await adminClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceAId,
+        p_kind: "mention",
+        p_task_id: taskInWorkspaceBId,
+        p_system: true,
+      });
+      expect(error).not.toBeNull();
+      expect(error?.message).toMatch(/does not belong to workspace/);
+    });
+
+    it("test_AS_389_a_task_id_that_genuinely_belongs_to_the_target_workspace_is_accepted", async () => {
+      const { data, error } = await adminClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceAId,
+        p_kind: "mention",
+        p_task_id: taskInWorkspaceAId,
+        p_system: true,
+      });
+      expect(error).toBeNull();
+      expect((data as { task_id: string } | null)?.task_id).toBe(taskInWorkspaceAId);
+    });
+
+    it("test_AS_389_no_task_id_provided_is_still_accepted_unconditionally", async () => {
+      const { data, error } = await adminClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceAId,
+        p_kind: "mention",
+        p_system: true,
+      });
+      expect(error).toBeNull();
+      expect((data as { task_id: string | null } | null)?.task_id).toBeNull();
     });
   },
 );

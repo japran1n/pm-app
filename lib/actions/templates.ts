@@ -34,7 +34,10 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
-import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
+import {
+  sanitiseMentionsForVisibility,
+  stripAllMentions,
+} from "@/lib/comments/mentions";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -1175,10 +1178,66 @@ export async function createProjectFromTemplate(
         }
       } catch (visibilityError) {
         console.error(
-          "createProjectFromTemplate: mention visibility check failed for task",
+          "createProjectFromTemplate: mention visibility check failed for task, retrying once",
           task.id,
           visibilityError,
         );
+        // F320 (scrutiny pass 5): a bare log-and-skip here left the
+        // original, UNSANITISED (potentially mention-exposing) document in
+        // place on a transient check failure — worse than the "log and
+        // skip the whole task" pattern this loop otherwise follows, because
+        // skipping used to mean "leave it as-is" rather than "leave it
+        // safe". Retry the real check once (transient DB errors are often
+        // momentary); if it fails again, fall back to the conservative
+        // `stripAllMentions` (strips every mention in this one task,
+        // leaving the rest of the batch untouched) rather than leaving the
+        // unsanitised original in place.
+        try {
+          const sanitisedRetry = (await sanitiseMentionsForVisibility(
+            admin,
+            task.description_json as unknown as JSONContent,
+            mentionCtx,
+          )) as JSONContent;
+
+          if (
+            JSON.stringify(sanitisedRetry) !==
+            JSON.stringify(task.description_json)
+          ) {
+            const { error: updateError } = await admin
+              .from("tasks")
+              .update({ description_json: sanitisedRetry as Json })
+              .eq("id", task.id);
+
+            if (updateError) {
+              console.error(
+                "createProjectFromTemplate: failed to write back sanitised description_json for task (retry)",
+                task.id,
+                updateError,
+              );
+            }
+          }
+        } catch (retryError) {
+          console.error(
+            "createProjectFromTemplate: mention visibility check failed again for task, stripping all mentions as a safe fallback",
+            task.id,
+            retryError,
+          );
+          const stripped = stripAllMentions(
+            task.description_json as unknown as JSONContent,
+          );
+          const { error: fallbackUpdateError } = await admin
+            .from("tasks")
+            .update({ description_json: stripped as Json })
+            .eq("id", task.id);
+
+          if (fallbackUpdateError) {
+            console.error(
+              "createProjectFromTemplate: failed to write back safe-fallback (all mentions stripped) description_json for task",
+              task.id,
+              fallbackUpdateError,
+            );
+          }
+        }
       }
     }
   }
