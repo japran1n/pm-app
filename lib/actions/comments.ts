@@ -17,7 +17,10 @@ import {
   sanitiseMentionsForVisibility,
   resolveVisibleMentionIds,
 } from "@/lib/comments/mentions";
-import { extractMentionIds } from "@/lib/notifications/mentions";
+import {
+  extractMentionIds,
+  extractNewlyMentionedIds,
+} from "@/lib/notifications/mentions";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
@@ -950,7 +953,7 @@ export async function editComment(
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
     .select(
-      "id, user_id, deleted_at, tasks(id, project_id, projects(workspace_id, visibility))",
+      "id, user_id, deleted_at, body_json, tasks(id, project_id, projects(workspace_id, visibility))",
     )
     .eq("id", parsed.data.commentId)
     .is("deleted_at", null)
@@ -1070,6 +1073,96 @@ export async function editComment(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F311 (AS-381 fix): editing a comment can introduce a mention that
+  // wasn't there before (addComment already did this for brand-new
+  // comments via F207's fan-out; editComment never did, which is the
+  // bug this feature fixes — see M15-scrutiny.md blocker finding #3).
+  //
+  // Scope note: only the mentions that are NEW in this edit are notified
+  // — present in `mentionSafeBodyJson` (the post-strip, post-update body)
+  // but absent from the comment's PREVIOUS `body_json` (read above,
+  // before the update). This mirrors F205/F207's established
+  // "notify-only-newly-added-mentions-on-each-save" convention
+  // (lib/notifications/mentions.ts's `extractNewlyMentionedIds`,
+  // originally built for repeatedly-re-saved task descriptions) — without
+  // this diff, editing a comment with an unrelated typo fix would
+  // re-notify every mention on every single save, which is spammy and not
+  // what AS-381 asks for. A mention REMOVED by this edit is simply absent
+  // from `mentionSafeBodyJson`'s ids and is therefore never in the
+  // "newly mentioned" set either — nothing special needs to happen for
+  // it.
+  //
+  // Deliberately scoped to ONLY the mention notification + watcher
+  // promotion, not a "comment_reply" watcher notification on every edit
+  // (AS-381's assertion text is specifically about mentions, not about
+  // watchers being notified of edits — see this feature's handoff,
+  // Decisions made, for the full reasoning on why that's treated as a
+  // separate, out-of-scope concern rather than silently expanded here).
+  //
+  // Reuses the exact same shared helpers addComment's fan-out block above
+  // already uses (computeFanoutRecipients, filterRecipientsByInAppPreference,
+  // createNotification) rather than a third reimplementation of the
+  // fan-out logic. `type: "commented"` (not `"mentioned"`) is used so the
+  // resulting `mention`-kind notification carries this edit's `commentId`
+  // (`create_notification`'s `p_comment_id`), same as a mention in a
+  // brand-new comment — a task-description mention (the "mentioned" event
+  // type) has no comment to link to, but this one does. Entirely
+  // non-fatal: the edit itself already succeeded above.
+  try {
+    const reallyNewlyMentionedIds = extractNewlyMentionedIds(
+      (commentRow.body_json as JSONContent | null) ?? null,
+      mentionSafeBodyJson,
+    ).filter((id) => id !== user.id);
+
+    if (reallyNewlyMentionedIds.length > 0) {
+      const computedRecipients = computeFanoutRecipients({
+        type: "commented",
+        actorId: user.id,
+        watcherIds: [],
+        mentionedIds: reallyNewlyMentionedIds,
+      });
+
+      // F211 (AS-391): drop recipients who have this kind's in-app channel
+      // disabled before ever calling create_notification.
+      const recipients = await filterRecipientsByInAppPreference(
+        admin,
+        computedRecipients ?? [],
+      );
+
+      for (const recipient of recipients ?? []) {
+        await createNotification(
+          supabase,
+          {
+            userId: recipient.userId,
+            workspaceId,
+            kind: recipient.kind,
+            taskId: commentTaskId,
+            commentId: updated.id,
+          },
+          "editComment",
+        );
+      }
+
+      // AS-375: a newly-mentioned non-watcher becomes a watcher. Never
+      // overrides an existing row (including an explicit prior unwatch) —
+      // same durable `ignoreDuplicates` upsert pattern as addComment's own
+      // mention block above.
+      await admin.from("task_watchers").upsert(
+        reallyNewlyMentionedIds.map((id) => ({
+          task_id: commentTaskId,
+          user_id: id,
+          is_watching: true,
+        })),
+        { onConflict: "task_id,user_id", ignoreDuplicates: true },
+      );
+    }
+  } catch (fanoutError) {
+    console.error(
+      "editComment: notification fan-out failed (non-fatal):",
+      fanoutError,
+    );
   }
 
   // F104-style realtime delivery: postgres_changes UPDATE subscriptions

@@ -225,5 +225,162 @@ describe.skipIf(!haveAdminCreds)(
       expect(watcherRows).toHaveLength(1);
       expect(watcherRows?.[0].is_watching).toBe(true);
     });
+
+    // F311 (AS-381 fix): editComment never wired up the same fan-out
+    // addComment does — mentioning someone NEW by editing an existing
+    // comment previously notified nobody and never promoted them to a
+    // watcher (M15-scrutiny.md blocker finding #3). These three tests
+    // prove: (1) adding a brand-new mention via an edit now notifies +
+    // promotes, (2) a subsequent no-new-mentions edit does not re-notify
+    // (the established "notify only newly added mentions" convention,
+    // same rule F205/F207 use for description mentions), and (3) removing
+    // a previously-present mention via an edit fires no notification for
+    // the removed user and doesn't break anything.
+    it("test_AS_381_editing_a_comment_to_add_a_new_mention_notifies_the_newly_mentioned_user_and_makes_them_a_watcher", async () => {
+      sessionClientForMock = actorClient;
+      const { addComment, editComment } = await import("@/lib/actions/comments");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F311 edit-add-mention task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      // Post the original comment with no mentions.
+      const original = await addComment(task.id, "just a plain comment");
+      expect(original.ok).toBe(true);
+      if (!original.ok) return;
+
+      const bodyJsonWithMention = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "actually hey " },
+              { type: "mention", attrs: { id: mentionedUserId } },
+            ],
+          },
+        ],
+      };
+
+      const edited = await editComment(
+        original.data.id,
+        `actually hey @${mentionedUserId}`,
+        bodyJsonWithMention as never,
+      );
+      expect(edited.ok).toBe(true);
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("user_id, kind, actor_id, task_id, comment_id")
+        .eq("task_id", task.id)
+        .eq("kind", "mention")
+        .eq("user_id", mentionedUserId);
+      expect(readErr).toBeNull();
+      expect(rows).toHaveLength(1);
+      expect(rows?.[0].actor_id).toBe(actorUserId);
+      expect(rows?.[0].comment_id).toBe(original.data.id);
+
+      const { data: watcherRows } = await adminClient
+        .from("task_watchers")
+        .select("user_id, is_watching")
+        .eq("task_id", task.id)
+        .eq("user_id", mentionedUserId);
+      expect(watcherRows).toHaveLength(1);
+      expect(watcherRows?.[0].is_watching).toBe(true);
+
+      // A second edit that keeps the same mention (e.g. fixing a typo)
+      // must NOT create a duplicate/spurious notification — only mentions
+      // that are newly added by THIS edit are notified.
+      const bodyJsonSameMentionTypoFix = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "actually hey there " },
+              { type: "mention", attrs: { id: mentionedUserId } },
+            ],
+          },
+        ],
+      };
+      const editedAgain = await editComment(
+        original.data.id,
+        `actually hey there @${mentionedUserId}`,
+        bodyJsonSameMentionTypoFix as never,
+      );
+      expect(editedAgain.ok).toBe(true);
+
+      const { data: rowsAfterTypoFix } = await adminClient
+        .from("notifications")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("kind", "mention")
+        .eq("user_id", mentionedUserId);
+      expect(rowsAfterTypoFix).toHaveLength(1);
+    });
+
+    it("test_AS_381_editing_a_comment_to_remove_a_mention_fires_no_notification_for_the_removed_user", async () => {
+      sessionClientForMock = actorClient;
+      const { addComment, editComment } = await import("@/lib/actions/comments");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F311 edit-remove-mention task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      const bodyJsonWithMention = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "hey " },
+              { type: "mention", attrs: { id: mentionedUserId } },
+            ],
+          },
+        ],
+      };
+      const original = await addComment(
+        task.id,
+        `hey @${mentionedUserId}`,
+        bodyJsonWithMention as never,
+      );
+      expect(original.ok).toBe(true);
+      if (!original.ok) return;
+
+      // Clear the notification/read state produced by addComment's own
+      // fan-out so this test only observes editComment's behaviour.
+      await adminClient
+        .from("notifications")
+        .delete()
+        .eq("task_id", task.id)
+        .eq("kind", "mention");
+
+      const bodyJsonMentionRemoved = {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "never mind, no mention now" }] },
+        ],
+      };
+      const edited = await editComment(
+        original.data.id,
+        "never mind, no mention now",
+        bodyJsonMentionRemoved as never,
+      );
+      expect(edited.ok).toBe(true);
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("kind", "mention");
+      expect(readErr).toBeNull();
+      expect(rows).toEqual([]);
+    });
   },
 );
