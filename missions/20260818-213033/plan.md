@@ -138,7 +138,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F209 notification-realtime — AS-388 [CLARIFIED-AUTO] [COMPLETE]
 - F210 notification-deleted-target — AS-390 [CLARIFIED-AUTO] [COMPLETE]
 - F211 notification-preferences — AS-391, AS-396 [CLARIFIED-AUTO] [COMPLETE]
-- F212 overdue-notification-job — AS-383 [CLARIFIED-AUTO]
+- F212 overdue-notification-job — AS-383 [CLARIFIED-AUTO] [COMPLETE]
 - F213 resend-client-setup — AS-401, AS-402 [SKIPPED — Resend not connected; deferred by user 2026-08-18]
 - F214 email-templates — AS-395 [SKIPPED — Resend not connected; deferred by user 2026-08-18]
 - F215 email-on-assign-mention — AS-393, AS-394 [SKIPPED — Resend not connected; deferred by user 2026-08-18]
