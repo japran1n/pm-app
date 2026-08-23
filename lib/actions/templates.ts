@@ -1102,6 +1102,87 @@ export async function createProjectFromTemplate(
     };
   }
 
+  // AS-376 (F316, follow-up to F313): `create_project_from_template`
+  // (supabase/migrations/20260822190000_rpc_create_project_from_template.sql)
+  // copies each template task's description_json directly in its SQL body,
+  // with no mention-visibility check at all — the RPC has to run and create
+  // the project first, since sanitiseMentionsForVisibility's `{projectId,
+  // workspaceId, projectVisibility}` context can't be built for a project
+  // that doesn't exist yet. So this pass runs AFTER the RPC returns, against
+  // the real, now-existing project id, re-fetching each inserted task's
+  // description_json and re-running the exact same helper F313 already uses
+  // in createTaskFromTemplate above — not a reimplementation of the rule.
+  // Only tasks whose sanitised document actually differs get written back
+  // (an UPDATE per changed task, not an unconditional one per task).
+  //
+  // Partial-failure handling mirrors bulkUpdateTasks' convention
+  // (lib/actions/tasks.ts): the RPC already committed the project + all
+  // tasks atomically in its own transaction, so there is nothing left to
+  // roll back here, and one task's visibility check failing (F301's
+  // MentionVisibilityCheckError — a transient DB read failure) must not
+  // block every other task in the batch from still being checked. Each
+  // task is sanitised independently; failures are logged and skipped
+  // rather than aborting the whole loop or failing this action's result
+  // (the project was created successfully; this is best-effort defense in
+  // depth on top of that, not the primary success/failure signal for the
+  // action).
+  const { data: insertedTasks, error: insertedTasksError } = await admin
+    .from("tasks")
+    .select("id, description_json")
+    .eq("project_id", created.project_id as string)
+    .not("description_json", "is", null);
+
+  if (insertedTasksError) {
+    console.error(
+      "createProjectFromTemplate: failed to re-fetch inserted tasks for mention sanitisation:",
+      insertedTasksError,
+    );
+  } else {
+    const mentionCtx = {
+      projectId: created.project_id as string,
+      workspaceId: parsed.data.workspaceId,
+      // The RPC never accepts/sets a visibility on the new project, so it
+      // always carries the `projects` table's default ('workspace') at the
+      // moment this runs, immediately after project creation in the same
+      // request.
+      projectVisibility: "workspace",
+    };
+
+    for (const task of insertedTasks ?? []) {
+      if (!task.description_json) continue;
+      try {
+        const sanitised = (await sanitiseMentionsForVisibility(
+          admin,
+          task.description_json as unknown as JSONContent,
+          mentionCtx,
+        )) as JSONContent;
+
+        if (
+          JSON.stringify(sanitised) !== JSON.stringify(task.description_json)
+        ) {
+          const { error: updateError } = await admin
+            .from("tasks")
+            .update({ description_json: sanitised as Json })
+            .eq("id", task.id);
+
+          if (updateError) {
+            console.error(
+              "createProjectFromTemplate: failed to write back sanitised description_json for task",
+              task.id,
+              updateError,
+            );
+          }
+        }
+      } catch (visibilityError) {
+        console.error(
+          "createProjectFromTemplate: mention visibility check failed for task",
+          task.id,
+          visibilityError,
+        );
+      }
+    }
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")
