@@ -228,7 +228,7 @@ export async function createTaskForUser(
   // existing-row lookup convention.
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, visibility")
     .eq("id", parsed.data.projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -262,6 +262,28 @@ export async function createTaskForUser(
     return {
       ok: false,
       error: "Viewers don't have permission to create tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): same class of bug as the single-task mutation
+  // actions below — an active workspace member who is not an explicit
+  // member of a PRIVATE project could otherwise create a task directly
+  // inside that project, even though they can't see it. See
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: projectRow.id,
+        visibility: (projectRow.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "You don't have permission to create a task in this project.",
     };
   }
 
@@ -543,6 +565,50 @@ async function loadTaskAssignContext(
   };
 }
 
+// F322 (AS-227, AS-228; M15 pass-6 scrutiny finding B2 — blocker-class
+// privilege escalation): re-implements `public.is_project_visible_to`'s rule
+// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql) in
+// application code, for the CALLER themselves rather than an assignee
+// candidate — the sibling check `filterProjectVisibleUserIds` below performs
+// for AS-290. Every single-task mutation action in this file (editTask,
+// deleteTask, restoreTask, promoteSubtask, updateTaskTags, moveTaskStatus,
+// reorderTask, moveAndReorderTask, duplicateTask,
+// toggleDescriptionChecklistItem, and every assignee action routed through
+// requireAssignActionContext/setTaskAssigneesCore) writes through the ADMIN
+// client, which bypasses RLS entirely by design — before F322, those
+// actions checked only workspace membership plus a role predicate, never
+// whether the caller could actually SEE the task's project. A workspace
+// member who is active but NOT an explicit member of a private project
+// could therefore edit/move/reassign/delete/restore/duplicate that
+// project's tasks directly through these actions (though never through the
+// bulk toolbar — `bulkUpdateTasks`/`bulkDeleteTasks` below already
+// re-implement this exact rule inline for their own batch shape). This is
+// the ONE shared helper every single-task action call site uses (see the
+// call sites listed above) so the rule lives in one place for this class of
+// action, matching this file's existing "one place for
+// is_project_visible_to's rule" convention. A project is visible to a
+// caller when it is 'workspace'-visible, OR the caller is a workspace
+// owner/admin, OR the caller has an explicit `project_members` row for that
+// project — identical to AS-290's rule and the bulk paths' inline copy.
+async function isProjectVisibleToCaller(
+  admin: ReturnType<typeof createAdminClient>,
+  context: { projectId: string; visibility: ProjectVisibility },
+  userId: string,
+  role: WorkspaceRole,
+): Promise<boolean> {
+  if (context.visibility === "workspace") return true;
+  if (role === "owner" || role === "admin") return true;
+
+  const { data } = await admin
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", context.projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return !!data;
+}
+
 // AS-290: re-implements `public.is_project_visible_to`'s rule
 // (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql) in
 // application code. Every action in this file uses the admin client, which
@@ -716,6 +782,24 @@ async function requireAssignActionContext(taskId: string): Promise<
   // above (viewers and guests are read-only, AS-216/AS-217; every other
   // active role may edit any task in the workspace, AS-061).
   if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change this task's assignees.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above. Same generic message as
+  // the membership/role failures above so a private project's existence is
+  // never disclosed to someone who can't see it.
+  const visible = await isProjectVisibleToCaller(
+    admin,
+    taskContext.context,
+    user.id,
+    membership.role,
+  );
+  if (!visible) {
     return {
       ok: false,
       error: "You don't have permission to change this task's assignees.",
@@ -1248,6 +1332,28 @@ export async function editTask(
     };
   }
 
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  // Same generic message as the role failure above so a private project's
+  // existence is never disclosed to someone who can't see it.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit tasks.",
+    };
+  }
+
   // Build the update payload from only the fields present in `updates`.
   // Never includes project_id (AS-060) — there is no source field for it.
   // F205 (AS-378): when `updates.descriptionJson` is present, every
@@ -1625,7 +1731,7 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
   // found" rather than re-touching the row).
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1668,6 +1774,26 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
   // creations, which would regress AS-055 for members. Only the new
   // viewer exclusion is being added here.
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to delete tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to delete tasks.",
@@ -1851,7 +1977,7 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id)",
+      "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .not("deleted_at", "is", null)
@@ -1889,6 +2015,26 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
   // F128 (AS-216, AS-217): viewers are read-only, same gate deleteTask
   // uses for the exact same "any active role but viewer" model.
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to restore tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to restore tasks.",
@@ -2127,7 +2273,9 @@ export async function promoteSubtask(
   // other action in this file.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, parent_task_id, deleted_at, projects!inner(id, workspace_id)")
+    .select(
+      "id, parent_task_id, deleted_at, projects!inner(id, workspace_id, visibility)",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2164,6 +2312,26 @@ export async function promoteSubtask(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to promote tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to promote tasks.",
@@ -2273,7 +2441,7 @@ export async function updateTaskTags(
   // assignTask/editTask/deleteTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2311,6 +2479,26 @@ export async function updateTaskTags(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to update tags.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to update tags.",
@@ -2421,7 +2609,7 @@ export async function moveTaskStatus(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id)",
+      "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -2459,6 +2647,26 @@ export async function moveTaskStatus(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to move tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to move tasks.",
@@ -2683,7 +2891,7 @@ export async function reorderTask(
   // moveTaskStatus/editTask/deleteTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2720,6 +2928,26 @@ export async function reorderTask(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to reorder tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to reorder tasks.",
@@ -2845,7 +3073,9 @@ export async function moveAndReorderTask(
   // moveTaskStatus/reorderTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, status, projects!inner(id, workspace_id)")
+    .select(
+      "id, deleted_at, status, projects!inner(id, workspace_id, visibility)",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2882,6 +3112,26 @@ export async function moveAndReorderTask(
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to move tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to move tasks.",
@@ -3896,7 +4146,9 @@ export async function toggleDescriptionChecklistItem(
   // editTask's own gate).
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, description_json, projects!inner(id, workspace_id)")
+    .select(
+      "id, deleted_at, description_json, projects!inner(id, workspace_id, visibility)",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -3928,6 +4180,26 @@ export async function toggleDescriptionChecklistItem(
   }
 
   if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to edit tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
+  // project themselves, not just be an active workspace member — see
+  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to edit tasks.",
@@ -4078,7 +4350,7 @@ export async function duplicateTask(
   const { data: sourceRow, error: sourceError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id)",
+      "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -4089,8 +4361,8 @@ export async function duplicateTask(
   }
 
   const project = sourceRow.projects as
-    | { workspace_id: string }
-    | { workspace_id: string }[]
+    | { workspace_id: string; visibility: string | null }
+    | { workspace_id: string; visibility: string | null }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
@@ -4116,6 +4388,30 @@ export async function duplicateTask(
   // (AS-216/AS-217) — duplicating a task creates a new one, so it's a
   // write, gated the same way createTask's own write is.
   if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "Viewers don't have permission to duplicate tasks.",
+    };
+  }
+
+  // F322 (AS-227, AS-228): the caller must be able to SEE the source
+  // task's project themselves, not just be an active workspace member —
+  // see isProjectVisibleToCaller's doc comment above
+  // `loadTaskAssignContext`. Uses `sourceRow.project_id` (already selected
+  // as a top-level column) rather than the embedded `projects` row's own
+  // id, which isn't selected here.
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: sourceRow.project_id,
+        visibility:
+          (projectRow?.visibility as ProjectVisibility) ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
     return {
       ok: false,
       error: "Viewers don't have permission to duplicate tasks.",
