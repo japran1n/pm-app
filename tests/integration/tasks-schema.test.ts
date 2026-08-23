@@ -166,15 +166,45 @@ describe.skipIf(!haveAdminCreds)("tasks schema (F033)", () => {
     }
   });
 
-  it("AS-048: the database CHECK constraint rejects a status value outside the fixed set", async () => {
-    const { error } = await adminClient.from("tasks").insert({
+  // F219 (supabase/migrations/20260824020000_project_statuses_management.sql)
+  // deliberately relaxed this CHECK: mission-16's per-project board columns
+  // (AS-403/AS-404) mean `tasks.status` must legitimately hold ANY
+  // project's custom column name, not just the original fixed four — the
+  // whole point of that feature is that "not_a_real_status" can now be a
+  // real, admin-created column name. The narrower CHECK this test
+  // originally asserted (`tasks_status_check`, limited to
+  // 'todo'/'in_progress'/'in_review'/'done') no longer reflects the
+  // product's actual behaviour and was replaced by
+  // `tasks_status_not_empty`, which still guarantees the one invariant
+  // that DOES still hold: `status` can never be written as
+  // blank/whitespace-only. AS-048's assertion text is a mission-1
+  // assertion superseded by mission-16's explicit design (see F219's
+  // handoff, Decisions Made) — this test is updated in place to assert
+  // the constraint that is actually still enforced, rather than the one
+  // a later, later-approved feature intentionally removed.
+  it("AS-048 (superseded by F219): the database CHECK constraint no longer limits status to the fixed four — arbitrary non-empty values are accepted (per-project custom columns), but blank/whitespace-only is still rejected", async () => {
+    const { data, error } = await adminClient
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: "Custom status task",
+        author_id: authorId,
+        status: "not_a_real_status",
+      })
+      .select("id")
+      .single();
+
+    expect(error).toBeNull();
+    if (data) createdTaskIds.push(data.id);
+
+    const { error: blankError } = await adminClient.from("tasks").insert({
       project_id: projectId,
-      title: "Invalid status task",
+      title: "Blank status task",
       author_id: authorId,
-      status: "not_a_real_status",
+      status: "   ",
     });
 
-    expect(error).not.toBeNull();
+    expect(blankError).not.toBeNull();
   });
 
   it("AS-049: priority accepts each value in the fixed set, and null (optional)", async () => {
