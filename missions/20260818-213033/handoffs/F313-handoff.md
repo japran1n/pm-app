@@ -1,0 +1,37 @@
+# Handoff: F313 — Fix two AS-376 mention-visibility gaps found in M15's third scrutiny pass
+
+## Status
+COMPLETE
+
+## Assertions covered
+AS-376: PASS — both independent gaps closed and covered by new integration tests; full targeted mention/template suite green (see Commands run).
+
+## Files changed
+lib/actions/templates.ts
+lib/actions/comments.ts
+tests/integration/f313-mention-visibility-followup.test.ts
+
+## Commands run
+`npx tsc --noEmit` (0)
+`npx eslint .` (0, 2 pre-existing unrelated warnings in lib/queries/search.ts and tests/unit/invite-member-pagination.test.ts, no errors)
+`npx vitest run tests/unit/mention-extension.test.tsx tests/unit/comment-mentions.test.ts tests/unit/mention-picker-narrowing.test.tsx tests/unit/description-mentions.test.ts tests/integration/mention-visibility.test.ts tests/integration/edit-task-description-mentions.test.ts tests/integration/template-actions.test.ts tests/integration/project-from-template.test.ts tests/integration/task-templates-rls.test.ts tests/integration/f313-mention-visibility-followup.test.ts` (0 on second isolated run; one flaky run had edit-task-description-mentions.test.ts fail with "JWT issued at future" — confirmed pre-existing environment clock-skew flake, not caused by this change, see Decisions made)
+`npm test` (34 failures across 48 unrelated integration test files — confirmed via `git stash` that ALL of these fail identically against unmodified `main`, i.e. before this feature's changes; see Decisions made)
+
+## Decisions made
+- **Bug 1 scope**: the bug report's "around line 401" pointer and code inspection both land on `createTaskFromTemplate` in `lib/actions/templates.ts` (task-from-template into an existing/target project), not `createProjectFromTemplate` (which seeds an entire new project's tasks via the `create_project_from_template` SQL RPC). Fixed `createTaskFromTemplate` to call `sanitiseMentionsForVisibility` with the TARGET project's own `{projectId, workspaceId, projectVisibility}` (selected fresh, not the template's origin project) before inserting the task, mirroring `editTask`'s existing `descriptionJson` handling in `lib/actions/tasks.ts` exactly (same try/catch → typed `{ ok: false }` on `MentionVisibilityCheckError`, per F301's "fail the write, never silently corrupt" convention).
+- **`createProjectFromTemplate` / RPC path (out of scope for this fix)**: this second write path has the same latent bug — `create_project_from_template`'s SQL body inserts each task's `description_json` directly inside the RPC, before the new project even exists as an app-level `projectId` the Server Action can pass to `sanitiseMentionsForVisibility`. Fixing it properly requires either (a) sanitising each task's `description_json` in TypeScript against the target workspace's visibility rules BEFORE calling the RPC (using workspace-level visibility only, since no project exists yet — a materially different, looser check than project-level visibility), or (b) post-processing every inserted task's `description_json` AFTER the RPC returns, using the real new `project_id`. Both are non-trivial enough (extra queries, potential extra RPC round-trip or update pass, and a decision about which of (a)/(b) is correct) that I did not fold them into this fix without it being asked for explicitly — see Out-of-scope work needed.
+- **Bug 2 fix location**: chose the server-side fix (wrap `resolveVisibleMentionIds` in try/catch inside `getMentionCandidates`, matching the adjacent member-fetch error handling already in the same function) over a client-side `.catch()` addition, because `MentionCandidateResult`'s discriminated union (`{ ok: true, data } | { ok: false, error }`) already exists and both client call sites (`comment-list.tsx`, `task-detail-sheet.tsx`) already correctly branch on `result.ok` inside their `.then()` — they just never get a rejected promise to handle today. No client changes were needed once the server side never rejects.
+- Confirmed via `git stash` that the ~34 failing tests seen under a full `npm test` run (all "Something went wrong" from `inviteMember`/similar admin-auth-dependent Server Actions, plus one "JWT issued at future" Supabase auth error) are pre-existing, environment-level (Supabase project auth clock skew unrelated to this repo's code) and reproduce identically on unmodified `main` — not caused by this feature's changes. Documented here rather than silently ignored.
+
+## Out-of-scope work needed
+`createProjectFromTemplate`'s underlying `create_project_from_template` SQL RPC (`supabase/migrations/20260822190000_rpc_create_project_from_template.sql`) has the same AS-376 gap as the bug fixed here, for project-templates instead of task-templates: it copies every seeded task's `description_json` into the brand-new project's tasks without any mention-visibility check, and — because the new project doesn't exist yet when the Server Action calls the RPC — cannot reuse the existing `sanitiseMentionsForVisibility(admin, doc, {projectId, ...})` call shape unmodified. A follow-up feature should decide between: (a) sanitising against workspace-level visibility only, before the RPC call (simpler, but looser than project-level visibility since the new project's own visibility setting isn't applied to any of its own would-be members yet at that point), or (b) re-fetching and sanitising each inserted task's `description_json` after the RPC returns (using the real project id, so the check is byte-for-byte identical to the existing helper), then issuing a second `update` per task whose document actually changed. Approach (b) is more consistent with the rest of this codebase's "reuse the exact same helper, don't reimplement the rule" convention and is the one I'd recommend.
+
+## Blockers
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Scoped Bug 1's fix to `createTaskFromTemplate` only (not `createProjectFromTemplate`/its RPC) based on the bug report's explicit "around line 401" line reference, which lands precisely on `createTaskFromTemplate`'s insert call in the pre-fix code — treated as the more specific and authoritative signal over the report's looser "project" wording. Filed the RPC path as an explicit out-of-scope follow-up rather than silently expanding this feature's scope to touch a SQL migration.
+AUTONOMOUS_DECISION: For Bug 2, fixed server-side only (no client `.catch()` added) since the existing discriminated-union return type and both call sites' `result.ok` branching already provide full defense once the server never rejects — adding a redundant client-side `.catch()` would not change observable behaviour and risks diverging from the "typed error, caller decides" convention this codebase already uses everywhere else (F301 precedent).
+
+## Notes for the next worker
+- `sanitiseMentionsForVisibility`'s `ctx` parameter must always be the TARGET write's own project/workspace/visibility, never the origin of whatever data is being copied — this is the exact same class of bug as F313's Bug 1, worth grepping for any other place a Tiptap `description_json`/`body_json` blob gets copied across project boundaries (duplicateTask, recurrence's `generateNextOccurrence`, etc. — I did not audit these; only the two write paths named in this feature's task description were investigated and confirmed).
+- No MCP tools were used for this feature — no live-schema changes; both fixes are pure application-code logic changes against an existing table shape.
