@@ -28,6 +28,12 @@ import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspac
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
+// F208 (AS-379): the notification bell — mounted here since this app has
+// no real top bar yet (per this feature's own Notes; a future F267 header
+// may relocate it), so the sidebar's workspace-switcher row is the only
+// reachable, always-visible chrome to put it in today.
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import type { NotificationListItem } from "@/lib/queries/notifications";
 
 // Persistent left nav shell wrapping every /w/[workspaceSlug]/* page (see
 // app/(workspace)/w/[workspaceSlug]/layout.tsx). Client Component: needs
@@ -102,6 +108,8 @@ function SidebarContent({
   currentUser,
   isGuest,
   canManageWorkspace,
+  initialNotifications,
+  initialUnreadCount,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -110,6 +118,8 @@ function SidebarContent({
   currentUser: UserAvatarPerson;
   isGuest: boolean;
   canManageWorkspace: boolean;
+  initialNotifications: NotificationListItem[];
+  initialUnreadCount: number;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -117,10 +127,18 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-12 items-center border-b px-3">
-        <WorkspaceSwitcher
-          workspaces={workspaces}
-          currentWorkspaceId={currentWorkspaceId}
+      <div className="flex h-12 items-center gap-1 border-b px-3">
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher
+            workspaces={workspaces}
+            currentWorkspaceId={currentWorkspaceId}
+          />
+        </div>
+        <NotificationBell
+          workspaceSlug={workspaceSlug}
+          workspaceId={currentWorkspaceId}
+          initialNotifications={initialNotifications}
+          initialUnreadCount={initialUnreadCount}
         />
       </div>
 
@@ -207,6 +225,8 @@ export function AppSidebar({
   currentUser,
   isGuest = false,
   canManageWorkspace = false,
+  initialNotifications = [],
+  initialUnreadCount = 0,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -214,6 +234,12 @@ export function AppSidebar({
   currentUser: UserAvatarPerson;
   isGuest?: boolean;
   canManageWorkspace?: boolean;
+  /** F208 (AS-379): the bell's initial data, server-fetched by the
+   * layout. Default `[]`/`0` keeps every existing caller/test that
+   * doesn't pass these (they predate this feature) rendering the bell in
+   * its empty state instead of crashing. */
+  initialNotifications?: NotificationListItem[];
+  initialUnreadCount?: number;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -228,13 +254,15 @@ export function AppSidebar({
           currentUser={currentUser}
           isGuest={isGuest}
           canManageWorkspace={canManageWorkspace}
+          initialNotifications={initialNotifications}
+          initialUnreadCount={initialUnreadCount}
         />
       </aside>
 
       {/* Mobile: sidebar content lives behind a hamburger-triggered sheet so
           narrow viewports aren't broken by a 240px fixed column eating the
           screen. */}
-      <div className="flex h-12 items-center border-b bg-sidebar px-2 md:hidden">
+      <div className="flex h-12 items-center justify-between border-b bg-sidebar px-2 md:hidden">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger
             render={
@@ -251,10 +279,20 @@ export function AppSidebar({
               currentUser={currentUser}
               isGuest={isGuest}
               canManageWorkspace={canManageWorkspace}
+              initialNotifications={initialNotifications}
+              initialUnreadCount={initialUnreadCount}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
         </Sheet>
+        {/* F208: the bell also needs to be reachable on mobile, where the
+            desktop sidebar (and its own bell) is hidden entirely. */}
+        <NotificationBell
+          workspaceSlug={workspaceSlug}
+          workspaceId={currentWorkspaceId}
+          initialNotifications={initialNotifications}
+          initialUnreadCount={initialUnreadCount}
+        />
       </div>
     </>
   );

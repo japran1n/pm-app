@@ -8,6 +8,11 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 // features already thread through explicitly.
 import { MembershipProvider } from "@/components/auth/membership-provider";
 import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
+// F208 (AS-379): the sidebar's notification bell needs its initial
+// unread-count + list server-fetched here, same "server-fetched in the
+// layout, passed down as props" convention every other sidebar-fed value
+// on this page already follows (currentUser, workspaces, isGuest).
+import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -172,6 +177,13 @@ export default async function WorkspaceLayout({
     );
   }
 
+  // F208 (AS-379): initial notification bell state for THIS workspace,
+  // fetched alongside everything else the sidebar needs. Non-fatal to the
+  // rest of the layout if it fails — getNotificationsForWorkspace already
+  // logs and falls back to an empty list/zero count internally.
+  const { list: initialNotifications, unreadCount: initialUnreadCount } =
+    await getNotificationsForWorkspace(activeWorkspace.id);
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): the caller's own role in the *active* workspace
@@ -289,6 +301,8 @@ export default async function WorkspaceLayout({
             email: user.email ?? null,
             avatarUrl: currentUserProfile?.avatar_url ?? null,
           }}
+          initialNotifications={initialNotifications}
+          initialUnreadCount={initialUnreadCount}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           {children}
