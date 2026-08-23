@@ -184,4 +184,66 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     // blurs, it does not clear or revert the buffer.
     expect(container.textContent).toContain("keep me");
   });
+
+  // F318 (AS-378, data-loss bug): every real caller (comment-list.tsx,
+  // task-detail-sheet.tsx) mounts with empty `mentionSuggestions` and
+  // populates them a moment later, which — per F310/F317's deps-driven
+  // recreation mechanism — destroys and recreates the underlying Tiptap
+  // `Editor` instance. `handleDescriptionJsonBlur` (task-detail-sheet.tsx)
+  // is the description field's ONLY save path, wired to `onBlur`, which
+  // Escape triggers. If `handleKeyDown`'s Escape branch reaches for a
+  // stale `editor` closure captured at recreation time instead of the
+  // `view` parameter ProseMirror hands it fresh per-instance, calling
+  // `.commands` on the by-then-destroyed old instance throws — which would
+  // prevent the save from completing. This test reproduces exactly that
+  // sequence and must not throw.
+  it("test_AS_378_escape_after_mention_triggered_recreation_does_not_throw_and_still_blurs", () => {
+    const onBlur = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "keep me too" }] }],
+    };
+
+    const { container, rerender } = render(
+      createElement(RichTextEditor, {
+        content,
+        onBlur,
+        "aria-label": "Task description",
+        mentionSuggestions: [],
+      })
+    );
+
+    const editableBefore = screen.getByRole("textbox", { name: "Task description" });
+    editableBefore.focus();
+    expect(editableBefore).toHaveFocus();
+
+    // Populate mention candidates asynchronously, as every real caller
+    // does — this changes `computedMentionSuggestionsKey` and triggers
+    // `RichTextEditor`'s deps-driven destroy/recreate of the underlying
+    // Tiptap `Editor` instance while the field is focused.
+    rerender(
+      createElement(RichTextEditor, {
+        content,
+        onBlur,
+        "aria-label": "Task description",
+        mentionSuggestions: [{ id: "u1", label: "Alice" }],
+      })
+    );
+
+    // The DOM node is recreated by Tiptap's own re-mount of EditorContent;
+    // re-query and re-focus it, mirroring what actually happens in a real
+    // browser (the user's focus stays in the field across the swap).
+    const editableAfter = screen.getByRole("textbox", { name: "Task description" });
+    editableAfter.focus();
+
+    expect(() => {
+      fireEvent.keyDown(editableAfter, { key: "Escape", code: "Escape" });
+    }).not.toThrow();
+
+    expect(onBlur).toHaveBeenCalled();
+    // The save path's content must still be intact — this is the actual
+    // data-loss surface: a thrown error here would abort
+    // `handleDescriptionJsonBlur` before the save fires.
+    expect(container.textContent).toContain("keep me too");
+  });
 });

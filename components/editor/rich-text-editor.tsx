@@ -449,14 +449,44 @@ export function RichTextEditor({
         ),
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
       },
-      handleKeyDown: (_view, event) => {
+      // F318 (AS-378, data-loss fix): this handler must NEVER read the
+      // outer `editor` local variable. `useEditor`'s `deps`-driven
+      // recreation (F310/F317, see the long comment above this component)
+      // means `editorProps` — including this very function — is only
+      // re-captured with a fresh `editor` closure at the MOMENT of a
+      // recreation, and that moment's closure is bound to the OLD,
+      // about-to-be-destroyed instance (per @tiptap/react's `onRender`
+      // effect: `refreshEditorInstance(deps)` swaps the instance out from
+      // under the render that's mid-flight). Any call through that stale
+      // `editor` after a recreation either throws (destroyed instance) or
+      // operates on the wrong document. ProseMirror instead calls
+      // `handleKeyDown` with `view` bound correctly to whichever `EditorView`
+      // is actually live for THIS invocation — `view` is always the right
+      // instance, so every access below goes through `view`, never `editor`.
+      handleKeyDown: (view, event) => {
         // AS-313: Escape blurs the editor but KEEPS the current buffer
         // content — Tiptap/ProseMirror has no built-in "revert on Escape"
         // behaviour, so simply blurring is non-destructive by default.
         // We only add the blur; the document is never reset here.
         if (event.key === "Escape") {
-          editor?.commands.blur()
-          onBlur?.()
+          // `view.dom` is the ProseMirror-owned contenteditable element
+          // for THIS view — a plain DOM `.blur()` is instance-correct by
+          // construction (unlike `editor.commands.blur()`, which resolves
+          // through the possibly-stale outer `editor` reference AND defers
+          // the actual `view.dom.blur()` call to a `requestAnimationFrame`
+          // internally, per @tiptap/core's `blur` command — by the time
+          // that callback runs after a recreation, it's also reading a
+          // stale `view` closed over from the old instance).
+          //
+          // Deliberately NOT also calling `onBlur?.()` here: `view.dom
+          // .blur()` synchronously dispatches a native DOM blur event,
+          // which flows through this same editor instance's own
+          // `editorProps` blur plugin handler into the `onBlur` option
+          // configured on `useEditor` below (`wasFocusedRef.current =
+          // false; onBlur?.()`) — that already calls the caller's
+          // `onBlur`, so calling it a second time here would fire it
+          // twice per Escape press.
+          view.dom.blur()
           return true
         }
         // F172 (AS-308): record the plain-text-paste override so the next
