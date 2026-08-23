@@ -170,7 +170,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ### M15 scrutiny fourth-pass follow-ups (2026-08-23, from missions/20260818-213033/milestones/M15-scrutiny.md pass 4)
 
-- F317 replace-pristine-focus-mitigation-with-live-mention-candidates-ref — AS-371, AS-372, AS-373 [CLARIFIED-AUTO]
+- F317 replace-pristine-focus-mitigation-with-live-mention-candidates-ref — AS-371, AS-372, AS-373 [CLARIFIED-AUTO] [COMPLETE]
 - F314 fix-mention-picker-real-coverage-rename-repaint-and-focus-loss — AS-371, AS-372, AS-373, AS-378 [CLARIFIED-AUTO] [COMPLETE]
 - F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO] [COMPLETE]
 
