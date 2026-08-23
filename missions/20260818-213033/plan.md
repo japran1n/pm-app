@@ -182,7 +182,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 - F321 fix-overdue-sweep-orphaned-assignee-permanent-failure — AS-383 [CLARIFIED-AUTO] [COMPLETE]
 - F322 enforce-private-project-access-in-single-task-actions — AS-227, AS-228 [CLARIFIED-AUTO] [COMPLETE]
-- F323 enforce-private-project-access-in-sibling-action-files-and-read-paths — AS-227, AS-228, AS-229 [CLARIFIED-AUTO]
+- F323 enforce-private-project-access-in-sibling-action-files-and-read-paths — AS-227, AS-228, AS-229 [CLARIFIED-AUTO] [COMPLETE]
 - F314 fix-mention-picker-real-coverage-rename-repaint-and-focus-loss — AS-371, AS-372, AS-373, AS-378 [CLARIFIED-AUTO] [COMPLETE]
 - F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO] [COMPLETE]
 
