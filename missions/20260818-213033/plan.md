@@ -147,7 +147,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ### M15 scrutiny follow-ups (2026-08-23, from missions/20260818-213033/milestones/M15-scrutiny.md)
 
-- F301 fix-description-mentions-test-regression — AS-374, AS-375, AS-381, AS-384 [CLARIFIED-AUTO]
+- F301 fix-description-mentions-test-regression — AS-374, AS-375, AS-381, AS-384 [CLARIFIED-AUTO] [COMPLETE]
 - F302 close-activity-forgery-and-comment-edit-trigger-holes — AS-357, AS-364 [CLARIFIED-AUTO]
 - F303 wire-comment-metadata-and-reactions-into-task-detail — AS-363, AS-365, AS-366 [CLARIFIED-AUTO]
 - F304 fix-notification-error-swallowing-and-comment-link — AS-374, AS-386 [CLARIFIED-AUTO]
