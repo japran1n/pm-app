@@ -211,6 +211,94 @@ describe.skipIf(!haveMgmtCreds)(
       expect(notifications[0].actor_id).toBeNull();
     });
 
+    it("F321/AS-383: an orphaned assignee (removed from the workspace) does not abort the sweep, and a still-valid assignee on a different overdue task still gets notified", async () => {
+      // Second, still-active assignee for the "still gets notified"
+      // half of this test's assertion.
+      const [validAssignee] = await sql<{ id: string }>(`
+        insert into auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role)
+        values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'f321-valid-${suffix}@example.com', crypt('Test-password-1!', gen_salt('bf')), now(), now(), now(), '{"provider":"email","providers":["email"]}', '{}', 'authenticated', 'authenticated')
+        returning id;
+      `);
+      const validAssigneeId = validAssignee.id;
+
+      // The user who will be removed from the workspace, leaving an
+      // orphaned task_assignees row exactly as production does --
+      // remove_workspace_member only deletes the workspace_members row,
+      // it never cleans up task_assignees (see this migration's own
+      // header comment for the confirmed chain).
+      const [removedUser] = await sql<{ id: string }>(`
+        insert into auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role)
+        values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'f321-removed-${suffix}@example.com', crypt('Test-password-1!', gen_salt('bf')), now(), now(), now(), '{"provider":"email","providers":["email"]}', '{}', 'authenticated', 'authenticated')
+        returning id;
+      `);
+      const removedUserId = removedUser.id;
+
+      await sql(`
+        insert into public.workspace_members (workspace_id, user_id, role, status)
+        values
+          ('${workspaceId}', '${validAssigneeId}', 'member', 'active'),
+          ('${workspaceId}', '${removedUserId}', 'member', 'active');
+      `);
+
+      // Overdue task assigned to the user who is about to be removed --
+      // this is the orphaned row that must not abort the sweep.
+      const orphanedTaskId = await makeTask({
+        projectId,
+        dueDate: "2020-01-01",
+        assigneeId: removedUserId,
+      });
+
+      // A SECOND, unrelated overdue task assigned to the still-valid
+      // assignee -- must still be notified even though the orphaned row
+      // above is processed in the same sweep run.
+      const validTaskId = await makeTask({
+        projectId,
+        dueDate: "2020-01-01",
+        assigneeId: validAssigneeId,
+      });
+
+      // Hard-delete the workspace_members row, exactly like
+      // remove_workspace_member does, leaving orphanedTaskId's
+      // task_assignees row pointing at a user no longer in the
+      // workspace.
+      await sql(`
+        delete from public.workspace_members
+        where workspace_id = '${workspaceId}' and user_id = '${removedUserId}';
+      `);
+
+      // Must not throw -- this is the exact regression: before F321 this
+      // call aborted with an unhandled exception from create_notification
+      // rejecting the orphaned recipient, rolling back the whole sweep.
+      await expect(
+        sql(`select public.notify_overdue_task_assignees();`),
+      ).resolves.not.toThrow();
+
+      // The orphaned/removed assignee must not have been notified (no
+      // longer an active workspace member).
+      const orphanedNotifications = await sql<{ id: string }>(`
+        select id from public.notifications
+        where task_id = '${orphanedTaskId}' and user_id = '${removedUserId}';
+      `);
+      expect(orphanedNotifications).toHaveLength(0);
+
+      // The still-valid assignee's unrelated overdue task must still have
+      // been notified -- proves the orphaned row did not abort/roll back
+      // the rest of the sweep run.
+      const validNotifications = await sql<{ id: string; kind: string }>(`
+        select id, kind from public.notifications
+        where task_id = '${validTaskId}' and user_id = '${validAssigneeId}';
+      `);
+      expect(validNotifications).toHaveLength(1);
+      expect(validNotifications[0].kind).toBe("task_due_soon");
+
+      // Cleanup this test's extra fixtures (afterAll only cleans up the
+      // suite-level assigneeUserId/optedOutUserId users).
+      await sql(`delete from public.notifications where task_id in ('${orphanedTaskId}', '${validTaskId}');`);
+      await sql(`delete from public.task_assignees where task_id in ('${orphanedTaskId}', '${validTaskId}');`);
+      await sql(`delete from public.workspace_members where workspace_id = '${workspaceId}' and user_id = '${validAssigneeId}';`);
+      await sql(`delete from auth.users where id in ('${validAssigneeId}', '${removedUserId}');`);
+    });
+
     it("AS-383: running the sweep twice does not double-notify the same assignee for the same task (idempotent)", async () => {
       const taskId = await makeTask({ projectId, dueDate: "2020-01-01" });
 
