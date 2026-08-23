@@ -208,6 +208,7 @@ export function CommentList({
   onRetry,
   currentUserId,
   currentUserRole,
+  highlightCommentId,
 }: {
   taskId: string;
   /** Initial comments for this task, ideally already oldest-first. */
@@ -234,6 +235,13 @@ export function CommentList({
    * caller — the server (`addComment`) independently rejects the call
    * regardless, this only controls UI affordance. */
   currentUserRole?: WorkspaceRole;
+  /** F304 (AS-374 follow-up): a notification's `?commentId=` deep-link,
+   * threaded down from TaskDetailSheet. When present and matching a
+   * comment actually rendered here, that comment is scrolled into view
+   * and briefly highlighted once on mount/id-change — undefined/null (the
+   * overwhelming majority of opens: a plain card click, or a `?taskId=`
+   * -only deep-link) renders exactly as before. */
+  highlightCommentId?: string | null;
 }) {
   // F204 follow-up (AS-376, "not offered in the picker" half): the
   // @-mention suggestion source used to be simply every `members` entry
@@ -489,6 +497,29 @@ export function CommentList({
   const orderedComments = sortedOldestFirst(localComments);
   const draftPlainText = extractPlainText(draft);
 
+  // F304 (AS-374 follow-up): scroll to and briefly highlight the comment
+  // requested via the notification deep-link, once it's actually
+  // rendered in `orderedComments`. Re-runs on `highlightCommentId`
+  // changing (a new deep-link open of the same sheet instance) and on
+  // `orderedComments` changing (the comment may not exist in the DOM yet
+  // on the very first render if `comments` arrives after this component
+  // mounts, e.g. TaskDetailSheet's loading state briefly rendering an
+  // empty list first). `document.getElementById` (not a ref map) is the
+  // simplest option here — no second parallel array of refs keyed by
+  // comment id to keep in sync with `orderedComments`.
+  useEffect(() => {
+    if (!highlightCommentId) return;
+    if (!orderedComments.some((c) => c.id === highlightCommentId)) return;
+    const el = document.getElementById(`comment-${highlightCommentId}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("comment-highlighted");
+    const timeout = setTimeout(() => {
+      el.classList.remove("comment-highlighted");
+    }, 2000);
+    return () => clearTimeout(timeout);
+  }, [highlightCommentId, orderedComments]);
+
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     if (!draftPlainText) return;
@@ -540,7 +571,11 @@ export function CommentList({
       ) : (
         <ul className="flex flex-col gap-3">
           {orderedComments.map((comment) => (
-            <li key={comment.id} className="flex flex-col gap-0.5">
+            <li
+              key={comment.id}
+              id={`comment-${comment.id}`}
+              className="flex flex-col gap-0.5 rounded-md transition-colors duration-500 [&.comment-highlighted]:bg-accent/60"
+            >
               <div className="flex items-baseline gap-2">
                 <UserAvatar
                   person={authorOf(comment.userId, members)}

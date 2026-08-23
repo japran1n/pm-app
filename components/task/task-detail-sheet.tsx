@@ -395,6 +395,7 @@ export function TaskDetailSheet({
   currentUserRole,
   timezone,
   onOpenTask,
+  highlightCommentId,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -458,6 +459,13 @@ export function TaskDetailSheet({
    * to the SAME `useTaskDetailSheet().openTask` that already opens a
    * task from a card/row click. */
   onOpenTask?: (taskId: string) => void;
+  /** F304 (AS-374 follow-up): when a notification's deep-link carries a
+   * `?commentId=`, this is that id, threaded straight through to
+   * CommentList so it can scroll to and briefly highlight the matching
+   * comment once its own list has rendered. Undefined/null for every
+   * other open path (a plain card click, a `?taskId=`-only deep-link) —
+   * CommentList's default behavior (no scroll/highlight) is unchanged. */
+  highlightCommentId?: string | null;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
@@ -1302,6 +1310,7 @@ export function TaskDetailSheet({
                     members={members}
                     currentUserId={currentUserId}
                     currentUserRole={currentUserRole}
+                    highlightCommentId={highlightCommentId}
                   />
                 </TabsContent>
                 <TabsContent value="activity">

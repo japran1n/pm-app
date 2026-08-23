@@ -117,3 +117,32 @@ describe("Board opens the TaskDetailSheet from a `?taskId=` deep link (AS-386 fo
     );
   });
 });
+
+// F304 (scrutiny FU-8): before this fix, the effect only called
+// `openTask` when the requested id was ALSO present in the board's own
+// client-loaded `tasks` array — a notification linking to a task that's
+// filtered out of the board's current view (or simply hasn't loaded)
+// silently opened nothing. `openTask` always performs its own
+// `getTaskDetail` server round trip regardless of what's locally loaded,
+// so the fix is to stop gating the call on local array membership.
+describe("Board opens the TaskDetailSheet from a `?taskId=` deep link even when the task is not in the currently-loaded array (F304 fix)", () => {
+  it("test_AS_386_followup_fetch_by_id_fallback_a_taskId_not_in_the_loaded_tasks_array_still_opens_the_sheet", async () => {
+    render(
+      createElement(Board, {
+        projectId: "project-1",
+        // Deliberately does NOT include "t1" — proves the deep-link
+        // doesn't silently no-op just because the task isn't in this
+        // locally-loaded array.
+        initialTasks: [TASKS[1]],
+        timezone: "UTC",
+      }),
+    );
+
+    await waitFor(() => expect(getTaskDetail).toHaveBeenCalledWith("t1"));
+    await waitFor(() =>
+      expect(
+        screen.getByDisplayValue("Deep-linked task", { exact: false }),
+      ).toBeInTheDocument(),
+    );
+  });
+});

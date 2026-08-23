@@ -63,13 +63,22 @@ function taskLabel(task: NotificationListItem["task"]): string {
 // itself is gone (`title === null`) or its project id couldn't be
 // resolved (e.g. the project itself was deleted alongside it) — since a
 // board URL with no `projectId` segment can't be built at all.
+// F304 (AS-374 follow-up): `commentId`, when present, is appended as an
+// additional query param so the board deep-link can also scroll to and
+// highlight the specific comment (components/board/board.tsx reads
+// `?taskId=`; the task detail sheet/comment list read `?commentId=` once
+// the sheet opens — see this feature's other changes). Only appended on
+// the board-deep-link branch — the search-page fallback has nowhere
+// meaningful to carry it.
 function taskHref(
   workspaceSlug: string,
   task: NotificationListItem["task"],
+  commentId: string | null,
 ): string | null {
   if (!task || task.title === null) return null;
   if (task.projectId) {
-    return `/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${encodeURIComponent(task.id)}`;
+    const base = `/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${encodeURIComponent(task.id)}`;
+    return commentId ? `${base}&commentId=${encodeURIComponent(commentId)}` : base;
   }
   return task.key
     ? `/w/${workspaceSlug}/search?q=${encodeURIComponent(task.key)}`
@@ -232,7 +241,11 @@ export function NotificationPanel({
       ) : (
         <ul className="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
           {notifications.map((notification) => {
-            const href = taskHref(workspaceSlug, notification.task);
+            const href = taskHref(
+              workspaceSlug,
+              notification.task,
+              notification.commentId ?? null,
+            );
             const isUnread = !notification.readAt;
 
             const content = (

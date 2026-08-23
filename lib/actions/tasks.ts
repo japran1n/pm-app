@@ -42,6 +42,7 @@ import {
 } from "@/lib/notifications/mentions";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
+import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
@@ -832,19 +833,16 @@ async function setTaskAssigneesCore(
       computedRecipients ?? [],
     );
     for (const recipient of recipients ?? []) {
-      try {
-        await supabase.rpc("create_notification", {
-          p_user_id: recipient.userId,
-          p_workspace_id: context.workspaceId,
-          p_kind: recipient.kind,
-          p_task_id: taskId,
-        });
-      } catch (notifyError) {
-        console.error(
-          "setTaskAssigneesCore: create_notification RPC failed (non-fatal):",
-          notifyError,
-        );
-      }
+      await createNotification(
+        supabase,
+        {
+          userId: recipient.userId,
+          workspaceId: context.workspaceId,
+          kind: recipient.kind,
+          taskId,
+        },
+        "setTaskAssigneesCore",
+      );
     }
   } catch (fanoutError) {
     console.error(
@@ -2348,19 +2346,16 @@ export async function moveTaskStatus(
       computedRecipients ?? [],
     );
     for (const recipient of recipients ?? []) {
-      try {
-        await supabase.rpc("create_notification", {
-          p_user_id: recipient.userId,
-          p_workspace_id: workspaceId,
-          p_kind: recipient.kind,
-          p_task_id: parsed.data.taskId,
-        });
-      } catch (notifyError) {
-        console.error(
-          "moveTaskStatus: create_notification RPC failed (non-fatal):",
-          notifyError,
-        );
-      }
+      await createNotification(
+        supabase,
+        {
+          userId: recipient.userId,
+          workspaceId,
+          kind: recipient.kind,
+          taskId: parsed.data.taskId,
+        },
+        "moveTaskStatus",
+      );
     }
   } catch (fanoutError) {
     console.error(

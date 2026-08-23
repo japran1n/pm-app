@@ -28,6 +28,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
+import { createNotification } from "@/lib/notifications/create-notification";
 
 /** Walks a Tiptap JSONContent tree collecting every `mention` node's
  * `attrs.id`. Deliberately duplicated from
@@ -142,26 +143,18 @@ export async function notifyNewlyMentionedUsers(params: {
   const notified: string[] = [];
 
   for (const recipient of recipients ?? []) {
-    try {
-      const { error } = await params.supabase.rpc("create_notification", {
-        p_user_id: recipient.userId,
-        p_workspace_id: params.workspaceId,
-        p_kind: recipient.kind,
-        p_task_id: params.taskId,
-      });
-      if (error) {
-        console.error(
-          "notifyNewlyMentionedUsers: create_notification RPC failed (non-fatal):",
-          error,
-        );
-        continue;
-      }
+    const result = await createNotification(
+      params.supabase,
+      {
+        userId: recipient.userId,
+        workspaceId: params.workspaceId,
+        kind: recipient.kind,
+        taskId: params.taskId,
+      },
+      "notifyNewlyMentionedUsers",
+    );
+    if (result.ok) {
       notified.push(recipient.userId);
-    } catch (notifyError) {
-      console.error(
-        "notifyNewlyMentionedUsers: create_notification RPC threw (non-fatal):",
-        notifyError,
-      );
     }
   }
 

@@ -20,6 +20,7 @@ import {
 import { extractMentionIds } from "@/lib/notifications/mentions";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
+import { createNotification } from "@/lib/notifications/create-notification";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -311,20 +312,17 @@ export async function addComment(
     );
 
     for (const recipient of recipients ?? []) {
-      try {
-        await supabase.rpc("create_notification", {
-          p_user_id: recipient.userId,
-          p_workspace_id: workspaceId,
-          p_kind: recipient.kind,
-          p_task_id: parsed.data.taskId,
-          p_comment_id: inserted.id,
-        });
-      } catch (notifyError) {
-        console.error(
-          "addComment: create_notification RPC failed (non-fatal):",
-          notifyError,
-        );
-      }
+      await createNotification(
+        supabase,
+        {
+          userId: recipient.userId,
+          workspaceId,
+          kind: recipient.kind,
+          taskId: parsed.data.taskId,
+          commentId: inserted.id,
+        },
+        "addComment",
+      );
     }
 
     // AS-375: a mentioned non-watcher becomes a watcher. Never overrides

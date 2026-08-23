@@ -170,26 +170,40 @@ export function Board({
   const handleCardClick = onCardClick ?? taskDetailSheet.openTask;
 
   // AS-386 follow-up (F208's own handoff flagged this gap): a `?taskId=`
-  // query param, when present and matching a task actually on this
-  // board, opens that task's detail sheet on first render — the same
-  // `openTask` path a card click already uses, so this is purely an
-  // additional trigger, not a second implementation. Guarded to fire
-  // once (`sheetOpenedFromUrlRef`-equivalent via the effect's own `open`
-  // check below is intentionally omitted — `taskDetailSheet.openTask` is
-  // idempotent/safe to call again on a re-render with the same id since
-  // it just resets to the same loading state) but only runs when nothing
-  // is already open, so it never fights a user who has since clicked a
-  // different card or closed the sheet themselves. Only used when the
-  // caller lets the board own its own click handling (no `onCardClick`
-  // override) — a caller that supplies its own click handler also owns
-  // its own deep-link behavior, if any.
+  // query param, when present, opens that task's detail sheet on first
+  // render — the same `openTask` path a card click already uses, so this
+  // is purely an additional trigger, not a second implementation. Guarded
+  // to fire once (`sheetOpenedFromUrlRef`-equivalent via the effect's own
+  // `open` check below is intentionally omitted — `taskDetailSheet.
+  // openTask` is idempotent/safe to call again on a re-render with the
+  // same id since it just resets to the same loading state) but only
+  // runs when nothing is already open, so it never fights a user who has
+  // since clicked a different card or closed the sheet themselves. Only
+  // used when the caller lets the board own its own click handling (no
+  // `onCardClick` override) — a caller that supplies its own click
+  // handler also owns its own deep-link behavior, if any.
+  //
+  // F304 (scrutiny FU-8): the earlier version of this effect only called
+  // `openTask` when the requested id was already present in the board's
+  // client-loaded `tasks` array — a notification (or any other deep-link)
+  // pointing at a task that's filtered out by the board's current
+  // filters, or simply hasn't loaded yet, silently opened nothing. That
+  // guard is removed: `taskDetailSheet.openTask` already performs its own
+  // server round trip (`getTaskDetail`, called regardless of what's in
+  // `tasks` — see use-task-detail-sheet.ts) which independently re-checks
+  // visibility/access server-side, so calling it unconditionally for any
+  // requested id is both simpler (no second "does this task exist"
+  // lookup duplicating what `openTask` already does) and correct: a task
+  // not on this board still opens correctly, and a task the viewer can't
+  // access still surfaces `getTaskDetail`'s own error state instead of a
+  // silent no-op.
   const searchParams = useSearchParams();
+  const requestedCommentId = searchParams.get("commentId");
   useEffect(() => {
     if (onCardClick) return;
     const requestedTaskId = searchParams.get("taskId");
     if (!requestedTaskId) return;
     if (taskDetailSheet.open) return;
-    if (!tasks.some((t) => t.id === requestedTaskId)) return;
     taskDetailSheet.openTask(requestedTaskId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -460,6 +474,7 @@ export function Board({
           currentUserRole={taskDetailSheet.currentUserRole}
           timezone={timezone}
           onOpenTask={taskDetailSheet.openTask}
+          highlightCommentId={requestedCommentId}
         />
       )}
 

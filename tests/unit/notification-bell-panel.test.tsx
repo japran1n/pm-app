@@ -275,6 +275,45 @@ describe("NotificationPanel (F208: AS-385, AS-386, AS-387)", () => {
     expect(link).toHaveAttribute("href", "/w/acme/search?q=PM-1");
   });
 
+  it("test_AS_374_a_notification_with_a_resolvable_comment_produces_a_link_carrying_commentId", () => {
+    const notificationWithComment: NotificationListItem = {
+      ...NEWEST,
+      commentId: "comment-42",
+    };
+
+    render(
+      createElement(NotificationPanel, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        initialNotifications: [notificationWithComment],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    const link = screen.getByRole("link", { name: /Alice/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/w/acme/projects/proj-1/board?taskId=t1&commentId=comment-42",
+    );
+  });
+
+  it("test_AS_374_negative_a_notification_with_no_comment_omits_commentId_from_the_link", () => {
+    render(
+      createElement(NotificationPanel, {
+        workspaceSlug: "acme",
+        workspaceId: "w1",
+        initialNotifications: [NEWEST],
+        initialUnreadCount: 1,
+      }),
+    );
+
+    const link = screen.getByRole("link", { name: /Alice/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/w/acme/projects/proj-1/board?taskId=t1",
+    );
+  });
+
   it("test_AS_387_the_mark_all_button_is_disabled_when_there_is_nothing_unread", () => {
     render(
       createElement(NotificationPanel, {

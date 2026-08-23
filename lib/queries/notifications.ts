@@ -56,6 +56,14 @@ export type NotificationListItem = {
      * case only. */
     projectId: string | null;
   } | null;
+  /** F304 (AS-374 follow-up): the comment this notification is about, when
+   * one exists (F207's fan-out already stores `comment_id` on the row for
+   * `comment_reply`/`mention` kinds via lib/actions/comments.ts's
+   * addComment — this query simply wasn't selecting it). Null for kinds
+   * that never carry a comment (task_assigned, watcher_update) or when the
+   * notification predates F207's comment_id column. The panel uses this to
+   * deep-link straight to the comment, not just the task. */
+  commentId?: string | null;
 };
 
 const DEFAULT_LIMIT = 20;
@@ -99,7 +107,7 @@ export async function getNotificationsForWorkspace(
 
   const { data: rows, error } = await supabase
     .from("notifications")
-    .select("id, kind, actor_id, task_id, read_at, created_at")
+    .select("id, kind, actor_id, task_id, comment_id, read_at, created_at")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -206,6 +214,7 @@ export async function getNotificationsForWorkspace(
         ? { id: row.actor_id as string, name: actor.name, email: actor.email, avatarUrl: actor.avatarUrl }
         : null,
       task: resolveTask(row.task_id),
+      commentId: row.comment_id,
     };
   });
 
