@@ -27,7 +27,7 @@
 //     { ssr: false }
 //   )
 
-import { useEffect, useReducer, useRef } from "react"
+import { useEffect, useReducer, useRef, useState } from "react"
 import {
   EditorContent,
   useEditor,
@@ -377,9 +377,71 @@ export function RichTextEditor({
   // every render in every caller) so the editor is NOT rebuilt on every
   // keystroke — only when the actual set of mentionable users changes
   // (e.g. the async `getMentionCandidates` fetch resolving after mount).
-  const mentionSuggestionsKey = (mentionSuggestions ?? [])
-    .map((item) => item.id)
-    .join(" ")
+  //
+  // F314 (AS-373 residual): keyed on `id:label` pairs, NOT id alone -- a
+  // bare id-only key means a member RENAME (id unchanged, label changed)
+  // never triggers a rebuild, so a chip already on screen keeps showing
+  // the stale name forever, contradicting this module's own documented
+  // contract above ("a member's later name change is reflected without
+  // touching any previously-saved comment"). Including the label in the
+  // key closes that gap: a rename now changes the key, forcing the same
+  // destroy/recreate path F310 already established as correct for the
+  // id-changes case. Separator is a plain space, not the previous NUL
+  // byte -- functionally equivalent but invisible to normal tooling (a
+  // plain grep on this file used to report it as binary).
+  const computedMentionSuggestionsKey = (mentionSuggestions ?? [])
+    .map((item) => `${item.id}:${item.label}`)
+    .join(" ")
+
+  // F314 (UX regression introduced by F310's deps-based recreation):
+  // candidates resolve asynchronously a few hundred ms after mount in
+  // every real caller (comment-list.tsx / task-detail-sheet.tsx start
+  // with `[]` and populate once `getMentionCandidates` resolves). A user
+  // who starts typing immediately after the composer appears would get
+  // the editor destroyed and rebuilt out from under them the moment that
+  // candidate list populates -- losing cursor position, focus, and (a
+  // brand new prosemirror-history plugin instance) undo history.
+  //
+  // Mitigation: only let the recreation key advance while the editor is
+  // still PRISTINE -- not yet focused and not yet edited. The async
+  // candidate-population race only matters in that pristine window; once
+  // the user has started interacting, a very-late-arriving candidate list
+  // simply won't retroactively light up the picker for an in-flight
+  // composition, which is the explicitly-accepted smaller tradeoff versus
+  // losing active work. (Preserving/restoring ProseMirror selection and
+  // history state across a destroy-recreate cycle was considered, but
+  // Tiptap 3.30.2's Editor exposes no supported hook to transplant
+  // prosemirror-history's internal HistoryState onto a fresh EditorState,
+  // and even a perfect selection restore wouldn't save undo history --
+  // this simpler "don't rebuild once the user has started" approach
+  // preserves both for free by not destroying the instance at all.)
+  const pristineRef = useRef(true)
+  const focusedRef = useRef(false)
+  // The applied key lives in state, not a ref read during render — this
+  // codebase's `react-hooks/refs` lint rule (see the matching note on
+  // F310's `deps` choice above) forbids reading `ref.current` at render
+  // time at all, so the "only advance while pristine" decision below is
+  // made inside an effect (where reading `pristineRef`/`focusedRef` is
+  // allowed) rather than inline during render.
+  const [mentionSuggestionsKey, setMentionSuggestionsKey] = useState(
+    computedMentionSuggestionsKey,
+  )
+  useEffect(() => {
+    if (pristineRef.current && !focusedRef.current) {
+      setMentionSuggestionsKey(computedMentionSuggestionsKey)
+    }
+  }, [computedMentionSuggestionsKey])
+  // `useEditor({ immediatelyRender: false })` defers the real Editor's
+  // construction into an effect; that construction itself dispatches one
+  // synthetic transaction (setting the initial empty-paragraph doc) which
+  // fires `onUpdate` even though no user interaction occurred. Without
+  // ignoring it, `pristineRef` would flip to "dirty" on every single
+  // mount/recreation before the user ever touches the editor, permanently
+  // freezing `mentionSuggestionsKey` and defeating F310's fix entirely.
+  // `justConstructedRef` is reset by `onCreate` (fired once per editor
+  // instance, mount or recreation) and consumed by the first `onUpdate`
+  // that follows it.
+  const justConstructedRef = useRef(true)
   // Whether the Mention extension is registered at all still only needs to
   // be true once — `mentionSuggestionsKey` alone already forces a rebuild
   // whenever the (non-empty) suggestion set changes, and every real caller
@@ -458,10 +520,29 @@ export function RichTextEditor({
       // images, etc.) becomes its own plain text rather than vanishing.
       transformPastedHTML: (html) => transformPastedHtml(html),
     },
+    onCreate: () => {
+      justConstructedRef.current = true
+    },
     onUpdate: ({ editor: updatedEditor }) => {
+      // F314: the first `onUpdate` after each construction is the
+      // synthetic initial-content transaction, not a user edit (see the
+      // `justConstructedRef` comment above) -- skip it so the "pristine"
+      // window survives mount/recreation and only ends on a REAL edit.
+      if (justConstructedRef.current) {
+        justConstructedRef.current = false
+      } else {
+        pristineRef.current = false
+      }
       onChange?.(updatedEditor.getJSON())
     },
+    onFocus: () => {
+      // F314: focusing (even before typing) also ends the pristine
+      // window -- a cursor placed and then lost to a rebuild is the same
+      // UX regression as losing typed content.
+      focusedRef.current = true
+    },
     onBlur: () => {
+      focusedRef.current = false
       onBlur?.()
     },
   }, [mentionSuggestionsKey])
@@ -740,8 +821,14 @@ export function RichTextRenderer({
   // close over whatever `getMentionItems` returned at construction time),
   // so a mention id that WAS in the up-to-date list still rendered as
   // unresolved.
+  // F314 (AS-373 residual): keyed on `id:label` pairs, NOT id alone -- see
+  // the matching comment in `RichTextEditor` above. This is the exact path
+  // the scrutiny pass reproduced the stale-name bug against (a member
+  // rename never repainting an already-rendered chip in read-only comment/
+  // description display), since an id-only key leaves the recreation key
+  // unchanged when only the label changes.
   const mentionSuggestionsKey = (mentionSuggestions ?? [])
-    .map((item) => item.id)
+    .map((item) => `${item.id}:${item.label}`)
     .join(" ")
   const mentionsEnabled = mentionSuggestions !== undefined
 

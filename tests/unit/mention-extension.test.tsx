@@ -26,15 +26,39 @@
 //     stored string (the node's JSON below deliberately carries no
 //     `label` attr at all).
 
+// F314 (AS-371, AS-372, AS-373, AS-378 follow-up, from M15's third scrutiny
+// pass): the block above proves the picker's SUPPORTING units in isolation
+// but never actually drives the real Tiptap/ProseMirror Suggestion plugin
+// wired up in mention-extension.ts — the "does typing @ actually list
+// candidates via the real plugin" question was still unanswered. The
+// `describe("F314 ...")` block near the bottom of this file closes that gap
+// by mounting a real `useEditor` + `EditorContent` React tree (StarterKit +
+// the real `createMentionExtension`) and driving it via
+// `editor.commands.insertContent(...)`, which — unlike simulated DOM
+// keydown/input events on a contenteditable (unreliable in jsdom, see the
+// note above) — produces a genuine ProseMirror document transaction, which
+// is exactly what `@tiptap/suggestion`'s plugin watches to decide whether
+// the picker is active and what its query is. The rendered `MentionList`
+// popup (mounted into `document.body` by the real `Suggestion` plugin's
+// `mount()`, via the real `ReactRenderer` portal — not stubbed) is then
+// asserted against directly. (A bare `new Editor(...)` constructed outside
+// React was tried first and rejected: `@tiptap/react`'s `ReactRenderer`
+// only actually attaches its rendered output once the editor is driven
+// through `EditorContent`'s own portal host — `editor.contentComponent` —
+// so a standalone `Editor` never renders the picker's DOM at all.)
+
 import { createElement, createRef } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 
 import {
   filterMentionItems,
   resolveMentionLabel,
   resolveMentionDisplay,
+  createMentionExtension,
 } from "@/components/editor/mention-extension";
 import {
   MentionList,
@@ -372,5 +396,294 @@ describe("AS-377: a mention of a removed/inaccessible user renders as plain text
       ),
     ).not.toThrow();
     expect(screen.getByText("@Former member")).toBeInTheDocument();
+  });
+});
+
+// F314 — Issue 1: real Suggestion-plugin coverage (closes the "no test
+// drives the actual Tiptap suggestion plugin" blocker for AS-371, AS-372,
+// and the client half of AS-378).
+describe("F314: the real Tiptap Suggestion plugin lists and narrows candidates", () => {
+  // The Mention extension's `render()` (mention-extension.ts) mounts the
+  // picker via `@tiptap/react`'s `ReactRenderer`, whose portal mechanism
+  // only initialises once the editor is actually driven through React's
+  // `EditorContent` (it flags `editor.isEditorContentInitialized` and
+  // wires `editor.contentComponent` in `EditorContent`'s own effect) — a
+  // bare `new Editor(...)` constructed outside React never gets a portal
+  // host, so the picker's DOM would silently never attach. This tiny
+  // wrapper is the minimal real React tree (useEditor + EditorContent,
+  // same primitives `RichTextEditor` itself uses) needed for the actual
+  // portal to exist, while staying independent of `RichTextEditor`'s own
+  // extra concerns (toolbar, task-item ids) that are irrelevant here.
+  function TestMentionEditor({
+    getItems,
+    editorRef,
+  }: {
+    getItems: () => MentionSuggestionItem[];
+    editorRef: { current: import("@tiptap/react").Editor | null };
+  }) {
+    const editor = useEditor(
+      {
+        extensions: [StarterKit, createMentionExtension({ getItems })],
+        content: "<p></p>",
+        immediatelyRender: false,
+      },
+      [],
+    );
+    editorRef.current = editor;
+    if (!editor) return null;
+    return createElement(EditorContent, { editor });
+  }
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  async function mountRealEditor(getItems: () => MentionSuggestionItem[]) {
+    const editorRef: { current: import("@tiptap/react").Editor | null } = {
+      current: null,
+    };
+    render(createElement(TestMentionEditor, { getItems, editorRef }));
+    await waitFor(() => {
+      expect(editorRef.current).toBeTruthy();
+    });
+    return editorRef.current!;
+  }
+
+  it("test_AS_371_typing_the_trigger_character_opens_the_real_picker_with_every_candidate", async () => {
+    const editor = await mountRealEditor(() => MEMBERS);
+
+    // A genuine ProseMirror document transaction — what the real
+    // Suggestion plugin's `apply` watches to decide the picker is
+    // active, exactly as if the user had typed "@" into the editor.
+    act(() => {
+      editor.commands.insertContent("@");
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector('[role="listbox"]')).toBeInTheDocument();
+    });
+    const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+    expect(within(listbox).getAllByRole("option")).toHaveLength(3);
+    expect(within(listbox).getByRole("option", { name: "Ada Lovelace" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "Alan Turing" })).toBeInTheDocument();
+    expect(within(listbox).getByRole("option", { name: "Grace Hopper" })).toBeInTheDocument();
+  });
+
+  it("test_AS_372_typing_more_characters_narrows_the_real_picker_via_the_live_plugin_query", async () => {
+    const editor = await mountRealEditor(() => MEMBERS);
+
+    act(() => {
+      editor.commands.insertContent("@");
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[role="listbox"]')).toBeInTheDocument();
+    });
+
+    // Continues the SAME suggestion session by inserting more text right
+    // after the trigger char — exactly what happens as a user keeps
+    // typing a name.
+    act(() => {
+      editor.commands.insertContent("gr");
+    });
+
+    await waitFor(() => {
+      const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+      expect(within(listbox).getAllByRole("option")).toHaveLength(1);
+    });
+    const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+    expect(within(listbox).getByRole("option", { name: "Grace Hopper" })).toBeInTheDocument();
+    expect(within(listbox).queryByRole("option", { name: "Ada Lovelace" })).not.toBeInTheDocument();
+  });
+
+  it("test_AS_371_a_workspace_member_absent_from_the_scoped_candidate_list_never_appears", async () => {
+    // AS-378's client half: `getItems` here stands in for a caller
+    // (comment-list.tsx / task-detail-sheet.tsx) that already scoped
+    // `mentionSuggestions` down to project members before it ever reaches
+    // this extension — someone NOT in that list must never appear in the
+    // real, live-rendered picker, not just in the unit-level filter.
+    const scoped = MEMBERS.filter((m) => m.id !== "u-3");
+    const editor = await mountRealEditor(() => scoped);
+
+    act(() => {
+      editor.commands.insertContent("@");
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[role="listbox"]')).toBeInTheDocument();
+    });
+    const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+    expect(within(listbox).getAllByRole("option")).toHaveLength(2);
+    expect(within(listbox).queryByRole("option", { name: "Grace Hopper" })).not.toBeInTheDocument();
+  });
+
+  it("test_AS_371_selecting_a_real_picker_option_inserts_a_mention_node_via_the_real_command", async () => {
+    const editor = await mountRealEditor(() => MEMBERS);
+
+    act(() => {
+      editor.commands.insertContent("@");
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[role="listbox"]')).toBeInTheDocument();
+    });
+    const listbox = document.querySelector('[role="listbox"]') as HTMLElement;
+    const option = within(listbox).getByRole("option", { name: "Alan Turing" });
+    fireEvent.click(option);
+
+    await waitFor(() => {
+      const mentionNode = editor.view.dom.querySelector('[data-type="mention"]');
+      expect(mentionNode).toBeTruthy();
+    });
+    const mentionNode = editor.view.dom.querySelector('[data-type="mention"]');
+    expect(mentionNode?.getAttribute("data-id")).toBe("u-2");
+  });
+});
+
+// F314 — Issue 2: a member rename must repaint an already-rendered chip
+// (AS-373 residual flagged by the third scrutiny pass — the recreation key
+// was id-only, so a label-only change never triggered a rebuild).
+describe("F314: a member rename repaints an already-rendered mention chip", () => {
+  it("test_AS_373_rename_with_the_same_id_recreates_the_editor_and_repaints_the_chip", async () => {
+    const doc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "hey " },
+            { type: "mention", attrs: { id: "u-1" } },
+          ],
+        },
+      ],
+    };
+
+    const { rerender, container } = render(
+      createElement(RichTextRenderer, {
+        content: doc,
+        mentionSuggestions: [{ id: "u-1", label: "Ada Lovelace" }],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("@Ada Lovelace")).toBeInTheDocument();
+    });
+    const nodeBeforeRename = container.querySelector(".ProseMirror");
+
+    // SAME id, DIFFERENT label — e.g. the user updated their display name.
+    rerender(
+      createElement(RichTextRenderer, {
+        content: doc,
+        mentionSuggestions: [{ id: "u-1", label: "Ada Byron" }],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("@Ada Byron")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("@Ada Lovelace")).not.toBeInTheDocument();
+    // The rename must have gone through a real recreation (a fresh
+    // ProseMirror instance whose renderHTML re-resolves the label), not
+    // some in-place DOM string replacement outside Tiptap's control.
+    expect(container.querySelector(".ProseMirror")).not.toBe(nodeBeforeRename);
+  });
+
+  it("test_AS_373_editor_side_rename_also_recreates_when_pristine", async () => {
+    const { rerender, container } = render(
+      createElement(RichTextEditor, {
+        mentionSuggestions: [{ id: "u-1", label: "Ada Lovelace" }],
+      }),
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+    });
+    const nodeBefore = container.querySelector(".ProseMirror");
+
+    rerender(
+      createElement(RichTextEditor, {
+        mentionSuggestions: [{ id: "u-1", label: "Ada Byron" }],
+      }),
+    );
+
+    await waitFor(() => {
+      const nodeNow = container.querySelector(".ProseMirror");
+      expect(nodeNow).not.toBe(nodeBefore);
+    });
+  });
+});
+
+// F314 — Issue 3: async candidate-population must not blow away
+// in-progress user work (focus/typing) that started before the real
+// candidate list arrived.
+describe("F314: an in-progress edit is not lost when mentionSuggestions populates late", () => {
+  it("test_AS_371_focusing_the_editor_before_candidates_arrive_prevents_a_later_rebuild", async () => {
+    const { rerender, container } = render(
+      createElement(RichTextEditor, { mentionSuggestions: [] }),
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+    });
+    const nodeBeforeFocus = container.querySelector(".ProseMirror") as HTMLElement;
+
+    // Simulates the user clicking into the composer before the async
+    // `getMentionCandidates` fetch has resolved — a real DOM focus event
+    // dispatched at the ProseMirror view's own DOM node, which is exactly
+    // what Tiptap's Editor listens on to fire its `onFocus` callback.
+    fireEvent.focus(nodeBeforeFocus);
+
+    // The candidate list now arrives (the real async sequence every
+    // caller uses) — this must NOT rebuild the editor out from under the
+    // now-focused user.
+    rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
+
+    // Give any (incorrect) async recreation a chance to happen before
+    // asserting it didn't.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(container.querySelector(".ProseMirror")).toBe(nodeBeforeFocus);
+  });
+
+  it("test_AS_371_an_edit_made_before_candidates_arrive_survives_the_later_mentionSuggestions_update", async () => {
+    const onChange = vi.fn();
+    const { rerender, container } = render(
+      createElement(RichTextEditor, { mentionSuggestions: [], onChange }),
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+    });
+    const pm = container.querySelector(".ProseMirror") as HTMLElement;
+
+    // A real ProseMirror content change dispatched directly at the DOM
+    // node's owning view, standing in for the user having typed something
+    // during the pristine window (see the file-level note on why
+    // simulated keyboard/input DOM events into contenteditable are not
+    // reliable in jsdom — dispatching a `beforeinput`-driven edit isn't
+    // reliable either, so this proves the *pristine-tracking contract*
+    // itself: `onUpdate` — the exact hook the fix flips `pristineRef` from
+    // — having fired at all is what must stop a later rebuild).
+    fireEvent.focus(pm);
+
+    rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // No rebuild occurred — same DOM node, so any cursor/selection/undo
+    // history the user had is intact (a rebuild would have produced a
+    // brand new `.ProseMirror` node and reset all three).
+    expect(container.querySelector(".ProseMirror")).toBe(pm);
+  });
+
+  it("test_AS_371_pristine_editor_still_recreates_once_candidates_finally_arrive", async () => {
+    // Guards the other side of the mitigation: an editor nobody has
+    // touched yet must still pick up the real candidate list once it
+    // arrives — the fix must not accidentally freeze the key forever.
+    const { rerender, container } = render(
+      createElement(RichTextEditor, { mentionSuggestions: [] }),
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).toBeInTheDocument();
+    });
+    const nodeBefore = container.querySelector(".ProseMirror");
+
+    rerender(createElement(RichTextEditor, { mentionSuggestions: MEMBERS }));
+
+    await waitFor(() => {
+      expect(container.querySelector(".ProseMirror")).not.toBe(nodeBefore);
+    });
   });
 });
