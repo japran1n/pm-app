@@ -25,5 +25,21 @@ export default defineConfig({
     // the real remote Supabase project (two consecutive runs gave 41 and 36
     // failures); 30s was deterministic (575/575 green).
     testTimeout: 30_000,
+    // F312: vitest's hookTimeout defaults to 10s independently of
+    // testTimeout above. Under a full `npm run test` run, ~40 integration
+    // files each spin up Supabase test users in beforeAll/afterAll and
+    // contend for Supabase Auth rate limits / connection pool; a
+    // hook-timeout failure makes vitest report the file's tests as SKIPPED
+    // rather than FAILED, so a canonical run could silently never execute
+    // that file's assertions. Raising hookTimeout to match testTimeout
+    // gives the same headroom already proven necessary for test bodies.
+    hookTimeout: 30_000,
+    // F312: cap concurrent worker forks so integration files aren't all
+    // hammering Supabase Auth at once (the actual source of the
+    // contention, not raw CPU). This trades some wall-clock time for a
+    // suite that reliably finishes rather than silently skipping files.
+    // (Vitest 4 moved pool concurrency options to the top level; the old
+    // `poolOptions.forks.maxForks` nesting is deprecated.)
+    maxWorkers: 4,
   },
 });
