@@ -15,12 +15,30 @@
 // Kind values mirror the notifications table's closed vocabulary
 // (supabase/migrations/20260823020000_create_notifications.sql's
 // `notifications_kind_check`): mention, comment_reply, task_assigned,
-// task_due_soon, watcher_update. `task_due_soon` is out of scope for this
-// feature (F212).
+// task_due_soon, watcher_update.
+//
+// F307 (AS-391 follow-up): `task_due_soon` IS included in this union so it
+// is a real, consultable kind through the same shared
+// IN_APP_COLUMN_BY_KIND path (lib/notifications/preferences.ts) every
+// other kind goes through -- a future caller that ever needs to filter
+// task_due_soon recipients in TypeScript (e.g. a notification-panel
+// preview, or a future non-SQL sweep) gets the exhaustive compile-time
+// safety net, not a silently-missing map entry. `computeFanoutRecipients`
+// below still never produces a `task_due_soon` recipient itself --
+// F212's hourly pg_cron sweep (supabase/migrations/
+// 20260823050000_overdue_notification_sweep.sql) computes and gates
+// task_due_soon recipients entirely in SQL, reading the SAME
+// `task_due_soon_in_app` column IN_APP_COLUMN_BY_KIND now also points at
+// for this kind (see that migration's header comment and
+// lib/notifications/preferences.ts's doc comment for why a literal
+// shared TypeScript code path across the SQL/pg_cron boundary isn't
+// realistic -- the column name, not the code, is the single source of
+// truth these two call sites share).
 export type NotificationKind =
   | "mention"
   | "comment_reply"
   | "task_assigned"
+  | "task_due_soon"
   | "watcher_update";
 
 // The four event shapes this feature's spec names: assignment, status

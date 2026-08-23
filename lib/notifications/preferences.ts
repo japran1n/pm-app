@@ -32,11 +32,23 @@ const IN_APP_COLUMN_BY_KIND: Record<
   | "task_assigned_in_app"
   | "comment_reply_in_app"
   | "watcher_update_in_app"
+  | "task_due_soon_in_app"
 > = {
   mention: "mention_in_app",
   task_assigned: "task_assigned_in_app",
   comment_reply: "comment_reply_in_app",
   watcher_update: "watcher_update_in_app",
+  // F307 (AS-391 follow-up): same column F212's SQL sweep reads directly
+  // (supabase/migrations/20260823050000_overdue_notification_sweep.sql's
+  // `np.task_due_soon_in_app = true` predicate) -- kept as the exact same
+  // column name intentionally, documented as one shared source of truth
+  // read from two call sites (this TS map, and that migration's SQL),
+  // not two independently-diverging rules. This function is not
+  // currently called on the sweep's path (that sweep is pure SQL/pg_cron
+  // and gates in-line, see that migration's header comment for why); this
+  // entry exists so a future TypeScript caller of
+  // filterRecipientsByInAppPreference is not missing task_due_soon.
+  task_due_soon: "task_due_soon_in_app",
 };
 
 /**
@@ -73,7 +85,7 @@ export async function filterRecipientsByInAppPreference(
   const { data, error } = await client
     .from("notification_preferences")
     .select(
-      "user_id, mention_in_app, task_assigned_in_app, comment_reply_in_app, watcher_update_in_app",
+      "user_id, mention_in_app, task_assigned_in_app, comment_reply_in_app, watcher_update_in_app, task_due_soon_in_app",
     )
     .in("user_id", userIds);
 

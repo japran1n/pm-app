@@ -209,5 +209,159 @@ describe.skipIf(!haveAdminCreds)(
         .eq("user_id", secondAssignee.user.id);
       expect(rows).toHaveLength(1);
     });
+
+    // F307 (AS-391 follow-up, FU-10 from M15 scrutiny): the scrutiny
+    // report noted only task_assigned's gating had end-to-end coverage.
+    // These three tests prove the same real skip for mention,
+    // comment_reply, and watcher_update — the other three in-app kinds
+    // filterRecipientsByInAppPreference/IN_APP_COLUMN_BY_KIND gate.
+
+    async function createActiveMemberInline(label: string) {
+      const email = `f211-${label}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@example.com`;
+      const password = "Test-password-1!";
+      const { data: auth, error: authErr } = await adminClient.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+      });
+      if (authErr || !auth.user) throw new Error(`Failed to create ${label}: ${authErr?.message}`);
+      createdUserIds.push(auth.user.id);
+      const { error: memberErr } = await adminClient.from("workspace_members").insert({
+        workspace_id: workspaceId,
+        user_id: auth.user.id,
+        role: "member",
+        status: "active",
+      });
+      if (memberErr) throw new Error(`Failed to seed ${label} membership: ${memberErr.message}`);
+      return auth.user.id;
+    }
+
+    it("test_AS_391_disabling_mention_in_app_means_mentioning_a_user_in_a_comment_creates_no_notification_row_for_them", async () => {
+      const mentionedUserId = await createActiveMemberInline("mention-target");
+
+      const { error: prefErr } = await adminClient
+        .from("notification_preferences")
+        .update({ mention_in_app: false })
+        .eq("user_id", mentionedUserId);
+      expect(prefErr).toBeNull();
+
+      sessionClientForMock = actorClient;
+      const { addComment } = await import("@/lib/actions/comments");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F211 mention gating task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      const bodyJson = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "hey " },
+              { type: "mention", attrs: { id: mentionedUserId } },
+            ],
+          },
+        ],
+      };
+
+      const result = await addComment(task.id, `hey @${mentionedUserId}`, bodyJson as never);
+      expect(result.ok).toBe(true);
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("kind", "mention")
+        .eq("user_id", mentionedUserId);
+      expect(readErr).toBeNull();
+      expect(rows).toEqual([]);
+    });
+
+    it("test_AS_391_disabling_comment_reply_in_app_means_a_new_comment_creates_no_notification_row_for_an_existing_watcher", async () => {
+      const watcherUserId = await createActiveMemberInline("comment-watcher");
+
+      const { error: prefErr } = await adminClient
+        .from("notification_preferences")
+        .update({ comment_reply_in_app: false })
+        .eq("user_id", watcherUserId);
+      expect(prefErr).toBeNull();
+
+      sessionClientForMock = actorClient;
+      const { addComment } = await import("@/lib/actions/comments");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F211 comment_reply gating task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      // Seed the watcher directly (F164's own auto-watch upsert convention)
+      // — a plain existing watcher, not the commenter and not mentioned,
+      // so any notification they'd get is exactly the comment_reply kind
+      // this test is gating.
+      const { error: watcherErr } = await adminClient.from("task_watchers").upsert(
+        { task_id: task.id, user_id: watcherUserId, is_watching: true },
+        { onConflict: "task_id,user_id" },
+      );
+      expect(watcherErr).toBeNull();
+
+      const result = await addComment(task.id, "no mentions here", {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "no mentions here" }] }],
+      } as never);
+      expect(result.ok).toBe(true);
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("kind", "comment_reply")
+        .eq("user_id", watcherUserId);
+      expect(readErr).toBeNull();
+      expect(rows).toEqual([]);
+    });
+
+    it("test_AS_391_disabling_watcher_update_in_app_means_a_status_change_creates_no_notification_row_for_an_existing_watcher", async () => {
+      const watcherUserId = await createActiveMemberInline("status-watcher");
+
+      const { error: prefErr } = await adminClient
+        .from("notification_preferences")
+        .update({ watcher_update_in_app: false })
+        .eq("user_id", watcherUserId);
+      expect(prefErr).toBeNull();
+
+      sessionClientForMock = actorClient;
+      const { moveTaskStatus } = await import("@/lib/actions/tasks");
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({ project_id: projectId, title: "F211 watcher_update gating task", status: "todo", author_id: actorUserId })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to create task: ${taskErr?.message}`);
+
+      const { error: watcherErr } = await adminClient.from("task_watchers").upsert(
+        { task_id: task.id, user_id: watcherUserId, is_watching: true },
+        { onConflict: "task_id,user_id" },
+      );
+      expect(watcherErr).toBeNull();
+
+      const result = await moveTaskStatus(task.id, "in_progress");
+      expect(result.ok).toBe(true);
+
+      const { data: rows, error: readErr } = await adminClient
+        .from("notifications")
+        .select("id")
+        .eq("task_id", task.id)
+        .eq("kind", "watcher_update")
+        .eq("user_id", watcherUserId);
+      expect(readErr).toBeNull();
+      expect(rows).toEqual([]);
+    });
   },
 );
