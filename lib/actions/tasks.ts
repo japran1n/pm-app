@@ -34,7 +34,11 @@ import { isDoneStatus } from "@/lib/tasks/blocked-guard";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
-import { diffTaskFields, writeTaskFieldChanges } from "@/lib/activity/task-activity";
+import {
+  diffTaskFields,
+  writeTaskFieldChanges,
+  type TaskFieldChange,
+} from "@/lib/activity/task-activity";
 import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
 import {
   extractNewlyMentionedIds,
@@ -43,7 +47,8 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
-import type { Json } from "@/lib/supabase/database.types";
+import type { Json, Database } from "@/lib/supabase/database.types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
@@ -138,16 +143,23 @@ export async function createTask(
     return { ok: false, error: "You must be signed in to create a task." };
   }
 
-  return createTaskForUser(user.id, {
-    projectId,
-    title,
-    description,
-    status,
-    priority,
-    assigneeId,
-    dueDate,
-    parentTaskId,
-  });
+  return createTaskForUser(
+    user.id,
+    {
+      projectId,
+      title,
+      description,
+      status,
+      priority,
+      assigneeId,
+      dueDate,
+      parentTaskId,
+    },
+    // F306 (D9/FU-3 scrutiny fix, AS-380): the caller's own authenticated
+    // session, so a task created with an initial assignee can notify that
+    // assignee (create_notification pins actor_id via auth.uid()).
+    supabase,
+  );
 }
 
 // F292 (AS-558, AS-561, AS-562): the shared create-task code path, factored
@@ -173,6 +185,19 @@ export async function createTaskForUser(
     dueDate?: string | null;
     parentTaskId?: string | null;
   },
+  // F306 (D9/FU-3 scrutiny fix, AS-380): optional caller-session client,
+  // used ONLY to fan out a `task_assigned` notification when this call
+  // creates a task with an initial assignee. Optional because
+  // createTaskForUser's other caller (app/api/extension/tasks/route.ts)
+  // authenticates via a bearer JWT validated one-off against a fresh
+  // anon-key client with no persisted session — that client cannot
+  // authenticate a `create_notification` RPC call as this user, and
+  // wiring that up is a bearer-session/RPC-auth change to the extension
+  // route itself, out of this feature's Files scope (lib/actions/tasks.ts
+  // only) — flagged in the handoff's Out-of-scope section rather than
+  // silently built. When omitted, the notification fan-out below is
+  // skipped (logged, non-fatal) and the create still succeeds.
+  notifyClient?: SupabaseClient<Database>,
 ): Promise<CreateTaskResult> {
   const parsed = createTaskSchema.safeParse({
     projectId: input.projectId,
@@ -359,6 +384,54 @@ export async function createTaskForUser(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F306 (D9/FU-3 scrutiny fix, AS-380): a task created WITH an initial
+  // assignee never fired a `task_assigned` notification — only a later
+  // setTaskAssigneesCore call did. Routed through the same
+  // computeFanoutRecipients/filterRecipientsByInAppPreference/
+  // createNotification helpers every other fan-out call site uses. No
+  // task_activity entry is written for this initial assignee (per
+  // diffTaskFields's own documented "no prior value to diff against"
+  // rule — creation is not a *change*, there is no "before"), only the
+  // notification. Non-fatal, and silently skipped (logged) when no
+  // `notifyClient` was supplied (see this parameter's doc comment above).
+  if (parsed.data.assigneeId) {
+    if (notifyClient) {
+      try {
+        const computedRecipients = computeFanoutRecipients({
+          type: "assigned",
+          actorId: user.id,
+          assigneeIds: [parsed.data.assigneeId],
+        });
+        const recipients = await filterRecipientsByInAppPreference(
+          admin,
+          computedRecipients ?? [],
+        );
+        for (const recipient of recipients ?? []) {
+          await createNotification(
+            notifyClient,
+            {
+              userId: recipient.userId,
+              workspaceId: projectRow.workspace_id,
+              kind: recipient.kind,
+              taskId: inserted.id,
+            },
+            "createTaskForUser",
+          );
+        }
+      } catch (fanoutError) {
+        console.error(
+          "createTaskForUser: notification fan-out failed (non-fatal):",
+          fanoutError,
+        );
+      }
+    } else {
+      console.error(
+        "createTaskForUser: no notifyClient supplied, skipping task_assigned fan-out (non-fatal):",
+        { taskId: inserted.id },
+      );
+    }
   }
 
   const { data: workspaceRow } = await admin
@@ -705,16 +778,6 @@ async function setTaskAssigneesCore(
   if (!preflight.ok) return preflight;
   const { admin, supabase, userId, context } = preflight;
 
-  // F195 (AS-354, AS-355): the mirror `assignee_id` value before this call
-  // — the "before" side of the diff written once the mirror is
-  // recomputed below.
-  const { data: taskBeforeRow } = await admin
-    .from("tasks")
-    .select("assignee_id")
-    .eq("id", taskId)
-    .maybeSingle();
-  const mirrorBefore = taskBeforeRow?.assignee_id ?? null;
-
   const desiredUserIds = Array.from(new Set(desiredUserIdsInput));
 
   if (desiredUserIds.length > 0) {
@@ -851,16 +914,35 @@ async function setTaskAssigneesCore(
     );
   }
 
-  // F195 (AS-354, AS-355): record the assignee change via the mirror
-  // column's before/after value — the single column every reader
-  // (including this feature) already treats as the task's canonical
-  // "current assignee" projection, even when multiple assignees exist
-  // (see resolveMirrorAssigneeId's doc comment above). Non-fatal.
+  // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record every assignee
+  // added/removed by this call, not just a change to the mirror column.
+  // The prior implementation ONLY diffed `mirrorBefore`/`mirror` (the
+  // deprecated single-assignee `tasks.assignee_id` projection —
+  // resolveMirrorAssigneeId's doc comment), so adding/removing a
+  // NON-first assignee on an already-multi-assignee task changed
+  // `toAdd`/`toRemove` above but never touched the mirror column, and
+  // silently wrote NO activity entry at all — exactly the scrutiny
+  // report's finding. `toAdd`/`toRemove` (computed above from the real
+  // `task_assignees` diff) are the actual full-set source of truth; one
+  // 'assignee_id' field_changed entry per removed user (oldValue: that
+  // user, newValue: null — "unassigned, was X") and per added user
+  // (oldValue: null, newValue: that user — "assigned to X") reads
+  // correctly through formatTaskActivityEntry's existing per-id
+  // assignee_id rendering (lib/activity/format-task-activity-entry.ts),
+  // without inventing a new field/kind. Non-fatal.
   try {
-    const changes = diffTaskFields(
-      { assignee_id: mirrorBefore },
-      { assignee_id: mirror },
-    );
+    const changes: TaskFieldChange[] = [
+      ...toRemove.map((removedId) => ({
+        field: "assignee_id" as const,
+        oldValue: removedId,
+        newValue: null,
+      })),
+      ...toAdd.map((addedId) => ({
+        field: "assignee_id" as const,
+        oldValue: null,
+        newValue: addedId,
+      })),
+    ];
     await writeTaskFieldChanges(supabase, taskId, changes);
   } catch (activityError) {
     console.error(
@@ -1800,6 +1882,41 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
     };
   }
 
+  // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record the restore in
+  // the task's activity feed. There is no dedicated "restored" kind in
+  // F194's closed task_activity_kind vocabulary ('field_changed',
+  // 'comment_added', 'comment_deleted') and no migration is in this
+  // feature's Files scope (lib/actions/tasks.ts only), so this follows
+  // the exact precedent
+  // supabase/migrations/20260822231000_recurrence_scheduled_generation_
+  // activity.sql's own doc comment sets for "no dedicated kind exists":
+  // 'field_changed' on the closest-fitting real field. `status` is the
+  // closest fit here — a restored task always ends up with a concrete,
+  // visible status again, `p_old_value := null` (there was no visible
+  // status while soft-deleted/in trash) and `p_new_value :=
+  // resolvedStatus`. This is deliberately activity-only, NOT a watcher/
+  // assignee notification — per this feature's own scoping note, restoring
+  // a task from trash is not treated as a fan-out-worthy event the way a
+  // live status/assignee change is; see the handoff's Decisions Made.
+  // Non-fatal, same convention as every other post-write activity write
+  // in this file.
+  try {
+    // diffTaskFields skips a key absent from `before` (no prior value to
+    // diff against) — restore's "before" is genuinely absent (the task
+    // had no visible status while in trash), so the change is built
+    // directly here rather than through diffTaskFields's "both present"
+    // comparison, matching the SQL-side precedent's own `p_old_value :=
+    // null` choice referenced above.
+    await writeTaskFieldChanges(supabase, parsed.data.taskId, [
+      { field: "status", oldValue: null, newValue: updated.status },
+    ]);
+  } catch (activityError) {
+    console.error(
+      "restoreTask: writeTaskFieldChanges failed (non-fatal):",
+      activityError,
+    );
+  }
+
   // Cascade restore (see this function's doc comment above): only the
   // still-deleted children whose `deleted_via_task_id` points back to
   // THIS task — never a bulk-deleted sibling with no such provenance.
@@ -2670,7 +2787,7 @@ export async function moveAndReorderTask(
   // moveTaskStatus/reorderTask's task lookup.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id)")
+    .select("id, deleted_at, status, projects!inner(id, workspace_id)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2730,6 +2847,69 @@ export async function moveAndReorderTask(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): the board drag path was
+  // the single most common way a task's status ever changes and had ZERO
+  // activity entry — record the status change exactly like moveTaskStatus
+  // does above, non-fatal. Guarded on an actual status change (unlike a
+  // pure in-column reorder, which never touches `status` at all) so a
+  // same-column drag doesn't fabricate a "status changed" entry/notify.
+  if (taskRow.status !== updated.status) {
+    try {
+      const changes = diffTaskFields(
+        { status: taskRow.status },
+        { status: updated.status },
+      );
+      await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
+    } catch (activityError) {
+      console.error(
+        "moveAndReorderTask: writeTaskFieldChanges failed (non-fatal):",
+        activityError,
+      );
+    }
+
+    // F306 (D9/FU-3 scrutiny fix, AS-294, AS-382): notify the task's
+    // current active watchers of the status change — same fan-out
+    // moveTaskStatus performs, routed through the same shared helpers.
+    // Non-fatal.
+    try {
+      const { data: watcherRows } = await admin
+        .from("task_watchers")
+        .select("user_id")
+        .eq("task_id", parsed.data.taskId)
+        .eq("is_watching", true);
+      const watcherIds = (watcherRows ?? []).map(
+        (row) => row.user_id as string,
+      );
+
+      const computedRecipients = computeFanoutRecipients({
+        type: "status_changed",
+        actorId: user.id,
+        watcherIds,
+      });
+      const recipients = await filterRecipientsByInAppPreference(
+        admin,
+        computedRecipients ?? [],
+      );
+      for (const recipient of recipients ?? []) {
+        await createNotification(
+          supabase,
+          {
+            userId: recipient.userId,
+            workspaceId,
+            kind: recipient.kind,
+            taskId: parsed.data.taskId,
+          },
+          "moveAndReorderTask",
+        );
+      }
+    } catch (fanoutError) {
+      console.error(
+        "moveAndReorderTask: notification fan-out failed (non-fatal):",
+        fanoutError,
+      );
+    }
   }
 
   const { data: workspaceRow } = await admin
@@ -4002,6 +4182,41 @@ export async function duplicateTask(
       );
     } else {
       await syncMirrorAssigneeId(admin, inserted.id);
+
+      // F306 (D9/FU-3 scrutiny fix, AS-380): the duplicate carries over
+      // the source's assignees but never notified them — routed through
+      // the same shared helpers every other fan-out call site uses. Like
+      // createTaskForUser above, this is a creation, not a *change*, so
+      // no task_activity entry is written for it, only the notification.
+      // Non-fatal.
+      try {
+        const computedRecipients = computeFanoutRecipients({
+          type: "assigned",
+          actorId: user.id,
+          assigneeIds: cloned.assigneeIds,
+        });
+        const recipients = await filterRecipientsByInAppPreference(
+          admin,
+          computedRecipients ?? [],
+        );
+        for (const recipient of recipients ?? []) {
+          await createNotification(
+            supabase,
+            {
+              userId: recipient.userId,
+              workspaceId,
+              kind: recipient.kind,
+              taskId: inserted.id,
+            },
+            "duplicateTask",
+          );
+        }
+      } catch (fanoutError) {
+        console.error(
+          "duplicateTask: notification fan-out failed (non-fatal):",
+          fanoutError,
+        );
+      }
     }
   }
 
@@ -4326,6 +4541,111 @@ export async function bulkUpdateTasks(
     console.error(
       "bulkUpdateTasks: writeTaskFieldChanges failed (non-fatal):",
       activityError,
+    );
+  }
+
+  // F306 (D9/FU-3 scrutiny fix, AS-294, AS-380, AS-382): fan out
+  // notifications for every task in this batch whose status or assignee
+  // actually changed. Watchers are read in ONE batched query covering
+  // every status-changed task (not one query per task), matching this
+  // action's own "batch, don't loop network calls per row" convention
+  // used above for the before/after snapshot reads. `createNotification`
+  // itself is still called once per (task, recipient) pair — the same
+  // "one RPC call per affected row" the single-task paths and this
+  // feature's own bulk-performance guidance accept as reasonable, since
+  // there is no bulk variant of `create_notification`/
+  // `filterRecipientsByInAppPreference` to route through instead. Non-
+  // fatal: the bulk update itself already succeeded above.
+  try {
+    const statusChangedIds = (updatedRows ?? [])
+      .filter((row) => {
+        const before = beforeById.get(row.id as string);
+        return before && before.status !== row.status;
+      })
+      .map((row) => row.id as string);
+
+    const watchersByTask = new Map<string, string[]>();
+    if (statusChangedIds.length > 0) {
+      const { data: watcherRows } = await admin
+        .from("task_watchers")
+        .select("task_id, user_id")
+        .in("task_id", statusChangedIds)
+        .eq("is_watching", true);
+      for (const row of watcherRows ?? []) {
+        const list = watchersByTask.get(row.task_id as string) ?? [];
+        list.push(row.user_id as string);
+        watchersByTask.set(row.task_id as string, list);
+      }
+    }
+
+    for (const taskId of statusChangedIds) {
+      const context = contexts.get(taskId);
+      if (!context) continue;
+      const computedRecipients = computeFanoutRecipients({
+        type: "status_changed",
+        actorId: user.id,
+        watcherIds: watchersByTask.get(taskId) ?? [],
+      });
+      const recipients = await filterRecipientsByInAppPreference(
+        admin,
+        computedRecipients ?? [],
+      );
+      for (const recipient of recipients ?? []) {
+        await createNotification(
+          supabase,
+          {
+            userId: recipient.userId,
+            workspaceId: context.workspaceId,
+            kind: recipient.kind,
+            taskId,
+          },
+          "bulkUpdateTasks",
+        );
+      }
+    }
+
+    const assigneeChangedRows = (updatedRows ?? [])
+      .map((row) => {
+        const before = beforeById.get(row.id as string);
+        return {
+          id: row.id as string,
+          assigneeId: row.assignee_id as string | null,
+          changed: Boolean(
+            before && before.assignee_id !== row.assignee_id,
+          ),
+        };
+      })
+      .filter((row) => row.changed && row.assigneeId);
+
+    for (const row of assigneeChangedRows) {
+      const context = contexts.get(row.id);
+      if (!context || !row.assigneeId) continue;
+      const computedRecipients = computeFanoutRecipients({
+        type: "assigned",
+        actorId: user.id,
+        assigneeIds: [row.assigneeId],
+      });
+      const recipients = await filterRecipientsByInAppPreference(
+        admin,
+        computedRecipients ?? [],
+      );
+      for (const recipient of recipients ?? []) {
+        await createNotification(
+          supabase,
+          {
+            userId: recipient.userId,
+            workspaceId: context.workspaceId,
+            kind: recipient.kind,
+            taskId: row.id,
+          },
+          "bulkUpdateTasks",
+        );
+      }
+    }
+  } catch (fanoutError) {
+    console.error(
+      "bulkUpdateTasks: notification fan-out failed (non-fatal):",
+      fanoutError,
     );
   }
 
