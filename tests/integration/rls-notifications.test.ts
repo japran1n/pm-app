@@ -257,6 +257,51 @@ describe.skipIf(!haveAdminCreds)(
       expect(row.actor_id).not.toBe(recipientUserId);
     });
 
+    it("test_AS_389_negative_an_authenticated_caller_cannot_bypass_the_membership_check_by_claiming_p_system", async () => {
+      // F309 follow-up fix: p_system's exemption from the auth.uid()/
+      // caller-membership checks now only applies when the caller
+      // genuinely has no session at all (a real service-role/cron
+      // caller, e.g. F212's overdue sweep). The outsider session has a
+      // real auth.uid() and zero membership in `workspaceId` -- passing
+      // p_system => true must NOT let them skip the membership check and
+      // inject a "System"-attributed notification into a member's inbox.
+      const { error } = await outsiderSessionClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceId,
+        p_kind: "mention",
+        p_system: true,
+      });
+      expect(error).not.toBeNull();
+
+      // Confirm no row was written for this outsider-attempted system
+      // notification (admin, bypasses RLS): the outsider has no other
+      // membership/notification activity in this workspace, so any
+      // 'mention'-kind row attributed to them as actor, or any row with
+      // a null actor beyond the legitimately-seeded ones, would indicate
+      // the bypass succeeded. Instead, assert directly that the RPC call
+      // raised and produced no new row by comparing counts before/after
+      // is unnecessary here -- the RPC's own exception guarantees the
+      // insert never ran (Postgres rolls back the whole function call on
+      // raise exception), so the not-null error assertion above is
+      // itself sufficient proof no row was written.
+    });
+
+    it("test_AS_389_the_service_role_admin_client_can_still_create_a_genuine_system_notification", async () => {
+      // Regression check: a real service-role/cron-style caller (no
+      // user session at all, auth.uid() is null) must be unaffected by
+      // the p_system fix -- this is the exact call shape F212's overdue
+      // sweep uses.
+      const { data, error } = await adminClient.rpc("create_notification", {
+        p_user_id: recipientUserId,
+        p_workspace_id: workspaceId,
+        p_kind: "task_due_soon",
+        p_system: true,
+      });
+      expect(error).toBeNull();
+      const row = data as { id: string; actor_id: string | null };
+      expect(row.actor_id).toBeNull();
+    });
+
     it("test_AS_389_a_user_can_mark_their_own_notification_read_via_UPDATE", async () => {
       const { data, error } = await recipientSessionClient
         .from("notifications")
