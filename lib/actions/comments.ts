@@ -1308,11 +1308,33 @@ export async function getMentionCandidates(
     .map((row) => row.user_id as string)
     .filter(Boolean);
 
-  const visibleIds = await resolveVisibleMentionIds(admin, allMemberIds, {
-    projectId: taskRow.project_id,
-    workspaceId,
-    projectVisibility: projectRow?.visibility ?? "workspace",
-  });
+  // F313 (AS-376 follow-up, M15 third scrutiny pass): this call was
+  // previously unguarded while the memberError check above IS guarded —
+  // an inconsistency. `resolveVisibleMentionIds` deliberately throws
+  // `MentionVisibilityCheckError` on a transient DB read failure (F301,
+  // lib/comments/mentions.ts) rather than silently treating it as "no one
+  // is visible"; every other caller of this function
+  // (addComment/editComment/editTask) already catches it and returns a
+  // typed `{ ok: false }` result instead of letting the rejection
+  // propagate. This call site is a Server Action too, so it follows the
+  // same "lib stays pure/typed-error, the calling Server Action decides
+  // how to surface it" convention rather than leaving an unhandled
+  // rejection for the client's bare `.then()` call sites
+  // (comment-list.tsx, task-detail-sheet.tsx) to hang on.
+  let visibleIds: Set<string>;
+  try {
+    visibleIds = await resolveVisibleMentionIds(admin, allMemberIds, {
+      projectId: taskRow.project_id,
+      workspaceId,
+      projectVisibility: projectRow?.visibility ?? "workspace",
+    });
+  } catch (visibilityError) {
+    console.error(
+      "getMentionCandidates: mention visibility resolution failed:",
+      visibilityError,
+    );
+    return { ok: false, error: "Something went wrong. Please try again." };
+  }
 
   return { ok: true, data: { userIds: Array.from(visibleIds) } };
 }

@@ -34,6 +34,8 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { calculatePosition } from "@/lib/board/position";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
+import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
+import type { JSONContent } from "@/components/editor/rich-text-editor";
 import type { Json } from "@/lib/supabase/database.types";
 
 // --- saveTaskAsTemplate -----------------------------------------------------
@@ -285,7 +287,7 @@ export async function createTaskFromTemplate(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, visibility, deleted_at")
     .eq("id", parsed.data.projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -392,13 +394,52 @@ export async function createTaskFromTemplate(
     null,
   );
 
+  // AS-376 (this follow-up feature, F313): a template's description_json
+  // may carry mention nodes referencing user ids visible in whatever
+  // project the template snapshot was originally taken from. Copying it
+  // verbatim into the TARGET project (parsed.data.projectId, which may be
+  // a brand-new/private project the mentioned user has no access to) would
+  // bypass the exact same enforcement addComment/editComment/editTask
+  // already apply to every other write path that persists a mention doc.
+  // Re-run the same `sanitiseMentionsForVisibility` check here, against the
+  // TARGET project's own context (not the template's origin project),
+  // mirroring editTask's descriptionJson handling in lib/actions/tasks.ts.
+  // F301: if the underlying visibility lookup itself fails (transient DB
+  // error), fail this whole create rather than silently persisting a
+  // corrupted ("@Former member") description — same convention as
+  // addComment/editComment/editTask.
+  let sanitisedDescriptionJson: JSONContent | null =
+    payload.description_json as JSONContent | null;
+  if (payload.description_json) {
+    try {
+      sanitisedDescriptionJson = (await sanitiseMentionsForVisibility(
+        admin,
+        payload.description_json as JSONContent,
+        {
+          projectId: projectRow.id,
+          workspaceId: projectRow.workspace_id,
+          projectVisibility: projectRow.visibility ?? "workspace",
+        },
+      )) as JSONContent;
+    } catch (visibilityError) {
+      console.error(
+        "createTaskFromTemplate: mention visibility check failed:",
+        visibilityError,
+      );
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+  }
+
   const { data: inserted, error: insertError } = await admin
     .from("tasks")
     .insert({
       project_id: parsed.data.projectId,
       title: payload.title,
       description: payload.description,
-      description_json: payload.description_json as Json,
+      description_json: sanitisedDescriptionJson as Json,
       status: targetStatus,
       priority: payload.priority,
       tags: payload.tags,
