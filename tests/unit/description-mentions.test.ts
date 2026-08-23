@@ -96,6 +96,17 @@ describe("AS-378: mentions work in task descriptions as well as comments", () =>
   // real `create_notification` RPC call (via the caller's session client)
   // per newly-mentioned id, excluding the author (AS-384), and promotes
   // each mentioned non-watcher (via the admin client) per AS-375.
+  // F301: F211's `filterRecipientsByInAppPreference`
+  // (lib/notifications/preferences.ts) added a `notification_preferences`
+  // `.select()` read into `notifyNewlyMentionedUsers`'s call path — this
+  // fake `admin` client previously only implemented `.from().upsert()`
+  // (the task_watchers write below), so every one of these tests threw
+  // `TypeError: client.from(...).select is not a function`. The chainable
+  // builder below returns no preference rows by default (`.in()` resolves
+  // to `{ data: [], error: null }`), which `filterRecipientsByInAppPreference`
+  // treats as "no row for this user: fail open" — i.e. every recipient
+  // keeps their default in-app-enabled behaviour, matching these tests'
+  // existing expectations about who gets notified.
   function fakeClients() {
     const rpcCalls: unknown[] = [];
     const supabase = {
@@ -105,15 +116,22 @@ describe("AS-378: mentions work in task descriptions as well as comments", () =>
       },
     };
     const upsertCalls: unknown[] = [];
+    const selectCalls: unknown[] = [];
     const admin = {
-      from: () => ({
+      from: (table: string) => ({
         upsert: async (rows: unknown) => {
           upsertCalls.push(rows);
           return { data: null, error: null };
         },
+        select: (columns: string) => ({
+          in: async (column: string, values: unknown[]) => {
+            selectCalls.push({ table, columns, column, values });
+            return { data: [], error: null };
+          },
+        }),
       }),
     };
-    return { supabase, admin, rpcCalls, upsertCalls };
+    return { supabase, admin, rpcCalls, upsertCalls, selectCalls };
   }
 
   it("test_AS_374_AS_381_notifyNewlyMentionedUsers_delivers_a_mention_notification_per_newly_mentioned_id", async () => {

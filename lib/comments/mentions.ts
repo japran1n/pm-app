@@ -40,6 +40,29 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
+/**
+ * F301 (AS-374, AS-375, AS-381, AS-384 follow-up; scrutiny finding D5):
+ * thrown by `resolveVisibleMentionIds` when either underlying Supabase
+ * query fails. Previously this failure was silently swallowed (only
+ * `data` was destructured, never `error`), so a transient DB error made
+ * every mentioned id look "not visible" and every mention in the write
+ * got permanently rewritten to the literal string "@Former member" — a
+ * silent, irreversible document corruption. A typed error lets callers
+ * (`sanitiseMentionsForVisibility`'s own callers, `addComment`/
+ * `editComment`/`editTask`) distinguish "this write's mentions really
+ * are all invisible" (empty Set, no error) from "we couldn't tell, so
+ * don't touch the document" (this error) and fail the write instead of
+ * corrupting it — per this mission's "lib stays pure/typed-error, the
+ * calling Server Action decides how to surface it" convention.
+ */
+export class MentionVisibilityCheckError extends Error {
+  constructor(cause: unknown) {
+    super("Failed to resolve mention visibility (DB read failed)");
+    this.name = "MentionVisibilityCheckError";
+    this.cause = cause;
+  }
+}
+
 /** Walks a Tiptap JSONContent tree collecting every `mention` node's
  * `attrs.id`. Mirrors the same recursive-walk shape as
  * `sanitiseNode`/`sanitiseDocument` in rich-text-editor.tsx, but read-only
@@ -119,12 +142,16 @@ export async function resolveVisibleMentionIds(
 ): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
 
-  const { data: memberRows } = await admin
+  const { data: memberRows, error: memberError } = await admin
     .from("workspace_members")
     .select("user_id, role")
     .eq("workspace_id", workspaceId)
     .eq("status", "active")
     .in("user_id", ids);
+
+  if (memberError) {
+    throw new MentionVisibilityCheckError(memberError);
+  }
 
   const activeRoleById = new Map<string, string>(
     (memberRows ?? []).map((row) => [row.user_id as string, row.role as string]),
@@ -144,11 +171,15 @@ export async function resolveVisibleMentionIds(
   }
 
   if (needsProjectMembership.length > 0) {
-    const { data: projectMemberRows } = await admin
+    const { data: projectMemberRows, error: projectMemberError } = await admin
       .from("project_members")
       .select("user_id")
       .eq("project_id", projectId)
       .in("user_id", needsProjectMembership);
+
+    if (projectMemberError) {
+      throw new MentionVisibilityCheckError(projectMemberError);
+    }
 
     for (const row of projectMemberRows ?? []) {
       visible.add(row.user_id as string);
@@ -164,6 +195,12 @@ export async function resolveVisibleMentionIds(
  * suggestion list the client used (or bypassed). Any mention referencing a
  * user who is not visible to the commenter on this project is stripped to
  * plain text; everything else in the document is returned unchanged.
+ *
+ * F301: throws `MentionVisibilityCheckError` if the underlying visibility
+ * lookup fails (a transient DB error) rather than treating an unreadable
+ * result as "nothing is visible" — see that class's doc comment. Callers
+ * must not persist `doc` unsanitised as a fallback on catch (that would
+ * skip AS-376 entirely); the whole write should fail instead.
  */
 export async function sanitiseMentionsForVisibility(
   admin: AdminClient,

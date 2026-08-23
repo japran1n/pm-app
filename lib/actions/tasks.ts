@@ -1181,11 +1181,18 @@ export async function editTask(
   // call to editTask, not just the wired-up UI) gets the same protection
   // AS-376 already gives comments — this is not skipped just because it's
   // a description.
+  // F301: if the visibility check itself fails (transient DB error), the
+  // whole description write fails rather than silently persisting every
+  // mention rewritten to "@Former member" — same "fail the write rather
+  // than corrupt it" handling as addComment/editComment
+  // (lib/actions/comments.ts), see MentionVisibilityCheckError's doc
+  // comment in lib/comments/mentions.ts.
   let sanitisedDescriptionJson: JSONContent | undefined;
   if ("descriptionJson" in parsed.data.updates) {
     const rawDescriptionJson = parsed.data.updates.descriptionJson;
-    sanitisedDescriptionJson = rawDescriptionJson
-      ? ((await sanitiseMentionsForVisibility(
+    if (rawDescriptionJson) {
+      try {
+        sanitisedDescriptionJson = (await sanitiseMentionsForVisibility(
           admin,
           rawDescriptionJson as JSONContent,
           {
@@ -1193,8 +1200,20 @@ export async function editTask(
             workspaceId,
             projectVisibility: project.visibility ?? "workspace",
           },
-        )) as JSONContent)
-      : ({ type: "doc", content: [] } as JSONContent);
+        )) as JSONContent;
+      } catch (visibilityError) {
+        console.error(
+          "editTask: mention visibility check failed:",
+          visibilityError,
+        );
+        return {
+          ok: false,
+          error: "Something went wrong saving your changes. Please try again.",
+        };
+      }
+    } else {
+      sanitisedDescriptionJson = { type: "doc", content: [] } as JSONContent;
+    }
   }
 
   const updatePayload: {

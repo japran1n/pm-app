@@ -5,16 +5,26 @@
 
 import { describe, expect, it } from "vitest";
 
-import { sanitiseMentionsForVisibility } from "@/lib/comments/mentions";
+import {
+  MentionVisibilityCheckError,
+  resolveVisibleMentionIds,
+  sanitiseMentionsForVisibility,
+} from "@/lib/comments/mentions";
 
 type Row = Record<string, unknown>;
 
 function fakeAdmin({
   workspaceMembers,
   projectMembers,
+  // F301: when set, the query against this table resolves with
+  // `{ data: null, error: erroringTable's error }` instead of rows, so
+  // tests can prove a transient DB failure is surfaced rather than
+  // silently treated as "no rows" (scrutiny finding D5).
+  erroringTable,
 }: {
   workspaceMembers: Row[];
   projectMembers: Row[];
+  erroringTable?: "workspace_members" | "project_members";
 }) {
   return {
     from(table: string) {
@@ -30,8 +40,19 @@ function fakeAdmin({
           filters.push((row) => values.includes(row[col]));
           return builder;
         },
-        then: (resolve: (result: { data: Row[] }) => void) =>
-          resolve({ data: rows.filter((row) => filters.every((f) => f(row))) }),
+        then: (resolve: (result: { data: Row[] | null; error: unknown }) => void) => {
+          if (table === erroringTable) {
+            resolve({
+              data: null,
+              error: { message: `simulated ${table} read failure` },
+            });
+            return;
+          }
+          resolve({
+            data: rows.filter((row) => filters.every((f) => f(row))),
+            error: null,
+          });
+        },
       };
       return builder;
     },
@@ -177,5 +198,80 @@ describe("AS-376: sanitiseMentionsForVisibility strips mentions of users invisib
     });
 
     expect(result).toEqual(doc);
+  });
+});
+
+// F301 (scrutiny finding D5): a forced query error must never be treated
+// as "no rows returned" — that previously made every mentioned id look
+// invisible and permanently corrupted the stored document by rewriting
+// every mention to "@Former member" on a transient DB error. The fix:
+// `resolveVisibleMentionIds` now throws `MentionVisibilityCheckError`
+// instead, and `sanitiseMentionsForVisibility` propagates it unchanged so
+// its callers (addComment/editComment/editTask) fail the whole write
+// rather than persisting a corrupted document.
+describe("F301: a transient DB error resolving mention visibility never silently strips mentions", () => {
+  it("test_F301_resolveVisibleMentionIds_throws_on_a_workspace_members_query_error_instead_of_treating_it_as_zero_visible_ids", async () => {
+    const admin = fakeAdmin({
+      workspaceMembers: [],
+      projectMembers: [],
+      erroringTable: "workspace_members",
+    });
+
+    await expect(
+      resolveVisibleMentionIds(admin, ["alice"], {
+        projectId: "p-1",
+        workspaceId: "w-1",
+        projectVisibility: "workspace",
+      }),
+    ).rejects.toBeInstanceOf(MentionVisibilityCheckError);
+  });
+
+  it("test_F301_resolveVisibleMentionIds_throws_on_a_project_members_query_error_instead_of_treating_it_as_zero_visible_ids", async () => {
+    const admin = fakeAdmin({
+      workspaceMembers: [
+        { user_id: "alice", role: "member", status: "active", workspace_id: "w-1" },
+      ],
+      projectMembers: [],
+      erroringTable: "project_members",
+    });
+
+    await expect(
+      resolveVisibleMentionIds(admin, ["alice"], {
+        projectId: "private-project",
+        workspaceId: "w-1",
+        projectVisibility: "private",
+      }),
+    ).rejects.toBeInstanceOf(MentionVisibilityCheckError);
+  });
+
+  it("test_F301_sanitiseMentionsForVisibility_propagates_the_error_instead_of_returning_a_document_with_mentions_stripped_to_Former_member", async () => {
+    const admin = fakeAdmin({
+      workspaceMembers: [],
+      projectMembers: [],
+      erroringTable: "workspace_members",
+    });
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "mention", attrs: { id: "alice" } }],
+        },
+      ],
+    };
+
+    await expect(
+      sanitiseMentionsForVisibility(admin, doc as never, {
+        projectId: "p-1",
+        workspaceId: "w-1",
+        projectVisibility: "workspace",
+      }),
+    ).rejects.toBeInstanceOf(MentionVisibilityCheckError);
+
+    // The document itself (the caller's in-memory copy) is never mutated
+    // or rewritten as a side effect of the failed check — only the
+    // rejection is observable.
+    expect(JSON.stringify(doc)).toContain('"mention"');
+    expect(JSON.stringify(doc)).not.toContain("Former member");
   });
 });

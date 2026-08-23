@@ -183,15 +183,32 @@ export async function addComment(
   // independent of whatever suggestion list the client used (or bypassed
   // entirely via a hand-crafted bodyJson) — see
   // lib/comments/mentions.ts's doc comment for the full rationale.
-  const mentionSafeBodyJson = await sanitiseMentionsForVisibility(
-    admin,
-    validatedBodyJson,
-    {
-      projectId: taskRow.project_id,
-      workspaceId,
-      projectVisibility: projectRow?.visibility ?? "workspace",
-    },
-  );
+  //
+  // F301: if the visibility check itself fails (transient DB error), the
+  // whole comment write fails rather than silently persisting every
+  // mention rewritten to "@Former member" — see
+  // MentionVisibilityCheckError's doc comment.
+  let mentionSafeBodyJson: JSONContent;
+  try {
+    mentionSafeBodyJson = await sanitiseMentionsForVisibility(
+      admin,
+      validatedBodyJson,
+      {
+        projectId: taskRow.project_id,
+        workspaceId,
+        projectVisibility: projectRow?.visibility ?? "workspace",
+      },
+    );
+  } catch (visibilityError) {
+    console.error(
+      "addComment: mention visibility check failed:",
+      visibilityError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong posting your comment. Please try again.",
+    };
+  }
   const finalProjectedText =
     extractPlainText(mentionSafeBodyJson) || projectedText;
 
@@ -1008,15 +1025,30 @@ export async function editComment(
 
   // F204 (AS-376): same server-side re-check as addComment — see
   // lib/comments/mentions.ts's doc comment.
-  const mentionSafeBodyJson = await sanitiseMentionsForVisibility(
-    admin,
-    validatedBodyJson,
-    {
-      projectId: commentProjectId,
-      workspaceId,
-      projectVisibility: projectRow?.visibility ?? "workspace",
-    },
-  );
+  //
+  // F301: same "fail the write rather than corrupt it" handling as
+  // addComment above.
+  let mentionSafeBodyJson: JSONContent;
+  try {
+    mentionSafeBodyJson = await sanitiseMentionsForVisibility(
+      admin,
+      validatedBodyJson,
+      {
+        projectId: commentProjectId,
+        workspaceId,
+        projectVisibility: projectRow?.visibility ?? "workspace",
+      },
+    );
+  } catch (visibilityError) {
+    console.error(
+      "editComment: mention visibility check failed:",
+      visibilityError,
+    );
+    return {
+      ok: false,
+      error: "Something went wrong updating your comment. Please try again.",
+    };
+  }
   const finalProjectedText =
     extractPlainText(mentionSafeBodyJson) || projectedText;
 
