@@ -63,9 +63,26 @@ const DEFAULT_LIMIT = 20;
 /**
  * The current user's notifications for `workspaceId`, newest first
  * (AS-385), with actor + task display fields resolved. `unreadCount` is a
- * separate, cheap count query (not `list.length`) so the bell's badge
- * (AS-379) stays correct even when `list` is capped by `limit` — e.g. 25
- * unread notifications with `limit: 20` still shows "25", not "20".
+ * separate query (not `list.length`) so the bell's badge (AS-379) stays
+ * correct even when `list` is capped by `limit` — e.g. 25 unread
+ * notifications with `limit: 20` still shows "25", not "20".
+ *
+ * F210 (AS-390): a notification whose task was deleted, or whose task's
+ * project the caller can no longer see (made private after the
+ * notification fired — both cases "treat both the same way" per this
+ * feature's clarified Notes), degrades to a non-clickable row instead of
+ * a broken link. The `tasks` SELECT below runs on the caller's own
+ * session (not the admin client), so `public.is_task_visible_to()` /
+ * `is_project_visible_to()` (supabase/migrations/20260821140526_project_
+ * visibility_rls_sweep.sql) already filters out rows for a
+ * no-longer-visible project at the RLS layer — the query never needs to
+ * re-implement that visibility rule itself; a task id that doesn't come
+ * back from this query (because RLS excluded it, or because it's been
+ * hard-deleted) is treated identically to a soft-deleted task: `title:
+ * null`, which the panel already renders as "a deleted task" and a
+ * non-clickable row (see notification-panel.tsx's taskLabel/taskHref).
+ * The same accessibility check also removes such rows from `unreadCount`
+ * (spec: "excluded from the unread count").
  */
 export async function getNotificationsForWorkspace(
   workspaceId: string,
@@ -92,21 +109,29 @@ export async function getNotificationsForWorkspace(
     return { list: [], unreadCount: 0 };
   }
 
-  const { count: unreadCount, error: unreadError } = await supabase
+  // F210: fetched separately from `rows` (no `limit`) because unreadCount
+  // must reflect every unread row, not just the page the panel renders —
+  // e.g. 25 unread with `limit: 20` still needs to know the accessibility
+  // of all 25, not just the first 20.
+  const { data: unreadRows, error: unreadError } = await supabase
     .from("notifications")
-    .select("id", { count: "exact", head: true })
+    .select("id, task_id")
     .eq("workspace_id", workspaceId)
     .is("read_at", null);
 
   if (unreadError) {
     console.error(
-      "getNotificationsForWorkspace: unread count failed:",
+      "getNotificationsForWorkspace: unread lookup failed:",
       unreadError,
     );
   }
 
   const taskIds = Array.from(
-    new Set((rows ?? []).map((row) => row.task_id).filter((id): id is string => !!id)),
+    new Set(
+      [...(rows ?? []), ...(unreadRows ?? [])]
+        .map((row) => row.task_id)
+        .filter((id): id is string => !!id),
+    ),
   );
   const actorIds = Array.from(
     new Set((rows ?? []).map((row) => row.actor_id).filter((id): id is string => !!id)),
@@ -152,6 +177,24 @@ export async function getNotificationsForWorkspace(
     }),
   );
 
+  // F210 (AS-390): true only for a task id that came back from the query
+  // above AND isn't soft-deleted. A task id that isn't in `taskById` at
+  // all was either hard-deleted or filtered out by RLS because its
+  // project is no longer visible to this recipient — both degrade the
+  // same way.
+  function isAccessible(taskId: string): boolean {
+    return taskById.get(taskId)?.title !== undefined && taskById.get(taskId)?.title !== null;
+  }
+
+  function resolveTask(taskId: string | null): NotificationListItem["task"] {
+    if (!taskId) return null;
+    const found = taskById.get(taskId);
+    if (found) return found;
+    // Hard-deleted or no-longer-visible — degrade like a soft-deleted
+    // task rather than surfacing a broken link.
+    return { id: taskId, key: null, title: null, projectId: null };
+  }
+
   const list: NotificationListItem[] = (rows ?? []).map((row) => {
     const actor = row.actor_id ? actorSummaries.get(row.actor_id) ?? null : null;
     return {
@@ -162,9 +205,13 @@ export async function getNotificationsForWorkspace(
       actor: actor
         ? { id: row.actor_id as string, name: actor.name, email: actor.email, avatarUrl: actor.avatarUrl }
         : null,
-      task: row.task_id ? taskById.get(row.task_id) ?? null : null,
+      task: resolveTask(row.task_id),
     };
   });
 
-  return { list, unreadCount: unreadCount ?? 0 };
+  const unreadCount = (unreadRows ?? []).filter(
+    (row) => !row.task_id || isAccessible(row.task_id),
+  ).length;
+
+  return { list, unreadCount };
 }
