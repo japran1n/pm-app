@@ -163,6 +163,12 @@ notifications, timezone) exists. No feature work beyond identity.
 - F311 wire-editcomment-mention-fanout — AS-381 [CLARIFIED-AUTO] [COMPLETE]
 - F312 stabilize-integration-suite-hook-timeouts — AS-358, AS-359, AS-360, AS-374, AS-375, AS-380, AS-381, AS-382, AS-384 [CLARIFIED-AUTO] [COMPLETE]
 
+### M15 scrutiny third-pass follow-ups (2026-08-23, from missions/20260818-213033/milestones/M15-scrutiny.md pass 3)
+
+- F313 fix-template-copy-mention-bypass-and-getmentioncandidates-rejection — AS-376 [CLARIFIED-AUTO]
+- F314 fix-mention-picker-real-coverage-rename-repaint-and-focus-loss — AS-371, AS-372, AS-373, AS-378 [CLARIFIED-AUTO]
+- F315 fix-reactions-crash-and-fanout-test-gaps — AS-214, AS-369, AS-382 [CLARIFIED-AUTO]
+
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
 
 - F218 db-schema-project-statuses — AS-403, AS-407, AS-408 [CLARIFIED-AUTO]
