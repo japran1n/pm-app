@@ -189,7 +189,7 @@ notifications, timezone) exists. No feature work beyond identity.
 ## M16 — Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline
 
 - F218 db-schema-project-statuses — AS-403, AS-407, AS-408 [CLARIFIED-AUTO] [COMPLETE]
-- F219 status-management-ui — AS-404, AS-405, AS-414, AS-415 [CLARIFIED-AUTO]
+- F219 status-management-ui — AS-404, AS-405, AS-414, AS-415 [CLARIFIED-AUTO] [COMPLETE]
 - F220 status-delete-reassign — AS-406 [CLARIFIED-AUTO]
 - F221 board-custom-columns — AS-409, AS-413, AS-416 [CLARIFIED-AUTO]
 - F222 status-category-semantics — AS-410 [CLARIFIED-AUTO]
