@@ -25,6 +25,7 @@ export function SortableTaskCard({
   onClick,
   timezone,
   canDrag = true,
+  dndId,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee, looked up by the caller
@@ -52,9 +53,20 @@ export function SortableTaskCard({
    * usage in board.tsx which doesn't go through this component at all)
    * keeps its current behavior. */
   canDrag?: boolean;
+  /** F225 (AS-420): overrides the dnd-kit sortable/draggable id (defaults
+   * to `task.id`). Needed once a board renders the SAME task more than
+   * once at a time — a multi-assignee/multi-tag task appears in every
+   * matching swimlane (F224's decision), so each rendered instance needs
+   * a distinct dnd-kit id; BoardColumn below composes this as
+   * `${laneKey}::${task.id}` (mirroring its own `dropId` prop's identical
+   * pattern) so `handleDragEnd` can recover both which lane a drag
+   * started in and the task's real id from a single dnd-kit id. Every
+   * existing caller (an ungrouped board) omits this and keeps exactly its
+   * pre-F225 `task.id` identity. */
+  dndId?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: task.id, disabled: !canDrag });
+    useSortable({ id: dndId ?? task.id, disabled: !canDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),

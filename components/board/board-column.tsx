@@ -47,6 +47,7 @@ export function BoardColumn({
   timezone,
   canDrag = true,
   dropId,
+  laneKey,
 }: {
   // F221 (AS-409, AS-416): the value tasks in this column are matched
   // against (`task.status === status`) AND the dnd-kit droppable id a
@@ -101,10 +102,25 @@ export function BoardColumn({
    * an id collision / dnd-kit console warning today, not a real drag
    * target yet. */
   dropId?: string;
+  /** F225 (AS-420): the lane this BoardColumn instance belongs to
+   * (undefined for an ungrouped board's plain columns) — threaded straight
+   * through to every SortableTaskCard's `dndId` below so a task rendered
+   * in more than one lane (multi-assignee/multi-tag, per F224's decision)
+   * gets a distinct dnd-kit id per lane instead of colliding on
+   * `task.id`. Purely an id-composition detail; this component still has
+   * no opinion on what a cross-lane drop means (board.tsx's onDragEnd
+   * owns that). */
+  laneKey?: string;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
   const { setNodeRef } = useDroppable({ id: dropId ?? status });
+
+  // F225: composes the same `${laneKey}::${id}` id scheme `dropId` above
+  // already uses, so `handleDragEnd` (board.tsx) can recover both a
+  // task's real id and which lane a drag started in from one dnd-kit id.
+  const dndIdFor = (taskId: string) =>
+    laneKey ? `${laneKey}::${taskId}` : taskId;
 
   // F221 (AS-403, AS-405): a real column's own name/colour win when
   // provided; otherwise fall back to the fixed lookup so every existing
@@ -133,7 +149,7 @@ export function BoardColumn({
       </div>
 
       <SortableContext
-        items={tasks.map((task) => task.id)}
+        items={tasks.map((task) => dndIdFor(task.id))}
         strategy={verticalListSortingStrategy}
       >
         <div className="flex flex-col gap-3">
@@ -166,6 +182,7 @@ export function BoardColumn({
                 onClick={onCardClick}
                 timezone={timezone}
                 canDrag={canDrag}
+                dndId={dndIdFor(task.id)}
               />
             ))
           )}

@@ -42,7 +42,13 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 
-import { reorderTask, moveAndReorderTask } from "@/lib/actions/tasks";
+import {
+  reorderTask,
+  moveAndReorderTask,
+  setTaskAssignees,
+  updateTaskTags,
+  editTask,
+} from "@/lib/actions/tasks";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { calculatePosition } from "@/lib/board/position";
@@ -292,8 +298,27 @@ export function Board({
   );
 
   function handleDragStart(event: DragStartEvent) {
-    const task = tasks.find((t) => t.id === event.active.id);
+    // F225: `event.active.id` is lane-prefixed in a grouped (Swimlane)
+    // view — see parseDndId below for why.
+    const { realId } = parseDndId(String(event.active.id));
+    const task = tasks.find((t) => t.id === realId);
     setActiveTask(task ?? null);
+  }
+
+  // F225 (AS-420): both dnd-kit draggable/sortable ids (SortableTaskCard's
+  // `dndId`) and droppable ids (BoardColumn's `dropId`) are, in a grouped
+  // (Swimlane) view only, composed as `${laneKey}::${realId}` — see
+  // board-column.tsx's own doc comment on `laneKey`/`dropId` for why (a
+  // multi-assignee/multi-tag task rendered in more than one lane needs a
+  // distinct id per lane). An ungrouped board never adds this prefix, so
+  // `laneKey` here is always `null` there. Real ids in this codebase (task
+  // ids, column ids) are UUIDs and never contain `::`, so splitting on the
+  // FIRST occurrence is always unambiguous.
+  function parseDndId(id: string): { laneKey: string | null; realId: string } {
+    if (groupBy === "none") return { laneKey: null, realId: id };
+    const sep = id.indexOf("::");
+    if (sep === -1) return { laneKey: null, realId: id };
+    return { laneKey: id.slice(0, sep), realId: id.slice(sep + 2) };
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -302,13 +327,31 @@ export function Board({
 
     if (!over) return;
 
-    const activeTask = tasks.find((t) => t.id === active.id);
+    const { laneKey: sourceLaneKey, realId: activeTaskId } = parseDndId(
+      String(active.id),
+    );
+    const activeTask = tasks.find((t) => t.id === activeTaskId);
     if (!activeTask) return;
 
     // `over.id` is either another task's id (dropped on/near a card) or a
     // column's status id (dropped on an empty column via useDroppable in
-    // BoardColumn).
-    const overTask = tasks.find((t) => t.id === over.id);
+    // BoardColumn) — in both cases, lane-prefixed when grouped (see
+    // parseDndId above).
+    const { laneKey: overLaneKeyRaw, realId: overRealId } = parseDndId(
+      String(over.id),
+    );
+    const overTask = tasks.find((t) => t.id === overRealId);
+    // F225 (AS-420): a drop directly onto a column's own droppable (empty
+    // column, or scrolled past every card) carries that column's real
+    // lane in `overLaneKeyRaw`. A drop onto/near a specific card instead
+    // — the far more common case — resolves the target lane from THAT
+    // card's own dnd-kit id (its `dndId`, decomposed above), which is
+    // always more precise than the column-level id: a multi-assignee/
+    // multi-tag `overTask` renders in several lanes at once, each as a
+    // physically distinct DOM node with its own lane-prefixed id, so
+    // `overLaneKeyRaw` already correctly names the SPECIFIC lane instance
+    // the pointer landed in, not just "some lane this task is in".
+    const targetLaneKey = overLaneKeyRaw;
     // F221 (AS-409): the target column's NAME (project_statuses.name for
     // a real project, or one of the original four for DEFAULT_COLUMNS) —
     // BoardColumn's useDroppable id and every task's `status` value are
@@ -317,8 +360,19 @@ export function Board({
     // original 4-value union but that can, at runtime, be any of the
     // project's real column names (see lib/queries/tasks.ts's identical
     // `as TaskCardTask["status"]` cast for the same underlying reason).
+    // F225: a drop directly onto a column's own droppable resolves via
+    // that column's real `id` in a grouped (Swimlane) view (Swimlane's own
+    // `dropId={`${laneKey}::${column.id}`}`), but via the column's `name`
+    // in the ungrouped view (BoardColumn's `dropId` defaults to `status`,
+    // i.e. the column's name, when the caller — the ungrouped branch below
+    // — omits it). Looking the id up against the board's real columns
+    // handles both: a match resolves the grouped case's id to its name; no
+    // match (the ungrouped case, where `overRealId` already IS the name)
+    // falls through to `overRealId` itself, unchanged from pre-F225
+    // behaviour.
+    const targetColumnById = columns.find((c) => c.id === overRealId);
     const targetStatus = (
-      overTask ? overTask.status : (over.id as string)
+      overTask ? overTask.status : (targetColumnById?.name ?? overRealId)
     ) as TaskCardTask["status"];
 
     // F221 (AS-409): validate against the board's REAL current columns
@@ -351,13 +405,13 @@ export function Board({
     // callback, never during another component's render pass.)
     const snapshot = tasks;
 
-    const activeIndex = snapshot.findIndex((t) => t.id === active.id);
+    const activeIndex = snapshot.findIndex((t) => t.id === activeTaskId);
     if (activeIndex === -1) return;
 
     let insertAt: number;
     if (overTask) {
       const withoutActiveForIndex = snapshot.filter(
-        (t) => t.id !== active.id,
+        (t) => t.id !== activeTaskId,
       );
       insertAt = withoutActiveForIndex.findIndex((t) => t.id === overTask.id);
       if (insertAt === -1) insertAt = withoutActiveForIndex.length;
@@ -365,7 +419,7 @@ export function Board({
       // Dropped on an empty/column-level target: append to the end of
       // that column's tasks.
       insertAt = snapshot.filter(
-        (t) => t.id !== active.id && t.status === targetStatus,
+        (t) => t.id !== activeTaskId && t.status === targetStatus,
       ).length;
     }
 
@@ -374,7 +428,7 @@ export function Board({
     // using the same ordering the board renders (position-ascending,
     // per lib/queries/tasks.ts) — not the whole unfiltered `tasks`
     // array, which also holds every other column's cards.
-    const withoutActive = snapshot.filter((t) => t.id !== active.id);
+    const withoutActive = snapshot.filter((t) => t.id !== activeTaskId);
     const targetColumnTasks = withoutActive.filter(
       (t) => t.status === targetStatus,
     );
@@ -388,10 +442,81 @@ export function Board({
       nextNeighbor?.position ?? null,
     );
 
+    // F225 (AS-420): a cross-lane drop (grouped view, target lane resolved
+    // above differs from the lane the drag started in) reassigns the
+    // grouped field itself, on top of whatever the status/position change
+    // above already computed. `"none"` grouping never reaches here with a
+    // non-null lane key (parseDndId only prefixes ids when grouped), and a
+    // same-lane drag (including every ordinary within-column reorder) is a
+    // no-op here by construction.
+    const crossLane =
+      groupBy !== "none" &&
+      sourceLaneKey !== null &&
+      targetLaneKey !== null &&
+      sourceLaneKey !== targetLaneKey;
+
+    let groupFieldPatch: Partial<TaskCardTask> = {};
+    if (crossLane && groupBy === "priority") {
+      // Single-valued (AS-420): the target lane's key IS the new priority
+      // value, or `null` when dropped into the "None" lane.
+      const newPriority =
+        targetLaneKey === SWIMLANE_NONE_KEY
+          ? null
+          : (targetLaneKey as TaskCardTask["priority"]);
+      groupFieldPatch = { priority: newPriority };
+    } else if (crossLane && groupBy === "assignee") {
+      // AUTONOMOUS_DECISION (this feature's Notes for clarification,
+      // resolved simplest-option-first per Round B Q2): a multi-assignee
+      // task's cross-lane drag MOVES that one assignee value — removes
+      // the source lane's assignee id, adds the target lane's — rather
+      // than adding the target assignee alongside every existing one.
+      // "Add" would leave the card sitting in the source lane FOREVER
+      // (nothing ever removed it from there), which contradicts what the
+      // user just watched happen on screen: the card visually left that
+      // lane. "Move" keeps the board's own multi-lane rendering (F224's
+      // "a task with N values appears in N lanes" rule) honest — after
+      // the drop, the task is back to appearing in exactly the lanes its
+      // real `task_assignees` rows say it should. Dragging out of "None"
+      // (source has no assignee to remove) or into "None" (target adds
+      // nothing) both degrade to a plain add/remove, which is exactly
+      // what "move" already computes when one side is a no-op.
+      const current =
+        activeTask.assigneeIds && activeTask.assigneeIds.length > 0
+          ? activeTask.assigneeIds
+          : activeTask.assigneeId
+            ? [activeTask.assigneeId]
+            : [];
+      let nextAssigneeIds = current.filter((id) => id !== sourceLaneKey);
+      if (
+        targetLaneKey !== SWIMLANE_NONE_KEY &&
+        !nextAssigneeIds.includes(targetLaneKey as string)
+      ) {
+        nextAssigneeIds = [...nextAssigneeIds, targetLaneKey as string];
+      }
+      groupFieldPatch = {
+        assigneeIds: nextAssigneeIds,
+        assigneeId: nextAssigneeIds[0] ?? null,
+      };
+    } else if (crossLane && groupBy === "tag") {
+      // Same "move, not add" rationale as assignee above — a task's tag
+      // set after the drop should match exactly the lanes it now renders
+      // in.
+      const current = activeTask.tags ?? [];
+      let nextTags = current.filter((tag) => tag !== sourceLaneKey);
+      if (
+        targetLaneKey !== SWIMLANE_NONE_KEY &&
+        !nextTags.includes(targetLaneKey as string)
+      ) {
+        nextTags = [...nextTags, targetLaneKey as string];
+      }
+      groupFieldPatch = { tags: nextTags };
+    }
+
     const movedTask = {
       ...snapshot[activeIndex],
       status: targetStatus,
       position: newPosition,
+      ...groupFieldPatch,
     };
 
     const next = [
@@ -468,6 +593,42 @@ export function Board({
           if (!result.ok) {
             rollback(result.error);
           }
+        })
+        .catch(() => {
+          rollback("Something went wrong moving that task. Please try again.");
+        });
+    }
+
+    // F225 (AS-420): the grouped-field reassignment goes through the SAME
+    // real Server Actions every other caller of these fields already uses
+    // (setTaskAssignees/updateTaskTags/editTask) — never a direct write —
+    // so authorization (canWrite/canEditTask, isProjectVisibleToCaller)
+    // is enforced exactly once, in one place, regardless of whether the
+    // change came from a drag or a form. Independent of the status/
+    // position call above (a same-column, cross-lane drag needs this call
+    // ALONE; a same-lane, cross-column drag needs the call above ALONE) —
+    // both share the same `rollback`/`rolledBack` guard, so whichever
+    // fails first is the one toast the user sees.
+    if (crossLane && groupBy === "priority") {
+      void editTask(movedTask.id, { priority: movedTask.priority })
+        .then((result) => {
+          if (!result.ok) rollback(result.error);
+        })
+        .catch(() => {
+          rollback("Something went wrong moving that task. Please try again.");
+        });
+    } else if (crossLane && groupBy === "assignee") {
+      void setTaskAssignees(movedTask.id, movedTask.assigneeIds ?? [])
+        .then((result) => {
+          if (!result.ok) rollback(result.error);
+        })
+        .catch(() => {
+          rollback("Something went wrong moving that task. Please try again.");
+        });
+    } else if (crossLane && groupBy === "tag") {
+      void updateTaskTags(movedTask.id, movedTask.tags ?? [])
+        .then((result) => {
+          if (!result.ok) rollback(result.error);
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
@@ -597,6 +758,7 @@ export function Board({
                 onCardClick={handleCardClick}
                 timezone={timezone}
                 showMultiValueNote={groupBy === "assignee" || groupBy === "tag"}
+                canDrag={canDrag}
               />
             ))}
           </div>

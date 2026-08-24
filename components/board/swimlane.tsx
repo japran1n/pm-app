@@ -12,16 +12,14 @@
 // feature's Clarified implementation ("the existing primitives and
 // patterns... rather than new parallel implementations").
 //
-// Drag-and-drop reassignment between lanes (AS-420) and within-column
-// reordering while grouped (AS-425) are F225's scope -- BoardColumn's
-// drag affordances are deliberately disabled here (`canDrag={false}`,
-// unconditionally, not gated on the viewer's role) so a grouped board
-// never silently offers a drag that doesn't yet do anything meaningful;
-// F225 should flip this back to the caller's real `canDrag` once
-// cross-lane drops are implemented, and give each BoardColumn a
-// lane-scoped `dropId` (already plumbed through by this feature -- see
-// board-column.tsx's own doc comment on that prop) instead of leaving it
-// unset.
+// F225 (AS-420, AS-425): drag-and-drop reassignment between lanes and
+// within-column reordering while grouped are now live -- `canDrag` is the
+// caller's REAL permission-derived value (board.tsx's own `canDrag`, the
+// same `canWrite`-gated value the ungrouped board already used), not a
+// hardcoded `false`, and each BoardColumn gets both its lane-scoped
+// `dropId` (F224) and `laneKey` (F225 -- see board-column.tsx's own doc
+// comment) so board.tsx's onDragEnd can recover which lane a drag started
+// and ended in from dnd-kit's own ids alone.
 
 import { BoardColumn } from "@/components/board/board-column";
 import type { TaskCardTask } from "@/components/task/task-card";
@@ -38,6 +36,7 @@ export function Swimlane({
   onCardClick,
   timezone,
   showMultiValueNote = false,
+  canDrag = false,
 }: {
   laneKey: string;
   label: string;
@@ -54,6 +53,11 @@ export function Swimlane({
    * would over-count relative to the board's real total -- shown once,
    * only on grouping modes where it can actually happen. */
   showMultiValueNote?: boolean;
+  /** F225 (AS-420, AS-425): the viewer's real drag permission (board.tsx's
+   * `canWrite`-derived `canDrag`) -- defaults to `false` so a caller that
+   * hasn't been updated (e.g. an existing test rendering `<Swimlane>` in
+   * isolation) keeps the pre-F225 "no drag" behaviour. */
+  canDrag?: boolean;
 }) {
   return (
     <section
@@ -92,9 +96,9 @@ export function Swimlane({
             assignees={assignees}
             onCardClick={onCardClick}
             timezone={timezone}
-            // F225's scope -- see this file's own header comment.
-            canDrag={false}
+            canDrag={canDrag}
             dropId={`${laneKey}::${column.id}`}
+            laneKey={laneKey}
           />
         ))}
       </div>
