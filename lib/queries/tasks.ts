@@ -487,3 +487,60 @@ export async function getWorkspaceListTasks(
     recurrence: task.recurrence as RecurrenceRule | null,
   }));
 }
+
+// F246 (AS-473, AS-474, AS-477): resolves a workspace-scoped task-key URL
+// segment (e.g. "PM-142", already parsed into its (projectKey, taskNumber)
+// halves by lib/tasks/task-key.ts's parseTaskKeyQuery — the same parser
+// F147/F242 use, never a second copy of that regex) down to a single task
+// id, for the deep-link route
+// app/(workspace)/w/[workspaceSlug]/t/[taskKey]/page.tsx.
+//
+// Deliberately the plain RLS-scoped client, never the admin client: both
+// `projects_select_active_members` and `tasks_select_active_members`
+// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql)
+// already route every SELECT through `is_project_visible_to`, the exact
+// same rule F323's `isProjectVisibleToCaller` re-implements for the
+// admin-client call sites in lib/actions/*.ts. Since this lookup never
+// leaves RLS, a project the caller cannot see (private, not a member) or
+// a soft-deleted project/task simply returns no row here — identical
+// "no row" shape whether the key never existed at all, so nothing this
+// function returns can distinguish "doesn't exist" from "exists but
+// hidden." The deep-link page then re-resolves the FULL task detail
+// through `getTaskDetail` (lib/actions/tasks.ts), which re-runs the same
+// visibility check a second, independent way and returns the identical
+// "Task not found." message either way (AS-477) — this function only
+// ever hands that page a candidate id to re-verify, never a shortcut
+// around it.
+export async function resolveTaskIdByKey(
+  workspaceId: string,
+  projectKey: string,
+  taskNumber: number,
+): Promise<{ taskId: string; projectId: string } | null> {
+  const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("key", projectKey)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!project) {
+    return null;
+  }
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", project.id)
+    .eq("number", taskNumber)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!task) {
+    return null;
+  }
+
+  return { taskId: task.id, projectId: project.id };
+}

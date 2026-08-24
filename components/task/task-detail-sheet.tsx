@@ -35,9 +35,11 @@
 
 import { useEffect, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 import {
   Copy,
   CornerUpLeft,
+  Link as LinkIcon,
   Loader2,
   Repeat,
   TriangleAlert,
@@ -477,6 +479,15 @@ export function TaskDetailSheet({
    * CommentList's default behavior (no scroll/highlight) is unchanged. */
   highlightCommentId?: string | null;
 }) {
+  // F246 (AS-473): derives the current workspace slug from the URL
+  // itself (`/w/{slug}/...`, this sheet's caller is always mounted
+  // somewhere under that segment — board.tsx, list, calendar) rather than
+  // threading a new `workspaceSlug` prop through every one of this
+  // component's existing callers. `pathname` is always a real, non-null
+  // string in the browser; only `null` in a context where this component
+  // isn't mounted under `/w/[workspaceSlug]/...` at all, which doesn't
+  // happen today.
+  const pathname = usePathname();
   const [title, setTitle] = useState(task?.title ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   // F236 (AS-453): sibling local state to dueDate above, same "local
@@ -846,6 +857,35 @@ export function TaskDetailSheet({
       });
   }
 
+  // F246 (AS-473): copies this task's CANONICAL, key-based deep-link URL
+  // (`/w/{slug}/t/{taskKey}`, resolved server-side by
+  // app/(workspace)/w/[workspaceSlug]/t/[taskKey]/page.tsx) — distinct
+  // from `handleCopyKey` above, which only copies the bare "PM-142" text.
+  // `workspaceSlug` is read from the current pathname's own `/w/{slug}/`
+  // segment (see this component's `pathname` doc comment above); if that
+  // segment can't be found (shouldn't happen — this sheet only ever
+  // mounts under `/w/[workspaceSlug]/...`) the control silently does not
+  // render below rather than copying a broken link.
+  const workspaceSlugMatch = pathname?.match(/^\/w\/([^/]+)\//);
+  const workspaceSlug = workspaceSlugMatch?.[1];
+  const canonicalTaskPath =
+    workspaceSlug && taskKey
+      ? `/w/${workspaceSlug}/t/${taskKey}`
+      : null;
+
+  function handleCopyLink() {
+    if (!canonicalTaskPath) return;
+    const url = `${window.location.origin}${canonicalTaskPath}`;
+    navigator.clipboard
+      .writeText(url)
+      .then(() => {
+        toast.success("Link copied — anyone with access to this task can open it.");
+      })
+      .catch(() => {
+        toast.error("Couldn't copy the link. Please try again.");
+      });
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -903,6 +943,23 @@ export function TaskDetailSheet({
                 >
                   <Copy className="size-3" aria-hidden="true" />
                   {taskKey}
+                </button>
+              )}
+              {canonicalTaskPath && (
+                // F246 (AS-473): the deep-link "copy link" control — same
+                // plain-button, keyboard-operable-by-default pattern as
+                // the click-to-copy key badge immediately above, and the
+                // same copy-to-clipboard + sonner-toast feedback
+                // convention as ViewSwitcher's own `copyLink`
+                // (components/views/view-switcher.tsx).
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  aria-label="Copy link to this task"
+                >
+                  <LinkIcon className="size-3" aria-hidden="true" />
+                  Copy link
                 </button>
               )}
               {/* F150 (AS-263): a child task shows a link back to its
