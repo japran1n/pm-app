@@ -235,7 +235,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F255 skeleton-pass — AS-495, AS-496 [CLARIFIED-AUTO] [COMPLETE]
 - F256 optimistic-pending-pass — AS-497, AS-498, AS-499 [CLARIFIED-AUTO] [COMPLETE]
 - F257 route-error-boundaries — AS-500 [CLARIFIED-AUTO] [COMPLETE]
-- F258 attachment-dropzone — AS-501, AS-502, AS-503 [CLARIFIED-AUTO]
+- F258 attachment-dropzone — AS-501, AS-502, AS-503 [CLARIFIED-AUTO] [COMPLETE]
 - F259 attachment-progress — AS-504, AS-507 [CLARIFIED-AUTO]
 - F260 image-thumbnails-lightbox — AS-505, AS-506 [CLARIFIED-AUTO]
 - F261 clipboard-image-paste — AS-508 [CLARIFIED-AUTO]
