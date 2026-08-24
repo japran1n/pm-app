@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -10,6 +10,7 @@ import {
   Users,
   Clock,
   LogOut,
+  Loader2,
   Menu,
   Settings,
   Archive,
@@ -227,17 +228,15 @@ function SidebarContent({
           </span>
           <ThemeToggle />
         </div>
-        <form action={signOut}>
-          <Button
-            type="submit"
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2.5 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
-          >
-            <LogOut className="size-4" aria-hidden="true" />
-            Sign out
-          </Button>
-        </form>
+        {/* F256 (AS-499): plain `<form action={signOut}>` had no pending
+            state, so a fast double-click fired signOut() twice — harmless
+            given signOut()'s own idempotent redirect, but not the
+            "control shows pending + can't be double-submitted" contract
+            every other mutating control in this app follows. Same
+            useTransition + disabled-while-pending shape as
+            RemoveMemberButton/RevokeInviteButton rather than a bare
+            form action. */}
+        <SignOutButton />
       </div>
     </div>
   );
@@ -321,5 +320,44 @@ export function AppSidebar({
         />
       </div>
     </>
+  );
+}
+
+// F256 (AS-497/AS-498/AS-499): sign-out as its own tiny client control so
+// it gets the same useTransition + disabled-while-pending shape as every
+// other mutating control in this app (RemoveMemberButton,
+// RevokeInviteButton, etc.) instead of a bare `<form action={signOut}>`
+// with no pending affordance. `signOut()` always redirects (never
+// resolves to an `{ok:false}` result — see lib/actions/auth.ts), so there
+// is no rollback/toast branch to add: the only genuine gap here was the
+// missing pending-disabled state that guards against a double-submit.
+// Exported (not just used internally) so tests/unit/optimistic-pending-
+// audit.test.tsx (F256, AS-497/AS-499) can render it directly without
+// pulling in the whole AppSidebar shell.
+export function SignOutButton() {
+  const [isPending, startTransition] = useTransition();
+
+  function handleClick() {
+    startTransition(async () => {
+      await signOut();
+    });
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={isPending}
+      onClick={handleClick}
+      className="w-full justify-start gap-2.5 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+    >
+      {isPending ? (
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      ) : (
+        <LogOut className="size-4" aria-hidden="true" />
+      )}
+      Sign out
+    </Button>
   );
 }
