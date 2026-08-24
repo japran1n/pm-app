@@ -304,10 +304,11 @@ describe.skipIf(!haveAdminCreds)(
 
       currentTestUserId = memberUserId;
 
+      // F221: `status` is a plain (non-enum) string now — this is a
+      // genuinely invalid/forged column name, rejected by
+      // moveAndReorderTask's real-column lookup, not a Zod enum/type error.
       const result = await moveAndReorderTask(
         taskId,
-        // @ts-expect-error — intentionally invalid status to exercise the
-        // schema's enum check; this mirrors a corrupted/forged client call.
         "not_a_real_status",
         500,
       );

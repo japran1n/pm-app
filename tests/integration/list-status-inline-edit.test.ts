@@ -230,7 +230,10 @@ describe.skipIf(!haveAdminCreds)("List view status dropdown (F057: AS-093)", () 
     const { moveTaskStatus } = await import("@/lib/actions/tasks");
     const { getProjectListTasks } = await import("@/lib/queries/tasks");
 
-    // @ts-expect-error intentionally invalid status to exercise Zod rejection
+    // F221: `status` is no longer a fixed-enum Zod type (moveTaskStatusSchema
+    // now accepts any string, verified against the project's real
+    // project_statuses at the action layer), so this is a plain invalid
+    // call, not a type error.
     const result = await moveTaskStatus(otherTaskId, "not_a_real_status");
     expect(result.ok).toBe(false);
 

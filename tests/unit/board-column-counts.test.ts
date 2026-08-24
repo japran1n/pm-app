@@ -105,8 +105,14 @@ describe("BoardColumn task count (F051: AS-083)", () => {
 
   it("board.tsx passes each column the same live `tasks` state, filtered per status, that both onDragEnd and Realtime reconciliation mutate via setTasks -- so no stale/static count source exists", () => {
     expect(boardSource).toMatch(/const \[tasks, setTasks\] = useState\(initialTasks\)/);
+    // F221 (AS-403, AS-416): board.tsx now renders one BoardColumn per
+    // the project's REAL columns (`columns` state, sorted by position),
+    // filtering `tasks` by each column's real name instead of a fixed
+    // `status` loop variable -- same "live filter of the same `tasks`
+    // state" property this test exists to prove, just keyed on
+    // `column.name` now.
     expect(boardSource).toMatch(
-      /tasks=\{tasks\.filter\(\(task\) => task\.status === status\)\}/,
+      /tasks=\{tasks\.filter\(\(task\) => task\.status === column\.name\)\}/,
     );
     // The optimistic drag-and-drop path updates the same `tasks` state
     // (F107: via a plain `setTasks(next)` call in handleDragEnd's own

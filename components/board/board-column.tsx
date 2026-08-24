@@ -39,13 +39,37 @@ import type { UserAvatarPerson } from "@/components/user-avatar";
 
 export function BoardColumn({
   status,
+  label,
+  color,
   tasks,
   assignees,
   onCardClick,
   timezone,
   canDrag = true,
 }: {
+  // F221 (AS-409, AS-416): the value tasks in this column are matched
+  // against (`task.status === status`) AND the dnd-kit droppable id a
+  // drop onto an empty column resolves to (see useDroppable below) --
+  // for a project's real board columns this is the column's `name`
+  // (project_statuses.name), which is what moveAndReorderTask/
+  // moveTaskStatus (lib/actions/tasks.ts) now validate against and
+  // persist. Still typed as the original fixed union for backward
+  // compatibility with every existing caller that passes one of the
+  // original four literal values (see label/color below) -- a caller
+  // passing a custom column's real name works identically at runtime,
+  // this is purely a pre-existing, not-yet-widened TS annotation (F223
+  // owns any broader retyping of TaskCardTask itself).
   status: TaskCardTask["status"];
+  /** F221 (AS-403): the column's real display name (project_statuses.name)
+   * for a project's actual custom columns. Falls back to the fixed
+   * STATUS_LABELS lookup for `status` when omitted, so every existing
+   * caller (tests, and any caller not yet updated for custom columns)
+   * keeps rendering exactly as before. */
+  label?: string;
+  /** F221 (AS-405): the column's real colour (project_statuses.color).
+   * Falls back to the fixed STATUS_COLORS lookup for `status` when
+   * omitted, same backward-compatible default as `label` above. */
+  color?: string;
   tasks: TaskCardTask[];
   /** F122 (AS-214): taskAssigneeId -> resolved person, resolved once per
    * page load (board.tsx receives it from the Server Component page) —
@@ -68,6 +92,12 @@ export function BoardColumn({
   // target even when it has no sortable items of its own yet.
   const { setNodeRef } = useDroppable({ id: status });
 
+  // F221 (AS-403, AS-405): a real column's own name/colour win when
+  // provided; otherwise fall back to the fixed lookup so every existing
+  // (not-yet-updated) caller renders identically to before this feature.
+  const resolvedLabel = label ?? COLUMN_LABELS[status] ?? status;
+  const resolvedColor = color ?? STATUS_COLORS[status] ?? "#64748b";
+
   return (
     <div
       ref={setNodeRef}
@@ -79,9 +109,9 @@ export function BoardColumn({
           <span
             aria-hidden="true"
             className="size-2 rounded-full"
-            style={{ backgroundColor: STATUS_COLORS[status] }}
+            style={{ backgroundColor: resolvedColor }}
           />
-          {COLUMN_LABELS[status]}
+          {resolvedLabel}
           <span className="rounded-full bg-background px-1.5 py-0.5 text-xs font-normal text-muted-foreground ring-1 ring-border/60">
             ({tasks.length})
           </span>

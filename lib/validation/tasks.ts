@@ -275,13 +275,20 @@ export const updateTaskTagsSchema = z.object({
 
 export type UpdateTaskTagsInput = z.infer<typeof updateTaskTagsSchema>;
 
-// Validates moveTaskStatus input (F045: AS-069). `status` is restricted to
-// the same fixed 4-value set as createTaskSchema/`tasks_status_check` — the
-// column dropped onto in the board is always one of these four, and any
-// other string is rejected rather than silently coerced.
+// Validates moveTaskStatus input (F045: AS-069). F221 (AS-409): a
+// project's board columns are now per-project (`project_statuses`), not a
+// fixed 4-value set, so `status` accepts any non-empty column NAME up to
+// the same length `tasks_status_not_empty` (F219's migration) allows —
+// the action itself (moveTaskStatus, lib/actions/tasks.ts) is what
+// verifies the name actually matches one of the caller's project's real
+// columns before writing, since a plain string schema can't know that.
 export const moveTaskStatusSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
-  status: z.enum(["todo", "in_progress", "in_review", "done"]),
+  status: z
+    .string()
+    .trim()
+    .min(1, "Status is required.")
+    .max(100, "Status must be 100 characters or fewer."),
 });
 
 export type MoveTaskStatusInput = z.infer<typeof moveTaskStatusSchema>;
@@ -304,9 +311,16 @@ export type ReorderTaskInput = z.infer<typeof reorderTaskSchema>;
 // atomic action a cross-column drag (status change + reposition) goes
 // through, so both fields are validated together, before either reaches the
 // database.
+// F221 (AS-409): same relaxation as moveTaskStatusSchema above — `status`
+// is any non-empty column name, re-verified against the project's real
+// `project_statuses` rows inside moveAndReorderTask itself.
 export const moveAndReorderTaskSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
-  status: z.enum(["todo", "in_progress", "in_review", "done"]),
+  status: z
+    .string()
+    .trim()
+    .min(1, "Status is required.")
+    .max(100, "Status must be 100 characters or fewer."),
   position: z.number().finite("Invalid position."),
 });
 

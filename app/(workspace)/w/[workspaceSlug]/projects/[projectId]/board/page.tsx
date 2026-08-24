@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getProjectBoardTasks } from "@/lib/queries/tasks";
+import { getProjectColumns } from "@/lib/queries/statuses";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
@@ -51,10 +52,16 @@ export default async function ProjectBoardPage({
   // (lib/queries/profile.ts's getCurrentUserTimezone) and threaded down to
   // <Board> as a prop — never re-queried per card. Run alongside the other
   // independent fetches below rather than sequentially awaited.
-  const [tasks, workspaceResult, timezone] = await Promise.all([
+  // F221 (AS-403, AS-416): the project's real board columns, fetched
+  // alongside every other independent request already made here —
+  // getProjectColumns (lib/queries/statuses.ts) reads `project_statuses`
+  // ordered by position, the same order every viewer sees on every
+  // reload.
+  const [tasks, workspaceResult, timezone, columns] = await Promise.all([
     getProjectBoardTasks(projectId),
     supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
     getCurrentUserTimezone(supabase),
+    getProjectColumns(projectId),
   ]);
   const { data: workspace } = workspaceResult;
 
@@ -122,6 +129,7 @@ export default async function ProjectBoardPage({
       assignees={assignees}
       timezone={timezone}
       templates={templates}
+      columns={columns}
     />
   );
 }

@@ -290,11 +290,10 @@ describe.skipIf(!haveAdminCreds)("moveTaskStatus (F045: AS-069)", () => {
 
     currentTestUserId = memberUserId;
 
-    const result = await moveTaskStatus(
-      taskId,
-      // @ts-expect-error intentionally invalid status for the negative case
-      "archived",
-    );
+    // F221: `status` is a plain string now (no fixed enum) — "archived"
+    // is rejected because it doesn't match a real project_statuses column
+    // for this project, not because of a type error.
+    const result = await moveTaskStatus(taskId, "archived");
 
     expect(result.ok).toBe(false);
 

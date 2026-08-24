@@ -50,6 +50,10 @@ import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 import { useBoardRealtime } from "@/components/board/use-board-realtime";
+import { useBoardColumnsRealtime } from "@/components/board/use-board-columns-realtime";
+import { reconcileColumn } from "@/lib/board/reconcile-realtime-column";
+import type { BoardColumnDef } from "@/lib/queries/statuses";
+import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
 import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
@@ -71,6 +75,32 @@ const FIXED_COLUMN_ORDER: TaskCardTask["status"][] = [
   "done",
 ];
 
+// F221 (AS-403, AS-416): fallback column set used ONLY when a caller
+// doesn't pass real `columns` (every existing test, and any future caller
+// not yet updated) -- the real board page always passes the project's
+// actual `project_statuses` rows (lib/queries/statuses.ts's
+// getProjectColumns, ordered by position), so this default is never what
+// a real viewer sees; it exists purely so this component's pre-F221
+// behaviour (and every test exercising it) is unchanged when `columns` is
+// omitted, per this feature's Clarified implementation's "no second
+// source of truth" resolution -- one component, one rendering code path,
+// just with an optional real data source layered on top of what was
+// already there.
+const DEFAULT_COLUMNS: BoardColumnDef[] = FIXED_COLUMN_ORDER.map(
+  (status, index) => ({
+    id: status,
+    name: status,
+    color: STATUS_COLORS[status],
+    category:
+      status === "done"
+        ? "done"
+        : status === "todo"
+          ? "not_started"
+          : "in_progress",
+    position: (index + 1) * 1000,
+  }),
+);
+
 export function Board({
   projectId,
   initialTasks,
@@ -80,6 +110,7 @@ export function Board({
   assignees,
   timezone,
   templates = [],
+  columns: columnsProp,
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -135,6 +166,14 @@ export function Board({
    * "New from template" is not rendered at all rather than shown disabled
    * with nothing to pick. */
   templates?: TaskTemplatePickerOption[];
+  /** F221 (AS-403, AS-416): the project's real board columns, in position
+   * order — server-fetched by the board page
+   * (lib/queries/statuses.ts's getProjectColumns) and passed down, same
+   * "server-fetched, passed as typed props" convention as `initialTasks`.
+   * Omitted (the only case this ever happens outside a not-yet-updated
+   * test) falls back to DEFAULT_COLUMNS — see that constant's own doc
+   * comment. */
+  columns?: BoardColumnDef[];
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -142,6 +181,16 @@ export function Board({
   // rolled back to the pre-drop snapshot on failure).
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
+
+  // F221 (AS-403, AS-413, AS-416): local, client-side-only copy of the
+  // board's real columns — server-fetched initial value (or
+  // DEFAULT_COLUMNS when the caller omits `columns`, see that constant's
+  // doc comment), reconciled live via useBoardColumnsRealtime below so an
+  // add/rename/reorder/remove by another viewer of this same board
+  // appears here without a reload.
+  const [columns, setColumns] = useState<BoardColumnDef[]>(
+    columnsProp ?? DEFAULT_COLUMNS,
+  );
 
   // F135 (AS-231): a viewer/guest can look at the board but must never be
   // able to drag a card — see SortableTaskCard's own doc comment for why
@@ -158,6 +207,14 @@ export function Board({
   // here within a few seconds without a manual refresh.
   useBoardRealtime(projectId, (event) => {
     setTasks((current) => reconcileTask(current, event));
+  });
+
+  // F221 (AS-413): same reconciliation strategy as the tasks channel
+  // above, applied to `project_statuses` instead — another viewer's
+  // column add/rename/reorder/remove shows up here within a few seconds,
+  // no manual refresh.
+  useBoardColumnsRealtime(projectId, (event) => {
+    setColumns((current) => reconcileColumn(current, event));
   });
 
   // BUGFIX: TaskDetailSheet was fully built (F039) but nothing ever
@@ -245,11 +302,25 @@ export function Board({
     // column's status id (dropped on an empty column via useDroppable in
     // BoardColumn).
     const overTask = tasks.find((t) => t.id === over.id);
-    const targetStatus = overTask
-      ? overTask.status
-      : (over.id as TaskCardTask["status"]);
+    // F221 (AS-409): the target column's NAME (project_statuses.name for
+    // a real project, or one of the original four for DEFAULT_COLUMNS) —
+    // BoardColumn's useDroppable id and every task's `status` value are
+    // both keyed on this same name. Cast follows this codebase's existing
+    // convention for a value TypeScript still narrowly types as the
+    // original 4-value union but that can, at runtime, be any of the
+    // project's real column names (see lib/queries/tasks.ts's identical
+    // `as TaskCardTask["status"]` cast for the same underlying reason).
+    const targetStatus = (
+      overTask ? overTask.status : (over.id as string)
+    ) as TaskCardTask["status"];
 
-    if (!FIXED_COLUMN_ORDER.includes(targetStatus)) return;
+    // F221 (AS-409): validate against the board's REAL current columns
+    // (state, kept live by useBoardColumnsRealtime above), not the fixed
+    // four — a drop target that isn't one of this project's actual
+    // columns (e.g. stale DOM from a column just removed by another
+    // viewer) is silently ignored, same as the pre-F221 behaviour for any
+    // `over.id` outside the fixed set.
+    if (!columns.some((c) => c.name === targetStatus)) return;
 
     // F107: the state computation below reads from `tasks` (the outer
     // component state, already settled from the last completed render) and
@@ -412,17 +483,39 @@ export function Board({
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {FIXED_COLUMN_ORDER.map((status) => (
-            <BoardColumn
-              key={status}
-              status={status}
-              tasks={tasks.filter((task) => task.status === status)}
-              assignees={assignees}
-              onCardClick={handleCardClick}
-              timezone={timezone}
-              canDrag={canDrag}
-            />
-          ))}
+          {/* F221 (AS-403, AS-416): the project's real columns, rendered
+              in `position` order — the same order every viewer reads on
+              every reload (lib/queries/statuses.ts's getProjectColumns),
+              kept live by useBoardColumnsRealtime above. `[...columns]`
+              copies before sorting since `columns` is React state (must
+              not be mutated in place). */}
+          {[...columns]
+            .sort((a, b) => a.position - b.position)
+            .map((column) => (
+              <BoardColumn
+                key={column.id}
+                status={column.name as TaskCardTask["status"]}
+                // F221 (AS-403, AS-407): a column literally NAMED one of
+                // the original four (every unrenamed default column, per
+                // 20260824010000_project_statuses.sql's seed data — e.g.
+                // "todo") displays its existing human label ("To Do"),
+                // matching pre-F221 behaviour exactly (AS-407: "matching
+                // the previous behaviour"). A genuinely custom name
+                // (renamed or newly added) isn't in STATUS_LABELS, so it
+                // falls back to its own real name — the only sensible
+                // label for a column the fixed lookup has never heard of.
+                label={
+                  STATUS_LABELS[column.name as TaskCardTask["status"]] ??
+                  column.name
+                }
+                color={column.color}
+                tasks={tasks.filter((task) => task.status === column.name)}
+                assignees={assignees}
+                onCardClick={handleCardClick}
+                timezone={timezone}
+                canDrag={canDrag}
+              />
+            ))}
         </div>
 
         <DragOverlay>

@@ -2535,7 +2535,10 @@ export type MoveTaskStatusResult =
 // membership.
 export async function moveTaskStatus(
   taskId: string,
-  newStatus: "todo" | "in_progress" | "in_review" | "done",
+  // F221 (AS-409): any of the project's real `project_statuses` column
+  // names, not just the original fixed four — see moveTaskStatusSchema's
+  // doc comment.
+  newStatus: string,
 ): Promise<MoveTaskStatusResult> {
   const parsed = moveTaskStatusSchema.safeParse({
     taskId,
@@ -2628,6 +2631,26 @@ export async function moveTaskStatus(
     return {
       ok: false,
       error: "Viewers don't have permission to move tasks.",
+    };
+  }
+
+  // F221 (AS-409): `parsed.data.status` must name one of THIS project's
+  // real board columns — the DB trigger that derives `status_id` from
+  // `(project_id, name)` (F218's `sync_task_status_and_status_id`) fails
+  // silently (leaves status_id null) for an unmatched name rather than
+  // raising, so this check is the real guard against a stale/forged
+  // column name reaching the DB.
+  const { data: columnMatch } = await admin
+    .from("project_statuses")
+    .select("id")
+    .eq("project_id", project.id)
+    .eq("name", parsed.data.status)
+    .maybeSingle();
+
+  if (!columnMatch) {
+    return {
+      ok: false,
+      error: "That column no longer exists. Refresh the board and try again.",
     };
   }
 
@@ -2998,7 +3021,9 @@ export type MoveAndReorderTaskResult =
 // membership, same as its two single-purpose siblings.
 export async function moveAndReorderTask(
   taskId: string,
-  newStatus: "todo" | "in_progress" | "in_review" | "done",
+  // F221 (AS-409): any of the project's real `project_statuses` column
+  // names — see moveAndReorderTaskSchema's doc comment.
+  newStatus: string,
   newPosition: number,
 ): Promise<MoveAndReorderTaskResult> {
   const parsed = moveAndReorderTaskSchema.safeParse({
@@ -3093,6 +3118,23 @@ export async function moveAndReorderTask(
     return {
       ok: false,
       error: "Viewers don't have permission to move tasks.",
+    };
+  }
+
+  // F221 (AS-409): same column-name guard as moveTaskStatus above — see
+  // that function's doc comment for why this check (not just the DB
+  // trigger) is the real backstop against an unmatched/stale column name.
+  const { data: columnMatch } = await admin
+    .from("project_statuses")
+    .select("id")
+    .eq("project_id", project.id)
+    .eq("name", parsed.data.status)
+    .maybeSingle();
+
+  if (!columnMatch) {
+    return {
+      ok: false,
+      error: "That column no longer exists. Refresh the board and try again.",
     };
   }
 
