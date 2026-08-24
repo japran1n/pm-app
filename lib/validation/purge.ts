@@ -13,6 +13,8 @@ import { z } from "zod";
 // PURGE_CONFIRMATION_PHRASE below in lib/actions/purge.ts, rather than a
 // per-item-count phrase that would require the client to pass an
 // independently-verifiable count).
+export const PURGE_CONFIRMATION_PHRASE = "DELETE";
+
 export const purgeTrashItemSchema = z.object({
   itemId: z.string().uuid("Invalid item."),
   itemType: z.enum(["task", "comment"]),

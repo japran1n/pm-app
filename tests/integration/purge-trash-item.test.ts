@@ -305,8 +305,9 @@ describe.skipIf(!haveAdminCreds)(
     }
 
     it("test_AS_348_an_owner_can_purge_a_task_after_typed_confirmation", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const { taskId } = await makeDeletedTask(false);
 
@@ -332,8 +333,9 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("test_AS_348_a_non_admin_cannot_purge_even_calling_the_action_directly", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const { taskId } = await makeDeletedTask(false);
 
@@ -365,8 +367,9 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("test_AS_349_a_purged_task_is_gone_from_the_db_with_its_dependent_rows_and_storage_object", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const { taskId, objectPath } = await makeDeletedTask(true);
 
@@ -416,8 +419,9 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("test_AS_349_a_purged_comment_is_gone_from_the_db", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const commentId = await makeDeletedComment();
 
@@ -438,8 +442,9 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("never allows purging a live (not soft-deleted) row, even as the owner", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const liveTaskId = await makeLiveTask();
 
@@ -461,8 +466,9 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("purging one task does not affect another deleted task", async () => {
-      const { purgeTrashItem, PURGE_CONFIRMATION_PHRASE } = await import(
-        "@/lib/actions/purge"
+      const { purgeTrashItem } = await import("@/lib/actions/purge");
+      const { PURGE_CONFIRMATION_PHRASE } = await import(
+        "@/lib/validation/purge"
       );
       const { taskId: targetId } = await makeDeletedTask(false);
       const { taskId: untouchedId } = await makeDeletedTask(false);

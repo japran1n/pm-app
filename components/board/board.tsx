@@ -67,10 +67,8 @@ import {
 } from "@/lib/board/grouping";
 import { Swimlane } from "@/components/board/swimlane";
 import { BoardToolbar } from "@/components/board/board-toolbar";
-import {
-  upsertBoardSwimlanePrefs,
-  type BoardSwimlanePrefs,
-} from "@/lib/actions/board-prefs";
+import { upsertBoardSwimlanePrefs } from "@/lib/actions/board-prefs";
+import type { BoardSwimlanePrefs } from "@/lib/validation/board-prefs";
 import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { purgeTrashItemSchema } from "@/lib/validation/purge";
+import { purgeTrashItemSchema, PURGE_CONFIRMATION_PHRASE } from "@/lib/validation/purge";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canPurge } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
@@ -40,8 +40,6 @@ import { writeAudit } from "@/lib/activity/audit";
 // (it's shown in the dialog's own copy) — its purpose is to make purging
 // require a deliberate, typed act, not to gate access (canPurge already
 // does that).
-export const PURGE_CONFIRMATION_PHRASE = "DELETE";
-
 const ATTACHMENTS_BUCKET = "task-attachments";
 
 export type PurgeTrashItemResult =

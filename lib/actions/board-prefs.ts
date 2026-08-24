@@ -16,36 +16,21 @@
 // persisted grouping/collapse state instead of flashing the default and
 // then correcting itself client-side.
 
-import { z } from "zod";
-
 import { createClient } from "@/lib/supabase/server";
-
-export const SWIMLANE_GROUP_BY_PREF_VALUES = [
-  "none",
-  "assignee",
-  "priority",
-  "tag",
-] as const;
-
-export type SwimlaneGroupByPref = (typeof SWIMLANE_GROUP_BY_PREF_VALUES)[number];
-
-export type BoardSwimlanePrefs = {
-  groupBy: SwimlaneGroupByPref;
-  /** Collapsed lane keys, keyed by grouping mode -- see the migration's
-   * header comment for why this is an object-of-arrays rather than a flat
-   * array (switching grouping mode must never carry a stale collapse
-   * across modes). */
-  collapsedLanes: Record<string, string[]>;
-};
+import {
+  SWIMLANE_GROUP_BY_PREF_VALUES,
+  type SwimlaneGroupByPref,
+  type BoardSwimlanePrefs,
+  type GetBoardSwimlanePrefsResult,
+  upsertBoardSwimlanePrefsSchema,
+  type UpsertBoardSwimlanePrefsInput,
+  type UpsertBoardSwimlanePrefsResult,
+} from "@/lib/validation/board-prefs";
 
 const DEFAULT_PREFS: BoardSwimlanePrefs = {
   groupBy: "none",
   collapsedLanes: {},
 };
-
-export type GetBoardSwimlanePrefsResult =
-  | { ok: true; data: BoardSwimlanePrefs }
-  | { ok: false; error: string };
 
 // No row for this (user, project) pair (never opened this board before, or
 // signed up after the row would otherwise have existed -- this table is
@@ -95,29 +80,6 @@ export async function getBoardSwimlanePrefs(
   return { ok: true, data: { groupBy, collapsedLanes } };
 }
 
-const upsertSchema = z.object({
-  projectId: z.string().uuid(),
-  groupBy: z.enum(SWIMLANE_GROUP_BY_PREF_VALUES).optional(),
-  // AS-422: the FULL set of collapsed lane keys for ONE grouping mode --
-  // the caller (board.tsx) always sends the whole current set for the
-  // mode it's updating, not a single toggled key, so a stale/renamed key
-  // can be dropped from the set on write (see the doc comment below) and
-  // "collapse" vs "expand" are both just "write the new set", no separate
-  // add/remove action needed.
-  collapsedLanesForMode: z
-    .object({
-      mode: z.enum(SWIMLANE_GROUP_BY_PREF_VALUES),
-      keys: z.array(z.string().min(1).max(200)).max(500),
-    })
-    .optional(),
-});
-
-export type UpsertBoardSwimlanePrefsInput = z.infer<typeof upsertSchema>;
-
-export type UpsertBoardSwimlanePrefsResult =
-  | { ok: true }
-  | { ok: false; error: string };
-
 // A single action handles both "grouping mode changed" and "a lane's
 // collapse state changed" -- board.tsx calls it (fire-and-forget,
 // optimistic client state already updated) from two different call sites
@@ -127,7 +89,7 @@ export type UpsertBoardSwimlanePrefsResult =
 export async function upsertBoardSwimlanePrefs(
   input: UpsertBoardSwimlanePrefsInput,
 ): Promise<UpsertBoardSwimlanePrefsResult> {
-  const parsed = upsertSchema.safeParse(input);
+  const parsed = upsertBoardSwimlanePrefsSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Invalid board preference update." };
   }

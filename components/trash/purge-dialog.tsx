@@ -28,10 +28,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  purgeTrashItem,
-  PURGE_CONFIRMATION_PHRASE,
-} from "@/lib/actions/purge";
+import { purgeTrashItem } from "@/lib/actions/purge";
+import { PURGE_CONFIRMATION_PHRASE } from "@/lib/validation/purge";
 
 export function PurgeDialog({
   itemId,

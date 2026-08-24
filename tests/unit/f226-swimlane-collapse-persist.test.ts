@@ -19,7 +19,7 @@ import { createElement } from "react";
 import type {
   UpsertBoardSwimlanePrefsInput,
   UpsertBoardSwimlanePrefsResult,
-} from "@/lib/actions/board-prefs";
+} from "@/lib/validation/board-prefs";
 
 vi.mock("@/lib/actions/tasks", () => ({
   moveAndReorderTask: vi.fn(async () => ({ ok: true, data: {} })),
