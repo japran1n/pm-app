@@ -53,7 +53,15 @@ import { editTask } from "@/lib/actions/tasks";
 import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import type { DateOnly } from "@/lib/time/user-timezone";
-import { computeBarLayout, DEFAULT_PIXELS_PER_DAY } from "@/lib/timeline/layout";
+import {
+  computeBarLayout,
+  computeTimelineRowPositions,
+  timelineBodyTotalHeightPx,
+  timelineTotalWidthPx,
+  DEFAULT_PIXELS_PER_DAY,
+  TIMELINE_NAME_COLUMN_WIDTH_PX,
+  type TimelineBarLayout,
+} from "@/lib/timeline/layout";
 import {
   pixelDeltaToDayDelta,
   planTimelineBarMove,
@@ -66,8 +74,9 @@ import {
   TimelineBarDraggable,
 } from "@/components/timeline/timeline-bar-draggable";
 import { TimelineRowTrack } from "@/components/timeline/timeline-scale";
+import { DependencyOverlay } from "@/components/timeline/dependency-overlay";
 import { formatTaskKey } from "@/lib/tasks/task-key";
-import type { TimelineTask } from "@/lib/queries/timeline";
+import type { TimelineTask, TimelineDependencyEdge } from "@/lib/queries/timeline";
 
 export type TimelineGroup = {
   projectId: string;
@@ -90,6 +99,7 @@ export function TimelineBody({
   rangeEnd,
   today,
   pixelsPerDay = DEFAULT_PIXELS_PER_DAY,
+  dependencyEdges = [],
 }: {
   groups: TimelineGroup[];
   workspaceSlug: string;
@@ -97,6 +107,13 @@ export function TimelineBody({
   rangeEnd: DateOnly;
   today: DateOnly | null;
   pixelsPerDay?: number;
+  /** F239 (AS-455): every dependency edge whose both endpoints are
+   * already in this same visible task set -- see
+   * `getTimelineDependencyEdges`'s own doc comment for why that
+   * constraint is applied at the query layer, not here. Optional/
+   * defaulted to `[]` so existing callers/tests that don't pass it (and
+   * don't need connectors) keep working unchanged. */
+  dependencyEdges?: TimelineDependencyEdge[];
 }) {
   const [overrides, setOverrides] = useState<DateOverrides>({});
 
@@ -178,36 +195,70 @@ export function TimelineBody({
     }
   }
 
+  // F239 (AS-455): the SAME per-task layout this render loop below
+  // computes for each bar, collected into a map so the dependency
+  // overlay (rendered once, after every row) can draw real connectors
+  // from the real rendered bar positions -- never a second, parallel
+  // layout computation that could drift from what's actually on screen.
+  // Rebuilt every render (including mid-drag optimistic updates) since
+  // it's cheap pure maths over an already-in-memory array, same
+  // "recomputed on layout change" requirement the spec names.
+  const barLayouts = new Map<string, TimelineBarLayout>();
+  for (const group of groups) {
+    for (const task of group.tasks) {
+      const dates = currentDatesFor(task);
+      const layout = computeBarLayout({ id: task.id, ...dates }, rangeStart, rangeEnd, pixelsPerDay);
+      if (layout) barLayouts.set(task.id, layout);
+    }
+  }
+  const rowPositions = computeTimelineRowPositions(groups);
+  const overlayWidthPx = timelineTotalWidthPx(rangeStart, rangeEnd, pixelsPerDay);
+  const overlayHeightPx = timelineBodyTotalHeightPx(groups);
+
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      {groups.map((group) => (
-        <div key={group.projectId} className="flex flex-col">
-          <div className="flex">
-            <div className="sticky left-0 z-20 flex w-56 shrink-0 items-center border-b border-r bg-muted/40 px-3 py-2 text-sm font-medium">
-              {group.projectName}
-            </div>
-            <div style={{ width: 0 }} />
-          </div>
-          {group.tasks.map((task) => {
-            const dates = currentDatesFor(task);
-            const effectiveTask: TimelineTask = { ...task, ...dates };
-            const layout = computeBarLayout(effectiveTask, rangeStart, rangeEnd, pixelsPerDay);
-            if (!layout) return null;
-            return (
-              <div key={task.id} className="flex">
-                <div className="sticky left-0 z-20 flex w-56 shrink-0 items-center gap-1 truncate border-b border-r bg-background px-3 py-2 text-sm">
-                  <span className="truncate">
-                    {formatTaskKey(task.projectKey, task.number) ?? ""} {task.title}
-                  </span>
-                </div>
-                <TimelineRowTrack rangeStart={rangeStart} rangeEnd={rangeEnd} today={today} pixelsPerDay={pixelsPerDay}>
-                  <TimelineBarDraggable task={effectiveTask} layout={layout} workspaceSlug={workspaceSlug} canDrag={canDrag} />
-                </TimelineRowTrack>
+      <div className="relative">
+        {groups.map((group) => (
+          <div key={group.projectId} className="flex flex-col">
+            <div className="flex">
+              <div className="sticky left-0 z-20 flex h-10 w-56 shrink-0 items-center border-b border-r bg-muted/40 px-3 text-sm font-medium">
+                {group.projectName}
               </div>
-            );
-          })}
-        </div>
-      ))}
+              <div style={{ width: 0 }} />
+            </div>
+            {group.tasks.map((task) => {
+              const dates = currentDatesFor(task);
+              const effectiveTask: TimelineTask = { ...task, ...dates };
+              const layout = barLayouts.get(task.id);
+              if (!layout) return null;
+              return (
+                <div key={task.id} className="flex">
+                  <div className="sticky left-0 z-20 flex w-56 shrink-0 items-center gap-1 truncate border-b border-r bg-background px-3 py-2 text-sm">
+                    <span className="truncate">
+                      {formatTaskKey(task.projectKey, task.number) ?? ""} {task.title}
+                    </span>
+                  </div>
+                  <TimelineRowTrack rangeStart={rangeStart} rangeEnd={rangeEnd} today={today} pixelsPerDay={pixelsPerDay}>
+                    <TimelineBarDraggable task={effectiveTask} layout={layout} workspaceSlug={workspaceSlug} canDrag={canDrag} />
+                  </TimelineRowTrack>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        <DependencyOverlay
+          edges={dependencyEdges.map((edge) => ({
+            id: edge.id,
+            blockingTaskId: edge.blockingTaskId,
+            blockedTaskId: edge.blockedTaskId,
+          }))}
+          rowPositions={rowPositions}
+          barLayouts={barLayouts}
+          widthPx={overlayWidthPx}
+          heightPx={overlayHeightPx}
+          leftPx={TIMELINE_NAME_COLUMN_WIDTH_PX}
+        />
+      </div>
     </DndContext>
   );
 }

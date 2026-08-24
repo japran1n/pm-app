@@ -37,7 +37,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { todayInTimeZone } from "@/lib/time/user-timezone";
-import { getTimelineTasks, getUndatedTimelineTaskCount, type TimelineTask } from "@/lib/queries/timeline";
+import {
+  getTimelineTasks,
+  getUndatedTimelineTaskCount,
+  getTimelineDependencyEdges,
+  type TimelineTask,
+} from "@/lib/queries/timeline";
 import {
   currentMonthKey,
   nextMonthKey,
@@ -127,6 +132,18 @@ export default async function TimelinePage({
   const placeable = tasks.filter((t) => isPlaceableOnTimeline(t));
   const groups = groupTimelineTasksByProject(placeable);
 
+  // F239 (AS-455): fetched against the SAME `tasks` result this page
+  // already has -- every id in `tasks` is already this caller's own
+  // RLS + project-visibility-filtered set (getTimelineTasks's own doc
+  // comment), so passing `tasks.map(t => t.id)` (not just the rendered
+  // `placeable` subset) as `getTimelineDependencyEdges`'s
+  // `visibleTaskIds` costs nothing extra and stays correct even though
+  // only `placeable` tasks get a row (an edge touching a date-less task
+  // in `tasks` is still correctly omitted downstream, in
+  // `TimelineBody`, because that task has no row position -- never
+  // fetched-then-discarded here).
+  const dependencyEdges = await getTimelineDependencyEdges(tasks.map((t) => t.id));
+
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-lg font-semibold">Timeline</h1>
@@ -206,6 +223,7 @@ export default async function TimelinePage({
             rangeEnd={end}
             today={today}
             pixelsPerDay={DEFAULT_PIXELS_PER_DAY}
+            dependencyEdges={dependencyEdges}
           />
         </div>
       </div>

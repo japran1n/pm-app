@@ -255,3 +255,135 @@ export function buildTimelineDayTicks(
   }
   return ticks;
 }
+
+// F239 (AS-455): dependency connectors. Pure vertical-position and path
+// maths, kept in this file per the feature spec's own "Files" list --
+// mirrors every other function above's "pure, side-effect-free, takes
+// its inputs as plain values" shape. `components/timeline/dependency-
+// overlay.tsx` is the one caller; `components/timeline/timeline-body.tsx`
+// supplies the `groups`/row order it already renders from, so there is
+// exactly one place row order is decided (this file never re-sorts or
+// re-groups tasks itself).
+
+/** Every task row's fixed height, in px -- matches
+ * `TimelineRowTrack`'s own `h-12` Tailwind class (3rem = 48px). Kept as
+ * an exported constant so the connector maths below and the row's own
+ * markup can never drift out of sync with each other. */
+export const TIMELINE_ROW_HEIGHT_PX = 48;
+
+/** Each project group's header row height, in px -- `TimelineBody`'s own
+ * group-header row is pinned to this fixed height (see that file) so
+ * connector vertical positions can be computed purely, without measuring
+ * the DOM. */
+export const TIMELINE_GROUP_HEADER_HEIGHT_PX = 40;
+
+/** The sticky task-name column's own width, in px -- matches the `w-56`
+ * Tailwind class (14rem = 224px) `TimelineBody`/`TimelineScale` both use
+ * for their sticky/spacer column, so the dependency overlay's SVG can be
+ * offset to start exactly where the scrollable date area starts. */
+export const TIMELINE_NAME_COLUMN_WIDTH_PX = 224;
+
+export type TimelineRowGroup = { tasks: { id: string }[] };
+
+/**
+ * The vertical top offset, in px, of every rendered task row, in the
+ * SAME document order `TimelineBody` renders groups/tasks in -- one
+ * project-header-height per group, then one row-height per task within
+ * it. A task that isn't in any group (filtered out, e.g. not
+ * `isPlaceableOnTimeline`, or not visible to the caller at all) simply
+ * has no entry -- callers treat a missing id as "no known row position",
+ * never as row 0.
+ */
+export function computeTimelineRowPositions(
+  groups: TimelineRowGroup[],
+): Map<string, number> {
+  const positions = new Map<string, number>();
+  let cursor = 0;
+  for (const group of groups) {
+    cursor += TIMELINE_GROUP_HEADER_HEIGHT_PX;
+    for (const task of group.tasks) {
+      positions.set(task.id, cursor);
+      cursor += TIMELINE_ROW_HEIGHT_PX;
+    }
+  }
+  return positions;
+}
+
+/** The date-area's own total content height, in px -- the dependency
+ * overlay SVG's own `height`, so it always exactly covers every rendered
+ * row and never clips or over-extends. */
+export function timelineBodyTotalHeightPx(groups: TimelineRowGroup[]): number {
+  return groups.reduce(
+    (sum, group) =>
+      sum + TIMELINE_GROUP_HEADER_HEIGHT_PX + group.tasks.length * TIMELINE_ROW_HEIGHT_PX,
+    0,
+  );
+}
+
+export type TimelineDependencyEdgeInput = {
+  id: string;
+  blockingTaskId: string;
+  blockedTaskId: string;
+};
+
+export type TimelineDependencyConnector = {
+  id: string;
+  /** SVG `path` `d` attribute -- a three-segment elbow from the blocking
+   * bar's trailing edge to the blocked bar's leading edge. */
+  d: string;
+};
+
+/**
+ * Real connector geometry for every dependency edge whose BOTH endpoints
+ * have a known row position and bar layout -- an edge with either
+ * endpoint missing (not currently rendered: excluded by
+ * `isPlaceableOnTimeline`, outside the visible range, or -- the sharp
+ * edge this feature exists to get right -- in a project the caller
+ * cannot see) is silently OMITTED, never drawn toward a guessed
+ * position and never drawn as a stub that would itself confirm the
+ * other task's existence. See this feature's handoff
+ * AUTONOMOUS_DECISION for why "omit" was chosen over "anonymous stub".
+ */
+export function computeDependencyConnectors(
+  edges: TimelineDependencyEdgeInput[],
+  rowPositions: Map<string, number>,
+  barLefts: Map<string, TimelineBarLayout>,
+): TimelineDependencyConnector[] {
+  const connectors: TimelineDependencyConnector[] = [];
+
+  for (const edge of edges) {
+    const blockingTop = rowPositions.get(edge.blockingTaskId);
+    const blockedTop = rowPositions.get(edge.blockedTaskId);
+    const blockingBar = barLefts.get(edge.blockingTaskId);
+    const blockedBar = barLefts.get(edge.blockedTaskId);
+
+    if (
+      blockingTop === undefined ||
+      blockedTop === undefined ||
+      !blockingBar ||
+      !blockedBar
+    ) {
+      continue;
+    }
+
+    const y1 = blockingTop + TIMELINE_ROW_HEIGHT_PX / 2;
+    const y2 = blockedTop + TIMELINE_ROW_HEIGHT_PX / 2;
+
+    // Range bars connect from their trailing (right) edge; markers are
+    // centred on their single day (matching `TimelineBar`'s own
+    // `-translate-x-1/2` marker rendering), so a marker's own anchor is
+    // its `leftPx` unchanged.
+    const x1 =
+      blockingBar.kind === "range"
+        ? blockingBar.leftPx + blockingBar.widthPx
+        : blockingBar.leftPx;
+    const x2 = blockedBar.leftPx;
+
+    const midX = (x1 + x2) / 2;
+    const d = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+
+    connectors.push({ id: edge.id, d });
+  }
+
+  return connectors;
+}

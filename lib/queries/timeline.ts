@@ -230,3 +230,55 @@ export async function getUndatedTimelineTaskCount(
 
   return count ?? 0;
 }
+
+// F239 (AS-455): dependency connectors' own read path. Same RLS-scoped
+// session client, no admin client -- but this query does NOT rely on RLS
+// alone. `task_dependencies_select_active_members`
+// (supabase/migrations/20260821140526_project_visibility_rls_sweep.sql)
+// only re-checks `is_task_visible_to(blocking_task_id)`, NOT the blocked
+// side -- an intentional-looking gap that is exactly F322/F323's bug
+// class if this query trusted it alone: a workspace member could
+// otherwise learn (row id, both raw task ids) of a dependency whose
+// BLOCKED task sits in a private project they cannot see, even though
+// they'd never see that task any other way. This function closes that
+// gap itself, app-side, defense-in-depth style (the same posture every
+// other F32x fix in this codebase takes): `visibleTaskIds` must be the
+// caller's OWN already-visibility-filtered set (in practice, every id
+// `getTimelineTasks` just returned for this same call), and both ends of
+// every returned edge are constrained to that exact set via `.in()`
+// twice. An edge with either endpoint outside `visibleTaskIds` --
+// because it's in an invisible project, a different workspace, outside
+// the current date range, or excluded for having neither date -- is not
+// merely filtered from the render; it never leaves the database in the
+// first place, so no partial edge, id, or count can leak its existence.
+export type TimelineDependencyEdge = {
+  id: string;
+  blockingTaskId: string;
+  blockedTaskId: string;
+};
+
+export async function getTimelineDependencyEdges(
+  visibleTaskIds: string[],
+): Promise<TimelineDependencyEdge[]> {
+  if (visibleTaskIds.length === 0) {
+    return [];
+  }
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("task_dependencies")
+    .select("id, blocking_task_id, blocked_task_id")
+    .in("blocking_task_id", visibleTaskIds)
+    .in("blocked_task_id", visibleTaskIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    blockingTaskId: row.blocking_task_id,
+    blockedTaskId: row.blocked_task_id,
+  }));
+}
