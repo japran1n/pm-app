@@ -54,7 +54,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { transformPastedHtml } from "@/lib/editor/paste-rules"
+import {
+  extractImageFilesFromClipboard,
+  transformPastedHtml,
+} from "@/lib/editor/paste-rules"
 import {
   createMentionExtension,
   type MentionSuggestionItem,
@@ -195,6 +198,20 @@ export interface RichTextEditorProps {
    * client-side here. Omitted/empty disables the mention picker entirely
    * (see `sharedExtensions`'s `getMentionItems` doc comment). */
   mentionSuggestions?: MentionSuggestionItem[]
+  /** F261 (AS-508): called with every `image/*` file found on a paste's
+   * clipboard, e.g. a screenshot pasted from the OS clipboard. When
+   * provided, an image-carrying paste is intercepted (preventDefault, no
+   * image ever reaches the document/schema) and handed to the caller,
+   * which is expected to upload it through the existing attachment action
+   * and insert its own plain-text reference into the controlled `content`
+   * — this component never uploads anything itself, matching the
+   * "reuse the existing attachment action, don't fork a second upload
+   * path" instruction. Omitted (the default for every caller except the
+   * comment composer) means an image paste falls through to the
+   * pre-existing F172 behaviour unchanged: the image degrades to its
+   * `alt` text (if any) via `transformPastedHtml`, exactly as before this
+   * feature. */
+  onImagePaste?: (files: File[]) => void
 }
 
 /**
@@ -339,6 +356,7 @@ export function RichTextEditor({
   className,
   "aria-label": ariaLabel = "Rich text editor",
   mentionSuggestions,
+  onImagePaste,
 }: RichTextEditorProps) {
   // F172 (AS-308): Cmd/Ctrl+Shift+V is the standard "paste as plain text"
   // override. Modifier state isn't exposed on the native `paste` event, so
@@ -509,6 +527,25 @@ export function RichTextEditor({
       // payload only — the standard editor convention for "paste as
       // plain text".
       handlePaste: (view, event) => {
+        // F261 (AS-508): image-carrying clipboard items are intercepted
+        // BEFORE the plain-text-paste override and BEFORE
+        // transformPastedHTML ever runs — a pasted screenshot has no
+        // `text/html`/`text/plain` payload for either of those to act on
+        // in the first place, only `clipboardData.items` file entries.
+        // Only claimed when a caller actually wants this (comment
+        // composer); every other caller (task/description editor) is
+        // unaffected and keeps F172's existing "image degrades to alt
+        // text" behaviour.
+        if (onImagePaste) {
+          const imageFiles = extractImageFilesFromClipboard(
+            event.clipboardData?.items,
+          )
+          if (imageFiles.length > 0) {
+            event.preventDefault()
+            onImagePaste(imageFiles)
+            return true
+          }
+        }
         if (!plainTextPasteRef.current) return false
         plainTextPasteRef.current = false
         const text = event.clipboardData?.getData("text/plain")

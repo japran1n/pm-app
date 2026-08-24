@@ -41,7 +41,7 @@
 // relative timestamp via date-fns's formatDistanceToNow (already in
 // tech-decisions.md's libraries list for exactly this use).
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import { Loader2, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -54,12 +54,25 @@ import {
   getMentionCandidates,
   restoreComment,
 } from "@/lib/actions/comments";
+// F261 (AS-508): reuses the exact same attachment upload action F258's
+// drag-drop and F259's picker/progress paths use — no second upload
+// implementation. See handlePastedImages below.
+import { uploadAttachment } from "@/lib/actions/attachments";
+import { validateAttachmentFile } from "@/lib/tasks/validate-attachment-file";
 import { showUndoToast } from "@/lib/toast/undo-toast";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
-import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
+import {
+  appendAttachmentReference,
+  docFromPlainText,
+  extractPlainText,
+} from "@/lib/comments/rich-text";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  UploadProgress,
+  type UploadProgressJob,
+} from "@/components/task/upload-progress";
 import { useCommentsRealtime } from "@/components/task/use-comments-realtime";
 import { reconcileComment } from "@/lib/tasks/reconcile-realtime-comment";
 // F202 (AS-369): reactions from other viewers appear live, without a reload.
@@ -103,6 +116,10 @@ type RichTextEditorModule = {
     "aria-label"?: string;
     className?: string;
     mentionSuggestions?: { id: string; label: string }[];
+    /** F261 (AS-508): see rich-text-editor.tsx's own doc comment on this
+     * prop — the comment composer is this codebase's only caller that
+     * passes it. */
+    onImagePaste?: (files: File[]) => void;
   }) => React.ReactElement | null;
   RichTextRenderer: (props: {
     content?: JSONContent | null;
@@ -327,6 +344,21 @@ export function CommentList({
   const [draft, setDraft] = useState<JSONContent | null>(null);
   const richText = useRichTextModule();
   const [isSubmitting, startSubmitTransition] = useTransition();
+  // F261 (AS-508): pasted-image upload progress rows for the add-comment
+  // composer. A SEPARATE transition from isSubmitting/startSubmitTransition
+  // above — an in-flight image upload must not disable the composer or the
+  // Post button (the user can keep typing/posting while a screenshot
+  // uploads), and per this feature's clarified failure-handling answer the
+  // typed draft is never touched by a paste-upload failure.
+  const [, startPasteUploadTransition] = useTransition();
+  const [pasteUploadJobs, setPasteUploadJobs] = useState<UploadProgressJob[]>(
+    [],
+  );
+  // Same "cancel = ignore the eventual result" convention as F259's
+  // AttachmentList (no AbortController hook on the Server Action
+  // transport) — see upload-progress.tsx's own header comment for the full
+  // rationale.
+  const cancelledPasteJobIdsRef = useRef(new Set<string>());
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
     null,
   );
@@ -534,6 +566,89 @@ export function CommentList({
     }, 2000);
     return () => clearTimeout(timeout);
   }, [highlightCommentId, orderedComments]);
+
+  // F261 (AS-508): an image pasted into the add-comment composer uploads
+  // as a real task attachment through the SAME `uploadAttachment` Server
+  // Action F258's drag-drop and F259's file-picker paths already use — no
+  // parallel upload implementation. On success, a plain-text reference
+  // (not an inline `<img>`, see appendAttachmentReference's doc comment
+  // for why) is appended to the draft; the image itself shows up in the
+  // task's existing attachment list, same as any other dropped/picked
+  // file. On failure, the draft is NEVER touched — only the toast + the
+  // upload-progress row reflect the failure, satisfying "the typed
+  // comment text must remain intact".
+  function handlePastedImages(files: File[]) {
+    if (!canPost) return;
+    for (const file of files) {
+      const jobId = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+      const validation = validateAttachmentFile(file);
+      if (!validation.ok) {
+        setPasteUploadJobs((previous) => [
+          ...previous,
+          {
+            id: jobId,
+            fileName: file.name,
+            fileSize: file.size,
+            status: "rejected",
+            reason: validation.reason,
+          },
+        ]);
+        continue;
+      }
+
+      setPasteUploadJobs((previous) => [
+        ...previous,
+        {
+          id: jobId,
+          fileName: file.name,
+          fileSize: file.size,
+          status: "uploading",
+        },
+      ]);
+
+      startPasteUploadTransition(async () => {
+        const formData = new FormData();
+        formData.set("taskId", taskId);
+        formData.set("file", file);
+        const result = await uploadAttachment(formData);
+
+        if (cancelledPasteJobIdsRef.current.has(jobId)) {
+          cancelledPasteJobIdsRef.current.delete(jobId);
+          return;
+        }
+
+        if (result.ok) {
+          setPasteUploadJobs((previous) =>
+            previous.map((job) =>
+              job.id === jobId ? { ...job, status: "success" } : job,
+            ),
+          );
+          setDraft((previousDraft) =>
+            appendAttachmentReference(previousDraft, result.data.fileName),
+          );
+        } else {
+          setPasteUploadJobs((previous) =>
+            previous.map((job) =>
+              job.id === jobId
+                ? { ...job, status: "error", reason: result.error }
+                : job,
+            ),
+          );
+          toast.error(result.error);
+        }
+      });
+    }
+  }
+
+  function cancelPasteUpload(jobId: string) {
+    cancelledPasteJobIdsRef.current.add(jobId);
+    setPasteUploadJobs((previous) => previous.filter((job) => job.id !== jobId));
+  }
+
+  function dismissPasteUpload(jobId: string) {
+    setPasteUploadJobs((previous) => previous.filter((job) => job.id !== jobId));
+  }
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -767,6 +882,11 @@ export function CommentList({
         <Label htmlFor={`comment-draft-${taskId}`} className="sr-only">
           Add a comment
         </Label>
+        <UploadProgress
+          jobs={pasteUploadJobs}
+          onCancel={cancelPasteUpload}
+          onDismiss={dismissPasteUpload}
+        />
         {richText ? (
           <richText.RichTextEditor
             content={draft}
@@ -775,6 +895,7 @@ export function CommentList({
             placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
             aria-label="Add a comment"
             mentionSuggestions={mentionSuggestions}
+            onImagePaste={handlePastedImages}
           />
         ) : (
           // F174: pre-hydration fallback — a plain input bound to the

@@ -148,6 +148,35 @@ function walk(node: ChildNode, out: string[]): void {
  * survives as formatting. Anything else degrades to its plain text content
  * — never silently dropped, only its styling is.
  */
+/** F261 (AS-508): pulls every `image/*` clipboard item out of a
+ * `ClipboardEvent.clipboardData.items` list (e.g. a screenshot pasted from
+ * the OS clipboard, which never carries `text/html` or `text/plain` at
+ * all — only a `kind: "file"` item) and returns them as real `File`
+ * objects, in clipboard order. Pure and DOM-API-shaped (works against any
+ * object satisfying the small `{ kind, type, getAsFile() }` surface, not
+ * just a real `DataTransferItemList`) so it's unit-testable without a
+ * mounted editor or a real browser paste event — same rationale as
+ * `transformPastedHtml` above. Non-image items (plain text, existing rich
+ * HTML) are left untouched by this function; it never claims/consumes
+ * them, so the caller's existing text/HTML paste handling (F172,
+ * unaffected) still runs whenever this returns an empty array. */
+export function extractImageFilesFromClipboard(
+  items: Pick<DataTransferItemList, "length"> & {
+    [index: number]: Pick<DataTransferItem, "kind" | "type" | "getAsFile">;
+  } | null | undefined,
+): File[] {
+  if (!items) return [];
+  const files: File[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item && item.kind === "file" && item.type.startsWith("image/")) {
+      const file = item.getAsFile();
+      if (file) files.push(file);
+    }
+  }
+  return files;
+}
+
 export function transformPastedHtml(html: string): string {
   if (typeof window === "undefined" || typeof DOMParser === "undefined") {
     // No DOM available (e.g. non-browser SSR context) — fail safe by

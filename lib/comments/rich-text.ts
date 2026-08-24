@@ -67,6 +67,40 @@ export function docFromPlainText(text: string): JSONContent {
  * site) falls back to "@<id>" — still guaranteed non-empty, which is the
  * only thing that call site's fallback-to-client-text logic actually
  * depends on. */
+/** F261 (AS-508): appends a plain-text reference paragraph — e.g.
+ * "📎 pasted-image.png" — to the end of a comment draft after an image
+ * pasted from the clipboard has finished uploading as a real `attachments`
+ * row (via lib/actions/attachments.ts's uploadAttachment, the exact same
+ * action the drag-drop/file-picker paths use, per F258/F259/F260). This
+ * deliberately does NOT insert an `<img>` node: F171's shared allow-list
+ * (ALLOWED_NODE_TYPES in components/editor/rich-text-editor.tsx) has no
+ * `image` entry, and extending it to allow inline images would create a
+ * second sanitisation surface across editor/renderer/server projection —
+ * the clarified spec's own "simpler option, no new dependency, no second
+ * source of truth" resolution rule picks this plain-text-reference shape
+ * instead. The uploaded image is already visible in the task's attachment
+ * list (same as any dropped/picked file), so the comment body only needs
+ * to note that a file was attached, not re-render it. */
+export function appendAttachmentReference(
+  content: JSONContent | null | undefined,
+  fileName: string,
+): JSONContent {
+  const base: JSONContent =
+    content && typeof content === "object" ? content : { type: "doc", content: [] };
+  const existing = Array.isArray(base.content) ? base.content : [];
+  return {
+    ...base,
+    type: "doc",
+    content: [
+      ...existing,
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: `📎 ${fileName}` }],
+      },
+    ],
+  };
+}
+
 export function extractPlainText(
   content: JSONContent | null | undefined,
   resolveLabel?: (userId: string) => string | null,
