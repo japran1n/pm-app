@@ -30,6 +30,7 @@ export function MonthGrid({
   grid,
   tasksByDate,
   workspaceSlug,
+  dataKey,
   prevHref,
   nextHref,
   todayHref,
@@ -37,6 +38,18 @@ export function MonthGrid({
   grid: CalendarMonth;
   tasksByDate: Map<string, CalendarTask[]>;
   workspaceSlug: string;
+  /** B1 fix (AS-442, AS-443, AS-448): a string that changes exactly when
+   * the SERVER data (month + active filters) changes -- the caller
+   * (calendar/page.tsx) derives it from the same month key + filter
+   * querystring it already builds for `hrefFor`. Passed straight through
+   * as `<CalendarDayGrid>`'s React `key` below: month nav and filter
+   * changes are both soft navigations that keep this client subtree
+   * mounted, so a `key` change is what forces the "mirror tasksByDate
+   * into useState" optimistic-drag copy (F234) to re-initialize from the
+   * fresh props instead of going stale. See calendar-day-grid.tsx's own
+   * doc comment for why a sync effect or unconditional prop-derivation
+   * were rejected. */
+  dataKey: string;
   prevHref: string;
   nextHref: string;
   todayHref: string;
@@ -111,6 +124,7 @@ export function MonthGrid({
       </div>
       <div className="hidden md:block">
         <CalendarDayGrid
+          key={dataKey}
           days={grid.days}
           tasksByDate={tasksByDateObject}
           workspaceSlug={workspaceSlug}

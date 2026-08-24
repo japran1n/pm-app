@@ -55,6 +55,7 @@ describe("F235 calendar responsive markup (AS-449)", () => {
         grid={GRID}
         tasksByDate={new Map([["2026-06-01", [makeTask("t1", "Grid task", "2026-06-01")]]])}
         workspaceSlug="acme"
+        dataKey="2026-06"
         prevHref="/w/acme/calendar?month=2026-05"
         nextHref="/w/acme/calendar?month=2026-07"
         todayHref="/w/acme/calendar?month=2026-06"
@@ -75,6 +76,7 @@ describe("F235 calendar responsive markup (AS-449)", () => {
         grid={GRID}
         tasksByDate={new Map([["2026-06-01", [makeTask("t1", "Agenda task", "2026-06-01")]]])}
         workspaceSlug="acme"
+        dataKey="2026-06"
         prevHref="/w/acme/calendar?month=2026-05"
         nextHref="/w/acme/calendar?month=2026-07"
         todayHref="/w/acme/calendar?month=2026-06"

@@ -164,6 +164,14 @@ export default async function CalendarPage({
   if (filters.projectId) filterQuery.set("projectId", filters.projectId);
   const filterSuffix = filterQuery.toString() ? `&${filterQuery.toString()}` : "";
 
+  // B1 fix (AS-442, AS-443, AS-448): identity for the client grid's
+  // internal optimistic-drag state, so a soft navigation (month <Link> or
+  // a filter Select's router.push -- both keep this Server Component's
+  // client child mounted) forces a real remount instead of leaving stale
+  // `useState` data behind. See MonthGrid/CalendarDayGrid for the rest of
+  // this fix and its AUTONOMOUS_DECISION writeup.
+  const dataKey = `${toMonthKey(year, month)}${filterSuffix}`;
+
   const hrefFor = (key: string) =>
     `/w/${workspaceSlug}/calendar?month=${key}${filterSuffix}`;
 
@@ -195,6 +203,7 @@ export default async function CalendarPage({
           grid={grid}
           tasksByDate={tasksByDate}
           workspaceSlug={workspaceSlug}
+          dataKey={dataKey}
           prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
           nextHref={hrefFor(toMonthKey(next.year, next.month))}
           todayHref={hrefFor(toMonthKey(today.year, today.month))}
@@ -225,6 +234,7 @@ export default async function CalendarPage({
         grid={grid}
         tasksByDate={tasksByDate}
         workspaceSlug={workspaceSlug}
+        dataKey={dataKey}
         prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
         nextHref={hrefFor(toMonthKey(next.year, next.month))}
         todayHref={hrefFor(toMonthKey(today.year, today.month))}
