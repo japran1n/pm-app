@@ -4,21 +4,40 @@
 // the exact same route/param board.tsx's own click-to-open effect already
 // listens on, so AS-444 is proven against the real getTaskDetail path, not
 // a second sheet built here), and, once a cell has more tasks than fit, an
-// overflow control (day-overflow.tsx) revealing the rest. Pure
-// presentation, no hooks/state of its own, so it stays a Server Component
-// (composed by components/calendar/month-grid.tsx) per the clarified
-// "Server Component for data loading, Client Component only for
-// interaction" pattern -- DayOverflow is the one small "use client"
-// island this file renders, kept as small as possible (F234's
-// drag-reschedule remains a clean seam around the day-cell mapping in
-// month-grid.tsx, unaffected by this).
+// overflow control (day-overflow.tsx) revealing the rest.
+//
+// F234 (AS-445): this cell is now also a dnd-kit droppable (the WHOLE
+// cell, via `useDroppable({ id: day.date })` -- `day.date` is already the
+// cell's own real "YYYY-MM-DD", including the correct adjacent-month date
+// for a leading/trailing cell, per lib/calendar/month-grid.ts's own doc
+// comment -- so a drop is identified by that exact string, never a
+// locally-constructed `Date` that could roll across a timezone boundary),
+// and each visible chip is a dnd-kit draggable (`useDraggable({ id:
+// task.id })`). The `DndContext`/`onDragEnd`/optimistic-update/rollback
+// logic that turns a drop into a real `editTask` call lives one level up
+// in components/calendar/calendar-day-grid.tsx (F234), mirroring how
+// board.tsx owns `handleDragEnd` while board-column.tsx/sortable-task-
+// card.tsx only render the drop/drag targets -- this file only renders
+// them, it does not decide what a drop means.
+//
+// This file switched from a Server Component to "use client" for F234
+// (dnd-kit's hooks are client-only) -- pure presentation, no data
+// fetching of its own either way, so nothing about its own props/behavior
+// otherwise changed.
 //
 // AS-447's cap: a day cell shows at most DAY_CELL_VISIBLE_TASKS chips
 // inline; anything beyond that renders behind the "+N more" popover
 // instead of growing the cell's height (which would break the month
-// grid's fixed-row layout other days rely on).
+// grid's fixed-row layout other days rely on). Overflow chips (inside the
+// popover) are not draggable -- dragging out of a popover is out of this
+// feature's scope; the popover is closed on drag start of a visible chip
+// anyway.
+
+"use client";
 
 import Link from "next/link";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
@@ -34,21 +53,37 @@ export function DayCell({
   day,
   tasks,
   workspaceSlug,
+  // F234 (AS-445): defaults to `true` so every existing/not-yet-updated
+  // caller (this file's own pre-F234 tests included) keeps rendering a
+  // draggable cell exactly as before -- board's SortableTaskCard/
+  // BoardColumn use the identical `canDrag = true` default for the same
+  // reason (see sortable-task-card.tsx's own doc comment).
+  canDrag = true,
 }: {
   day: CalendarDay;
   tasks: CalendarTask[];
   workspaceSlug: string;
+  canDrag?: boolean;
 }) {
   const dayNumber = Number(day.date.slice(-2));
   const visibleTasks = tasks.slice(0, DAY_CELL_VISIBLE_TASKS);
   const overflowTasks = tasks.slice(DAY_CELL_VISIBLE_TASKS);
 
+  // F234 (AS-445): droppable id is the cell's OWN "YYYY-MM-DD" -- for a
+  // leading/trailing day this is already the adjacent month's real date
+  // (lib/calendar/month-grid.ts builds `day.date` that way), never the
+  // visible grid's month/year clamped onto it.
+  const { setNodeRef, isOver } = useDroppable({ id: day.date });
+
   return (
     <div
+      ref={setNodeRef}
       data-date={day.date}
+      data-testid={`calendar-day-cell-${day.date}`}
       className={cn(
         "flex min-h-[7rem] flex-col gap-1 border-b border-r border-border/60 p-1.5 text-xs",
         !day.isCurrentMonth && "bg-muted/30 text-muted-foreground",
+        isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}
     >
       <span
@@ -61,10 +96,39 @@ export function DayCell({
       </span>
       <div className="flex flex-col gap-1 overflow-hidden">
         {visibleTasks.map((task) => (
-          <TaskChip key={task.id} task={task} workspaceSlug={workspaceSlug} />
+          <DraggableTaskChip
+            key={task.id}
+            task={task}
+            workspaceSlug={workspaceSlug}
+            canDrag={canDrag}
+          />
         ))}
         <DayOverflow tasks={overflowTasks} workspaceSlug={workspaceSlug} />
       </div>
+    </div>
+  );
+}
+
+function DraggableTaskChip({
+  task,
+  workspaceSlug,
+  canDrag,
+}: {
+  task: CalendarTask;
+  workspaceSlug: string;
+  canDrag: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({ id: task.id, disabled: !canDrag });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TaskChip task={task} workspaceSlug={workspaceSlug} />
     </div>
   );
 }
