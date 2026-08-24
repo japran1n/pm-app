@@ -88,6 +88,14 @@ describe.skipIf(!haveAdminCreds)("F239 getTimelineDependencyEdges (AS-455)", () 
   let crossProjectBlockedId: string;
   let visibleTaskId: string;
   let privateTaskId: string;
+  // RLS-level fixture (the orchestrator-flagged gap): the SIGNED-IN
+  // member CAN see `rlsVisibleBlockingId` (blocking side) but CANNOT
+  // see `rlsPrivateBlockedId` (blocked side, in the private project)
+  // -- the exact shape task_dependencies_select_active_members/
+  // _delete_active_members's old one-sided check let through.
+  let rlsVisibleBlockingId: string;
+  let rlsPrivateBlockedId: string;
+  let rlsDependencyId: string;
 
   async function signInAs(email: string, password: string) {
     const rawClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
@@ -239,6 +247,24 @@ describe.skipIf(!haveAdminCreds)("F239 getTimelineDependencyEdges (AS-455)", () 
     ]);
     if (depErr) throw new Error(`Failed to seed dependencies: ${depErr.message}`);
 
+    // RLS-level fixture: blocking side visible to the member, blocked
+    // side in the private project the member is NOT in.
+    rlsVisibleBlockingId = await seedTask(visibleProjectAId, "F239 RLS-visible blocking task", 5, memberUserId);
+    rlsPrivateBlockedId = await seedTask(privateProjectId, "F239 RLS-private blocked task", 2, otherMemberUserId);
+    const { data: rlsDepRow, error: rlsDepErr } = await adminClient
+      .from("task_dependencies")
+      .insert({
+        blocking_task_id: rlsVisibleBlockingId,
+        blocked_task_id: rlsPrivateBlockedId,
+        created_by: otherMemberUserId,
+      })
+      .select("id")
+      .single();
+    if (rlsDepErr || !rlsDepRow) {
+      throw new Error(`Failed to seed RLS fixture dependency: ${rlsDepErr?.message}`);
+    }
+    rlsDependencyId = rlsDepRow.id;
+
     await signInAs(memberEmail, memberPassword);
   });
 
@@ -317,5 +343,51 @@ describe.skipIf(!haveAdminCreds)("F239 getTimelineDependencyEdges (AS-455)", () 
     const edges = await getTimelineDependencyEdges([]);
     expect(edges).toEqual([]);
     expect(fromCallCount).toBe(0);
+  });
+
+  // Orchestrator-directed follow-up (same family as F322/F323): proves
+  // the RLS policy fix itself
+  // (supabase/migrations/20260828020000_task_dependencies_two_sided_visibility.sql),
+  // not just F239's own app-level `.in()` constraint in
+  // getTimelineDependencyEdges. Queries task_dependencies DIRECTLY
+  // through the real signed-in session client (no app-layer helper in
+  // between) so a regression in the RLS policy itself, not just in this
+  // feature's own query wrapper, would be caught here.
+  it("test_AS_455_rls_a_caller_who_can_see_the_blocking_task_but_not_the_blocked_task_cannot_select_the_row", async () => {
+    const { data, error } = await currentTestClient
+      .from("task_dependencies")
+      .select("id, blocking_task_id, blocked_task_id")
+      .eq("id", rlsDependencyId);
+
+    // RLS filters the row out silently (no error, zero rows) -- the
+    // same "denial looks like absence" shape every other RLS policy in
+    // this codebase uses, never a distinguishable 403.
+    expect(error).toBeNull();
+    expect(data ?? []).toHaveLength(0);
+  });
+
+  it("test_AS_455_rls_the_same_caller_cannot_delete_that_row_and_it_still_exists_afterward", async () => {
+    const { error } = await currentTestClient
+      .from("task_dependencies")
+      .delete()
+      .eq("id", rlsDependencyId);
+
+    // RLS's DELETE `using` clause matches zero rows for this caller --
+    // the client-side call itself doesn't error (same "0 rows affected,
+    // not a 403" RLS shape as the SELECT test above); the real proof is
+    // that the row is untouched afterward.
+    expect(error).toBeNull();
+
+    const { data: stillThere, error: adminReadError } = await adminClient
+      .from("task_dependencies")
+      .select("id, blocking_task_id, blocked_task_id")
+      .eq("id", rlsDependencyId)
+      .maybeSingle();
+
+    expect(adminReadError).toBeNull();
+    expect(stillThere).not.toBeNull();
+    expect(stillThere?.id).toBe(rlsDependencyId);
+    expect(stillThere?.blocking_task_id).toBe(rlsVisibleBlockingId);
+    expect(stillThere?.blocked_task_id).toBe(rlsPrivateBlockedId);
   });
 });
