@@ -15,7 +15,7 @@
 // state, the board toolbar (visible once tasks already exist), and the
 // list view toolbar.
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -58,6 +58,14 @@ import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 // F161 (AS-287, AS-288): stacked avatar group for the trigger once more
 // than one assignee is selected.
 import { UserAvatarGroup } from "@/components/user-avatar-group";
+// F244 (AS-467, AS-471): react to the global `n` shortcut for THIS
+// project, and register this dialog as a closeable Escape layer while
+// open.
+import {
+  SHORTCUT_EVENTS,
+  useEscapeLayer,
+  type NewTaskShortcutDetail,
+} from "@/lib/hooks/use-shortcut";
 
 export type NewTaskDialogAssigneeOption = {
   id: string;
@@ -153,6 +161,30 @@ export function NewTaskDialog({
       resetForm();
     }
   }
+
+  // F244 (AS-471): register as the topmost Escape layer for as long as
+  // this dialog is open — Escape closes THIS dialog (and only this one,
+  // even if something else is also registered) rather than every open
+  // layer at once. Reuses `handleOpenChange` (not a raw `setOpen`) so
+  // Escape resets the form exactly like any other close path.
+  useEscapeLayer(open, () => handleOpenChange(false));
+
+  // F244 (AS-467): `n`, fired from anywhere under this project's board/
+  // list route, opens THIS project's new-task dialog — matched by
+  // `projectId` so a shortcut fired while looking at project A never pops
+  // open project B's (unmounted, off-screen) dialog.
+  useEffect(() => {
+    function onShortcutNewTask(event: Event) {
+      const detail = (event as CustomEvent<NewTaskShortcutDetail>).detail;
+      if (!detail || detail.projectId !== projectId) return;
+      if (!canCreate) return;
+      setOpen(true);
+    }
+
+    window.addEventListener(SHORTCUT_EVENTS.newTask, onShortcutNewTask);
+    return () =>
+      window.removeEventListener(SHORTCUT_EVENTS.newTask, onShortcutNewTask);
+  }, [projectId, canCreate]);
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();

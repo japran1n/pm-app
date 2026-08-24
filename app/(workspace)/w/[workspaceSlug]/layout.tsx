@@ -17,6 +17,11 @@ import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 // persistent workspace chrome, so a single global Cmd+K/Ctrl+K listener
 // owns the shortcut rather than one instance fighting another per page.
 import { CommandPalette } from "@/components/command/command-palette";
+// F244 (AS-467, AS-468, AS-470, AS-471): the global single-key shortcut
+// listener (n, /, Escape) — mounted alongside CommandPalette, see that
+// component's own file-header comment for why these stay as two separate
+// `document` keydown listeners rather than one merged listener.
+import { ShortcutProvider } from "@/components/command/shortcut-provider";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -292,6 +297,7 @@ export default async function WorkspaceLayout({
         workspaceId={activeWorkspace.id}
         workspaceSlug={workspaceSlug}
       />
+      <ShortcutProvider />
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}

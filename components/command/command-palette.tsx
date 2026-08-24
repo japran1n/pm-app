@@ -25,6 +25,7 @@ import type {
 import { PALETTE_ACTIONS } from "@/components/command/actions";
 import { useRecentItems } from "@/lib/hooks/use-recent-items";
 import { useMembership } from "@/components/auth/membership-provider";
+import { SHORTCUT_EVENTS } from "@/lib/hooks/use-shortcut";
 
 // F241 (AS-459, AS-463, AS-464): the global command palette shell —
 // mounted ONCE in the workspace layout so a single Cmd+K/Ctrl+K listener
@@ -134,6 +135,22 @@ export function CommandPalette({
 
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // F244 (AS-468): "/" opens/focuses this palette — dispatched by
+  // components/command/shortcut-provider.tsx's SEPARATE bare-single-key
+  // listener, not a second Cmd+K-style keydown handler in this file (see
+  // that file's header comment for why the two listeners stay separate).
+  // `CommandInput` already autofocuses on open, so reacting to this event
+  // by opening satisfies "focuses search" without any extra state here.
+  React.useEffect(() => {
+    function onOpenSearch() {
+      setOpen(true);
+    }
+
+    window.addEventListener(SHORTCUT_EVENTS.openSearch, onOpenSearch);
+    return () =>
+      window.removeEventListener(SHORTCUT_EVENTS.openSearch, onOpenSearch);
   }, []);
 
   // Reset state whenever the dialog closes (driven from the `onOpenChange`
