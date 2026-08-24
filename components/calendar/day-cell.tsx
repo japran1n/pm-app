@@ -1,11 +1,22 @@
-// F232 (AS-442, AS-450): one day cell in the month grid -- the day
-// number plus the compact task chips due on it. Pure presentation, no
-// hooks/state, so it stays a Server Component (composed by
-// components/calendar/month-grid.tsx) per the clarified "Server Component
-// for data loading, Client Component only for interaction" pattern --
-// clicking a chip (AS-444) and dragging a chip (AS-445) are F233/F234's
-// own client-boundary work, deliberately left as clean seams here (a
-// plain `<Link>` for the click-through today; no drag handlers).
+// F232 (AS-442, AS-450) + F233 (AS-444, AS-447): one day cell in the month
+// grid -- the day number, the compact task chips due on it (each a real
+// click-through to the board's `?taskId=` deep link -- see TaskChip below,
+// the exact same route/param board.tsx's own click-to-open effect already
+// listens on, so AS-444 is proven against the real getTaskDetail path, not
+// a second sheet built here), and, once a cell has more tasks than fit, an
+// overflow control (day-overflow.tsx) revealing the rest. Pure
+// presentation, no hooks/state of its own, so it stays a Server Component
+// (composed by components/calendar/month-grid.tsx) per the clarified
+// "Server Component for data loading, Client Component only for
+// interaction" pattern -- DayOverflow is the one small "use client"
+// island this file renders, kept as small as possible (F234's
+// drag-reschedule remains a clean seam around the day-cell mapping in
+// month-grid.tsx, unaffected by this).
+//
+// AS-447's cap: a day cell shows at most DAY_CELL_VISIBLE_TASKS chips
+// inline; anything beyond that renders behind the "+N more" popover
+// instead of growing the cell's height (which would break the month
+// grid's fixed-row layout other days rely on).
 
 import Link from "next/link";
 
@@ -14,7 +25,10 @@ import type { CalendarTask } from "@/lib/queries/calendar";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import { PRIORITY_COLORS } from "@/lib/task-colors";
 import { UserAvatarGroup } from "@/components/user-avatar-group";
+import { DayOverflow } from "@/components/calendar/day-overflow";
 import { cn } from "@/lib/utils";
+
+const DAY_CELL_VISIBLE_TASKS = 3;
 
 export function DayCell({
   day,
@@ -26,6 +40,8 @@ export function DayCell({
   workspaceSlug: string;
 }) {
   const dayNumber = Number(day.date.slice(-2));
+  const visibleTasks = tasks.slice(0, DAY_CELL_VISIBLE_TASKS);
+  const overflowTasks = tasks.slice(DAY_CELL_VISIBLE_TASKS);
 
   return (
     <div
@@ -44,9 +60,10 @@ export function DayCell({
         {dayNumber}
       </span>
       <div className="flex flex-col gap-1 overflow-hidden">
-        {tasks.map((task) => (
+        {visibleTasks.map((task) => (
           <TaskChip key={task.id} task={task} workspaceSlug={workspaceSlug} />
         ))}
+        <DayOverflow tasks={overflowTasks} workspaceSlug={workspaceSlug} />
       </div>
     </div>
   );

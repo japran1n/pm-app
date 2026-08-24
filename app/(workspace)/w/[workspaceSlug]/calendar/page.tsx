@@ -18,7 +18,11 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
-import { getCalendarTasks, type CalendarTask } from "@/lib/queries/calendar";
+import {
+  getCalendarTasks,
+  getUndatedTaskCount,
+  type CalendarTask,
+} from "@/lib/queries/calendar";
 import {
   buildCalendarMonth,
   currentMonthKey,
@@ -75,6 +79,14 @@ export default async function CalendarPage({
 
   const tasks = await getCalendarTasks(workspace.id, start, end);
 
+  // F233 (AS-446): tasks with no due date are excluded from the grid by
+  // construction (getCalendarTasks's own `.not("due_date", "is", null)`
+  // filter -- there is no chip anywhere for one) -- this count is what
+  // explains that absence to the viewer instead of it just silently
+  // dropping tasks. Workspace-wide, same visibility rules as the grid
+  // itself (see getUndatedTaskCount's own doc comment).
+  const undatedCount = await getUndatedTaskCount(workspace.id);
+
   const tasksByDate = new Map<string, CalendarTask[]>();
   for (const task of tasks) {
     const list = tasksByDate.get(task.dueDate) ?? [];
@@ -108,18 +120,44 @@ export default async function CalendarPage({
         <p className="text-center text-sm text-muted-foreground">
           No tasks are due this month.
         </p>
+        <UndatedTaskFooter count={undatedCount} />
       </div>
     );
   }
 
   return (
-    <MonthGrid
-      grid={grid}
-      tasksByDate={tasksByDate}
-      workspaceSlug={workspaceSlug}
-      prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
-      nextHref={hrefFor(toMonthKey(next.year, next.month))}
-      todayHref={hrefFor(toMonthKey(today.year, today.month))}
-    />
+    <div className="flex flex-col gap-3">
+      <MonthGrid
+        grid={grid}
+        tasksByDate={tasksByDate}
+        workspaceSlug={workspaceSlug}
+        prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
+        nextHref={hrefFor(toMonthKey(next.year, next.month))}
+        todayHref={hrefFor(toMonthKey(today.year, today.month))}
+      />
+      <UndatedTaskFooter count={undatedCount} />
+    </div>
+  );
+}
+
+// F233 (AS-446): the explanation for why some tasks never appear on this
+// page at all -- a task with no due date has nothing to place in a day
+// cell, and would otherwise just silently vanish with no indication it
+// exists. Zero-count renders nothing (a no-op "0 tasks" footer would be
+// noise, same "no-op input, no unnecessary UI" convention this feature's
+// clarified empty/zero-state answer describes for its mutations).
+function UndatedTaskFooter({ count }: { count: number }) {
+  if (count === 0) {
+    return null;
+  }
+
+  return (
+    <p
+      className="text-center text-xs text-muted-foreground"
+      data-testid="calendar-undated-task-count"
+    >
+      {count} task{count === 1 ? "" : "s"} {count === 1 ? "has" : "have"} no due
+      date and {count === 1 ? "isn't" : "aren't"} shown on the calendar.
+    </p>
   );
 }

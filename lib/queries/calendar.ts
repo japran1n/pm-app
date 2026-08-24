@@ -186,3 +186,45 @@ export async function getCalendarTasks(
 
   return rows.map((row) => toCalendarTask(row, assigneesByUserId));
 }
+
+// F233 (AS-446): tasks with a NULL due_date are excluded from the calendar
+// grid by construction (getCalendarTasks's `.not("due_date", "is", null)`
+// filter above), never shown as a chip anywhere -- but that absence needs
+// an explanation on the page itself rather than silently vanishing. This
+// is the count that explanation reads, computed with the exact same
+// visibility/soft-delete/optional-project-narrowing shape as
+// getCalendarTasks (same RLS-scoped session client -- never
+// `createAdminClient()` -- so a private-project task the caller can't see
+// is never counted, matching F322/F323's fix for the same query class).
+//
+// Performance: one `count: "exact", head: true` round trip -- no rows are
+// fetched, matching the "one statement, never a per-row loop" budget.
+export async function getUndatedTaskCount(
+  workspaceId: string,
+  projectId?: string,
+): Promise<number> {
+  const supabase = await createClient();
+
+  let query = supabase
+    .from("tasks")
+    .select("id, projects!inner(workspace_id, deleted_at)", {
+      count: "exact",
+      head: true,
+    })
+    .eq("projects.workspace_id", workspaceId)
+    .is("projects.deleted_at", null)
+    .is("deleted_at", null)
+    .is("due_date", null);
+
+  if (projectId) {
+    query = query.eq("project_id", projectId);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return count ?? 0;
+}
