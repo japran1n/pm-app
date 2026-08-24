@@ -32,6 +32,8 @@
 // same RLS-scoped lookup pattern as the project detail layout above this
 // route.
 
+import { redirect } from "next/navigation";
+
 import { createClient } from "@/lib/supabase/server";
 import {
   getProjectListTasks,
@@ -49,6 +51,17 @@ import { NewTaskDialog } from "@/components/task/new-task-dialog";
 import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
 import type { UserAvatarPerson } from "@/components/user-avatar";
+// F229 (AS-429, AS-431, AS-432, AS-433): saved views for this project's
+// List view — server-fetched (RLS-scoped, per this feature's data-shape
+// answer) and passed down to the Client Component picker; `getSavedView`
+// resolves an opened `?viewId=` link, and `resolveListViewFilters`
+// degrades any dangling status/assignee reference in that view's config
+// rather than erroring.
+import { listSavedViewsForProject, getMyDefaultSavedView } from "@/lib/queries/views";
+import { getSavedView } from "@/lib/actions/views";
+import { resolveListViewFilters } from "@/lib/views/resolve-view";
+import { ViewSwitcher } from "@/components/views/view-switcher";
+import { SaveViewDialog } from "@/components/views/save-view-dialog";
 
 const VALID_PRIORITIES = new Set([
   "urgent",
@@ -69,10 +82,12 @@ export default async function ProjectListPage({
     priority?: string;
     assigneeId?: string;
     sort?: string;
+    viewId?: string;
   }>;
 }) {
   const { workspaceSlug, projectId } = await params;
   const query = await searchParams;
+  const basePath = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
   // F223 (AS-411): the project's real board columns, fetched up front so
   // both the filter's validation (below) and <ListFilters>/<TaskListTable>
@@ -93,24 +108,95 @@ export default async function ProjectListPage({
     color: column.color,
   }));
 
-  const filters: ProjectListTaskFilters = {};
-  if (query.status && validStatusNames.has(query.status)) {
-    filters.status = query.status as ProjectListTaskFilters["status"];
+  // RLS-scoped lookup (workspaces_select_active_members) — same fallback
+  // pattern as the project detail layout: reaching this route already
+  // means the caller is an active member, this just resolves the id.
+  const supabase = await createClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+  const workspaceMembers = workspace
+    ? await getWorkspaceMembers(workspace.id)
+    : { active: [], pending: [] };
+  // F229 (AS-433 dangling-member class): the set of assignee ids a
+  // saved view's `assigneeId` filter is validated against — the same
+  // "currently active workspace member" set the page already resolves
+  // for its own assignee filter/creation pickers below, so a member
+  // removed since the view was saved is dropped rather than silently
+  // producing zero rows.
+  const validAssigneeIds = new Set(workspaceMembers.active.map((m) => m.userId));
+
+  // F229 (AS-431): with NEITHER a view opened NOR any filter/sort param
+  // present at all, redirect to the caller's own default view for this
+  // project (if one exists) so "opening the project" auto-applies it —
+  // server-side, before any tasks are fetched. Guarded by "no params at
+  // all" (not just "no viewId") so a link to a specific, unfiltered state
+  // (e.g. a bookmarked plain `?sort=due_date_asc`) is never silently
+  // overridden by the default, and so this can never redirect-loop (the
+  // redirect target always carries `viewId`, which short-circuits this
+  // branch on the next render).
+  const hasAnyViewOrFilterParam = Boolean(
+    query.viewId || query.status || query.priority || query.assigneeId || query.sort,
+  );
+  if (!hasAnyViewOrFilterParam) {
+    const defaultView = await getMyDefaultSavedView(projectId, "list");
+    if (defaultView) {
+      redirect(`${basePath}?viewId=${defaultView.id}`);
+    }
   }
-  if (query.priority && VALID_PRIORITIES.has(query.priority)) {
-    filters.priority = query.priority as ProjectListTaskFilters["priority"];
+
+  // F229 (AS-432, AS-433): a `?viewId=` param is this view's shareable
+  // URL. `getSavedView` re-runs the exact RLS-scoped read `saved_views`'
+  // own SELECT policy enforces (F227) — a view the caller cannot see
+  // (someone else's personal view, or a shared view on a project they
+  // cannot see) resolves to `ok: false` here, which this page treats
+  // exactly like "no viewId at all" rather than an error page or a
+  // "you're not allowed" message that would confirm the view exists,
+  // matching this codebase's "refuse without confirming existence"
+  // convention for a resource the caller has no rights to.
+  let appliedViewId: string | undefined;
+  let droppedFilterCount = 0;
+  let viewFilters: ProjectListTaskFilters | undefined;
+  let viewSort: ProjectListTaskSort | undefined;
+
+  if (query.viewId) {
+    const viewResult = await getSavedView(query.viewId);
+    if (viewResult.ok && viewResult.data.projectId === projectId) {
+      appliedViewId = viewResult.data.id;
+      const resolved = resolveListViewFilters(viewResult.data.config, {
+        validStatusNames,
+        validAssigneeIds,
+      });
+      viewFilters = resolved.filters;
+      viewSort = resolved.sort;
+      droppedFilterCount = resolved.droppedCount;
+    }
   }
-  if (query.assigneeId) {
-    filters.assigneeId = query.assigneeId;
+
+  const filters: ProjectListTaskFilters = viewFilters ?? {};
+  if (!viewFilters) {
+    if (query.status && validStatusNames.has(query.status)) {
+      filters.status = query.status as ProjectListTaskFilters["status"];
+    }
+    if (query.priority && VALID_PRIORITIES.has(query.priority)) {
+      filters.priority = query.priority as ProjectListTaskFilters["priority"];
+    }
+    if (query.assigneeId) {
+      filters.assigneeId = query.assigneeId;
+    }
   }
 
   // F055 (AS-091): sort is applied on top of the (already-filtered) query
   // — an invalid/unrecognized `sort` param degrades to the default
   // created_at-ascending order, same "tampered param = ignored" posture
   // as the F054 filter validation just above.
-  const sort = query.sort && VALID_SORTS.has(query.sort)
-    ? (query.sort as ProjectListTaskSort)
-    : undefined;
+  const sort = viewFilters
+    ? viewSort
+    : query.sort && VALID_SORTS.has(query.sort)
+      ? (query.sort as ProjectListTaskSort)
+      : undefined;
 
   // F056 (AS-092): whether any filter is active, used to pick between the
   // "no tasks match your filters" empty state and the plain "no tasks yet"
@@ -123,31 +209,20 @@ export default async function ProjectListPage({
   );
   const clearFiltersHref = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
-  // RLS-scoped lookup (workspaces_select_active_members) — same fallback
-  // pattern as the project detail layout: reaching this route already
-  // means the caller is an active member, this just resolves the id.
-  const supabase = await createClient();
-
   // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
   // (lib/queries/profile.ts's getCurrentUserTimezone) and threaded down to
-  // <TaskListTable> as a prop — never re-queried per row. Run alongside
-  // the other independent fetches below rather than sequentially awaited.
-  const [tasks, workspaceResult, timezone] = await Promise.all([
+  // <TaskListTable> as a prop — never re-queried per row. F229: the
+  // project's saved views (listSavedViewsForProject) join the same
+  // independent-fetches batch — RLS-scoped, so this never returns a view
+  // the caller shouldn't see (AS-429/AS-434).
+  const [tasks, timezone, templates, savedViews] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
-    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
     getCurrentUserTimezone(supabase),
+    // F183 (AS-330 UI half): same fetch-and-pass-down pattern as the board
+    // page's own templates prop.
+    workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
+    listSavedViewsForProject(projectId, "list"),
   ]);
-  const { data: workspace } = workspaceResult;
-
-  const workspaceMembers = workspace
-    ? await getWorkspaceMembers(workspace.id)
-    : { active: [], pending: [] };
-
-  // F183 (AS-330 UI half): same fetch-and-pass-down pattern as the board
-  // page's own templates prop.
-  const templates = workspace
-    ? await getWorkspaceTaskTemplateOptions(workspace.id)
-    : [];
 
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
@@ -187,12 +262,27 @@ export default async function ProjectListPage({
           bookmarked/shared filtered URL), so it needs its own "New Task"
           entry point rather than relying on the Board view's. */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <ListFilters assigneeOptions={assigneeOptions} statusOptions={statusOptions} />
+        <div className="flex flex-wrap items-center gap-2">
+          <ViewSwitcher views={savedViews} activeViewId={appliedViewId} />
+          {workspace && (
+            <SaveViewDialog workspaceId={workspace.id} projectId={projectId} />
+          )}
+          <ListFilters assigneeOptions={assigneeOptions} statusOptions={statusOptions} />
+        </div>
         <div className="flex items-center gap-2">
           <NewFromTemplateButton projectId={projectId} templates={templates} />
           <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
         </div>
       </div>
+      {/* AS-433: non-blocking notice — the view's tasks still render below
+          even when some of its filters no longer apply. */}
+      {appliedViewId && droppedFilterCount > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {droppedFilterCount === 1
+            ? "1 filter from this view no longer applies and was skipped."
+            : `${droppedFilterCount} filters from this view no longer apply and were skipped.`}
+        </p>
+      )}
       <TaskListTable
         tasks={tasks}
         assignees={assignees}
