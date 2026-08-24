@@ -191,7 +191,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F218 db-schema-project-statuses — AS-403, AS-407, AS-408 [CLARIFIED-AUTO] [COMPLETE]
 - F219 status-management-ui — AS-404, AS-405, AS-414, AS-415 [CLARIFIED-AUTO] [COMPLETE]
 - F220 status-delete-reassign — AS-406 [CLARIFIED-AUTO] [COMPLETE]
-- F221 board-custom-columns — AS-409, AS-413, AS-416 [CLARIFIED-AUTO]
+- F221 board-custom-columns — AS-409, AS-413, AS-416 [CLARIFIED-AUTO] [COMPLETE]
 - F222 status-category-semantics — AS-410 [CLARIFIED-AUTO]
 - F223 status-integration-list-search-dashboard — AS-411, AS-412, AS-417 [CLARIFIED-AUTO]
 - F224 board-grouping-swimlanes — AS-418, AS-419, AS-421, AS-423 [CLARIFIED-AUTO]
