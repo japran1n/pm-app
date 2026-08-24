@@ -13,6 +13,10 @@ import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
 // layout, passed down as props" convention every other sidebar-fed value
 // on this page already follows (currentUser, workspaces, isGuest).
 import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
+// F241 (AS-459, AS-463, AS-464): mounted once here, alongside the other
+// persistent workspace chrome, so a single global Cmd+K/Ctrl+K listener
+// owns the shortcut rather than one instance fighting another per page.
+import { CommandPalette } from "@/components/command/command-palette";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -284,6 +288,7 @@ export default async function WorkspaceLayout({
   // instead.
   return (
     <MembershipProvider role={activeWorkspaceRole} projectRoles={projectRoles}>
+      <CommandPalette />
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}
