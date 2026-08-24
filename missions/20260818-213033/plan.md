@@ -205,7 +205,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F232 calendar-month-grid — AS-442, AS-443, AS-450 [CLARIFIED-AUTO] [COMPLETE]
 - F233 calendar-task-interactions — AS-444, AS-446, AS-447 [CLARIFIED-AUTO] [COMPLETE]
 - F234 calendar-drag-reschedule — AS-445 [CLARIFIED-AUTO] [COMPLETE]
-- F235 calendar-filters-responsive — AS-448, AS-449 [CLARIFIED-AUTO]
+- F235 calendar-filters-responsive — AS-448, AS-449 [CLARIFIED-AUTO] [COMPLETE]
 - F236 db-task-start-date — AS-453 [CLARIFIED-AUTO]
 - F237 timeline-scale-bars — AS-451, AS-452, AS-457, AS-458 [CLARIFIED-AUTO]
 - F238 timeline-drag-resize — AS-454 [CLARIFIED-AUTO]
