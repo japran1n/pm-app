@@ -16,6 +16,8 @@ import {
   LayoutTemplate,
   Trash2,
   ListChecks,
+  CalendarDays,
+  GanttChartSquare,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -75,6 +77,15 @@ function navItems(
     // visible to everyone (including guests), same as Dashboard/Projects.
     { href: `/w/${workspaceSlug}/my-tasks`, label: "My Tasks", icon: ListChecks },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
+    // F241: "Calendar" and "Timeline" nav items -- both pages are
+    // workspace-wide, RLS-scoped-query views with no guest gate of their
+    // own (see their own page.tsx doc comments -- they mirror My Tasks'
+    // structure, not Members/Archive/Templates/Trash's guest-redirect
+    // pattern), so they're visible to everyone including guests, same as
+    // My Tasks/Projects/Search above. Placed after Projects/before Search
+    // as other workspace-wide, non-project-scoped views.
+    { href: `/w/${workspaceSlug}/calendar`, label: "Calendar", icon: CalendarDays },
+    { href: `/w/${workspaceSlug}/timeline`, label: "Timeline", icon: GanttChartSquare },
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
