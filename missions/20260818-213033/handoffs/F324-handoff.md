@@ -1,4 +1,4 @@
-# Handoff: F241 — make the M16 Calendar and Timeline views reachable from the sidebar
+# Handoff: F324 — make the M16 Calendar and Timeline views reachable from the sidebar
 
 ## Status
 COMPLETE
@@ -23,7 +23,7 @@ tests/unit/app-sidebar-calendar-timeline-nav.test.tsx
 - **Icons**: `CalendarDays` for Calendar and `GanttChartSquare` for Timeline, both already available in the `lucide-react` version already in use (verified via `node -e "require('lucide-react')"` — both exports exist), consistent in visual weight with the existing outlined-icon set (`LayoutDashboard`, `KanbanSquare`, `Search`, `Clock`, etc.).
 
 ## Out-of-scope work needed
-None identified beyond what F241's own scope covers. Did not touch the calendar/timeline pages, their queries, or components, per the spec's scope discipline instruction.
+None identified beyond what F324's own scope covers. Did not touch the calendar/timeline pages, their queries, or components, per the spec's scope discipline instruction.
 
 ## Blockers
 (none — Status is COMPLETE)

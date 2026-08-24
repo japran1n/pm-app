@@ -211,7 +211,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F238 timeline-drag-resize — AS-454 [CLARIFIED-AUTO] [COMPLETE]
 - F239 timeline-dependency-connectors — AS-455 [CLARIFIED-AUTO] [COMPLETE]
 - F240 timeline-zoom — AS-456 [CLARIFIED-AUTO] [COMPLETE]
-- F241 sidebar-nav-for-calendar-and-timeline — (no assertion; orchestrator-created M16 gap fix) [CLARIFIED-AUTO] [COMPLETE]
+- F324 sidebar-nav-for-calendar-and-timeline — (no assertion; orchestrator-created M16 gap fix) [CLARIFIED-AUTO] [COMPLETE]
 
 ## M17 — UX polish, attachments & navigation
 
