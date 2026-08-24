@@ -49,6 +49,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { isDoneStatus } from "@/lib/tasks/status-category";
 import { resolveAssignees } from "@/lib/queries/assignee-names";
+// F235 (AS-448): reuses the exact same "resolve an assignee filter to the
+// set of matching task ids" helper getWorkspaceListTasks
+// (lib/queries/tasks.ts) already uses for the dashboard's own
+// workspace-wide assignee filter -- same RLS-scoped `task_assignees`
+// read, same dedup rule, no second implementation.
+import { filterTaskIdsByAnyAssignee } from "@/lib/queries/tasks";
 import type { DateOnly } from "@/lib/time/user-timezone";
 
 export type CalendarAssignee = {
@@ -128,19 +134,50 @@ function toCalendarTask(
   };
 }
 
+// F235 (AS-448): the calendar's own filter set -- reuses exactly the
+// shape `<ListFilters>`/`WorkspaceListTaskFilters` already established
+// (status/priority/assigneeId), plus `projectId`, the seam this query
+// already carried from F232. Every field is optional/AND-combined, same
+// "no filter = param absent" contract the List view's URL encoding uses.
+//
+// `status` (AS-448 cross-project note): the calendar spans projects with
+// DIFFERENT `project_statuses` column sets (F218-F223) -- there is no
+// fixed four-value status a cross-project filter could assume. This
+// follows the SAME precedent F223 already established for the OTHER
+// workspace-wide surface that has this exact problem
+// (getWorkspaceListTasks, lib/queries/tasks.ts, and the dashboard status
+// chart's `get_status_counts` RPC): filter on the column's real NAME,
+// matched with a plain `.eq("status", name)` against `tasks.status`
+// (kept byte-for-byte in sync with `project_statuses.name` by
+// `sync_task_status_and_status_id`, see
+// supabase/migrations/20260824010000_project_statuses.sql) -- so "Done"
+// on one project's board and "Completed" on another's are two distinct
+// filter values, never silently merged by CATEGORY the way the
+// completedness/isDone computation is. A worker choosing to filter by
+// "done-ness" instead picks a specific project's own "Done"-category
+// column name, exactly as the dashboard chart's per-workspace status
+// list already requires.
+export type CalendarTaskFilters = {
+  projectId?: string;
+  /** A real `project_statuses.name` value -- see the cross-project note
+   * above for why this is a name, not a category. */
+  status?: string;
+  priority?: string;
+  assigneeId?: string;
+};
+
 /**
  * Every task due inside [rangeStart, rangeEnd] (both "YYYY-MM-DD",
- * inclusive) that the caller can see in `workspaceId` -- the real query
- * path AS-442/AS-450 are proven against (see this feature's handoff for
- * the exact integration test names).
+ * inclusive) that the caller can see in `workspaceId`, narrowed by
+ * `filters` (F235, AS-448) -- the real query path AS-442/AS-450/AS-448
+ * are proven against (see this feature's handoff for the exact
+ * integration test names).
  */
 export async function getCalendarTasks(
   workspaceId: string,
   rangeStart: DateOnly,
   rangeEnd: DateOnly,
-  // Optional narrowing seam for F235 (AS-448) -- unused by this
-  // feature's own page.
-  projectId?: string,
+  filters?: CalendarTaskFilters,
 ): Promise<CalendarTask[]> {
   const supabase = await createClient();
 
@@ -154,8 +191,27 @@ export async function getCalendarTasks(
     .gte("due_date", rangeStart)
     .lte("due_date", rangeEnd);
 
-  if (projectId) {
-    query = query.eq("project_id", projectId);
+  if (filters?.projectId) {
+    query = query.eq("project_id", filters.projectId);
+  }
+  if (filters?.status) {
+    query = query.eq("status", filters.status);
+  }
+  if (filters?.priority) {
+    query = query.eq("priority", filters.priority);
+  }
+
+  // F235 (AS-448): assignee narrows in the QUERY, not client-side --
+  // resolved to a set of matching task ids up front (one batched read),
+  // then folded into the same `tasks` query as an `.in("id", ...)`
+  // filter, exactly like getWorkspaceListTasks's identical assignee
+  // filter does for the dashboard's own workspace-wide task table.
+  const assigneeTaskIds = await filterTaskIdsByAnyAssignee(
+    supabase,
+    filters?.assigneeId,
+  );
+  if (assigneeTaskIds !== null) {
+    query = query.in("id", assigneeTaskIds);
   }
 
   const { data, error } = await query;
@@ -227,4 +283,58 @@ export async function getUndatedTaskCount(
   }
 
   return count ?? 0;
+}
+
+// F235 (AS-448): the status filter's dropdown options -- every DISTINCT
+// column NAME across every project in the workspace the caller can see
+// (RLS-scoped `project_statuses_select_visible`, same predicate as the
+// tasks themselves -- see supabase/migrations/20260824010000_
+// project_statuses.sql), deduplicated once here so a workspace with ten
+// projects that all kept the default four columns doesn't show forty
+// duplicate entries. Mirrors the exact "group on column NAME across
+// projects" precedent `getStatusCounts` (lib/queries/dashboard.ts, F223)
+// already established for the other workspace-wide surface with this
+// same "no single fixed column set" problem -- first-seen color/category
+// wins for a name that differs slightly between projects (matching a
+// dropdown's own "one representative option per name" requirement; the
+// REAL per-row category still comes from that row's own project_statuses
+// join in getCalendarTasks/toCalendarTask, never from this list).
+export type CalendarStatusOption = {
+  name: string;
+  color: string | null;
+  category: string | null;
+};
+
+export async function getWorkspaceStatusOptions(
+  workspaceId: string,
+): Promise<CalendarStatusOption[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("project_statuses")
+    .select("name, color, category, position, projects!inner(workspace_id, deleted_at)")
+    .eq("projects.workspace_id", workspaceId)
+    .is("projects.deleted_at", null)
+    .order("position", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const byName = new Map<string, CalendarStatusOption>();
+  for (const row of (data ?? []) as unknown as {
+    name: string;
+    color: string | null;
+    category: string | null;
+  }[]) {
+    if (!byName.has(row.name)) {
+      byName.set(row.name, {
+        name: row.name,
+        color: row.color,
+        category: row.category,
+      });
+    }
+  }
+
+  return Array.from(byName.values());
 }

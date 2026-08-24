@@ -21,6 +21,7 @@ import Link from "next/link";
 import type { CalendarMonth } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
 import { CalendarDayGrid } from "@/components/calendar/calendar-day-grid";
+import { AgendaList } from "@/components/calendar/agenda-list";
 import { Button } from "@/components/ui/button";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -89,18 +90,32 @@ export function MonthGrid({
           />
         </div>
       </div>
-      <div className="grid grid-cols-7 border-l border-t border-border/60 text-xs font-medium text-muted-foreground">
+      <div className="hidden grid-cols-7 border-l border-t border-border/60 text-xs font-medium text-muted-foreground md:grid">
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className="border-b border-r border-border/60 px-2 py-1">
             {label}
           </div>
         ))}
       </div>
-      <CalendarDayGrid
-        days={grid.days}
-        tasksByDate={tasksByDateObject}
-        workspaceSlug={workspaceSlug}
-      />
+      {/* F235 (AS-449): both trees render server-side; Tailwind's
+          `md:hidden`/`hidden md:block` (768px, the same breakpoint
+          components/nav/app-sidebar.tsx already uses for its own
+          "phone gets a different layout" case) picks exactly one per
+          viewport with no client-side viewport-detection branch. */}
+      <div className="md:hidden">
+        <AgendaList
+          days={grid.days}
+          tasksByDate={tasksByDateObject}
+          workspaceSlug={workspaceSlug}
+        />
+      </div>
+      <div className="hidden md:block">
+        <CalendarDayGrid
+          days={grid.days}
+          tasksByDate={tasksByDateObject}
+          workspaceSlug={workspaceSlug}
+        />
+      </div>
     </div>
   );
 }

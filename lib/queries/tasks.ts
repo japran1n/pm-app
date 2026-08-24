@@ -251,7 +251,12 @@ export type ProjectListTaskSort = "due_date_asc" | "due_date_desc";
 // id-list approach). Returns `null` when no `assigneeId` filter was given
 // (caller should skip the id-scoping entirely), or an array (possibly
 // empty, meaning "no task matches") otherwise.
-async function filterTaskIdsByAnyAssignee(
+// F235 (AS-448): exported so getCalendarTasks (lib/queries/calendar.ts)
+// can reuse the exact same "which task ids have this assignee" resolution
+// -- same RLS-scoped `task_assignees` read, same dedup rule -- instead of
+// a second hand-rolled assignee-filter implementation for the calendar's
+// own workspace-wide query.
+export async function filterTaskIdsByAnyAssignee(
   supabase: Awaited<ReturnType<typeof createClient>>,
   assigneeId: string | string[] | undefined,
 ): Promise<string[] | null> {

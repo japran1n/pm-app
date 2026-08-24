@@ -15,14 +15,30 @@
 // clarified "URL search params for anything shareable" answer -- so the
 // calendar is linkable/shareable and server-rendered, no client state at
 // all for this feature's own scope.
+//
+// F235 (AS-448, AS-449): status/priority/assignee/project filters, ALSO
+// URL-encoded ("?status=&priority=&assigneeId=&projectId="), narrowed in
+// the real getCalendarTasks query (never fetched-then-filtered
+// client-side -- see that function's own doc comment for the assignee/
+// status filter shapes), with a stale/tampered value dropped rather than
+// applied or errored (resolveCalendarFilters, lib/calendar/resolve-
+// filters.ts -- the same "validate against the real known set, drop
+// silently" posture the project List page's own direct-filter-param path
+// uses). `hrefFor` below carries the CURRENT filters through every month
+// navigation link, and `<CalendarFilters>`'s own Select writes never
+// touch `month` -- both directions of "filters persist across
+// navigation."
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import {
   getCalendarTasks,
   getUndatedTaskCount,
+  getWorkspaceStatusOptions,
   type CalendarTask,
 } from "@/lib/queries/calendar";
+import { getWorkspaceProjects } from "@/lib/queries/projects";
+import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   buildCalendarMonth,
   currentMonthKey,
@@ -32,17 +48,31 @@ import {
   previousMonthKey,
   toMonthKey,
 } from "@/lib/calendar/month-grid";
+import { resolveCalendarFilters } from "@/lib/calendar/resolve-filters";
 import { MonthGrid } from "@/components/calendar/month-grid";
+import { CalendarFilters } from "@/components/calendar/calendar-filters";
 
 export default async function CalendarPage({
   params,
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{
+    month?: string;
+    status?: string;
+    priority?: string;
+    assigneeId?: string;
+    projectId?: string;
+  }>;
 }) {
   const { workspaceSlug } = await params;
-  const { month: monthParam } = await searchParams;
+  const {
+    month: monthParam,
+    status: statusParam,
+    priority: priorityParam,
+    assigneeId: assigneeIdParam,
+    projectId: projectIdParam,
+  } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -77,14 +107,41 @@ export default async function CalendarPage({
   const grid = buildCalendarMonth(year, month, timezone);
   const { start, end } = monthDateRange(year, month);
 
-  const tasks = await getCalendarTasks(workspace.id, start, end);
+  // F235: the filter dropdowns' own real option sets -- also what a
+  // stale/tampered URL value is validated against below. All three reads
+  // are RLS-scoped (private projects/their columns never appear here for
+  // a caller who can't see them, same visibility posture as the grid
+  // query itself).
+  const [statusOptions, projects, workspaceMembers] = await Promise.all([
+    getWorkspaceStatusOptions(workspace.id),
+    getWorkspaceProjects(workspace.id),
+    getWorkspaceMembers(workspace.id),
+  ]);
+
+  const { filters } = resolveCalendarFilters(
+    {
+      status: statusParam,
+      priority: priorityParam,
+      assigneeId: assigneeIdParam,
+      projectId: projectIdParam,
+    },
+    {
+      validStatusNames: new Set(statusOptions.map((s) => s.name)),
+      validProjectIds: new Set(projects.map((p) => p.id)),
+    },
+  );
+
+  const tasks = await getCalendarTasks(workspace.id, start, end, filters);
 
   // F233 (AS-446): tasks with no due date are excluded from the grid by
   // construction (getCalendarTasks's own `.not("due_date", "is", null)`
   // filter -- there is no chip anywhere for one) -- this count is what
   // explains that absence to the viewer instead of it just silently
   // dropping tasks. Workspace-wide, same visibility rules as the grid
-  // itself (see getUndatedTaskCount's own doc comment).
+  // itself (see getUndatedTaskCount's own doc comment). Deliberately
+  // UNFILTERED by F235's own filters (out of this feature's own scope --
+  // see this feature's handoff "Out-of-scope work needed"): it explains
+  // an absence that has nothing to do with which filters are active.
   const undatedCount = await getUndatedTaskCount(workspace.id);
 
   const tasksByDate = new Map<string, CalendarTask[]>();
@@ -98,11 +155,42 @@ export default async function CalendarPage({
   const next = nextMonthKey(year, month);
   const today = currentMonthKey(timezone);
 
-  const hrefFor = (key: string) => `/w/${workspaceSlug}/calendar?month=${key}`;
+  // F235: every month-navigation link carries the CURRENT filters --
+  // changing month never resets an active filter.
+  const filterQuery = new URLSearchParams();
+  if (filters.status) filterQuery.set("status", filters.status);
+  if (filters.priority) filterQuery.set("priority", filters.priority);
+  if (filters.assigneeId) filterQuery.set("assigneeId", filters.assigneeId);
+  if (filters.projectId) filterQuery.set("projectId", filters.projectId);
+  const filterSuffix = filterQuery.toString() ? `&${filterQuery.toString()}` : "";
+
+  const hrefFor = (key: string) =>
+    `/w/${workspaceSlug}/calendar?month=${key}${filterSuffix}`;
+
+  const hasActiveFilters = Boolean(
+    filters.status || filters.priority || filters.assigneeId || filters.projectId,
+  );
+
+  const filtersBar = (
+    <CalendarFilters
+      statusOptions={statusOptions.map((s) => ({
+        value: s.name,
+        label: s.name,
+        color: s.color,
+      }))}
+      projectOptions={projects.map((p) => ({ value: p.id, label: p.name }))}
+      assigneeOptions={workspaceMembers.active.map((m) => ({
+        id: m.userId,
+        label: m.name ?? m.email ?? m.userId,
+        avatarUrl: m.avatarUrl,
+      }))}
+    />
+  );
 
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col gap-6">
+        {filtersBar}
         <MonthGrid
           grid={grid}
           tasksByDate={tasksByDate}
@@ -117,8 +205,13 @@ export default async function CalendarPage({
             to add here for this feature's own scope; the shared
             EmptyState pattern is a poor fit for "no tasks this month"
             since the grid itself is still the useful content. */}
-        <p className="text-center text-sm text-muted-foreground">
-          No tasks are due this month.
+        <p
+          className="text-center text-sm text-muted-foreground"
+          data-testid="calendar-empty-message"
+        >
+          {hasActiveFilters
+            ? "No tasks match your filters this month."
+            : "No tasks are due this month."}
         </p>
         <UndatedTaskFooter count={undatedCount} />
       </div>
@@ -127,6 +220,7 @@ export default async function CalendarPage({
 
   return (
     <div className="flex flex-col gap-3">
+      {filtersBar}
       <MonthGrid
         grid={grid}
         tasksByDate={tasksByDate}
