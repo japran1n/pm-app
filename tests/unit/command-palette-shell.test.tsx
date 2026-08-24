@@ -20,12 +20,22 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+// jsdom has no scrollIntoView; cmdk's CommandList calls it on its
+// currently-selected item (F243 adds an always-visible "Actions" group
+// for the empty-query state, so there is now always a selected item as
+// soon as the palette opens). Test-environment shim only, same class of
+// gap as the ResizeObserver shim above.
+if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
+  HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock("@/lib/actions/palette-search", () => ({
   searchPalette: vi.fn(async () => ({ projects: [], tasks: [], members: [] })),
+  resolveRecentItems: vi.fn(async () => ({ projects: [], tasks: [] })),
 }));
 
 import { CommandPalette } from "@/components/command/command-palette";

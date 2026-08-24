@@ -17,6 +17,13 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+// jsdom has no scrollIntoView; cmdk's CommandList calls it on its
+// currently-selected item (F243 adds an always-visible "Actions" group
+// for the empty-query state). Test-environment shim only.
+if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
+  HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 const push = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -27,6 +34,7 @@ const searchPalette = vi.fn();
 
 vi.mock("@/lib/actions/palette-search", () => ({
   searchPalette: (...args: unknown[]) => searchPalette(...args),
+  resolveRecentItems: vi.fn(async () => ({ projects: [], tasks: [] })),
 }));
 
 import { CommandPalette } from "@/components/command/command-palette";
@@ -143,11 +151,15 @@ describe("CommandPalette search results (F242)", () => {
   });
 
   it("test_AS_466_empty_query_shows_neutral_prompt_not_no_results", async () => {
+    // F243 (AS-462, AS-465): an empty query now shows quick actions
+    // (always at least "Toggle theme") instead of the old bare "Type to
+    // search..." text — updated here to match that intentional change.
+    // The assertion this test protects (AS-466: an empty query must never
+    // show the "no results" state, which is reserved for a query that
+    // resolved to zero results) still holds.
     const input = await openPalette();
 
-    expect(
-      screen.getByText("Type to search projects, tasks, and people."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Actions")).toBeInTheDocument();
     expect(screen.queryByText("No results found.")).not.toBeInTheDocument();
     expect(searchPalette).not.toHaveBeenCalled();
     void input;

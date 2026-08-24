@@ -65,10 +65,13 @@ import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   PALETTE_RESULT_CAP_PER_GROUP,
+  RECENT_ITEMS_CAP,
   type PaletteMemberResult,
   type PaletteProjectResult,
   type PaletteSearchResults,
   type PaletteTaskResult,
+  type RecentItemPointer,
+  type ResolvedRecentItems,
 } from "@/lib/palette/palette-search-types";
 
 export async function searchPalette(
@@ -155,4 +158,133 @@ export async function searchPalette(
     }));
 
   return { projects, tasks: cappedTasks, members: matchedMembers };
+}
+
+// F243 (AS-465): resolve a client-stored list of "recently visited"
+// project/task pointers (lib/hooks/use-recent-items.ts) against the
+// caller's CURRENT visibility, rather than trusting what localStorage
+// remembers. Same "dangling reference degrades gracefully" convention
+// lib/views/resolve-view.ts (F229) documents: a pointer naming a project
+// the caller has since lost access to (removed from the project, the
+// project made private, the project archived/trashed) is silently
+// DROPPED from the result — never surfaced as an error, and critically
+// never distinguished from "never existed" so the response can't be used
+// to probe for a resource's existence.
+//
+// Enforcement mechanism is identical to `searchPalette` above: every read
+// goes through the plain RLS-scoped session client (`createClient()`,
+// never `createAdminClient()`), so `projects_select_active_members` /
+// `tasks_select_active_members`'s `is_project_visible_to` predicate is
+// the actual visibility boundary — a pointer this query doesn't return a
+// row for is exactly a pointer this caller can no longer see, resolved
+// fresh on every call rather than cached.
+export async function resolveRecentItems(
+  workspaceId: string,
+  pointers: RecentItemPointer[],
+): Promise<ResolvedRecentItems> {
+  const empty: ResolvedRecentItems = { projects: [], tasks: [] };
+
+  if (pointers.length === 0) {
+    return empty;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return empty;
+  }
+
+  const admin = createAdminClient();
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return empty;
+  }
+
+  // Most-recently-visited first, deduplicated by (type, id), capped —
+  // mirrors PALETTE_RESULT_CAP_PER_GROUP's "no unbounded list" convention.
+  const seen = new Set<string>();
+  const projectIds: string[] = [];
+  const taskIds: string[] = [];
+
+  for (const pointer of [...pointers].sort((a, b) => b.visitedAt - a.visitedAt)) {
+    const key = `${pointer.type}:${pointer.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    if (pointer.type === "project" && projectIds.length < RECENT_ITEMS_CAP) {
+      projectIds.push(pointer.id);
+    } else if (pointer.type === "task" && taskIds.length < RECENT_ITEMS_CAP) {
+      taskIds.push(pointer.id);
+    }
+  }
+
+  const [projectsResult, tasksResult] = await Promise.all([
+    projectIds.length > 0
+      ? supabase
+          .from("projects")
+          .select("id, name, key")
+          .eq("workspace_id", workspaceId)
+          .is("deleted_at", null)
+          .in("id", projectIds)
+      : Promise.resolve({ data: [], error: null }),
+    taskIds.length > 0
+      ? supabase
+          .from("tasks")
+          .select(
+            "id, title, number, project_id, projects!inner(name, key, workspace_id, deleted_at)",
+          )
+          .eq("projects.workspace_id", workspaceId)
+          .is("deleted_at", null)
+          .is("projects.deleted_at", null)
+          .in("id", taskIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (projectsResult.error) {
+    console.error("resolveRecentItems: project read failed:", projectsResult.error);
+  }
+  if (tasksResult.error) {
+    console.error("resolveRecentItems: task read failed:", tasksResult.error);
+  }
+
+  // Re-order resolved rows back to most-recently-visited-first (the `.in()`
+  // queries above don't preserve pointer order) so recents render in visit
+  // order, not database order.
+  const projectOrder = new Map(projectIds.map((id, index) => [id, index]));
+  const taskOrder = new Map(taskIds.map((id, index) => [id, index]));
+
+  const projects: PaletteProjectResult[] = (projectsResult.data ?? [])
+    .map((p) => ({ type: "project" as const, id: p.id, name: p.name, key: p.key }))
+    .sort(
+      (a, b) => (projectOrder.get(a.id) ?? 0) - (projectOrder.get(b.id) ?? 0),
+    );
+
+  type ResolvedTaskRow = {
+    id: string;
+    title: string;
+    number: number;
+    project_id: string;
+    projects: { name: string; key: string | null } | { name: string; key: string | null }[] | null;
+  };
+
+  const tasks: PaletteTaskResult[] = ((tasksResult.data ?? []) as ResolvedTaskRow[])
+    .map((t) => {
+      const project = Array.isArray(t.projects) ? t.projects[0] : t.projects;
+      return {
+        type: "task" as const,
+        id: t.id,
+        title: t.title,
+        projectId: t.project_id,
+        projectName: project?.name ?? "",
+        projectKey: project?.key ?? null,
+        number: t.number,
+      };
+    })
+    .sort((a, b) => (taskOrder.get(a.id) ?? 0) - (taskOrder.get(b.id) ?? 0));
+
+  return { projects, tasks };
 }
