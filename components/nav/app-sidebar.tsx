@@ -15,6 +15,7 @@ import {
   Archive,
   LayoutTemplate,
   Trash2,
+  ListChecks,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -69,6 +70,10 @@ function navItems(
 ) {
   const items = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
+    // F230 (AS-435): "My Tasks" placed above "Projects" -- per the
+    // feature spec's own "since this is the daily-driver screen" note --
+    // visible to everyone (including guests), same as Dashboard/Projects.
+    { href: `/w/${workspaceSlug}/my-tasks`, label: "My Tasks", icon: ListChecks },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
