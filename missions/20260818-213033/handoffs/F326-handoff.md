@@ -21,7 +21,17 @@ AS-434: PASS — an owner can no longer PATCH a `saved_views` row's `workspace_i
 
 ## Commands run
 `supabase db push` (0) — applied `20260828040000_rls_hardening_project_statuses_and_saved_views.sql` to the linked project `qcipqonnqajmazdbysow`
-`npx tsc --noEmit` (0) — clean, no output
+`npx tsc --noEmit` (0) — CORRECTION: my original commit (`1a30959`) reported this as clean, but it was NOT --
+the orchestrator caught two real `tsc` errors in `tests/unit/f326-month-grid-datakey-wiring.test.tsx`
+(`container.querySelector(...)` returns `Element`, passed where `within()`/`HTMLElement` is required) that
+`npx vitest run` never surfaces since vitest does not typecheck. Fixed by using the generic form
+`container.querySelector<HTMLElement>('[data-testid="calendar-day-grid"]')` -- a real type narrowing via the
+query API's own generic parameter, not a cast -- so the assertion still genuinely fails if that node were
+absent or the wrong element. Re-ran after the fix: literal output below is `0` exit, no errors, no warnings.
+```
+$ npx tsc --noEmit
+(no output, exit 0)
+```
 `npx eslint .` (0) — 0 errors, 2 pre-existing warnings (`lib/queries/search.ts:280`, `tests/unit/invite-member-pagination.test.ts:186`, both pre-existing/untouched)
 `npx vitest run tests/unit/f326-calendar-day-grid-rerender.test.tsx tests/unit/f326-month-grid-datakey-wiring.test.tsx tests/unit/f235-calendar-responsive-render.test.tsx tests/unit/f234-calendar-day-grid-wiring.test.ts` (0) — 4 files, 15 tests passed
 `npx vitest run tests/integration/f326-rls-hardening.test.ts` (0) — 7/7 passed
@@ -58,6 +68,7 @@ AUTONOMOUS_DECISION: Scoped the new `project_statuses` DB-level role predicate t
 AUTONOMOUS_DECISION: Asserted DB state (not the `error` object) for the AS-414 direct-UPDATE test, since Postgres's RLS failure shape for UPDATE is not uniformly a thrown error across both `USING`/`WITH CHECK` failure modes.
 
 ## Notes for the next worker
+- **Correction to this handoff's own `tsc` claim:** the version committed as `1a30959` falsely reported `npx tsc --noEmit` as clean. It was not -- two real type errors in `tests/unit/f326-month-grid-datakey-wiring.test.tsx` (`Element` from `querySelector` passed where `HTMLElement` was required) only surface under `tsc`, not `vitest run` (vitest doesn't typecheck). Fixed via the query API's own generic (`querySelector<HTMLElement>(...)`), not a cast. Lesson for future workers: always run `npx tsc --noEmit` directly and read its literal output before writing "clean" in a handoff -- a green vitest run is not proof of a clean typecheck.
 - No Supabase MCP tool calls were made this session (registry marks Supabase MCP "Optional"; `supabase db push` confirmed the new migration applied cleanly with no warnings/notices).
 - New migration: `supabase/migrations/20260828040000_rls_hardening_project_statuses_and_saved_views.sql`, applied to the linked project `qcipqonnqajmazdbysow`.
 - Verified project hard-delete still works after both RLS tightenings and after seeding default columns + saving a view against the project — `test hard-deleting a project still works after tightening project_statuses/saved_views RLS` in `tests/integration/f326-rls-hardening.test.ts` creates a fresh project, confirms the seeded columns and a saved view both exist, hard-deletes the project via the admin client, and confirms both cascade away with zero remaining rows.

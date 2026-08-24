@@ -51,7 +51,7 @@ describe("F326 MonthGrid forwards dataKey to CalendarDayGrid as its remount key"
         todayHref: "/w/acme/calendar?month=2026-06",
       }),
     );
-    const desktopGrid = () => container.querySelector('[data-testid="calendar-day-grid"]')!;
+    const desktopGrid = () => container.querySelector<HTMLElement>('[data-testid="calendar-day-grid"]')!;
     expect(within(desktopGrid()).getByText("June task")).toBeInTheDocument();
 
     rerender(
