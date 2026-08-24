@@ -477,9 +477,16 @@ describe.skipIf(!haveAdminCreds)(
       expect(results.length).toBeGreaterThan(0);
       const hit = results.find((r) => r.title.includes("stale-status-text"));
       expect(hit).toBeDefined();
-      // The task's raw `status` column text is still the OLD, stale name…
-      expect(hit?.status).toBe("Backlog");
-      // …but the search result's displayed statusName is the column's
+      // F325 (blocker B2/AS-411 fix): a new `project_statuses_sync_task_
+      // status_on_rename` trigger (20260828030000) now propagates a
+      // column rename onto every task's `tasks.status` text, so this
+      // task's raw `status` column is no longer stale after the rename —
+      // it reads the CURRENT name too, same as `statusName`. This is the
+      // exact "task strands in the wrong bucket" defect that trigger
+      // exists to close; asserting the old stale value here would just
+      // re-encode the bug this feature fixed.
+      expect(hit?.status).toBe("Renamed After Task Write");
+      // …and the search result's displayed statusName is the column's
       // CURRENT real name (AS-417) — proven against the real join, not
       // hand-built props.
       expect(hit?.statusName).toBe("Renamed After Task Write");

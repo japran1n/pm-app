@@ -50,11 +50,16 @@ export function BoardToolbar({
   function handleChange(value: string | null) {
     if (!value) return;
     const params = new URLSearchParams(searchParams.toString());
-    if (value === "none") {
-      params.delete("groupBy");
-    } else {
-      params.set("groupBy", value);
-    }
+    // F325 fix (AS-419, blocker B6): explicitly write `groupBy=none`
+    // instead of deleting the param. Board.tsx resolves an ABSENT param to
+    // the viewer's persisted grouping (F226/AS-424) and only an EXPLICIT
+    // `?groupBy=none` to "no grouping" -- deleting the param here meant a
+    // user with a persisted non-none preference could never get back to
+    // ungrouped, because the URL round-tripped straight back to their
+    // saved preference. Writing "none" explicitly makes this control's
+    // choice always win, matching board.tsx's own (previously incorrect)
+    // comment about what this toolbar does.
+    params.set("groupBy", value);
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
 
