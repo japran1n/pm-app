@@ -65,6 +65,7 @@ import {
   UploadProgress,
   type UploadProgressJob,
 } from "@/components/task/upload-progress";
+import { ImageLightbox } from "@/components/task/image-lightbox";
 
 // F258 (AS-501, AS-503): the imperative handle AttachmentDropzone
 // (components/task/attachment-dropzone.tsx) calls into so a native-drag
@@ -221,6 +222,9 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [isUploading, startUploadTransition] = useTransition();
   const [openingId, setOpeningId] = useState<string | null>(null);
+  // F260 (AS-505, AS-506): id of the image attachment currently shown in
+  // the full-size lightbox, or null when it's closed.
+  const [lightboxOpenId, setLightboxOpenId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
   // F259 (AS-504, AS-507): per-file progress/rejection rows shown below
@@ -420,7 +424,23 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
     uploadFiles(files);
   }
 
+  // F260 (AS-505, AS-506): all image attachments for this task, in display
+  // order — the lightbox's next/previous navigates within this list only.
+  const imageAttachments = localAttachments.filter((attachment) =>
+    attachment.mimeType?.startsWith("image/"),
+  );
+
   async function handleOpen(attachmentId: string) {
+    const attachment = localAttachments.find((a) => a.id === attachmentId);
+
+    // AS-506: clicking an image attachment opens the in-app lightbox
+    // preview, not a new browser tab. Non-image attachments keep the
+    // existing "open in a new tab" behaviour.
+    if (attachment?.mimeType?.startsWith("image/")) {
+      setLightboxOpenId(attachmentId);
+      return;
+    }
+
     setOpeningId(attachmentId);
     try {
       // Signed URLs are time-limited — always mint a fresh one on click
@@ -545,6 +565,18 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
         jobs={uploadJobs}
         onCancel={handleCancelUploadJob}
         onDismiss={handleDismissUploadJob}
+      />
+
+      {/* F260 (AS-505, AS-506): full-size preview, opened by clicking an
+          image attachment's thumbnail or filename. */}
+      <ImageLightbox
+        images={imageAttachments.map((attachment) => ({
+          id: attachment.id,
+          fileName: attachment.fileName,
+        }))}
+        openId={lightboxOpenId}
+        onClose={() => setLightboxOpenId(null)}
+        onNavigate={(id) => setLightboxOpenId(id)}
       />
     </div>
   );
