@@ -73,6 +73,11 @@ export type SubtaskListChildTask = {
   id: string;
   title: string;
   status: "todo" | "in_progress" | "in_review" | "done";
+  // F222 (AS-410): this child task's own board column category, when the
+  // caller has it — feeds countSubtaskProgress's category-aware "done"
+  // check (lib/tasks/status-category.ts). Optional/undefined falls back
+  // to that helper's own literal-status-text rule.
+  statusCategory?: string | null;
   assigneeId: string | null;
   /** F146 (AS-258)-style task key badge. A subtask always belongs to the
    * SAME project as its parent (F148's enforce_task_parent_rules()

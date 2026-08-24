@@ -103,6 +103,13 @@ export async function getProjectBoardTasks(
     // F179 follow-up: added to the RPC's return in
     // 20260822170000_rpc_project_board_tasks_recurrence.sql.
     recurrence: RecurrenceRule | null;
+    // F222 (AS-410): this task's own board column category, added to the
+    // RPC's return in
+    // 20260824060000_status_category_semantics.sql — feeds TaskCard's
+    // `statusCategory` so the board's overdue badge is category-aware,
+    // same as the RPC's own child_done/open_blocker_count fixes in that
+    // migration.
+    status_category: string | null;
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -121,6 +128,9 @@ export async function getProjectBoardTasks(
       id: task.id,
       title: task.title,
       status: task.status as TaskCardTask["status"],
+      // F222 (AS-410): straight off the RPC row — see this function's
+      // BoardTaskRow type above.
+      statusCategory: task.status_category,
       priority: task.priority as TaskCardTask["priority"],
       assigneeId: task.assignee_id,
       dueDate: task.due_date,
@@ -271,7 +281,13 @@ export async function getProjectListTasks(
       // F179 follow-up (AS-317): `recurrence` added so the list view's
       // `TaskCard`s also receive real recurrence data, same as the board
       // view.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects(key), task_assignees(user_id)",
+      // F222 (AS-410): `status_id, project_statuses(category)` added so
+      // this list view's TaskCard/isOverdue calls get category-aware
+      // "done" behaviour (lib/tasks/status-category.ts) instead of
+      // falling back to the literal `status === "done"` comparison for
+      // every row — same rationale as `estimate_minutes`/`recurrence`
+      // above.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects(key), task_assignees(user_id), project_statuses(category)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -320,6 +336,8 @@ export async function getProjectListTasks(
     id: task.id,
     title: task.title,
     status: task.status as TaskCardTask["status"],
+    // F222 (AS-410): see this function's select above.
+    statusCategory: firstRelated(task.project_statuses)?.category ?? null,
     priority: task.priority as TaskCardTask["priority"],
     assigneeId: task.assignee_id,
     dueDate: task.due_date,
@@ -387,7 +405,8 @@ export async function getWorkspaceListTasks(
       // F179 follow-up (AS-317): `recurrence` added so the dashboard's
       // `TaskCard`s also receive real recurrence data, same as the
       // board/list views.
-      "id, title, status, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id)",
+      // F222 (AS-410): see getProjectListTasks above for the rationale.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -430,6 +449,8 @@ export async function getWorkspaceListTasks(
     id: task.id,
     title: task.title,
     status: task.status as TaskCardTask["status"],
+    // F222 (AS-410): see getProjectListTasks above.
+    statusCategory: firstRelated(task.project_statuses)?.category ?? null,
     priority: task.priority as TaskCardTask["priority"],
     assigneeId: task.assignee_id,
     dueDate: task.due_date,

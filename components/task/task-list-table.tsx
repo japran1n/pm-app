@@ -265,7 +265,7 @@ export function TaskListTable({
         </TableHeader>
         <TableBody>
           {tasks.map((task, index) => {
-            const overdue = isOverdue(task.dueDate, task.status, timezone);
+            const overdue = isOverdue(task.dueDate, task.status, timezone, task.statusCategory);
             const isSelected = selectedIds.has(task.id);
             const assignee = task.assigneeId
               ? assignees.get(task.assigneeId)

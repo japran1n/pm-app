@@ -52,4 +52,24 @@ describe("isOverdue (AS-064)", () => {
   it("is false for an invalid/unparseable date string", () => {
     expect(isOverdue("not-a-date", "todo", "UTC")).toBe(false);
   });
+
+  // F222 (AS-410): "done" is now decided by column CATEGORY when a
+  // caller has one, not the literal status string.
+  it("test_AS_410_past_due_task_in_a_renamed_done_category_column_is_not_overdue", () => {
+    expect(isOverdue(daysFromToday(-3), "Shipped", "UTC", "done")).toBe(
+      false,
+    );
+  });
+
+  it("test_AS_410_past_due_task_in_a_done_named_but_non_done_category_column_is_still_overdue", () => {
+    expect(isOverdue(daysFromToday(-3), "done-ish", "UTC", "in_progress")).toBe(
+      true,
+    );
+  });
+
+  it("test_AS_410_falls_back_to_literal_status_text_when_category_is_omitted", () => {
+    // status_id-null edge case: no category passed at all.
+    expect(isOverdue(daysFromToday(-3), "done", "UTC")).toBe(false);
+    expect(isOverdue(daysFromToday(-3), "todo", "UTC")).toBe(true);
+  });
 });

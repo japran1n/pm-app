@@ -22,10 +22,17 @@
 // regardless of which machine/server/browser evaluates it.
 import { isOverdueInTimeZone } from "@/lib/time/user-timezone";
 
+// F222 (AS-410): `statusCategory` is an optional trailing argument (not a
+// required one) so every pre-existing call site that only has a status
+// string keeps compiling unchanged and keeps its pre-F222 fallback
+// behaviour (lib/tasks/status-category.ts's isDoneStatus status_id-null
+// rule) — callers that HAVE already joined `project_statuses` pass it
+// through for category-aware behaviour.
 export function isOverdue(
   dueDate: string | null,
   status: string,
   timeZone: string,
+  statusCategory?: string | null,
 ): boolean {
-  return isOverdueInTimeZone(dueDate, status, timeZone);
+  return isOverdueInTimeZone(dueDate, status, timeZone, new Date(), statusCategory);
 }

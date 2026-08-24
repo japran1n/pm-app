@@ -222,6 +222,12 @@ export type TaskDetailSheetTask = {
    * from our own DB. */
   descriptionJson?: JSONContent | null;
   status: "todo" | "in_progress" | "in_review" | "done";
+  // F222 (AS-410): this task's own board column category, when the
+  // caller has it — feeds isOverdue's category-aware check below.
+  // Optional/undefined falls back to isOverdue's own literal-status-text
+  // rule, same "safe default" convention as every other optional field
+  // on this type.
+  statusCategory?: string | null;
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
   /** F161 (AS-287, AS-288): this task's full current assignee set,
@@ -1171,15 +1177,15 @@ export function TaskDetailSheet({
                 <Label
                   htmlFor={`task-due-date-${task.id}`}
                   className={cn(
-                    isOverdue(task.dueDate, task.status, timezone) &&
+                    isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
                       "inline-flex items-center gap-1 text-destructive",
                   )}
                 >
-                  {isOverdue(task.dueDate, task.status, timezone) && (
+                  {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
                     <TriangleAlert className="size-3" aria-hidden="true" />
                   )}
                   Due date
-                  {isOverdue(task.dueDate, task.status, timezone) && (
+                  {isOverdue(task.dueDate, task.status, timezone, task.statusCategory) && (
                     <span className="sr-only">(overdue)</span>
                   )}
                 </Label>
@@ -1193,7 +1199,7 @@ export function TaskDetailSheet({
                     handleDueDateChange(changeEvent.target.value)
                   }
                   className={cn(
-                    isOverdue(task.dueDate, task.status, timezone) &&
+                    isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
                       "border-destructive text-destructive",
                   )}
                 />

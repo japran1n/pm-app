@@ -2640,9 +2640,14 @@ export async function moveTaskStatus(
   // silently (leaves status_id null) for an unmatched name rather than
   // raising, so this check is the real guard against a stale/forged
   // column name reaching the DB.
+  // F222 (AS-410): `category` selected alongside `id` so the recurrence
+  // "moved into a done-category status" check below (isDoneStatus) can
+  // use this SAME lookup instead of re-deriving/re-fetching it — no
+  // second query, no second source of truth for "is the target column
+  // done".
   const { data: columnMatch } = await admin
     .from("project_statuses")
-    .select("id")
+    .select("id, category")
     .eq("project_id", project.id)
     .eq("name", parsed.data.status)
     .maybeSingle();
@@ -2735,7 +2740,10 @@ export async function moveTaskStatus(
   // additive — a failure or legitimate no-op here (no recurrence, no due
   // date, archived project, already generated) never turns the status
   // change itself into a failure; the user's completion always succeeds.
-  if (isDoneStatus(parsed.data.status) && taskRow.recurrence) {
+  if (
+    isDoneStatus(parsed.data.status, columnMatch.category) &&
+    taskRow.recurrence
+  ) {
     try {
       const timezone = await getCurrentUserTimezone(supabase);
       await generateNextOccurrence(
@@ -3376,10 +3384,15 @@ export async function getOpenBlockers(
   // Same blocked_task_id -> blocking task embed + FK disambiguation as
   // getTaskDetail's own blockedByQuery below (F155's two same-table FKs,
   // task_dependencies_blocking_task_id_fkey/_blocked_task_id_fkey).
+  // F222 (AS-410): `status_id, project_statuses(category)` added to the
+  // embedded `blocking` task so "is this blocker still open" is decided
+  // by the blocker's own column CATEGORY, not the literal string "done"
+  // — same fallback rule as every other call site
+  // (lib/tasks/status-category.ts's isDoneStatus).
   const { data: rows, error: blockersError } = await admin
     .from("task_dependencies")
     .select(
-      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, number, deleted_at, projects(key))",
+      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, status_id, number, deleted_at, projects(key), project_statuses(category))",
     )
     .eq("blocked_task_id", parsed.data.taskId);
 
@@ -3397,7 +3410,14 @@ export async function getOpenBlockers(
       const blocking = Array.isArray(row.blocking)
         ? row.blocking[0]
         : row.blocking;
-      if (!blocking || blocking.deleted_at || isDoneStatus(blocking.status)) {
+      const blockingStatusCategory = Array.isArray(blocking?.project_statuses)
+        ? blocking.project_statuses[0]?.category
+        : blocking?.project_statuses?.category;
+      if (
+        !blocking ||
+        blocking.deleted_at ||
+        isDoneStatus(blocking.status, blockingStatusCategory)
+      ) {
         return null;
       }
       const blockingProject = Array.isArray(blocking.projects)
@@ -3522,7 +3542,11 @@ export async function getTaskDetail(
       // and the occurrence-to-source link both read real data instead of
       // always-undefined — same "one query, no second round trip"
       // convention as every other field on this select.
-      "id, title, description, description_json, status, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id, visibility)",
+      // F222 (AS-410): `status_id, project_statuses(category)` added so
+      // TaskDetailSheetTask.statusCategory (isOverdue's category-aware
+      // check) gets real data — same "one query, no second round trip"
+      // convention as every other field on this select.
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3584,9 +3608,14 @@ export async function getTaskDetail(
   // one-level nesting limit, enforced by enforce_task_parent_rules()), so
   // this query harmlessly returns zero rows for a child task rather than
   // needing its own conditional branch.
+  // F222 (AS-410): `status_id, project_statuses(category)` added so the
+  // Subtasks section's "N of M done" count (countSubtaskProgress) is
+  // category-aware — see this feature's status-category.ts.
   const childrenQuery = admin
     .from("tasks")
-    .select("id, title, status, assignee_id, number")
+    .select(
+      "id, title, status, status_id, assignee_id, number, project_statuses(category)",
+    )
     .eq("parent_task_id", parsed.data.taskId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
@@ -3973,6 +4002,12 @@ export async function getTaskDetail(
           | TaskDetailSheetTask["descriptionJson"]
           | undefined,
         status: taskRow.status as TaskDetailSheetTask["status"],
+        // F222 (AS-410): see this function's select above.
+        statusCategory: (
+          Array.isArray(taskRow.project_statuses)
+            ? taskRow.project_statuses[0]
+            : taskRow.project_statuses
+        )?.category,
         priority: taskRow.priority as TaskDetailSheetTask["priority"],
         assigneeId: taskRow.assignee_id,
         // F161 follow-through (AS-287, AS-288): see assigneesQuery above
@@ -4038,6 +4073,14 @@ export async function getTaskDetail(
             id: row.id,
             title: row.title,
             status: row.status as SubtaskListChildTask["status"],
+            // F222 (AS-410): see childrenQuery above. Same
+            // array-or-object PostgREST embed normalization this file
+            // uses everywhere else (e.g. taskRow.projects above).
+            statusCategory: (
+              Array.isArray(row.project_statuses)
+                ? row.project_statuses[0]
+                : row.project_statuses
+            )?.category,
             assigneeId: row.assignee_id,
             projectKey: projectRow?.key,
             number: row.number,

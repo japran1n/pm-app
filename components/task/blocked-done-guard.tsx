@@ -89,8 +89,17 @@ export function useBlockedDoneGuard() {
   // the common case for most status changes — so this guard costs
   // nothing on the vast majority of calls.
   const confirmIfMovingToDone = useCallback(
-    async (taskId: string, nextStatus: string): Promise<boolean> => {
-      if (!isDoneStatus(nextStatus)) return true;
+    async (
+      taskId: string,
+      nextStatus: string,
+      // F222 (AS-410): the target column's CATEGORY, when the caller has
+      // it (every real caller does — board.tsx/list-status-select.tsx/
+      // task-detail-sheet.tsx all render from the project's real
+      // `BoardColumnDef[]`, which carries `category`). Falls back to
+      // isDoneStatus's own literal-`status`-text rule when omitted.
+      nextStatusCategory?: string | null,
+    ): Promise<boolean> => {
+      if (!isDoneStatus(nextStatus, nextStatusCategory)) return true;
 
       const result = await getOpenBlockers(taskId);
       if (!result.ok) return true; // fail open — see doc comment above.

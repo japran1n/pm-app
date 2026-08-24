@@ -402,9 +402,15 @@ export function Board({
     // network call at all when targetStatus isn't "done", so this await
     // is a no-op for every other drop.
     if (movedTask.status !== activeTask.status) {
+      // F222 (AS-410): resolve the target column's real category from
+      // the board's REAL current columns (same `columns` state AS-409's
+      // validation above reads), not the literal status name.
+      const targetCategory =
+        columns.find((c) => c.name === targetStatus)?.category ?? null;
       const proceed = await confirmIfMovingToDone(
         movedTask.id,
         movedTask.status,
+        targetCategory,
       );
       if (!proceed) return;
     }

@@ -9,19 +9,16 @@
 // blocked-task helper) call this same function; there is no second copy
 // of this comparison anywhere in that call chain.
 //
-// "Done" sweep point (F222, per this feature's own critical context):
-// this is the ONE place this feature's guard compares a status string
-// against the fixed literal "done". Custom statuses arrive in M16
-// (F218-F222); F222 only has to change the body of this one function
-// (e.g. to check a workspace-configured "done category" flag instead of
-// a literal string) to make every caller of useBlockedDoneGuard/
-// getOpenBlockers pick up the new definition — none of them re-implement
-// this comparison themselves. This mirrors the exact same sweep-note
-// convention already established by lib/tasks/subtask-progress.ts's
-// countSubtaskProgress and lib/queries/tasks.ts's getProjectBoardTasks
-// (AS-283's "open blocker" comparison) for this identical literal
-// elsewhere in the codebase — this feature does not touch those other
-// call sites (out of scope, see this feature's handoff), only its own.
+// F222 (AS-410): "done" is now decided by a column's CATEGORY, not the
+// literal string "done" — custom/renamed board columns exist as of F218-
+// F221. This module re-exports the shared `isDoneStatus` from
+// `lib/tasks/status-category.ts` (the ONE place that comparison now
+// lives — see that module's own doc comment for the fallback rule when a
+// caller doesn't have a category yet) rather than keeping a second copy
+// here, so every existing import of `isDoneStatus` from THIS path (this
+// file's own doc comment above lists every caller) keeps working
+// unchanged while picking up category-aware behaviour the moment a
+// caller starts passing the optional second argument.
 //
 // Framework-agnostic module (no "use client"/"use server" directive),
 // same convention as lib/tasks/completion.ts, lib/tasks/
@@ -31,6 +28,4 @@
 // getOpenBlockers, to decide server-side which blockers count as "open")
 // and a Client Component hook (components/task/blocked-done-guard.tsx, to
 // decide whether a status change needs a blocker check at all).
-export function isDoneStatus(status: string): boolean {
-  return status === "done";
-}
+export { isDoneStatus } from "./status-category";

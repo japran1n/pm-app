@@ -65,6 +65,14 @@ export type TaskCardTask = {
   id: string;
   title: string;
   status: "todo" | "in_progress" | "in_review" | "done";
+  // F222 (AS-410): this task's board column CATEGORY
+  // (project_statuses.category), when the query resolving this task has
+  // already joined it. Optional/undefined — a caller that hasn't been
+  // updated (existing tests/fixtures) falls back to isOverdue/
+  // isDoneStatus's own `status_id is null` literal-status-text rule (see
+  // lib/tasks/status-category.ts), same "safe default" convention as
+  // every other optional field on this type.
+  statusCategory?: string | null;
   priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
   assigneeId: string | null;
   dueDate: string | null;
@@ -198,7 +206,7 @@ export function TaskCard({
    * loud instead of getting it for free. */
   timezone: string;
 }) {
-  const overdue = isOverdue(task.dueDate, task.status, timezone);
+  const overdue = isOverdue(task.dueDate, task.status, timezone, task.statusCategory);
   // F167 (AS-300, AS-301, AS-302): null when no estimate is set — the
   // over-estimate badge below only renders when this is non-null AND
   // flagged, never a false positive on an estimate-less task.

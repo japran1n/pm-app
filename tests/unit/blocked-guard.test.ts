@@ -26,4 +26,15 @@ describe("isDoneStatus (F158: single done-status sweep point for AS-280/AS-281)"
     expect(isDoneStatus("Done")).toBe(false); // case-sensitive, matches tasks.status's own stored casing
     expect(isDoneStatus("not_a_real_status")).toBe(false);
   });
+
+  // F222 (AS-410): category-aware behaviour, re-exported unchanged from
+  // lib/tasks/status-category.ts — see tests/unit/status-category.test.ts
+  // for the full suite; these two prove the re-export itself is wired.
+  it("test_AS_410_custom_done_category_column_counts_as_done_even_with_a_non_done_name", () => {
+    expect(isDoneStatus("Shipped", "done")).toBe(true);
+  });
+
+  it("test_AS_410_column_named_like_done_but_not_done_category_does_not_count", () => {
+    expect(isDoneStatus("done-ish", "in_progress")).toBe(false);
+  });
 });

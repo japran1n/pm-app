@@ -141,6 +141,26 @@ describe("countSubtaskProgress (F150: AS-264 pure logic)", () => {
     }));
     expect(countSubtaskProgress(allOpen)).toEqual({ done: 0, total: 3 });
   });
+
+  // F222 (AS-410): category-aware counting when a child has been fetched
+  // with its column's category.
+  it("test_AS_410_a_renamed_done_category_child_column_counts_toward_progress", () => {
+    const renamed = CHILDREN.map((child) => ({
+      ...child,
+      status: "Shipped",
+      statusCategory: "done",
+    }));
+    expect(countSubtaskProgress(renamed)).toEqual({ done: 3, total: 3 });
+  });
+
+  it("test_AS_410_a_child_named_like_done_but_not_done_category_does_not_count", () => {
+    const doneish = CHILDREN.map((child) => ({
+      ...child,
+      status: "done-ish",
+      statusCategory: "in_progress",
+    }));
+    expect(countSubtaskProgress(doneish)).toEqual({ done: 0, total: 3 });
+  });
 });
 
 describe("appendSubtask (F150: local list updates without a reload)", () => {

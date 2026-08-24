@@ -1089,10 +1089,15 @@ export type Database = {
           author_id: string | null
           created_at: string | null
           deleted_at: string | null
+          deleted_by: string | null
           deleted_via_task_id: string | null
           description: string | null
+          description_json: Json | null
+          description_text: string | null
           due_date: string | null
+          estimate_minutes: number | null
           id: string | null
+          last_occurrence_at: string | null
           number: number | null
           parent_task_id: string | null
           points: number | null
@@ -1100,9 +1105,12 @@ export type Database = {
           priority: string | null
           project_id: string | null
           project_workspace_id: string | null
+          recurrence: Json | null
+          recurrence_parent_id: string | null
           search_vector: unknown
           start_date: string | null
           status: string | null
+          status_id: string | null
           tags: string[] | null
           title: string | null
           updated_at: string | null
@@ -1148,6 +1156,27 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_status_id_fkey"
+            columns: ["status_id"]
+            isOneToOne: false
+            referencedRelation: "project_statuses"
             referencedColumns: ["id"]
           },
         ]
@@ -1272,6 +1301,7 @@ export type Database = {
           project_key: string
           recurrence: Json
           status: string
+          status_category: string
           subtask_count: number
           title: string
           updated_at: string
@@ -1306,6 +1336,10 @@ export type Database = {
       }
       is_active_workspace_member: {
         Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      is_done_status: {
+        Args: { p_status: string; p_status_id: string }
         Returns: boolean
       }
       is_project_lead_or_workspace_admin: {
