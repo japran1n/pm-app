@@ -210,7 +210,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F237 timeline-scale-bars — AS-451, AS-452, AS-457, AS-458 [CLARIFIED-AUTO] [COMPLETE]
 - F238 timeline-drag-resize — AS-454 [CLARIFIED-AUTO] [COMPLETE]
 - F239 timeline-dependency-connectors — AS-455 [CLARIFIED-AUTO] [COMPLETE]
-- F240 timeline-zoom — AS-456 [CLARIFIED-AUTO]
+- F240 timeline-zoom — AS-456 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M17 — UX polish, attachments & navigation
 
