@@ -238,7 +238,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F258 attachment-dropzone — AS-501, AS-502, AS-503 [CLARIFIED-AUTO] [COMPLETE]
 - F259 attachment-progress — AS-504, AS-507 [CLARIFIED-AUTO] [COMPLETE]
 - F260 image-thumbnails-lightbox — AS-505, AS-506 [CLARIFIED-AUTO] [COMPLETE]
-- F261 clipboard-image-paste — AS-508 [CLARIFIED-AUTO]
+- F261 clipboard-image-paste — AS-508 [CLARIFIED-AUTO] [COMPLETE]
 - F262 sidebar-project-list — AS-509, AS-511, AS-512, AS-513 [CLARIFIED-AUTO]
 - F263 project-favourites — AS-510 [CLARIFIED-AUTO]
 - F264 mobile-board — AS-514, AS-515 [CLARIFIED-AUTO]
