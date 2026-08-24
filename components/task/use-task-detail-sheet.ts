@@ -17,7 +17,29 @@
 // initial summary-only queries (getProjectBoardTasks/getProjectListTasks)
 // to carry every TaskDetailSheet field up front.
 
-import { useCallback, useState } from "react";
+// F247 (AS-475, AS-476, AS-478): this hook is the SINGLE place that
+// mounts the task detail sheet on top of the board/list's own URL, so
+// opening/closing here stays on the one `?taskId=` deep-link contract
+// F246 established (see that feature's handoff — it deliberately did not
+// fork a second, route-based contract). Opening a task from a click
+// pushes `?taskId={id}` onto the CURRENT page's URL (same pathname, every
+// other existing search param — filters, groupBy, view, etc. — preserved
+// verbatim) via `router.push(..., { scroll: false })`: a soft/client-side
+// navigation, not a full reload, and `scroll: false` keeps the caller's
+// current scroll position instead of Next's default scroll-to-top.
+// Closing prefers `router.back()` (so the browser's own history entry —
+// with its own preserved scroll position and filters — is what the user
+// lands on) and only falls back to stripping `?taskId=` in place
+// (`router.replace`) when the sheet was opened some other way than this
+// hook's own `push` (e.g. a hard refresh landed directly on a `?taskId=`
+// URL with no prior in-app history to go back to). Because opening always
+// pushes a new history entry, the browser's native Back button closes the
+// sheet by construction (AS-478) — no separate popstate listener needed;
+// the caller's own `?taskId=` read-on-mount effect (see board.tsx) reacts
+// to the search params changing back to "no taskId" and calls
+// `closeFromUrl` to sync local state without re-triggering navigation.
+import { useCallback, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { getTaskDetail } from "@/lib/actions/tasks";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
@@ -43,6 +65,15 @@ export function useTaskDetailSheet() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // True only for a taskId this hook itself pushed onto the URL (a click
+  // inside the app) — false for a task that was already the URL's
+  // `?taskId=` when this hook first opened it (a direct load/refresh),
+  // which has no "back" entry of its own to return to.
+  const pushedTaskIdRef = useRef(false);
+
   const fetchDetail = useCallback(async (taskId: string) => {
     setLoading(true);
     setError(null);
@@ -55,28 +86,88 @@ export function useTaskDetailSheet() {
     setLoading(false);
   }, []);
 
+  const buildUrl = useCallback(
+    (taskId: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (taskId) {
+        params.set("taskId", taskId);
+      } else {
+        params.delete("taskId");
+      }
+      const qs = params.toString();
+      return qs ? `${pathname}?${qs}` : pathname;
+    },
+    [pathname, searchParams],
+  );
+
   const openTask = useCallback(
-    (taskId: string) => {
+    (taskId: string, options?: { fromUrl?: boolean }) => {
       setOpenTaskId(taskId);
       setOpen(true);
       setDetail(null);
       setError(null);
       void fetchDetail(taskId);
+
+      // `fromUrl` is set by the caller's own "?taskId= present on
+      // mount/back-forward" effect (see board.tsx) — the URL already
+      // reflects this taskId, so pushing again would create a duplicate,
+      // useless history entry the user would have to hit Back twice to
+      // get past.
+      if (!options?.fromUrl && searchParams.get("taskId") !== taskId) {
+        pushedTaskIdRef.current = true;
+        router.push(buildUrl(taskId), { scroll: false });
+      }
     },
-    [fetchDetail],
+    [fetchDetail, router, buildUrl, searchParams],
   );
 
-  const onOpenChange = useCallback((next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      // Cleared on close (not just hidden) so a later re-open of the same
-      // task starts from a clean loading state rather than briefly
-      // flashing the previous task's now-stale detail.
-      setOpenTaskId(null);
-      setDetail(null);
-      setError(null);
-    }
+  const clearLocalState = useCallback(() => {
+    setOpen(false);
+    // Cleared on close (not just hidden) so a later re-open of the same
+    // task starts from a clean loading state rather than briefly
+    // flashing the previous task's now-stale detail.
+    setOpenTaskId(null);
+    setDetail(null);
+    setError(null);
   }, []);
+
+  const onOpenChange = useCallback(
+    (next: boolean) => {
+      if (next) {
+        setOpen(true);
+        return;
+      }
+      clearLocalState();
+      if (searchParams.get("taskId")) {
+        if (
+          pushedTaskIdRef.current &&
+          typeof window !== "undefined" &&
+          window.history.length > 1
+        ) {
+          // Prefer native back navigation: it lands the user on the exact
+          // prior URL (same filters, same scroll restoration Next/the
+          // browser already handle for a real history entry) rather than
+          // a synthetic "strip the param" URL this hook would otherwise
+          // have to guess.
+          router.back();
+        } else {
+          router.replace(buildUrl(null), { scroll: false });
+        }
+      }
+      pushedTaskIdRef.current = false;
+    },
+    [router, buildUrl, searchParams, clearLocalState],
+  );
+
+  // Called by the caller's `?taskId=` sync effect when the URL's taskId
+  // has already disappeared (e.g. the browser Back button fired and the
+  // URL changed before React re-rendered) — clears local state only, no
+  // further navigation, so it can't fight the navigation that already
+  // happened.
+  const closeFromUrl = useCallback(() => {
+    clearLocalState();
+    pushedTaskIdRef.current = false;
+  }, [clearLocalState]);
 
   const retry = useCallback(() => {
     if (openTaskId) void fetchDetail(openTaskId);
@@ -87,6 +178,7 @@ export function useTaskDetailSheet() {
     openTaskId,
     openTask,
     onOpenChange,
+    closeFromUrl,
     loading,
     error,
     task: detail?.task ?? null,

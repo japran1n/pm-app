@@ -48,6 +48,15 @@ import {
 import { toast } from "sonner";
 import { showUndoToast } from "@/lib/toast/undo-toast";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
+// F247 (AS-478): cooperates with F244's Escape-layer stack the same way
+// NewTaskDialog (F244's own reference implementation) already does —
+// registers itself as the topmost layer while open, so Escape closes only
+// this Sheet (and, if something is layered ON TOP of it — e.g. a confirm
+// dialog opened from inside — that layer instead) rather than the global
+// keydown handler and Radix's own built-in Escape-close racing each other
+// or, worse, an unrelated lower layer (e.g. ShortcutHelp open behind this
+// Sheet) reacting instead because this Sheet never registered.
+import { useEscapeLayer } from "@/lib/hooks/use-shortcut";
 
 // F173 (AS-311): client-side mirror of lib/actions/tasks.ts's
 // (unexported) `setTaskItemChecked` — duplicated rather than imported
@@ -509,6 +518,9 @@ export function TaskDetailSheet({
   // state when a prop changes" is done during render, not in a useEffect,
   // to avoid the extra cascading render an Effect would cause).
   const [syncedTaskId, setSyncedTaskId] = useState<string | null>(null);
+  // F247 (AS-478): registered for as long as the Sheet is open — see the
+  // import comment above.
+  useEscapeLayer(open, () => onOpenChange(false));
   const [isSavingField, startSaveTransition] = useTransition();
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();

@@ -280,12 +280,21 @@ export function Board({
   // silent no-op.
   const searchParams = useSearchParams();
   const requestedCommentId = searchParams.get("commentId");
+  // F247 (AS-478): also handles the reverse direction — the browser Back
+  // button (or any other navigation) removing `?taskId=` from the URL
+  // while the sheet is still open locally. `closeFromUrl` only clears
+  // local state (no further navigation), since the URL already changed.
   useEffect(() => {
-    if (onCardClick) return;
     const requestedTaskId = searchParams.get("taskId");
-    if (!requestedTaskId) return;
-    if (taskDetailSheet.open) return;
-    taskDetailSheet.openTask(requestedTaskId);
+    if (requestedTaskId) {
+      if (onCardClick) return;
+      if (taskDetailSheet.open && taskDetailSheet.openTaskId === requestedTaskId) {
+        return;
+      }
+      taskDetailSheet.openTask(requestedTaskId, { fromUrl: true });
+    } else if (taskDetailSheet.open) {
+      taskDetailSheet.closeFromUrl();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 

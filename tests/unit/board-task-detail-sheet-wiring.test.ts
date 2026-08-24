@@ -163,8 +163,11 @@ describe("Board wires TaskCard clicks to TaskDetailSheet (bugfix)", () => {
     expect(boardSource).toMatch(
       /const requestedTaskId = searchParams\.get\("taskId"\);/,
     );
+    // F247 (AS-475/476/478): now passes `{ fromUrl: true }` so the hook
+    // knows the URL already carries this taskId and doesn't push a
+    // duplicate history entry — see use-task-detail-sheet.ts.
     expect(boardSource).toMatch(
-      /taskDetailSheet\.openTask\(requestedTaskId\);/,
+      /taskDetailSheet\.openTask\(requestedTaskId, \{ fromUrl: true \}\);/,
     );
   });
 });
