@@ -12,8 +12,10 @@
 // directly (F122's doc comment: no hooks/state of its own).
 
 import Link from "next/link";
+import { ScrollText } from "lucide-react";
 
 import { UserAvatar } from "@/components/user-avatar";
+import { EmptyState } from "@/components/empty-state";
 import {
   Table,
   TableBody,
@@ -46,6 +48,7 @@ export function AuditTable({
   rows,
   hasMore,
   loadMoreHref,
+  hasActiveFilters,
 }: {
   workspaceSlug: string;
   rows: AuditLogRow[];
@@ -53,12 +56,28 @@ export function AuditTable({
   /** Full pathname + query string for "load the next bounded window",
    * already computed by the page (current filters + a bumped `limit`). */
   loadMoreHref: string;
+  /** F252 (AS-490): whether an actor/action filter is currently applied.
+   * Distinguishes "nothing has happened yet" from "nothing matches the
+   * current filters" — the page previously showed the same generic "No
+   * audit log entries match the current filters" copy even for a
+   * workspace with zero audit entries and no filters applied at all. */
+  hasActiveFilters: boolean;
 }) {
   if (rows.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No audit log entries match the current filters.
-      </p>
+    return hasActiveFilters ? (
+      <EmptyState
+        icon={ScrollText}
+        title="No matching entries"
+        description="No audit log entries match the current filters. Try a different actor or action."
+        testId="audit-empty-state-filtered"
+      />
+    ) : (
+      <EmptyState
+        icon={ScrollText}
+        title="No audit activity yet"
+        description="Sensitive actions in this workspace — like role changes and permission updates — will show up here as they happen."
+        testId="audit-empty-state-none"
+      />
     );
   }
 

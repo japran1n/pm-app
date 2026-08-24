@@ -161,6 +161,7 @@ export default async function AuditLogPage({
           rows={auditPage.rows}
           hasMore={auditPage.hasMore}
           loadMoreHref={loadMoreHref}
+          hasActiveFilters={Boolean(actorIdParam || actionParam)}
         />
       )}
     </div>
