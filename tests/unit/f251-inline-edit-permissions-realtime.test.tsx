@@ -67,7 +67,11 @@ afterEach(() => {
 });
 
 function viewer(children: React.ReactNode) {
-  return createElement(MembershipProvider, { role: "viewer", projectRoles: {}, children });
+  return (
+    <MembershipProvider role="viewer" projectRoles={{}}>
+      {children}
+    </MembershipProvider>
+  );
 }
 
 describe("F251 AS-489: inline controls are not rendered for a viewer", () => {
@@ -123,11 +127,9 @@ describe("F251 AS-489: inline controls are not rendered for a viewer", () => {
 
   it("test_AS_489_a_member_role_still_gets_the_real_interactive_control", () => {
     render(
-      createElement(MembershipProvider, {
-        role: "member",
-        projectRoles: {},
-        children: createElement(ListPrioritySelect, { taskId: "task-1", priority: "high" }),
-      }),
+      <MembershipProvider role="member" projectRoles={{}}>
+        <ListPrioritySelect taskId="task-1" priority="high" />
+      </MembershipProvider>,
     );
 
     expect(
