@@ -328,6 +328,66 @@ describe.skipIf(!haveAdminCreds)(
       expect(rows ?? []).toHaveLength(0);
     });
 
+    it("test_AS_507_an_oversized_upload_explains_why_and_leaves_no_attachments_row", async () => {
+      // F259 (AS-507): same behaviour as the AS-112 case above, asserted
+      // under this feature's own assertion id since F259's Definition of
+      // done requires a named test per assigned assertion. Confirms both
+      // halves of AS-507: (a) the error explains why, (b) no row exists —
+      // proving the real ordering in uploadAttachmentForUser (Zod
+      // validation runs and returns before any Storage/DB call is made,
+      // see lib/actions/attachments.ts) never leaves a partial row for a
+      // rejected file.
+      const { uploadAttachment } = await import("@/lib/actions/attachments");
+      const { MAX_ATTACHMENT_SIZE_BYTES } = await import(
+        "@/lib/validation/attachments"
+      );
+
+      currentTestUserId = memberUserId;
+
+      const oversized = new Uint8Array(MAX_ATTACHMENT_SIZE_BYTES + 1);
+      const file = new File([oversized], "as507-huge.txt", {
+        type: "text/plain",
+      });
+      const formData = buildFormData(taskId, file);
+
+      const result = await uploadAttachment(formData);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatch(/smaller/i);
+
+      const { data: rows } = await adminClient
+        .from("attachments")
+        .select("id")
+        .eq("task_id", taskId)
+        .eq("file_name", "as507-huge.txt");
+      expect(rows ?? []).toHaveLength(0);
+    });
+
+    it("test_AS_507_a_disallowed_mime_type_upload_explains_why_and_leaves_no_attachments_row", async () => {
+      const { uploadAttachment } = await import("@/lib/actions/attachments");
+
+      currentTestUserId = memberUserId;
+
+      const file = new File(["#!/bin/sh\necho hi"], "as507-script.sh", {
+        type: "application/x-sh",
+      });
+      const formData = buildFormData(taskId, file);
+
+      const result = await uploadAttachment(formData);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error).toMatch(/not allowed/i);
+
+      const { data: rows } = await adminClient
+        .from("attachments")
+        .select("id")
+        .eq("task_id", taskId)
+        .eq("file_name", "as507-script.sh");
+      expect(rows ?? []).toHaveLength(0);
+    });
+
     it("a user who is not a member of the task's workspace cannot upload", async () => {
       const { uploadAttachment } = await import("@/lib/actions/attachments");
 
