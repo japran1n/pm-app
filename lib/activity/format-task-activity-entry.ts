@@ -160,6 +160,23 @@ function fieldChangedSentence(input: FormatTaskActivityEntryInput): string {
       return `${actor} changed the due date`;
     }
 
+    // F236 (AS-453): same shape as "due_date" immediately above, minus
+    // that case's recurrence-generation special case (start_date is never
+    // set by the recurrence generator — see
+    // lib/recurrence/generate-next-occurrence.ts, which only ever writes
+    // due_date).
+    case "start_date": {
+      const oldDate = dueDateLabel(oldValue, timeZone);
+      const newDate = dueDateLabel(newValue, timeZone);
+
+      if (!oldDate && newDate) return `${actor} set the start date to ${newDate}`;
+      if (oldDate && !newDate) return `${actor} removed the start date`;
+      if (oldDate && newDate) {
+        return `${actor} changed the start date from ${oldDate} to ${newDate}`;
+      }
+      return `${actor} changed the start date`;
+    }
+
     case "estimate": {
       const oldMinutes = asNumberOrNull(oldValue);
       const newMinutes = asNumberOrNull(newValue);

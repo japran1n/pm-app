@@ -161,6 +161,21 @@ const editableFields = z.object({
     .trim()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
     .nullable(),
+  // F236 (AS-453): a task's start date. Same "plain YYYY-MM-DD string,
+  // format-only here" convention as dueDate immediately above — the real
+  // "start date must not be after due date" invariant is enforced by
+  // `tasks_start_date_not_after_due_date`
+  // (supabase/migrations/20260828010000_tasks_start_date.sql) as the last
+  // line of defense, and mirrored in the cross-field `.superRefine` below
+  // (AS-146: the client check never stands alone) so a bad combination is
+  // rejected before ever reaching the database. Nullable — null clears a
+  // previously set start date, same convention as every other nullable
+  // field in this schema.
+  startDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid start date (YYYY-MM-DD).")
+    .nullable(),
   // F166 (AS-298, AS-299): normalized minute count, already parsed from
   // human input (e.g. "2h", "90m") via lib/time/parse-estimate.ts before
   // reaching this schema — mirrors `tasks_estimate_minutes_positive` in
@@ -213,9 +228,34 @@ const editableFields = z.object({
 
 const partialEditableFields = editableFields.partial();
 
+// F236 (AS-453): cross-field check mirroring
+// `tasks_start_date_not_after_due_date`
+// (supabase/migrations/20260828010000_tasks_start_date.sql) — only
+// enforced when BOTH `startDate` and `dueDate` are present in the SAME
+// `updates` call, since editTask is a partial update and a call that
+// only touches one of the two fields has no way to know the other's
+// current DB value client-side; the DB CHECK is the real last-line
+// enforcement for the "only one field touched" case (per this schema's
+// "DB is the last line, not the only line" convention).
+const partialEditableFieldsWithDateOrder = partialEditableFields.superRefine(
+  (updates, ctx) => {
+    if (
+      updates.startDate != null &&
+      updates.dueDate != null &&
+      updates.startDate > updates.dueDate
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Start date must not be after the due date.",
+        path: ["startDate"],
+      });
+    }
+  },
+);
+
 export const editTaskSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
-  updates: partialEditableFields,
+  updates: partialEditableFieldsWithDateOrder,
 });
 
 export type EditTaskInput = z.infer<typeof editTaskSchema>;

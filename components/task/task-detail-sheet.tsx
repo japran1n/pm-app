@@ -242,6 +242,10 @@ export type TaskDetailSheetTask = {
    * once this is populated. */
   assigneeIds?: string[];
   dueDate: string | null;
+  /** F236 (AS-453): this task's start date, sibling to `dueDate` above —
+   * same "plain YYYY-MM-DD string or null" shape, same source
+   * (getTaskDetail's own task select, no second round trip). */
+  startDate: string | null;
   /** AS-065: may be empty — every task has a tag list, never null. */
   tags: string[];
   /** F166/F167 (AS-300, AS-301, AS-302): this task's `estimate_minutes`,
@@ -475,6 +479,9 @@ export function TaskDetailSheet({
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  // F236 (AS-453): sibling local state to dueDate above, same "local
+  // mirror re-synced on task change" convention.
+  const [startDate, setStartDate] = useState(task?.startDate ?? "");
   // F173 (AS-311): local, optimistic mirror of `task.descriptionJson`,
   // same "local state re-synced on task change" shape as
   // title/description/dueDate above — needed so the Preview's inline
@@ -549,6 +556,7 @@ export function TaskDetailSheet({
     setSyncedTaskId(task.id);
     setTitle(task.title);
     setDueDate(task.dueDate ?? "");
+    setStartDate(task.startDate ?? "");
     setDescriptionJson(task.descriptionJson);
   } else if (!open && syncedTaskId !== null) {
     // Sheet closed — clear the sync marker so reopening the same task
@@ -742,6 +750,20 @@ export function TaskDetailSheet({
     const next = value || null;
     if (next === (task.dueDate ?? null)) return;
     saveField({ dueDate: next }, "Due date updated.");
+  }
+
+  // F236 (AS-453): mirrors handleDueDateChange above exactly. A
+  // start-date-after-due-date combination is rejected server-side (Zod
+  // cross-field refine, then the DB CHECK as the last line of defense —
+  // see editTaskSchema/tasks_start_date_not_after_due_date) and surfaced
+  // via the same toast.error(result.error) path saveField already uses,
+  // so no extra client-side validation is duplicated here.
+  function handleStartDateChange(value: string) {
+    setStartDate(value);
+    if (!task) return;
+    const next = value || null;
+    if (next === (task.startDate ?? null)) return;
+    saveField({ startDate: next }, "Start date updated.");
   }
 
   // F161 (AS-287, AS-288): replaces the old single-value handleAssigneeChange
@@ -1171,6 +1193,22 @@ export function TaskDetailSheet({
                     </Popover>
                   );
                 })()}
+                </div>
+
+                <div className="flex flex-col gap-2">
+                <Label htmlFor={`task-start-date-${task.id}`}>
+                  Start date
+                </Label>
+                <Input
+                  id={`task-start-date-${task.id}`}
+                  type="date"
+                  value={startDate ?? ""}
+                  disabled={isSavingField || !canEdit}
+                  title={editDisabledTitle}
+                  onChange={(changeEvent) =>
+                    handleStartDateChange(changeEvent.target.value)
+                  }
+                />
                 </div>
 
                 <div className="flex flex-col gap-2">

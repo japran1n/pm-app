@@ -40,11 +40,18 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 // priority, due date, estimate, title. `assignee_id` and `due_date` are
 // the exact DB column/vocabulary names from F194's migration header
 // comment — the source of truth F195 must follow.
+// F236 (AS-453): "start_date" added to the vocabulary, following the exact
+// same "closed field-name vocabulary, DB column name" convention F195's
+// header comment establishes for `due_date` above — the
+// `write_task_activity_entry` RPC's `p_field` parameter is a plain text
+// column with no DB-side CHECK restricting its values, so extending this
+// vocabulary is additive and requires no migration.
 export type TaskActivityField =
   | "title"
   | "status"
   | "priority"
   | "due_date"
+  | "start_date"
   | "estimate"
   | "assignee_id";
 
@@ -62,6 +69,7 @@ export type TaskFieldSnapshot = {
   status?: string;
   priority?: string | null;
   due_date?: string | null;
+  start_date?: string | null;
   estimate_minutes?: number | null;
   assignee_id?: string | null;
 };
@@ -77,6 +85,7 @@ const FIELD_KEY_MAP: Record<keyof TaskFieldSnapshot, TaskActivityField> = {
   status: "status",
   priority: "priority",
   due_date: "due_date",
+  start_date: "start_date",
   estimate_minutes: "estimate",
   assignee_id: "assignee_id",
 };

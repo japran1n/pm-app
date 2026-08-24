@@ -1175,6 +1175,10 @@ export type EditTaskResult =
         descriptionJson?: JSONContent | null;
         priority: string | null;
         dueDate: string | null;
+        // F236 (AS-453): mirrors dueDate's own always-present convention
+        // (not descriptionJson's conditional one) — a plain scalar field
+        // with no server-side transform, same shape as dueDate.
+        startDate: string | null;
         estimateMinutes: number | null;
       };
     }
@@ -1242,7 +1246,7 @@ export async function editTask(
       // sanitiseMentionsForVisibility, mirroring lib/actions/comments.ts's
       // addComment/editComment) are added here alongside the pre-existing
       // columns; nothing else about this select changes.
-      "id, deleted_at, title, priority, due_date, estimate_minutes, description_json, projects!inner(id, workspace_id, visibility)",
+      "id, deleted_at, title, priority, due_date, start_date, estimate_minutes, description_json, projects!inner(id, workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -1376,6 +1380,8 @@ export async function editTask(
     description_json?: Json;
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     due_date?: string | null;
+    // F236 (AS-453): mirrors due_date's own field above.
+    start_date?: string | null;
     estimate_minutes?: number | null;
     // F179 (AS-317, AS-318, AS-319): `null` clears the rule (AS-319: no
     // future occurrences generate — F177's generation logic already
@@ -1400,6 +1406,9 @@ export async function editTask(
   if ("dueDate" in parsed.data.updates) {
     updatePayload.due_date = parsed.data.updates.dueDate;
   }
+  if ("startDate" in parsed.data.updates) {
+    updatePayload.start_date = parsed.data.updates.startDate;
+  }
   if ("estimateMinutes" in parsed.data.updates) {
     updatePayload.estimate_minutes = parsed.data.updates.estimateMinutes;
   }
@@ -1415,7 +1424,7 @@ export async function editTask(
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
     .select(
-      "id, title, description, description_json, priority, due_date, estimate_minutes, recurrence",
+      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence",
     )
     .single();
 
@@ -1443,6 +1452,23 @@ export async function editTask(
         error: "Enter a valid recurrence rule.",
       };
     }
+    // F236 (AS-453): `tasks_start_date_not_after_due_date`
+    // (supabase/migrations/20260828010000_tasks_start_date.sql) is the
+    // last line of defense — the Zod cross-field refine above already
+    // rejects the same combination client-side when both fields are
+    // touched in the same call, so this should only ever fire when a
+    // call sets only one of startDate/dueDate and the OTHER field's
+    // existing DB value now conflicts with it.
+    if (
+      updateError?.message?.includes(
+        "tasks_start_date_not_after_due_date",
+      )
+    ) {
+      return {
+        ok: false,
+        error: "Start date must not be after the due date.",
+      };
+    }
     console.error("editTask: update failed:", updateError);
     return {
       ok: false,
@@ -1460,12 +1486,14 @@ export async function editTask(
         title: taskRow.title,
         priority: taskRow.priority,
         due_date: taskRow.due_date,
+        start_date: taskRow.start_date,
         estimate_minutes: taskRow.estimate_minutes,
       },
       {
         title: updated.title,
         priority: updated.priority,
         due_date: updated.due_date,
+        start_date: updated.start_date,
         estimate_minutes: updated.estimate_minutes,
       },
     );
@@ -1594,6 +1622,7 @@ export async function editTask(
         : {}),
       priority: updated.priority,
       dueDate: updated.due_date,
+      startDate: updated.start_date,
       estimateMinutes: updated.estimate_minutes,
     },
   };
@@ -3546,7 +3575,7 @@ export async function getTaskDetail(
       // TaskDetailSheetTask.statusCategory (isOverdue's category-aware
       // check) gets real data — same "one query, no second round trip"
       // convention as every other field on this select.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -4027,6 +4056,8 @@ export async function getTaskDetail(
           (row) => row.user_id === user.id,
         ),
         dueDate: taskRow.due_date,
+        // F236 (AS-453): see this function's task select above.
+        startDate: taskRow.start_date,
         tags: taskRow.tags ?? [],
         // F146 (AS-258): see this function's task+project select above.
         number: taskRow.number,
