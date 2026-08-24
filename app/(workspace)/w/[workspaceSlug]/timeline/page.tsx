@@ -51,12 +51,15 @@ import {
   toMonthKey,
 } from "@/lib/calendar/month-grid";
 import {
-  DEFAULT_PIXELS_PER_DAY,
   isPlaceableOnTimeline,
-  timelineRangeForMonth,
+  timelineRangeForZoom,
+  resolveTimelineZoom,
+  PIXELS_PER_DAY_BY_ZOOM,
+  type TimelineZoomLevel,
 } from "@/lib/timeline/layout";
 import { TimelineScale } from "@/components/timeline/timeline-scale";
 import { TimelineBody } from "@/components/timeline/timeline-body";
+import { TimelineToolbar } from "@/components/timeline/timeline-toolbar";
 import { Button } from "@/components/ui/button";
 
 function groupTimelineTasksByProject(
@@ -83,10 +86,15 @@ export default async function TimelinePage({
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string }>;
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; zoom?: string }>;
 }) {
   const { workspaceSlug } = await params;
-  const { month: monthParam } = await searchParams;
+  const { month: monthParam, zoom: zoomParam } = await searchParams;
+  // F240 (AS-456): a stale/tampered `?zoom=` value degrades to the
+  // default "month" zoom rather than erroring -- same posture
+  // lib/calendar/resolve-filters.ts and lib/views/resolve-view.ts already
+  // take for their own URL/saved-view params.
+  const zoom: TimelineZoomLevel = resolveTimelineZoom(zoomParam);
 
   const supabase = await createClient();
   const {
@@ -118,7 +126,12 @@ export default async function TimelinePage({
 
   const parsed = parseMonthKey(monthParam);
   const { year, month } = parsed ?? currentMonthKey(timezone);
-  const { start, end } = timelineRangeForMonth(year, month);
+  // F240 (AS-456): the anchor month is untouched by zoom -- only the
+  // window WIDTH around it varies (see timelineRangeForZoom's own doc
+  // comment) -- which is what "preserve the centre date across zoom"
+  // requires: switching zoom never resets `year`/`month`.
+  const { start, end } = timelineRangeForZoom(year, month, zoom);
+  const pixelsPerDay = PIXELS_PER_DAY_BY_ZOOM[zoom];
 
   const tasks = await getTimelineTasks(workspace.id, start, end);
   const undatedCount = await getUndatedTimelineTaskCount(workspace.id);
@@ -127,7 +140,9 @@ export default async function TimelinePage({
   const next = nextMonthKey(year, month);
   const todayMonth = currentMonthKey(timezone);
 
-  const hrefFor = (key: string) => `/w/${workspaceSlug}/timeline?month=${key}`;
+  const hrefFor = (key: string) => `/w/${workspaceSlug}/timeline?month=${key}&zoom=${zoom}`;
+  const hrefForZoom = (z: TimelineZoomLevel) =>
+    `/w/${workspaceSlug}/timeline?month=${toMonthKey(year, month)}&zoom=${z}`;
 
   const placeable = tasks.filter((t) => isPlaceableOnTimeline(t));
   const groups = groupTimelineTasksByProject(placeable);
@@ -147,7 +162,8 @@ export default async function TimelinePage({
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h1 className="text-lg font-semibold">Timeline</h1>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <TimelineToolbar currentZoom={zoom} hrefForZoom={hrefForZoom} />
         <Button
           variant="outline"
           size="sm"
@@ -208,7 +224,7 @@ export default async function TimelinePage({
         <div className="flex min-w-max flex-col">
           <div className="flex">
             <div className="sticky left-0 z-20 w-56 shrink-0 border-b border-r bg-background" />
-            <TimelineScale rangeStart={start} rangeEnd={end} today={today} pixelsPerDay={DEFAULT_PIXELS_PER_DAY} />
+            <TimelineScale rangeStart={start} rangeEnd={end} today={today} pixelsPerDay={pixelsPerDay} zoom={zoom} />
           </div>
           {/* F238 (AS-454): drag/resize is the one client-side "island"
               this Server Component page needs -- TimelineBody owns the
@@ -222,7 +238,7 @@ export default async function TimelinePage({
             rangeStart={start}
             rangeEnd={end}
             today={today}
-            pixelsPerDay={DEFAULT_PIXELS_PER_DAY}
+            pixelsPerDay={pixelsPerDay}
             dependencyEdges={dependencyEdges}
           />
         </div>

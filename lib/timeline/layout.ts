@@ -237,6 +237,16 @@ export type TimelineDayTick = {
   /** true for the first day of a calendar month -- `TimelineScale` draws
    * a stronger divider/label there. */
   isMonthStart: boolean;
+  /** F240 (AS-456): true for a Monday -- same `weekStartsOn: 1` Monday
+   * convention lib/calendar/month-grid.ts's `CALENDAR_WEEK_STARTS_ON`
+   * already fixes for this codebase, reused here rather than a second
+   * week-start rule. Used by the "week" zoom level's day-granularity
+   * header. */
+  isWeekStart: boolean;
+  /** F240 (AS-456): true for the first day of a calendar quarter
+   * (Jan/Apr/Jul/Oct 1st). Used by the "quarter" zoom level's coarser
+   * header. */
+  isQuarterStart: boolean;
 };
 
 /** Every day in the visible range, positioned for the scale header --
@@ -250,10 +260,111 @@ export function buildTimelineDayTicks(
   const ticks: TimelineDayTick[] = [];
   for (let i = 0; i < totalDays; i += 1) {
     const date = addDaysToDateOnly(rangeStart, i);
-    const day = Number(date.slice(8, 10));
-    ticks.push({ date, leftPx: i * pixelsPerDay, isMonthStart: day === 1 });
+    const parsed = parseDateOnly(date);
+    if (!parsed) continue; // unreachable: `date` is always well-formed here.
+    const day = parsed.getUTCDate();
+    const month = parsed.getUTCMonth() + 1;
+    const weekday = parsed.getUTCDay(); // 0 = Sunday .. 6 = Saturday (UTC-anchored, per this module's own convention)
+    ticks.push({
+      date,
+      leftPx: i * pixelsPerDay,
+      isMonthStart: day === 1,
+      isWeekStart: weekday === 1,
+      isQuarterStart: day === 1 && (month === 1 || month === 4 || month === 7 || month === 10),
+    });
   }
   return ticks;
+}
+
+// F240 (AS-456): zoom levels. Each level is just a (pixelsPerDay, visible
+// window width) pair layered on top of every F237/F238/F239 function
+// above -- none of those functions were changed, since every one of them
+// already took `pixelsPerDay` as an explicit parameter rather than
+// baking `DEFAULT_PIXELS_PER_DAY` in (see this file's own header comment,
+// written by F237 specifically to leave this seam for F240). Zooming
+// changes pixels-per-day AND the width of the fetched/rendered window
+// together, coarser zoom = more days visible in the same header
+// granularity, so "quarter" is still a BOUNDED window (13 calendar
+// months around the anchor), never an unbounded "whole workspace
+// history" fetch.
+
+export type TimelineZoomLevel = "week" | "month" | "quarter";
+
+/** The exhaustive, ordered set of valid zoom levels -- exported so the
+ * toolbar and the URL-param validator share one list rather than two. */
+export const TIMELINE_ZOOM_LEVELS: readonly TimelineZoomLevel[] = ["week", "month", "quarter"];
+
+/** "month" is the zoom level this feature's own predecessor (F237)
+ * shipped as its only, hardcoded scale -- kept as the default so an
+ * existing bookmarked/shared `?month=...` URL with no `zoom` param
+ * renders identically to before this feature landed. */
+export const DEFAULT_TIMELINE_ZOOM: TimelineZoomLevel = "month";
+
+/** Pixels-per-day at each zoom level. "month" is `DEFAULT_PIXELS_PER_DAY`
+ * unchanged (F237/F238/F239's own tests and the existing default export
+ * stay valid at the default zoom); "week" is more pixels/day (a wider,
+ * more legible day-granularity bar); "quarter" is fewer pixels/day (a
+ * denser view covering a wider date range in the same header width). */
+export const PIXELS_PER_DAY_BY_ZOOM: Record<TimelineZoomLevel, number> = {
+  week: 64,
+  month: DEFAULT_PIXELS_PER_DAY,
+  quarter: 12,
+};
+
+/**
+ * A stale/tampered/unknown `?zoom=` URL value degrades gracefully to
+ * `DEFAULT_TIMELINE_ZOOM` -- same "drop rather than apply, never throw"
+ * posture as `lib/calendar/resolve-filters.ts`'s `resolveCalendarFilters`
+ * and `lib/views/resolve-view.ts`'s `resolveListViewFilters` (AS-448 /
+ * AS-433's own precedent for this codebase).
+ */
+export function resolveTimelineZoom(value: string | null | undefined): TimelineZoomLevel {
+  if (value === "week" || value === "month" || value === "quarter") {
+    return value;
+  }
+  return DEFAULT_TIMELINE_ZOOM;
+}
+
+/**
+ * The visible `[start, end]` window for a given zoom level, anchored on
+ * the SAME `year`/`month` "?month=YYYY-MM" URL key `timelineRangeForMonth`
+ * already uses -- so switching zoom levels never moves the anchor month,
+ * which is exactly what "preserve the centre date across zoom changes"
+ * (this feature's own Notes) requires: the anchor is the centre, and it
+ * is untouched by this function, only the window WIDTH around it varies.
+ *
+ *   - "week": the anchor month alone (no month-before/-after padding) --
+ *     the tightest, most zoomed-in window, paired with `PIXELS_PER_DAY_
+ *     BY_ZOOM.week`'s wider per-day pixel width for day-level legibility.
+ *   - "month": IDENTICAL to `timelineRangeForMonth` (the month before,
+ *     the anchor month, the month after) -- this feature's own predecessor
+ *     behaviour, unchanged.
+ *   - "quarter": six months either side of the anchor month (13 calendar
+ *     months total) -- still a bounded window, not the whole workspace
+ *     history, paired with `PIXELS_PER_DAY_BY_ZOOM.quarter`'s narrower
+ *     per-day pixel width so the wider range still fits a reasonable
+ *     rendered width.
+ */
+export function timelineRangeForZoom(
+  year: number,
+  month: number,
+  zoom: TimelineZoomLevel,
+): { start: DateOnly; end: DateOnly } {
+  const anchor = new Date(Date.UTC(year, month - 1, 15, 12, 0, 0));
+
+  if (zoom === "week") {
+    const rangeStartDate = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1, 12, 0, 0));
+    const rangeEndDate = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0, 12, 0, 0));
+    return { start: formatDateOnly(rangeStartDate), end: formatDateOnly(rangeEndDate) };
+  }
+
+  if (zoom === "quarter") {
+    const rangeStartDate = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() - 6, 1, 12, 0, 0));
+    const rangeEndDate = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 7, 0, 12, 0, 0));
+    return { start: formatDateOnly(rangeStartDate), end: formatDateOnly(rangeEndDate) };
+  }
+
+  return timelineRangeForMonth(year, month);
 }
 
 // F239 (AS-455): dependency connectors. Pure vertical-position and path
