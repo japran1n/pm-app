@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { BoardColumnDef } from "@/lib/queries/statuses";
 import type { UserAvatarPerson } from "@/components/user-avatar";
+import { SWIMLANE_NONE_KEY, type SwimlaneGroupBy } from "@/lib/board/grouping";
 
 export function Swimlane({
   laneKey,
@@ -42,6 +43,11 @@ export function Swimlane({
   canDrag = false,
   collapsed = false,
   onToggleCollapsed,
+  projectId,
+  groupBy = "none",
+  canCreateTask = false,
+  onTaskCreated,
+  onCreateError,
 }: {
   laneKey: string;
   label: string;
@@ -73,7 +79,38 @@ export function Swimlane({
    * existing test rendering `<Swimlane>` in isolation) renders the toggle
    * disabled rather than crashing on a missing handler. */
   onToggleCollapsed?: (laneKey: string) => void;
+  /** F248: required (with `groupBy`) for the lane's quick-add controls to
+   * call createTask -- omitted by any not-yet-updated caller (existing
+   * tests rendering `<Swimlane>` in isolation), which simply never
+   * renders the controls (same `canCreateTask` gate BoardColumn itself
+   * applies). */
+  projectId?: string;
+  /** F248/F225: which field this lane's key represents -- so the
+   * quick-add control inside this lane can default a created task's
+   * assignee/priority to match the lane it was typed in, consistent with
+   * F225's cross-lane drag semantics. Defaults to "none" (no lane-value
+   * default applied), matching every not-yet-updated caller. */
+  groupBy?: SwimlaneGroupBy;
+  canCreateTask?: boolean;
+  onTaskCreated?: (task: TaskCardTask) => void;
+  onCreateError?: (message: string) => void;
 }) {
+  // F248/F225: the lane's own grouping value applied as a quick-add
+  // default -- single-valued groupings only (priority/assignee), same
+  // "move, not add" scope this lane already has for drag; tag lanes are
+  // many-to-many (a task can be in several tag lanes at once) so there is
+  // no single "the" tag value to default a NEW task's tags to without
+  // guessing which tags the viewer wants -- out of scope here, tracked in
+  // this feature's handoff Out-of-scope section. The "None" lane
+  // (SWIMLANE_NONE_KEY) never sets a default either way.
+  const quickAddDefaults =
+    laneKey === SWIMLANE_NONE_KEY
+      ? undefined
+      : groupBy === "priority"
+        ? { priority: laneKey as TaskCardTask["priority"] }
+        : groupBy === "assignee"
+          ? { assigneeId: laneKey }
+          : undefined;
   return (
     <section
       className="flex flex-col gap-2 rounded-lg border border-border/40 bg-background/40 p-3"
@@ -137,6 +174,11 @@ export function Swimlane({
               canDrag={canDrag}
               dropId={`${laneKey}::${column.id}`}
               laneKey={laneKey}
+              projectId={projectId}
+              canCreateTask={canCreateTask}
+              onTaskCreated={onTaskCreated}
+              onCreateError={onCreateError}
+              quickAddDefaults={quickAddDefaults}
             />
           ))}
         </div>

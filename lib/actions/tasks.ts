@@ -132,7 +132,13 @@ export async function createTask(
   projectId: string,
   title: string,
   description?: string | null,
-  status?: "todo" | "in_progress" | "in_review" | "done",
+  // F248 (AS-479): widened from the original fixed four-value union to
+  // any string — see createTaskSchema's own doc comment in
+  // lib/validation/tasks.ts for why (project boards have real per-project
+  // columns since F221; a caller passing one of the original four literal
+  // values still type-checks unchanged, since that union is a subtype of
+  // string).
+  status?: string,
   priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null,
   assigneeId?: string | null,
   dueDate?: string | null,
@@ -183,7 +189,9 @@ export async function createTaskForUser(
     projectId: string;
     title: string;
     description?: string | null;
-    status?: "todo" | "in_progress" | "in_review" | "done";
+    // F248 (AS-479): see createTask's own param above for why this is now
+    // `string` rather than the original fixed four-value union.
+    status?: string;
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     assigneeId?: string | null;
     dueDate?: string | null;
@@ -340,6 +348,28 @@ export async function createTaskForUser(
         error: "A subtask cannot itself have subtasks.",
       };
     }
+  }
+
+  // F248 (AS-479): `parsed.data.status` must name one of THIS project's
+  // real board columns — same guard moveTaskStatus already applies (see
+  // that action's own doc comment above its matching lookup), now shared
+  // by the create path too since createTaskSchema's `status` was widened
+  // from a fixed four-value enum to any project column name. Prevents a
+  // stale/forged column name (e.g. a column deleted after the quick-add
+  // control rendered) from reaching the insert with `status_id` silently
+  // left null by the DB trigger.
+  const { data: statusColumnMatch } = await admin
+    .from("project_statuses")
+    .select("id")
+    .eq("project_id", parsed.data.projectId)
+    .eq("name", parsed.data.status)
+    .maybeSingle();
+
+  if (!statusColumnMatch) {
+    return {
+      ok: false,
+      error: "That column no longer exists. Refresh the board and try again.",
+    };
   }
 
   // AS-058: author_id is set here from the server-verified caller id, never

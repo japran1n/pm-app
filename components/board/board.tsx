@@ -308,6 +308,24 @@ export function Board({
     setTasks((current) => current.filter((t) => t.id !== deletedTaskId));
   }
 
+  // F248 (AS-480): appends the server's real created task to local board
+  // state -- QuickAdd already awaited createTask itself, so this is
+  // simply "add the row that now exists in the DB", the same shape
+  // `initialTasks`/useBoardRealtime's own reconciled rows already have.
+  // Not optimistic (F249's scope, deliberately left as a clean seam --
+  // see quick-add.tsx's own doc comment).
+  function handleTaskCreated(task: TaskCardTask) {
+    setTasks((current) => [...current, task]);
+  }
+
+  // F248: per this feature's Clarified implementation's Failure handling
+  // answer -- a sonner toast states what failed in plain language; the
+  // quick-add control itself already stays in an actionable state (title
+  // text is preserved, not cleared, on failure -- see quick-add.tsx).
+  function handleCreateError(message: string) {
+    toast.error(message);
+  }
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 4 },
@@ -801,6 +819,10 @@ export function Board({
                 onCardClick={handleCardClick}
                 timezone={timezone}
                 canDrag={canDrag}
+                projectId={projectId}
+                canCreateTask={canDrag}
+                onTaskCreated={handleTaskCreated}
+                onCreateError={handleCreateError}
               />
             ))}
           </div>
@@ -829,6 +851,11 @@ export function Board({
                 canDrag={canDrag}
                 collapsed={collapsedLaneKeys.has(group.key)}
                 onToggleCollapsed={toggleLaneCollapsed}
+                projectId={projectId}
+                groupBy={groupBy}
+                canCreateTask={canDrag}
+                onTaskCreated={handleTaskCreated}
+                onCreateError={handleCreateError}
               />
             ))}
           </div>

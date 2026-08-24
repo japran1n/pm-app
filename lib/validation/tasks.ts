@@ -29,9 +29,21 @@ export const createTaskSchema = z.object({
     .max(10000, "Description must be 10000 characters or fewer.")
     .optional()
     .nullable(),
-  // Matches `tasks_status_check` in the tasks migration.
+  // F248 (AS-479): `tasks_status_check` was dropped by F221's
+  // 20260824020000_project_statuses_management.sql migration once columns
+  // became per-project (`project_statuses`) rather than a fixed four-value
+  // enum — this now accepts any non-empty column name, same relaxed shape
+  // moveTaskStatusSchema/moveAndReorderTaskSchema already use, so a
+  // quick-add (or any other creation path) can target a project's real
+  // custom column. createTaskForUser re-verifies the name against that
+  // project's actual `project_statuses` rows server-side (mirrors
+  // moveTaskStatus's own `project_statuses` lookup) before it's ever
+  // written — this schema only guards shape, not existence.
   status: z
-    .enum(["todo", "in_progress", "in_review", "done"])
+    .string()
+    .trim()
+    .min(1, "Status is required.")
+    .max(100, "Status must be 100 characters or fewer.")
     .default("todo"),
   // Matches `tasks_priority_check` in the tasks migration. Optional/nullable
   // — a task may have no priority set at all (AS-046).

@@ -28,6 +28,7 @@ import {
 
 import type { TaskCardTask } from "@/components/task/task-card";
 import { SortableTaskCard } from "@/components/board/sortable-task-card";
+import { QuickAdd } from "@/components/board/quick-add";
 // F073 (AS-135): status labels/colors now come from the single shared
 // lib/task-colors.ts constant, reused by the dashboard's status pie chart,
 // instead of this component's own local copy.
@@ -48,6 +49,11 @@ export function BoardColumn({
   canDrag = true,
   dropId,
   laneKey,
+  projectId,
+  canCreateTask = false,
+  onTaskCreated,
+  onCreateError,
+  quickAddDefaults,
 }: {
   // F221 (AS-409, AS-416): the value tasks in this column are matched
   // against (`task.status === status`) AND the dnd-kit droppable id a
@@ -111,6 +117,39 @@ export function BoardColumn({
    * no opinion on what a cross-lane drop means (board.tsx's onDragEnd
    * owns that). */
   laneKey?: string;
+  /** F248 (AS-479): required for the quick-add control to call createTask
+   * (lib/actions/tasks.ts) -- omitted by any not-yet-updated caller
+   * (existing tests), which simply never renders the control (see
+   * `canCreateTask` below). */
+  projectId?: string;
+  /** F248: the viewer's real create-task permission (board.tsx's own
+   * `canWrite`-derived value, the SAME one gating drag). Defaults to
+   * `false` -- hidden entirely for a caller that hasn't passed it (viewers
+   * never see the control), per this feature's draft scope ("Hidden
+   * entirely for users without create rights"). The server
+   * (createTaskForUser) still independently re-checks `canWrite` even if
+   * this were somehow bypassed. */
+  canCreateTask?: boolean;
+  /** F248 (AS-480): fired with the server's real created task once
+   * createTask succeeds, so the caller (board.tsx) can append it to local
+   * board state -- the same "server-fetched, passed down" shape every
+   * other task in `tasks` already has, not a locally-fabricated optimistic
+   * stub (F249's scope). */
+  onTaskCreated?: (task: TaskCardTask) => void;
+  /** F248: fired with createTask's error message on failure, so the
+   * caller can surface a toast -- see Clarified implementation's Failure
+   * handling answer. */
+  onCreateError?: (message: string) => void;
+  /** F248/F225: when this column is rendered inside a Swimlane, the
+   * lane's own grouping field/value -- so a quick-add typed inside e.g.
+   * the "Alice" assignee lane creates the task already assigned to Alice,
+   * consistent with F225's cross-lane drag semantics (a task's grouped
+   * field should always match the lane it's sitting in). Omitted for the
+   * ungrouped board and for the "None" lane (nothing to default). */
+  quickAddDefaults?: {
+    assigneeId?: string | null;
+    priority?: TaskCardTask["priority"];
+  };
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
@@ -188,6 +227,21 @@ export function BoardColumn({
           )}
         </div>
       </SortableContext>
+
+      {/* F248 (AS-479): hidden entirely (not disabled) for a viewer
+          without create rights -- `canCreateTask` is the caller's real
+          `canWrite`-derived permission, same convention `canDrag` already
+          follows. The server (createTaskForUser) still independently
+          re-checks on submit regardless of what this control renders. */}
+      {canCreateTask && projectId ? (
+        <QuickAdd
+          projectId={projectId}
+          status={status}
+          laneDefaults={quickAddDefaults}
+          onCreated={(task) => onTaskCreated?.(task)}
+          onError={(message) => onCreateError?.(message)}
+        />
+      ) : null}
     </div>
   );
 }
