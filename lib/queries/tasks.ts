@@ -110,6 +110,12 @@ export async function getProjectBoardTasks(
     // same as the RPC's own child_done/open_blocker_count fixes in that
     // migration.
     status_category: string | null;
+    // F224 (AS-418, AS-423): every tag on this task, added to the RPC's
+    // return in 20260825020000_rpc_project_board_tasks_tags.sql. Always
+    // an array (possibly empty), never null -- same "coalesce at the SQL
+    // boundary" convention as `assignee_ids` above -- feeds the board's
+    // client-side "group by tag" swimlanes (lib/board/grouping.ts).
+    tags: string[];
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -171,6 +177,9 @@ export async function getProjectBoardTasks(
       // identically (no indicator rendered), same convention as
       // estimateMinutes above.
       recurrence: task.recurrence,
+      // F224 (AS-418, AS-423): straight off the RPC row -- see this
+      // function's BoardTaskRow type above.
+      tags: task.tags ?? [],
     };
   });
 }

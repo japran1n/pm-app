@@ -43,6 +43,7 @@ vi.mock("@/lib/actions/tasks", () => ({
 // context mounted (same "no jsdom" constraint noted above).
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/w/acme/projects/proj-1/board",
   useSearchParams: () => new URLSearchParams(),
 }));
 

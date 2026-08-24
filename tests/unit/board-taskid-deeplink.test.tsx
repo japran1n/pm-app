@@ -54,6 +54,7 @@ vi.mock("@/lib/actions/tasks", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/w/acme/projects/proj-1/board",
   useSearchParams: () => new URLSearchParams("taskId=t1"),
 }));
 

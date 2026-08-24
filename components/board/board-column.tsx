@@ -46,6 +46,7 @@ export function BoardColumn({
   onCardClick,
   timezone,
   canDrag = true,
+  dropId,
 }: {
   // F221 (AS-409, AS-416): the value tasks in this column are matched
   // against (`task.status === status`) AND the dnd-kit droppable id a
@@ -87,10 +88,23 @@ export function BoardColumn({
    * this column — see that component's own doc comment for why dragging
    * itself (not just the drop's Server Action) needs to be gated. */
   canDrag?: boolean;
+  /** F224: overrides the dnd-kit droppable id (defaults to `status`).
+   * Needed once a board renders more than one BoardColumn sharing the
+   * same `status` at a time -- e.g. Swimlane renders one BoardColumn per
+   * (lane, column) pair, and every lane's "To Do" column would otherwise
+   * register the same `useDroppable({ id: "todo" })` id, which dnd-kit
+   * does not support (ids must be unique across the whole DndContext).
+   * Every existing caller (a plain, ungrouped board) omits this and keeps
+   * exactly its pre-F224 id. Cross-lane drag-and-drop reassignment itself
+   * (AS-420, AS-425) is F225's scope, not this one's -- Swimlane below
+   * currently renders with `canDrag={false}`, so this prop only prevents
+   * an id collision / dnd-kit console warning today, not a real drag
+   * target yet. */
+  dropId?: string;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
-  const { setNodeRef } = useDroppable({ id: status });
+  const { setNodeRef } = useDroppable({ id: dropId ?? status });
 
   // F221 (AS-403, AS-405): a real column's own name/colour win when
   // provided; otherwise fall back to the fixed lookup so every existing

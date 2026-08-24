@@ -36,6 +36,7 @@ import { createElement } from "react";
 // context mounted (this repo's tests use `environment: "node"`, no jsdom).
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => "/w/acme/projects/proj-1/board",
   useSearchParams: () => new URLSearchParams(),
 }));
 

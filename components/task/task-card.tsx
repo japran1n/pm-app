@@ -163,6 +163,15 @@ export type TaskCardTask = {
    * badge (F167) — see this feature's handoff for which queries still
    * need wiring. */
   recurrence?: RecurrenceRule | null;
+  /** F224 (AS-418, AS-423): this task's tags, or undefined/[] for none —
+   * feeds the board's client-side "group by tag" swimlanes
+   * (lib/board/grouping.ts), which reads this field directly off the
+   * already-loaded task set (no per-row query). Not rendered on the card
+   * itself — same "safe default, optional field" convention as every
+   * other field on this type; a query layer that hasn't been updated to
+   * select `tags` yet simply never puts a task in any tag lane (it falls
+   * through to the "None" lane instead of crashing). */
+  tags?: string[];
 };
 
 export function TaskCard({

@@ -26,7 +26,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -53,7 +53,14 @@ import { useBoardRealtime } from "@/components/board/use-board-realtime";
 import { useBoardColumnsRealtime } from "@/components/board/use-board-columns-realtime";
 import { reconcileColumn } from "@/lib/board/reconcile-realtime-column";
 import type { BoardColumnDef } from "@/lib/queries/statuses";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
+import { STATUS_COLORS, STATUS_LABELS, PRIORITY_LABELS } from "@/lib/task-colors";
+import {
+  groupTasksIntoSwimlanes,
+  SWIMLANE_NONE_KEY,
+  type SwimlaneGroupBy,
+} from "@/lib/board/grouping";
+import { Swimlane } from "@/components/board/swimlane";
+import { BoardToolbar } from "@/components/board/board-toolbar";
 import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
@@ -468,18 +475,66 @@ export function Board({
     }
   }
 
+  // F224 (AS-418, AS-419, AS-421, AS-423): grouping choice lives in the
+  // URL (`?groupBy=`), per this feature's Clarified implementation's
+  // "URL search params for anything shareable" state rule, and BY DEFAULT
+  // (param absent, e.g. every board URL that predates this feature) is
+  // `"none"` -- which resolves to the exact pre-F224 layout below,
+  // unconditionally, satisfying AS-419 by construction rather than by a
+  // second, parallel "ungrouped" rendering path.
+  const groupByParam = searchParams.get("groupBy");
+  const groupBy: SwimlaneGroupBy =
+    groupByParam === "assignee" || groupByParam === "priority" || groupByParam === "tag"
+      ? groupByParam
+      : "none";
+
+  const sortedColumns = useMemo(
+    () => [...columns].sort((a, b) => a.position - b.position),
+    [columns],
+  );
+
+  // F224 (AS-418, AS-421, AS-423): computed from the board's own
+  // already-loaded `tasks` state -- no extra fetch (see grouping.ts's own
+  // header comment for the full performance-budget rationale).
+  const swimlaneGroups = useMemo(
+    () => groupTasksIntoSwimlanes(tasks, groupBy),
+    [tasks, groupBy],
+  );
+
+  function laneLabel(key: string): string {
+    if (key === SWIMLANE_NONE_KEY) return "None";
+    if (groupBy === "priority") {
+      return (
+        PRIORITY_LABELS[key as keyof typeof PRIORITY_LABELS] ?? key
+      );
+    }
+    if (groupBy === "assignee") {
+      const person = assignees?.get(key);
+      return person?.name ?? person?.email ?? "Unknown member";
+    }
+    // "tag"
+    return key;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Task-creation fix: a "New Task" trigger visible on the board's
           own toolbar even once tasks already exist — previously the only
           create-task entry point was the empty state, which disappears
           the moment a project has its first task. */}
-      <div className="flex justify-end gap-2">
-        {/* F183 (AS-330 UI half): "New from template", next to "New
-            Task" — this toolbar is the closest thing this board has to a
-            quick-add entry point. */}
-        <NewFromTemplateButton projectId={projectId} templates={templates} />
-        <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+      <div className="flex items-center justify-between gap-2">
+        {/* F224 (AS-418): the grouping control -- rendered unconditionally
+            (even with zero tasks/columns) so a viewer can always see and
+            change the current grouping, matching every other persistent
+            toolbar control on this board. */}
+        <BoardToolbar groupBy={groupBy} />
+        <div className="flex gap-2">
+          {/* F183 (AS-330 UI half): "New from template", next to "New
+              Task" — this toolbar is the closest thing this board has to a
+              quick-add entry point. */}
+          <NewFromTemplateButton projectId={projectId} templates={templates} />
+          <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+        </div>
       </div>
 
       <DndContext
@@ -488,16 +543,13 @@ export function Board({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {/* F221 (AS-403, AS-416): the project's real columns, rendered
-              in `position` order — the same order every viewer reads on
-              every reload (lib/queries/statuses.ts's getProjectColumns),
-              kept live by useBoardColumnsRealtime above. `[...columns]`
-              copies before sorting since `columns` is React state (must
-              not be mutated in place). */}
-          {[...columns]
-            .sort((a, b) => a.position - b.position)
-            .map((column) => (
+        {groupBy === "none" ? (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {/* F221 (AS-403, AS-416): the project's real columns, rendered
+                in `position` order — the same order every viewer reads on
+                every reload (lib/queries/statuses.ts's getProjectColumns),
+                kept live by useBoardColumnsRealtime above. */}
+            {sortedColumns.map((column) => (
               <BoardColumn
                 key={column.id}
                 status={column.name as TaskCardTask["status"]}
@@ -522,7 +574,33 @@ export function Board({
                 canDrag={canDrag}
               />
             ))}
-        </div>
+          </div>
+        ) : (
+          // F224 (AS-418, AS-421, AS-423): one Swimlane per group, each
+          // rendering the SAME project columns, each showing only its own
+          // slice of `tasks` -- see swimlane.tsx's own doc comment for why
+          // cross-lane drag (AS-420/AS-425, F225's scope) is disabled here.
+          <div className="flex flex-col gap-3 pb-4">
+            {swimlaneGroups.map((group) => (
+              <Swimlane
+                key={group.key}
+                laneKey={group.key}
+                label={laneLabel(group.key)}
+                avatar={
+                  groupBy === "assignee" && group.key !== SWIMLANE_NONE_KEY
+                    ? assignees?.get(group.key)
+                    : undefined
+                }
+                columns={sortedColumns}
+                tasks={group.tasks}
+                assignees={assignees}
+                onCardClick={handleCardClick}
+                timezone={timezone}
+                showMultiValueNote={groupBy === "assignee" || groupBy === "tag"}
+              />
+            ))}
+          </div>
+        )}
 
         <DragOverlay>
           {activeTask ? (
