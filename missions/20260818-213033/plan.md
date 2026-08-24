@@ -231,7 +231,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F251 inline-edit-permissions-realtime — AS-486, AS-488, AS-489 [CLARIFIED-AUTO] [COMPLETE]
 - F252 empty-states-pass — AS-490 [CLARIFIED-AUTO] [COMPLETE]
 - F253 onboarding-tour — AS-491, AS-492, AS-493 [CLARIFIED-AUTO] [COMPLETE]
-- F254 sample-project-seed — AS-494 [CLARIFIED-AUTO]
+- F254 sample-project-seed — AS-494 [CLARIFIED-AUTO] [COMPLETE]
 - F255 skeleton-pass — AS-495, AS-496 [CLARIFIED-AUTO]
 - F256 optimistic-pending-pass — AS-497, AS-498, AS-499 [CLARIFIED-AUTO]
 - F257 route-error-boundaries — AS-500 [CLARIFIED-AUTO]
