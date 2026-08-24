@@ -253,7 +253,7 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("returns an unsubscribe function that removes the channel", () => {
+  it("returns an unsubscribe function that removes the channel (deferred teardown)", async () => {
     const { supabase, removedChannels, channelObject } = createMockSupabaseClient();
 
     const unsubscribe = subscribeToCommentsRealtime(
@@ -262,6 +262,11 @@ describe("subscribeToCommentsRealtime (AS-101, F104)", () => {
       vi.fn(),
     );
     unsubscribe();
+
+    // F329: teardown is deferred one macrotask so a synchronous
+    // StrictMode remount on the same topic can cancel it and reuse the
+    // channel instead of racing subscribe()/on() against removeChannel().
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(removedChannels).toEqual([channelObject]);
   });

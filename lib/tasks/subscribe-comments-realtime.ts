@@ -75,6 +75,7 @@ import type {
   CommentRealtimeEvent,
   CommentRealtimeRow,
 } from "@/lib/tasks/reconcile-realtime-comment";
+import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 
 export type { CommentRealtimeEvent, CommentRealtimeRow };
 
@@ -169,14 +170,17 @@ export function subscribeToReactionsRealtime(
   taskId: string,
   onChange: (event: ReactionRealtimeEvent) => void,
 ): () => void {
-  function forward(eventType: "INSERT" | "DELETE") {
+  function forward(
+    eventType: "INSERT" | "DELETE",
+    dispatch: (event: ReactionRealtimeEvent) => void,
+  ) {
     return (payload: {
       new?: { comment_id?: string; user_id?: string; emoji?: string };
       old?: { comment_id?: string; user_id?: string; emoji?: string };
     }) => {
       const row = eventType === "INSERT" ? payload?.new : payload?.old;
       if (!row?.comment_id || !row.user_id || !row.emoji) return;
-      onChange({
+      dispatch({
         eventType,
         commentId: row.comment_id,
         userId: row.user_id,
@@ -185,33 +189,35 @@ export function subscribeToReactionsRealtime(
     };
   }
 
-  const channel = supabase
-    .channel(`comment_reactions:${taskId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "comment_reactions",
-        filter: `task_id=eq.${taskId}`,
-      },
-      forward("INSERT"),
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "DELETE",
-        schema: "public",
-        table: "comment_reactions",
-        filter: `task_id=eq.${taskId}`,
-      },
-      forward("DELETE"),
-    )
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return acquireSharedTopicChannel<ReactionRealtimeEvent>(
+    supabase,
+    `comment_reactions:${taskId}`,
+    (dispatch) =>
+      supabase
+        .channel(`comment_reactions:${taskId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "comment_reactions",
+            filter: `task_id=eq.${taskId}`,
+          },
+          forward("INSERT", dispatch),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "DELETE",
+            schema: "public",
+            table: "comment_reactions",
+            filter: `task_id=eq.${taskId}`,
+          },
+          forward("DELETE", dispatch),
+        )
+        .subscribe(),
+    onChange,
+  );
 }
 
 export function subscribeToCommentsRealtime(
@@ -219,76 +225,78 @@ export function subscribeToCommentsRealtime(
   taskId: string,
   onChange: (event: CommentRealtimeEvent) => void,
 ): () => void {
-  const channel = supabase
-    .channel(`comments:${taskId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "comments",
-        filter: `task_id=eq.${taskId}`,
-      },
-      (payload: CommentRealtimeEvent) => {
-        onChange(payload);
-      },
-    )
-    .on<{ id: string }>(
-      "broadcast",
-      { event: "comment_deleted" },
-      (message) => {
-        const deletedId = message?.payload?.id;
-        if (!deletedId) return;
-        onChange({
-          eventType: "DELETE",
-          schema: "public",
-          table: "comments",
-          old: { id: deletedId },
-          new: {},
-        } as unknown as CommentRealtimeEvent);
-      },
-    )
-    .on<CommentRealtimeRow>(
-      "broadcast",
-      { event: "comment_restored" },
-      (message) => {
-        const row = message?.payload;
-        if (!row || !row.id) return;
-        onChange({
-          eventType: "INSERT",
-          schema: "public",
-          table: "comments",
-          new: row,
-          old: {},
-        } as unknown as CommentRealtimeEvent);
-      },
-    )
-    // F197 (AS-362): a symmetrical `comment_edited` broadcast, sent by
-    // lib/actions/comments.ts's editComment right after its content UPDATE
-    // succeeds. Same rationale as comment_restored above — postgres_changes
-    // is only subscribed to `event: "INSERT"`, so an edit (also an UPDATE
-    // under the hood) would never reach other subscribers via
-    // postgres_changes at all. Translated into an UPDATE-shaped event so
-    // reconcileComment's existing "replace by id" branch handles it without
-    // a new reducer path.
-    .on<CommentRealtimeRow>(
-      "broadcast",
-      { event: "comment_edited" },
-      (message) => {
-        const row = message?.payload;
-        if (!row || !row.id) return;
-        onChange({
-          eventType: "UPDATE",
-          schema: "public",
-          table: "comments",
-          new: row,
-          old: {},
-        } as unknown as CommentRealtimeEvent);
-      },
-    )
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return acquireSharedTopicChannel<CommentRealtimeEvent>(
+    supabase,
+    `comments:${taskId}`,
+    (dispatch) =>
+      supabase
+        .channel(`comments:${taskId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "comments",
+            filter: `task_id=eq.${taskId}`,
+          },
+          (payload: CommentRealtimeEvent) => {
+            dispatch(payload);
+          },
+        )
+        .on<{ id: string }>(
+          "broadcast",
+          { event: "comment_deleted" },
+          (message) => {
+            const deletedId = message?.payload?.id;
+            if (!deletedId) return;
+            dispatch({
+              eventType: "DELETE",
+              schema: "public",
+              table: "comments",
+              old: { id: deletedId },
+              new: {},
+            } as unknown as CommentRealtimeEvent);
+          },
+        )
+        .on<CommentRealtimeRow>(
+          "broadcast",
+          { event: "comment_restored" },
+          (message) => {
+            const row = message?.payload;
+            if (!row || !row.id) return;
+            dispatch({
+              eventType: "INSERT",
+              schema: "public",
+              table: "comments",
+              new: row,
+              old: {},
+            } as unknown as CommentRealtimeEvent);
+          },
+        )
+        // F197 (AS-362): a symmetrical `comment_edited` broadcast, sent by
+        // lib/actions/comments.ts's editComment right after its content
+        // UPDATE succeeds. Same rationale as comment_restored above —
+        // postgres_changes is only subscribed to `event: "INSERT"`, so an
+        // edit (also an UPDATE under the hood) would never reach other
+        // subscribers via postgres_changes at all. Translated into an
+        // UPDATE-shaped event so reconcileComment's existing "replace by
+        // id" branch handles it without a new reducer path.
+        .on<CommentRealtimeRow>(
+          "broadcast",
+          { event: "comment_edited" },
+          (message) => {
+            const row = message?.payload;
+            if (!row || !row.id) return;
+            dispatch({
+              eventType: "UPDATE",
+              schema: "public",
+              table: "comments",
+              new: row,
+              old: {},
+            } as unknown as CommentRealtimeEvent);
+          },
+        )
+        .subscribe(),
+    onChange,
+  );
 }

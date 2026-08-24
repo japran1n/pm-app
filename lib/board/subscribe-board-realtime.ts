@@ -15,6 +15,8 @@
 
 import type { RealtimePostgresChangesPayload, SupabaseClient } from "@supabase/supabase-js";
 
+import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
+
 export type BoardRealtimeTaskRow = {
   id: string;
   project_id: string;
@@ -42,23 +44,25 @@ export function subscribeToBoardRealtime(
   projectId: string,
   onChange: (event: BoardRealtimeEvent) => void,
 ): () => void {
-  const channel = supabase
-    .channel(`board:${projectId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "tasks",
-        filter: `project_id=eq.${projectId}`,
-      },
-      (payload: BoardRealtimeEvent) => {
-        onChange(payload);
-      },
-    )
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return acquireSharedTopicChannel<BoardRealtimeEvent>(
+    supabase,
+    `board:${projectId}`,
+    (dispatch) =>
+      supabase
+        .channel(`board:${projectId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tasks",
+            filter: `project_id=eq.${projectId}`,
+          },
+          (payload: BoardRealtimeEvent) => {
+            dispatch(payload);
+          },
+        )
+        .subscribe(),
+    onChange,
+  );
 }

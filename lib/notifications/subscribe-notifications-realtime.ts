@@ -39,6 +39,8 @@
 // truth" ambiguity answer.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
+
 export type NotificationInsertEvent = {
   id: string;
   userId: string;
@@ -52,41 +54,43 @@ export function subscribeToNotificationsRealtime(
   userId: string,
   onInsert: (event: NotificationInsertEvent) => void,
 ): () => void {
-  const channel = supabase
-    .channel(`notifications:${userId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications",
-        filter: `user_id=eq.${userId}`,
-      },
-      (payload: {
-        new?: {
-          id?: string;
-          user_id?: string;
-          workspace_id?: string;
-          kind?: string;
-          created_at?: string;
-        };
-      }) => {
-        const row = payload?.new;
-        if (!row?.id || !row.user_id || !row.workspace_id || !row.kind) {
-          return;
-        }
-        onInsert({
-          id: row.id,
-          userId: row.user_id,
-          workspaceId: row.workspace_id,
-          kind: row.kind,
-          createdAt: row.created_at ?? new Date().toISOString(),
-        });
-      },
-    )
-    .subscribe();
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
+  return acquireSharedTopicChannel<NotificationInsertEvent>(
+    supabase,
+    `notifications:${userId}`,
+    (dispatch) =>
+      supabase
+        .channel(`notifications:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload: {
+            new?: {
+              id?: string;
+              user_id?: string;
+              workspace_id?: string;
+              kind?: string;
+              created_at?: string;
+            };
+          }) => {
+            const row = payload?.new;
+            if (!row?.id || !row.user_id || !row.workspace_id || !row.kind) {
+              return;
+            }
+            dispatch({
+              id: row.id,
+              userId: row.user_id,
+              workspaceId: row.workspace_id,
+              kind: row.kind,
+              createdAt: row.created_at ?? new Date().toISOString(),
+            });
+          },
+        )
+        .subscribe(),
+    onInsert,
+  );
 }
