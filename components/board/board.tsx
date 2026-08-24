@@ -837,7 +837,8 @@ export function Board({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // F253 (AS-491): anchor target for the onboarding tour's "board" step.
+    <div className="flex flex-col gap-4" data-tour="board-view">
       {/* Task-creation fix: a "New Task" trigger visible on the board's
           own toolbar even once tasks already exist — previously the only
           create-task entry point was the empty state, which disappears
@@ -853,7 +854,15 @@ export function Board({
               Task" — this toolbar is the closest thing this board has to a
               quick-add entry point. */}
           <NewFromTemplateButton projectId={projectId} templates={templates} />
-          <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+          {/* F253 (AS-491): anchor target for the onboarding tour's
+              "create a task" step. NewTaskDialog itself already hides/
+              disables its trigger per role (canWrite), so a viewer who
+              can't create tasks naturally has no matching element here
+              and this tour step is skipped rather than pointing at
+              nothing -- see this feature's spec's per-step skip rule. */}
+          <span data-tour="new-task-trigger">
+            <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+          </span>
         </div>
       </div>
 

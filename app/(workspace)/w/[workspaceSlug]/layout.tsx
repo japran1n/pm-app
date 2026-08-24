@@ -25,6 +25,13 @@ import { ShortcutProvider } from "@/components/command/shortcut-provider";
 // F245 (AS-469, AS-472): `?` opens this reference dialog, rendered from
 // the SAME registry ShortcutProvider dispatches from.
 import { ShortcutHelpDialog } from "@/components/command/shortcut-help";
+// F253 (AS-491, AS-492, AS-493): the first-run guided tour, mounted once
+// alongside the other persistent workspace chrome. `initialDismissed` is
+// server-fetched here (same "server-fetched... passed down as typed
+// props" pattern as everything else on this layout) so a returning user
+// never sees a flash of the tour before a client-side check catches up.
+import { OnboardingTour } from "@/components/onboarding/tour";
+import { getTourStatus } from "@/lib/actions/onboarding-tour";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -196,6 +203,13 @@ export default async function WorkspaceLayout({
   const { list: initialNotifications, unreadCount: initialUnreadCount } =
     await getNotificationsForWorkspace(activeWorkspace.id);
 
+  // F253: non-fatal to the rest of the layout if this read fails --
+  // failing open to "already dismissed" (never show an unexpected tour on
+  // top of an otherwise-broken read) rather than failing closed and
+  // forcing every page load into a tour for a user who already saw it.
+  const tourStatusResult = await getTourStatus();
+  const tourDismissed = tourStatusResult.ok ? tourStatusResult.dismissed : true;
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): the caller's own role in the *active* workspace
@@ -302,6 +316,7 @@ export default async function WorkspaceLayout({
       />
       <ShortcutProvider />
       <ShortcutHelpDialog />
+      <OnboardingTour initialDismissed={tourDismissed} />
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "@/components/profile/profile-form";
 import { NotificationPreferencesForm } from "@/components/notifications/preferences-form";
 import { getNotificationPreferences } from "@/lib/actions/notification-preferences";
+import { ReplayTourButton } from "@/components/onboarding/replay-tour-button";
 
 // F123 (AS-202): the profile settings page — display name, avatar upload
 // with live preview, and timezone. Server Component for data loading, per
@@ -125,6 +126,19 @@ export default async function ProfileSettingsPage() {
       <NotificationPreferencesForm
         initialPreferences={notificationPreferences}
       />
+
+      {/* F253 (AS-493): replay entry point for the first-run guided
+          tour -- this profile page is the closest thing this app has to
+          a "profile menu" (no dropdown user menu exists yet). */}
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold">Onboarding</h2>
+        <p className="text-sm text-muted-foreground">
+          Replay the guided tour of the sidebar, board, and task creation.
+        </p>
+        <div>
+          <ReplayTourButton />
+        </div>
+      </div>
     </div>
   );
 }

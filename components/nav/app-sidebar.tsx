@@ -159,7 +159,15 @@ function SidebarContent({
         />
       </div>
 
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
+      {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
+          step. Always rendered regardless of role — the skip rule in
+          components/onboarding/tour.tsx only needs a target to be ABSENT
+          when it truly shouldn't apply (e.g. the "New task" step for a
+          viewer); this nav exists for every signed-in member. */}
+      <nav
+        data-tour="sidebar-nav"
+        className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2"
+      >
         {items.map(({ href, label, icon: Icon, exact }) => {
           const isActive = exact
             ? pathname === href
