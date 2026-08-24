@@ -218,7 +218,7 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ## M17 — UX polish, attachments & navigation
 
-- F241 command-palette-shell — AS-459, AS-463, AS-464 [CLARIFIED-AUTO]
+- F241 command-palette-shell — AS-459, AS-463, AS-464 [CLARIFIED-AUTO] [COMPLETE]
 - F242 palette-search-results — AS-460, AS-461, AS-466 [CLARIFIED-AUTO]
 - F243 palette-actions-recents — AS-462, AS-465 [CLARIFIED-AUTO]
 - F244 shortcut-provider — AS-467, AS-468, AS-470, AS-471 [CLARIFIED-AUTO]
