@@ -197,7 +197,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F224 board-grouping-swimlanes — AS-418, AS-419, AS-421, AS-423 [CLARIFIED-AUTO] [COMPLETE]
 - F225 swimlane-drag-reassign — AS-420, AS-425 [CLARIFIED-AUTO] [COMPLETE]
 - F226 swimlane-collapse-persist — AS-422, AS-424 [CLARIFIED-AUTO] [COMPLETE]
-- F227 db-schema-saved-views — AS-426, AS-427, AS-434 [CLARIFIED-AUTO]
+- F227 db-schema-saved-views — AS-426, AS-427, AS-434 [CLARIFIED-AUTO] [COMPLETE]
 - F228 saved-views-actions — AS-428, AS-430, AS-431 [CLARIFIED-AUTO]
 - F229 saved-views-ui — AS-429, AS-432, AS-433 [CLARIFIED-AUTO]
 - F230 my-tasks-page — AS-435, AS-436, AS-439 [CLARIFIED-AUTO]
