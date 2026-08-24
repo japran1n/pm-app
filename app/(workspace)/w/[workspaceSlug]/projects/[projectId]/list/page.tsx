@@ -292,6 +292,7 @@ export default async function ProjectListPage({
         members={detailSheetMembers}
         timezone={timezone}
         statusOptions={statusOptions}
+        projectId={projectId}
       />
     </div>
   );

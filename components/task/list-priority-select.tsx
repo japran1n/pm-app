@@ -82,6 +82,25 @@ export function ListPrioritySelect({
     commit(next);
   }
 
+  // F251 (AS-489): a viewer/guest gets plain, non-interactive text — not
+  // a disabled control — so there is no editable-looking affordance to
+  // discover. The server-side `editTask` gate (lib/actions/tasks.ts) is
+  // the real boundary either way; this is UX only.
+  if (!canEdit) {
+    return (
+      <span className="flex items-center gap-1.5 px-2 text-sm">
+        {localValue && (
+          <span
+            aria-hidden="true"
+            className="size-2 shrink-0 rounded-full"
+            style={{ backgroundColor: PRIORITY_COLORS[localValue] }}
+          />
+        )}
+        {localValue ? PRIORITY_LABELS[localValue] : "No priority"}
+      </span>
+    );
+  }
+
   return (
     <Select
       value={localValue ?? NO_PRIORITY_VALUE}

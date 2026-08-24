@@ -77,6 +77,12 @@ export function ListStatusSelect({
   // convention as TagsEditor's syncedTaskId.
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [isSaving, startSaveTransition] = useTransition();
+  // F251 (AS-488): another user's status change reconciled via Realtime
+  // (components/task/use-list-realtime.ts) arrives as a fresh `status`
+  // prop for this same task. No-clobber: never applied while a local
+  // change is saving OR while its confirmation dialog is open, matching
+  // lib/hooks/use-inline-field-edit.ts's rule for the other three cells.
+  const [lastSeenStatus, setLastSeenStatus] = useState(status);
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
   // blocked-guard.ts's isDoneStatus doc comment for the full list of
   // callers this same hook is shared with.
@@ -96,6 +102,12 @@ export function ListStatusSelect({
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
     setLocalStatus(status);
+    setLastSeenStatus(status);
+  } else if (status !== lastSeenStatus) {
+    setLastSeenStatus(status);
+    if (!isSaving) {
+      setLocalStatus(status);
+    }
   }
 
   async function handleChange(value: TaskCardTask["status"] | null) {
@@ -139,6 +151,23 @@ export function ListStatusSelect({
     optionByValue.get(localStatus)?.label ??
     STATUS_LABELS[localStatus as keyof typeof STATUS_LABELS] ??
     localStatus;
+
+  // F251 (AS-489): viewer/guest gets plain, non-interactive text — not a
+  // disabled control — matching the other three list-view cells. The
+  // server-side `moveTaskStatus` gate (lib/actions/tasks.ts) is the real
+  // boundary either way; this is UX only.
+  if (!canChangeStatus) {
+    return (
+      <span className="flex items-center gap-1.5 px-2 text-sm">
+        <span
+          aria-hidden="true"
+          className="size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: currentColor }}
+        />
+        {currentLabel}
+      </span>
+    );
+  }
 
   return (
     <>

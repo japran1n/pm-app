@@ -50,6 +50,9 @@ import { ListStatusSelect } from "@/components/task/list-status-select";
 import { ListPrioritySelect } from "@/components/task/list-priority-select";
 import { ListDueDateCell } from "@/components/task/list-due-date-cell";
 import { ListAssigneeCell } from "@/components/task/list-assignee-cell";
+// F251 (AS-488): live reconciliation — see each module's own doc comment.
+import { useListRealtime } from "@/components/task/use-list-realtime";
+import { reconcileListTask } from "@/lib/tasks/reconcile-list-realtime-task";
 import {
   Table,
   TableBody,
@@ -82,7 +85,7 @@ import { BulkStatusAction } from "@/components/task/bulk-status-action";
 import { BulkDeleteAction } from "@/components/task/bulk-delete-action";
 
 export function TaskListTable({
-  tasks,
+  tasks: tasksProp,
   assignees,
   sort,
   hasActiveFilters = false,
@@ -90,6 +93,7 @@ export function TaskListTable({
   members = [],
   timezone,
   statusOptions,
+  projectId,
 }: {
   tasks: TaskCardTask[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
@@ -141,8 +145,39 @@ export function TaskListTable({
    * workspace-wide dashboard table (multi-project) doesn't pass this
    * yet, see this feature's handoff. */
   statusOptions?: { value: TaskCardTask["status"]; label: string; color: string }[];
+  /** F251 (AS-488): the single project this table's rows belong to —
+   * present only for the per-project List view (list/page.tsx), which
+   * can subscribe to exactly one project's Realtime task changes. The
+   * workspace-wide dashboard table (dashboard-task-table.tsx) spans every
+   * project in the workspace and has no single topic to subscribe to, so
+   * it omits this prop and this table's Realtime subscription is a
+   * documented no-op for that caller — see this feature's handoff. */
+  projectId?: string;
 }) {
   const taskDetailSheet = useTaskDetailSheet();
+
+  // F251 (AS-488): local, client-side-only copy of the rows this table
+  // renders, reconciled live via Realtime. `tasksProp` is re-adopted
+  // wholesale whenever it changes by reference (every fresh Server
+  // Component fetch — a filter/sort navigation, or the initial
+  // `revalidatePath` after any mutation — produces a brand-new array),
+  // which is always the true DB state and therefore always wins over any
+  // residual local Realtime staleness. Between refetches, `useListRealtime`
+  // below merges individual `postgres_changes` events in place so another
+  // viewer's edit appears without a reload (AS-488) — same
+  // "adjust state during render on prop change" convention this file's
+  // sibling cells (list-status-select.tsx et al.) already use, applied to
+  // the whole row list instead of one field.
+  const [tasks, setTasks] = useState(tasksProp);
+  const [lastTasksProp, setLastTasksProp] = useState(tasksProp);
+  if (tasksProp !== lastTasksProp) {
+    setLastTasksProp(tasksProp);
+    setTasks(tasksProp);
+  }
+
+  useListRealtime(projectId, (event) => {
+    setTasks((current) => reconcileListTask(current, event));
+  });
 
   // F185 (AS-334/335/336/342): client-side selection state, scoped to
   // exactly the `tasks` prop this component was handed — since `tasks`

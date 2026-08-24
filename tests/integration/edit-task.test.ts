@@ -526,5 +526,91 @@ describe.skipIf(!haveAdminCreds)(
       if (!second.ok) return;
       expect(second.data.estimateMinutes).toBeNull();
     });
+
+    // F251 (AS-486): the boundary is the Server Action's own re-check
+    // (`canEditTask`/`canWrite`), not the list view's inline-cell UI
+    // hiding/disabling the control (that's a separate UX layer — see
+    // list-priority-select.tsx et al.). Every test below drives the REAL
+    // action as a viewer, with a value that genuinely differs from the
+    // seeded row, and asserts DB state is byte-for-byte unchanged — a
+    // rejected edit "reverting to the server value" is only true if the
+    // server value never moved in the first place.
+    it("AS-486: a viewer's inline priority edit is rejected server-side and the stored priority is unchanged", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+      const seeded = await editTask(taskId, { priority: "low" });
+      expect(seeded.ok).toBe(true);
+
+      currentTestUserId = viewerUserId;
+      const result = await editTask(taskId, { priority: "urgent" });
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("priority")
+        .eq("id", taskId)
+        .single();
+      expect(row?.priority).toBe("low");
+    });
+
+    it("AS-486: a viewer's inline due-date edit is rejected server-side and the stored due date is unchanged", async () => {
+      const { editTask } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = authorUserId;
+      const seeded = await editTask(taskId, { dueDate: "2026-09-01" });
+      expect(seeded.ok).toBe(true);
+
+      currentTestUserId = viewerUserId;
+      const result = await editTask(taskId, { dueDate: "2026-12-25" });
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("due_date")
+        .eq("id", taskId)
+        .single();
+      expect(row?.due_date).toBe("2026-09-01");
+    });
+
+    it("AS-486: a viewer's inline assignee edit is rejected server-side and the stored assignee set is unchanged", async () => {
+      const { setTaskAssignees } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = viewerUserId;
+      const result = await setTaskAssignees(taskId, [otherMemberUserId]);
+      expect(result.ok).toBe(false);
+
+      const { data: rows } = await adminClient
+        .from("task_assignees")
+        .select("user_id")
+        .eq("task_id", taskId);
+      expect(rows ?? []).toHaveLength(0);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("assignee_id")
+        .eq("id", taskId)
+        .single();
+      expect(row?.assignee_id).toBeNull();
+    });
+
+    it("AS-486: a viewer's inline status edit is rejected server-side and the stored status is unchanged", async () => {
+      const { moveTaskStatus } = await import("@/lib/actions/tasks");
+      const taskId = await makeTask();
+
+      currentTestUserId = viewerUserId;
+      const result = await moveTaskStatus(taskId, "done");
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("status")
+        .eq("id", taskId)
+        .single();
+      expect(row?.status).toBe("todo");
+    });
   },
 );

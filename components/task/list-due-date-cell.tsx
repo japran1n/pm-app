@@ -58,6 +58,16 @@ export function ListDueDateCell({
 
   useEscapeLayer(isDirty, revert);
 
+  // F251 (AS-489): viewer/guest gets plain text, not a disabled input —
+  // see list-priority-select.tsx's identical comment for the rationale.
+  if (!canEdit) {
+    return (
+      <span className="h-8 px-2 text-xs text-muted-foreground">
+        {localValue ?? "No due date"}
+      </span>
+    );
+  }
+
   return (
     <Input
       type="date"

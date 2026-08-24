@@ -65,10 +65,25 @@ export function ListAssigneeCell({
   const [localIds, setLocalIds] = useState(assigneeIds);
   const [syncedTaskId, setSyncedTaskId] = useState(taskId);
   const [isSaving, startSaveTransition] = useTransition();
+  // F251 (AS-488): another user's assignee edit reconciled via Realtime
+  // (see components/task/use-list-realtime.ts) arrives as a fresh
+  // `assigneeIds` prop for this same task. Same no-clobber rule as
+  // lib/hooks/use-inline-field-edit.ts: never applied while THIS client
+  // has a toggle in flight (`isSaving`) — that request's own resolution
+  // (below) is the authoritative outcome for this client's action either
+  // way.
+  const assigneeKey = assigneeIds.slice().sort().join(",");
+  const [lastSeenKey, setLastSeenKey] = useState(assigneeKey);
 
   if (taskId !== syncedTaskId) {
     setSyncedTaskId(taskId);
     setLocalIds(assigneeIds);
+    setLastSeenKey(assigneeKey);
+  } else if (assigneeKey !== lastSeenKey) {
+    setLastSeenKey(assigneeKey);
+    if (!isSaving) {
+      setLocalIds(assigneeIds);
+    }
   }
 
   function toggle(userId: string) {
@@ -99,6 +114,30 @@ export function ListAssigneeCell({
       avatarUrl: member?.avatarUrl ?? null,
     };
   });
+
+  // F251 (AS-489): viewer/guest gets a plain, non-interactive row — no
+  // popover trigger at all — see list-priority-select.tsx's identical
+  // comment for the rationale.
+  if (!canEdit) {
+    return (
+      <div className="flex h-8 w-full max-w-48 items-center gap-2 px-2 text-sm">
+        {currentPeople.length > 0 ? (
+          <>
+            <UserAvatarGroup people={currentPeople} size="sm" />
+            <span className="truncate text-muted-foreground">
+              {currentPeople.length === 1
+                ? currentPeople[0]!.name ||
+                  currentPeople[0]!.email ||
+                  currentPeople[0]!.id
+                : `${currentPeople.length} assignees`}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">Unassigned</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Popover>
