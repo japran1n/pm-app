@@ -116,6 +116,53 @@ export const SHORTCUT_EVENTS = {
   newTask: "pm-app:shortcut:new-task",
   /** AS-468: `/` — focuses/opens the search surface (command palette). */
   openSearch: "pm-app:shortcut:open-search",
+  /** AS-469: `?` — opens the shortcut reference dialog (F245). */
+  openHelp: "pm-app:shortcut:open-help",
 } as const;
 
 export type NewTaskShortcutDetail = { projectId: string | null };
+
+// ---------------------------------------------------------------------
+// F245 (AS-469, AS-472): the ONE registry the help dialog renders from
+// AND the provider below dispatches from. A hand-maintained second list
+// in the dialog would drift the moment a shortcut changes here — so the
+// dialog must import THIS array, never a copy of it.
+// ---------------------------------------------------------------------
+
+export type ShortcutRegistryEntry = {
+  /** Stable id, also used as the React key in the help dialog. */
+  id: string;
+  /** The literal key this shortcut binds to (no modifier — see keys below). */
+  key: string;
+  /** Human label for the key, shown in the help dialog (e.g. "Esc", "?"). */
+  keyLabel: string;
+  /** One-line description of what the shortcut does. */
+  description: string;
+};
+
+export const SHORTCUT_REGISTRY: readonly ShortcutRegistryEntry[] = [
+  { id: "new-task", key: "n", keyLabel: "N", description: "Create a new task in the current project" },
+  { id: "open-search", key: "/", keyLabel: "/", description: "Open search" },
+  { id: "open-help", key: "?", keyLabel: "?", description: "Show keyboard shortcuts" },
+  { id: "close", key: "Escape", keyLabel: "Esc", description: "Close the topmost dialog or panel" },
+] as const;
+
+// ---------------------------------------------------------------------
+// Cross-platform key rendering: Cmd on macOS, Ctrl elsewhere. This is the
+// ONE detection method in the codebase — F241/F244 do not yet have their
+// own, so this is where it lives; anything needing it (e.g. the help
+// dialog's Cmd+K row) should import `isMacPlatform`/`modifierKeyLabel`
+// from here rather than re-deriving it.
+// ---------------------------------------------------------------------
+
+export function isMacPlatform(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData
+      ?.platform ?? navigator.platform ?? navigator.userAgent;
+  return /Mac|iPhone|iPad|iPod/i.test(platform);
+}
+
+export function modifierKeyLabel(): string {
+  return isMacPlatform() ? "⌘" : "Ctrl";
+}

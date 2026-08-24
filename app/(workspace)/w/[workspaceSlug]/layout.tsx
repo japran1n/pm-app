@@ -22,6 +22,9 @@ import { CommandPalette } from "@/components/command/command-palette";
 // component's own file-header comment for why these stay as two separate
 // `document` keydown listeners rather than one merged listener.
 import { ShortcutProvider } from "@/components/command/shortcut-provider";
+// F245 (AS-469, AS-472): `?` opens this reference dialog, rendered from
+// the SAME registry ShortcutProvider dispatches from.
+import { ShortcutHelpDialog } from "@/components/command/shortcut-help";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -298,6 +301,7 @@ export default async function WorkspaceLayout({
         workspaceSlug={workspaceSlug}
       />
       <ShortcutProvider />
+      <ShortcutHelpDialog />
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}

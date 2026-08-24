@@ -107,6 +107,16 @@ export function ShortcutProvider() {
         window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.openSearch));
         return;
       }
+
+      // AS-469 (F245): `?` opens the shortcut reference dialog. `?` is
+      // Shift+/ on a US keyboard layout, so this deliberately reads
+      // `event.key === "?"` (the produced character) rather than
+      // requiring `event.shiftKey`, which keeps it layout-agnostic.
+      if (event.key === "?") {
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.openHelp));
+        return;
+      }
     }
 
     document.addEventListener("keydown", onKeyDown);
