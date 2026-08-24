@@ -226,7 +226,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F246 task-deep-link-route — AS-473, AS-474, AS-477 [CLARIFIED-AUTO] [COMPLETE]
 - F247 task-modal-routing — AS-475, AS-476, AS-478 [CLARIFIED-AUTO] [COMPLETE]
 - F248 quick-add-board — AS-479, AS-480, AS-482, AS-483 [CLARIFIED-AUTO] [COMPLETE]
-- F249 quick-add-optimistic — AS-481 [CLARIFIED-AUTO]
+- F249 quick-add-optimistic — AS-481 [CLARIFIED-AUTO] [COMPLETE]
 - F250 list-inline-edit — AS-484, AS-485, AS-487 [CLARIFIED-AUTO]
 - F251 inline-edit-permissions-realtime — AS-486, AS-488, AS-489 [CLARIFIED-AUTO]
 - F252 empty-states-pass — AS-490 [CLARIFIED-AUTO]
