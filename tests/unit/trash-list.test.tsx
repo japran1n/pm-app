@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
 // F188 (AS-347): the trash list's presentation of "what, by whom, and
 // when" for each row — a pure Server Component, tested with a plain
 // server-render (no client runtime needed).
+//
+// TrashList composes the client-side TrashRestoreButton (F189) for task
+// rows, which calls next/navigation's useRouter(). react-dom/server's
+// renderToStaticMarkup still executes that Client Component's render (it
+// has no server/client boundary in this test environment), so the hook
+// needs a mock — same convention as board-taskid-deeplink.test.tsx.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
 
 import { TrashList } from "@/components/trash/trash-list";
 import type { TrashItem } from "@/lib/queries/trash";
