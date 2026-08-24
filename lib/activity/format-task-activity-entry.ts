@@ -36,7 +36,7 @@
 
 import { formatDueDate } from "@/lib/time/user-timezone";
 import { STATUS_LABELS, PRIORITY_LABELS } from "@/lib/task-colors";
-import type { TaskActivityKind } from "@/lib/queries/task-activity";
+import type { TaskActivityKind } from "@/lib/activity/task-activity-feed";
 
 export type FormatTaskActivityEntryInput = {
   kind: TaskActivityKind;

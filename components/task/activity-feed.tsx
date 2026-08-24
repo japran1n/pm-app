@@ -58,10 +58,15 @@ import { Loader2, History } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 import { getTaskActivityFeed } from "@/lib/actions/task-activity";
+// F330: the query module (`@/lib/queries/task-activity`) imports
+// `@/lib/supabase/server`, which imports `next/headers` — server-only.
+// This Client Component only ever needed the page-size constant and a
+// type, both of which live in this dependency-free module instead (see
+// its own header comment for the full story).
 import {
   DEFAULT_TASK_ACTIVITY_PAGE_SIZE,
   type TaskActivityRow,
-} from "@/lib/queries/task-activity";
+} from "@/lib/activity/task-activity-feed";
 import {
   formatTaskActivityEntry,
   formatTaskActivityTime,
