@@ -53,6 +53,7 @@ export function BoardColumn({
   canCreateTask = false,
   onTaskCreated,
   onCreateError,
+  onTaskOptimisticAdd,
   quickAddDefaults,
 }: {
   // F221 (AS-409, AS-416): the value tasks in this column are matched
@@ -130,16 +131,23 @@ export function BoardColumn({
    * (createTaskForUser) still independently re-checks `canWrite` even if
    * this were somehow bypassed. */
   canCreateTask?: boolean;
-  /** F248 (AS-480): fired with the server's real created task once
-   * createTask succeeds, so the caller (board.tsx) can append it to local
-   * board state -- the same "server-fetched, passed down" shape every
-   * other task in `tasks` already has, not a locally-fabricated optimistic
-   * stub (F249's scope). */
-  onTaskCreated?: (task: TaskCardTask) => void;
-  /** F248: fired with createTask's error message on failure, so the
-   * caller can surface a toast -- see Clarified implementation's Failure
-   * handling answer. */
-  onCreateError?: (message: string) => void;
+  /** F248/F249 (AS-480, AS-481): fired with the server's real created task
+   * (plus the optimistic placeholder's tempId) once createTask succeeds,
+   * so the caller (board.tsx) can reconcile: swap the placeholder for
+   * this real row, or drop the placeholder if Realtime's own INSERT echo
+   * already added it. */
+  onTaskCreated?: (task: TaskCardTask, tempId: string) => void;
+  /** F248/F249: fired with createTask's error message (plus the
+   * placeholder's tempId) on failure, so the caller can roll the
+   * optimistic card back out and surface one toast -- see Clarified
+   * implementation's Failure handling answer. */
+  onCreateError?: (message: string, tempId: string) => void;
+  /** F249 (AS-481): fired synchronously with a provisional card, before
+   * createTask is awaited, so the caller can render it immediately.
+   * Omitted (any not-yet-updated caller) falls back to F248's
+   * non-optimistic behaviour -- the card only ever appears once the real
+   * row comes back. */
+  onTaskOptimisticAdd?: (task: TaskCardTask) => void;
   /** F248/F225: when this column is rendered inside a Swimlane, the
    * lane's own grouping field/value -- so a quick-add typed inside e.g.
    * the "Alice" assignee lane creates the task already assigned to Alice,
@@ -238,8 +246,9 @@ export function BoardColumn({
           projectId={projectId}
           status={status}
           laneDefaults={quickAddDefaults}
-          onCreated={(task) => onTaskCreated?.(task)}
-          onError={(message) => onCreateError?.(message)}
+          onCreated={(task, tempId) => onTaskCreated?.(task, tempId)}
+          onError={(message, tempId) => onCreateError?.(message, tempId)}
+          onOptimisticAdd={(task) => onTaskOptimisticAdd?.(task)}
         />
       ) : null}
     </div>

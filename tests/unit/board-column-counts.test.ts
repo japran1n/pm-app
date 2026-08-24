@@ -119,9 +119,11 @@ describe("BoardColumn task count (F051: AS-083)", () => {
     // scope, not a functional updater — see
     // board-setstate-not-during-render.test.ts for why).
     expect(boardSource).toMatch(/setTasks\(next\);/);
-    // Realtime reconciliation updates the same `tasks` state too.
-    expect(boardSource).toMatch(
-      /useBoardRealtime\(projectId, \(event\) => \{\s*setTasks\(\(current\) => reconcileTask\(current, event\)\);/,
-    );
+    // Realtime reconciliation updates the same `tasks` state too. F249
+    // (AS-481) wraps this callback with optimistic-placeholder matching,
+    // but it's still the same `useBoardRealtime(projectId, ...)` call
+    // driving `setTasks` off `reconcileTask`.
+    expect(boardSource).toMatch(/useBoardRealtime\(projectId, \(event\) => \{/);
+    expect(boardSource).toMatch(/return reconcileTask\(current, event\);/);
   });
 });

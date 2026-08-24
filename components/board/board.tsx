@@ -26,7 +26,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -229,8 +229,40 @@ export function Board({
   // moves included — see reconcileTask's doc comment on why dedup isn't
   // needed) into local board state, so another viewer's drag shows up
   // here within a few seconds without a manual refresh.
+  // F249 (AS-481): still-unresolved optimistic quick-add placeholders,
+  // keyed by their tempId -- consulted below so an INSERT Realtime event
+  // that arrives BEFORE createTask's own promise settles (this feature's
+  // spec calls this out as the single most likely bug) is merged into
+  // the matching placeholder instead of appended as a second row. A
+  // plain ref (not state) since this is bookkeeping for the Realtime
+  // callback's own logic, not something that drives a render itself.
+  const pendingOptimisticCreatesRef = useRef<
+    Array<{ tempId: string; title: string; status: string }>
+  >([]);
+
   useBoardRealtime(projectId, (event) => {
-    setTasks((current) => reconcileTask(current, event));
+    setTasks((current) => {
+      if (event.eventType === "INSERT" && event.new) {
+        const pending = pendingOptimisticCreatesRef.current;
+        const matchIndex = pending.findIndex(
+          (p) => p.title === event.new!.title && p.status === event.new!.status,
+        );
+        if (matchIndex !== -1) {
+          const { tempId } = pending[matchIndex];
+          pending.splice(matchIndex, 1);
+          // Drop the placeholder first so reconcileTask's own INSERT
+          // branch (existingIndex === -1 -> append) adds the real row
+          // exactly once, carrying the server's real id/number/position
+          // -- rather than leaving both the placeholder AND the real row
+          // present at the same time, even momentarily.
+          return reconcileTask(
+            current.filter((t) => t.id !== tempId),
+            event,
+          );
+        }
+      }
+      return reconcileTask(current, event);
+    });
   });
 
   // F221 (AS-413): same reconciliation strategy as the tasks channel
@@ -308,21 +340,62 @@ export function Board({
     setTasks((current) => current.filter((t) => t.id !== deletedTaskId));
   }
 
-  // F248 (AS-480): appends the server's real created task to local board
-  // state -- QuickAdd already awaited createTask itself, so this is
-  // simply "add the row that now exists in the DB", the same shape
-  // `initialTasks`/useBoardRealtime's own reconciled rows already have.
-  // Not optimistic (F249's scope, deliberately left as a clean seam --
-  // see quick-add.tsx's own doc comment).
-  function handleTaskCreated(task: TaskCardTask) {
+  // F249 (AS-481): QuickAdd calls this synchronously, before createTask
+  // is even awaited, with a provisional card -- appended immediately so
+  // the card appears in the same render pass the user hit Enter in, the
+  // same "optimistic update committed before the network call" shape
+  // handleDragEnd already established for drag-and-drop (see that
+  // function's own doc comment).
+  function handleTaskOptimisticAdd(task: TaskCardTask) {
+    pendingOptimisticCreatesRef.current.push({
+      tempId: task.id,
+      title: task.title,
+      status: task.status,
+    });
     setTasks((current) => [...current, task]);
   }
 
-  // F248: per this feature's Clarified implementation's Failure handling
-  // answer -- a sonner toast states what failed in plain language; the
-  // quick-add control itself already stays in an actionable state (title
-  // text is preserved, not cleared, on failure -- see quick-add.tsx).
-  function handleCreateError(message: string) {
+  // F248/F249 (AS-480, AS-481): reconciles the optimistic placeholder
+  // (tempId, added by handleTaskOptimisticAdd above) with the REAL row
+  // createTask returned -- which carries the server-assigned id, task
+  // number/key, and real position the placeholder never had.
+  //
+  // Realtime interaction (this feature's own "single most likely bug"):
+  // the board's `postgres_changes` subscription (useBoardRealtime above)
+  // also receives the INSERT event for this very row, and reconciles it
+  // via reconcileTask independently of this handler -- reconcileTask
+  // doesn't know about `tempId` at all, so if that INSERT lands BEFORE
+  // this handler runs, the real row is already present under its real id
+  // by the time we get here. Detected via `hasReal` below: when the real
+  // row is already in local state, this handler only removes the
+  // placeholder rather than appending the real row a second time. When
+  // this handler runs FIRST instead (the common case), it both drops the
+  // placeholder and adds the real row in the same update -- the later
+  // Realtime INSERT for that same id then falls into reconcileTask's own
+  // UPDATE branch (matched by id, already present) and simply replaces
+  // it with itself, a no-op diff. Either ordering converges to exactly
+  // one card.
+  function handleTaskCreated(task: TaskCardTask, tempId: string) {
+    pendingOptimisticCreatesRef.current =
+      pendingOptimisticCreatesRef.current.filter((p) => p.tempId !== tempId);
+    setTasks((current) => {
+      const hasReal = current.some((t) => t.id === task.id);
+      const withoutPlaceholder = current.filter((t) => t.id !== tempId);
+      return hasReal ? withoutPlaceholder : [...withoutPlaceholder, task];
+    });
+  }
+
+  // F248/F249: per this feature's Clarified implementation's Failure
+  // handling answer -- the optimistic card (tempId) is rolled back out
+  // and exactly one sonner toast states what failed in plain language;
+  // the quick-add control itself already stays in an actionable state
+  // (title text is restored, not left blank, on failure -- see
+  // quick-add.tsx). Same "rollback + single toast" convention
+  // handleDragEnd's own `rollback()` helper already established.
+  function handleCreateError(message: string, tempId: string) {
+    pendingOptimisticCreatesRef.current =
+      pendingOptimisticCreatesRef.current.filter((p) => p.tempId !== tempId);
+    setTasks((current) => current.filter((t) => t.id !== tempId));
     toast.error(message);
   }
 
@@ -823,6 +896,7 @@ export function Board({
                 canCreateTask={canDrag}
                 onTaskCreated={handleTaskCreated}
                 onCreateError={handleCreateError}
+                onTaskOptimisticAdd={handleTaskOptimisticAdd}
               />
             ))}
           </div>
@@ -856,6 +930,7 @@ export function Board({
                 canCreateTask={canDrag}
                 onTaskCreated={handleTaskCreated}
                 onCreateError={handleCreateError}
+                onTaskOptimisticAdd={handleTaskOptimisticAdd}
               />
             ))}
           </div>

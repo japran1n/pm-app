@@ -48,6 +48,7 @@ export function Swimlane({
   canCreateTask = false,
   onTaskCreated,
   onCreateError,
+  onTaskOptimisticAdd,
 }: {
   laneKey: string;
   label: string;
@@ -92,8 +93,10 @@ export function Swimlane({
    * default applied), matching every not-yet-updated caller. */
   groupBy?: SwimlaneGroupBy;
   canCreateTask?: boolean;
-  onTaskCreated?: (task: TaskCardTask) => void;
-  onCreateError?: (message: string) => void;
+  onTaskCreated?: (task: TaskCardTask, tempId: string) => void;
+  onCreateError?: (message: string, tempId: string) => void;
+  /** F249 (AS-481) -- see BoardColumn's own doc comment. */
+  onTaskOptimisticAdd?: (task: TaskCardTask) => void;
 }) {
   // F248/F225: the lane's own grouping value applied as a quick-add
   // default -- single-valued groupings only (priority/assignee), same
@@ -178,6 +181,7 @@ export function Swimlane({
               canCreateTask={canCreateTask}
               onTaskCreated={onTaskCreated}
               onCreateError={onCreateError}
+              onTaskOptimisticAdd={onTaskOptimisticAdd}
               quickAddDefaults={quickAddDefaults}
             />
           ))}

@@ -103,6 +103,9 @@ describe("AS-480 focus remains in the input after a successful create", () => {
 
     await flush();
     expect(onCreated).toHaveBeenCalledTimes(1);
+    // F249 (AS-481): onCreated's second arg is the tempId assigned to the
+    // optimistic placeholder this same submit produced.
+    expect(onCreated.mock.calls[0][1]).toEqual(expect.stringMatching(/^optimistic-/));
     expect(mockedCreateTask).toHaveBeenCalledWith(
       "proj-1",
       "First task",
@@ -182,6 +185,7 @@ describe("createTask failure path", () => {
 
     expect(onError).toHaveBeenCalledWith(
       "Something went wrong. Please try again in a moment.",
+      expect.stringMatching(/^optimistic-/),
     );
     // Title preserved — actionable retry, not silently wiped.
     expect(input.value).toBe("Will fail");
