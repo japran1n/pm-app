@@ -200,7 +200,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F227 db-schema-saved-views — AS-426, AS-427, AS-434 [CLARIFIED-AUTO] [COMPLETE]
 - F228 saved-views-actions — AS-428, AS-430, AS-431 [CLARIFIED-AUTO] [COMPLETE]
 - F229 saved-views-ui — AS-429, AS-432, AS-433 [CLARIFIED-AUTO] [COMPLETE]
-- F230 my-tasks-page — AS-435, AS-436, AS-439 [CLARIFIED-AUTO]
+- F230 my-tasks-page — AS-435, AS-436, AS-439 [CLARIFIED-AUTO] [COMPLETE]
 - F231 my-tasks-scope-actions — AS-437, AS-438, AS-440, AS-441 [CLARIFIED-AUTO]
 - F232 calendar-month-grid — AS-442, AS-443, AS-450 [CLARIFIED-AUTO]
 - F233 calendar-task-interactions — AS-444, AS-446, AS-447 [CLARIFIED-AUTO]
