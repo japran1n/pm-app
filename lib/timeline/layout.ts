@@ -48,7 +48,13 @@ function formatDateOnly(date: Date): DateOnly {
   return `${y}-${m}-${d}` as DateOnly;
 }
 
-function addDaysToDateOnly(value: DateOnly, days: number): DateOnly {
+/** Exported for lib/timeline/reschedule.ts (F238, AS-454): the pure
+ * drag/resize planning module needs the identical "shift a DateOnly by N
+ * whole days, UTC-anchored" primitive this file already uses internally
+ * -- reused rather than reimplemented, so there is exactly one
+ * "DateOnly + days" function in the timeline feature, never two that
+ * could drift apart. */
+export function addDaysToDateOnly(value: DateOnly, days: number): DateOnly {
   const dt = parseDateOnly(value);
   if (!dt) throw new Error(`addDaysToDateOnly: invalid DateOnly "${value}"`);
   return formatDateOnly(new Date(dt.getTime() + days * MS_PER_DAY));

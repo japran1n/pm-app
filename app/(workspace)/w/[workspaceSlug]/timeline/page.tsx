@@ -47,13 +47,11 @@ import {
 } from "@/lib/calendar/month-grid";
 import {
   DEFAULT_PIXELS_PER_DAY,
-  computeBarLayout,
   isPlaceableOnTimeline,
   timelineRangeForMonth,
 } from "@/lib/timeline/layout";
-import { formatTaskKey } from "@/lib/tasks/task-key";
-import { TimelineScale, TimelineRowTrack } from "@/components/timeline/timeline-scale";
-import { TimelineBar } from "@/components/timeline/timeline-bar";
+import { TimelineScale } from "@/components/timeline/timeline-scale";
+import { TimelineBody } from "@/components/timeline/timeline-body";
 import { Button } from "@/components/ui/button";
 
 function groupTimelineTasksByProject(
@@ -195,37 +193,20 @@ export default async function TimelinePage({
             <div className="sticky left-0 z-20 w-56 shrink-0 border-b border-r bg-background" />
             <TimelineScale rangeStart={start} rangeEnd={end} today={today} pixelsPerDay={DEFAULT_PIXELS_PER_DAY} />
           </div>
-          {groups.map((group) => (
-            <div key={group.projectId} className="flex flex-col">
-              <div className="flex">
-                <div className="sticky left-0 z-20 flex w-56 shrink-0 items-center border-b border-r bg-muted/40 px-3 py-2 text-sm font-medium">
-                  {group.projectName}
-                </div>
-                <div style={{ width: 0 }} />
-              </div>
-              {group.tasks.map((task) => {
-                const layout = computeBarLayout(task, start, end, DEFAULT_PIXELS_PER_DAY);
-                if (!layout) return null;
-                return (
-                  <div key={task.id} className="flex">
-                    <div className="sticky left-0 z-20 flex w-56 shrink-0 items-center gap-1 truncate border-b border-r bg-background px-3 py-2 text-sm">
-                      <span className="truncate">
-                        {formatTaskKey(task.projectKey, task.number) ?? ""} {task.title}
-                      </span>
-                    </div>
-                    <TimelineRowTrack
-                      rangeStart={start}
-                      rangeEnd={end}
-                      today={today}
-                      pixelsPerDay={DEFAULT_PIXELS_PER_DAY}
-                    >
-                      <TimelineBar task={task} layout={layout} workspaceSlug={workspaceSlug} />
-                    </TimelineRowTrack>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+          {/* F238 (AS-454): drag/resize is the one client-side "island"
+              this Server Component page needs -- TimelineBody owns the
+              DndContext and calls the real editTask Server Action on
+              drop, mirroring CalendarDayGrid's own client-wrapper seam
+              (F234). Everything above (header, month nav, scale) stays
+              server-rendered. */}
+          <TimelineBody
+            groups={groups}
+            workspaceSlug={workspaceSlug}
+            rangeStart={start}
+            rangeEnd={end}
+            today={today}
+            pixelsPerDay={DEFAULT_PIXELS_PER_DAY}
+          />
         </div>
       </div>
       <UndatedTimelineFooter count={undatedCount} />
