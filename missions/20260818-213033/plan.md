@@ -212,6 +212,9 @@ notifications, timezone) exists. No feature work beyond identity.
 - F239 timeline-dependency-connectors — AS-455 [CLARIFIED-AUTO] [COMPLETE]
 - F240 timeline-zoom — AS-456 [CLARIFIED-AUTO] [COMPLETE]
 - F324 sidebar-nav-for-calendar-and-timeline — (no assertion; orchestrator-created M16 gap fix) [CLARIFIED-AUTO] [COMPLETE]
+- F325 m16-scrutiny-blockers-status-and-board — (no new assertion; fixes AS-404, AS-411, AS-419) [CLARIFIED-AUTO] [COMPLETE]
+- F326 m16-scrutiny-blockers-calendar-and-rls — (no new assertion; fixes AS-414, AS-434, AS-442, AS-443, AS-448) [CLARIFIED-AUTO] [COMPLETE]
+- F327 fix-project-lead-column-management-regression — (no new assertion; restores AS-404/AS-411 for project leads after F326) [CLARIFIED-AUTO] [COMPLETE]
 
 ## M17 — UX polish, attachments & navigation
 

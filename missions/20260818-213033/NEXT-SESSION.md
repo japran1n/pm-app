@@ -1,154 +1,194 @@
 # Next session — start here
 
-_Written 2026-08-23, end of a long session that closed out M15's scrutiny cycle.
-Read this file first; run-log.md's bottom entries give full detail on anything
-summarized here._
+_Written 2026-08-24, at the end of a long autonomous session that closed F323
+and the whole of M16. Read this file first; the bottom of `run-log.md` has full
+detail on everything summarized here._
 
 ## Mode for this session
 
-**Work autonomously. Do not ask the user questions and do not wait for
-confirmation.** Make reasonable decisions yourself, document them in the
-run-log, and keep going. The user wants to walk away and come back to
-finished work.
+The previous session ran **fully autonomously** at the user's request — no
+questions, no waiting for confirmation, decisions documented in `run-log.md`
+and work continued. Assume the same unless the user says otherwise.
 
 ## Where things stand
 
-- **M10–M14: complete.** (M10 had 5 scrutiny follow-ups, all landed. No
-  milestone in this mission has ever had a formal UX-validator pass — see
-  "Process note" below.)
-- **M15 (Collaboration): effectively done — 41/47 COMPLETE, 5 `[SKIPPED]`
-  (F213–F217, email/Resend, the user's own 2026-08-18 decision), 1 open
-  (F323, below).** It went through **six** adversarial scrutiny passes
-  producing 23 follow-up features (F301–F323). Every blocker-severity
-  finding across all six passes is fixed and independently verified —
-  including six real security holes and two data-loss bugs. The user then
-  explicitly **capped the cycle**: 23 majors and 17 minors from pass 6 are
-  deliberately NOT being fixed, and stay recorded in
-  `missions/20260818-213033/milestones/M15-scrutiny.md` for later. M15 is
-  honestly recorded as NOT formally GREEN. **Do not reopen the M15 scrutiny
-  cycle.**
+- **M10–M14: complete.**
+- **M15 (Collaboration): effectively done** — 41/47 COMPLETE, 5 `[SKIPPED]`
+  (F213–F217, email/Resend, the user's own 2026-08-18 decision). Its scrutiny
+  cycle ran **six** passes and was then **capped by the user**: 23 majors and
+  17 minors from pass 6 are deliberately unfixed and recorded in
+  `milestones/M15-scrutiny.md`. **Do not reopen the M15 scrutiny cycle** —
+  that is a standing user decision.
+- **F323 (the private-project security hole M15 left open): DONE and
+  verified.** Real vulnerabilities fixed in `comments.ts`, `attachments.ts`,
+  `time-entries.ts`, `dependencies.ts`, plus the two read-side leaks in
+  `getTaskDetail`/`getOpenBlockers`. Note: NEXT-SESSION.md previously claimed
+  all **eight** sibling files were vulnerable; that was over-broad. Four
+  (`checklist.ts`, `watchers.ts`, `comment-reactions.ts`, `purge.ts`) were
+  already safe — verified directly, not assumed. `isProjectVisibleToCaller`
+  now lives in the shared `lib/actions/project-visibility.ts`.
+- **M16 (Views): COMPLETE and closed.** All 23 planned features (F218–F240)
+  plus four orchestrator-created follow-ups: **F324** (sidebar nav gap),
+  **F325**/**F326** (scrutiny pass-1 blockers), **F327** (pass-2 blocker).
+  **F328** additionally fixed the long-standing `trash-list.test.tsx` red.
 
-## Task 1 — F323 (do this first, it's a known open security hole)
+## M16 is CLOSED — do not reopen its scrutiny cycle
 
-`F323 enforce-private-project-access-in-sibling-action-files-and-read-paths`
-— AS-227, AS-228, AS-229. Already in plan.md.
+Per the user's explicit instruction, M16 got **exactly two** scrutiny passes,
+blockers only, then moved on. That cap was honoured. Seven blockers total were
+found and fixed. **M16 is honestly recorded as NOT formally GREEN**: pass 2's
+majors and minors are deliberately unfixed and preserved in
+`milestones/M16-scrutiny.md`.
 
-F322 (last session) fixed a real privilege escalation: single-task mutation
-actions in `lib/actions/tasks.ts` wrote through the service-role admin client
-(which bypasses RLS) while checking only workspace membership + role, never
-whether the caller could SEE the task's project — so a workspace member off a
-private project could edit/delete its tasks. F322's audit then found the
-**identical pattern in eight sibling files, still unfixed**:
+The two-pass cap earned its keep: pass 2's single blocker was a **regression
+introduced by pass 1's own fix** (F326 tightened `project_statuses` RLS to
+workspace-admin-only on a false premise, silently breaking project leads).
+That is the same churn pattern that took M15 to six passes.
 
-`lib/actions/checklist.ts`, `comments.ts`, `dependencies.ts`,
-`attachments.ts`, `watchers.ts`, `time-entries.ts`, `comment-reactions.ts`,
-`purge.ts`
+## Task 1 — the highest-value leftovers from M16 scrutiny pass 2
 
-Plus a **read-side leak**: `getTaskDetail` and `getOpenBlockers`
-(lib/actions/tasks.ts) also use the admin client and check only workspace
-membership, so any workspace member can READ a private project's task detail.
+These are recorded as majors, not blockers, so they were deliberately left.
+Full detail with file/line and failure scenarios is in
+`milestones/M16-scrutiny.md`.
 
-**How to fix:** reuse `isProjectVisibleToCaller` (the helper F322 added in
-`lib/actions/tasks.ts`) — export it or move it somewhere shared; do NOT write
-a third/fourth copy of the rule. Read F322's handoff
-(`missions/20260818-213033/handoffs/F322-handoff.md`) for the full reasoning
-and its test structure, and mirror both. For the read path, return the
-existing "Task not found" convention rather than a permission-denied message
-(a read leak shouldn't even confirm the task exists).
+1. **MAJ-4 — do this first; it is the closest thing to a blocker still open.**
+   A **viewer** can directly `POST /saved_views {scope:'shared',
+   is_default:true, config:{}}` — verified live by the validator, and the
+   injected row was visible to the workspace owner. Combined with the
+   unparsed `config` cast, that is a **stored 500 on the project list page**:
+   one viewer can break a shared surface for everyone. The `saved_views`
+   INSERT policy needs the same role tightening `project_statuses` got in
+   F326/F327 (reuse `is_project_lead_or_workspace_admin` /
+   `is_workspace_admin`; do not write a new copy of the rule), and `config`
+   needs parsing rather than casting.
+2. **MAJ-3** — F325's rename trigger renames **soft-deleted** tasks too
+   (confirmed live), while `restoreTask` (`lib/actions/tasks.ts` ~2031) still
+   hard-codes the old four status names. Restoring a task that was trashed in
+   a since-renamed column resets it to a column that no longer exists,
+   leaving `status_id = NULL` and a task in no board column.
+3. **MAJ-1** — the calendar mirror still cannot accept fresh server data at an
+   unchanged `dataKey`, and `tests/unit/f326-calendar-day-grid-rerender.test.tsx`
+   supplies its own `key` in `createElement`, so **it cannot fail if the fix is
+   reverted**. Worth fixing the test even if you leave the component.
 
-**Tests must drive the real Server Actions, not raw RLS-scoped queries** —
-that's exactly why `rls-project-visibility.test.ts` missed this entire bug
-class. Per action: outsider-rejected-AND-DB-genuinely-unchanged /
-owner-succeeds / explicit-project-member-succeeds / workspace-visible-project
-regression. F322's `tests/integration/f322-single-task-project-visibility.test.ts`
-is the template.
+## Task 2 — the e2e harness is broken, and it blocks the UX validator
 
-## Task 2 — M16 (Views), F218 onward
+**Every authenticated Playwright spec currently fails in the shared
+`loginAndGoToDashboard` helper** (`tests/e2e/theme-toggle.spec.ts:248`). I
+verified this on an untouched baseline spec: 4 passed, 2 failed, both in the
+login helper. It is a magic-link auth problem in the harness, not a product
+bug, and it is independent of any recent feature.
 
-23 features: custom statuses, swimlanes, saved views, My Tasks, calendar,
-timeline. Read each feature's spec under `missions/20260818-213033/features/`
-and its clarification under `clarifications/` before delegating.
+This matters because **no milestone in this mission has ever had a UX-validator
+pass**, and the UX validator drives the running app through Playwright — it
+will hit exactly this wall. Fixing the harness is probably worth more than
+another round of code review. Do it before attempting a UX pass.
 
-**Note:** F218 (custom statuses) is a dependency several M14 features
-explicitly deferred against — e.g. F184's project-from-template. Once F218
-lands, revisit those features' "Out-of-scope" notes for what needs extending.
+## Task 3 — M17 (UX polish, attachments & navigation), F241 onward
 
-## The working loop (unchanged, follow it exactly)
+Read each feature's spec in `features/` and its clarification in
+`clarifications/` before delegating. Note **F241 is `command-palette-shell`** —
+the sidebar-nav follow-up I created was renumbered **F324** to avoid that
+collision, but its two git commits are still labelled "F241". Don't be confused
+by that; follow-up features created outside the original plan continue the
+F3xx sequence.
+
+## The working loop (unchanged — follow it exactly)
 
 For every feature: **spawn a worker → verify independently → log → commit.**
-
-The orchestrator never writes project code — always spawn a worker (tell it
-to read `.claude/agents/worker.md` first). After every worker:
+The orchestrator never writes project code. After every worker:
 
 1. `git status` and read the actual diff — don't trust the handoff's summary.
-2. Run `npx tsc --noEmit` and `npx eslint .` **yourself**. Workers have
-   claimed "clean" when it wasn't (caught for real in F304).
-3. Run the relevant tests yourself, including a broader regression slice
-   across any shared file the change touched.
+   **Read the diff of any pre-existing test the worker modified**, every time.
+   Several were legitimately updated this session, but that is exactly how a
+   green suite hides a regression.
+2. Run `npx tsc --noEmit` and `npx eslint .` **yourself**.
+3. Run the relevant tests yourself, plus a regression slice across any shared
+   file the change touched.
 4. Only then: log to `run-log.md`, tag `[COMPLETE]` in `plan.md`, commit.
 
-## Process note on milestone validation — READ THIS
+This caught **five real defects this session** that handoffs asserted were
+fine. It is not ceremony.
 
-M15's scrutiny cycle ran **six passes and generated 23 follow-up features**.
-It found genuinely serious bugs, so it wasn't wasted — but passes 4 and 5 each
-found a bug *introduced by the previous pass's own fix*, which is the signal
-that churn was starting to generate its own defects.
+## Hard-won lessons (updated — the new ones are 1, 2 and 3)
 
-**For M16, cap it upfront:** run the scrutiny validator, fix blockers only,
-run it a second time, fix any new blockers, then move on regardless of what
-majors remain (record them, don't fix them). Do not run a third pass. Apply a
-strict bar for "blocker": security holes, data loss/corruption, or an
-assertion flatly unmet in normal use — not test-quality gaps, polish, or
-theoretical fragility.
-
-Also: no milestone in this mission has ever had a **UX-validator** pass. That
-is probably worth more than another round of code review — consider running it
-for M16 once scrutiny is settled.
+1. **Workers infer "tsc clean" from a green vitest run. Vitest does not
+   typecheck.** Two separate workers this session (F226, F326) reported a clean
+   typecheck that was failing. Always run `npx tsc --noEmit` yourself, and when
+   sending a type error back, explicitly ban `as any` / `@ts-expect-error` /
+   deleting the assertion — otherwise you get a suppression, not a fix.
+2. **A DB trigger or constraint guarding "the last row of a set" must be
+   checked against the parent's ON DELETE CASCADE path.** F219 shipped an
+   AS-415 guard that made **project hard-delete impossible**; feature tests
+   were fully green because none of them deleted a project. I kept a throwaway
+   service-role probe (create project → confirm columns seeded → hard-delete)
+   and re-ran it after every migration. Keep doing that.
+3. **A fix's own migration header can assert something false about the code.**
+   F326's justified excluding project leads by claiming all writes go through
+   the admin client; the file it named says the opposite in its own header.
+   Check the claim against the code, not the comment.
+4. **"Built but not wired to real data"** — still the most recurrent defect
+   class here, and it recurred again at the *navigation* level: M16 shipped the
+   Calendar and Timeline with **no sidebar entry at all** (fixed in F324).
+   Verify the real end-to-end path, and check the feature is reachable.
+5. **Actions using `createAdminClient()` bypass RLS** and must re-check
+   authorization in application code. Two more real holes in this family turned
+   up this session: `task_dependencies`' SELECT **and DELETE** policies checked
+   only the blocking side (fixed in `20260828020000` — the DELETE half was a
+   write-side privilege escalation the validator had missed), and
+   `project_statuses`' write policies checked visibility but not role, which a
+   direct PostgREST call could exploit since the browser holds the publishable
+   key (F326).
+6. **RLS tests must drive the DIRECT PostgREST path under a real user session**,
+   not only the Server Action. A Server-Action-only test is precisely what let
+   the AS-414 hole through pass 1.
+7. **Watch `p_system`-style "is this a real backend caller" flags.** The correct
+   pattern is `<flag> and auth.uid() is null`, never a bare `<flag>`.
 
 ## Known infra conditions (not code bugs — don't chase them)
 
-The linked Supabase project has been under heavy load all session. Expect:
+The linked Supabase project stays under heavy load. Expect **Auth rate
+limiting** ("Request rate limit reached"), **`JWT issued at future`** clock
+skew, **PG `57014`** statement timeouts, **`PGRST002`** PostgREST schema-cache
+outages, and occasional transient network **"fetch failed"**. Direct Postgres
+via the Supabase CLI kept working throughout; the Management API SQL endpoint
+is a fallback (see `tests/integration/overdue-notification-sweep.test.ts`).
 
-- **Supabase Auth rate limiting** — `auth.admin.createUser` intermittently
-  slow (observed up to 200s) or failing with "Request rate limit reached".
-- **`JWT issued at future`** clock-skew errors under concurrent test runs.
-- **`PGRST002`** (PostgREST schema-cache) outages — the REST layer only;
-  direct Postgres via the Supabase CLI kept working throughout. If PostgREST
-  is down, the Management API SQL endpoint is a working fallback — see
-  `tests/integration/overdue-notification-sweep.test.ts` for the pattern.
+**Always re-run a specific failing file alone — after waiting a few minutes if
+you were rate-limited — before concluding it's a real regression.** It usually
+isn't. But don't reflexively assume it never is: this session confirmed several
+genuine defects that way too, and once distinguished a real problem from noise
+purely by the error CODE (`57014` timeout vs. `23514` check violation).
 
-**Always re-run a specific failing file alone before concluding it's a real
-regression.** It usually isn't. But don't reflexively assume it never is —
-this session found several genuine regressions that way too.
+Also: **the scratchpad directory is shared with subagents.** One of them
+overwrote my probe script mid-session. Use distinctive filenames.
 
-`vitest.config.ts` already has `hookTimeout: 30_000` and `maxWorkers: 4` to
-reduce this contention (F312).
+## Current state of the suites
 
-## Hard-won lessons worth keeping
-
-1. **"Built but not wired to real data"** recurred repeatedly (F167, F179,
-   `getTaskDetail`'s comment metadata, the mention picker). Always verify the
-   REAL read/write path end-to-end, not just that a feature's own isolated
-   tests pass. Tests that hand-build props instead of exercising the real
-   fetch will not catch this.
-2. **Workers sometimes claim "tsc/eslint clean" when it isn't.** Run it
-   yourself, every time.
-3. **Watch `p_system`-style "is this a real backend caller" flags.** Two
-   separate SECURITY DEFINER functions shipped with a caller-controlled
-   boolean that skipped auth checks when true. The correct pattern is
-   `<flag> and auth.uid() is null`, never a bare `<flag>`.
-4. **Actions using the admin client bypass RLS** — that's the whole point of
-   F322/F323. Any action writing or reading through `createAdminClient()`
-   must re-check authorization in application code. RLS will not save it.
-5. **Trust but verify.** This session repeatedly caught real defects that a
-   worker's own handoff claimed were fixed.
+- `npx tsc --noEmit` — **0 errors.**
+- `npx eslint .` — 0 errors, 2 long-standing warnings (`lib/queries/search.ts`,
+  `tests/unit/invite-member-pagination.test.ts`).
+- `npx vitest run tests/unit` — **129 files / 995 tests, fully green** (F328
+  fixed `trash-list.test.tsx`, the last red, with a `next/navigation` mock —
+  no assertions weakened).
+- Integration tests pass, but the full suite run serially against one live
+  Supabase project reliably trips Auth rate limiting. Run in slices.
+- Playwright: authenticated specs all fail in the login helper (Task 2).
 
 ## Also open (low priority, not blocking)
 
-- `tests/unit/trash-list.test.tsx` is a pre-existing **M14** regression
-  (F189's `TrashRestoreButton` needs a router mock). Red across several
-  scrutiny passes. Small fix, worth picking up.
-- An unhandled `cookies() was called outside a request scope` rejection from
-  `getMentionCandidates` in test rendering — noisy, fails nothing.
-- **F278 needs the USER** to add 3 GitHub Actions repository secrets before
-  CI goes green. The orchestrator cannot do this. Don't try; just leave it.
+- Saved views are wired into the **List page only** — not the board, calendar,
+  or timeline. `saved_views.view_type` already accepts all four, so the schema
+  is ready. A legitimate follow-up feature.
+- `DashboardTaskTable` is multi-project, so its status filter still falls back
+  to the legacy default four columns (not an AS-411 violation — that assertion
+  is about the project List view).
+- `getDependencyCandidates` reads through the admin client, so
+  `20260828020000`'s two-sided-visibility fix buys it no defence in depth. Not
+  a live leak (F323 already filters its returned candidates), but worth
+  tightening.
+- `removeColumn`'s "does this column still have tasks" count filters on
+  `deleted_at is null`, so a column holding only trashed tasks fails on the FK
+  with a generic error. The reassignment path handles that case correctly.
+- **F278 needs the USER** to add 3 GitHub Actions repository secrets before CI
+  goes green. The orchestrator cannot do this. Don't try.
