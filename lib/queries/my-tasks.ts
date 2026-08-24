@@ -70,6 +70,15 @@ export type MyTaskRow = {
   projectName: string;
   isDone: boolean;
   bucket: MyTasksBucket;
+  // F231 (AS-441): true when this row is included because the caller
+  // watches it (via task_watchers), whether or not they are also
+  // assigned -- lets the UI visually distinguish watched-only rows from
+  // assigned ones per the clarified "watched tasks should be visually
+  // distinguishable" answer. A task the caller is BOTH assigned to AND
+  // watches still appears exactly once (isAssigned && isWatched both
+  // true), never as two rows.
+  isWatched: boolean;
+  isAssigned: boolean;
 };
 
 export type MyTasksBuckets = {
@@ -84,18 +93,60 @@ function firstRelated<T>(relation: T | T[] | null | undefined): T | null {
   return Array.isArray(relation) ? (relation[0] ?? null) : relation;
 }
 
+const TASK_SELECT_COLUMNS =
+  "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category)";
+
+function toRow(
+  task: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string | null;
+    due_date: string | null;
+    number: number;
+    project_id: string;
+    projects: { id: string; key: string | null; name: string } | { id: string; key: string | null; name: string }[] | null;
+    project_statuses: { category: string } | { category: string }[] | null;
+  },
+  timeZone: string,
+): MyTaskRow {
+  const project = firstRelated(task.projects);
+  const category = firstRelated(task.project_statuses)?.category ?? null;
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    statusCategory: category,
+    priority: task.priority,
+    dueDate: task.due_date,
+    number: task.number,
+    projectId: task.project_id,
+    projectKey: project?.key ?? null,
+    projectName: project?.name ?? "",
+    isDone: isDoneStatus(task.status, category),
+    bucket: bucketForDueDate(task.due_date, timeZone),
+    isWatched: false,
+    isAssigned: false,
+  };
+}
+
 export async function getMyTasks(
   workspaceId: string,
   userId: string,
   timeZone: string,
+  // F231 (AS-441): when true, also merges in tasks the caller watches
+  // (task_watchers, F163) that they are not necessarily assigned to. A
+  // task that is both assigned AND watched still appears exactly once,
+  // with both `isAssigned` and `isWatched` set. Defaults to false so
+  // F230's already-proven assigned-only behaviour (AS-435/436/439) is
+  // unchanged for existing callers.
+  includeWatched = false,
 ): Promise<MyTasksBuckets> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("tasks")
-    .select(
-      "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category), task_assignees!inner(user_id)",
-    )
+    .select(`${TASK_SELECT_COLUMNS}, task_assignees!inner(user_id)`)
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
     .is("deleted_at", null)
@@ -105,6 +156,59 @@ export async function getMyTasks(
     throw error;
   }
 
+  const rowsById = new Map<string, MyTaskRow>();
+
+  for (const task of data ?? []) {
+    const row = toRow(task, timeZone);
+    row.isAssigned = true;
+    rowsById.set(row.id, row);
+  }
+
+  // F231 (AS-441): a second, bounded round trip (never a per-row loop) --
+  // resolve the caller's watched task ids via `task_watchers` (RLS-scoped
+  // to visible tasks, same as everything else in this query), then fetch
+  // those tasks the same way the assigned query does, applying the exact
+  // same archived-project/trashed-task exclusion predicates (AS-437) so a
+  // watched task in an archived project or a trashed task never leaks in
+  // through this second path.
+  if (includeWatched) {
+    const { data: watcherRows, error: watcherError } = await supabase
+      .from("task_watchers")
+      .select("task_id")
+      .eq("user_id", userId);
+
+    if (watcherError) {
+      throw watcherError;
+    }
+
+    const watchedTaskIds = (watcherRows ?? []).map((row) => row.task_id);
+
+    if (watchedTaskIds.length > 0) {
+      const { data: watchedData, error: watchedError } = await supabase
+        .from("tasks")
+        .select(TASK_SELECT_COLUMNS)
+        .eq("projects.workspace_id", workspaceId)
+        .is("projects.deleted_at", null)
+        .is("deleted_at", null)
+        .in("id", watchedTaskIds);
+
+      if (watchedError) {
+        throw watchedError;
+      }
+
+      for (const task of watchedData ?? []) {
+        const existing = rowsById.get(task.id);
+        if (existing) {
+          existing.isWatched = true;
+        } else {
+          const row = toRow(task, timeZone);
+          row.isWatched = true;
+          rowsById.set(row.id, row);
+        }
+      }
+    }
+  }
+
   const buckets: MyTasksBuckets = {
     overdue: [],
     today: [],
@@ -112,23 +216,7 @@ export async function getMyTasks(
     later: [],
   };
 
-  for (const task of data ?? []) {
-    const project = firstRelated(task.projects);
-    const category = firstRelated(task.project_statuses)?.category ?? null;
-    const row: MyTaskRow = {
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      statusCategory: category,
-      priority: task.priority,
-      dueDate: task.due_date,
-      number: task.number,
-      projectId: task.project_id,
-      projectKey: project?.key ?? null,
-      projectName: project?.name ?? "",
-      isDone: isDoneStatus(task.status, category),
-      bucket: bucketForDueDate(task.due_date, timeZone),
-    };
+  for (const row of rowsById.values()) {
     buckets[row.bucket].push(row);
   }
 
