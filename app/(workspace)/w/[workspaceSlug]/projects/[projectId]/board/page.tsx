@@ -4,6 +4,7 @@ import { getProjectColumns } from "@/lib/queries/statuses";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
+import { getBoardSwimlanePrefs } from "@/lib/actions/board-prefs";
 import { Board } from "@/components/board/board";
 import { BoardEmptyState } from "@/components/board/board-empty-state";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -57,12 +58,23 @@ export default async function ProjectBoardPage({
   // getProjectColumns (lib/queries/statuses.ts) reads `project_statuses`
   // ordered by position, the same order every viewer sees on every
   // reload.
-  const [tasks, workspaceResult, timezone, columns] = await Promise.all([
-    getProjectBoardTasks(projectId),
-    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
-    getCurrentUserTimezone(supabase),
-    getProjectColumns(projectId),
-  ]);
+  // F226 (AS-422, AS-424): the viewer's persisted swimlane grouping mode
+  // and per-mode collapsed lane keys, fetched alongside every other
+  // independent request already made here (getBoardSwimlanePrefs,
+  // lib/actions/board-prefs.ts) so the first paint already reflects the
+  // real persisted state instead of flashing the default and correcting
+  // client-side.
+  const [tasks, workspaceResult, timezone, columns, swimlanePrefsResult] =
+    await Promise.all([
+      getProjectBoardTasks(projectId),
+      supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+      getCurrentUserTimezone(supabase),
+      getProjectColumns(projectId),
+      getBoardSwimlanePrefs(projectId),
+    ]);
+  const swimlanePrefs = swimlanePrefsResult.ok
+    ? swimlanePrefsResult.data
+    : { groupBy: "none" as const, collapsedLanes: {} };
   const { data: workspace } = workspaceResult;
 
   const workspaceMembers = workspace
@@ -130,6 +142,7 @@ export default async function ProjectBoardPage({
       timezone={timezone}
       templates={templates}
       columns={columns}
+      initialSwimlanePrefs={swimlanePrefs}
     />
   );
 }

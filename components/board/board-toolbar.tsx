@@ -22,6 +22,7 @@ import {
   SWIMLANE_GROUP_BY_VALUES,
   type SwimlaneGroupBy,
 } from "@/lib/board/grouping";
+import { upsertBoardSwimlanePrefs } from "@/lib/actions/board-prefs";
 
 const GROUP_BY_LABELS: Record<SwimlaneGroupBy, string> = {
   none: "No grouping",
@@ -32,8 +33,15 @@ const GROUP_BY_LABELS: Record<SwimlaneGroupBy, string> = {
 
 export function BoardToolbar({
   groupBy,
+  projectId,
 }: {
   groupBy: SwimlaneGroupBy;
+  /** F226 (AS-424): required to persist the chosen grouping per user per
+   * project -- optional only so an existing/future caller rendering
+   * `<BoardToolbar>` without it (e.g. a not-yet-updated test) still works,
+   * just without persistence, matching this codebase's other optional-prop
+   * fallback convention. */
+  projectId?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -49,6 +57,18 @@ export function BoardToolbar({
     }
     const query = params.toString();
     router.push(query ? `${pathname}?${query}` : pathname);
+
+    // F226 (AS-424): persist the new grouping choice per user per project
+    // -- fire-and-forget, same "optimistic, no blocking spinner" posture
+    // as every other board mutation; the URL is already the source of
+    // truth for THIS session/tab, this call is purely so the NEXT
+    // session/reload starts from the same choice instead of "none".
+    if (projectId) {
+      void upsertBoardSwimlanePrefs({
+        projectId,
+        groupBy: value as SwimlaneGroupBy,
+      });
+    }
   }
 
   return (

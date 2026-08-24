@@ -21,7 +21,10 @@
 // comment) so board.tsx's onDragEnd can recover which lane a drag started
 // and ended in from dnd-kit's own ids alone.
 
+import { ChevronDown, ChevronRight } from "lucide-react";
+
 import { BoardColumn } from "@/components/board/board-column";
+import { Button } from "@/components/ui/button";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { BoardColumnDef } from "@/lib/queries/statuses";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -37,6 +40,8 @@ export function Swimlane({
   timezone,
   showMultiValueNote = false,
   canDrag = false,
+  collapsed = false,
+  onToggleCollapsed,
 }: {
   laneKey: string;
   label: string;
@@ -58,14 +63,41 @@ export function Swimlane({
    * hasn't been updated (e.g. an existing test rendering `<Swimlane>` in
    * isolation) keeps the pre-F225 "no drag" behaviour. */
   canDrag?: boolean;
+  /** F226 (AS-422): the viewer's persisted collapse state for THIS lane in
+   * the CURRENT grouping mode -- resolved by the caller (board.tsx),
+   * never computed here (this component stays a pure renderer of
+   * whatever collapse state it's handed, same as every other prop). */
+  collapsed?: boolean;
+  /** F226 (AS-422): fires with this lane's `laneKey` when the collapse
+   * toggle is clicked -- omitted (any not-yet-updated caller, e.g. an
+   * existing test rendering `<Swimlane>` in isolation) renders the toggle
+   * disabled rather than crashing on a missing handler. */
+  onToggleCollapsed?: (laneKey: string) => void;
 }) {
   return (
     <section
       className="flex flex-col gap-2 rounded-lg border border-border/40 bg-background/40 p-3"
       data-swimlane={laneKey}
+      data-collapsed={collapsed ? "true" : "false"}
       aria-label={`${label} lane`}
     >
       <div className="flex items-center gap-2 px-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={collapsed ? `Expand ${label} lane` : `Collapse ${label} lane`}
+          aria-expanded={!collapsed}
+          disabled={!onToggleCollapsed}
+          onClick={() => onToggleCollapsed?.(laneKey)}
+        >
+          {collapsed ? (
+            <ChevronRight className="size-4" aria-hidden="true" />
+          ) : (
+            <ChevronDown className="size-4" aria-hidden="true" />
+          )}
+        </Button>
         {avatar ? (
           <span
             aria-hidden="true"
@@ -78,6 +110,11 @@ export function Swimlane({
         <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
           {tasks.length}
         </span>
+        {collapsed ? (
+          <span className="text-xs text-muted-foreground">
+            ({tasks.length} hidden)
+          </span>
+        ) : null}
         {showMultiValueNote ? (
           <span className="text-xs text-muted-foreground">
             (tasks with multiple values appear in more than one lane)
@@ -85,23 +122,25 @@ export function Swimlane({
         ) : null}
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {columns.map((column) => (
-          <BoardColumn
-            key={column.id}
-            status={column.name as TaskCardTask["status"]}
-            label={column.name}
-            color={column.color}
-            tasks={tasks.filter((task) => task.status === column.name)}
-            assignees={assignees}
-            onCardClick={onCardClick}
-            timezone={timezone}
-            canDrag={canDrag}
-            dropId={`${laneKey}::${column.id}`}
-            laneKey={laneKey}
-          />
-        ))}
-      </div>
+      {collapsed ? null : (
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          {columns.map((column) => (
+            <BoardColumn
+              key={column.id}
+              status={column.name as TaskCardTask["status"]}
+              label={column.name}
+              color={column.color}
+              tasks={tasks.filter((task) => task.status === column.name)}
+              assignees={assignees}
+              onCardClick={onCardClick}
+              timezone={timezone}
+              canDrag={canDrag}
+              dropId={`${laneKey}::${column.id}`}
+              laneKey={laneKey}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

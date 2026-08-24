@@ -68,6 +68,10 @@ import {
 import { Swimlane } from "@/components/board/swimlane";
 import { BoardToolbar } from "@/components/board/board-toolbar";
 import {
+  upsertBoardSwimlanePrefs,
+  type BoardSwimlanePrefs,
+} from "@/lib/actions/board-prefs";
+import {
   NewTaskDialog,
   type NewTaskDialogAssigneeOption,
 } from "@/components/task/new-task-dialog";
@@ -124,6 +128,7 @@ export function Board({
   timezone,
   templates = [],
   columns: columnsProp,
+  initialSwimlanePrefs = { groupBy: "none", collapsedLanes: {} },
 }: {
   // F049 (AS-076): required so useBoardRealtime can scope its Postgres
   // Realtime subscription to this project only (matches AS-068's
@@ -187,6 +192,14 @@ export function Board({
    * test) falls back to DEFAULT_COLUMNS — see that constant's own doc
    * comment. */
   columns?: BoardColumnDef[];
+  /** F226 (AS-422, AS-424): the viewer's persisted swimlane grouping mode
+   * and per-mode collapsed lane keys -- server-fetched by the board page
+   * (getBoardSwimlanePrefs, lib/actions/board-prefs.ts) and passed down,
+   * same convention as `columns`/`initialTasks`. Omitted (any
+   * not-yet-updated caller, e.g. existing tests) falls back to
+   * `{ groupBy: "none", collapsedLanes: {} }` -- the exact pre-F226
+   * default. */
+  initialSwimlanePrefs?: BoardSwimlanePrefs;
 }) {
   // Local, client-side-only copy of the board's tasks, optimistically
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
@@ -643,11 +656,59 @@ export function Board({
   // `"none"` -- which resolves to the exact pre-F224 layout below,
   // unconditionally, satisfying AS-419 by construction rather than by a
   // second, parallel "ungrouped" rendering path.
+  //
+  // F226 (AS-424): when the URL has NO `groupBy` param at all, the
+  // viewer's PERSISTED preference (server-fetched, `initialSwimlanePrefs`)
+  // wins over the hardcoded "none" default -- an explicit `?groupBy=none`
+  // (BoardToolbar always writes that when the user actively picks "No
+  // grouping") still means "none", so a user who deliberately switches
+  // back to ungrouped isn't fought by their own stale persisted choice
+  // within the same session. This makes a bookmarked/shared URL with an
+  // explicit `groupBy` still win over ANY viewer's persisted preference,
+  // matching the "URL search params for anything shareable" rule.
   const groupByParam = searchParams.get("groupBy");
   const groupBy: SwimlaneGroupBy =
     groupByParam === "assignee" || groupByParam === "priority" || groupByParam === "tag"
       ? groupByParam
-      : "none";
+      : groupByParam === "none"
+        ? "none"
+        : initialSwimlanePrefs.groupBy;
+
+  // F226 (AS-422): collapsed lane keys for the CURRENT grouping mode only
+  // -- keyed by mode in state too (not just in storage), so a toggle made
+  // under "assignee" never leaks into "tag"'s set even within the same
+  // client session (switching modes and back reads this same object, per
+  // mode, unaffected by whatever happened under a different mode meanwhile).
+  const [collapsedLanesByMode, setCollapsedLanesByMode] = useState<
+    Record<string, string[]>
+  >(initialSwimlanePrefs.collapsedLanes);
+  const collapsedLaneKeys = useMemo(
+    () => new Set(collapsedLanesByMode[groupBy] ?? []),
+    [collapsedLanesByMode, groupBy],
+  );
+
+  function toggleLaneCollapsed(laneKey: string) {
+    setCollapsedLanesByMode((current) => {
+      const currentForMode = current[groupBy] ?? [];
+      const isCollapsed = currentForMode.includes(laneKey);
+      const nextForMode = isCollapsed
+        ? currentForMode.filter((key) => key !== laneKey)
+        : [...currentForMode, laneKey];
+      const next = { ...current, [groupBy]: nextForMode };
+
+      // Fire-and-forget persistence (AS-422) -- optimistic client state
+      // above already reflects the toggle; a failed write here just means
+      // the NEXT reload falls back to the last successfully-persisted
+      // set, not a broken UI right now (this control has no server round
+      // trip to wait on, unlike a task mutation).
+      void upsertBoardSwimlanePrefs({
+        projectId,
+        collapsedLanesForMode: { mode: groupBy, keys: nextForMode },
+      });
+
+      return next;
+    });
+  }
 
   const sortedColumns = useMemo(
     () => [...columns].sort((a, b) => a.position - b.position),
@@ -688,7 +749,7 @@ export function Board({
             (even with zero tasks/columns) so a viewer can always see and
             change the current grouping, matching every other persistent
             toolbar control on this board. */}
-        <BoardToolbar groupBy={groupBy} />
+        <BoardToolbar groupBy={groupBy} projectId={projectId} />
         <div className="flex gap-2">
           {/* F183 (AS-330 UI half): "New from template", next to "New
               Task" — this toolbar is the closest thing this board has to a
@@ -759,6 +820,8 @@ export function Board({
                 timezone={timezone}
                 showMultiValueNote={groupBy === "assignee" || groupBy === "tag"}
                 canDrag={canDrag}
+                collapsed={collapsedLaneKeys.has(group.key)}
+                onToggleCollapsed={toggleLaneCollapsed}
               />
             ))}
           </div>
