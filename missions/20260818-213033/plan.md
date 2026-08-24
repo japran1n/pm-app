@@ -221,7 +221,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F241 command-palette-shell — AS-459, AS-463, AS-464 [CLARIFIED-AUTO] [COMPLETE]
 - F242 palette-search-results — AS-460, AS-461, AS-466 [CLARIFIED-AUTO] [COMPLETE]
 - F243 palette-actions-recents — AS-462, AS-465 [CLARIFIED-AUTO] [COMPLETE]
-- F244 shortcut-provider — AS-467, AS-468, AS-470, AS-471 [CLARIFIED-AUTO]
+- F244 shortcut-provider — AS-467, AS-468, AS-470, AS-471 [CLARIFIED-AUTO] [COMPLETE]
 - F245 shortcut-help-dialog — AS-469, AS-472 [CLARIFIED-AUTO]
 - F246 task-deep-link-route — AS-473, AS-474, AS-477 [CLARIFIED-AUTO]
 - F247 task-modal-routing — AS-475, AS-476, AS-478 [CLARIFIED-AUTO]
