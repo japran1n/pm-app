@@ -136,6 +136,41 @@ export type Database = {
           },
         ]
       }
+      board_swimlane_prefs: {
+        Row: {
+          collapsed_lanes: Json
+          created_at: string
+          group_by: string
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          collapsed_lanes?: Json
+          created_at?: string
+          group_by?: string
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          collapsed_lanes?: Json
+          created_at?: string
+          group_by?: string
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_swimlane_prefs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_items: {
         Row: {
           checked_at: string | null
@@ -558,6 +593,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "projects_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_views: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          owner_id: string
+          project_id: string | null
+          scope: string
+          updated_at: string
+          view_type: string
+          workspace_id: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          owner_id: string
+          project_id?: string | null
+          scope?: string
+          updated_at?: string
+          view_type?: string
+          workspace_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          owner_id?: string
+          project_id?: string | null
+          scope?: string
+          updated_at?: string
+          view_type?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_views_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_views_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1303,6 +1395,7 @@ export type Database = {
           status: string
           status_category: string
           subtask_count: number
+          tags: string[]
           title: string
           updated_at: string
         }[]
@@ -1318,8 +1411,8 @@ export type Database = {
       get_status_counts: {
         Args: { p_workspace_id: string }
         Returns: {
-          category: string | null
-          color: string | null
+          category: string
+          color: string
           count: number
           name: string
         }[]
