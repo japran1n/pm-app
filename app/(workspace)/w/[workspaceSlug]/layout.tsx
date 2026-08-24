@@ -288,7 +288,10 @@ export default async function WorkspaceLayout({
   // instead.
   return (
     <MembershipProvider role={activeWorkspaceRole} projectRoles={projectRoles}>
-      <CommandPalette />
+      <CommandPalette
+        workspaceId={activeWorkspace.id}
+        workspaceSlug={workspaceSlug}
+      />
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}

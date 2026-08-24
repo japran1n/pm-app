@@ -6,7 +6,7 @@
 
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 // jsdom has no ResizeObserver; cmdk's CommandList observes its own height
@@ -20,7 +20,17 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock("@/lib/actions/palette-search", () => ({
+  searchPalette: vi.fn(async () => ({ projects: [], tasks: [], members: [] })),
+}));
+
 import { CommandPalette } from "@/components/command/command-palette";
+
+const defaultProps = { workspaceId: "ws-1", workspaceSlug: "acme" };
 
 afterEach(() => {
   cleanup();
@@ -36,7 +46,7 @@ function fireKey(
 
 describe("CommandPalette shell", () => {
   it("test_AS_459_cmd_k_opens_the_palette", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -48,7 +58,7 @@ describe("CommandPalette shell", () => {
   });
 
   it("test_AS_459_ctrl_k_opens_the_palette_for_windows_linux", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     fireKey(document, "k", { ctrlKey: true });
 
@@ -58,7 +68,7 @@ describe("CommandPalette shell", () => {
   });
 
   it("test_AS_463_escape_closes_the_palette", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     fireKey(document, "k", { metaKey: true });
     await waitFor(() => {
@@ -74,7 +84,7 @@ describe("CommandPalette shell", () => {
   });
 
   it("test_AS_463_input_is_focusable_and_accepts_keyboard_typing", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     fireKey(document, "k", { metaKey: true });
 
@@ -87,7 +97,7 @@ describe("CommandPalette shell", () => {
   });
 
   it("test_AS_463_dialog_has_accessible_name_via_title", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     fireKey(document, "k", { metaKey: true });
 
@@ -103,7 +113,7 @@ describe("CommandPalette shell", () => {
         "div",
         null,
         createElement("input", { "aria-label": "unrelated input" }),
-        createElement(CommandPalette),
+        createElement(CommandPalette, defaultProps),
       ),
     );
 
@@ -123,7 +133,7 @@ describe("CommandPalette shell", () => {
         "div",
         null,
         createElement("input", { "aria-label": "unrelated input" }),
-        createElement(CommandPalette),
+        createElement(CommandPalette, defaultProps),
       ),
     );
 
@@ -140,7 +150,7 @@ describe("CommandPalette shell", () => {
   });
 
   it("test_AS_459_key_repeat_does_not_re_toggle_the_palette", async () => {
-    render(createElement(CommandPalette));
+    render(createElement(CommandPalette, defaultProps));
 
     fireKey(document, "k", { metaKey: true });
     await waitFor(() => {
