@@ -8,6 +8,7 @@ import {
   getOverdueCount,
 } from "@/lib/queries/dashboard";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
+import { canWrite } from "@/lib/auth/permissions";
 import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
 
@@ -60,6 +61,10 @@ export default async function WorkspacePage({
 
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
   // (lib/queries/profile.ts's getCurrentUserTimezone), run alongside the
   // independent workspace lookup rather than sequentially awaited, then
@@ -78,6 +83,28 @@ export default async function WorkspacePage({
   // resolved, so this is just a defensive fallback, not the primary guard.
   if (!workspace) {
     redirect("/onboarding");
+  }
+
+  // F254 (AS-494): UI-only gate for the sample-project offer — the layout
+  // guard above already means `user` is an active member of this
+  // workspace, so this only decides the finer-grained `canWrite` question
+  // (viewers are read-only, AS-216/AS-217). `createSampleProject` itself
+  // independently re-checks this server-side via `createProject`.
+  let canOfferSampleProject = false;
+  if (user) {
+    const { data: callerMembership } = await supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    canOfferSampleProject = canWrite({
+      role: (callerMembership?.role ?? "member") as Parameters<
+        typeof canWrite
+      >[0]["role"],
+    });
   }
 
   const [priorityResult, statusResult, overdueResult] = await Promise.all([
@@ -127,12 +154,14 @@ export default async function WorkspacePage({
       </div>
 
       <DashboardContent
+        workspaceId={workspace.id}
         workspaceSlug={workspaceSlug}
         hasError={hasError}
         isEmpty={isEmpty}
         priorityData={priorityData}
         statusData={statusData}
         overdueCount={overdueCount}
+        canOfferSampleProject={canOfferSampleProject}
       />
 
       {/* F078 (AS-134): workspace-wide task table below the charts, only

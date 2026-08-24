@@ -70,12 +70,14 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
   it("test_AS_130_zero_task_workspace_shows_explicit_empty_state_not_charts", () => {
     const html = renderToStaticMarkup(
       createElement(DashboardContent, {
+        workspaceId: "workspace-1",
         workspaceSlug: "acme",
         hasError: false,
         isEmpty: true,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
         overdueCount: 0,
+        canOfferSampleProject: true,
       }),
     );
 
@@ -97,12 +99,14 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
     // failed RPC never gets mistaken for and rendered as "zero tasks".
     const html = renderToStaticMarkup(
       createElement(DashboardContent, {
+        workspaceId: "workspace-1",
         workspaceSlug: "acme",
         hasError: true,
         isEmpty: true,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
         overdueCount: 0,
+        canOfferSampleProject: true,
       }),
     );
 
@@ -114,12 +118,14 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
   it("test_AS_130_populated_workspace_renders_charts_not_empty_state", () => {
     const html = renderToStaticMarkup(
       createElement(DashboardContent, {
+        workspaceId: "workspace-1",
         workspaceSlug: "acme",
         hasError: false,
         isEmpty: false,
         priorityData: ZERO_PRIORITY_DATA,
         statusData: NONZERO_STATUS_DATA,
         overdueCount: 0,
+        canOfferSampleProject: true,
       }),
     );
 

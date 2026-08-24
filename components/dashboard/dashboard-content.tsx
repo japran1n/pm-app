@@ -4,6 +4,7 @@ import { PriorityBarChart } from "@/components/dashboard/priority-bar-chart";
 import { StatusPieChart } from "@/components/dashboard/status-pie-chart";
 import { OverdueTile } from "@/components/dashboard/overdue-tile";
 import { DashboardRetryButton } from "@/components/dashboard/dashboard-retry-button";
+import { SampleProjectOffer } from "@/components/onboarding/sample-project-offer";
 import {
   Card,
   CardContent,
@@ -32,21 +33,30 @@ import type {
 // -circuits straight to an explicit empty-state message with a link to
 // the projects page, before either chart ever mounts.
 export type DashboardContentProps = {
+  workspaceId: string;
   workspaceSlug: string;
   hasError: boolean;
   isEmpty: boolean;
   priorityData: PriorityCountDatum[];
   statusData: StatusCountDatum[];
   overdueCount: number;
+  // F254 (AS-494): the sample-project offer is only ever mounted for a
+  // caller who could actually create a project (`canWrite` — viewers are
+  // read-only, AS-216/AS-217) — a plain UI-only convenience gate, since
+  // `createSampleProject`'s own `createProject` call already independently
+  // re-checks membership + `canWrite` server-side (AS-143 convention).
+  canOfferSampleProject: boolean;
 };
 
 export function DashboardContent({
+  workspaceId,
   workspaceSlug,
   hasError,
   isEmpty,
   priorityData,
   statusData,
   overdueCount,
+  canOfferSampleProject,
 }: DashboardContentProps) {
   if (hasError) {
     return (
@@ -64,16 +74,27 @@ export function DashboardContent({
   if (isEmpty) {
     return (
       <Card data-testid="dashboard-empty-state">
-        <CardContent className="flex flex-col items-start gap-3 py-6">
-          <p className="text-sm text-muted-foreground">
-            No tasks yet — create your first project to get started.
-          </p>
-          <Link
-            href={`/w/${workspaceSlug}/projects`}
-            className="text-sm text-primary underline-offset-4 hover:underline"
-          >
-            View projects
-          </Link>
+        <CardContent className="flex flex-col items-start gap-4 py-6">
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-sm text-muted-foreground">
+              No tasks yet — create your first project to get started.
+            </p>
+            <Link
+              href={`/w/${workspaceSlug}/projects`}
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              View projects
+            </Link>
+          </div>
+
+          {/* F254 (AS-494): offered, never forced — a viewer (read-only)
+              never sees this control at all. */}
+          {canOfferSampleProject && (
+            <SampleProjectOffer
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+            />
+          )}
         </CardContent>
       </Card>
     );
