@@ -42,8 +42,14 @@ const SURFACES: { label: string; path: string }[] = [
     path: "components/task/new-task-dialog.tsx",
   },
   {
-    label: "the list view / dashboard table's Assignee column",
-    path: "components/task/task-list-table.tsx",
+    // F250 (AS-484): the list view's Assignee column became an inline
+    // editor as part of this feature — the actual <UserAvatar> render
+    // moved from task-list-table.tsx into this new per-cell component it
+    // renders (same "one Client Component cell per editable field"
+    // pattern as list-status-select.tsx), so this surface's real avatar
+    // rendering is proven here now instead.
+    label: "the list view's inline Assignee column editor",
+    path: "components/task/list-assignee-cell.tsx",
   },
 ];
 

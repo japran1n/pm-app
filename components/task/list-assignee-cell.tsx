@@ -1,0 +1,168 @@
+"use client";
+
+// F250 (AS-484, AS-485, AS-487): inline assignee editor for a task row in
+// the project List view. Same smallest-possible-client-boundary
+// convention as its priority/status/due-date siblings.
+//
+// Reuses the exact multi-select popover markup/behaviour of the task
+// detail sheet's own Assignees control (components/task/task-
+// detail-sheet.tsx's handleAssigneesToggle + its Popover/PopoverTrigger/
+// PopoverContent block, F161: AS-287/AS-288) rather than a bespoke
+// version — a focusable trigger button opens the popover, and each
+// member row inside is itself a focusable, checkable button (not a
+// hover-only affordance), satisfying AS-487 the same way that control
+// already does. Calls `setTaskAssignees` (lib/actions/tasks.ts, F160),
+// the SAME Server Action, with the full next assignee set (add/remove
+// both reduce to "here is the new set").
+//
+// This field is a SET, not a scalar, so it doesn't go through
+// lib/hooks/use-inline-field-edit.ts (see that file's own doc comment) —
+// it hand-writes the same optimistic-update / revert-on-failure /
+// single-toast shape directly, matching TagsEditor's `persist` and
+// ListStatusSelect's `handleChange`.
+//
+// Data (perf budget): `members` is the SAME workspace-members list
+// already fetched once by the List page and threaded through
+// TaskListTable to TaskDetailSheet — no new per-row or per-cell query.
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+
+import { setTaskAssignees } from "@/lib/actions/tasks";
+import { canWrite } from "@/lib/auth/permissions";
+import { useMembership } from "@/components/auth/membership-provider";
+import type { TaskDetailSheetMember } from "@/components/task/task-detail-sheet";
+import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
+import { UserAvatarGroup } from "@/components/user-avatar-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+
+function memberLabel(member: TaskDetailSheetMember): string {
+  return member.name || member.email || member.userId;
+}
+
+export function ListAssigneeCell({
+  taskId,
+  assigneeIds,
+  members,
+}: {
+  taskId: string;
+  /** Current resolved assignee set for this row — already computed by
+   * TaskListTable's own `resolvedAssignees` fallback (assigneeIds, or the
+   * single legacy assigneeId). */
+  assigneeIds: string[];
+  members: TaskDetailSheetMember[];
+}) {
+  const membership = useMembership();
+  const canEdit = membership ? canWrite({ role: membership.role }) : true;
+  const disabledTitle = canEdit
+    ? undefined
+    : "You don't have permission to change this task's assignees.";
+
+  const [localIds, setLocalIds] = useState(assigneeIds);
+  const [syncedTaskId, setSyncedTaskId] = useState(taskId);
+  const [isSaving, startSaveTransition] = useTransition();
+
+  if (taskId !== syncedTaskId) {
+    setSyncedTaskId(taskId);
+    setLocalIds(assigneeIds);
+  }
+
+  function toggle(userId: string) {
+    const previousIds = localIds;
+    const nextIds = previousIds.includes(userId)
+      ? previousIds.filter((id) => id !== userId)
+      : [...previousIds, userId];
+
+    setLocalIds(nextIds);
+    startSaveTransition(async () => {
+      const result = await setTaskAssignees(taskId, nextIds);
+      if (result.ok) {
+        setLocalIds(result.data.assigneeIds);
+      } else {
+        // Revert optimistic update on failure.
+        setLocalIds(previousIds);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  const currentPeople: UserAvatarPerson[] = localIds.map((id) => {
+    const member = members.find((m) => m.userId === id);
+    return {
+      id,
+      name: member?.name ?? null,
+      email: member?.email ?? null,
+      avatarUrl: member?.avatarUrl ?? null,
+    };
+  });
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            disabled={isSaving || !canEdit}
+            title={disabledTitle}
+            aria-label={`Change assignees for task ${taskId}`}
+            className="flex h-8 w-full max-w-48 items-center gap-2 rounded-md border border-transparent px-2 text-sm hover:border-input hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        }
+      >
+        {currentPeople.length > 0 ? (
+          <>
+            <UserAvatarGroup people={currentPeople} size="sm" />
+            <span className="truncate text-muted-foreground">
+              {currentPeople.length === 1
+                ? currentPeople[0]!.name ||
+                  currentPeople[0]!.email ||
+                  currentPeople[0]!.id
+                : `${currentPeople.length} assignees`}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">Unassigned</span>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-1">
+        <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+          {members.length === 0 && (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+              No workspace members.
+            </p>
+          )}
+          {members.map((member) => {
+            const checked = localIds.includes(member.userId);
+            return (
+              <button
+                key={member.userId}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={checked}
+                disabled={isSaving || !canEdit}
+                onClick={() => toggle(member.userId)}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Checkbox checked={checked} tabIndex={-1} aria-hidden="true" />
+                <UserAvatar
+                  person={{
+                    id: member.userId,
+                    name: member.name,
+                    email: member.email,
+                    avatarUrl: member.avatarUrl,
+                  }}
+                  size="sm"
+                />
+                <span className="truncate">{memberLabel(member)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

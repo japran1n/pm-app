@@ -30,7 +30,6 @@ import Link from "next/link";
 import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { TriangleAlert } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — reused for the Key
 // column below by both callers of this table (the per-project List view
@@ -38,21 +37,19 @@ import { isOverdue } from "@/lib/tasks/is-overdue";
 // workspace-wide dashboard table), matching this file's existing
 // "one component, two callers" pattern for the rest of its columns.
 import { formatTaskKey } from "@/lib/tasks/task-key";
-// F275 (AS-207): the shared due-date formatter — replaces this file's own
-// local `formatDueDate` copy, which (like task-card.tsx's) never received
-// a timeZone. See lib/time/user-timezone.ts's formatDueDate doc comment.
-import { formatDueDate } from "@/lib/time/user-timezone";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { ProjectListTaskSort } from "@/lib/queries/tasks";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { DueDateSortHeader } from "@/components/task/due-date-sort-header";
 import { ListStatusSelect } from "@/components/task/list-status-select";
-// F106 (AS-135): priority label/color now comes from the single shared
-// lib/task-colors.ts constant (same source as TaskCard's badge and the
-// dashboard charts) instead of this component's own local
-// PRIORITY_LABELS copy, which previously carried no color at all.
-import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
+// F250 (AS-484, AS-485, AS-487): the priority/due-date/assignee inline
+// editors — see each file's own doc comment. Status already had its own
+// inline editor (ListStatusSelect, F057) before this feature; these three
+// extend the same "one Client Component cell per editable field" pattern
+// to the remaining fields AS-484 names.
+import { ListPrioritySelect } from "@/components/task/list-priority-select";
+import { ListDueDateCell } from "@/components/task/list-due-date-cell";
+import { ListAssigneeCell } from "@/components/task/list-assignee-cell";
 import {
   Table,
   TableBody,
@@ -70,8 +67,7 @@ import {
 // the workspace dashboard table — components/dashboard/
 // dashboard-task-table.tsx composes this same component) now renders the
 // shared avatar component instead of plain text.
-import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
-import { UserAvatarGroup } from "@/components/user-avatar-group";
+import type { UserAvatarPerson } from "@/components/user-avatar";
 // F185 (AS-334/335/336): row checkboxes, select-all, and the floating
 // action bar shown while the selection is non-empty.
 import { Checkbox } from "@/components/ui/checkbox";
@@ -275,9 +271,6 @@ export function TaskListTable({
           {tasks.map((task, index) => {
             const overdue = isOverdue(task.dueDate, task.status, timezone, task.statusCategory);
             const isSelected = selectedIds.has(task.id);
-            const assignee = task.assigneeId
-              ? assignees.get(task.assigneeId)
-              : null;
             // F161 (AS-287, AS-288): every resolved assignee for this
             // row, falling back to the single legacy `assigneeId` when
             // `assigneeIds` is empty — same resolution BoardColumn uses,
@@ -345,68 +338,37 @@ export function TaskListTable({
                     statusOptions={statusOptions}
                   />
                 </TableCell>
-                <TableCell>
-                  {task.priority ? (
-                    <Badge
-                      variant="secondary"
-                      className="gap-1.5"
-                      style={{ borderColor: PRIORITY_COLORS[task.priority] }}
-                    >
-                      <span
+                {/* F250 (AS-484): inline priority editor — stopPropagation
+                    for the same reason the Status cell above does. */}
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <ListPrioritySelect taskId={task.id} priority={task.priority} />
+                </TableCell>
+                {/* F250 (AS-484): inline assignee editor. */}
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <ListAssigneeCell
+                    taskId={task.id}
+                    assigneeIds={resolvedAssignees.map((person) => person.id)}
+                    members={members}
+                  />
+                </TableCell>
+                {/* F250 (AS-484): inline due-date editor. The overdue
+                    indicator (icon + destructive color) is kept alongside
+                    the editable input rather than folded into it, since
+                    it's derived from task.status too, not just the date
+                    value the input itself owns. */}
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <div className="flex items-center gap-1.5">
+                    {overdue && (
+                      <TriangleAlert
+                        className="size-3 shrink-0 text-destructive"
                         aria-hidden="true"
-                        className="size-1.5 rounded-full"
-                        style={{
-                          backgroundColor: PRIORITY_COLORS[task.priority],
-                        }}
                       />
-                      {PRIORITY_LABELS[task.priority]}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {resolvedAssignees.length > 0 ? (
-                    <span className="flex items-center gap-2">
-                      <UserAvatarGroup people={resolvedAssignees} size="sm" />
-                      {resolvedAssignees.length === 1
-                        ? (resolvedAssignees[0]!.name ||
-                          resolvedAssignees[0]!.email ||
-                          resolvedAssignees[0]!.id)
-                        : `${resolvedAssignees.length} assignees`}
+                    )}
+                    <span className={overdue ? "sr-only" : "hidden"}>
+                      Overdue:
                     </span>
-                  ) : assignee ? (
-                    <span className="flex items-center gap-2">
-                      <UserAvatar person={assignee} size="sm" />
-                      {assignee.name || assignee.email || assignee.id}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">
-                      Unassigned
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {task.dueDate ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1",
-                        overdue
-                          ? "font-medium text-destructive"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {overdue && (
-                        <TriangleAlert className="size-3" aria-hidden="true" />
-                      )}
-                      <span className={overdue ? "sr-only" : "hidden"}>
-                        Overdue:
-                      </span>
-                      {formatDueDate(task.dueDate, timezone)}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                    <ListDueDateCell taskId={task.id} dueDate={task.dueDate} />
+                  </div>
                 </TableCell>
               </TableRow>
             );
