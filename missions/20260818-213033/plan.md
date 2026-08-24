@@ -209,7 +209,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F236 db-task-start-date — AS-453 [CLARIFIED-AUTO] [COMPLETE]
 - F237 timeline-scale-bars — AS-451, AS-452, AS-457, AS-458 [CLARIFIED-AUTO] [COMPLETE]
 - F238 timeline-drag-resize — AS-454 [CLARIFIED-AUTO] [COMPLETE]
-- F239 timeline-dependency-connectors — AS-455 [CLARIFIED-AUTO]
+- F239 timeline-dependency-connectors — AS-455 [CLARIFIED-AUTO] [COMPLETE]
 - F240 timeline-zoom — AS-456 [CLARIFIED-AUTO]
 
 ## M17 — UX polish, attachments & navigation
