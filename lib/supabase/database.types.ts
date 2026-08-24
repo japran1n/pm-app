@@ -1547,6 +1547,10 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: undefined
       }
+      set_saved_view_default: {
+        Args: { p_view_id: string }
+        Returns: undefined
+      }
       shares_workspace_with: {
         Args: { target_user_id: string }
         Returns: boolean

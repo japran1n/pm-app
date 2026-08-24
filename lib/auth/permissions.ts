@@ -195,6 +195,20 @@ export function canManageTemplate(ctx: PermissionContext): boolean {
   return isResourceOwner(ctx);
 }
 
+// F228 (AS-430): editing or deleting a SHARED saved view. Mirrors
+// `canManageTemplate` exactly (same "creator, or workspace admin/owner"
+// rule) -- reused rather than re-derived so the two "creator-or-admin"
+// resources in this codebase can never drift apart. A PERSONAL view's
+// edit/delete gate is narrower still (owner only, no admin override) and
+// is enforced directly by `saved_views`' RLS UPDATE/DELETE policies
+// (owner_id = auth.uid()) plus this same predicate's `isResourceOwner`
+// branch -- lib/actions/views.ts only calls the admin-override branch of
+// this predicate for scope === 'shared' views.
+export function canManageSavedView(ctx: PermissionContext): boolean {
+  if (ctx.role === "owner" || ctx.role === "admin") return true;
+  return isResourceOwner(ctx);
+}
+
 // Switching a project between "workspace" and "private" visibility.
 // Owner/admin only — the real boundary is the DB-level
 // `enforce_project_visibility_change_role` trigger (F132, AS-229); this
