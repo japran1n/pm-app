@@ -19,9 +19,15 @@ tests/unit/f226-swimlane-collapse-persist.test.ts (new)
 
 ## Commands run
 `npx supabase db push` (0) — applied `20260825030000_create_board_swimlane_prefs.sql` to the real linked project.
-`npx tsc --noEmit` (0)
-`npx eslint .` (0, 2 pre-existing unrelated warnings in lib/queries/search.ts and tests/unit/invite-member-pagination.test.ts — not touched by this feature)
-`npx vitest run tests/integration/f226-swimlane-collapse-persist.test.ts tests/integration/f224-board-swimlane-grouping.test.ts tests/integration/f225-swimlane-drag-reassign.test.ts tests/unit/f226-swimlane-collapse-persist.test.ts tests/unit/f224-board-swimlane-grouping.test.ts tests/unit/f225-swimlane-drag-reassign.test.ts` (0) — 6 files, 47 tests, all passed. This is the F221–F225 regression slice plus this feature's own new tests, run standalone per the "known infra conditions" guidance.
+CORRECTION (post-commit fix, see below): the FIRST `npx tsc --noEmit` run reported as "(0)" in the original version of this handoff was WRONG — the orchestrator caught a real type error the same session:
+```
+tests/unit/f226-swimlane-collapse-persist.test.ts(29,34): error TS2556: A spread argument must either have a tuple type or be passed to a rest parameter.
+```
+Cause: `vi.fn(async () => ({ ok: true }))` infers a zero-parameter mock signature; spreading `(...args: unknown[])` into it doesn't type-check. Fixed by importing the real action's own `UpsertBoardSwimlanePrefsInput`/`UpsertBoardSwimlanePrefsResult` types from `@/lib/actions/board-prefs` and giving `vi.fn` an explicit `(input: UpsertBoardSwimlanePrefsInput) => Promise<UpsertBoardSwimlanePrefsResult>` type argument, then typing the mock wrapper's parameter to that same input type instead of `unknown[]` — no `@ts-expect-error`/`as any`, and the mock still asserts the real argument shape. Re-ran after the fix and confirmed clean:
+`npx tsc --noEmit` (0) — verified output is empty (no errors), re-run after the fix above.
+`npx eslint .` (0, 2 pre-existing unrelated warnings in lib/queries/search.ts and tests/unit/invite-member-pagination.test.ts — not touched by this feature), re-run after the fix, same 2 warnings, 0 errors.
+`npx vitest run tests/unit/f226-swimlane-collapse-persist.test.ts tests/integration/f226-swimlane-collapse-persist.test.ts` (0) — 2 files, 10 tests, all passed, re-run after the fix.
+`npx vitest run tests/integration/f221-board-custom-columns.test.ts tests/integration/f222-status-category-semantics.test.ts tests/integration/f223-status-integration-list-search-dashboard.test.ts tests/integration/f224-board-swimlane-grouping.test.ts tests/integration/f225-swimlane-drag-reassign.test.ts tests/unit/f224-board-swimlane-grouping.test.ts tests/unit/f225-swimlane-drag-reassign.test.ts` (0) — F221–F225 board regression slice, 7 files, 59 tests, all passed.
 `npm test` (full suite, run twice) — both runs showed widespread unrelated failures (`AuthRetryableFetchError: Database error finding users`, `Request rate limit reached` on `signInWithPassword`) across ~20+ files completely unrelated to this feature (workspace-role-expansion, invite-member, recurrence-scheduled-generation, checklist-actions, f219-status-management, dependency-ui-actions, etc.) — matching this feature's "known infra conditions" note (Supabase Auth rate limiting) verbatim, not a code regression. The SAME f224/f225/f226 test files that failed inside the full run (with the log literally saying `Error: Failed to sign in ...: Request rate limit reached`) passed 100% (47/47) when re-run alone immediately after, confirming rate-limiting, not a real defect.
 
 ## Decisions made

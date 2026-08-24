@@ -16,6 +16,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
+import type {
+  UpsertBoardSwimlanePrefsInput,
+  UpsertBoardSwimlanePrefsResult,
+} from "@/lib/actions/board-prefs";
 
 vi.mock("@/lib/actions/tasks", () => ({
   moveAndReorderTask: vi.fn(async () => ({ ok: true, data: {} })),
@@ -23,10 +27,16 @@ vi.mock("@/lib/actions/tasks", () => ({
   createTask: vi.fn(async () => ({ ok: true, data: {} })),
 }));
 
-const upsertBoardSwimlanePrefsMock = vi.fn(async () => ({ ok: true }));
+// Typed to the real action's own signature (imported above), NOT
+// `(...args: unknown[])`, so this mock still genuinely asserts the exact
+// argument shape board.tsx/board-toolbar.tsx pass -- a mismatch here is a
+// compile error, not just a silently-ignored runtime call.
+const upsertBoardSwimlanePrefsMock = vi.fn<
+  (input: UpsertBoardSwimlanePrefsInput) => Promise<UpsertBoardSwimlanePrefsResult>
+>(async () => ({ ok: true }));
 vi.mock("@/lib/actions/board-prefs", () => ({
-  upsertBoardSwimlanePrefs: (...args: unknown[]) =>
-    upsertBoardSwimlanePrefsMock(...args),
+  upsertBoardSwimlanePrefs: (input: UpsertBoardSwimlanePrefsInput) =>
+    upsertBoardSwimlanePrefsMock(input),
 }));
 
 let mockSearchParams = new URLSearchParams();
