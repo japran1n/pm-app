@@ -40,6 +40,9 @@ import {
 } from "@/lib/queries/tasks";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getWorkspaceMembers } from "@/lib/queries/members";
+// F223 (AS-411): the project's real board columns — same read path F221
+// already built for the board, reused here rather than a parallel copy.
+import { getProjectColumns } from "@/lib/queries/statuses";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import { NewTaskDialog } from "@/components/task/new-task-dialog";
@@ -47,7 +50,6 @@ import { NewFromTemplateButton } from "@/components/task/new-from-template-butto
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
 import type { UserAvatarPerson } from "@/components/user-avatar";
 
-const VALID_STATUSES = new Set(["todo", "in_progress", "in_review", "done"]);
 const VALID_PRIORITIES = new Set([
   "urgent",
   "high",
@@ -72,8 +74,27 @@ export default async function ProjectListPage({
   const { workspaceSlug, projectId } = await params;
   const query = await searchParams;
 
+  // F223 (AS-411): the project's real board columns, fetched up front so
+  // both the filter's validation (below) and <ListFilters>/<TaskListTable>
+  // read from the same real list — never a fixed four-value Set that a
+  // renamed/custom column could never appear in.
+  const columns = await getProjectColumns(projectId);
+  const validStatusNames = new Set(columns.map((column) => column.name));
+  // F221's own convention for a custom column name flowing through the
+  // legacy fixed-four `TaskCardTask["status"]` union — see
+  // components/board/board.tsx's `as TaskCardTask["status"]` cast.
+  const statusOptions: {
+    value: NonNullable<ProjectListTaskFilters["status"]>;
+    label: string;
+    color: string;
+  }[] = columns.map((column) => ({
+    value: column.name as NonNullable<ProjectListTaskFilters["status"]>,
+    label: column.name,
+    color: column.color,
+  }));
+
   const filters: ProjectListTaskFilters = {};
-  if (query.status && VALID_STATUSES.has(query.status)) {
+  if (query.status && validStatusNames.has(query.status)) {
     filters.status = query.status as ProjectListTaskFilters["status"];
   }
   if (query.priority && VALID_PRIORITIES.has(query.priority)) {
@@ -166,7 +187,7 @@ export default async function ProjectListPage({
           bookmarked/shared filtered URL), so it needs its own "New Task"
           entry point rather than relying on the Board view's. */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <ListFilters assigneeOptions={assigneeOptions} />
+        <ListFilters assigneeOptions={assigneeOptions} statusOptions={statusOptions} />
         <div className="flex items-center gap-2">
           <NewFromTemplateButton projectId={projectId} templates={templates} />
           <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
@@ -180,6 +201,7 @@ export default async function ProjectListPage({
         clearFiltersHref={clearFiltersHref}
         members={detailSheetMembers}
         timezone={timezone}
+        statusOptions={statusOptions}
       />
     </div>
   );

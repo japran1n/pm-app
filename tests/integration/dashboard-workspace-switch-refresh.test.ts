@@ -239,14 +239,16 @@ describe.skipIf(!haveAdminCreds)(
       expect(overdueA.error).toBeNull();
 
       const urgentCountA = priorityA.data?.find((d) => d.priority === "urgent")?.count;
-      const todoCountA = statusA.data?.find((d) => d.status === "todo")?.count;
+      const todoCountA = statusA.data?.find((d) => d.name === "todo")?.count;
       expect(urgentCountA).toBe(3);
       expect(todoCountA).toBe(3);
       expect(overdueA.data).toBe(1);
       // Workspace A has no "low"/"done" tasks — proves this isn't just a
-      // total-count coincidence.
+      // total-count coincidence. F223: the status RPC is now sparse (only
+      // present columns get a row), so a missing status is "no row" rather
+      // than a zero-count row — `?? 0` mirrors that.
       expect(priorityA.data?.find((d) => d.priority === "low")?.count).toBe(0);
-      expect(statusA.data?.find((d) => d.status === "done")?.count).toBe(0);
+      expect(statusA.data?.find((d) => d.name === "done")?.count ?? 0).toBe(0);
 
       // Simulates switching via F014's switcher and navigating to
       // /w/<workspace-B-slug> — a fresh Server Component render, same
@@ -262,7 +264,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(overdueB.error).toBeNull();
 
       const lowCountB = priorityB.data?.find((d) => d.priority === "low")?.count;
-      const doneCountB = statusB.data?.find((d) => d.status === "done")?.count;
+      const doneCountB = statusB.data?.find((d) => d.name === "done")?.count;
       expect(lowCountB).toBe(2);
       expect(doneCountB).toBe(2);
       expect(overdueB.data).toBe(0);
@@ -270,7 +272,7 @@ describe.skipIf(!haveAdminCreds)(
       // no bleed-through of A's figures into B's result (AS-133-adjacent
       // isolation, exercised here as part of "figures differ correctly").
       expect(priorityB.data?.find((d) => d.priority === "urgent")?.count).toBe(0);
-      expect(statusB.data?.find((d) => d.status === "todo")?.count).toBe(0);
+      expect(statusB.data?.find((d) => d.name === "todo")?.count ?? 0).toBe(0);
 
       // The two results must actually differ — the core AS-132 claim: the
       // figures for A and B are not the same (which would indicate stale/

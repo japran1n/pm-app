@@ -8,6 +8,12 @@
 // columns (components/board/board-column.tsx) now use for their header
 // dot — so a slice's color always matches that status's board column
 // color elsewhere in the app.
+//
+// F223 (AS-412): `datum.name`/`datum.color` now come straight from the
+// RPC's own `project_statuses` join (lib/queries/dashboard.ts), not a
+// fixed STATUS_COLORS lookup — a renamed/added custom column across the
+// workspace's projects shows up as its own slice, in its own real
+// colour, with no change needed in this component.
 "use client";
 
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
@@ -32,7 +38,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
           }
         >
           {nonZero.map((datum) => (
-            <Cell key={datum.status} fill={datum.color} data-status={datum.status} />
+            <Cell key={datum.name} fill={datum.color} data-status={datum.name} />
           ))}
         </Pie>
         <Tooltip formatter={(value) => [value, "Tasks"]} />

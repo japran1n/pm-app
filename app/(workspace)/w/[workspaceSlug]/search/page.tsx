@@ -33,7 +33,7 @@ import { createClient } from "@/lib/supabase/server";
 import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { STATUS_COLORS, PRIORITY_COLORS } from "@/lib/task-colors";
+import { PRIORITY_COLORS } from "@/lib/task-colors";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — see that file's doc
 // comment for why every task-identity surface goes through it instead of
 // re-concatenating projectKey/number locally.
@@ -155,8 +155,12 @@ export default async function SearchPage({
       {q && !loadError && results.length > 0 && (
         <ul className="flex flex-col gap-2">
           {results.map((task) => {
-            const statusColor =
-              STATUS_COLORS[task.status as keyof typeof STATUS_COLORS];
+            // F223 (AS-417): the task's REAL current column name/colour
+            // (lib/queries/search.ts's statusName/statusColor, resolved
+            // via status_id against project_statuses), not the raw
+            // `status` text — a column rename after this task last wrote
+            // its own status must still show the column's current name.
+            const statusColor = task.statusColor;
             const priorityColor =
               PRIORITY_COLORS[task.priority as keyof typeof PRIORITY_COLORS];
             const taskKey = formatTaskKey(task.projectKey, task.number);
@@ -193,7 +197,7 @@ export default async function SearchPage({
                           style={{ backgroundColor: statusColor }}
                         />
                       )}
-                      {task.status.replace("_", " ")}
+                      {task.statusName.replace(/_/g, " ")}
                     </Badge>
                     <Badge
                       variant="secondary"

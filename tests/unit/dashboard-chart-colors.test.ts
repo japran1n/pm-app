@@ -71,10 +71,10 @@ const PRIORITY_DATA: PriorityCountDatum[] = [
 ];
 
 const STATUS_DATA: StatusCountDatum[] = [
-  { status: "todo", label: "To Do", count: 4, color: STATUS_COLORS.todo },
-  { status: "in_progress", label: "In Progress", count: 2, color: STATUS_COLORS.in_progress },
-  { status: "in_review", label: "In Review", count: 0, color: STATUS_COLORS.in_review },
-  { status: "done", label: "Done", count: 7, color: STATUS_COLORS.done },
+  { name: "todo", label: "To Do", count: 4, color: STATUS_COLORS.todo, category: "not_started" },
+  { name: "in_progress", label: "In Progress", count: 2, color: STATUS_COLORS.in_progress, category: "in_progress" },
+  { name: "in_review", label: "In Review", count: 0, color: STATUS_COLORS.in_review, category: "in_progress" },
+  { name: "done", label: "Done", count: 7, color: STATUS_COLORS.done, category: "done" },
 ];
 
 describe("Dashboard chart colors (F073: AS-135)", () => {
@@ -107,7 +107,9 @@ describe("Dashboard chart colors (F073: AS-135)", () => {
     expect(byStatus.size).toBeLessThan(STATUS_DATA.length);
 
     for (const datum of nonZeroStatuses) {
-      expect(byStatus.get(datum.status)).toBe(STATUS_COLORS[datum.status]);
+      expect(byStatus.get(datum.name)).toBe(
+        STATUS_COLORS[datum.name as keyof typeof STATUS_COLORS],
+      );
     }
     expect(byStatus.has("in_review")).toBe(false);
   });
@@ -121,6 +123,10 @@ describe("Dashboard chart colors (F073: AS-135)", () => {
     expect(PRIORITY_DATA.every((d) => d.color === PRIORITY_COLORS[d.priority])).toBe(
       true,
     );
-    expect(STATUS_DATA.every((d) => d.color === STATUS_COLORS[d.status])).toBe(true);
+    expect(
+      STATUS_DATA.every(
+        (d) => d.color === STATUS_COLORS[d.name as keyof typeof STATUS_COLORS],
+      ),
+    ).toBe(true);
   });
 });

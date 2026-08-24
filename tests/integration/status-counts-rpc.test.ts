@@ -295,8 +295,8 @@ describe.skipIf(!haveAdminCreds)(
       expect(error).toBeNull();
       const rows = data ?? [];
       const byStatus = Object.fromEntries(
-        rows.map((r: { status: string; count: number }) => [
-          r.status,
+        rows.map((r: { name: string; count: number }) => [
+          r.name,
           Number(r.count),
         ]),
       );
@@ -313,7 +313,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(error).toBeNull();
       const rows = data ?? [];
       const inProgressRow = rows.find(
-        (r: { status: string }) => r.status === "in_progress",
+        (r: { name: string }) => r.name === "in_progress",
       );
       // 2 active 'in_progress' tasks were seeded, plus 1 soft-deleted
       // 'in_progress' task. If the soft-deleted row leaked in, this would
@@ -331,7 +331,7 @@ describe.skipIf(!haveAdminCreds)(
       // The archived project's task has status 'done', which was never
       // seeded on any active project — its absence proves exclusion.
       const doneRow = rows.find(
-        (r: { status: string }) => r.status === "done",
+        (r: { name: string }) => r.name === "done",
       );
       expect(doneRow).toBeUndefined();
     });

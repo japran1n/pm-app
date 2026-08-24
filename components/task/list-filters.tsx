@@ -43,7 +43,17 @@ import {
 // Select.
 import { UserAvatar } from "@/components/user-avatar";
 
-const STATUS_OPTIONS: { value: string; label: string }[] = [
+// F223 (AS-411): this used to be a fixed four-value list — a project
+// whose board columns had been renamed/added-to (F219/F221) had no way
+// to filter the List view by its own real column names. Callers that
+// know their real columns (the project List page, via
+// lib/queries/statuses.ts's getProjectColumns) now pass `statusOptions`
+// in; this fixed list only remains as the fallback for callers that
+// don't have a single project's columns to hand (the workspace-wide
+// dashboard task table, which spans multiple projects with potentially
+// different column sets — see this feature's handoff "Out-of-scope work
+// needed" for why that surface isn't fixed by this feature).
+const DEFAULT_STATUS_OPTIONS: { value: string; label: string; color?: string }[] = [
   { value: "todo", label: "To Do" },
   { value: "in_progress", label: "In Progress" },
   { value: "in_review", label: "In Review" },
@@ -78,14 +88,6 @@ const ALL_VALUE = "__all__";
 // (documented in its own type as the supported way to format the selected
 // value) that maps a value to its label itself, instead of relying on
 // label lookup from mounted item DOM.
-const STATUS_LABELS: Record<string, string> = {
-  [ALL_VALUE]: "All statuses",
-  todo: "To Do",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-};
-
 const PRIORITY_LABELS: Record<string, string> = {
   [ALL_VALUE]: "All priorities",
   urgent: "Urgent",
@@ -97,12 +99,26 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 export function ListFilters({
   assigneeOptions,
+  statusOptions = DEFAULT_STATUS_OPTIONS,
 }: {
   assigneeOptions: AssigneeOption[];
+  /** F223 (AS-411): the project's real `project_statuses` columns, in
+   * `position` order (lib/queries/statuses.ts's getProjectColumns),
+   * passed in by the project List page. Falls back to the legacy fixed
+   * four for callers without a single project's columns to hand. */
+  statusOptions?: { value: string; label: string; color?: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const statusLabels = useMemo(() => {
+    const labels: Record<string, string> = { [ALL_VALUE]: "All statuses" };
+    for (const option of statusOptions) {
+      labels[option.value] = option.label;
+    }
+    return labels;
+  }, [statusOptions]);
 
   const status = searchParams.get("status") ?? ALL_VALUE;
   const priority = searchParams.get("priority") ?? ALL_VALUE;
@@ -156,14 +172,23 @@ export function ListFilters({
       >
         <SelectTrigger size="sm" className="w-36" aria-label="Filter by status">
           <SelectValue placeholder="Status">
-            {(value: string) => STATUS_LABELS[value] ?? value}
+            {(value: string) => statusLabels[value] ?? value}
           </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_VALUE}>All statuses</SelectItem>
-          {STATUS_OPTIONS.map((option) => (
+          {statusOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.label}
+              <span className="flex items-center gap-1.5">
+                {option.color && (
+                  <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: option.color }}
+                  />
+                )}
+                {option.label}
+              </span>
             </SelectItem>
           ))}
         </SelectContent>

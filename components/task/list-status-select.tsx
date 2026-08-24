@@ -41,19 +41,34 @@ import {
 // local STATUS_OPTIONS labels, which previously rendered no color at all.
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
 
-const STATUS_OPTIONS: { value: TaskCardTask["status"]; label: string }[] = [
-  { value: "todo", label: STATUS_LABELS.todo },
-  { value: "in_progress", label: STATUS_LABELS.in_progress },
-  { value: "in_review", label: STATUS_LABELS.in_review },
-  { value: "done", label: STATUS_LABELS.done },
+// F223 (AS-411): the legacy fixed four, kept only as the fallback for
+// callers that don't have a single project's real columns to hand (the
+// workspace-wide dashboard task table — see list-filters.tsx's matching
+// DEFAULT_STATUS_OPTIONS comment for the same rationale).
+const DEFAULT_STATUS_OPTIONS: { value: TaskCardTask["status"]; label: string; color: string }[] = [
+  { value: "todo", label: STATUS_LABELS.todo, color: STATUS_COLORS.todo },
+  { value: "in_progress", label: STATUS_LABELS.in_progress, color: STATUS_COLORS.in_progress },
+  { value: "in_review", label: STATUS_LABELS.in_review, color: STATUS_COLORS.in_review },
+  { value: "done", label: STATUS_LABELS.done, color: STATUS_COLORS.done },
 ];
 
 export function ListStatusSelect({
   taskId,
   status,
+  statusOptions = DEFAULT_STATUS_OPTIONS,
 }: {
   taskId: string;
   status: TaskCardTask["status"];
+  /** F223 (AS-411): the project's real `project_statuses` columns
+   * (lib/queries/statuses.ts's getProjectColumns), passed down from the
+   * project List page via TaskListTable. `TaskCardTask["status"]` is a
+   * fixed four-value union from before per-project columns existed
+   * (F218/F221) — a custom column name is cast through it the same way
+   * the board already does (components/board/board.tsx's own
+   * `as TaskCardTask["status"]` cast), since the value only ever flows
+   * into `moveTaskStatus`, whose schema accepts any non-empty string
+   * (F221, lib/validation/tasks.ts's moveTaskStatusSchema). */
+  statusOptions?: { value: TaskCardTask["status"]; label: string; color: string }[];
 }) {
   const [localStatus, setLocalStatus] = useState(status);
   // Re-sync local state if the row's underlying status changes via a fresh
@@ -108,6 +123,23 @@ export function ListStatusSelect({
     });
   }
 
+  // F223 (AS-411): lookup by real column name, falling back to the
+  // shared STATUS_COLORS/LABELS constant (then the raw value itself) for
+  // a status that isn't among the passed-in `statusOptions` — e.g. the
+  // component's initial render before `statusOptions` finishes loading,
+  // or a legacy fixed-four value on a project whose columns haven't been
+  // customized.
+  const optionByValue = new Map(
+    statusOptions.map((option) => [option.value, option]),
+  );
+  const currentColor =
+    optionByValue.get(localStatus)?.color ??
+    STATUS_COLORS[localStatus as keyof typeof STATUS_COLORS];
+  const currentLabel =
+    optionByValue.get(localStatus)?.label ??
+    STATUS_LABELS[localStatus as keyof typeof STATUS_LABELS] ??
+    localStatus;
+
   return (
     <>
       <Select value={localStatus} onValueChange={handleChange}>
@@ -126,23 +158,19 @@ export function ListStatusSelect({
             <span
               aria-hidden="true"
               className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: STATUS_COLORS[localStatus] }}
+              style={{ backgroundColor: currentColor }}
             />
-            <SelectValue>
-              {(value: string) =>
-                STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value
-              }
-            </SelectValue>
+            <SelectValue>{() => currentLabel}</SelectValue>
           </span>
         </SelectTrigger>
         <SelectContent>
-          {STATUS_OPTIONS.map((option) => (
+          {statusOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               <span className="flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
                   className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: STATUS_COLORS[option.value] }}
+                  style={{ backgroundColor: option.color }}
                 />
                 {option.label}
               </span>

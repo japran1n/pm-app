@@ -1318,8 +1318,10 @@ export type Database = {
       get_status_counts: {
         Args: { p_workspace_id: string }
         Returns: {
+          category: string | null
+          color: string | null
           count: number
-          status: string
+          name: string
         }[]
       }
       get_workspace_time_by_person: {

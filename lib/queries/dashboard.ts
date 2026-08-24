@@ -30,11 +30,20 @@ export type PriorityCountDatum = {
   color: string;
 };
 
+// F223 (AS-412): a workspace's status chart slice is now keyed by the
+// project column's real NAME (see the migration's AUTONOMOUS_DECISION
+// comment for "group by name, not category" — 20260825010000_status_
+// counts_custom_columns.sql), not one of a fixed four values, so `status`
+// (a `TaskCardTask["status"]` union) is replaced with a plain `name`
+// string. `color`/`category` come straight from the RPC's own
+// `project_statuses` join rather than a client-side STATUS_COLORS
+// lookup, so a renamed/recolored column is reflected without a redeploy.
 export type StatusCountDatum = {
-  status: TaskCardTask["status"];
+  name: string;
   label: string;
   count: number;
   color: string;
+  category: string | null;
 };
 
 const PRIORITY_ORDER: PriorityCountDatum["priority"][] = [
@@ -44,13 +53,6 @@ const PRIORITY_ORDER: PriorityCountDatum["priority"][] = [
   "low",
   "backlog",
   "none",
-];
-
-const STATUS_ORDER: StatusCountDatum["status"][] = [
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
 ];
 
 export async function getPriorityCounts(
@@ -138,17 +140,36 @@ export async function getStatusCounts(
     return { data: null, error: error.message };
   }
 
-  const countsByStatus = new Map<string, number>();
-  for (const row of data ?? []) {
-    countsByStatus.set(row.status, Number(row.count));
-  }
-
-  const result: StatusCountDatum[] = STATUS_ORDER.map((status) => ({
-    status,
-    label: STATUS_LABELS[status],
-    count: countsByStatus.get(status) ?? 0,
-    color: STATUS_COLORS[status],
-  }));
+  // F223 (AS-412): the RPC now returns exactly one row per distinct
+  // column NAME present in this workspace's tasks (custom/renamed
+  // columns included), each already carrying its own colour/category —
+  // no fixed dense array to backfill zero-count buckets into, since
+  // "every possible status" is no longer a closed, known-in-advance set.
+  // A workspace-appropriate `STATUS_LABELS` fallback (title-casing the
+  // raw name) is used only for the pre-F218 default four, whose stored
+  // names ("todo", "in_progress", ...) aren't already human-readable;
+  // any custom column name is used verbatim as its own label.
+  const result: StatusCountDatum[] = (data ?? []).map((row: {
+    name: string;
+    color: string | null;
+    category: string | null;
+    count: number;
+  }) => {
+    const name = row.name;
+    const label =
+      STATUS_LABELS[name as keyof typeof STATUS_LABELS] ?? name;
+    const color =
+      row.color ??
+      STATUS_COLORS[name as keyof typeof STATUS_COLORS] ??
+      "#94a3b8";
+    return {
+      name,
+      label,
+      count: Number(row.count),
+      color,
+      category: row.category ?? null,
+    };
+  });
 
   return { data: result, error: null };
 }

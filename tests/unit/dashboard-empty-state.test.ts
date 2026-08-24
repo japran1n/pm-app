@@ -46,22 +46,24 @@ const ZERO_PRIORITY_DATA: PriorityCountDatum[] = (
 const ZERO_STATUS_DATA: StatusCountDatum[] = (
   ["todo", "in_progress", "in_review", "done"] as const
 ).map((status) => ({
-  status,
+  name: status,
   label: status,
   count: 0,
   color: STATUS_COLORS[status],
+  category: null,
 }));
 
 const NONZERO_STATUS_DATA: StatusCountDatum[] = [
-  { status: "todo", label: "To Do", count: 3, color: STATUS_COLORS.todo },
+  { name: "todo", label: "To Do", count: 3, color: STATUS_COLORS.todo, category: "not_started" },
   {
-    status: "in_progress",
+    name: "in_progress",
     label: "In Progress",
     count: 1,
     color: STATUS_COLORS.in_progress,
+    category: "in_progress",
   },
-  { status: "in_review", label: "In Review", count: 0, color: STATUS_COLORS.in_review },
-  { status: "done", label: "Done", count: 2, color: STATUS_COLORS.done },
+  { name: "in_review", label: "In Review", count: 0, color: STATUS_COLORS.in_review, category: "in_progress" },
+  { name: "done", label: "Done", count: 2, color: STATUS_COLORS.done, category: "done" },
 ];
 
 describe("DashboardContent empty state (F074: AS-130)", () => {

@@ -93,6 +93,7 @@ export function TaskListTable({
   clearFiltersHref,
   members = [],
   timezone,
+  statusOptions,
 }: {
   tasks: TaskCardTask[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
@@ -137,6 +138,13 @@ export function TaskListTable({
    * scrutiny's AS-207 finding) — a caller that truly doesn't care now has
    * to pass "UTC" explicitly instead of getting it for free. */
   timezone: string;
+  /** F223 (AS-411): the project's real `project_statuses` columns
+   * (lib/queries/statuses.ts's getProjectColumns), forwarded straight
+   * through to each row's <ListStatusSelect>. Undefined lets
+   * ListStatusSelect fall back to its own legacy default — the
+   * workspace-wide dashboard table (multi-project) doesn't pass this
+   * yet, see this feature's handoff. */
+  statusOptions?: { value: TaskCardTask["status"]; label: string; color: string }[];
 }) {
   const taskDetailSheet = useTaskDetailSheet();
 
@@ -331,7 +339,11 @@ export function TaskListTable({
                     should change the status, not also open the detail
                     sheet underneath it. */}
                 <TableCell onClick={(event) => event.stopPropagation()}>
-                  <ListStatusSelect taskId={task.id} status={task.status} />
+                  <ListStatusSelect
+                    taskId={task.id}
+                    status={task.status}
+                    statusOptions={statusOptions}
+                  />
                 </TableCell>
                 <TableCell>
                   {task.priority ? (

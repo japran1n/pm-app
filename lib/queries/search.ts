@@ -85,7 +85,23 @@ type SearchTasksRow = Database["public"]["Tables"]["tasks"]["Row"];
 export interface SearchTaskResult {
   id: string;
   title: string;
+  // Raw `tasks.status` text — kept for back-compat, but F223 (AS-417)
+  // means callers should prefer `statusName`/`statusColor` below: a task
+  // whose project column was RENAMED after this task last wrote its own
+  // `status` (the sync trigger only fires on a TASK write, never on a
+  // `project_statuses` rename — see 20260824010000's
+  // sync_task_status_and_status_id doc comment) can have a stale
+  // `status` string that no longer matches any of the project's current
+  // columns.
   status: string;
+  // F223 (AS-417): the task's ACTUAL current column name/colour,
+  // resolved via `status_id` against `project_statuses` — the same
+  // source lib/queries/statuses.ts's getProjectColumns reads, joined
+  // here rather than duplicated. Falls back to the raw `status` text (no
+  // colour) for the pre-F218 `status_id is null` edge case, same
+  // "no worse than before" posture as `is_done_status`'s own fallback.
+  statusName: string;
+  statusColor: string | null;
   priority: string;
   projectId: string;
   projectName: string;
@@ -156,6 +172,36 @@ export async function searchWorkspaceTasks(
   // `projectNameById` above — reused rather than a second query.
   const projectKeyById = new Map(projects.map((p) => [p.id, p.key]));
 
+  // F223 (AS-417): one query for every project's real columns, keyed by
+  // `status_id` (globally unique uuid, so a single flat map across every
+  // project in this workspace-scoped `projects` list is safe — never
+  // merges two different projects' columns). Reuses `project_statuses`'
+  // existing select RLS (is_project_visible_to) rather than a new
+  // predicate; since `projects` above is already scoped to this
+  // workspace + the caller's visibility, this can't leak another
+  // workspace's/an invisible project's column names.
+  const projectIds = projects.map((p) => p.id);
+  const { data: statusRows, error: statusRowsError } = await supabase
+    .from("project_statuses")
+    .select("id, name, color")
+    .in("project_id", projectIds);
+
+  if (statusRowsError) {
+    throw statusRowsError;
+  }
+
+  const statusById = new Map(
+    (statusRows ?? []).map((row) => [row.id, { name: row.name, color: row.color }]),
+  );
+
+  const resolveStatus = (statusId: string | null, rawStatus: string) => {
+    const resolved = statusId ? statusById.get(statusId) : undefined;
+    return {
+      statusName: resolved?.name ?? rawStatus,
+      statusColor: resolved?.color ?? null,
+    };
+  };
+
   // AS-262: resolve an exact task-key match, if the query looks like one,
   // against the workspace-scoped `projects` list already fetched above —
   // see the file-header comment for why this can never cross a workspace
@@ -187,6 +233,7 @@ export async function searchWorkspaceTasks(
           id: keyTask.id,
           title: keyTask.title,
           status: keyTask.status,
+          ...resolveStatus(keyTask.status_id, keyTask.status),
           priority: keyTask.priority,
           projectId: keyTask.project_id,
           projectName:
@@ -214,6 +261,7 @@ export async function searchWorkspaceTasks(
         id: task.id,
         title: task.title,
         status: task.status,
+        ...resolveStatus(task.status_id, task.status),
         priority: task.priority,
         projectId: task.project_id,
         projectName: projectNameById.get(task.project_id) ?? project.name,
