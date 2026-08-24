@@ -37,7 +37,13 @@
 // stale cached URL — satisfying "generate on demand, don't cache a stale
 // one."
 
-import { useEffect, useState, useTransition } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+  useTransition,
+} from "react";
 import { Loader2, Paperclip, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,11 +53,21 @@ import {
   uploadAttachment,
 } from "@/lib/actions/attachments";
 import { appendAttachment } from "@/lib/tasks/append-attachment";
+import { uploadFilesWithConcurrency } from "@/lib/tasks/upload-files-with-concurrency";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// F258 (AS-501, AS-503): the imperative handle AttachmentDropzone
+// (components/task/attachment-dropzone.tsx) calls into so a native-drag
+// drop can funnel through the exact same upload path the file-picker
+// input already uses below, rather than a second, parallel upload
+// implementation.
+export type AttachmentListHandle = {
+  uploadFiles: (files: File[]) => void;
+};
 
 export type TaskAttachment = {
   id: string;
@@ -158,16 +174,7 @@ function AttachmentThumbnail({
   );
 }
 
-export function AttachmentList({
-  taskId,
-  attachments,
-  members,
-  loading = false,
-  error = null,
-  onRetry,
-  currentUserId,
-  currentUserRole,
-}: {
+export const AttachmentList = forwardRef<AttachmentListHandle, {
   taskId: string;
   /** Initial attachments for this task. */
   attachments: TaskAttachment[];
@@ -191,7 +198,16 @@ export function AttachmentList({
    * control can be disabled for a read-only caller — the server
    * (`uploadAttachment`) independently rejects the call regardless. */
   currentUserRole?: WorkspaceRole;
-}) {
+}>(function AttachmentList({
+  taskId,
+  attachments,
+  members,
+  loading = false,
+  error = null,
+  onRetry,
+  currentUserId,
+  currentUserRole,
+}, ref) {
   const [localAttachments, setLocalAttachments] = useState(attachments);
   // Tracks which task's attachments are currently loaded into local state,
   // so it can be re-synced below without an Effect — same "adjust state
@@ -238,38 +254,68 @@ export function AttachmentList({
     setLocalAttachments(attachments);
   }
 
-  function handleFileChange(changeEvent: React.ChangeEvent<HTMLInputElement>) {
-    const file = changeEvent.target.files?.[0];
-    // Reset immediately so selecting the same file again still fires
-    // onChange.
-    changeEvent.target.value = "";
-    if (!file) return;
-
+  // F258 (AS-501, AS-503): shared single-file upload used by both the
+  // file-picker input and the drag-drop path below, so a drop funnels
+  // through the exact same Server Action call + local-state append + toast
+  // feedback as the pre-existing picker — no second upload implementation.
+  async function uploadOneFile(file: File) {
     const formData = new FormData();
     formData.set("taskId", taskId);
     formData.set("file", file);
 
+    const result = await uploadAttachment(formData);
+    if (result.ok) {
+      // AS-115: append directly to local state via the pure
+      // appendAttachment reducer — no page reload, no re-fetch.
+      setLocalAttachments((previous) =>
+        appendAttachment(previous, {
+          id: result.data.id,
+          taskId: result.data.taskId,
+          fileName: result.data.fileName,
+          fileUrl: result.data.fileUrl,
+          uploadedBy: result.data.uploadedBy,
+          createdAt: result.data.createdAt,
+          mimeType: result.data.mimeType,
+        }),
+      );
+      toast.success(`${file.name} uploaded.`);
+    } else {
+      // AS-503: one bad file in a multi-file drop must not silently
+      // swallow the others — each failure gets its own toast naming the
+      // file, matching this component's existing single-upload failure
+      // convention (plain-language sonner toast, control stays
+      // actionable).
+      toast.error(`${file.name}: ${result.error}`);
+    }
+  }
+
+  // F258 (AS-503): uploads every file with a concurrency cap so a 10-file
+  // drop doesn't fire 10 parallel Server Action calls at once. Shared by
+  // the picker input (below) and AttachmentDropzone's onFilesDropped via
+  // the imperative handle exposed below.
+  function uploadFiles(files: File[]) {
+    if (files.length === 0) return;
+    if (!canUpload) {
+      toast.error("Viewers don't have permission to upload files.");
+      return;
+    }
+
     startUploadTransition(async () => {
-      const result = await uploadAttachment(formData);
-      if (result.ok) {
-        // AS-115: append directly to local state via the pure
-        // appendAttachment reducer — no page reload, no re-fetch.
-        setLocalAttachments((previous) =>
-          appendAttachment(previous, {
-            id: result.data.id,
-            taskId: result.data.taskId,
-            fileName: result.data.fileName,
-            fileUrl: result.data.fileUrl,
-            uploadedBy: result.data.uploadedBy,
-            createdAt: result.data.createdAt,
-            mimeType: result.data.mimeType,
-          }),
-        );
-        toast.success("File uploaded.");
-      } else {
-        toast.error(result.error);
-      }
+      await uploadFilesWithConcurrency(files, uploadOneFile, 3);
     });
+  }
+
+  // No deps array: `uploadFiles` closes over `canUpload`/`taskId`, which
+  // can change between renders, so the handle must always point at the
+  // latest closure rather than a stale one captured on first mount.
+  useImperativeHandle(ref, () => ({ uploadFiles }));
+
+  function handleFileChange(changeEvent: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(changeEvent.target.files ?? []);
+    // Reset immediately so selecting the same file(s) again still fires
+    // onChange.
+    changeEvent.target.value = "";
+    uploadFiles(files);
   }
 
   async function handleOpen(attachmentId: string) {
@@ -379,6 +425,7 @@ export function AttachmentList({
         <Input
           id={`attachment-upload-${taskId}`}
           type="file"
+          multiple
           disabled={isUploading || !canUpload}
           title={canUpload ? undefined : "Viewers can't upload files"}
           onChange={handleFileChange}
@@ -392,4 +439,4 @@ export function AttachmentList({
       </div>
     </div>
   );
-}
+});

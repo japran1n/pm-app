@@ -33,7 +33,7 @@
 // should only open the sheet once it has a task, but is handled rather
 // than left to crash).
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
@@ -141,8 +141,10 @@ import { ActivityFeed } from "@/components/task/activity-feed";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AttachmentList,
+  type AttachmentListHandle,
   type TaskAttachment,
 } from "@/components/task/attachment-list";
+import { AttachmentDropzone } from "@/components/task/attachment-dropzone";
 import {
   TimeTracking,
   type TimeEntry,
@@ -497,6 +499,11 @@ export function TaskDetailSheet({
   // isn't mounted under `/w/[workspaceSlug]/...` at all, which doesn't
   // happen today.
   const pathname = usePathname();
+  // F258 (AS-501, AS-503): AttachmentDropzone's onFilesDropped calls
+  // straight into AttachmentList's imperative handle so a drag-drop upload
+  // funnels through the exact same Server Action + local-state path the
+  // file-picker input already uses — no parallel upload implementation.
+  const attachmentListRef = useRef<AttachmentListHandle>(null);
   const [title, setTitle] = useState(task?.title ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   // F236 (AS-453): sibling local state to dueDate above, same "local
@@ -936,7 +943,14 @@ export function TaskDetailSheet({
             </SheetHeader>
           </div>
         ) : (
-          <>
+          <AttachmentDropzone
+            disabled={
+              currentUserRole ? !canWrite({ role: currentUserRole }) : false
+            }
+            onFilesDropped={(files) =>
+              attachmentListRef.current?.uploadFiles(files)
+            }
+          >
             <SheetHeader>
               {taskKey && (
                 // F146 (AS-258): click-to-copy task key. A plain <button>
@@ -1438,6 +1452,7 @@ export function TaskDetailSheet({
               <Separator />
 
               <AttachmentList
+                ref={attachmentListRef}
                 taskId={task.id}
                 attachments={attachments}
                 members={members}
@@ -1488,7 +1503,7 @@ export function TaskDetailSheet({
                 )}
               </Button>
             </SheetFooter>
-          </>
+          </AttachmentDropzone>
         )}
 
         {/* F158 (AS-280, AS-281): the mark-as-done-anyway confirmation
