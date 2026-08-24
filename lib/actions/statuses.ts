@@ -43,6 +43,7 @@ import {
   updateColumnSchema,
   reorderColumnSchema,
   removeColumnSchema,
+  removeColumnWithReassignmentSchema,
 } from "@/lib/validation/statuses";
 
 const PERMISSION_DENIED_ERROR =
@@ -512,6 +513,121 @@ export async function removeColumn(columnId: string): Promise<RemoveColumnResult
     targetType: "project_status",
     targetId: column.id,
     metadata: { projectId: project.id, name: column.name },
+  });
+
+  await revalidateProjectSettings(project.workspaceSlug, project.id);
+
+  return { ok: true, data: { id: column.id } };
+}
+
+// F220 (AS-406): removing a column requires an explicit destination
+// column for its tasks; the reassignment and the delete happen
+// atomically. This is the real removal path the UI uses now — it
+// supersedes the "refuse if non-empty" `removeColumn` above for the
+// column-with-tasks case, though `removeColumn` above is left in place
+// (unused by the UI going forward) since it is still a correct, narrower
+// operation for an already-empty column and existing tests exercise it
+// directly.
+//
+// Authorization is re-checked here in application code exactly like
+// every other action in this file (AS-414 via `canManageColumns`,
+// visibility via `isProjectVisibleToCaller`) BEFORE the admin client
+// calls the SECURITY DEFINER RPC — the RPC itself is granted only to
+// `service_role` (supabase/migrations/
+// 20260824040000_status_delete_reassign_rpc.sql) and trusts its caller
+// the same way `create_project_from_template` does, so this check is the
+// only enforcement boundary for this write.
+//
+// The destination-belongs-to-the-same-project check is ALSO re-verified
+// inside the RPC's own transaction (not just here) — a caller-supplied
+// destination id from a different project is a cross-project write and
+// must be rejected even under a race, so the DB is the last line here
+// too, not the only one.
+export async function removeColumnWithReassignment(
+  columnId: string,
+  destinationColumnId: string,
+): Promise<RemoveColumnResult> {
+  const parsed = removeColumnWithReassignmentSchema.safeParse({
+    columnId,
+    destinationColumnId,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to manage board columns." };
+  }
+
+  const admin = createAdminClient();
+  const column = await loadColumnContext(admin, parsed.data.columnId);
+  if (!column) {
+    return { ok: false, error: "Column not found." };
+  }
+
+  if (parsed.data.destinationColumnId === column.id) {
+    return {
+      ok: false,
+      error: "Choose a different column to move these tasks to.",
+    };
+  }
+
+  const project = await loadProjectContext(admin, column.projectId);
+  if (!project) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const authorized = await authorizeColumnManagement(admin, project, user.id);
+  if (!authorized) {
+    return { ok: false, error: PERMISSION_DENIED_ERROR };
+  }
+
+  // Cross-project destination check, re-verified again inside the RPC's
+  // own transaction below — this app-layer check exists only to give the
+  // caller a friendly, specific error before hitting the DB.
+  const destination = await loadColumnContext(admin, parsed.data.destinationColumnId);
+  if (!destination || destination.projectId !== project.id) {
+    return {
+      ok: false,
+      error: "The destination column must belong to the same project.",
+    };
+  }
+
+  const { count: taskCount } = await admin
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("status_id", column.id)
+    .is("deleted_at", null);
+
+  const { error: rpcError } = await admin.rpc("reassign_and_delete_project_status", {
+    p_source_status_id: column.id,
+    p_destination_status_id: destination.id,
+  });
+
+  if (rpcError) {
+    if (rpcError.message?.includes("at least one board column")) {
+      return { ok: false, error: "A project must have at least one board column." };
+    }
+    console.error("removeColumnWithReassignment: rpc failed:", rpcError);
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  await writeAudit(supabase, {
+    workspaceId: project.workspaceId,
+    action: "project_status.removed",
+    targetType: "project_status",
+    targetId: column.id,
+    metadata: {
+      projectId: project.id,
+      name: column.name,
+      destinationColumnId: destination.id,
+      destinationColumnName: destination.name,
+      reassignedTaskCount: taskCount ?? 0,
+    },
   });
 
   await revalidateProjectSettings(project.workspaceSlug, project.id);

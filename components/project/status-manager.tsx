@@ -24,7 +24,12 @@ import { useState, useTransition } from "react";
 import { ArrowDown, ArrowUp, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { addColumn, removeColumn, reorderColumn, updateColumn } from "@/lib/actions/statuses";
+import {
+  addColumn,
+  removeColumnWithReassignment,
+  reorderColumn,
+  updateColumn,
+} from "@/lib/actions/statuses";
 import { calculatePosition } from "@/lib/board/position";
 import { COLUMN_CATEGORIES, COLUMN_COLOR_PALETTE, DEFAULT_COLUMN_COLOR } from "@/lib/board/column-colors";
 import { Button } from "@/components/ui/button";
@@ -75,6 +80,7 @@ function ColumnRow({
   column,
   isFirst,
   isLast,
+  otherColumns,
   onChanged,
   onRemoved,
   onMove,
@@ -82,6 +88,7 @@ function ColumnRow({
   column: ProjectColumn;
   isFirst: boolean;
   isLast: boolean;
+  otherColumns: ProjectColumn[];
   onChanged: (column: ProjectColumn) => void;
   onRemoved: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
@@ -90,6 +97,12 @@ function ColumnRow({
   const [color, setColor] = useState(column.color);
   const [category, setCategory] = useState(column.category);
   const [isPending, startTransition] = useTransition();
+  // F220 (AS-406): removing a column requires an explicit destination
+  // column for its tasks — the confirmation dialog cannot be confirmed
+  // until one is chosen.
+  const [destinationColumnId, setDestinationColumnId] = useState<string>(
+    otherColumns[0]?.id ?? "",
+  );
 
   function submitUpdate(nextName: string, nextColor: string, nextCategory: typeof category) {
     const previous = { name, color, category };
@@ -124,8 +137,13 @@ function ColumnRow({
   }
 
   function handleRemove() {
+    if (!destinationColumnId) {
+      toast.error("Choose a destination column for this column's tasks first.");
+      return;
+    }
+
     startTransition(async () => {
-      const result = await removeColumn(column.id);
+      const result = await removeColumnWithReassignment(column.id, destinationColumnId);
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -236,13 +254,50 @@ function ColumnRow({
             <AlertDialogHeader>
               <AlertDialogTitle>Remove &ldquo;{column.name}&rdquo;?</AlertDialogTitle>
               <AlertDialogDescription>
-                This column must have no tasks in it. Move any tasks to another
-                column first.
+                Any tasks in this column will move to the column you choose
+                below. No task is left behind.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {otherColumns.length > 0 ? (
+              <div className="flex flex-col gap-1.5 py-2">
+                <label
+                  htmlFor={`destination-column-${column.id}`}
+                  className="text-sm font-medium"
+                >
+                  Move tasks to
+                </label>
+                <Select
+                  value={destinationColumnId}
+                  onValueChange={(value) => value && setDestinationColumnId(value)}
+                >
+                  <SelectTrigger
+                    id={`destination-column-${column.id}`}
+                    aria-label="Destination column for this column's tasks"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {otherColumns.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="py-2 text-sm text-destructive">
+                This is the project&apos;s only column and cannot be removed.
+              </p>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleRemove}>Remove</AlertDialogAction>
+              <AlertDialogAction
+                onClick={handleRemove}
+                disabled={!destinationColumnId || otherColumns.length === 0}
+              >
+                Remove
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -373,6 +428,7 @@ export function StatusManager({
                 column={column}
                 isFirst={index === 0}
                 isLast={index === columns.length - 1}
+                otherColumns={columns.filter((c) => c.id !== column.id)}
                 onChanged={replaceColumn}
                 onRemoved={removeFromList}
                 onMove={handleMove}

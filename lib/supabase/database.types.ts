@@ -1360,6 +1360,10 @@ export type Database = {
           id: string
         }[]
       }
+      reassign_and_delete_project_status: {
+        Args: { p_destination_status_id: string; p_source_status_id: string }
+        Returns: undefined
+      }
       recurrence_next_due_date: {
         Args: { p_from_date: string; p_rule: Json }
         Returns: string

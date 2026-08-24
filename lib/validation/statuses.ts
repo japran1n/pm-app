@@ -62,3 +62,19 @@ export const removeColumnSchema = z.object({
 });
 
 export type RemoveColumnInput = z.infer<typeof removeColumnSchema>;
+
+// F220 (AS-406): removing a column requires an explicit destination
+// column for its tasks — `destinationColumnId` is required (not
+// optional), even for an empty column, so the action always takes the
+// same atomic reassign-then-delete path rather than branching on
+// "does it have tasks" client-side (that check happens server-side,
+// inside the RPC's transaction, per this feature's Clarified
+// implementation).
+export const removeColumnWithReassignmentSchema = z.object({
+  columnId: z.string().uuid("Invalid column."),
+  destinationColumnId: z.string().uuid("Choose a destination column."),
+});
+
+export type RemoveColumnWithReassignmentInput = z.infer<
+  typeof removeColumnWithReassignmentSchema
+>;
