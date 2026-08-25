@@ -251,6 +251,23 @@ test.describe("Notification bell live badge (F209: AS-388)", () => {
 
     await page.goto(`${baseURL}/w/${workspaceSlug}`);
     await page.waitForURL(`**/w/${workspaceSlug}`, { timeout: 15_000 });
+
+    // F272 (part 2): F253's first-run onboarding tour has a reproducible
+    // dev-mode SSR/CSR hydration mismatch (confirmed via this file's own
+    // WebServer console output: "Hydration failed... this tree will be
+    // regenerated on the client", immediately followed by an UNCAUGHT
+    // "Cannot read properties of null (reading 'parentNode')" that leaves
+    // the React tree dead — no further re-renders, including this test's
+    // own Realtime-driven badge update, ever happen again on the page).
+    // Same root cause and same "Skip"-button dismissal convention already
+    // established by tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts
+    // and this session's checklist-ui.spec.ts fix — dismissing the tour
+    // before it can hit that crash path is what actually restores the
+    // live badge update this test exists to prove.
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    if (await skipButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await skipButton.click();
+    }
   }
 
   test("AS-388: a new notification for the signed-in user increments the bell's badge live, with no reload", async ({

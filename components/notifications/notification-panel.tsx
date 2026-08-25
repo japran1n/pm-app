@@ -130,9 +130,28 @@ export function NotificationPanel({
   // https://react.dev/learn/you-might-not-need-an-effect) rather than in
   // a useEffect, so the panel never briefly commits/paints the stale
   // list before catching up a tick later.
-  const [appliedSnapshotVersion, setAppliedSnapshotVersion] = useState(
-    liveSnapshotVersion,
-  );
+  //
+  // F272 (part 2, AS-388 regression): this panel only mounts while the
+  // popover is open (Base UI's Popover.Portal doesn't keep its Popup
+  // mounted while closed) — a fresh mount every time it's opened, not
+  // once per page load. Seeding `appliedSnapshotVersion` FROM
+  // `liveSnapshotVersion` (the prop's CURRENT value at that mount) meant
+  // that opening the panel any time AFTER NotificationBell had already
+  // reconciled at least once (e.g. this exact scenario: a live insert
+  // arrives and bumps the version while the popover is still closed, THEN
+  // the user opens it) made the very first render's guard below
+  // (`liveSnapshotVersion !== appliedSnapshotVersion`) compare a value
+  // against ITSELF — always false — so the real, already-fetched snapshot
+  // was silently never applied, and the panel rendered the stale
+  // `initialNotifications` (from the ORIGINAL page load, before the
+  // insert) instead, while the bell's own badge (which does not remount)
+  // correctly showed the live count. A version number that can never
+  // equal a real one is used instead of the prop's own runtime value, so
+  // ANY defined `liveSnapshotVersion` present at mount — whenever that
+  // mount happens to occur — is always treated as "not yet applied" and
+  // gets merged in immediately.
+  const [appliedSnapshotVersion, setAppliedSnapshotVersion] =
+    useState<number>(-1);
   if (
     liveSnapshot &&
     liveSnapshotVersion !== undefined &&

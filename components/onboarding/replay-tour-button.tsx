@@ -21,6 +21,18 @@ export function ReplayTourButton() {
         toast.error(result.error);
         return;
       }
+      // F272 (part 2): OnboardingTour also checks a `localStorage` flag
+      // (see that component's `readLocallyDismissed` doc comment) as a
+      // same-browser safety net against a revalidation race — clear it
+      // here too, or a previously-dismissed browser would still suppress
+      // the tour after this exact replay action, even though the server
+      // state this action just reset says it should show again.
+      try {
+        window.localStorage.removeItem("pm-app-tour-dismissed");
+      } catch {
+        // Best-effort only; the server-side reset above is what actually
+        // matters for every other browser/tab/device.
+      }
       // A full reload is the simplest way to get the workspace layout's
       // server-fetched `initialDismissed` prop to re-read the freshly
       // reset `tour_completed_at` -- no extra client-side state channel

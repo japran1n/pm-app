@@ -45,6 +45,13 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 // F223 (AS-411): the project's real board columns — same read path F221
 // already built for the board, reused here rather than a parallel copy.
 import { getProjectColumns } from "@/lib/queries/statuses";
+// F221/F223 (AS-407): same fixed-four -> human-label lookup board.tsx
+// already applies to a project's real columns (with a genuinely custom
+// name falling back to its own raw name) — this list view's status
+// options previously used the raw column name unconditionally, which
+// meant a stock "todo" column showed as "todo" here while the board
+// correctly showed "To Do" for the exact same column.
+import { STATUS_LABELS } from "@/lib/task-colors";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import { NewTaskDialog } from "@/components/task/new-task-dialog";
@@ -104,7 +111,9 @@ export default async function ProjectListPage({
     color: string;
   }[] = columns.map((column) => ({
     value: column.name as NonNullable<ProjectListTaskFilters["status"]>,
-    label: column.name,
+    label:
+      STATUS_LABELS[column.name as keyof typeof STATUS_LABELS] ??
+      column.name,
     color: column.color,
   }));
 

@@ -1,0 +1,44 @@
+-- F272 (part 2, e2e suite green-up): fixes a real, reproducible defect
+-- where dismissing the F253 onboarding tour (the "Skip" button /
+-- `lib/actions/onboarding-tour.ts`'s `dismissTour`, an UPDATE of
+-- `profiles.tour_completed_at` through the caller's own request-scoped,
+-- RLS-respecting client, exactly like `timezone` already does) fails
+-- server-side on EVERY call with:
+--
+--   permission denied for table profiles
+--   (hint: Grant the required privileges to the current role with:
+--    GRANT UPDATE ON public.profiles TO authenticated.)
+--
+-- Root cause: 20260819065751_close_profiles_rls_gaps.sql intentionally
+-- narrowed `profiles` UPDATE from table-wide to a single column-level
+-- grant ("a direct authenticated-role PATCH can change only its own
+-- `timezone`; every other column write must go through the Server
+-- Actions" -- see that migration's own comment) --
+--
+--   revoke update on public.profiles from authenticated;
+--   grant update (timezone) on public.profiles to authenticated;
+--
+-- F253's later migration (20260830010000_add_profiles_tour_completed_at)
+-- added `tour_completed_at` and documented it as "read/written only via
+-- the caller's own session under the existing profiles_update_self RLS
+-- policy -- no new policy needed" -- true for the ROW-level RLS policy,
+-- but it never extended the COLUMN-level grant above to include this new
+-- column, and Postgres enforces both independently: RLS governs which
+-- ROWS a statement can touch, the column-level GRANT governs which
+-- COLUMNS of an allowed row it can actually write. `tour_completed_at`
+-- is exactly the same shape of self-scoped, first-party, no-cross-user-
+-- validation-needed preference `timezone` already is (not something like
+-- `display_name`/`email` that the 2026-08-19 migration was specifically
+-- protecting from a raw client PATCH) -- the SAME Server Action-driven,
+-- request-scoped-client write path F253 always intended, just missing
+-- its column grant. Confirmed via this session's e2e runs: every
+-- `dismissTour()` call reproducibly logged the exact permission-denied
+-- error above, causing the tour to silently never actually persist as
+-- dismissed and reappear on the very next page load, which in turn
+-- intermittently broke several unrelated e2e specs whose first
+-- interactive click landed on the tour's still-open overlay.
+--
+-- Additive only (this mission's migration-safety convention): widens an
+-- existing column-level grant to one more already-existing column;
+-- nothing dropped, no RLS policy changed.
+grant update (tour_completed_at) on public.profiles to authenticated;
