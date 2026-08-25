@@ -257,7 +257,7 @@ notifications, timezone) exists. No feature work beyond identity.
 ## M18 — Final QA
 
 - F268 a11y-keyboard-pass — AS-523, AS-524 [CLARIFIED-AUTO] [COMPLETE]
-- F269 contrast-and-nocolor-pass — AS-525, AS-526 [CLARIFIED-AUTO]
+- F269 contrast-and-nocolor-pass — AS-525, AS-526 [CLARIFIED-AUTO] [COMPLETE]
 - F270 typecheck-lint-clean — AS-527, AS-528 [CLARIFIED-AUTO]
 - F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO]
 - F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO]
