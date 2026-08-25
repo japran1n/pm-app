@@ -241,7 +241,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F261 clipboard-image-paste — AS-508 [CLARIFIED-AUTO] [COMPLETE]
 - F262 sidebar-project-list — AS-509, AS-511, AS-512, AS-513 [CLARIFIED-AUTO] [COMPLETE]
 - F263 project-favourites — AS-510 [CLARIFIED-AUTO] [COMPLETE]
-- F264 mobile-board — AS-514, AS-515 [CLARIFIED-AUTO]
+- F264 mobile-board — AS-514, AS-515 [CLARIFIED-AUTO] [COMPLETE]
 - F265 mobile-task-detail — AS-516, AS-518 [CLARIFIED-AUTO]
 - F266 mobile-layout-audit — AS-517 [CLARIFIED-AUTO]
 - F267 header-search-autocomplete — AS-519, AS-520, AS-521, AS-522 [CLARIFIED-AUTO]
