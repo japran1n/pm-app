@@ -1,0 +1,55 @@
+# Handoff: F336 — de-export createTaskForUser from the Server Action surface (security follow-up to F334)
+
+## Status
+COMPLETE
+
+## Assertions covered
+This is a security-hardening follow-up feature, not a new-assertion feature — it protects existing assertions rather than introducing new ones (same framing F334 used for the identical class of fix). Verified the following existing assertions still PASS through the refactored code path (re-run and green in isolation):
+AS-043/AS-044/AS-045/AS-046: PASS — task creation behaviour unchanged (extension-create-task.test.ts, f322 visibility test).
+AS-058: PASS — author_id still set from server-verified caller id, never trusted client input.
+AS-079: PASS — position-append logic unchanged (moved verbatim).
+AS-143: PASS — membership re-checked server-side before create.
+AS-216/AS-217: PASS — viewer-cannot-create-task check unchanged.
+AS-227/AS-228/AS-229: PASS — private-project visibility checks unchanged (tests/integration/f322-single-task-project-visibility.test.ts, 43 tests green).
+AS-380: PASS — F306 task_assigned notification fan-out on create-with-assignee unchanged, `notifyClient` parameter carried through unchanged including `Database` type import.
+AS-479: PASS — project-column status validation unchanged.
+AS-558/AS-561/AS-562/AS-572: PASS — extension task-creation route (F292) still uses the same shared logic, now imported directly from lib/tasks/create.ts (tests/integration/extension-create-task.test.ts, 6/6 green).
+
+## Files changed
+lib/tasks/create.ts (new)
+lib/actions/tasks.ts
+app/api/extension/tasks/route.ts
+tests/unit/f336-tasks-server-action-surface.test.ts (new)
+
+## Commands run
+`npx tsc --noEmit` (0)
+`npm run lint` (0, 6 pre-existing unrelated warnings, 0 errors)
+`npm run build` (0)
+`npx vitest run tests/integration/extension-create-task.test.ts tests/unit/f336-tasks-server-action-surface.test.ts tests/integration/f322-single-task-project-visibility.test.ts tests/unit/f248-board-column-quick-add-permission.test.tsx` (0) — 4 files, 49/49 tests passed
+`npm test` (full suite) (0 process exit) — 49 test FILES / 45 individual tests failed across the full 2488-test suite, but every single failure I inspected (RLS files, invite-member, saved-views, recurrence-scheduled-generation, f306-mutation-fanout, extension-create-task itself on this particular full-suite pass) threw the identical root cause `Error: Request rate limit reached` / `Failed to sign in ...: Request rate limit reached` from Supabase Auth — this is the exact pre-existing full-suite Supabase-Auth-contention flakiness F334's handoff independently documented and vitest.config.ts's own F312 comment describes ("~40 integration files each spin up Supabase test users ... contend for Supabase Auth rate limits"). None of the failures are in code paths this feature touches beyond extension-create-task.test.ts, which itself passed cleanly (6/6) when re-run in isolation immediately after (see the isolated command above) — confirming the full-suite failure there is rate-limit noise, not a real regression from this change.
+
+## Decisions made
+- **Extraction pattern**: mirrored F334's exact pattern. Moved the entire body of `createTaskForUser` verbatim into a new plain module `lib/tasks/create.ts` (no `"use server"` directive). `lib/actions/tasks.ts` now imports `createTaskForUser` from that module and calls it from `createTask()`, which still resolves `user.id` itself from `createClient().auth.getUser()` (the real cookie session) exactly as before — only the function's *location* changed, not `createTask()`'s own identity-resolution behaviour.
+- **`CreateTaskResult` type**: kept exported from `lib/actions/tasks.ts` (unchanged — it was always defined there) and the new plain module imports it as a type-only import (`import type { CreateTaskResult } from "@/lib/actions/tasks"`). This is safe: type-only imports are erased at compile time and carry zero risk of re-exposing a callable Server Action, unlike F334's attachments case where the *type itself* needed re-exporting for backward compat (here, no external caller needs the type re-exported from `lib/tasks/create.ts` — both real callers already import `CreateTaskResult` from `lib/actions/tasks.ts` where it always lived).
+- **`notifyClient?: SupabaseClient<Database>` parameter**: carried through unchanged into the plain module's signature exactly as spec'd, including the `Database` type import (moved from `lib/actions/tasks.ts`'s import list into `lib/tasks/create.ts`'s, since it's no longer used anywhere else in `lib/actions/tasks.ts` after the extraction — confirmed via grep before removing the import, avoiding an unused-import lint error).
+- **Extension route**: `app/api/extension/tasks/route.ts` now imports `createTaskForUser` from `@/lib/tasks/create` instead of `@/lib/actions/tasks`, with a comment explaining why, mirroring F334's extension-route comment pattern. It already resolves `user.id` from a verified bearer JWT before calling the function — that flow is unchanged, only the import source moved.
+- **Export-surface regression test**: added `tests/unit/f336-tasks-server-action-surface.test.ts`, following F334's own explicit guidance in its Out-of-scope note — asserts only that `createTaskForUser` is `undefined` on `lib/actions/tasks.ts`'s namespace (NOT a full closed-set match of all exports), since that file legitimately exports many other real Server Actions (`editTask`, `moveTaskStatus`, `assignTask`, `duplicateTask`, etc.) that a closed-set assertion would make brittle against unrelated future feature work. Also asserts `createTask` remains exported (positive control) and that `createTaskForUser` is a real function in the new plain module (sanity check the extraction target exists).
+- **Unused imports removed**: after extracting `createTaskForUser`, `createTaskSchema`, `Database`, and `SupabaseClient` became unused in `lib/actions/tasks.ts` (their only uses were inside the extracted function). Removed all three from that file's import list — this is a mechanical consequence of the extraction, not a behavioural change, and was required to keep `npm run lint` at 0 errors (they surfaced as `@typescript-eslint/no-unused-vars` warnings first, then I removed them; re-ran lint to confirm clean).
+- **Doc-comment updates**: added a SECURITY doc comment above `createTask()` in `lib/actions/tasks.ts` (mirroring F334's comment above `uploadAttachment`) explaining why this is the only function in the file touching the shared create-task implementation, and why a future reader must not "simplify" by re-exporting `createTaskForUser`'s raw-userId shape from this `"use server"` file again. Added a matching explanatory comment at the new module's own header (mirroring `lib/attachments/upload.ts`'s header) and at the extension route's import site.
+- **Comment-only references left untouched**: per the spec's explicit "check whether any need a mechanical name-reference update... not required, use judgment" — I greped all ~15+ comment-only references across `components/board/board-column.tsx`, `lib/recurrence/generate-next-occurrence.ts`, `lib/actions/templates.ts`, `lib/validation/extension.ts`, `lib/validation/tasks.ts`, `tests/unit/f248-board-column-quick-add-permission.test.tsx`, and `tests/integration/f322-single-task-project-visibility.test.ts`. All of them reference `createTaskForUser` in prose describing "the server-side create-task logic" generically, not the specific module path — none of them import the function directly or assert anything about where it lives. Judged these as accurate enough as-is (the name `createTaskForUser` is unchanged, only its file location moved) and left them untouched to avoid unnecessary comment churn across files outside this feature's Touches scope.
+
+## Out-of-scope work needed
+None identified. F334's own handoff already flagged this exact fix as its one piece of out-of-scope follow-up work, and this feature closes that gap. No other `*ForUser(`-shaped exports remain in any `"use server"` module — F334's handoff states it swept all files under `lib/actions/` and found exactly these two instances (attachments, now fixed by F334; tasks, now fixed by this feature).
+
+## Blockers
+(none — Status is COMPLETE)
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Chose type-only import of `CreateTaskResult` from `lib/actions/tasks.ts` into the new plain module (rather than defining/duplicating the type in `lib/tasks/create.ts` or re-exporting it the other direction as F334 did for `UploadAttachmentResult`) because the dependency direction here is naturally reversed from F334's case — `CreateTaskResult` was already defined in `lib/actions/tasks.ts` before this feature and every real caller of it already imports from there, so no caller needed a new import path for the type, and type-only imports carry no Server-Action-surface risk regardless of which file defines the type.
+
+AUTONOMOUS_DECISION: Left the ~15+ comment-only prose references to `createTaskForUser` across other files unmodified (see Decisions made) since none of them state or imply a specific file path for the function, and the function's name itself did not change — only its module location did. This avoids unrelated comment churn in files outside this feature's declared Touches scope (`lib/actions/tasks.ts`, `app/api/extension/tasks/route.ts`, plus the new module and test).
+
+## Notes for the next worker
+- Full-suite `npm test` showed 45 failing tests across 49 files, but every failure I sampled (RLS suite, invite-member, saved-views, recurrence-scheduled-generation, f306-mutation-fanout) threw `Request rate limit reached` from Supabase Auth — the same pre-existing environmental contention F334's handoff documented in detail (and vitest.config.ts's own F312 comment describes). This is NOT caused by this feature: none of the failing test files touch task-creation or attachment code, and the one test that IS directly relevant (`extension-create-task.test.ts`) failed only in the noisy full-suite run with the same rate-limit error, then passed cleanly 6/6 when re-run in isolation immediately after, alongside `f336-tasks-server-action-surface.test.ts`, `f322-single-task-project-visibility.test.ts` (43/43), and `f248-board-column-quick-add-permission.test.tsx` — 49/49 tests green across those 4 files run together with zero concurrent processes contending for the same rate limit.
+- Consider (as a possible future mission-level follow-up, not part of this feature) reducing Supabase test-user sign-in volume or adding retry/backoff in the shared integration-test helper that creates active members via real sign-ins, since this rate-limit flakiness now affects full-suite runs across at least two consecutive features (F334, F336) and will keep affecting every future full-suite run until addressed at the test-infrastructure level. Not flagging this as a blocker for this feature since the isolated, directly-relevant test runs are unambiguously green.
+- No MCP tools were used for this feature — it is a pure application-code refactor with no live schema/policy changes.
