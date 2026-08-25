@@ -3,7 +3,12 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { createTaskForUser } from "@/lib/actions/tasks";
+// F336 (security, identical class to M17 scrutiny BLOCKER-3/F334):
+// createTaskForUser now lives in a plain module with no "use server"
+// directive, so it is reachable only via a real import, never as a
+// network-addressable Server Action endpoint. See lib/tasks/create.ts's
+// header comment for the full rationale.
+import { createTaskForUser } from "@/lib/tasks/create";
 import { extensionCreateTaskSchema } from "@/lib/validation/extension";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 
