@@ -306,10 +306,18 @@ export function TaskCard({
             card already establishes above, just with an amber (informing,
             not alarming — per the Clarified spec's Notes) treatment rather
             than the destructive-red overdue uses, since going over
-            estimate is a fact, not an error. */}
+            estimate is a fact, not an error.
+            F269 (AS-526): `text-amber-600` (#d97706) only clears 3.19:1
+            against the light theme's white card — below the 4.5:1 normal-
+            text threshold this `text-xs` badge text requires (large-text's
+            3:1 exemption needs >=18pt/24px, or >=14pt/18.66px bold; this is
+            12px, not bold). Swapped for `text-amber-700` (#b45309,
+            5.02:1). `dark:text-amber-500` was already fine (7.67:1 against
+            the dark card) and is unchanged — see
+            tests/unit/task-card-badge-text-contrast.test.ts. */}
         {estimateProgress?.isOverEstimate && (
           <span
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500"
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
             data-testid="over-estimate-badge"
           >
             <TriangleAlert className="size-3" aria-hidden="true" />

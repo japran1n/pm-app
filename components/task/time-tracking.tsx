@@ -437,9 +437,14 @@ export function TimeTracking({
               {formatDuration(totalMinutes)} of{" "}
               {formatDuration(estimateMinutes as number)} estimated
             </span>
+            {/* F269 (AS-526): matches task-card.tsx's own fix — `text-amber-600`
+                only clears 3.19:1 against the light theme's white card, below
+                the 4.5:1 normal-text threshold this text requires. Swapped
+                for `text-amber-700` (5.02:1); `dark:text-amber-500` was
+                already fine (7.67:1) and is unchanged. */}
             {estimateProgress.isOverEstimate && (
               <span
-                className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-amber-500"
+                className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-500"
                 data-testid="over-estimate-badge"
               >
                 <TriangleAlert className="size-3" aria-hidden="true" />
@@ -455,11 +460,19 @@ export function TimeTracking({
             aria-valuemax={100}
             aria-label={`${estimateProgress.percent}% of estimate logged`}
           >
+            {/* F269 (AS-526): the fill bar is a non-text UI/graphical
+                component (SC 1.4.11, 3:1) against its own `bg-muted`
+                track, which is near-white in light and mid-grey in dark
+                (app/globals.css) -- too wide a range for one fixed hex to
+                clear 3:1 in both (bg-amber-500 measured 1.95:1 on the
+                light track). Theme-conditional classes instead:
+                bg-amber-700 (4.57:1 on the light track) / dark:bg-amber-400
+                (6.21:1 on the dark track). */}
             <span
               className={cn(
                 "absolute inset-y-0 left-0 rounded-full",
                 estimateProgress.isOverEstimate
-                  ? "bg-amber-500"
+                  ? "bg-amber-700 dark:bg-amber-400"
                   : "bg-foreground/70",
               )}
               style={{ width: `${estimateProgress.percent}%` }}

@@ -51,15 +51,24 @@ export type SidebarProjectItem = {
 // deterministically from the project id against a small fixed Tailwind
 // palette, so the same project always shows the same dot colour without
 // any stored state.
+// F269 (AS-526): the original -500 Tailwind shades measured below 3:1
+// against the sidebar background in the LIGHT theme (e.g. amber-500
+// 2.08:1, teal-500 2.41:1, sky-500 2.68:1) — swapped for the darker -600
+// shade in the same hue family (violet-500/-600 both cleared 3:1 on light
+// but failed on the dark theme's near-black sidebar, so violet was
+// replaced with purple-600, the nearest hue that clears 3:1 on BOTH
+// themes) so every dot now clears the WCAG AA 3:1 non-text contrast
+// threshold in both light and dark sidebars. See
+// tests/unit/project-nav-dot-contrast.test.ts for the automated check.
 const DOT_COLORS = [
-  "bg-rose-500",
-  "bg-amber-500",
-  "bg-emerald-500",
-  "bg-sky-500",
-  "bg-violet-500",
-  "bg-pink-500",
-  "bg-teal-500",
-  "bg-orange-500",
+  "bg-rose-600",
+  "bg-amber-600",
+  "bg-emerald-600",
+  "bg-sky-600",
+  "bg-purple-600",
+  "bg-pink-600",
+  "bg-teal-600",
+  "bg-orange-600",
 ];
 
 function colorForProjectId(id: string): string {

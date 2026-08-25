@@ -65,3 +65,33 @@ describe("test_AS_154_task_colors_meet_wcag_aa_contrast_on_light_theme", () => {
     },
   );
 });
+
+// F269 (AS-526): STATUS_COLORS/PRIORITY_COLORS are fixed hex values (see
+// this file's header comment) rendered UNCHANGED in both the light and
+// dark theme, directly on the dark theme's own card background
+// (app/globals.css's `.dark { --card: oklch(0.205 0 0); }`, approximately
+// #1f1f1f in sRGB) — so the same 3:1 non-text threshold must ALSO hold
+// against that surface, independently of the light-theme check above.
+// This test caught PRIORITY_COLORS.backlog (slate-600, #475569) failing
+// at 2.18:1 on dark before the fix in this feature.
+const DARK_CARD = "#1f1f1f"; // app/globals.css .dark --card: oklch(0.205 0 0)
+
+describe("test_AS_526_task_colors_meet_wcag_aa_contrast_on_dark_theme", () => {
+  it.each(Object.entries(STATUS_COLORS))(
+    "STATUS_COLORS.%s clears 3:1 against the dark theme's card background",
+    (_status, hex) => {
+      expect(contrastRatio(hex, DARK_CARD)).toBeGreaterThanOrEqual(
+        AA_UI_COMPONENT_MIN_RATIO,
+      );
+    },
+  );
+
+  it.each(Object.entries(PRIORITY_COLORS))(
+    "PRIORITY_COLORS.%s clears 3:1 against the dark theme's card background",
+    (_priority, hex) => {
+      expect(contrastRatio(hex, DARK_CARD)).toBeGreaterThanOrEqual(
+        AA_UI_COMPONENT_MIN_RATIO,
+      );
+    },
+  );
+});

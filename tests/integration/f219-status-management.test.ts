@@ -403,7 +403,7 @@ describe.skipIf(!haveAdminCreds)(
       const created = await addColumn({
         projectId,
         name: "Untouchable",
-        color: "#475569",
+        color: "#71717a",
         category: "not_started",
       });
       expect(created.ok).toBe(true);
@@ -413,7 +413,7 @@ describe.skipIf(!haveAdminCreds)(
       const result = await updateColumn({
         columnId: created.data.id,
         name: "Hacked name",
-        color: "#475569",
+        color: "#71717a",
         category: "not_started",
       });
       expect(result.ok).toBe(false);

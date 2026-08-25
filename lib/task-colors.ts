@@ -34,6 +34,14 @@
 // 3:1 on white and were swapped for a darker shade in the same Tailwind
 // hue family (-600/-700) until they cleared 3:1. See
 // tests/unit/task-colors-contrast.test.ts for the automated check.
+//
+// F269 (AS-526): re-checked every value above against the DARK theme's
+// card background (oklch(0.205 0 0), ~#1f1f1f) too, since these are fixed
+// hex values that render unchanged in both themes. Every value already
+// cleared 3:1 on dark except PRIORITY_COLORS.backlog (slate-600, 2.18:1
+// on dark) — swapped for zinc-500 (see that entry's own comment). All
+// other STATUS_COLORS/PRIORITY_COLORS values pass 3:1 on both light and
+// dark without a change.
 
 import type { TaskCardTask } from "@/components/task/task-card";
 
@@ -61,7 +69,16 @@ export const PRIORITY_COLORS: Record<Priority | "none", string> = {
   high: "#ea580c", // orange-600 (3.56:1 on white; was orange-500 2.80:1)
   medium: "#a16207", // yellow-700 (4.92:1 on white; yellow-500 1.92:1 and yellow-600 2.94:1 both failed 3:1)
   low: "#3b82f6", // blue-500 (3.68:1 on white)
-  backlog: "#475569", // slate-600 (7.58:1 on white; was slate-400 2.56:1)
+  // F269 (AS-526): slate-600 (#475569) clears 3:1 on the light theme's
+  // white card (7.58:1) but FAILS on the dark theme's card background
+  // (oklch(0.205 0 0), ~#1f1f1f) at only 2.18:1 — this dot/badge-border
+  // colour is a fixed hex rendered directly on that dark surface (same
+  // "no theme-conditional colour" pattern this file's header comment
+  // documents), so a single value must clear 3:1 in BOTH themes at once.
+  // zinc-500 (#71717a) does: 4.83:1 on white, 3.41:1 on the dark card —
+  // see tests/unit/task-colors-contrast.test.ts for the automated check
+  // in both themes.
+  backlog: "#71717a", // zinc-500 (4.83:1 on white, 3.41:1 on dark card; was slate-600 2.18:1 on dark)
   none: "#64748b", // slate-500 (4.76:1 on white; was slate-300 1.48:1)
 };
 
