@@ -958,6 +958,27 @@ export function Board({
       </div>
 
       <DndContext
+        // F272 (part 3): dnd-kit auto-generates this context's internal
+        // `aria-describedby` id (and similar a11y-only ids) from a
+        // module-scope counter that increments once per `DndContext`
+        // mounted in a given process/session, rather than from React's
+        // own SSR-safe `useId`. The SERVER always starts that counter
+        // fresh (id 0) on every request, but the CLIENT'S counter can
+        // already be non-zero by the time this board hydrates (e.g. a
+        // prior page in the same browser session/tab that also mounted a
+        // `DndContext`), producing a genuine, reproducible SSR/CSR
+        // `aria-describedby` mismatch on first load. React discards and
+        // regenerates the whole subtree under this mismatch (confirmed
+        // via repeated e2e WebServer output: "Hydration failed... this
+        // tree will be regenerated on the client"), which was cascading
+        // into other, unrelated client components elsewhere in the same
+        // tree (observed: the workspace-layout-level `OnboardingTour`
+        // remounting from its stale server-fetched `initialDismissed`
+        // prop and reappearing mid-session). A fixed, explicit `id` makes
+        // dnd-kit skip its own counter-based generation entirely, so the
+        // server and client always agree — the documented dnd-kit fix for
+        // this exact class of SSR hydration issue.
+        id="board-dnd-context"
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}

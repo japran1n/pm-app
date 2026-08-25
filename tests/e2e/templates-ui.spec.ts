@@ -220,9 +220,53 @@ test.describe("Templates UI (F183: AS-328 UI half, AS-330 UI half)", () => {
     // fixed-position overlay that intercepts pointer events on whatever
     // it happens to render over top of — same fix already established by
     // tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts.
+    await dismissTourIfPresent(page);
+  }
+
+  // F272 (part 3): a single Skip click at login time is not reliably
+  // enough — a dev-mode SSR/CSR hydration mismatch elsewhere on the page
+  // (unrelated dnd-kit `aria-describedby` counter drift observed in this
+  // suite's WebServer logs) can force a full remount of the workspace
+  // layout well AFTER login, at which point OnboardingTour re-mounts from
+  // its server-fetched `initialDismissed` prop and — if that remount wins
+  // a race against the tour's own async dismissal persistence — can
+  // reappear mid-test and intercept pointer events on whatever dialog is
+  // open at the time (observed here right as the "New from template"
+  // picker dialog is being interacted with). This loops for up to ~10s,
+  // re-clicking Skip every time the tour (re)appears, matching the same
+  // retry-loop convention `tests/e2e/checklist-ui.spec.ts`'s
+  // `dismissTourIfPresent` already established for the identical class of
+  // flake. Safe to call at any point in a test, not just at login.
+  async function dismissTourIfPresent(page: Page) {
     const skipButton = page.getByRole("button", { name: "Skip" });
-    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await skipButton.click();
+    const deadline = Date.now() + 4_000;
+    // F272 (part 3): a naive "return as soon as it's not visible" loop has
+    // a real bug — called right after navigation, the tour genuinely
+    // isn't in the DOM yet on the VERY FIRST check (client hasn't
+    // hydrated/computed `mounted` yet), so an immediate `isVisible()`
+    // false was being read as "already dismissed, nothing to do" and
+    // returning instantly, before the tour ever got a chance to actually
+    // appear (and therefore before it was ever actually dismissed). That
+    // left the tour genuinely active for the rest of the test, only to
+    // resurface later and intercept an unrelated click. This version
+    // keeps polling for the FULL deadline regardless of any single
+    // not-visible reading in between — cheap (a few no-op checks) and
+    // correctly handles both "never shows up" and "shows up late" cases,
+    // not just "was visible, now isn't".
+    let lastSeenVisible = false;
+    while (Date.now() < deadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        // It was visible at some point and is now gone — genuinely
+        // dismissed, no need to keep polling out the full deadline.
+        return;
+      }
+      await page.waitForTimeout(300);
     }
   }
 
@@ -352,7 +396,26 @@ test.describe("Templates UI (F183: AS-328 UI half, AS-330 UI half)", () => {
     await templateButton.click();
 
     const pickerDialog = page.getByRole("dialog", { name: "New from template" });
-    await pickerDialog.getByText(templateName).click();
+    // F272 (part 3): the tour can reappear right here, and can keep
+    // reappearing DURING the click attempt itself (a fresh remount racing
+    // the in-flight click, not just a one-time race before it) — see
+    // `dismissTourIfPresent`'s doc comment above. A single dismiss-then-
+    // click isn't reliably enough (observed ~50% flake with just one
+    // dismissal), so this retries the whole dismiss+click cycle with a
+    // short per-attempt timeout rather than relying on Playwright's own
+    // default 30s auto-retry, which just keeps re-attempting the click
+    // without ever re-checking for the tour.
+    const templateOption = pickerDialog.getByText(templateName);
+    const clickDeadline = Date.now() + 20_000;
+    for (;;) {
+      await dismissTourIfPresent(page);
+      try {
+        await templateOption.click({ timeout: 3_000 });
+        break;
+      } catch (err) {
+        if (Date.now() > clickDeadline) throw err;
+      }
+    }
 
     await expect(
       page.getByText(`Created "${templateTitle}" from "${templateName}".`),

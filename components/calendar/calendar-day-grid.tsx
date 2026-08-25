@@ -134,7 +134,7 @@ export function CalendarDayGrid({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext id="calendar-dnd-context" sensors={sensors} onDragEnd={handleDragEnd}>
       <div
         className="grid grid-cols-7 border-l border-border/60"
         data-testid="calendar-day-grid"

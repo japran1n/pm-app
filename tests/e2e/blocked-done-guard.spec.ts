@@ -274,9 +274,34 @@ test.describe("Blocked-done guard on the list view (F158: AS-280, AS-281)", () =
     // trigger), reproducibly timing out this spec's very first click —
     // same fix already established by
     // tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts.
+    //
+    // F272 (part 3): a single `isVisible({timeout: 3_000})` check has a
+    // real bug — right after navigation, the tour genuinely isn't in the
+    // DOM on the FIRST instant (client hasn't hydrated/computed its
+    // "mounted" gate yet); a false reading there was treated as "already
+    // dismissed" and skipped the click entirely, leaving the tour
+    // genuinely active for the rest of the test to reappear later and
+    // intercept a click deep into the test (observed: this spec's own
+    // status-select click, ~30s timeout, "Welcome to pm-app" subtree
+    // intercepts pointer events). Polls for up to 4s instead of a single
+    // check, and — since the tour can also come back later mid-test after
+    // a `revalidatePath("layout")`-triggered remount (see
+    // components/onboarding/tour.tsx's own doc comment) — keeps
+    // re-clicking Skip whenever it reappears, not just once.
     const skipButton = page.getByRole("button", { name: "Skip" });
-    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await skipButton.click();
+    const deadline = Date.now() + 4_000;
+    let lastSeenVisible = false;
+    while (Date.now() < deadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        break;
+      }
+      await page.waitForTimeout(300);
     }
   }
 

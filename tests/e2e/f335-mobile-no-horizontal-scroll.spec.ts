@@ -263,9 +263,30 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
     // unrelated fixed-position overlay that would otherwise reappear on
     // every route visited below and isn't itself part of what AS-517
     // covers.
+    // F272 (part 3): a single `isVisible()` check has a real bug — right
+    // after navigation, the tour genuinely isn't in the DOM on the FIRST
+    // instant (client hasn't hydrated/computed its "mounted" gate yet); a
+    // false reading there was treated as "already dismissed" and skipped
+    // the click, leaving the tour active for the rest of this
+    // (long-running, many-route) test to reappear later. Polls for up to
+    // 4s instead of a single check, and keeps re-clicking Skip whenever
+    // it reappears (a `revalidatePath("layout")`-triggered remount can
+    // bring it back mid-test — see components/onboarding/tour.tsx's own
+    // doc comment).
     const skipButton = page.getByRole("button", { name: "Skip" });
-    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await skipButton.click();
+    const skipDeadline = Date.now() + 4_000;
+    let skipLastSeenVisible = false;
+    while (Date.now() < skipDeadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        skipLastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (skipLastSeenVisible) {
+        break;
+      }
+      await page.waitForTimeout(300);
     }
 
     const routes: Array<{ label: string; path: string }> = [

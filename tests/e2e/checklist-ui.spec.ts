@@ -302,13 +302,31 @@ test.describe("Checklist UI (F153: AS-269 UI half, AS-271 UI half)", () => {
     // the tour from step 1 — so a single Skip click isn't reliably enough;
     // this loops for up to ~10s, re-clicking Skip every time the tour
     // reappears, until it's been gone for a full poll interval.
-    const deadline = Date.now() + 10_000;
+    //
+    // F272 (part 3): the ORIGINAL version of this loop returned
+    // immediately the very first time `isVisible()` read false — but
+    // called right after a navigation, the tour genuinely isn't in the
+    // DOM yet on that very first check (client hasn't hydrated/computed
+    // `mounted` yet). That was read as "already dismissed, nothing to
+    // do" and returned instantly, before the tour ever got a chance to
+    // appear (and therefore before it was ever actually dismissed),
+    // leaving it genuinely active for the rest of the test to resurface
+    // later and intercept an unrelated click. Now polls for the FULL
+    // deadline unless it has actually SEEN the tour and watched it go
+    // away, correctly handling "never shows up" and "shows up late", not
+    // just "was visible, now isn't".
+    const deadline = Date.now() + 4_000;
+    let lastSeenVisible = false;
     while (Date.now() < deadline) {
       const visible = await skipButton
-        .isVisible({ timeout: 1_000 })
+        .isVisible({ timeout: 500 })
         .catch(() => false);
-      if (!visible) return;
-      await skipButton.click().catch(() => {});
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        return;
+      }
       await page.waitForTimeout(300);
     }
   }

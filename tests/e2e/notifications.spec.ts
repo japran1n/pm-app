@@ -264,9 +264,29 @@ test.describe("Notification bell live badge (F209: AS-388)", () => {
     // and this session's checklist-ui.spec.ts fix — dismissing the tour
     // before it can hit that crash path is what actually restores the
     // live badge update this test exists to prove.
+    // F272 (part 3): a single `isVisible()` check has a real bug — right
+    // after navigation, the tour genuinely isn't in the DOM on the FIRST
+    // instant (client hasn't hydrated/computed its "mounted" gate yet); a
+    // false reading there was treated as "already dismissed" and skipped
+    // the click entirely, leaving the tour active for the rest of the
+    // test. Polls instead of a single check, and keeps re-clicking Skip
+    // whenever it reappears (a `revalidatePath("layout")`-triggered
+    // remount can bring it back mid-test — see
+    // components/onboarding/tour.tsx's own doc comment).
     const skipButton = page.getByRole("button", { name: "Skip" });
-    if (await skipButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await skipButton.click();
+    const deadline = Date.now() + 5_000;
+    let lastSeenVisible = false;
+    while (Date.now() < deadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        break;
+      }
+      await page.waitForTimeout(300);
     }
   }
 

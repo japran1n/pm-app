@@ -259,9 +259,29 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
   // — dismiss it once per fresh session, same convention as
   // f335-mobile-no-horizontal-scroll.spec.ts.
   async function dismissOnboardingTour(page: Page) {
+    // F272 (part 3): a single `isVisible()` check has a real bug — right
+    // after navigation, the tour genuinely isn't in the DOM on the FIRST
+    // instant (client hasn't hydrated/computed its "mounted" gate yet); a
+    // false reading there was treated as "already dismissed" and skipped
+    // the click, leaving the tour active for the rest of the test.
+    // Polls for up to 4s instead of a single check, and keeps
+    // re-clicking Skip whenever it reappears (a
+    // `revalidatePath("layout")`-triggered remount can bring it back
+    // mid-test — see components/onboarding/tour.tsx's own doc comment).
     const skipButton = page.getByRole("button", { name: "Skip" });
-    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await skipButton.click();
+    const deadline = Date.now() + 4_000;
+    let lastSeenVisible = false;
+    while (Date.now() < deadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        break;
+      }
+      await page.waitForTimeout(300);
     }
   }
 

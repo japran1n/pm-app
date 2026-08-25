@@ -714,6 +714,11 @@ export function Checklist({
         </div>
       ) : (
         <DndContext
+          // F272 (part 3): explicit, stable id to avoid dnd-kit's
+          // counter-based auto-id SSR/CSR hydration mismatch — see
+          // components/board/board.tsx's `DndContext` for the full
+          // rationale (same class of defect, same fix).
+          id="checklist-dnd-context"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}

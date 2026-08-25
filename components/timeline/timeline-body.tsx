@@ -216,7 +216,7 @@ export function TimelineBody({
   const overlayHeightPx = timelineBodyTotalHeightPx(groups);
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext id="timeline-dnd-context" sensors={sensors} onDragEnd={handleDragEnd}>
       <div className="relative">
         {groups.map((group) => (
           <div key={group.projectId} className="flex flex-col">
