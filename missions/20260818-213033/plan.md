@@ -259,7 +259,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F268 a11y-keyboard-pass — AS-523, AS-524 [CLARIFIED-AUTO] [COMPLETE]
 - F269 contrast-and-nocolor-pass — AS-525, AS-526 [CLARIFIED-AUTO] [COMPLETE]
 - F270 typecheck-lint-clean — AS-527, AS-528 [CLARIFIED-AUTO] [COMPLETE]
-- F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO]
+- F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO] [COMPLETE]
 - F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO]
 
 ## M19 — QA feedback browser extension
