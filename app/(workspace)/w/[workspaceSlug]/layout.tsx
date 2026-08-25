@@ -2,6 +2,11 @@ import { notFound, redirect, permanentRedirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+// F267 (AS-519, AS-520, AS-521, AS-522): the header search bar, rendered
+// above every workspace page's own content, alongside the sidebar (see
+// that component's own file-header comment for why the notification
+// bell/user menu stay in the sidebar rather than moving here).
+import { AppHeader } from "@/components/nav/app-header";
 // F135 (AS-231): the membership context provider — see that file's own doc
 // comment for why this exists alongside (not instead of) the more precise
 // per-fetch role props (e.g. TaskDetailSheet's own currentUserRole) other
@@ -371,6 +376,10 @@ export default async function WorkspaceLayout({
           }))}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <AppHeader
+            workspaceId={activeWorkspace.id}
+            workspaceSlug={workspaceSlug}
+          />
           {children}
         </main>
       </div>
