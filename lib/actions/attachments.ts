@@ -7,7 +7,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deleteAttachmentSchema,
   getAttachmentSignedUrlSchema,
-  uploadAttachmentSchema,
 } from "@/lib/validation/attachments";
 import {
   requireActiveMembership,
@@ -15,6 +14,14 @@ import {
 } from "@/lib/auth/require-membership";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import {
+  uploadAttachmentForUser,
+  type UploadAttachmentResult,
+} from "@/lib/attachments/upload";
+
+// Re-exported so existing callers of `UploadAttachmentResult` from this
+// module keep working unchanged.
+export type { UploadAttachmentResult };
 
 // Storage bucket + path convention fixed by F064
 // (supabase/migrations/20260818050100_create_attachments.sql): bucket
@@ -31,22 +38,6 @@ const ATTACHMENTS_BUCKET = "task-attachments";
 // session) without leaving a long-lived bearer link floating around in
 // client state/logs.
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
-
-export type UploadAttachmentResult =
-  | {
-      ok: true;
-      data: {
-        id: string;
-        taskId: string;
-        fileName: string;
-        fileUrl: string;
-        uploadedBy: string;
-        createdAt: string;
-        signedUrl: string;
-        mimeType: string | null;
-      };
-    }
-  | { ok: false; error: string };
 
 // Uploads a file attachment to a task (F065: AS-105, AS-108, AS-112,
 // AS-113). Pattern mirrors lib/actions/comments.ts's addComment: Zod-
@@ -65,6 +56,19 @@ export type UploadAttachmentResult =
 // made — the file never leaves this function's early-return path if it
 // fails either check, satisfying "rejected ... before the upload
 // completes".
+//
+// SECURITY (M17 scrutiny BLOCKER-3, F334): this is the ONLY exported
+// function in this "use server" module that touches the shared upload
+// implementation, and it is deliberately the ONLY one — every exported
+// async function in a "use server" module is a client-invocable Server
+// Action endpoint reachable by ID regardless of whether any UI calls it.
+// The actual upload logic (including a raw, trusted `userId` parameter)
+// now lives in lib/attachments/upload.ts, a plain module with no "use
+// server" directive, so it is only reachable via a real import — never a
+// network-addressable action. `userId` below is resolved from the
+// caller's own authenticated cookie session, never accepted as an
+// argument, so this Server Action can never be used to act as another
+// user.
 export async function uploadAttachment(
   formData: FormData,
 ): Promise<UploadAttachmentResult> {
@@ -93,235 +97,6 @@ export async function uploadAttachment(
     mimeType: file.type,
     arrayBuffer,
   });
-}
-
-// F294 (AS-559, AS-566, AS-567): the shared upload code path, factored out
-// of uploadAttachment() so app/api/extension/attachments/route.ts (the QA
-// feedback extension's screenshot-attachment endpoint) can attach a file to
-// a task through the exact same validation/Storage/insert logic the web
-// app's Server Action uses, without a parallel implementation — same
-// rationale as F292's createTaskForUser extraction from createTask() above.
-// The only difference from the Server Action is *how the caller's identity
-// is resolved*: the web app resolves it from the cookie session, the
-// extension route resolves it from a bearer JWT — both hand this function
-// an already-verified userId and a real ArrayBuffer, and nothing else about
-// identity is ever taken from caller-supplied input.
-//
-// `options.objectPathOverride` is a test-only injection point (see
-// tests/integration/extension-attachments.test.ts's AS-567 case) used to
-// force a deterministic real Storage-layer conflict (two uploads racing for
-// the exact same object path) so the "no orphaned row survives a failed
-// upload" invariant can be proven against the real Supabase Storage API
-// rather than asserted from reading the code. No production caller passes
-// this — every real call lets the function generate its own random suffix,
-// exactly as before this feature.
-export async function uploadAttachmentForUser(
-  userId: string,
-  input: {
-    taskId: string;
-    fileName: string;
-    fileSize: number;
-    mimeType: string;
-    arrayBuffer: ArrayBuffer;
-  },
-  options?: { objectPathOverride?: string },
-): Promise<UploadAttachmentResult> {
-  const parsed = uploadAttachmentSchema.safeParse({
-    taskId: input.taskId,
-    fileName: input.fileName,
-    fileSize: input.fileSize,
-    mimeType: input.mimeType,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid file.",
-    };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning project/workspace so membership is checked
-  // against the real workspace, never one supplied (or omitted) by the
-  // client. Only non-deleted tasks are eligible, same convention as
-  // addComment.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = taskRow.projects as
-    | { workspace_id: string; visibility: string }
-    | { workspace_id: string; visibility: string }[]
-    | null;
-  const projectRow = Array.isArray(project) ? project[0] : project;
-  const workspaceId = projectRow?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-105): re-check the caller is an active member of
-  // the task's workspace, server-side, rather than trusting that the UI
-  // only shows the upload control to members of the active workspace. The
-  // Storage bucket's own INSERT policy (F064) backs this up as the real
-  // enforcement boundary, since the admin client below bypasses RLS.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    userId,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to upload files to this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to upload files.",
-    };
-  }
-
-  // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
-  // task's project themselves, not just be an active workspace member —
-  // see isProjectVisibleToCaller's doc comment in
-  // lib/actions/project-visibility.ts. Same generic message as the role
-  // failure above so a private project's existence is never disclosed.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: taskRow.project_id,
-        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
-      },
-      userId,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to upload files.",
-    };
-  }
-
-  // Path convention fixed by F064: first segment is the task id. A random
-  // suffix is appended to the stored object name (not the displayed
-  // `file_name`) so two uploads of a same-named file to the same task
-  // never collide in Storage. See this function's doc comment for the
-  // test-only `objectPathOverride` escape hatch.
-  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const safeName = parsed.data.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const objectPath =
-    options?.objectPathOverride ??
-    `${parsed.data.taskId}/${uniqueSuffix}-${safeName}`;
-
-  const { error: uploadError } = await admin.storage
-    .from(ATTACHMENTS_BUCKET)
-    .upload(objectPath, input.arrayBuffer, {
-      contentType: parsed.data.mimeType,
-      upsert: false,
-    });
-
-  if (uploadError) {
-    console.error("uploadAttachment: storage upload failed:", uploadError);
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // file_url stores the Storage object path (not a public URL) — AS-106,
-  // AS-108: the bucket is private and any display of this attachment must
-  // generate a fresh signed URL from this path, never store/reuse a
-  // permanent link.
-  const { data: inserted, error: insertError } = await admin
-    .from("attachments")
-    .insert({
-      task_id: parsed.data.taskId,
-      file_url: objectPath,
-      file_name: parsed.data.fileName,
-      uploaded_by: userId,
-      mime_type: parsed.data.mimeType,
-    })
-    .select("id, task_id, file_url, file_name, uploaded_by, created_at, mime_type")
-    .single();
-
-  if (insertError || !inserted) {
-    console.error("uploadAttachment: row insert failed:", insertError);
-    // Best-effort cleanup so a failed row insert doesn't leave an orphaned
-    // Storage object behind (mirrors AS-114's "no orphans accumulate
-    // silently" intent, applied here to the upload-failure path too, and is
-    // the same invariant F294's AS-567 depends on for the "row insert fails
-    // after Storage succeeds" half of the failure space).
-    await admin.storage.from(ATTACHMENTS_BUCKET).remove([objectPath]);
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // AS-108: return a time-limited signed URL for immediate display, never
-  // a permanent public URL.
-  const { data: signedUrlData, error: signedUrlError } = await admin.storage
-    .from(ATTACHMENTS_BUCKET)
-    .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
-
-  if (signedUrlError || !signedUrlData?.signedUrl) {
-    console.error(
-      "uploadAttachment: signed URL generation failed:",
-      signedUrlError,
-    );
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as addComment.
-      console.error(
-        "uploadAttachment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: inserted.id,
-      taskId: inserted.task_id,
-      fileName: inserted.file_name,
-      fileUrl: inserted.file_url,
-      uploadedBy: inserted.uploaded_by,
-      createdAt: inserted.created_at,
-      signedUrl: signedUrlData.signedUrl,
-      mimeType: inserted.mime_type,
-    },
-  };
 }
 
 // Generates a fresh signed URL for an existing attachment (AS-108). Any UI

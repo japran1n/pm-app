@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-import { uploadAttachmentForUser } from "@/lib/actions/attachments";
+// F334 (M17 scrutiny BLOCKER-3): import the plain, non-"use server" upload
+// implementation directly, NOT through lib/actions/attachments.ts. That
+// file's only exported upload surface is now the FormData-taking
+// `uploadAttachment` Server Action, which resolves identity from the
+// caller's own cookie session — inapplicable here, since this Route
+// Handler authenticates via a bearer JWT instead. Importing from
+// lib/attachments/upload.ts keeps this route's already-verified `user.id`
+// (see below) flowing straight into the shared logic without going through
+// a client-invocable Server Action endpoint.
+import { uploadAttachmentForUser } from "@/lib/attachments/upload";
 import { MAX_ATTACHMENT_SIZE_BYTES } from "@/lib/validation/attachments";
 
 // F294 (AS-559, AS-566, AS-567): the third narrow authenticated Route

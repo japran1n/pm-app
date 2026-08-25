@@ -257,7 +257,7 @@ describe.skipIf(!haveCreds)(
       // attempt a second upload reusing the exact same path. Supabase
       // Storage's real `upsert: false` behavior rejects the second write
       // with a genuine "already exists" conflict — this is not simulated.
-      const { uploadAttachmentForUser } = await import("@/lib/actions/attachments");
+      const { uploadAttachmentForUser } = await import("@/lib/attachments/upload");
       const fixedPath = `${taskId}/f294-as567-fixed-path.png`;
       const firstBuffer = Buffer.from(TINY_PNG_BASE64, "base64").buffer;
 

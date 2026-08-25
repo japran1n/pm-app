@@ -606,7 +606,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it("AS-227/AS-228: an outsider cannot upload a file to a private project's task; no row is created", async () => {
         const { uploadAttachmentForUser } = await import(
-          "@/lib/actions/attachments"
+          "@/lib/attachments/upload"
         );
         const taskId = await makeTask(privateProjectId);
         const before = await adminClient
@@ -629,7 +629,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it("AS-227/AS-228: a workspace owner and an explicit project member can both upload a file to the private project's task", async () => {
         const { uploadAttachmentForUser } = await import(
-          "@/lib/actions/attachments"
+          "@/lib/attachments/upload"
         );
 
         const ownerTask = await makeTask(privateProjectId);
@@ -651,7 +651,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it("AS-227/AS-228 regression: a plain member still uploads a file to a workspace-visible project's task", async () => {
         const { uploadAttachmentForUser } = await import(
-          "@/lib/actions/attachments"
+          "@/lib/attachments/upload"
         );
         const taskId = await makeTask(publicProjectId);
 
