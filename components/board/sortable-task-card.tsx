@@ -14,9 +14,29 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { MoreVertical } from "lucide-react";
 
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 import type { UserAvatarPerson } from "@/components/user-avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+// F264 (AS-515): one entry in the "Move to..." menu -- a lighter-weight
+// shape than the board's full BoardColumnDef, since the menu only needs a
+// column's identity (its real `name`, matched against `task.status`, same
+// convention board.tsx's onDragEnd already uses) and its display label.
+export type MoveToColumnOption = {
+  name: string;
+  label: string;
+};
 
 export function SortableTaskCard({
   task,
@@ -26,6 +46,8 @@ export function SortableTaskCard({
   timezone,
   canDrag = true,
   dndId,
+  moveToColumnOptions,
+  onMoveToColumn,
 }: {
   task: TaskCardTask;
   /** F122 (AS-214): resolved assignee, looked up by the caller
@@ -64,6 +86,22 @@ export function SortableTaskCard({
    * existing caller (an ungrouped board) omits this and keeps exactly its
    * pre-F225 `task.id` identity. */
   dndId?: string;
+  /** F264 (AS-515): every OTHER column this task could move to (the
+   * board's real columns, minus the one it's currently in) -- omitted or
+   * empty hides the "Move to" menu entirely rather than rendering a
+   * useless single-item/empty menu. Same "board's real current columns"
+   * source F221's onDragEnd validation already uses -- see board.tsx's
+   * `sortedColumns`. */
+  moveToColumnOptions?: MoveToColumnOption[];
+  /** F264 (AS-515): fired with the target column's real `name` when the
+   * viewer picks it from the "Move to" menu -- board.tsx owns the actual
+   * optimistic update + moveAndReorderTask call (mirroring onDragEnd's own
+   * cross-column-drop path), same as every other mutation this card
+   * triggers via a callback prop rather than calling a Server Action
+   * itself. Omitted (any not-yet-updated caller, e.g. existing tests)
+   * simply never renders the menu, same "safe default" convention as
+   * `moveToColumnOptions` above. */
+  onMoveToColumn?: (taskId: string, targetStatus: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: dndId ?? task.id, disabled: !canDrag });
@@ -74,15 +112,75 @@ export function SortableTaskCard({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const showMoveMenu =
+    !!onMoveToColumn && !!moveToColumnOptions && moveToColumnOptions.length > 0;
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard
-        task={task}
-        onClick={onClick}
-        assignee={assignee}
-        assignees={assignees}
-        timezone={timezone}
-      />
+    <div ref={setNodeRef} style={style} className="relative">
+      <div {...attributes} {...listeners}>
+        <TaskCard
+          task={task}
+          onClick={onClick}
+          assignee={assignee}
+          assignees={assignees}
+          timezone={timezone}
+          // Larger touch target on a phone-width board (AS-514): a couple
+          // extra px of vertical padding at the card's own content level so
+          // the tappable area (including the "Move to" trigger below,
+          // which sits inside this same relatively-positioned wrapper)
+          // stays comfortable on touch without changing anything at desktop
+          // widths (`sm:` and up revert to the card's normal padding).
+          className="max-sm:py-1"
+        />
+      </div>
+      {/* F264 (AS-515): the touch-friendly "move to column" action -- the
+          PRIMARY path for moving a task on a phone (per this feature's
+          clarification: drag competes with page scroll on touch and is
+          unreliable there), not a fallback. Kept visible at every width
+          (not mobile-only) since it's also a faster path than dragging on
+          desktop, but sized larger on a touch/mobile viewport
+          (`max-sm:size-8`) to meet a comfortable touch-target size there.
+          `stopPropagation` on the trigger keeps a tap from also bubbling
+          into TaskCard's own onClick (which would open the detail sheet)
+          or into dnd-kit's pointer-sensor drag-start listeners on the
+          wrapper above. */}
+      {showMoveMenu ? (
+        <div
+          className="absolute right-1.5 top-1.5"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 max-sm:size-8 bg-background/80 text-muted-foreground hover:text-foreground"
+                  aria-label={`Move "${task.title}" to another column`}
+                >
+                  <MoreVertical className="size-4" aria-hidden="true" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Move to</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {moveToColumnOptions.map((column) => (
+                  <DropdownMenuItem
+                    key={column.name}
+                    onClick={() => onMoveToColumn(task.id, column.name)}
+                  >
+                    {column.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -330,6 +330,70 @@ export function Board({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // F264 (AS-515): the touch-friendly "move to column" action shared by
+  // every SortableTaskCard's "Move to" menu (both the ungrouped board's
+  // BoardColumns below and the grouped Swimlane branch's BoardColumns) --
+  // this is the PRIMARY path for moving a task on a phone per this
+  // feature's clarification, not a drag fallback, so it deliberately does
+  // NOT go through handleDragEnd/dnd-kit at all. Mirrors handleDragEnd's
+  // own cross-column-drop shape (optimistic update, single atomic
+  // moveAndReorderTask call, rollback + one sonner toast on failure) but
+  // simplified: no source/target lane bookkeeping (the menu only ever
+  // targets a column, never a specific lane or neighbor card), and the
+  // moved task always lands at the END of its new column (no drop-target
+  // card to infer a position from) via calculatePosition(lastPosition,
+  // null) -- the same "append" position calculatePosition already computes
+  // for a drag dropped directly onto an empty/scrolled-past column.
+  async function handleMoveToColumn(taskId: string, targetStatus: string) {
+    const snapshot = tasks;
+    const activeTaskToMove = snapshot.find((t) => t.id === taskId);
+    if (!activeTaskToMove) return;
+    if (activeTaskToMove.status === targetStatus) return;
+    // F221 (AS-409): same real-columns validation onDragEnd applies above.
+    if (!columns.some((c) => c.name === targetStatus)) return;
+
+    const targetColumnTasks = snapshot.filter(
+      (t) => t.status === targetStatus,
+    );
+    const lastPosition =
+      targetColumnTasks[targetColumnTasks.length - 1]?.position ?? null;
+    const newPosition = calculatePosition(lastPosition, null);
+
+    // F158 (AS-280, AS-281): same "warn before landing on done with open
+    // blockers" guard handleDragEnd applies, resolved against the same
+    // real column categories.
+    const targetCategory =
+      columns.find((c) => c.name === targetStatus)?.category ?? null;
+    const proceed = await confirmIfMovingToDone(
+      taskId,
+      targetStatus,
+      targetCategory,
+    );
+    if (!proceed) return;
+
+    const movedTask = {
+      ...activeTaskToMove,
+      status: targetStatus as TaskCardTask["status"],
+      position: newPosition,
+    };
+    setTasks(snapshot.map((t) => (t.id === taskId ? movedTask : t)));
+
+    try {
+      const result = await moveAndReorderTask(
+        taskId,
+        targetStatus,
+        newPosition,
+      );
+      if (!result.ok) {
+        setTasks(snapshot);
+        toast.error(result.error);
+      }
+    } catch {
+      setTasks(snapshot);
+      toast.error("Something went wrong moving that task. Please try again.");
+    }
+  }
+
   // F158 (AS-280, AS-281): the shared guard used by handleDragEnd below —
   // see lib/tasks/blocked-guard.ts's isDoneStatus doc comment for the full
   // list of callers this same hook is shared with.
@@ -813,6 +877,33 @@ export function Board({
     [columns],
   );
 
+  // F264 (AS-515): every column's "Move to" menu options -- for column
+  // `X`, every OTHER real column (`X` itself excluded, since "move to the
+  // column it's already in" is meaningless), in the same position order
+  // the board renders and with the SAME label resolution BoardColumn's own
+  // header already uses (a genuinely custom name falls back to its own
+  // real name; an unrenamed default column keeps its fixed human label).
+  // Recomputed only when `sortedColumns` changes, not per render of every
+  // card.
+  const moveToColumnOptionsByStatus = useMemo(() => {
+    const byStatus = new Map<
+      string,
+      { name: string; label: string }[]
+    >();
+    for (const column of sortedColumns) {
+      const options = sortedColumns
+        .filter((other) => other.id !== column.id)
+        .map((other) => ({
+          name: other.name,
+          label:
+            STATUS_LABELS[other.name as TaskCardTask["status"]] ??
+            other.name,
+        }));
+      byStatus.set(column.name, options);
+    }
+    return byStatus;
+  }, [sortedColumns]);
+
   // F224 (AS-418, AS-421, AS-423): computed from the board's own
   // already-loaded `tasks` state -- no extra fetch (see grouping.ts's own
   // header comment for the full performance-budget rationale).
@@ -873,7 +964,13 @@ export function Board({
         onDragEnd={handleDragEnd}
       >
         {groupBy === "none" ? (
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          // F264 (AS-514): below `sm:`, this row becomes a horizontally
+          // scroll-snapping carousel of columns -- `snap-x snap-mandatory`
+          // here pairs with each BoardColumn's own `max-sm:snap-center`
+          // (see that component's doc comment). `sm:` and up are
+          // unchanged from pre-F264 (`flex gap-4 overflow-x-auto pb-4`,
+          // no snap classes -- a mouse-scrollable row, not a carousel).
+          <div className="flex gap-4 overflow-x-auto pb-4 max-sm:snap-x max-sm:snap-mandatory">
             {/* F221 (AS-403, AS-416): the project's real columns, rendered
                 in `position` order — the same order every viewer reads on
                 every reload (lib/queries/statuses.ts's getProjectColumns),
@@ -881,6 +978,8 @@ export function Board({
             {sortedColumns.map((column) => (
               <BoardColumn
                 key={column.id}
+                moveToColumnOptions={moveToColumnOptionsByStatus.get(column.name)}
+                onMoveToColumn={handleMoveToColumn}
                 status={column.name as TaskCardTask["status"]}
                 // F221 (AS-403, AS-407): a column literally NAMED one of
                 // the original four (every unrenamed default column, per
@@ -910,6 +1009,11 @@ export function Board({
             ))}
           </div>
         ) : (
+          // F264: the grouped (Swimlane) branch renders one BoardColumn
+          // per (lane, column) pair -- moveToColumnOptionsByStatus is
+          // passed straight through Swimlane to each of those, same
+          // "shared, precomputed" convention as the ungrouped branch
+          // above.
           // F224 (AS-418, AS-421, AS-423): one Swimlane per group, each
           // rendering the SAME project columns, each showing only its own
           // slice of `tasks` -- see swimlane.tsx's own doc comment for why
@@ -940,6 +1044,8 @@ export function Board({
                 onTaskCreated={handleTaskCreated}
                 onCreateError={handleCreateError}
                 onTaskOptimisticAdd={handleTaskOptimisticAdd}
+                moveToColumnOptionsByStatus={moveToColumnOptionsByStatus}
+                onMoveToColumn={handleMoveToColumn}
               />
             ))}
           </div>

@@ -49,6 +49,8 @@ export function Swimlane({
   onTaskCreated,
   onCreateError,
   onTaskOptimisticAdd,
+  moveToColumnOptionsByStatus,
+  onMoveToColumn,
 }: {
   laneKey: string;
   label: string;
@@ -97,6 +99,17 @@ export function Swimlane({
   onCreateError?: (message: string, tempId: string) => void;
   /** F249 (AS-481) -- see BoardColumn's own doc comment. */
   onTaskOptimisticAdd?: (task: TaskCardTask) => void;
+  /** F264 (AS-515): board.tsx's precomputed "move to" options, keyed by
+   * column name -- looked up per column below (every column in every lane
+   * shares the SAME real board columns, so one shared map, not one per
+   * lane). Omitted (any not-yet-updated caller, e.g. an existing test
+   * rendering `<Swimlane>` in isolation) hides the menu, same "safe
+   * default" convention as `onToggleCollapsed`. */
+  moveToColumnOptionsByStatus?: Map<string, { name: string; label: string }[]>;
+  /** F264 (AS-515): passed straight through to every BoardColumn/
+   * SortableTaskCard in this lane -- board.tsx owns the actual mutation,
+   * same convention as `onTaskCreated`/`onCreateError` above. */
+  onMoveToColumn?: (taskId: string, targetStatus: string) => void;
 }) {
   // F248/F225: the lane's own grouping value applied as a quick-add
   // default -- single-valued groupings only (priority/assignee), same
@@ -163,7 +176,7 @@ export function Swimlane({
       </div>
 
       {collapsed ? null : (
-        <div className="flex gap-4 overflow-x-auto pb-2">
+        <div className="flex gap-4 overflow-x-auto pb-2 max-sm:snap-x max-sm:snap-mandatory">
           {columns.map((column) => (
             <BoardColumn
               key={column.id}
@@ -183,6 +196,8 @@ export function Swimlane({
               onCreateError={onCreateError}
               onTaskOptimisticAdd={onTaskOptimisticAdd}
               quickAddDefaults={quickAddDefaults}
+              moveToColumnOptions={moveToColumnOptionsByStatus?.get(column.name)}
+              onMoveToColumn={onMoveToColumn}
             />
           ))}
         </div>

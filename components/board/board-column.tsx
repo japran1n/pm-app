@@ -27,7 +27,10 @@ import {
 } from "@dnd-kit/sortable";
 
 import type { TaskCardTask } from "@/components/task/task-card";
-import { SortableTaskCard } from "@/components/board/sortable-task-card";
+import {
+  SortableTaskCard,
+  type MoveToColumnOption,
+} from "@/components/board/sortable-task-card";
 import { QuickAdd } from "@/components/board/quick-add";
 // F073 (AS-135): status labels/colors now come from the single shared
 // lib/task-colors.ts constant, reused by the dashboard's status pie chart,
@@ -55,6 +58,8 @@ export function BoardColumn({
   onCreateError,
   onTaskOptimisticAdd,
   quickAddDefaults,
+  moveToColumnOptions,
+  onMoveToColumn,
 }: {
   // F221 (AS-409, AS-416): the value tasks in this column are matched
   // against (`task.status === status`) AND the dnd-kit droppable id a
@@ -158,6 +163,18 @@ export function BoardColumn({
     assigneeId?: string | null;
     priority?: TaskCardTask["priority"];
   };
+  /** F264 (AS-515): every OTHER real column on this board (this column
+   * excluded), passed straight through to every SortableTaskCard in this
+   * column's "Move to" menu -- resolved once by board.tsx (the same
+   * `sortedColumns` state onDragEnd's own AS-409 validation reads), not
+   * recomputed per column. Omitted (any not-yet-updated caller, e.g.
+   * existing tests) hides the menu entirely, same "safe default"
+   * convention as `canCreateTask`. */
+  moveToColumnOptions?: MoveToColumnOption[];
+  /** F264 (AS-515): fired by a card's "Move to" menu -- passed straight
+   * through to board.tsx's real handler (mirrors onTaskCreated/
+   * onCreateError's "caller owns the mutation" convention above). */
+  onMoveToColumn?: (taskId: string, targetStatus: string) => void;
 }) {
   // Makes an empty (or partially scrolled-past) column a valid drop
   // target even when it has no sortable items of its own yet.
@@ -178,7 +195,19 @@ export function BoardColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3"
+      // F264 (AS-514): below the `sm:` breakpoint (this codebase's
+      // existing mobile-breakpoint convention -- see e.g.
+      // components/app-sidebar.tsx's own `md:`/`sm:`-gated mobile
+      // treatment) each column becomes one snap-stop in the board's
+      // horizontal scroll-snap carousel (board.tsx's row wraps every
+      // column in `snap-x snap-mandatory`) -- `max-sm:w-[88vw]` leaves a
+      // visible peek of the next column (this feature's chosen "partial
+      // peek" indicator, see board.tsx's own comment for why dots weren't
+      // used) and `max-sm:shrink-0` stops flexbox from squeezing every
+      // column to fit the viewport at once, which is what defeats the
+      // carousel. `sm:` and up are completely unchanged from pre-F264
+      // layout (`min-w-64 flex-1`, no snap classes).
+      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3 max-sm:w-[88vw] max-sm:min-w-0 max-sm:shrink-0 max-sm:snap-center"
       data-status={status}
     >
       <div className="flex items-center justify-between px-1 py-0.5">
@@ -230,6 +259,8 @@ export function BoardColumn({
                 timezone={timezone}
                 canDrag={canDrag}
                 dndId={dndIdFor(task.id)}
+                moveToColumnOptions={moveToColumnOptions}
+                onMoveToColumn={onMoveToColumn}
               />
             ))
           )}
