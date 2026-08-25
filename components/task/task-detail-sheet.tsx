@@ -37,6 +37,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
+  ChevronDown,
   Copy,
   CornerUpLeft,
   Link as LinkIcon,
@@ -182,7 +183,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+// F265 (AS-516): drives whether a MobileCollapsibleSection is actually
+// collapsible right now -- see that component's own doc comment below.
+import { useMediaQuery, MOBILE_BREAKPOINT_QUERY } from "@/lib/hooks/use-media-query";
 // F122 (AS-214): "assignee pickers" includes this Sheet's own assignee
 // control.
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
@@ -399,6 +408,75 @@ const NO_PRIORITY_VALUE = "__none__";
 
 function memberLabel(member: TaskDetailSheetMember): string {
   return member.name || member.email || member.userId;
+}
+
+// F265 (AS-516): wraps a section (description, checklist, subtasks,
+// comments/activity, time tracking -- the sections the clarified spec
+// names) so it can be collapsed on phone widths, keeping the now
+// full-screen Sheet navigable instead of one giant unbroken scroll.
+//
+// Defaults OPEN everywhere, including on first mobile render -- nothing
+// is hidden by default; the trigger only gives the user the ABILITY to
+// collapse a section they're not using right now. On desktop
+// (`isMobile` false) the collapse toggle is not just visually hidden but
+// functionally inert: `effectiveOpen` is forced `true` regardless of
+// local `open` state, so a section a user collapsed while the viewport
+// was narrow does not stay collapsed if the window is later resized to
+// desktop width (a pure-CSS `max-sm:hidden` on the trigger alone would
+// leave that stale `open: false` state in effect at desktop width too,
+// since Collapsible's content-hiding is JS/data-state driven, not a CSS
+// media query -- this is the exact class of "looks right in one
+// viewport, silently wrong after a resize" bug this feature's brief
+// warned to be alert to for this component, one level removed from
+// F264's flex-basis bug but the same root cause: trusting a Tailwind
+// class to gate something that isn't actually CSS-driven).
+function MobileCollapsibleSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY);
+  const [open, setOpen] = useState(true);
+  const effectiveOpen = isMobile ? open : true;
+
+  return (
+    <Collapsible
+      open={effectiveOpen}
+      onOpenChange={setOpen}
+      className="flex flex-col gap-2"
+    >
+      {/* `hidden max-sm:flex`: the trigger itself IS purely
+          CSS-controlled (visible only below `sm`) -- unlike the content
+          above, hiding a trigger button costs nothing if the viewport
+          later changes, it just becomes unreachable, which is correct:
+          at desktop width there is nothing to collapse (effectiveOpen is
+          always true there). `min-h-11` (AS-518): this is itself a
+          mobile-only-visible tap target, so it needs the same 44px
+          minimum as every other control audited by this feature. */}
+      <CollapsibleTrigger
+        render={
+          <button
+            type="button"
+            className="hidden min-h-11 w-full items-center justify-between gap-2 rounded-md px-1 text-left text-sm font-medium text-foreground max-sm:flex"
+          />
+        }
+      >
+        <span>{title}</span>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 transition-transform",
+            open ? "rotate-180" : "",
+          )}
+          aria-hidden="true"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-2">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
 }
 
 export function TaskDetailSheet({
@@ -909,7 +987,34 @@ export function TaskDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         aria-describedby={undefined}
-        className="w-full sm:max-w-2xl data-[side=right]:sm:max-w-2xl data-[side=left]:sm:max-w-2xl"
+        // F265 (AS-516): full-screen below the `sm` breakpoint (this
+        // codebase's established mobile/tablet breakpoint convention --
+        // see F264's board carousel). The base Sheet (components/ui/
+        // sheet.tsx) sets `data-[side=right]:w-3/4`/`data-[side=left]:
+        // w-3/4` with NO breakpoint qualifier, so it's a plain,
+        // non-conditional class -- a bare `w-full` here loses the CSS
+        // cascade tie (equal specificity: one class + one attribute
+        // selector each, `w-3/4`'s rule has no media-query wrapper so it
+        // sorts before any responsive-variant rule in Tailwind v4's
+        // generated stylesheet) exactly like this same file's pre-existing
+        // `data-[side=right]:sm:max-w-2xl` override already had to work
+        // around for `max-w`. `max-sm:data-[side=right]:w-full`/
+        // `max-sm:data-[side=left]:w-full` (plus `max-w-none` to cancel
+        // the `sm:max-w-2xl` override above, which doesn't apply below
+        // `sm` anyway but is cancelled explicitly for clarity) match that
+        // same "data-attr variant, so it wins the specificity tie AND
+        // compiles into a media-query block that sorts after the
+        // unconditional base rule" pattern -- this is NOT `!w-full`
+        // (Tailwind's `!important` escape hatch); it's the same
+        // data-attribute-qualified technique already proven to work in
+        // this exact file, so no new CSS-override mechanism is
+        // introduced. `max-sm:h-svh max-sm:max-h-svh` and `max-sm:rounded-none
+        // max-sm:border-0` make it genuinely full-screen (not just
+        // full-width) -- `h-full`/`inset-y-0` from the base already cover
+        // full height, `rounded-none`/`border-0` remove the "floating
+        // sheet" look at that width so it reads as a full page, not a
+        // sheet with a visible seam.
+        className="w-full sm:max-w-2xl data-[side=right]:sm:max-w-2xl data-[side=left]:sm:max-w-2xl max-sm:data-[side=right]:w-full max-sm:data-[side=right]:max-w-none max-sm:data-[side=left]:w-full max-sm:data-[side=left]:max-w-none max-sm:h-svh max-sm:max-h-svh max-sm:rounded-none max-sm:border-0"
       >
         {loading ? (
           <div className="flex flex-col gap-4 p-4">
@@ -951,7 +1056,18 @@ export function TaskDetailSheet({
               attachmentListRef.current?.uploadFiles(files)
             }
           >
-            <SheetHeader>
+            <SheetHeader
+              // F265 (AS-516): sticky header on phone widths -- the task
+              // key stays visible (and reachable to copy/close) while the
+              // long, now full-screen, single-column content below
+              // scrolls underneath it. `bg-popover` (matching
+              // SheetContent's own background token) prevents scrolled
+              // content showing through; `border-b` gives it a visible
+              // edge once something has scrolled under it (a plain
+              // `sticky` header floating with no visual separation from
+              // the content beneath is easy to miss).
+              className="max-sm:sticky max-sm:top-0 max-sm:z-10 max-sm:border-b max-sm:bg-popover"
+            >
               {taskKey && (
                 // F146 (AS-258): click-to-copy task key. A plain <button>
                 // rather than a div/span with an onClick — native buttons
@@ -1327,7 +1443,7 @@ export function TaskDetailSheet({
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <MobileCollapsibleSection title="Description">
                 <Label htmlFor={`task-description-${task.id}`}>
                   Description
                 </Label>
@@ -1375,7 +1491,7 @@ export function TaskDetailSheet({
                       />
                     </div>
                   )}
-              </div>
+              </MobileCollapsibleSection>
 
               <TagsEditor
                 taskId={task.id}
@@ -1393,21 +1509,25 @@ export function TaskDetailSheet({
 
               <Separator />
 
-              <SubtaskList
-                taskId={task.id}
-                projectId={task.projectId}
-                childTasks={task.children ?? []}
-                members={members}
-                onOpenTask={onOpenTask}
-              />
+              <MobileCollapsibleSection title="Subtasks">
+                <SubtaskList
+                  taskId={task.id}
+                  projectId={task.projectId}
+                  childTasks={task.children ?? []}
+                  members={members}
+                  onOpenTask={onOpenTask}
+                />
+              </MobileCollapsibleSection>
 
               <Separator />
 
-              <Checklist
-                taskId={task.id}
-                items={task.checklistItems ?? []}
-                currentUserRole={currentUserRole}
-              />
+              <MobileCollapsibleSection title="Checklist">
+                <Checklist
+                  taskId={task.id}
+                  items={task.checklistItems ?? []}
+                  currentUserRole={currentUserRole}
+                />
+              </MobileCollapsibleSection>
 
               <Separator />
 
@@ -1425,29 +1545,31 @@ export function TaskDetailSheet({
                   is the read-only day-grouped chronicle of every
                   task_activity entry (field changes, plus comment
                   add/delete EVENTS per AS-356 — not their content). */}
-              <Tabs defaultValue="comments">
-                <TabsList>
-                  <TabsTrigger value="comments">Comments</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                </TabsList>
-                <TabsContent value="comments">
-                  <CommentList
-                    taskId={task.id}
-                    comments={comments}
-                    members={members}
-                    currentUserId={currentUserId}
-                    currentUserRole={currentUserRole}
-                    highlightCommentId={highlightCommentId}
-                  />
-                </TabsContent>
-                <TabsContent value="activity">
-                  <ActivityFeed
-                    taskId={task.id}
-                    timezone={timezone}
-                    members={members}
-                  />
-                </TabsContent>
-              </Tabs>
+              <MobileCollapsibleSection title="Comments & activity">
+                <Tabs defaultValue="comments">
+                  <TabsList>
+                    <TabsTrigger value="comments">Comments</TabsTrigger>
+                    <TabsTrigger value="activity">Activity</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="comments">
+                    <CommentList
+                      taskId={task.id}
+                      comments={comments}
+                      members={members}
+                      currentUserId={currentUserId}
+                      currentUserRole={currentUserRole}
+                      highlightCommentId={highlightCommentId}
+                    />
+                  </TabsContent>
+                  <TabsContent value="activity">
+                    <ActivityFeed
+                      taskId={task.id}
+                      timezone={timezone}
+                      members={members}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </MobileCollapsibleSection>
 
               <Separator />
 
@@ -1462,15 +1584,17 @@ export function TaskDetailSheet({
 
               <Separator />
 
-              <TimeTracking
-                taskId={task.id}
-                timeEntries={timeEntries}
-                members={members}
-                estimateMinutes={task.estimateMinutes}
-                activeTimer={activeTimer}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-              />
+              <MobileCollapsibleSection title="Time tracking">
+                <TimeTracking
+                  taskId={task.id}
+                  timeEntries={timeEntries}
+                  members={members}
+                  estimateMinutes={task.estimateMinutes}
+                  activeTimer={activeTimer}
+                  currentUserId={currentUserId}
+                  currentUserRole={currentUserRole}
+                />
+              </MobileCollapsibleSection>
             </div>
 
             <SheetFooter>

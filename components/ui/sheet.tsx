@@ -63,9 +63,17 @@ function SheetContent({
           <SheetPrimitive.Close
             data-slot="sheet-close"
             render={
+              // F265 (AS-518): `size="icon-sm"` alone is `size-7` (28px)
+              // -- below the 44px touch-target minimum this feature
+              // audited for. `max-sm:size-11` bumps every Sheet's close
+              // control (this codebase has exactly one SheetContent
+              // close button implementation, shared by every Sheet --
+              // task detail, mobile sidebar nav, every dialog-as-sheet)
+              // to 44px on phone widths, without changing its desktop
+              // (28px, mouse-driven) size.
               <Button
                 variant="ghost"
-                className="absolute top-3 right-3"
+                className="absolute top-3 right-3 max-sm:size-11"
                 size="icon-sm"
               />
             }

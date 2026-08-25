@@ -191,7 +191,17 @@ function SidebarContent({
               aria-current={isActive ? "page" : undefined}
               onClick={onNavigate}
               className={cn(
-                "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+                // F265 (AS-518): `max-md:min-h-11` -- this Link is used
+                // both in the always-visible desktop `<aside>` (>= md,
+                // mouse-driven, untouched) AND inside the hamburger-
+                // triggered mobile Sheet (< md, this is the actual
+                // touch-target surface) -- `md` (not `sm`) because that's
+                // the real breakpoint this same component switches
+                // between the two presentations at (see AppSidebar below:
+                // `hidden ... md:flex` / `... md:hidden`), so a `sm:`
+                // check would leave 640-767px tablet widths (where the
+                // mobile Sheet is still what's shown) under-sized.
+                "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -238,7 +248,10 @@ function SidebarContent({
               : undefined
           }
           className={cn(
-            "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+            // F265 (AS-518): same `max-md:min-h-11` reasoning as the
+            // primary nav items above -- this Link is shared between the
+            // desktop `<aside>` and the mobile hamburger Sheet.
+            "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
             pathname === `/w/${workspaceSlug}/settings/profile`
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -327,7 +340,21 @@ export function AppSidebar({
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger
             render={
-              <Button variant="ghost" size="icon" aria-label="Open navigation">
+              // F265 (AS-518): `size="icon"` alone is `size-8` (32px) --
+              // below the 44px touch-target minimum. `max-sm:size-11`
+              // bumps it to 44px on phone widths without changing the
+              // desktop-hidden (this whole bar is `md:hidden`) rendering;
+              // `sm:size-11` is intentionally omitted so 640-767px
+              // tablet widths (where this trigger is still the one
+              // shown, per the `md:hidden` wrapper) also get the larger
+              // target -- using `max-md:size-11` instead of `max-sm:` for
+              // the same reason the nav Links above use `max-md:`.
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Open navigation"
+                className="max-md:size-11"
+              >
                 <Menu className="size-5" />
               </Button>
             }
