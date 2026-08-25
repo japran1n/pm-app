@@ -240,7 +240,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F260 image-thumbnails-lightbox — AS-505, AS-506 [CLARIFIED-AUTO] [COMPLETE]
 - F261 clipboard-image-paste — AS-508 [CLARIFIED-AUTO] [COMPLETE]
 - F262 sidebar-project-list — AS-509, AS-511, AS-512, AS-513 [CLARIFIED-AUTO] [COMPLETE]
-- F263 project-favourites — AS-510 [CLARIFIED-AUTO]
+- F263 project-favourites — AS-510 [CLARIFIED-AUTO] [COMPLETE]
 - F264 mobile-board — AS-514, AS-515 [CLARIFIED-AUTO]
 - F265 mobile-task-detail — AS-516, AS-518 [CLARIFIED-AUTO]
 - F266 mobile-layout-audit — AS-517 [CLARIFIED-AUTO]
