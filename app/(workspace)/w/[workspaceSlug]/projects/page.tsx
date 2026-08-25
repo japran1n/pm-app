@@ -2,12 +2,13 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceProjects } from "@/lib/queries/projects";
+import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { EditProjectDialog } from "@/components/edit-project-dialog";
 import { ArchiveProjectDialog } from "@/components/archive-project-dialog";
 import { SaveProjectAsTemplateDialog } from "@/components/save-project-as-template-dialog";
+import { ProjectFavoriteButton } from "@/components/project-favorite-button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -98,6 +99,12 @@ export default async function ProjectsPage({
     loadError = true;
   }
 
+  // F263 (AS-510): server-fetched alongside the project list above, same
+  // "one fetch, passed down as props" convention this page already
+  // follows for `projects`/`projectTemplateOptions` — not a per-card
+  // client fetch.
+  const favoriteProjectIds = await getFavoriteProjectIds(workspace.id);
+
   // F184: project-template options for the "Start from template" option
   // in the New Project dialog, server-fetched here and passed down as a
   // typed prop (clarified data-shape answer) rather than the dialog
@@ -157,6 +164,11 @@ export default async function ProjectsPage({
                   </CardDescription>
                 </Link>
                 <div className="flex items-center gap-2">
+                  <ProjectFavoriteButton
+                    projectId={project.id}
+                    projectName={project.name}
+                    isFavorite={favoriteProjectIds.has(project.id)}
+                  />
                   <SaveProjectAsTemplateDialog
                     projectId={project.id}
                     projectName={project.name}

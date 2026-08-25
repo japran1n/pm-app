@@ -37,7 +37,7 @@ import { getTourStatus } from "@/lib/actions/onboarding-tour";
 // /projects page (F027) already calls — no second copy of the visibility
 // rule, and per this feature's clarified caching note, one fetch per
 // layout render (not a per-navigation client refetch).
-import { getWorkspaceProjects } from "@/lib/queries/projects";
+import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -230,6 +230,13 @@ export default async function WorkspaceLayout({
     );
   }
 
+  // F263 (AS-510): the caller's favourite project ids, server-fetched
+  // alongside the project list above (not a second per-navigation client
+  // fetch, per the clarified "server-fetch alongside the existing project
+  // list query" instruction). Non-fatal to the rest of the layout --
+  // getFavoriteProjectIds itself already fails open to an empty set.
+  const favoriteProjectIds = await getFavoriteProjectIds(activeWorkspace.id);
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): the caller's own role in the *active* workspace
@@ -360,6 +367,7 @@ export default async function WorkspaceLayout({
             id: project.id,
             name: project.name,
             key: project.key,
+            isFavorite: favoriteProjectIds.has(project.id),
           }))}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">

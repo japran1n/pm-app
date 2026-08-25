@@ -76,6 +76,73 @@ export async function getWorkspaceProjects(
   }));
 }
 
+// F263 (AS-510): the signed-in caller's own favourited project ids, scoped
+// to the given workspace's VISIBLE projects only. `project_favorites`'
+// own RLS is deliberately own-row-only (no project-visibility predicate --
+// see that migration's header comment), so this read query is what
+// actually prevents an orphaned favourite (e.g. for a project the caller
+// was since removed from, or that was archived) from ever being pinned in
+// the sidebar: it joins against the exact same
+// `projects_select_active_members`-scoped `id` select the rest of this
+// file already uses, via an `in (...)` filter against the ids
+// `getWorkspaceProjects` would itself return, rather than re-deriving
+// visibility a second way. Non-fatal to the caller on error -- fails open
+// to "no favourites" so a transient read error never breaks the whole
+// sidebar/project-list render (same convention getNotificationsForWorkspace
+// and getTourStatus already follow for this layout).
+export async function getFavoriteProjectIds(
+  workspaceId: string,
+): Promise<Set<string>> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return new Set();
+  }
+
+  // Own-row favourites read (RLS: project_favorites_select_own already
+  // scopes this to the caller's own rows).
+  const { data: favoriteRows, error: favoriteError } = await supabase
+    .from("project_favorites")
+    .select("project_id")
+    .eq("user_id", user.id);
+
+  if (favoriteError) {
+    console.error(
+      "getFavoriteProjectIds: failed to load favourite rows:",
+      favoriteError,
+    );
+    return new Set();
+  }
+
+  const favoriteProjectIds = (favoriteRows ?? []).map((row) => row.project_id);
+  if (favoriteProjectIds.length === 0) return new Set();
+
+  // Re-derive visibility the SAME way `getWorkspaceProjects` does (RLS-
+  // backed `createClient()`, `deleted_at is null`, scoped to this
+  // workspace) rather than trusting every favourite row is still visible
+  // -- this is the filter that keeps an orphaned favourite from ever
+  // rendering as pinned (see this function's header comment).
+  const { data: visibleRows, error: visibleError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null)
+    .in("id", favoriteProjectIds);
+
+  if (visibleError) {
+    console.error(
+      "getFavoriteProjectIds: failed to re-check project visibility:",
+      visibleError,
+    );
+    return new Set();
+  }
+
+  return new Set((visibleRows ?? []).map((row) => row.id));
+}
+
 export type ProjectDetail = {
   id: string;
   workspaceId: string;

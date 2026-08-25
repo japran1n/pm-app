@@ -446,6 +446,7 @@ export type Database = {
           display_name: string | null
           id: string
           timezone: string
+          tour_completed_at: string | null
           updated_at: string
         }
         Insert: {
@@ -455,6 +456,7 @@ export type Database = {
           display_name?: string | null
           id: string
           timezone?: string
+          tour_completed_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -464,9 +466,36 @@ export type Database = {
           display_name?: string | null
           id?: string
           timezone?: string
+          tour_completed_at?: string | null
           updated_at?: string
         }
         Relationships: []
+      }
+      project_favorites: {
+        Row: {
+          created_at: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_favorites_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_members: {
         Row: {
@@ -1451,6 +1480,10 @@ export type Database = {
           target_visibility: string
           target_workspace_id: string
         }
+        Returns: boolean
+      }
+      is_project_workspace_admin: {
+        Args: { target_project_id: string }
         Returns: boolean
       }
       is_project_workspace_member: {
