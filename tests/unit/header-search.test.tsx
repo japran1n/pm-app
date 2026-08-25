@@ -164,6 +164,119 @@ describe("HeaderSearch (F267)", () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it("test_AS_523_arrow_down_and_enter_select_a_result_with_no_mouse_involvement", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [
+        {
+          type: "task",
+          id: "task-1",
+          title: "Fix header layout",
+          projectId: "proj-9",
+          projectName: "Marketing Site",
+          projectKey: "MKT",
+          number: 7,
+        },
+      ],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", { name: /search tasks and projects/i });
+    typeQuery(input, "market");
+
+    await screen.findByText("Marketing Site");
+
+    // ArrowDown twice moves past the project option onto the task option
+    // (projects render first), purely via the keyboard.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(push).toHaveBeenCalledWith("/w/acme/projects/proj-9/board");
+  });
+
+  it("test_AS_523_arrow_up_wraps_to_the_last_option_and_reflects_aria_activedescendant", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", {
+      name: /search tasks and projects/i,
+    }) as HTMLInputElement;
+    typeQuery(input, "market");
+
+    await screen.findByText("Marketing Site");
+
+    // No option highlighted yet.
+    expect(input).not.toHaveAttribute("aria-activedescendant");
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+
+    const option = screen.getByRole("option", { name: /Marketing Site/i });
+    expect(input).toHaveAttribute("aria-activedescendant", option.id);
+    expect(option).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("test_AS_523_home_and_end_jump_to_first_and_last_option", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [
+        {
+          type: "task",
+          id: "task-1",
+          title: "Fix header layout",
+          projectId: "proj-9",
+          projectName: "Marketing Site",
+          projectKey: "MKT",
+          number: 7,
+        },
+      ],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", { name: /search tasks and projects/i });
+    typeQuery(input, "market");
+
+    await screen.findByText("Marketing Site");
+
+    fireEvent.keyDown(input, { key: "End" });
+    let options = screen.getAllByRole("option");
+    expect(options[1]).toHaveAttribute("aria-selected", "true");
+    expect(options[0]).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.keyDown(input, { key: "Home" });
+    options = screen.getAllByRole("option");
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("test_AS_524_all_options_and_icon_only_visuals_expose_an_accessible_name_or_are_hidden_from_the_a11y_tree", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", { name: /search tasks and projects/i });
+    typeQuery(input, "market");
+
+    // The input itself (the one "control" this component owns outside the
+    // dropdown) has an explicit aria-label.
+    expect(input).toHaveAttribute("aria-label", "Search tasks and projects");
+
+    const option = await screen.findByRole("option", { name: /Marketing Site/i });
+    // The option's accessible name comes from its own visible text (the
+    // project name), not from a decorative icon -- the leading
+    // FolderKanban icon is aria-hidden and contributes nothing.
+    expect(option).toHaveAccessibleName("Marketing SiteMKT");
+  });
+
   it("test_AS_520_escape_clears_the_input_and_closes_the_dropdown_via_the_shared_escape_layer_stack", async () => {
     searchPalette.mockResolvedValue({
       projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],

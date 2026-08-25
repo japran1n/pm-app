@@ -69,6 +69,10 @@ export function HeaderSearch({
   const [results, setResults] = React.useState<PaletteSearchResults>(EMPTY_RESULTS);
   const [loading, setLoading] = React.useState(false);
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
+  // AS-523/MAJ-8: active-index keyboard navigation state -- -1 means
+  // "nothing highlighted yet", matching the ARIA combobox pattern (no
+  // aria-activedescendant until the user actually presses an arrow key).
+  const [activeIndex, setActiveIndex] = React.useState(-1);
 
   const latestRequestId = React.useRef(0);
   const debounceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,6 +87,25 @@ export function HeaderSearch({
   // dismissed it.
   const showDropdown = dropdownOpen && hasQuery;
 
+  // AS-523/MAJ-8: a single flattened list (projects first, then tasks --
+  // the same order they render in) so Arrow/Home/End and
+  // aria-activedescendant can address "the Nth option" without caring
+  // which group it's in.
+  const flatOptions = React.useMemo(
+    () => [
+      ...results.projects.map((project) => ({
+        id: `header-search-option-project-${project.id}`,
+        onSelect: () => navigate(`/w/${workspaceSlug}/projects/${project.id}/board`),
+      })),
+      ...results.tasks.map((task) => ({
+        id: `header-search-option-task-${task.id}`,
+        onSelect: () => navigate(`/w/${workspaceSlug}/projects/${task.projectId}/board`),
+      })),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate is a stable local function, re-derived from results/workspaceSlug only
+    [results, workspaceSlug],
+  );
+
   function clearAndClose() {
     latestRequestId.current += 1;
     if (debounceTimer.current) {
@@ -93,6 +116,7 @@ export function HeaderSearch({
     setResults(EMPTY_RESULTS);
     setLoading(false);
     setDropdownOpen(false);
+    setActiveIndex(-1);
   }
 
   // Escape clears the input and closes the dropdown via the SAME shared
@@ -148,6 +172,7 @@ export function HeaderSearch({
     const next = event.target.value;
     setQuery(next);
     setDropdownOpen(true);
+    setActiveIndex(-1);
 
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
@@ -194,10 +219,46 @@ export function HeaderSearch({
   // opens the existing `/search` page pre-filled with the same query --
   // reads the exact `?q=` contract that page's own `searchParams` prop
   // already expects.
+  // AS-523/MAJ-8: Arrow/Home/End move a real `activeIndex` through the
+  // flattened option list -- driving `aria-activedescendant` on the input
+  // and `aria-selected` on the matching option -- so the combobox contract
+  // this component already advertises (`role="combobox"`/`role="listbox"`)
+  // is actually implemented, not just declared.
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (showDropdown && flatOptions.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((current) => (current + 1) % flatOptions.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((current) => (current <= 0 ? flatOptions.length - 1 : current - 1));
+        return;
+      }
+      if (event.key === "Home") {
+        event.preventDefault();
+        setActiveIndex(0);
+        return;
+      }
+      if (event.key === "End") {
+        event.preventDefault();
+        setActiveIndex(flatOptions.length - 1);
+        return;
+      }
+    }
+
     if (event.key !== "Enter") return;
     if (!trimmedQuery) return;
     event.preventDefault();
+
+    // If the user has arrowed to a specific option, Enter activates that
+    // option (mirrors mouse selection) rather than opening /search.
+    if (showDropdown && activeIndex >= 0 && activeIndex < flatOptions.length) {
+      flatOptions[activeIndex].onSelect();
+      return;
+    }
+
     navigate(`/w/${workspaceSlug}/search?q=${encodeURIComponent(trimmedQuery)}`);
   }
 
@@ -213,6 +274,11 @@ export function HeaderSearch({
         role="combobox"
         aria-expanded={showDropdown}
         aria-controls="header-search-results"
+        aria-activedescendant={
+          showDropdown && activeIndex >= 0 && activeIndex < flatOptions.length
+            ? flatOptions[activeIndex].id
+            : undefined
+        }
         aria-label="Search tasks and projects"
         placeholder="Search tasks and projects…"
         value={query}
@@ -248,9 +314,11 @@ export function HeaderSearch({
               <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
                 Projects
               </p>
-              {results.projects.map((project) => (
+              {results.projects.map((project, index) => (
                 <ResultRow
                   key={`project-${project.id}`}
+                  id={`header-search-option-project-${project.id}`}
+                  isActive={activeIndex === index}
                   onSelect={() =>
                     navigate(`/w/${workspaceSlug}/projects/${project.id}/board`)
                   }
@@ -272,9 +340,11 @@ export function HeaderSearch({
               <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
                 Tasks
               </p>
-              {results.tasks.map((task) => (
+              {results.tasks.map((task, index) => (
                 <ResultRow
                   key={`task-${task.id}`}
+                  id={`header-search-option-task-${task.id}`}
+                  isActive={activeIndex === results.projects.length + index}
                   onSelect={() =>
                     navigate(`/w/${workspaceSlug}/projects/${task.projectId}/board`)
                   }
@@ -296,18 +366,26 @@ export function HeaderSearch({
 
 function ResultRow({
   children,
+  id,
+  isActive,
   onSelect,
   className,
 }: {
   children: React.ReactNode;
+  id: string;
+  isActive: boolean;
   onSelect: () => void;
   className?: string;
 }) {
   return (
     <button
+      id={id}
       type="button"
       role="option"
-      aria-selected={false}
+      // AS-523/MAJ-8: reflects the real active-index state driven by
+      // Arrow/Home/End on the input, matching `aria-activedescendant`
+      // above -- not hardcoded false.
+      aria-selected={isActive}
       // AS-521: mousedown (not click) fires selection before the input's
       // own blur/outside-click handler could otherwise close the dropdown
       // first and drop the click.
@@ -317,6 +395,7 @@ function ResultRow({
       }}
       className={cn(
         "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+        isActive && "bg-accent text-accent-foreground",
         className,
       )}
     >
