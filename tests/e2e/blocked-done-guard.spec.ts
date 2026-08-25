@@ -267,6 +267,17 @@ test.describe("Blocked-done guard on the list view (F158: AS-280, AS-281)", () =
       `**/w/${workspaceSlug}/projects/${projectId}/list`,
       { timeout: 15_000 },
     );
+
+    // F272 regression fix: F253's first-run onboarding tour is a
+    // fixed-position overlay that intercepts pointer events on whatever
+    // it happens to render over top of (here, the status <select>
+    // trigger), reproducibly timing out this spec's very first click —
+    // same fix already established by
+    // tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts.
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await skipButton.click();
+    }
   }
 
   test("AS-280: moving a blocked task to Done warns, naming the blocker; Cancel leaves it unchanged; confirming lets it proceed", async ({

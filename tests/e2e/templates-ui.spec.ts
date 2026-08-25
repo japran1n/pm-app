@@ -215,6 +215,15 @@ test.describe("Templates UI (F183: AS-328 UI half, AS-330 UI half)", () => {
 
     await page.goto(`${baseURL}${path}`);
     await page.waitForURL(`**${path}`, { timeout: 15_000 });
+
+    // F272 regression fix: F253's first-run onboarding tour is a
+    // fixed-position overlay that intercepts pointer events on whatever
+    // it happens to render over top of — same fix already established by
+    // tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts.
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await skipButton.click();
+    }
   }
 
   test("AS-328 (UI half): saving a task as a template via the task detail sheet appears on the /templates list with its name, creator, and a preview", async ({

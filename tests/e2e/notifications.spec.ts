@@ -276,6 +276,14 @@ test.describe("Notification bell live badge (F209: AS-388)", () => {
         p_kind: "task_assigned",
         p_actor_id: actorUserId,
         p_task_id: taskId,
+        // F272 regression fix: migration 20260823100000 tightened
+        // `create_notification` to reject any caller with no real
+        // `auth.uid()` session unless `p_system: true` is passed — the
+        // admin client used here has no such session, so this RPC call
+        // started failing with "no authenticated caller" after that
+        // migration landed, independent of anything in this spec. See
+        // that migration's own `p_system and auth.uid() is null` guard.
+        p_system: true,
       },
     );
     if (rpcErr) {

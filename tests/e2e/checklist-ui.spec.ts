@@ -268,6 +268,16 @@ test.describe("Checklist UI (F153: AS-269 UI half, AS-271 UI half)", () => {
       `**/w/${workspaceSlug}/projects/${projectId}/board`,
       { timeout: 15_000 },
     );
+
+    // F272 regression fix: F253's first-run onboarding tour is a
+    // fixed-position overlay that intercepts pointer events on whatever
+    // it happens to render over top of, reproducibly breaking this
+    // spec's first task-card click — same fix already established by
+    // tests/e2e/f335-mobile-no-horizontal-scroll.spec.ts.
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    if (await skipButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await skipButton.click();
+    }
   }
 
   function escapeRegExp(value: string): string {
