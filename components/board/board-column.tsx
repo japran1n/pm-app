@@ -203,11 +203,19 @@ export function BoardColumn({
       // column in `snap-x snap-mandatory`) -- `max-sm:w-[88vw]` leaves a
       // visible peek of the next column (this feature's chosen "partial
       // peek" indicator, see board.tsx's own comment for why dots weren't
-      // used) and `max-sm:shrink-0` stops flexbox from squeezing every
-      // column to fit the viewport at once, which is what defeats the
-      // carousel. `sm:` and up are completely unchanged from pre-F264
-      // layout (`min-w-64 flex-1`, no snap classes).
-      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3 max-sm:w-[88vw] max-sm:min-w-0 max-sm:shrink-0 max-sm:snap-center"
+      // used). `max-sm:flex-none` (bugfix, post-handoff) is REQUIRED here,
+      // not optional: the base `flex-1` class resolves to a non-`auto`
+      // flex-basis, and per the flexbox spec a non-`auto` flex-basis makes
+      // the browser ignore `width` entirely for main-axis sizing -- so
+      // `max-sm:w-[88vw]` was being silently overridden by flex-grow
+      // splitting the row evenly among every column (confirmed via
+      // getComputedStyle at a 375px viewport: resolved width was ~50px,
+      // an even 1/4 split, not 88vw). `max-sm:flex-none` resets
+      // flex-basis to `auto` (and flex-grow/shrink to 0) so `width` governs
+      // again, making `max-sm:shrink-0` redundant below `sm:` (kept anyway,
+      // harmless, and documents intent). `sm:` and up are completely
+      // unchanged from pre-F264 layout (`min-w-64 flex-1`, no snap classes).
+      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3 max-sm:w-[88vw] max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:snap-center"
       data-status={status}
     >
       <div className="flex items-center justify-between px-1 py-0.5">

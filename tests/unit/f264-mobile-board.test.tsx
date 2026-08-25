@@ -70,6 +70,19 @@ describe("AS-514: columns are reachable by horizontal swipe on a phone", () => {
     expect(boardColumnSource).toMatch(/max-sm:w-\[\d+vw\]/);
   });
 
+  it("BoardColumn resets flex-basis to auto below the mobile breakpoint so max-sm:w-[88vw] actually governs sizing (bugfix, post-handoff)", () => {
+    // Regression test: the base class list includes `flex-1`, which
+    // resolves to a non-`auto` flex-basis. Per the flexbox spec, a
+    // non-`auto` flex-basis makes the browser ignore the `width` property
+    // for main-axis sizing -- so without an explicit `max-sm:flex-none`
+    // (or equivalent basis-auto/grow-0 reset) at the mobile breakpoint,
+    // `max-sm:w-[88vw]` above is silently overridden by flex-grow evenly
+    // splitting the row among every column instead of one column taking
+    // ~88vw. Confirmed live via getComputedStyle at a 375px viewport
+    // before this fix (resolved width was ~50px, an even 1/4 split).
+    expect(boardColumnSource).toMatch(/max-sm:flex-none/);
+  });
+
   it("Board's ungrouped column row and Swimlane's per-lane column row both opt the row into snap-mandatory scrolling on mobile", () => {
     expect(boardSource).toMatch(/max-sm:snap-x max-sm:snap-mandatory/);
     expect(swimlaneSource).toMatch(/max-sm:snap-x max-sm:snap-mandatory/);
