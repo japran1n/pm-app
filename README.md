@@ -2,9 +2,93 @@
 
 A collaborative project management tool (Jira/Linear-style), built with
 Next.js and Supabase. Organizations/workspaces contain projects; projects
-contain tasks with status, priority, single assignee, due date, comments,
-and attachments. Includes a drag-and-drop Kanban board, a list/table view,
-full-text search, and a home dashboard with charts (tasks by status/priority).
+contain tasks with status, priority, one or more assignees, due date,
+comments, and attachments. Includes a drag-and-drop Kanban board with
+custom statuses/swimlanes, a list/table view, a calendar view, a timeline
+(Gantt-style) view, full-text search, a command palette, and a home
+dashboard with charts (tasks by status/priority).
+
+This README covers the v1 baseline plus everything added by mission
+`20260818-213033` (M10–M19). See ["What changed since
+v1"](#what-changed-since-v1) for a quick orientation if you already know
+the v1 feature set.
+
+## Feature areas
+
+The sections below group what shipped in M10–M19 (feature IDs F118 and up).
+Anything not listed here (e.g. transactional email digests) was scoped but
+explicitly **not** shipped this mission — see the notes under each area.
+
+### Identity & profiles (M10)
+
+User profile pages (display name, avatar, bio), workspace switching, and the
+foundational identity primitives every later feature builds on.
+
+### Roles & permissions (M11)
+
+Five workspace roles (`owner`, `admin`, `member`, `viewer`, `guest`) plus a
+per-project role (`lead`, `member`, or none) that can grant a plain workspace
+member elevated rights on the specific project(s) they lead. See the
+[role & permission matrix](#role--permission-matrix) below. All permission
+decisions are re-checked server-side (Server Actions and/or RLS), never
+trusted from the client.
+
+### Workspace admin, audit log & archive (M12)
+
+An owner/admin-only audit log of workspace activity, workspace archiving
+(distinct from delete), and admin-only workspace settings surfaces.
+
+### Task identity, structure & relations (M13)
+
+Human-readable task keys (e.g. `PROJ-123`), subtasks, checklists, task
+dependencies (blocking/blocked-by), multiple assignees per task (via a
+`task_assignees` join table — the legacy single `assignee_id` column still
+exists and is kept in sync), and watchers (users who get notified of a
+task's activity without being assigned).
+
+### Rich text, recurrence, templates, bulk actions & trash (M14)
+
+Rich text task descriptions, recurring tasks (see [scheduled
+jobs](#scheduled-jobs-pg_cron) below for how occurrences are generated),
+reusable task templates, multi-select bulk actions (bulk status/assignee
+change, bulk delete), and a soft-delete trash/restore flow.
+
+### Collaboration: activity, comments, mentions, notifications (M15)
+
+Per-task activity feed, threaded comments with emoji reactions, @-mentions,
+and in-app notifications (including an overdue-task notification sweep —
+see [scheduled jobs](#scheduled-jobs-pg_cron)). **Email delivery
+(Resend) was scoped but deliberately not connected** — see
+[Email / Resend](#email--resend-not-connected) below. Features F213–F217
+are `[SKIPPED]` for that reason; there is no digest job running.
+
+### Views: custom statuses, swimlanes, saved views, my tasks, calendar, timeline (M16)
+
+Per-project custom board statuses/columns, swimlanes, a personal "My Tasks"
+cross-project view, a calendar view, a timeline/Gantt view, and saved views
+(personal or shared-with-workspace) that persist filter/sort/grouping
+configuration. Saved views currently apply to the **list view only**; the
+schema supports all four view types but board/calendar/timeline saved-view
+wiring is a known follow-up (see `NEXT-SESSION.md`).
+
+### UX polish, attachments & navigation (M17)
+
+A command palette (keyboard shortcut launcher), keyboard shortcuts,
+deep-linkable URLs for tasks/views, quick-add task creation, inline field
+editing, a redesigned sidebar and header search, file attachments, and
+mobile-responsive layout passes.
+
+### Final QA polish (M18)
+
+Empty states, first-run onboarding, loading skeletons, and error boundaries
+applied consistently across the app's surfaces (see
+[Known limitations](#known-limitations) for anything intentionally left
+out of scope).
+
+### QA feedback browser extension (M19)
+
+See ["Browser extension (QA feedback capture)"](#browser-extension-qa-feedback-capture)
+below.
 
 ## Prerequisites
 
@@ -59,6 +143,74 @@ npx eslint .
 npx tsc --noEmit
 ```
 
+## Role & permission matrix
+
+Every permission decision is centralized in `lib/auth/permissions.ts` (one
+predicate module, used by both the UI to decide what to render and the
+Server Action layer to re-check before mutating, so the two can never
+drift apart). Workspace roles: `owner`, `admin`, `member`, `viewer`,
+`guest`. Project role (optional, layered on top): `lead` or `member` on a
+specific project.
+
+| Capability | owner | admin | member | viewer | guest |
+|---|---|---|---|---|---|
+| View workspace members list | Yes | Yes | Yes | Yes | No |
+| Manage members (invite/remove/role) | Yes | Yes | No | No | No |
+| View workspace audit log | Yes | Yes | No | No | No |
+| Manage columns/statuses (workspace-wide) | Yes | Yes | Only if project lead | No | No |
+| Change a project's visibility (workspace/private) | Yes | Yes | No | No | No |
+| Manage a project's member list | Yes | Yes | Only if project lead | No | No |
+| Write at all (create/edit/comment/attach/etc.) | Yes | Yes | Yes | **No — read-only** | Project-scoped only (e.g. comment on / be assigned tasks in a project they were added to) |
+| Edit a task | Yes | Yes | Yes | No | No |
+| Delete a task | Yes (any) | Yes (any) | Own tasks, or any task in a project they lead | No | No |
+| Manage/rename/delete a task template | Yes | Yes | Only the template's own creator | No | No |
+| Manage a shared saved view | Yes | Yes | Only the view's own creator | No | No |
+| Purge (permanently delete trashed data) | Yes | No | No | No | No |
+| Delete the workspace itself | Yes only | No | No | No | No |
+
+Notes:
+- `viewer` is read-only by definition — no mutating action succeeds for a
+  viewer regardless of resource ownership.
+- `guest` write access is deliberately narrower and project-scoped: a guest
+  can comment on and be assigned tasks inside a project they were explicitly
+  added to, but has none of the workspace-wide capabilities above.
+- A `member`'s workspace role can be locally elevated by an explicit
+  `lead` project role on a specific project (e.g. a member who leads
+  Project X can manage Project X's columns and member list even though
+  their workspace role alone wouldn't grant that).
+
+## Scheduled jobs (pg_cron)
+
+Two `pg_cron` jobs run inside the linked Supabase Postgres instance. Both
+run **hourly** (`0 * * * *`) rather than more frequently — task
+due-dates/recurrence rules operate at day granularity at finest, so an
+hourly cadence is enough to catch anything due within the same day while
+staying well inside Supabase Cron's guidance on job frequency/duration.
+
+| Job name | Schedule | Function | What it does | Introduced by |
+|---|---|---|---|---|
+| `generate-due-recurring-occurrences` | `0 * * * *` (hourly) | `public.generate_due_recurring_occurrences()` | Scans recurring task rules and creates the next due occurrence(s) once their due date has arrived. | `supabase/migrations/20260822160000_recurrence_scheduled_generation.sql` (F178-area) |
+| `notify-overdue-task-assignees` | `0 * * * *` (hourly) | `public.notify_overdue_task_assignees()` | Scans tasks past their due date and creates an in-app notification for each assignee, avoiding duplicate notifications for the same overdue task. | `supabase/migrations/20260823050000_overdue_notification_sweep.sql` (F212) |
+
+There is **no email digest job** — the digest feature (F217) was scoped but
+skipped along with the rest of the email/Resend feature set (F213–F217);
+see [Email / Resend](#email--resend-not-connected) below. A regression test
+for job registration lives in
+`tests/integration/overdue-notification-sweep.test.ts`.
+
+## Email / Resend (not connected)
+
+Transactional email (task-assignment emails, mention emails, and a
+digest) was scoped in this mission but the user deferred connecting
+Resend. The `resend` and `@react-email/components` npm packages are
+installed and `RESEND_API_KEY` / `RESEND_FROM_EMAIL` exist as placeholder
+entries in `.env.example`, but **no code path sends email** — there is no
+key configured, and features F213–F217 are `[SKIPPED]` in the mission
+plan. To enable email, a future feature would need to: add a real
+`RESEND_API_KEY`/`RESEND_FROM_EMAIL` to `.env`, wire the already-scaffolded
+Resend client into the notification-creation paths, and add a digest
+`pg_cron` job alongside the two documented above.
+
 ## Environment variables
 
 All variables live in `.env` (gitignored); `.env.example` lists the required
@@ -72,6 +224,18 @@ keys with empty values.
 | `SUPABASE_PROJECT_REF` | Project reference ID, used by the Supabase CLI (`supabase link`) and server-side tooling | Supabase dashboard → Project Settings → General, or the URL of your project dashboard |
 | `SENTRY_DSN` | Data Source Name Sentry uses to receive error reports; optional at local-dev time, required before a Vercel deploy | Sentry dashboard → Project Settings → Client Keys (DSN) |
 | `SENTRY_AUTH_TOKEN` | Auth token Sentry's build tooling uses to upload source maps; optional at local-dev time, required before a Vercel deploy | Sentry dashboard → Settings → Auth Tokens |
+| `RESEND_API_KEY` | **Not currently used by any code path** — placeholder only. Transactional email (F213–F217) was scoped but deliberately not connected this mission; see [Email / Resend](#email--resend-not-connected). | Resend dashboard → API Keys, if/when email is enabled |
+| `RESEND_FROM_EMAIL` | **Not currently used by any code path** — same status as `RESEND_API_KEY` above. | The verified sending domain/address in Resend, if/when email is enabled |
+| `EXTENSION_HANDOFF_SECRET` | Server-only. Encrypts the short-lived one-time token that lets the QA feedback browser extension pick up an already-signed-in web session without the user retyping credentials. Required for the extension's session handoff to work. | Generate any random 32+ byte string yourself (e.g. `openssl rand -hex 32`) |
+| `EXTENSION_ID` | The QA feedback extension's Chrome extension id, used to restrict `app/api/extension/tasks/route.ts`'s CORS to exactly `chrome-extension://<EXTENSION_ID>`. An unpacked/dev load gets a random id per load (visible at `chrome://extensions`); set this to the published id once the extension ships. | `chrome://extensions` (dev) or the Chrome Web Store listing (published) |
+
+Two additional environment variables are used only by the CLI/test tooling,
+not by the running app itself, so they are **not** in `.env.example`:
+`PLAYWRIGHT_PORT` (overrides the port `next dev` boots on for e2e specs,
+defaults to `3100`) and `SUPABASE_ACCESS_TOKEN` (a Supabase Management API
+token some integration tests use to verify live `pg_cron` job registration;
+already present in your shell/`.env` if you've run `supabase login` for the
+CLI).
 
 ## Browser extension (QA feedback capture)
 
@@ -147,14 +311,44 @@ order:
    timing on the dashboard's own status messaging at submission time, since
    this fluctuates and is not something this README can keep current.
 
-## Known limitations (v1)
+## Known limitations
 
-- No Timeline/Gantt view — out of scope for v1, deferred from the reference
-  app's feature set as low MVP value.
-- Single assignee per task only — no multi-assignee support.
 - English-only UI, no i18n/localization.
 - No multi-tenant billing or plan tiers.
 - No periodic rebalance of Kanban card fractional positions — a very long
   column could theoretically exhaust position precision over time; documented
   as a known limitation rather than silently unhandled.
+- No email delivery (Resend was deferred) — see
+  [Email / Resend](#email--resend-not-connected).
+- Saved views apply to the list view only; board/calendar/timeline saved
+  views are schema-ready but not yet wired (M16 follow-up).
 - This is a solo-built MVP, not a hardened multi-team/enterprise system.
+
+## What changed since v1
+
+The prior mission (`20260817-230717`, milestones M1–M9, ending at F117 /
+AS-176) shipped the v1 baseline described in the opening paragraph above:
+workspaces/projects/tasks, single-assignee tasks, Kanban board, list view,
+search, and a basic dashboard. This mission (`20260818-213033`, M10–M19,
+F118 onward) added, on top of that baseline:
+
+- **Identity & access**: user profiles, five workspace roles plus
+  project-level lead roles, an owner/admin audit log, workspace archiving.
+- **Richer tasks**: human-readable task keys, subtasks, checklists,
+  dependencies, multiple assignees (previously single-assignee only),
+  watchers, rich text descriptions, recurrence, templates, bulk actions,
+  and soft-delete/trash.
+- **Collaboration**: activity feed, threaded comments with reactions,
+  mentions, and in-app notifications (email intentionally not connected).
+- **New views**: custom statuses/swimlanes, saved views, a personal My
+  Tasks view, a calendar view, and a Timeline/Gantt view (v1 had none of
+  these — the old "no Timeline/Gantt" limitation no longer applies).
+- **UX**: a command palette, keyboard shortcuts, deep links, quick-add,
+  inline editing, attachments, a redesigned sidebar/header search, and a
+  mobile-responsive pass.
+- **Polish**: consistent empty states, first-run onboarding, loading
+  skeletons, and error boundaries.
+- **Tooling**: a QA feedback browser extension (M19) for filing tasks
+  with screenshots/console/network context directly from any page.
+- Two new `pg_cron` scheduled jobs (recurrence generation, overdue-task
+  notification sweep) — see [Scheduled jobs](#scheduled-jobs-pg_cron).
