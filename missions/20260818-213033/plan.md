@@ -246,6 +246,13 @@ notifications, timezone) exists. No feature work beyond identity.
 - F266 mobile-layout-audit — AS-517 [CLARIFIED-AUTO] [COMPLETE]
 - F267 header-search-autocomplete — AS-519, AS-520, AS-521, AS-522 [CLARIFIED-AUTO] [COMPLETE]
 
+### M17 scrutiny follow-ups (2026-08-25, from missions/20260818-213033/milestones/M17-scrutiny.md pass 1, blockers)
+
+- F332 m17-scrutiny-mobile-tap-targets — fixes AS-518 [CLARIFIED-AUTO] [COMPLETE]
+- F333 m17-scrutiny-attachment-icon-vs-thumbnail — fixes AS-505 [CLARIFIED-AUTO] [COMPLETE]
+- F334 m17-scrutiny-deexport-upload-for-user — (no assertion; closes a security hole) [CLARIFIED-AUTO]
+- F335 m17-scrutiny-mobile-scroll-regression-guard — fixes AS-517 [CLARIFIED-AUTO] [COMPLETE]
+
 ## M18 — Final QA
 
 - F268 a11y-keyboard-pass — AS-523, AS-524 [CLARIFIED-AUTO]
