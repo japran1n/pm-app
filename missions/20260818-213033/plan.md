@@ -260,7 +260,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F269 contrast-and-nocolor-pass — AS-525, AS-526 [CLARIFIED-AUTO] [COMPLETE]
 - F270 typecheck-lint-clean — AS-527, AS-528 [CLARIFIED-AUTO] [COMPLETE]
 - F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO] [COMPLETE]
-- F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO]
+- F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO] [COMPLETE]
 
 ## M19 — QA feedback browser extension
 
