@@ -100,6 +100,11 @@ describe("Image lightbox (AS-505, AS-506)", () => {
 
     await waitFor(() => expect(screen.getByAltText("first.png")).toBeInTheDocument());
     expect(screen.getByAltText("first.png").tagName).toBe("IMG");
+    // BLOCKER-2 (M17 scrutiny): an image attachment must show ONLY the
+    // thumbnail, never the generic FileText icon alongside it.
+    expect(
+      screen.queryByTestId(`attachment-file-icon-${image1.id}`),
+    ).not.toBeInTheDocument();
   });
 
   it("test_AS_505_a_non_image_attachment_still_shows_the_generic_file_icon_no_thumbnail", async () => {
@@ -107,6 +112,10 @@ describe("Image lightbox (AS-505, AS-506)", () => {
 
     expect(screen.queryByAltText("spec.pdf")).not.toBeInTheDocument();
     expect(screen.getByText("spec.pdf")).toBeInTheDocument();
+    // A non-image attachment must still show the generic file icon.
+    expect(
+      screen.getByTestId(`attachment-file-icon-${pdfAttachment.id}`),
+    ).toBeInTheDocument();
   });
 
   it("test_AS_506_clicking_an_image_thumbnail_opens_a_full_size_preview", async () => {

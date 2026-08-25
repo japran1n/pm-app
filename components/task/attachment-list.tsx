@@ -488,18 +488,21 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
         <ul className="flex flex-col gap-2">
           {localAttachments.map((attachment) => (
             <li key={attachment.id} className="flex flex-col gap-2">
-              {attachment.mimeType?.startsWith("image/") && (
+              {attachment.mimeType?.startsWith("image/") ? (
                 <AttachmentThumbnail
                   attachmentId={attachment.id}
                   fileName={attachment.fileName}
                   onOpen={() => handleOpen(attachment.id)}
                 />
-              )}
+              ) : null}
               <div className="flex items-center gap-2">
-              <FileText
-                className="size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
+              {!attachment.mimeType?.startsWith("image/") && (
+                <FileText
+                  data-testid={`attachment-file-icon-${attachment.id}`}
+                  className="size-4 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              )}
               <button
                 type="button"
                 className="truncate text-sm font-medium underline-offset-2 hover:underline disabled:opacity-60"
