@@ -250,8 +250,9 @@ notifications, timezone) exists. No feature work beyond identity.
 
 - F332 m17-scrutiny-mobile-tap-targets — fixes AS-518 [CLARIFIED-AUTO] [COMPLETE]
 - F333 m17-scrutiny-attachment-icon-vs-thumbnail — fixes AS-505 [CLARIFIED-AUTO] [COMPLETE]
-- F334 m17-scrutiny-deexport-upload-for-user — (no assertion; closes a security hole) [CLARIFIED-AUTO]
+- F334 m17-scrutiny-deexport-upload-for-user — (no assertion; closes a security hole) [CLARIFIED-AUTO] [COMPLETE]
 - F335 m17-scrutiny-mobile-scroll-regression-guard — fixes AS-517 [CLARIFIED-AUTO] [COMPLETE]
+- F336 deexport-create-task-for-user — (no assertion; closes an identical, live privilege-escalation hole in lib/actions/tasks.ts's createTaskForUser, found and deliberately deferred by F334) [CLARIFIED-AUTO]
 
 ## M18 — Final QA
 
