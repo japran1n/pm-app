@@ -7,8 +7,13 @@ import { createElement } from "react";
 // list-view-empty-state.test.ts does — AppSidebar's usePathname() call
 // needs an app router context that isn't present under plain
 // react-dom/server.
+// F262: AppSidebar now conditionally mounts NewProjectDialog (a Client
+// Component using useRouter) inside its "Projects" section's empty state
+// when no projects are passed in (the default here) — useRouter must be
+// mocked alongside usePathname now, or that mount throws.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";

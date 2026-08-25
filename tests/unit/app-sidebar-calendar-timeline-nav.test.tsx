@@ -9,8 +9,13 @@ import { createElement } from "react";
 // shape this file follows for the gated case, and
 // tests/unit/app-sidebar-trash-nav.test.tsx likewise.
 
+// F262: AppSidebar now conditionally mounts NewProjectDialog (a Client
+// Component using useRouter) inside its "Projects" section's empty state
+// when no projects are passed in (the default here) — useRouter must be
+// mocked alongside usePathname now, or that mount throws.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme/calendar",
+  useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";

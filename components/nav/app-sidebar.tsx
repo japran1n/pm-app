@@ -38,6 +38,9 @@ import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/use
 // reachable, always-visible chrome to put it in today.
 import { NotificationBell } from "@/components/notifications/notification-bell";
 import type { NotificationListItem } from "@/lib/queries/notifications";
+// F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
+// section, server-fetched by the layout same as everything else here.
+import { ProjectNavList, type SidebarProjectItem } from "@/components/nav/project-nav-list";
 
 // Persistent left nav shell wrapping every /w/[workspaceSlug]/* page (see
 // app/(workspace)/w/[workspaceSlug]/layout.tsx). Client Component: needs
@@ -127,6 +130,7 @@ function SidebarContent({
   canManageWorkspace,
   initialNotifications,
   initialUnreadCount,
+  projects,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -137,6 +141,7 @@ function SidebarContent({
   canManageWorkspace: boolean;
   initialNotifications: NotificationListItem[];
   initialUnreadCount: number;
+  projects: SidebarProjectItem[];
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -165,9 +170,14 @@ function SidebarContent({
           components/onboarding/tour.tsx only needs a target to be ABSENT
           when it truly shouldn't apply (e.g. the "New task" step for a
           viewer); this nav exists for every signed-in member. */}
+      {/* AS-512: this primary nav is a fixed-height block, not the
+          scrolling flex-1 area it used to be -- the Projects section below
+          (ProjectNavList) is the one that grows/scrolls now, so a
+          workspace with many projects never pushes Dashboard/My
+          Tasks/etc. out of view. */}
       <nav
         data-tour="sidebar-nav"
-        className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2"
+        className="flex flex-col gap-0.5 overflow-y-auto p-2"
       >
         {items.map(({ href, label, icon: Icon, exact }) => {
           const isActive = exact
@@ -193,6 +203,25 @@ function SidebarContent({
           );
         })}
       </nav>
+
+      {/* F262 (AS-509, AS-511, AS-512, AS-513): visible to every role
+          including guests -- a guest's own project list is already scoped
+          server-side by the RLS-backed query the layout uses (F134/F132),
+          same "hide nothing, the query already filtered it" convention
+          Dashboard/My Tasks/Calendar above follow (unlike Members/Archive/
+          Templates/Trash, which are role-gated because their *pages*, not
+          just their data, are off-limits to a guest). `flex-1 min-h-0`
+          here (not on the primary nav above) is what makes this the ONE
+          section that grows to fill remaining space and scrolls
+          internally. */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <ProjectNavList
+          workspaceSlug={workspaceSlug}
+          workspaceId={currentWorkspaceId}
+          projects={projects}
+          onNavigate={onNavigate}
+        />
+      </div>
 
       <div className="flex flex-col gap-2 border-t p-2">
         {/* F273 (AS-202): the only in-app entry point to the profile
@@ -251,6 +280,7 @@ export function AppSidebar({
   canManageWorkspace = false,
   initialNotifications = [],
   initialUnreadCount = 0,
+  projects = [],
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -264,6 +294,12 @@ export function AppSidebar({
    * its empty state instead of crashing. */
   initialNotifications?: NotificationListItem[];
   initialUnreadCount?: number;
+  /** F262 (AS-509, AS-511, AS-512, AS-513): the workspace's visible
+   * projects (already RLS/guest-scoped by the layout's query), rendered
+   * as the sidebar's own "Projects" section. Default `[]` keeps every
+   * existing caller/test that predates this feature rendering the
+   * section's empty state instead of crashing. */
+  projects?: SidebarProjectItem[];
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -280,6 +316,7 @@ export function AppSidebar({
           canManageWorkspace={canManageWorkspace}
           initialNotifications={initialNotifications}
           initialUnreadCount={initialUnreadCount}
+          projects={projects}
         />
       </aside>
 
@@ -305,6 +342,7 @@ export function AppSidebar({
               canManageWorkspace={canManageWorkspace}
               initialNotifications={initialNotifications}
               initialUnreadCount={initialUnreadCount}
+              projects={projects}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>

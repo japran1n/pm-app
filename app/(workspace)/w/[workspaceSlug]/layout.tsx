@@ -32,6 +32,12 @@ import { ShortcutHelpDialog } from "@/components/command/shortcut-help";
 // never sees a flash of the tour before a client-side check catches up.
 import { OnboardingTour } from "@/components/onboarding/tour";
 import { getTourStatus } from "@/lib/actions/onboarding-tour";
+// F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
+// section reuses the exact same RLS-backed, guest-scoped query the
+// /projects page (F027) already calls — no second copy of the visibility
+// rule, and per this feature's clarified caching note, one fetch per
+// layout render (not a per-navigation client refetch).
+import { getWorkspaceProjects } from "@/lib/queries/projects";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -210,6 +216,20 @@ export default async function WorkspaceLayout({
   const tourStatusResult = await getTourStatus();
   const tourDismissed = tourStatusResult.ok ? tourStatusResult.dismissed : true;
 
+  // F262: non-fatal to the rest of the layout if this read fails --
+  // fails open to an empty list (renders the sidebar's own "no projects"
+  // create action, AS-513) rather than crashing every page under this
+  // layout on a transient query error.
+  let sidebarProjects: Awaited<ReturnType<typeof getWorkspaceProjects>> = [];
+  try {
+    sidebarProjects = await getWorkspaceProjects(activeWorkspace.id);
+  } catch (error) {
+    console.error(
+      "WorkspaceLayout: failed to look up workspace projects for sidebar:",
+      error,
+    );
+  }
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): the caller's own role in the *active* workspace
@@ -336,6 +356,11 @@ export default async function WorkspaceLayout({
           }}
           initialNotifications={initialNotifications}
           initialUnreadCount={initialUnreadCount}
+          projects={sidebarProjects.map((project) => ({
+            id: project.id,
+            name: project.name,
+            key: project.key,
+          }))}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           {children}

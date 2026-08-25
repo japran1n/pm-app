@@ -29,6 +29,11 @@ export type ProjectListItem = {
   startDate: string | null;
   endDate: string | null;
   createdAt: string;
+  // F145 (AS-257): the short project key (e.g. "PM") assigned at creation
+  // time by a BEFORE INSERT trigger — nullable only for defensiveness
+  // against any pre-F145 row that predates the column (none exist in
+  // practice; the trigger backfills every insert going forward).
+  key: string | null;
   // TODO(F033+): replace with a real count once the tasks table exists —
   // e.g. `projects.select("*, tasks!inner(count)")` filtered to
   // non-completed, non-deleted tasks, or a dedicated RPC/view. Until then
@@ -37,6 +42,12 @@ export type ProjectListItem = {
   openTaskCount: number | null;
 };
 
+// F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own project list
+// call reuses this exact function — the same RLS-backed `createClient()`
+// query the projects page (F027) already uses, so guest scoping (F134) and
+// private-project visibility (F132) apply identically in the sidebar
+// without a second copy of that rule. Callers that don't need `key`
+// (e.g. the projects page) simply ignore the extra field.
 export async function getWorkspaceProjects(
   workspaceId: string,
 ): Promise<ProjectListItem[]> {
@@ -44,7 +55,7 @@ export async function getWorkspaceProjects(
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, description, start_date, end_date, created_at")
+    .select("id, name, description, start_date, end_date, created_at, key")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
@@ -60,6 +71,7 @@ export async function getWorkspaceProjects(
     startDate: project.start_date,
     endDate: project.end_date,
     createdAt: project.created_at,
+    key: project.key ?? null,
     openTaskCount: null,
   }));
 }

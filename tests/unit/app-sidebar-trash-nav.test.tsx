@@ -6,8 +6,13 @@ import { createElement } from "react";
 // non-guests, same pattern as "Archive" (F142) and "Templates" (F183) —
 // see tests/unit/app-sidebar-archive-nav.test.tsx for the established
 // test shape this file follows.
+// F262: AppSidebar now conditionally mounts NewProjectDialog (a Client
+// Component using useRouter) inside its "Projects" section's empty state
+// when no projects are passed in (the default here) — useRouter must be
+// mocked alongside usePathname now, or that mount throws.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/w/acme",
+  useRouter: () => ({ push: () => {}, refresh: () => {} }),
 }));
 
 import { AppSidebar } from "@/components/nav/app-sidebar";
