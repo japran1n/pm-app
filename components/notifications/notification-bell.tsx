@@ -116,7 +116,15 @@ export function NotificationBell({
             type="button"
             variant="ghost"
             size="icon"
-            className="relative"
+            // F332 (M17 scrutiny BLOCKER-1 / AS-518): `size="icon"` alone is
+            // `size-8` (32px) -- below the 44px touch-target minimum. This
+            // trigger renders both in the always-visible desktop sidebar
+            // header (>= md, mouse-driven, untouched) and inside the
+            // `md:hidden` mobile top bar in app-sidebar.tsx (the actual
+            // touch-target surface), so `max-md:size-11` matches the exact
+            // breakpoint convention F265 already established for the
+            // hamburger trigger right next to this button in that same bar.
+            className="relative max-md:size-11"
             aria-label={
               reconcileFailed
                 ? "Notifications, sync failed"

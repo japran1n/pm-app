@@ -141,7 +141,12 @@ export function ProjectNavList({
         onClick={onNavigate}
         aria-current={isActive ? "page" : undefined}
         className={cn(
-          "group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
+          // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
+          // same breakpoint convention as the primary nav Links in
+          // app-sidebar.tsx (this row renders inside the same `md:hidden`
+          // mobile Sheet), bumping this row to the 44px touch-target
+          // minimum on mobile without affecting its desktop sizing.
+          "group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors max-md:min-h-11",
           isActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -173,7 +178,12 @@ export function ProjectNavList({
             handleFavoriteChange(project.id, nextIsFavorite)
           }
           size="icon"
-          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100 aria-[pressed=true]:opacity-100"
+          // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:size-11` --
+          // ProjectFavoriteButton appends this className after its own
+          // `size === "icon" ? "size-7" : ...` base via cn(), so this wins
+          // on mobile widths only, matching the same breakpoint convention
+          // used elsewhere in this file/app-sidebar.tsx for the F265 bump.
+          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100 aria-[pressed=true]:opacity-100 max-md:size-11"
         />
       </Link>
     );
@@ -195,7 +205,10 @@ export function ProjectNavList({
         render={
           <button
             type="button"
-            className="flex items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground"
+            // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
+            // same breakpoint convention as the other mobile-Sheet nav
+            // controls in this file/app-sidebar.tsx.
+            className="flex min-h-9 items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown

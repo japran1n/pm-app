@@ -303,4 +303,91 @@ describe("Mobile navigation tap targets are at least 44px (F265, AS-518)", () =>
       expect(link.className).toMatch(/max-md:min-h-11/);
     }
   });
+
+  // F332 (M17 scrutiny BLOCKER-1): the notification bell trigger and the
+  // Projects section's own controls (row Link, "Projects" collapsible
+  // trigger, favourite star) were structurally invisible to the tests
+  // above -- the bell wasn't asserted on at all, and `projects` was never
+  // passed so ProjectNavList rendered its empty state, not its rows. This
+  // renders AppSidebar WITH a non-empty `projects` array and asserts on
+  // every one of those four previously-missed controls.
+  const PROJECTS = [
+    { id: "p1", name: "Acme Website", key: "AW", isFavorite: false },
+  ];
+
+  it("test_AS_518_mobile_notification_bell_trigger_is_44px", () => {
+    render(
+      createElement(AppSidebar, {
+        workspaceSlug: "acme",
+        workspaces: [],
+        currentWorkspaceId: "w1",
+        currentUser: { id: "u1", name: "Test User", email: "t@example.com" },
+        projects: PROJECTS,
+      }),
+    );
+
+    // Two copies exist (desktop header bar + mobile top bar) -- assert
+    // every one of them, not just the first.
+    const bellTriggers = screen.getAllByRole("button", { name: /Notifications/i });
+    expect(bellTriggers.length).toBeGreaterThan(0);
+    for (const trigger of bellTriggers) {
+      expect(trigger.className).toMatch(/max-md:size-11/);
+    }
+  });
+
+  it("test_AS_518_project_row_has_a_44px_minimum_tap_height", () => {
+    render(
+      createElement(AppSidebar, {
+        workspaceSlug: "acme",
+        workspaces: [],
+        currentWorkspaceId: "w1",
+        currentUser: { id: "u1", name: "Test User", email: "t@example.com" },
+        projects: PROJECTS,
+      }),
+    );
+
+    const projectLinks = screen.getAllByRole("link", { name: /Acme Website/i });
+    expect(projectLinks.length).toBeGreaterThan(0);
+    for (const link of projectLinks) {
+      expect(link.className).toMatch(/max-md:min-h-11/);
+    }
+  });
+
+  it("test_AS_518_projects_collapsible_trigger_has_a_44px_minimum_tap_height", () => {
+    render(
+      createElement(AppSidebar, {
+        workspaceSlug: "acme",
+        workspaces: [],
+        currentWorkspaceId: "w1",
+        currentUser: { id: "u1", name: "Test User", email: "t@example.com" },
+        projects: PROJECTS,
+      }),
+    );
+
+    const projectsTriggers = screen.getAllByRole("button", { name: "Projects" });
+    expect(projectsTriggers.length).toBeGreaterThan(0);
+    for (const trigger of projectsTriggers) {
+      expect(trigger.className).toMatch(/max-md:min-h-11/);
+    }
+  });
+
+  it("test_AS_518_project_favorite_star_is_44px_on_phone_widths", () => {
+    render(
+      createElement(AppSidebar, {
+        workspaceSlug: "acme",
+        workspaces: [],
+        currentWorkspaceId: "w1",
+        currentUser: { id: "u1", name: "Test User", email: "t@example.com" },
+        projects: PROJECTS,
+      }),
+    );
+
+    const starButtons = screen.getAllByRole("button", {
+      name: /favourites/i,
+    });
+    expect(starButtons.length).toBeGreaterThan(0);
+    for (const star of starButtons) {
+      expect(star.className).toMatch(/max-md:size-11/);
+    }
+  });
 });
