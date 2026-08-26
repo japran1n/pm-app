@@ -201,3 +201,94 @@ export async function getWorkspaceRoleForCurrentUser(
   }
   return data?.role ?? null;
 }
+
+// --- Client requests (C5) ---------------------------------------------------
+
+export type PortalRequest = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  title: string;
+  body: string | null;
+  desiredBy: string | null;
+  status: "submitted" | "in_review" | "accepted" | "declined";
+  declineReason: string | null;
+  convertedTaskId: string | null;
+  convertedTaskTitle: string | null;
+  convertedTaskStatus: string | null;
+  createdAt: string;
+};
+
+// The signed-in client's own requests. RLS's
+// `client_requests_select_author_or_team` already scopes this to rows the
+// caller authored, so no `created_by` filter is repeated here — same
+// reasoning as the rest of this file.
+export async function getPortalRequests(
+  workspaceId: string,
+): Promise<PortalRequest[]> {
+  const supabase = await createClient();
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  const projectNames = new Map(
+    (projects ?? []).map((p) => [p.id as string, p.name as string]),
+  );
+
+  if (projectNames.size === 0) return [];
+
+  const { data, error } = await supabase
+    .from("client_requests")
+    .select(
+      "id, project_id, title, body, desired_by, status, decline_reason, converted_task_id, created_at, tasks(title, status)",
+    )
+    .in("project_id", [...projectNames.keys()])
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("getPortalRequests failed:", error);
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    // The embedded task is only readable when it is shared with the client
+    // — which `acceptClientRequest` guarantees for anything it converts.
+    // A null here therefore means "accepted, then later un-shared by the
+    // team", which the UI renders as accepted without a link rather than
+    // pretending the task does not exist.
+    const task = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      projectName: projectNames.get(row.project_id) ?? "",
+      title: row.title,
+      body: row.body,
+      desiredBy: row.desired_by,
+      status: row.status as PortalRequest["status"],
+      declineReason: row.decline_reason,
+      convertedTaskId: row.converted_task_id,
+      convertedTaskTitle: task?.title ?? null,
+      convertedTaskStatus: task?.status ?? null,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+export type PortalProjectOption = { id: string; name: string };
+
+export async function getPortalProjectOptions(
+  workspaceId: string,
+): Promise<PortalProjectOption[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null)
+    .order("name");
+  return (data ?? []).map((p) => ({ id: p.id, name: p.name }));
+}

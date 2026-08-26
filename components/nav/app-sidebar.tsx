@@ -19,8 +19,10 @@ import {
   ListChecks,
   CalendarDays,
   GanttChartSquare,
+  Inbox,
 } from "lucide-react";
 
+import { useMembership } from "@/components/auth/membership-provider";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -73,6 +75,7 @@ function navItems(
   workspaceSlug: string,
   isGuest: boolean,
   canManageWorkspace: boolean,
+  hasClient: boolean,
 ) {
   const items = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -93,6 +96,21 @@ function navItems(
     { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
+    // C5: the client-request inbox. Only present when the workspace has a
+    // client at all — a permanent empty inbox for the majority of teams
+    // who never use the portal is clutter, and it advertises a feature
+    // they have not opted into. Filtered out for guests alongside
+    // Members/Archive/Templates/Trash: triaging a client's requests is
+    // team work.
+    ...(hasClient
+      ? [
+          {
+            href: `/w/${workspaceSlug}/requests`,
+            label: "Client requests",
+            icon: Inbox,
+          },
+        ]
+      : []),
     { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
     // F183: "Templates" nav item, gated to non-guests the same way
     // "Members"/"Archive" already are — a guest never sees an entry point
@@ -114,6 +132,7 @@ function navItems(
     ? items.filter(
         (item) =>
           item.label !== "Members" &&
+          item.label !== "Client requests" &&
           item.label !== "Archive" &&
           item.label !== "Templates" &&
           item.label !== "Trash",
@@ -145,7 +164,11 @@ function SidebarContent({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const items = navItems(workspaceSlug, isGuest, canManageWorkspace);
+  // C5: the client-request nav item is workspace-dependent, so it reads
+  // the same server-fetched `hasClient` flag the task sheet's share toggle
+  // uses rather than a prop threaded through two more component layers.
+  const hasClient = useMembership()?.hasClient ?? false;
+  const items = navItems(workspaceSlug, isGuest, canManageWorkspace, hasClient);
 
   return (
     <div className="flex h-full flex-col">

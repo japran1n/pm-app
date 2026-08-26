@@ -219,6 +219,76 @@ export type Database = {
           },
         ]
       }
+      client_requests: {
+        Row: {
+          body: string | null
+          converted_task_id: string | null
+          created_at: string
+          created_by: string
+          decline_reason: string | null
+          desired_by: string | null
+          id: string
+          project_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          converted_task_id?: string | null
+          created_at?: string
+          created_by: string
+          decline_reason?: string | null
+          desired_by?: string | null
+          id?: string
+          project_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          converted_task_id?: string | null
+          created_at?: string
+          created_by?: string
+          decline_reason?: string | null
+          desired_by?: string | null
+          id?: string
+          project_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_requests_converted_task_id_fkey"
+            columns: ["converted_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_converted_task_id_fkey"
+            columns: ["converted_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comment_reactions: {
         Row: {
           comment_id: string

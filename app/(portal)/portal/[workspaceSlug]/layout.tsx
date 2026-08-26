@@ -85,6 +85,20 @@ export default async function PortalLayout({
           </Link>
 
           <div className="flex items-center gap-2">
+            <nav className="flex items-center gap-1">
+              <Link
+                href={`/portal/${workspace.slug}`}
+                className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Projects
+              </Link>
+              <Link
+                href={`/portal/${workspace.slug}/requests`}
+                className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Requests
+              </Link>
+            </nav>
             <ThemeToggle />
             <form action={signOut}>
               <Button type="submit" variant="ghost" size="sm">
