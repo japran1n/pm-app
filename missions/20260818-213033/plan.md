@@ -267,7 +267,7 @@ notifications, timezone) exists. No feature work beyond identity.
 - F337 m18-scrutiny-header-search-keyboard-operability — fixes AS-523 [CLARIFIED-AUTO] [COMPLETE]
 - F338 m18-scrutiny-priority-colour-only-indicators — fixes AS-525, AS-526 [CLARIFIED-AUTO] [COMPLETE]
 - F339 m18-scrutiny-fix-mention-comment-500 — fixes AS-530 (real product bug: addComment 500s on any comment containing a mention node) [CLARIFIED-AUTO] [COMPLETE]
-- F340 fix-description-mention-serialization — (no new assertion; same live bug class as F339, on the task description path instead of comments) [CLARIFIED-AUTO]
+- F340 fix-description-mention-serialization — (no new assertion; same live bug class as F339, on the task description path instead of comments) [CLARIFIED-AUTO] [COMPLETE]
 
 ## M19 — QA feedback browser extension
 
