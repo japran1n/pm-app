@@ -260,6 +260,18 @@ export default async function WorkspaceLayout({
   // getFavoriteProjectIds itself already fails open to an empty set.
   const favoriteProjectIds = await getFavoriteProjectIds(activeWorkspace.id);
 
+  // C2: does this workspace have any client at all? Fetched once here,
+  // alongside everything else the layout already loads, and exposed via
+  // MembershipProvider so the task sheet's share toggle (and any later
+  // portal affordance) can hide itself without a per-component query.
+  // `head: true` — only the count matters, never the rows.
+  const { count: clientMemberCount } = await supabase
+    .from("workspace_members")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", activeWorkspace.id)
+    .eq("role", "client")
+    .eq("status", "active");
+
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): the caller's own role in the *active* workspace
@@ -359,7 +371,11 @@ export default async function WorkspaceLayout({
   // own heading (e.g. "Projects", "Members") as the page-title convention
   // instead.
   return (
-    <MembershipProvider role={activeWorkspaceRole} projectRoles={projectRoles}>
+    <MembershipProvider
+      role={activeWorkspaceRole}
+      hasClient={(clientMemberCount ?? 0) > 0}
+      projectRoles={projectRoles}
+    >
       <CommandPalette
         workspaceId={activeWorkspace.id}
         workspaceSlug={workspaceSlug}

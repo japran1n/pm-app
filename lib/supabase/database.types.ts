@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -901,6 +901,7 @@ export type Database = {
         Row: {
           assignee_id: string | null
           author_id: string
+          client_visible: boolean
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -931,6 +932,7 @@ export type Database = {
         Insert: {
           assignee_id?: string | null
           author_id: string
+          client_visible?: boolean
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -961,6 +963,7 @@ export type Database = {
         Update: {
           assignee_id?: string | null
           author_id?: string
+          client_visible?: boolean
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -1466,6 +1469,10 @@ export type Database = {
         Args: { p_status: string; p_status_id: string }
         Returns: boolean
       }
+      is_project_client: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
       is_project_lead_or_workspace_admin: {
         Args: { target_project_id: string }
         Returns: boolean
@@ -1494,6 +1501,7 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_task_client: { Args: { target_task_id: string }; Returns: boolean }
       is_task_visible_to: { Args: { target_task_id: string }; Returns: boolean }
       is_task_workspace_member: {
         Args: { target_task_id: string }
@@ -1505,6 +1513,10 @@ export type Database = {
       }
       is_valid_timezone: { Args: { tz: string }; Returns: boolean }
       is_workspace_admin: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      is_workspace_client: {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
@@ -1542,6 +1554,7 @@ export type Database = {
         Returns: {
           assignee_id: string | null
           author_id: string
+          client_visible: boolean
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -1583,6 +1596,10 @@ export type Database = {
       set_saved_view_default: {
         Args: { p_view_id: string }
         Returns: undefined
+      }
+      shares_non_client_workspace_with: {
+        Args: { target_user_id: string }
+        Returns: boolean
       }
       shares_workspace_with: {
         Args: { target_user_id: string }
