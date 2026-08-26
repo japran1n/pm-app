@@ -186,6 +186,24 @@ export default async function WorkspaceLayout({
     );
   }
 
+  // C3 (docs/client-portal-plan.md): a client belongs in the portal, not
+  // here. Placed immediately after the membership lookup and before every
+  // sidebar/notification/tour fetch below, so a client's request never pays
+  // for — or touches — data the portal has no use for.
+  //
+  // Chrome, not enforcement: RLS (20260902010000 / 20260902020000) is what
+  // actually stops a client reading team data, and it holds whether or not
+  // this redirect runs. What this prevents is the confusing middle state
+  // where a client lands in the team app and sees it almost entirely empty
+  // because every query legitimately returned nothing.
+  const currentRole = (memberships ?? []).find(
+    (m) => m.workspace_id === activeWorkspace.id,
+  )?.role;
+
+  if (currentRole === "client") {
+    redirect(`/portal/${activeWorkspace.slug}`);
+  }
+
   // F273 (AS-202): the signed-in person's own display name/avatar for the
   // sidebar footer entry point that links to the profile settings page —
   // without this the profile page (F123) has no in-app way to reach it.

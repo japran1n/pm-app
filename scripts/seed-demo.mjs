@@ -45,7 +45,7 @@ const ACCOUNTS = [
   { username: "luka", name: "Luka Petrović", role: "member" },
   { username: "ana", name: "Ana Kovač", role: "member" },
   { username: "vuk", name: "Vuk Simić", role: "viewer" },
-  { username: "nina", name: "Nina Marić (Northwind)", role: "guest" },
+  { username: "nina", name: "Nina Marić (Northwind)", role: "client" },
 ];
 
 const emailFor = (username) => `${username}@${DEMO_EMAIL_DOMAIN}`;
@@ -187,17 +187,23 @@ const PROJECTS = [
     startInDays: -21,
     endInDays: 30,
     guestAccess: true, // the client account is added to this project
+    // The last field is `clientVisible`: what the team has chosen to show
+    // the client. Deliberately a MIX across every column rather than a
+    // prefix of the list — a portal whose demo data is all-done renders a
+    // meaningless 100% and demonstrates nothing. Internal-sounding work
+    // (the CMS migration script, the redirect map) stays hidden, which is
+    // also the more honest demonstration of what the flag is for.
     tasks: [
-      ["Audit current site content", "done", "medium", -14, "maja", 180],
-      ["Agree information architecture", "done", "high", -9, "maja", 240],
-      ["Design system: colours & type", "done", "high", -5, "ana", 300],
-      ["Homepage hi-fi design", "in_review", "high", 2, "ana", 420],
-      ["Pricing page hi-fi design", "in_progress", "medium", 5, "ana", 150],
-      ["Build homepage in Next.js", "in_progress", "urgent", 6, "luka", 480],
-      ["CMS migration script", "todo", "high", 11, "luka", 0],
-      ["Accessibility pass (WCAG AA)", "todo", "medium", 14, "maja", 0],
-      ["SEO redirect map", "todo", "low", 18, "luka", 0],
-      ["Launch checklist & go-live", "todo", "urgent", 27, "sasa", 0],
+      ["Audit current site content", "done", "medium", -14, "maja", 180, true],
+      ["Agree information architecture", "done", "high", -9, "maja", 240, true],
+      ["Design system: colours & type", "done", "high", -5, "ana", 300, false],
+      ["Homepage hi-fi design", "in_review", "high", 2, "ana", 420, true],
+      ["Pricing page hi-fi design", "in_progress", "medium", 5, "ana", 150, true],
+      ["Build homepage in Next.js", "in_progress", "urgent", 6, "luka", 480, true],
+      ["CMS migration script", "todo", "high", 11, "luka", 0, false],
+      ["Accessibility pass (WCAG AA)", "todo", "medium", 14, "maja", 0, true],
+      ["SEO redirect map", "todo", "low", 18, "luka", 0, false],
+      ["Launch checklist & go-live", "todo", "urgent", 27, "sasa", 0, true],
     ],
   },
   {
@@ -386,7 +392,7 @@ async function main() {
     );
 
     let position = 0;
-    for (const [title, status, priority, dueInDays, assignee, minutes] of spec.tasks) {
+    for (const [title, status, priority, dueInDays, assignee, minutes, clientVisible] of spec.tasks) {
       position += 1000;
       const { data: task, error: taskError } = await admin
         .from("tasks")
@@ -401,6 +407,7 @@ async function main() {
           author_id: owner,
           assignee_id: userIds[assignee],
           position,
+          client_visible: clientVisible === true,
           tags: status === "done" ? ["shipped"] : ["placeholder"],
         })
         .select("id")

@@ -12,7 +12,13 @@ import { updateSession } from "@/lib/supabase/proxy-helpers";
  * construct a NextRequest/NextResponse pair.
  */
 export function requiresAuth(pathname: string): boolean {
-  return pathname === "/w" || pathname.startsWith("/w/");
+  if (pathname === "/w" || pathname.startsWith("/w/")) return true;
+  // C3: the client portal is workspace data under a different URL prefix,
+  // so it needs the same "no session, no entry" guard. Without this a
+  // signed-out visitor reaches the portal layout and gets its own
+  // redirect instead of the shared one, which is a second code path doing
+  // the same job.
+  return pathname === "/portal" || pathname.startsWith("/portal/");
 }
 
 export async function proxy(request: NextRequest) {
