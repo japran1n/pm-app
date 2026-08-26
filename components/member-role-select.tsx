@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type EditableRole = "admin" | "member" | "viewer" | "guest";
+type EditableRole = "admin" | "member" | "viewer" | "guest" | "client";
 
 // AS-235's simpler-option choice (recorded in the F129 handoff): promoting
 // a guest to admin is a single UI action that the server rejects — not a
@@ -62,10 +62,21 @@ const ROLE_META: Record<
     label: "Guest",
     description: "Limited to the specific project(s) they were added to.",
   },
+  client: {
+    label: "Client",
+    description:
+      "External. Sees the client portal only: progress on shared items, and can send requests.",
+  },
 };
 
 function isEditableRole(value: string): value is EditableRole {
-  return value === "admin" || value === "member" || value === "viewer" || value === "guest";
+  return (
+    value === "admin" ||
+    value === "member" ||
+    value === "viewer" ||
+    value === "guest" ||
+    value === "client"
+  );
 }
 
 export function MemberRoleSelect({

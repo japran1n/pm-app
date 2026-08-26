@@ -141,7 +141,14 @@ export async function activateInvitedMemberships(
       // mistake — project_members access for non-guests already works via
       // ordinary workspace-wide visibility and shouldn't gain a redundant
       // row here.
-      if (row.role === "guest" && row.invited_project_id) {
+      // C8: a client gets the same treatment as a guest here — their
+      // access is entirely project-scoped, so an invite that named a
+      // project must turn into a project_members row on acceptance or the
+      // portal opens empty and the invite looks broken.
+      if (
+        (row.role === "guest" || row.role === "client") &&
+        row.invited_project_id
+      ) {
         const { error: projectMemberError } = await admin
           .from("project_members")
           .insert({

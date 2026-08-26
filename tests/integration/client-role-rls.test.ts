@@ -181,6 +181,7 @@ describe.skipIf(!haveCreds)("`client` workspace role — RLS read scope", () => 
 
   afterAll(async () => {
     if (!admin) return;
+    await admin.from("comments").delete().in("task_id", [sharedTaskId, internalTaskId]);
     await admin.from("time_entries").delete().eq("task_id", sharedTaskId);
     await admin.from("task_assignees").delete().eq("task_id", sharedTaskId);
     await admin.from("tasks").delete().in("id", [sharedTaskId, internalTaskId]);
@@ -246,13 +247,28 @@ describe.skipIf(!haveCreds)("`client` workspace role — RLS read scope", () => 
     expect(error?.code).toBe("42501");
   });
 
-  it("cannot comment, even on a task shared with them (deliberate: C7 opens this)", async () => {
+  // C7 deliberately opened this: a client may join the conversation on
+  // work shared with them. The boundary that remains is the internal
+  // thread and unshared tasks, covered in full by
+  // tests/integration/client-comments-rls.test.ts. Kept here as the
+  // narrow "commenting is allowed on a shared task, and only there" pair.
+  it("can comment on a task shared with them", async () => {
     const { error } = await clientSession.from("comments").insert({
       task_id: sharedTaskId,
       user_id: clientUserId,
-      text: "client attempts a comment",
+      text: "client comments on shared work",
+      internal: false,
     });
-    expect(error).not.toBeNull();
+    expect(error).toBeNull();
+  });
+
+  it("cannot comment on a task that is not shared with them", async () => {
+    const { error } = await clientSession.from("comments").insert({
+      task_id: internalTaskId,
+      user_id: clientUserId,
+      text: "client comments on internal work",
+      internal: false,
+    });
     expect(error?.code).toBe("42501");
   });
 

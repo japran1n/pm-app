@@ -215,7 +215,7 @@ async function findAuthUserByEmail(
 export async function inviteMember(
   workspaceId: string,
   email: string,
-  role?: "admin" | "member" | "viewer" | "guest",
+  role?: "admin" | "member" | "viewer" | "guest" | "client",
   projectId?: string,
 ): Promise<InviteMemberResult> {
   const parsed = inviteMemberSchema.safeParse({
@@ -623,7 +623,7 @@ export async function revokeInvite(
 export async function changeMemberRole(
   workspaceId: string,
   targetMembershipId: string,
-  newRole: "member" | "admin" | "viewer" | "guest",
+  newRole: "member" | "admin" | "viewer" | "guest" | "client",
 ): Promise<ChangeMemberRoleResult> {
   const parsed = changeMemberRoleSchema.safeParse({
     workspaceId,
