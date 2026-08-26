@@ -27,8 +27,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { TriangleAlert } from "lucide-react";
+import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { formatDuration } from "@/lib/time/format-duration";
@@ -195,6 +195,70 @@ export function TaskListTable({
   // convention this feature's spec asks for.
   const lastClickedIndexRef = useRef<number | null>(null);
 
+  // F6 (docs, "subtask view kao na ClickUp"): a parent with children
+  // defaults to EXPANDED — children stay visible unless the user
+  // explicitly collapses them, matching AS-275's existing "children are
+  // ordinary visible rows" guarantee (this only adds visual nesting +
+  // an opt-in toggle, it never hides data that was previously shown by
+  // default).
+  //
+  // Grouping happens client-side over the already-flat `tasks` array
+  // rather than as a second query: a child is nested under its parent
+  // ONLY when both are present in this same fetched/filtered set. A
+  // child whose parent got filtered out of view (e.g. a status filter
+  // matched the child but not the parent) simply renders as its own
+  // top-level row — exactly what happened before this feature existed —
+  // rather than the table silently fetching extra rows to force a nest.
+  const [collapsedParentIds, setCollapsedParentIds] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const { orderedRows, childCountByParentId } = useMemo(() => {
+    const presentIds = new Set(tasks.map((task) => task.id));
+    const childrenByParent = new Map<string, TaskCardTask[]>();
+
+    for (const task of tasks) {
+      if (task.parentTaskId && presentIds.has(task.parentTaskId)) {
+        const list = childrenByParent.get(task.parentTaskId) ?? [];
+        list.push(task);
+        childrenByParent.set(task.parentTaskId, list);
+      }
+    }
+
+    const counts = new Map<string, number>();
+    for (const [parentId, children] of childrenByParent) {
+      counts.set(parentId, children.length);
+    }
+
+    const topLevel = tasks.filter(
+      (task) => !task.parentTaskId || !presentIds.has(task.parentTaskId),
+    );
+
+    const rows: Array<{ task: TaskCardTask; isChild: boolean }> = [];
+    for (const task of topLevel) {
+      rows.push({ task, isChild: false });
+      if (!collapsedParentIds.has(task.id)) {
+        for (const child of childrenByParent.get(task.id) ?? []) {
+          rows.push({ task: child, isChild: true });
+        }
+      }
+    }
+
+    return { orderedRows: rows, childCountByParentId: counts };
+  }, [tasks, collapsedParentIds]);
+
+  function toggleParentCollapsed(taskId: string) {
+    setCollapsedParentIds((current) => {
+      const next = new Set(current);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  }
+
   function clearSelection() {
     setSelectedIds(new Set());
   }
@@ -210,7 +274,7 @@ export function TaskListTable({
         // partial-deselection behaviour when the range overlaps an
         // already-selected row.
         for (let i = start; i <= end; i += 1) {
-          const id = tasks[i]?.id;
+          const id = orderedRows[i]?.task.id;
           if (id) next.add(id);
         }
       } else {
@@ -227,9 +291,12 @@ export function TaskListTable({
 
   function toggleSelectAll(checked: boolean) {
     if (checked) {
-      // AS-335: selects exactly `tasks` — the already-filtered set this
-      // component received, never a wider/unfiltered fetch.
-      setSelectedIds(new Set(tasks.map((task) => task.id)));
+      // AS-335: selects exactly the currently VISIBLE rows — the
+      // already-filtered set this component received, minus any child
+      // rows currently collapsed out of view. A collapsed child was never
+      // rendered, so "select all" selecting it too would silently act on
+      // a row the user cannot see or deselect individually.
+      setSelectedIds(new Set(orderedRows.map(({ task }) => task.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -308,7 +375,7 @@ export function TaskListTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tasks.map((task, index) => {
+          {orderedRows.map(({ task, isChild }, index) => {
             const overdue = isOverdue(task.dueDate, task.status, timezone, task.statusCategory);
             const isSelected = selectedIds.has(task.id);
             // F161 (AS-287, AS-288): every resolved assignee for this
@@ -367,7 +434,47 @@ export function TaskListTable({
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {taskKey ?? "—"}
                 </TableCell>
-                <TableCell className="font-medium">{task.title}</TableCell>
+                <TableCell className="font-medium">
+                  <div
+                    className="flex items-center gap-1"
+                    style={isChild ? { paddingLeft: "1.5rem" } : undefined}
+                  >
+                    {childCountByParentId.has(task.id) ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleParentCollapsed(task.id);
+                        }}
+                        aria-label={
+                          collapsedParentIds.has(task.id)
+                            ? `Show subtasks of ${task.title}`
+                            : `Hide subtasks of ${task.title}`
+                        }
+                        aria-expanded={!collapsedParentIds.has(task.id)}
+                        className="hover-surface -ml-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground"
+                      >
+                        {collapsedParentIds.has(task.id) ? (
+                          <ChevronRight className="size-3.5" aria-hidden="true" />
+                        ) : (
+                          <ChevronDown className="size-3.5" aria-hidden="true" />
+                        )}
+                      </button>
+                    ) : (
+                      // Reserves the chevron's width so a leaf row's title
+                      // still aligns with a parent row's title above/below
+                      // it, rather than every non-parent row's text
+                      // shifting left by the chevron's width.
+                      <span aria-hidden="true" className="size-5 shrink-0" />
+                    )}
+                    <span>{task.title}</span>
+                    {childCountByParentId.has(task.id) && (
+                      <span className="text-xs text-muted-foreground">
+                        {childCountByParentId.get(task.id)}
+                      </span>
+                    )}
+                  </div>
+                </TableCell>
                 {/* stopPropagation: interacting with the status dropdown
                     should change the status, not also open the detail
                     sheet underneath it. */}

@@ -121,6 +121,18 @@ export type TaskCardTask = {
   // as its own flat row; this field only ever ADDS an indicator to a
   // card that's already there, it never removes or nests one.
   subtaskCount?: number;
+  // F6 (docs, "subtask view kao na ClickUp"): this task's parent, when it
+  // has one AND the caller's query selected it (today: the List view
+  // only — see lib/queries/tasks.ts's getProjectListTasks). Used purely
+  // for CLIENT-SIDE presentation grouping (nesting a child directly under
+  // its parent row, toggleable) — it does not change what the query
+  // returns or remove a child from the flat array AS-275 already
+  // guarantees every row of. A child whose parent is not present in the
+  // SAME fetched/filtered set (e.g. a filter matched the child but not
+  // the parent) simply renders as its own top-level row, exactly like
+  // today — this is a presentation layer, not a second copy of the
+  // parent/child relationship the DB already owns.
+  parentTaskId?: string | null;
   // F157 (AS-283): how many OPEN blockers (blocking tasks whose own
   // status isn't "done") this task currently has, if any. Selected via
   // the board query's own single project-scoped query

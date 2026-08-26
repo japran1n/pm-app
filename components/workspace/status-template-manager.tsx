@@ -12,6 +12,7 @@
 // independently re-checks `requireWorkspaceAdmin` server-side (AS-573).
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -334,10 +335,6 @@ function TemplateCard({
           disabled={isPending}
           className="w-fit"
           onClick={() => {
-            const lastPosition =
-              template.items.length > 0
-                ? Math.max(...template.items.map((item) => item.position))
-                : 0;
             startTransition(async () => {
               const result = await addTemplateItem({
                 templateId: template.id,
@@ -372,28 +369,45 @@ export function StatusTemplateManager({
 }) {
   const [isPending, startTransition] = useTransition();
   const [newTemplateName, setNewTemplateName] = useState("");
+  // F428: local state, refreshed via router.refresh() after every mutation
+  // below — `revalidatePath` inside the Server Action only marks the route
+  // segment stale, it does not re-render THIS already-mounted Client
+  // Component's props on its own. `router.refresh()` is what actually
+  // re-runs the parent Server Component and streams new props down, same
+  // convention every other settings panel in this codebase relies on.
+  // F428: adjusted DURING render on prop change, not via a synchronous
+  // setState-in-effect (react-hooks/set-state-in-effect) — same convention
+  // components/task/comment-list.tsx's `syncedMentionTaskId` pattern uses.
+  // `router.refresh()` re-renders the Server Component parent with fresh
+  // `initialTemplates`; this component's own edits (rename, add/remove
+  // item, reorder) are reflected the instant that new prop value arrives,
+  // with no extra effect/render pass in between.
+  const [templates, setTemplates] = useState(initialTemplates);
+  const [syncedTemplates, setSyncedTemplates] = useState(initialTemplates);
+  if (initialTemplates !== syncedTemplates) {
+    setSyncedTemplates(initialTemplates);
+    setTemplates(initialTemplates);
+  }
+  const router = useRouter();
 
-  // F428: this component intentionally does not hold its own copy of
-  // `initialTemplates` re-fetched client-side — every mutation below
-  // calls `router.refresh()`-equivalent via the server action's own
-  // `revalidatePath`, which re-renders the parent Server Component with
-  // fresh data. `onChanged` here is a no-op placeholder callback signature
-  // kept for the child components above; Next's revalidation is what
-  // actually refreshes the list.
+  function refresh() {
+    router.refresh();
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-4">
-        {initialTemplates.map((template) => (
+        {templates.map((template) => (
           <TemplateCard
             key={template.id}
             template={template}
             canManage={canManage}
-            onChanged={() => {}}
+            onChanged={refresh}
           />
         ))}
       </div>
 
-      {initialTemplates.length === 0 && (
+      {templates.length === 0 && (
         <p className="text-sm text-muted-foreground">
           No status templates yet.
           {canManage && " Create one below to reuse a set of columns across projects."}
@@ -423,6 +437,7 @@ export function StatusTemplateManager({
                   return;
                 }
                 setNewTemplateName("");
+                refresh();
               });
             }}
           >

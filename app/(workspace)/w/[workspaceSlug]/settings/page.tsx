@@ -98,6 +98,12 @@ export default async function WorkspaceSettingsPage({
         >
           Members
         </Link>
+        <Link
+          href={`/w/${workspaceSlug}/settings/status-templates`}
+          className="px-1 pb-2 text-muted-foreground hover:text-foreground"
+        >
+          Status templates
+        </Link>
       </nav>
 
       <section className="flex flex-col gap-4">

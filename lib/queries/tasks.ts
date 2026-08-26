@@ -305,7 +305,12 @@ export async function getProjectListTasks(
       // falling back to the literal `status === "done"` comparison for
       // every row — same rationale as `estimate_minutes`/`recurrence`
       // above.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects(key), task_assignees(user_id), project_statuses(category)",
+      // F6 (docs, "subtask view kao na ClickUp"): `parent_task_id` added
+      // so the list view can nest a child directly under its parent row
+      // client-side — see TaskCardTask.parentTaskId's own comment for why
+      // this is presentation-only and does not remove anything from this
+      // already-flat query (AS-275).
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, projects(key), task_assignees(user_id), project_statuses(category)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -387,6 +392,9 @@ export async function getProjectListTasks(
     assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
     // F179 follow-up (AS-317): see this function's select above.
     recurrence: task.recurrence as RecurrenceRule | null,
+    // F6: see this function's select above and TaskCardTask.parentTaskId's
+    // own comment.
+    parentTaskId: task.parent_task_id,
   }));
 }
 

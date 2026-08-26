@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { signOut } from "@/lib/actions/auth";
 import { canViewClientPortal } from "@/lib/auth/permissions";
+import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
@@ -51,7 +52,7 @@ export default async function PortalLayout({
   // confirms the workspace exists.
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, name, slug")
+    .select("id, name, slug, logo_url")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
@@ -75,14 +76,27 @@ export default async function PortalLayout({
     <div className="flex min-h-svh flex-col">
       <header className="border-b border-border">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-4">
+          {/* F5 (docs, "brendiranje portala"): reuses the same
+              WorkspaceLogo the team app's own switcher already renders —
+              a client sees the SAME logo the team uploaded, never a
+              second upload path or a separate "portal branding" setting
+              to keep in sync. */}
           <Link
             href={`/portal/${workspace.slug}`}
-            className="flex flex-col gap-0.5"
+            className="flex items-center gap-2.5"
           >
-            <span className="text-sm font-semibold tracking-tight">
-              {workspace.name}
+            <WorkspaceLogo
+              workspaceId={workspace.id}
+              name={workspace.name}
+              logoUrl={workspace.logo_url}
+              size="sm"
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold tracking-tight">
+                {workspace.name}
+              </span>
+              <span className="text-xs text-muted-foreground">Client portal</span>
             </span>
-            <span className="text-xs text-muted-foreground">Client portal</span>
           </Link>
 
           <div className="flex items-center gap-2">
