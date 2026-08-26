@@ -24,6 +24,8 @@ import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MyTaskStatusCell } from "@/components/task/my-task-status-cell";
+import { PersonalTodoList } from "@/components/my-tasks/personal-todo-list";
+import { getPersonalTodos } from "@/lib/queries/personal-todos";
 import type { TaskCardTask } from "@/components/task/task-card";
 
 const BUCKET_ORDER: { key: keyof MyTasksBuckets; label: string }[] = [
@@ -76,7 +78,14 @@ export default async function MyTasksPage({
   // bucketing (AS-436) depends on it -- same "resolve once, thread down"
   // convention the project List page follows for its own timezone prop.
   const timezone = await getCurrentUserTimezone(supabase);
-  const realBuckets = await getMyTasks(workspace.id, user.id, timezone, includeWatched);
+  const [realBuckets, personalTodos] = await Promise.all([
+    getMyTasks(workspace.id, user.id, timezone, includeWatched),
+    // F416-F418: fetched alongside the task buckets, not as a second
+    // client round trip -- same "everything this page needs, in one
+    // server render" convention as every other independent-fetches batch
+    // in this codebase.
+    getPersonalTodos(workspace.id),
+  ]);
 
   const totalCount = BUCKET_ORDER.reduce(
     (sum, { key }) => sum + realBuckets[key].length,
@@ -114,6 +123,7 @@ export default async function MyTasksPage({
     return (
       <div className="flex flex-col gap-4">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
+        <PersonalTodoList workspaceId={workspace.id} initialTodos={personalTodos} />
         {/* F231 (AS-440): a purposeful empty state with a primary action,
             not a dead end -- links to Projects so the caller can go find
             work to pick up, per the shared empty-state convention
@@ -161,6 +171,7 @@ export default async function MyTasksPage({
           }
         />
       </div>
+      <PersonalTodoList workspaceId={workspace.id} initialTodos={personalTodos} />
       {BUCKET_ORDER.map(({ key, label }) => {
         const rows = realBuckets[key];
         if (rows.length === 0) return null;
