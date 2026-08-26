@@ -262,6 +262,12 @@ notifications, timezone) exists. No feature work beyond identity.
 - F271 readme-docs-v2 — AS-529 [CLARIFIED-AUTO] [COMPLETE]
 - F272 e2e-suite-v2 — AS-530 [CLARIFIED-AUTO] [COMPLETE]
 
+### M18 scrutiny follow-ups (2026-08-25, from missions/20260818-213033/milestones/M18-scrutiny.md pass 1, blockers)
+
+- F337 m18-scrutiny-header-search-keyboard-operability — fixes AS-523 [CLARIFIED-AUTO]
+- F338 m18-scrutiny-priority-colour-only-indicators — fixes AS-525, AS-526 [CLARIFIED-AUTO]
+- F339 m18-scrutiny-fix-mention-comment-500 — fixes AS-530 (real product bug: addComment 500s on any comment containing a mention node) [CLARIFIED-AUTO]
+
 ## M19 — QA feedback browser extension
 
 A second deployable: a Chrome MV3 extension that turns "this looks wrong" into a real pm-app
