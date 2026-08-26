@@ -8,8 +8,10 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-plex-mono);
   --font-heading: var(--font-sans);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,72 +51,97 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.546 0.215 262.881);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.014 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.546 0.215 262.881);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Good Guys 3.0 design system — Figma "💠 Colors" style-guide page.
+     The palette is deliberately eight tokens: two darks, three lights and a
+     single blue accent. Everything below maps a shadcn role onto one of
+     them, so the app inherits the brand without any component knowing the
+     hex values. Raw values are kept as hex/rgb (not oklch) so a designer can
+     diff this file against the Figma swatches directly. */
+  --gg-dark-900: #010101;
+  --gg-dark-800: #0a0a0a;
+  --gg-light-100: #ffffff;
+  --gg-light-200: #f0f0ef;
+  --gg-brand-500: #3670e1;
+
+  --background: var(--gg-light-100);
+  --foreground: var(--gg-dark-900);
+  --card: var(--gg-light-100);
+  --card-foreground: var(--gg-dark-900);
+  --popover: var(--gg-light-100);
+  --popover-foreground: var(--gg-dark-900);
+  /* Figma's primary button is Style=Primary, Color=Dark: dark-900 fill,
+     light-100 label. The blue is an accent (ring/links/charts), never the
+     default button fill. */
+  --primary: var(--gg-dark-900);
+  --primary-foreground: var(--gg-light-100);
+  --secondary: var(--gg-light-200);
+  --secondary-foreground: var(--gg-dark-900);
+  --muted: var(--gg-light-200);
+  --muted-foreground: rgb(1 1 1 / 0.6); /* dark-900-o60 */
+  --accent: var(--gg-light-200);
+  --accent-foreground: var(--gg-dark-900);
+  --brand: var(--gg-brand-500);
+  --brand-foreground: var(--gg-light-100);
+  --destructive: oklch(
+    0.577 0.245 27.325
+  ); /* not in the Figma palette; kept from the shadcn base */
+  --border: rgb(1 1 1 / 0.1); /* dark-900-o10 */
+  --input: rgb(1 1 1 / 0.1);
+  --ring: var(--gg-brand-500);
+  --chart-1: var(--gg-brand-500);
+  --chart-2: rgb(1 1 1 / 0.6);
+  --chart-3: rgb(1 1 1 / 0.4);
+  --chart-4: rgb(1 1 1 / 0.25);
+  --chart-5: rgb(1 1 1 / 0.1);
+  /* Figma buttons and tags are rounded-[2px]; the whole system is that sharp. */
+  --radius: 0.125rem;
+  --sidebar: var(--gg-light-200);
+  --sidebar-foreground: var(--gg-dark-900);
+  --sidebar-primary: var(--gg-dark-900);
+  --sidebar-primary-foreground: var(--gg-light-100);
+  --sidebar-accent: var(--gg-light-100);
+  --sidebar-accent-foreground: var(--gg-dark-900);
+  --sidebar-border: rgb(1 1 1 / 0.1);
+  --sidebar-ring: var(--gg-brand-500);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  /* Mirror of :root using the Figma "Color=Light" button treatment: the
+     surface goes dark-900, panels lift to dark-800, and the o60/o10 alpha
+     tokens flip to light-100 alphas. */
+  --background: var(--gg-dark-900);
+  --foreground: var(--gg-light-100);
+  --card: var(--gg-dark-800);
+  --card-foreground: var(--gg-light-100);
+  --popover: var(--gg-dark-800);
+  --popover-foreground: var(--gg-light-100);
+  --primary: var(--gg-light-100);
+  --primary-foreground: var(--gg-dark-900);
+  --secondary: var(--gg-dark-800);
+  --secondary-foreground: var(--gg-light-100);
+  --muted: var(--gg-dark-800);
+  --muted-foreground: rgb(255 255 255 / 0.6); /* light-100-o60 */
+  --accent: var(--gg-dark-800);
+  --accent-foreground: var(--gg-light-100);
+  --brand: var(--gg-brand-500);
+  --brand-foreground: var(--gg-light-100);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.15);
+  --ring: var(--gg-brand-500);
+  --chart-1: var(--gg-brand-500);
+  --chart-2: rgb(255 255 255 / 0.6);
+  --chart-3: rgb(255 255 255 / 0.4);
+  --chart-4: rgb(255 255 255 / 0.25);
+  --chart-5: rgb(255 255 255 / 0.12);
+  --sidebar: var(--gg-dark-800);
+  --sidebar-foreground: var(--gg-light-100);
+  --sidebar-primary: var(--gg-light-100);
+  --sidebar-primary-foreground: var(--gg-dark-900);
+  --sidebar-accent: var(--gg-dark-900);
+  --sidebar-accent-foreground: var(--gg-light-100);
+  --sidebar-border: rgb(255 255 255 / 0.1);
+  --sidebar-ring: var(--gg-brand-500);
 }
 
 @layer base {
@@ -126,6 +153,75 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Good Guys 3.0 type scale — Figma "💠 Typography" style-guide page.
+   Each step ships its Desktop size with the Mobile size as the base value,
+   so a heading picks up the right size without a per-usage breakpoint. The
+   mono steps (link-text / tag-text) are the only uppercase ones in the
+   system; that is what makes buttons and tags read as brand furniture
+   rather than as chrome. */
+@layer components {
+  .text-display {
+    font-size: 2.75rem; /* 44px mobile */
+    line-height: 1.12;
+  }
+  .text-h1 {
+    font-size: 2.25rem; /* 36px mobile */
+    line-height: 1.12;
+  }
+  .text-h2 {
+    font-size: 1.75rem; /* 28px mobile */
+    line-height: 1.2;
+  }
+  .text-h3 {
+    font-size: 1.375rem; /* 22px mobile */
+    line-height: 1.2;
+  }
+  .text-h4 {
+    font-size: 1.125rem; /* 18px mobile */
+    line-height: 1.28;
+  }
+  .text-main {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+  .text-small {
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+  .text-link {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.875rem;
+    line-height: 1.3;
+    text-transform: uppercase;
+  }
+  .text-tag {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    text-transform: uppercase;
+  }
+
+  @media (width >= 48rem) {
+    .text-display {
+      font-size: 5rem; /* 80px desktop */
+    }
+    .text-h1 {
+      font-size: 3.25rem; /* 52px */
+    }
+    .text-h2 {
+      font-size: 2.25rem; /* 36px */
+      line-height: 1.12;
+    }
+    .text-h3 {
+      font-size: 1.625rem; /* 26px */
+      line-height: 1.16;
+    }
+    .text-h4 {
+      font-size: 1.25rem; /* 20px */
+    }
   }
 }
 
@@ -157,7 +253,10 @@
   user-select: none;
 }
 
-.prose :where(ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div) {
+.prose
+  :where(
+    ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div
+  ) {
   color: var(--muted-foreground);
   text-decoration: line-through;
 }
