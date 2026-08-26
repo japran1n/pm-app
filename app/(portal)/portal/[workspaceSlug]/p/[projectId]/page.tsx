@@ -63,7 +63,7 @@ export default async function PortalProjectPage({
         <ProjectProgress project={project} />
       </div>
 
-      <PortalTaskList project={project} />
+      <PortalTaskList project={project} workspaceSlug={workspace.slug} />
     </div>
   );
 }

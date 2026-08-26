@@ -68,6 +68,7 @@ import {
   toPlainJson,
 } from "@/lib/comments/rich-text";
 import { Button } from "@/components/ui/button";
+import { useMembership } from "@/components/auth/membership-provider";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -657,6 +658,12 @@ export function CommentList({
     setPasteUploadJobs((previous) => previous.filter((job) => job.id !== jobId));
   }
 
+  // C7: whether the next comment goes to the client as well as the team.
+  // Defaults to off, matching the server's own default — see addComment's
+  // `internal` parameter for why the safe direction is team-only.
+  const [shareWithClient, setShareWithClient] = useState(false);
+  const workspaceHasClient = useMembership()?.hasClient ?? false;
+
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     if (!draftPlainText) return;
@@ -679,10 +686,16 @@ export function CommentList({
         taskId,
         draftPlainText,
         toPlainJson(draft),
+        // C7: internal is the inverse of the "send to client" choice, and
+        // that choice resets after every post. Someone answering the
+        // client once should not silently keep broadcasting the rest of
+        // the thread to them.
+        !shareWithClient,
       );
       if (result.ok) {
         setLocalComments((previous) => [...previous, result.data]);
         setDraft(null);
+        setShareWithClient(false);
       } else {
         toast.error(result.error);
       }
@@ -931,6 +944,23 @@ export function CommentList({
               setDraft(docFromPlainText(changeEvent.target.value))
             }
           />
+        )}
+        {/* C7: only shown where there is a client to send to, and only
+            to someone who may post at all. Its label states the effect on
+            the reader rather than the column name — "internal" is our
+            word, "the client will see this" is what the writer needs to
+            know before hitting send. */}
+        {workspaceHasClient && canPost && (
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={shareWithClient}
+              onChange={(event) => setShareWithClient(event.target.checked)}
+              disabled={isSubmitting}
+              className="size-4 rounded border-input"
+            />
+            Also send to the client
+          </label>
         )}
         <Button
           type="submit"

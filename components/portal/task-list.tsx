@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type {
   PortalProject,
   PortalTask,
@@ -54,7 +56,13 @@ function groupTasks(project: PortalProject): TaskGroup[] {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-export function PortalTaskList({ project }: { project: PortalProject }) {
+export function PortalTaskList({
+  project,
+  workspaceSlug,
+}: {
+  project: PortalProject;
+  workspaceSlug: string;
+}) {
   const groups = groupTasks(project);
   const today = todayIso();
 
@@ -87,22 +95,24 @@ export function PortalTaskList({ project }: { project: PortalProject }) {
                 task.category !== "done" && task.dueDate && task.dueDate < today,
               );
               return (
-                <li
-                  key={task.id}
-                  className="flex items-center justify-between gap-4 px-4 py-3"
-                >
-                  <span className="text-sm">{task.title}</span>
-                  {task.dueDate && (
-                    <span
-                      className={
-                        overdue
-                          ? "shrink-0 text-xs font-medium text-destructive"
-                          : "shrink-0 text-xs text-muted-foreground"
-                      }
-                    >
-                      {formatDate(task.dueDate)}
-                    </span>
-                  )}
+                <li key={task.id}>
+                  <Link
+                    href={`/portal/${workspaceSlug}/t/${task.id}`}
+                    className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/40"
+                  >
+                    <span className="text-sm">{task.title}</span>
+                    {task.dueDate && (
+                      <span
+                        className={
+                          overdue
+                            ? "shrink-0 text-xs font-medium text-destructive"
+                            : "shrink-0 text-xs text-muted-foreground"
+                        }
+                      >
+                        {formatDate(task.dueDate)}
+                      </span>
+                    )}
+                  </Link>
                 </li>
               );
             })}

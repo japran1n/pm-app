@@ -28,7 +28,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canWrite, isClient, type WorkspaceRole } from "@/lib/auth/permissions";
 import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
@@ -84,6 +84,11 @@ export async function addComment(
   taskId: string,
   text: string,
   bodyJson?: JSONContent | null,
+  // C7: whether this comment is team-only. Deliberately defaults to
+  // INTERNAL for team members (see below) — a comment that reaches an
+  // outside party by accident cannot be unsent. Ignored for a client
+  // caller, whose comments are never internal.
+  internal?: boolean,
 ): Promise<AddCommentResult> {
   const parsed = addCommentSchema.safeParse({ taskId, text });
 
@@ -136,7 +141,7 @@ export async function addComment(
   // convention.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
+    .select("id, project_id, deleted_at, client_visible, projects(workspace_id, visibility)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -173,15 +178,33 @@ export async function addComment(
     };
   }
 
+  // C7: a client may comment, but only on a task actually shared with
+  // them, and only as a non-internal comment. This is checked here as well
+  // as in RLS because this action inserts with the admin client (see the
+  // insert below), so the policy alone would not gate this path.
+  const callerIsClient = isClient({ role: membership.role });
+
+  if (callerIsClient && !taskRow.client_visible) {
+    // Same message a genuinely missing task gets: whether an internal task
+    // exists is not a client's business.
+    return { ok: false, error: "Task not found." };
+  }
+
   // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
   // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
   // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
+  if (!callerIsClient && !canWrite({ role: membership.role })) {
     return {
       ok: false,
       error: "Viewers don't have permission to comment.",
     };
   }
+
+  // The default that matters: a team comment is internal unless someone
+  // said otherwise, a client's comment never is. Existing callers pass
+  // nothing, so every comment the team writes today stays team-only —
+  // which is what the pre-client behaviour effectively was.
+  const isInternal = callerIsClient ? false : (internal ?? true);
 
   // F323 (AS-227, AS-228, AS-229): the caller must be able to SEE this
   // task's project themselves, not just be an active workspace member —
@@ -252,6 +275,7 @@ export async function addComment(
       text: finalProjectedText,
       body_json: mentionSafeBodyJson,
       body_text: finalProjectedText,
+      internal: isInternal,
     })
     .select("id, task_id, user_id, text, body_json, created_at")
     .single();

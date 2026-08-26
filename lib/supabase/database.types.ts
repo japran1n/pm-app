@@ -344,6 +344,7 @@ export type Database = {
           deleted_by: string | null
           edited_at: string | null
           id: string
+          internal: boolean
           task_id: string
           text: string
           user_id: string
@@ -356,6 +357,7 @@ export type Database = {
           deleted_by?: string | null
           edited_at?: string | null
           id?: string
+          internal?: boolean
           task_id: string
           text: string
           user_id: string
@@ -368,6 +370,7 @@ export type Database = {
           deleted_by?: string | null
           edited_at?: string | null
           id?: string
+          internal?: boolean
           task_id?: string
           text?: string
           user_id?: string
