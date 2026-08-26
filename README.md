@@ -240,9 +240,9 @@ CLI).
 ## Browser extension (QA feedback capture)
 
 `extension/` is a separate Manifest V3 Chrome extension ("PM-App QA
-Feedback") that lets a signed-in teammate capture a screenshot, a picked
-page element, and/or recent console/network activity from any page and file
-it as a pm-app task without leaving that page.
+Feedback") that lets a signed-in teammate capture a screenshot and/or a
+picked page element from any page and file it as a pm-app task without
+leaving that page.
 
 ### Building it
 
@@ -349,6 +349,6 @@ F118 onward) added, on top of that baseline:
 - **Polish**: consistent empty states, first-run onboarding, loading
   skeletons, and error boundaries.
 - **Tooling**: a QA feedback browser extension (M19) for filing tasks
-  with screenshots/console/network context directly from any page.
+  with screenshots and page-element context directly from any page.
 - Two new `pg_cron` scheduled jobs (recurrence generation, overdue-task
   notification sweep) — see [Scheduled jobs](#scheduled-jobs-pg_cron).
