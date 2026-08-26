@@ -659,3 +659,278 @@ Distinct failure signatures observed across the 12: `toBeVisible` element-not-fo
 `toHaveValue` element-not-found (2), `toHaveCount` mismatch (2), `toBe` equality (1),
 `not.toBeNull` (1), and one `page.waitForTimeout` 30s test timeout. Full untruncated log
 retained at the run's `test-results/` directory (traces and screenshots per failure).
+
+---
+
+## Pass 2 (blockers-only re-check)
+
+**Date:** 2026-08-26 · **Scope:** narrow — verify the four pass-1 blocker fixes
+are genuinely correct and introduced no NEW regression. Pass-1 majors/minors
+(MAJ-1, MAJ-2, MAJ-4..MAJ-8, all MIN-items) deliberately NOT re-litigated, per
+the mission's scrutiny-cycle cap. **This is the final pass for M18.**
+
+### Verdict
+
+**No new blockers. M18 scrutiny CLOSED.**
+
+All four pass-1 blocker fixes verified against current source (not commit
+messages). One pre-existing, non-regression gap of the same defect class as
+BLOCKER-4 was found and is recorded below as a recommended follow-up feature,
+not as a re-opening of M18.
+
+### Per-fix verification
+
+| Fix | Assertion | Result | Finding |
+|---|---|---|---|
+| F337 (`4cbfdfb`) header-search keyboard-operability | AS-523 | **PASS** | Correct, no regression |
+| F338 (`f1b68fd`) priority label + contrast | AS-525, AS-526 | **PASS** | Correct, no regression |
+| F339 (`270a073`) `toPlainJson` at Server Action boundary | AS-530 | **PASS** | Correct for comments; description path gap flagged |
+| BLOCKER-3 DB purge (orchestrator) | AS-530 | **PASS** | DB healthy post-purge |
+
+#### F337 — checked for the `onMouseDown` + `onClick` double-selection regression
+
+`components/nav/header-search.tsx` `ResultRow` now carries both
+`onMouseDown` (which calls `event.preventDefault()` then `onSelect()`) and
+`onClick={onSelect}`. `preventDefault()` on `mousedown` suppresses focus
+transfer, **not** the subsequent `click`, so a double-invocation is
+theoretically reachable.
+
+Traced what a second invocation would actually do:
+
+```
+onSelect -> navigate(path) -> clearAndClose(); router.push(path)
+```
+
+`clearAndClose()` is fully idempotent (bumps a request id, clears a timer,
+resets five pieces of state to constants). `router.push(path)` with the
+identical path is idempotent navigation. There is no destructive or
+accumulating callback on this path — no mutation, no counter, no append.
+
+Furthermore, in a real browser the second call is unlikely to fire at all:
+`clearAndClose()` sets `dropdownOpen=false` and `query=""`, so
+`showDropdown` goes false and the `ResultRow` unmounts during the discrete
+`mousedown` flush, before `mouseup`/`click`. React's handler is detached with
+the node.
+
+**Conclusion: benign. Not a blocker, not a major.** Logged as an observation
+only: no test asserts `push` is called exactly once for a full
+pointerdown→click sequence, so the idempotence is currently guaranteed by
+`navigate`'s shape rather than by a guard. If `onSelect` ever grows a
+non-idempotent side effect, this becomes a real bug. (Recorded as an
+observation, not a required follow-up.)
+
+`tabIndex={-1}` is correct for the `aria-activedescendant` combobox pattern
+this component implements — DOM focus stays on the input, options are
+virtually focused. Consistent with the existing `role="option"` /
+`aria-selected` wiring.
+
+#### F338 — checked for hue-collision and cross-surface contrast regressions
+
+Changed constants in `lib/task-colors.ts`:
+
+- `STATUS_COLORS.in_review`: `#d97706` (amber-600) → `#b45309` (amber-700)
+- `STATUS_COLORS.done`: `#16a34a` (green-600) → `#15803d` (green-700)
+- New map `PRIORITY_TEXT_ON_COLOR` (added, nothing overwritten)
+
+Distinguishability: the four status colours are now slate `#64748b`, blue
+`#3b82f6`, amber-700 `#b45309`, green-700 `#15803d` — four clearly separated
+hue families (neutral / blue / orange-brown / green). No two are confusable.
+`PRIORITY_COLORS` itself was **not** changed by F338 (only a companion text
+map was added), so there is no possibility of a priority-hue collision
+introduced here.
+
+Cross-surface regression check: `STATUS_COLORS` is shared across
+`task-card.tsx`, `subtask-list.tsx`, `dependencies.tsx`,
+`bulk-status-action.tsx` and `search/page.tsx`, all of which render the dot
+inside `<Badge variant="secondary">`. Darkening a swatch can only *improve*
+contrast on the light surface; the risk is the dark surface. The re-pointed
+tests (`tests/unit/task-colors-contrast.test.ts`,
+`tests/unit/project-nav-dot-contrast.test.ts`) now measure against the real
+`--secondary` / `--sidebar-accent` backgrounds in both themes and pass. **No
+previously-passing contrast test regressed** — the full unit suite is green
+(1339/1339).
+
+Noted for the record (not a blocker): the dark-theme margins on the two new
+status colours are extremely thin — amber-700 at 3.01:1 and green-700 at
+3.02:1 against a 3:1 threshold. Any future tweak to the dark `--secondary`
+token will flip these to failing. The tests will catch it, which is why this
+is an observation rather than a finding.
+
+#### F339 — verified the fix, and checked comprehensiveness + JSON-safety
+
+The fix itself is real and correctly placed. `toPlainJson`
+(`lib/comments/rich-text.ts:143`) is applied at both Server Action call sites
+in `components/task/comment-list.tsx` — line 466 (`editComment`) and line 681
+(`addComment`) — i.e. at the client→server boundary, which is the correct
+layer for a React Flight argument-encoding defect. Verified live: the
+rewritten `tests/e2e/f272-two-context-notifications.spec.ts` (which now
+submits through the real "Post" button rather than an admin-client
+workaround) **passes**, and the server log shows `addComment` returning 200
+with the mention notification fanned out. The integration guard
+`tests/integration/f339-add-comment-mention-regression.test.ts` passes (2/2).
+
+**JSON round-trip safety — checked, no problem.** `JSON.stringify` silently
+drops `undefined`/function/symbol values and coerces `undefined` array
+elements to `null`. Tiptap's `JSONContent` tree, as produced by
+`editor.getJSON()` (which is `state.doc.toJSON()`), only ever contains
+strings, numbers, booleans, `null`, plain objects and arrays — ProseMirror
+serialises absent attrs as omitted keys or `null`, never `undefined`, and
+never emits functions/symbols. The structure is acyclic, so no
+`TypeError: Converting circular structure`. Document size is bounded by the
+comment-body DB constraint, so the stringify cost is negligible. No issue.
+
+**Gap found (NOT a regression — pre-dates F339): the task DESCRIPTION path
+has the identical unfixed pattern.**
+
+Task descriptions support `@`-mentions (F205 / AS-378 —
+`task-detail-sheet.tsx` wires `descriptionMentionSuggestions` from the same
+`getMentionCandidates` action the comment composer uses). The save path is:
+
+- `components/editor/rich-text-editor.tsx:584-586` —
+  `onUpdate: ({ editor: updatedEditor }) => { onChange?.(updatedEditor.getJSON()) }`
+  — the raw, un-cloned `getJSON()` object, with live-document `attrs`
+  references intact (ProseMirror's `toJSON()` assigns `attrs` by reference).
+- `components/task/task-detail-sheet.tsx:1461` —
+  `<RichTextEditor ... onChange={setDescriptionJson}` — stored verbatim in
+  React state.
+- `components/task/task-detail-sheet.tsx:709-716` —
+  ```ts
+  const next = descriptionJson ?? null;
+  if (JSON.stringify(previous) === JSON.stringify(next)) return;   // dirty-check only, result discarded
+  const result = await editTask(task.id, { descriptionJson: next }); // <-- LIVE object crosses the boundary
+  ```
+
+`toPlainJson` is not imported in `task-detail-sheet.tsx` at all. This is
+structurally the exact scenario F339's own doc comment describes as the root
+cause of the comment 500s, on a field that also supports mentions. Note that
+`sanitiseDocument` — which *does* rebuild `attrs` into fresh object literals,
+including a mention-specific branch at
+`rich-text-editor.tsx:809-812` — runs only on the read/display path
+(`RichTextRenderer`), never on the editor's outbound `onChange`, so it does
+not incidentally protect this path.
+
+This is untested at the boundary: no e2e spec exercises description editing
+with a mention through the real UI (`grep` over `tests/e2e` finds `mention`
+only in the F272 spec), and the integration test
+`tests/integration/edit-task-description-mentions.test.ts` calls `editTask`
+directly with plain literal objects — it can never reproduce a Flight
+encoding defect, so it passes today regardless.
+
+Because this defect pre-dates the pass-1 fixes and is not a regression caused
+by them, and because M18 is capped at this pass, it is recorded as a
+**recommended follow-up feature** below rather than as a new M18 blocker.
+
+#### BLOCKER-3 — post-purge database health
+
+Verified the mass workspace deletion left no orphaned references or broken
+foreign keys, by exercising the live schema through real action code paths:
+`create-workspace-owner`, `create-project`, `create-task`, `assign-task`,
+`add-comment`, `edit-task-description-mentions`, `delete-workspace` and
+`dashboard-rls-cross-workspace` — **8 files, 39 tests, all passing** against
+the now-21-workspace database. RLS cross-workspace isolation still holds.
+`npx next build` completes and renders the full route tree.
+
+Residual e2e flakiness confirmed as still present but load-dependent, exactly
+as documented: the first run of
+`tests/e2e/f272-two-context-notifications.spec.ts` failed both specs on
+timeouts (server log shows a 22.4s `proxy.ts` auth round-trip on the first
+POST — pure latency, all Server Actions returning 200); an immediate re-run
+passed 2/2 in 46.5s. This matches the known infra condition and is not a code
+defect. Not chased further, per the mission's flakiness discipline.
+
+### Recommended follow-up features
+
+**FU-M18P2-1 — Apply the Server Action boundary clone to the task description
+save path (and any other rich-text→Server-Action call site).** The task
+description editor supports `@`-mentions but passes the live
+`editor.getJSON()` object straight to `editTask({ descriptionJson })` without
+the `toPlainJson` round-trip that F339 added to the comment composer, leaving
+it exposed to the identical React Flight "temporary client reference"
+encoding failure that caused `addComment` to 500 on every mention-bearing
+comment. The fix should apply `toPlainJson` (from `lib/comments/rich-text.ts`)
+at `components/task/task-detail-sheet.tsx`'s description save site, and
+should additionally consider moving the clone *into*
+`components/editor/rich-text-editor.tsx`'s `onUpdate` so that
+`onChange` structurally cannot emit a live-document reference to any consumer
+— which would immunise every present and future call site rather than
+requiring each one to remember. The work must include a real end-to-end guard:
+an e2e spec that edits a task description containing an `@`-mention through
+the actual UI and asserts a 200 plus a persisted description and a delivered
+mention notification. The existing integration test
+`tests/integration/edit-task-description-mentions.test.ts` is explicitly
+insufficient for this, since it invokes `editTask` with plain object literals
+and therefore cannot exercise the client→server encoding boundary where the
+defect lives.
+
+### Toolchain output (pass 2)
+
+```
+$ npx tsc --noEmit
+(clean — no output, exit 0)
+```
+
+```
+$ npx eslint .
+
+/Users/sasajapranin/Desktop/pm-app/lib/queries/search.ts
+  280:27  warning  '_titleMatches' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/sasajapranin/Desktop/pm-app/tests/unit/invite-member-pagination.test.ts
+  186:22  warning  '_columns' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/sasajapranin/Desktop/pm-app/tests/unit/palette-actions-recents.test.tsx
+  55:36  warning  '_workspaceId' is defined but never used  @typescript-eslint/no-unused-vars
+  55:58  warning  '_query' is defined but never used        @typescript-eslint/no-unused-vars
+  74:41  warning  '_workspaceId' is defined but never used  @typescript-eslint/no-unused-vars
+  74:63  warning  '_pointers' is defined but never used     @typescript-eslint/no-unused-vars
+
+✖ 6 problems (0 errors, 6 warnings)
+```
+
+```
+$ npx vitest run tests/unit
+
+ Test Files  168 passed (168)
+      Tests  1339 passed (1339)
+     Errors  1 error          <- non-fatal jsdom-only next/headers cookies() warning
+                                 surfacing from getMentionCandidates during
+                                 user-avatar.test.tsx; suite still green
+   Duration  32.73s
+```
+
+```
+$ npx next build
+(succeeds; full route tree rendered — ƒ dynamic routes for /w/[workspaceSlug]/**,
+ Proxy (Middleware) present, no build errors)
+```
+
+```
+$ npx playwright test tests/e2e/f272-two-context-notifications.spec.ts
+
+run 1:  2 failed   <- both timeout-based; server log shows a 22.4s proxy.ts
+                      auth round-trip and every Server Action returning 200.
+                      Known load-dependent infra flakiness (BLOCKER-3 note).
+run 2:  2 passed (46.5s)
+```
+
+```
+$ npx vitest run tests/integration/f339-add-comment-mention-regression.test.ts
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Duration  6.78s
+```
+
+```
+$ npx vitest run tests/integration/{create-workspace-owner,create-project,create-task,\
+assign-task,add-comment,edit-task-description-mentions,delete-workspace,\
+dashboard-rls-cross-workspace}.test.ts
+
+ Test Files  8 passed (8)
+      Tests  39 passed (39)
+   Duration  13.46s
+```
+
+(Note: the full 187-file `tests/integration` suite exceeds a 10-minute wall
+clock against the live Supabase project and was sampled as above rather than
+run in full.)
