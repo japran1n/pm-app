@@ -548,3 +548,223 @@ playwright exit=0
 ```
 (Suite contains no console-capture, network-capture, or privacy-toggle spec — all three were
 deleted by 439403d. See BLOCKER-3.)
+
+---
+
+## Pass 2 (blockers-only re-check)
+
+Date: 2026-08-26. Scope: verify only the five pass-1 blockers and any regressions the pass-1
+fixes introduced. Pass-1's MAJ-1–MAJ-8 / MIN-1–MIN-8 are deliberately NOT re-surfaced (standing
+cap). **This is the last pass for M19 regardless of outcome — no pass 3 is recommended.**
+
+### Verdict: **1 new blocker (documentation only), 1 new major (latent test contradiction).**
+All four code-fix blockers (BLOCKER-1/2/4/5) are genuinely fixed against current source.
+BLOCKER-3's contract bookkeeping is correct in `validation-contract.md` and `plan.md` but
+**incomplete in `README.md`**.
+
+### Pass-1 blocker re-verification
+
+| Pass-1 blocker | Fix | Verdict |
+|---|---|---|
+| BLOCKER-1 (AS-547) | F341 / `3dc60d0` | **CLOSED.** `DescribeElement` now carries a required `rect`; `report-form.tsx:422-424` passes `pickedElement.rect`; `buildTaskDescription` emits `Position:` / `Size:` lines. `tests/describe.spec.ts:187-191` asserts on the **submitted description string** (`"20, 20"`, `"100 x 40"`), not the picker's return value — the pass-1 test-mirrors-implementation gap is genuinely closed. F341 also folded in MIN-5 (data-* allowlist). |
+| BLOCKER-2 (AS-548) | F342 / `d5ed02b` | **CLOSED.** New `src/capture/page-context.ts` reads URL/viewport/DPR from the active tab via `chrome.scripting.executeScript`, mirroring `element-picker.ts`. `collectEnvironmentMetadata` takes an optional `pageContext` that always wins; ambient popup reads survive only as a documented degraded fallback. Browser/OS correctly stay popup-side. The pass-1 wrong-behaviour-locking assertion is gone: `tests/environment-metadata.spec.ts:344-349` now stands up a real 1024x768 page on a real HTTP server and asserts the **description** contains that page's URL/viewport/DPR and `not.toContain("chrome-extension://")`. No new permission needed (`chrome.tabs.query` reads only `tab.id`; `activeTab`+`scripting` already declared). |
+| BLOCKER-3 (AS-539, AS-550–554) | documentation | **PARTIALLY CLOSED — see NEW-BLOCKER-1.** Contract + plan are correct; README is not. |
+| BLOCKER-4 (AS-557) | F343 / `ff7b115` | **CLOSED.** `app/api/extension/context/route.ts:247-252` reproduces `isProjectVisibleToCaller`'s rule exactly — `workspace` ⇒ visible; `owner`/`admin` ⇒ visible; else explicit `project_members` row — with the membership lookup batched into one `.in(project_id)` query and skipped entirely for owner/admin. `visibility` is selected for the filter and stripped from the response. Verified live against the real Supabase project: `npx vitest run tests/integration/extension-context.test.ts` → **7/7 passed**, including the three new intra-workspace cases pass-1 said were missing (plain member does not see it; owner/admin does; explicit `project_members` row does). |
+| BLOCKER-5 (AS-571) | F344 / `d5ed02b` | **CLOSED, verified by live build.** `vite.config.ts` loads `manifest.json` as JSON and rewrites `host_permissions` + `content_scripts[].matches` from `VITE_APP_URL` (crxjs derives `web_accessible_resources` from the rewritten content scripts). Independently confirmed by this validator: `VITE_APP_URL=https://app.example.com npx vite build --outDir <scratch>` produced `host_permissions: ["https://app.example.com/*"]`, `content_scripts[0].matches: ["https://app.example.com/extension-connect*"]`, `web_accessible_resources[0].matches: ["https://app.example.com/*"]` — the localhost hardcoding does not survive. Also confirmed it **fails loudly, not silently**: with `.env` removed and `VITE_APP_URL` unset, `vite build` throws and exits non-zero. `.env` restored; `git status` clean. |
+
+### Shared-commit audit (`d5ed02b`, F342 + F344)
+
+Diffed file by file. **Nothing lost, duplicated, or mis-merged.** The commit message names the
+split explicitly and the file set matches it: F342 owns `src/capture/environment.ts`,
+`src/capture/page-context.ts` (new), `src/popup/report-form.tsx`,
+`tests/environment-metadata.spec.ts`; F344 owns `manifest.json`, `vite.config.ts`,
+`.env.example`, `tests/permissions-minimisation.spec.ts`, `tests/build-and-packaging.spec.ts`,
+`eslint.config.mjs`.
+
+- **`extension/eslint.config.mjs`** — single-line change adding `"vite.config.ts"` to the
+  Node-globals override block. Required by F344 (vite.config.ts now uses `readFileSync`/
+  `process.cwd()`). Correct, minimal, no F342 content mixed in. `npm run lint` exit 0.
+- **`extension/manifest.json`** — the only changes are (a) icon paths `public/icons/…` →
+  `icons/…` and (b) removal of the now-crxjs-derived `web_accessible_resources` block. The
+  localhost origins deliberately remain in source as the template the build rewrites. The icon
+  change also incidentally fixed MIN-7: the built `dist/` now emits icons **once**
+  (`dist/icons/*`, no `dist/public/icons/*`) and `dist.zip` shrank 135146 → 133290 bytes.
+- **`next-env.d.ts`** — `./.next/types/…` → `./.next/dev/types/…`. This is a Next-generated file
+  that a worker's `next dev` run rewrote; it is unrelated to either feature. **Verified harmless:**
+  `npx tsc --noEmit` is exit 0 both after a fresh `next build` and with `.next/dev/` moved aside
+  entirely. Informational only, not a blocker.
+- **F341 vs F342 in `report-form.tsx`** — the two fixes touch adjacent lines in the same submit
+  handler and **coexist correctly**; neither clobbered the other. Current source at
+  `src/popup/report-form.tsx:411-424` awaits `collectPageContextOnActiveTab()`, passes it into
+  `collectEnvironmentMetadata`, and passes `{ selector, rect }` into `buildTaskDescription` in the
+  same call. A single report therefore emits both an `Environment:` block with the page's real URL
+  and viewport **and** a `Picked element:` block with `Selector:`/`Position:`/`Size:` — both under
+  the same `---` / "Technical details" delimiter, reporter text still byte-for-byte first
+  (`describe.ts:74-97`).
+
+### NEW-BLOCKER-1 (documentation, `blocker`) — README still advertises console/network capture
+
+Pass-1's FU-5 required the scope reduction be noted "in `README.md`/`store-listing.md` so the
+extension is not described as capturing console errors." The contract and plan halves were done
+correctly and completely:
+
+- `validation-contract.md:479-484` — an append-only "Scope reductions" section, correctly framed
+  as recording (not editing) the assertions, naming AS-550/551/552/553/554 with commit `439403d`
+  and its user-request authority, and AS-539 with commit `fbe8a3f`. Accurate on both counts.
+- `plan.md:292` — F283 correctly tagged `[WITHDRAWN]` on **AS-539 only**, with AS-541 and the
+  feature's `[COMPLETE]` intact. `plan.md:298-300` — F289/F290/F291 fully `[WITHDRAWN]` with
+  commit and authority cited. All four are right.
+- `extension/store-listing.md` — checked, **clean**; makes no console/network claim.
+
+But `README.md` was missed, in two places, and both are user-facing product descriptions:
+
+- `README.md:244` — "…capture a screenshot, a picked page element, **and/or recent
+  console/network activity** from any page…"
+- `README.md:352` — "a QA feedback browser extension (M19) for filing tasks with
+  **screenshots/console/network context** directly from any page."
+
+The repo's own top-level documentation therefore still states the shipped extension captures
+console and network activity, which is exactly the false claim BLOCKER-3 existed to eliminate.
+This is an orchestrator documentation edit of two sentences — no code, no worker, no third pass.
+
+### NEW-MAJOR-1 (`major`) — an AS-568 test now contradicts the AS-571 fix and will break any production build
+
+`tests/permissions-minimisation.spec.ts:91-102`
+(`AS_568_source_and_built_manifest_declare_the_same_permission_set`) still asserts:
+
+```ts
+expect(built.host_permissions).toEqual(source.host_permissions);
+expect(built.content_scripts?.[0]?.matches).toEqual(source.content_scripts?.[0]?.matches);
+```
+
+Source `manifest.json` is now a **template** whose origins the build deliberately rewrites. This
+test passes today only because `extension/.env`'s `VITE_APP_URL` coincidentally equals the
+`http://localhost:3000` literal still sitting in the source template. Build with any production
+`VITE_APP_URL` — the exact scenario BLOCKER-5 was filed about — and this test goes red while the
+artifact is correct. F344 correctly added the new `AS_571_…derived_from_the_configured_VITE_APP_URL`
+test (which compares `dist/` against an independently-loaded `configuredOrigin`, so it is not
+vacuous) but left the older contradicting assertion in place. The fix is to narrow the AS-568 test
+to `permissions` only and drop its two origin comparisons, which the AS-571 test now owns.
+Recorded, not gating — the shipped artifact is right; only the suite is wrong.
+
+### Regression sweep
+
+None found beyond NEW-MAJOR-1. Whole toolchain is at least as green as pass 1: main app tsc/lint/
+build unchanged, unit suite unchanged at 1339/1339, extension suite **up from 81 to 84 passing**
+(three added by F342/F343/F344), `dist.zip` smaller, `check-no-secret-key: PASS`, no `<all_urls>`.
+
+### Closing statement
+
+**M19 scrutiny is closed after this pass per the standing cap.** Four of five pass-1 blockers are
+genuinely and verifiably fixed in current source, not merely claimed in commit messages. The one
+remaining item (NEW-BLOCKER-1) is a two-sentence README edit and NEW-MAJOR-1 is a test-only
+narrowing; neither warrants a pass 3 and neither is a code defect in the shipped product.
+
+### Pass 2 full toolchain output
+
+#### `npx tsc --noEmit` (main app)
+```
+(no output)
+tsc exit=0
+(also exit=0 with .next/dev/ moved aside, and exit=0 again after a fresh next build)
+```
+
+#### `npx eslint .` (main app)
+```
+lib/queries/search.ts 280:27  warning  '_titleMatches' is defined but never used
+tests/unit/invite-member-pagination.test.ts 186:22  warning  '_columns'
+tests/unit/palette-actions-recents.test.tsx 55:36 '_workspaceId', 55:58 '_query',
+                                            74:41 '_workspaceId', 74:63 '_pointers'
+✖ 6 problems (0 errors, 6 warnings)   <- identical pre-existing set to pass 1 / M18
+eslint exit=0
+```
+
+#### `npx vitest run tests/unit`
+```
+ Test Files  168 passed (168)
+      Tests  1339 passed (1339)
+     Errors  1 error
+   Duration  33.35s
+(the 1 error is the same pre-existing tests/unit/user-avatar.test.tsx unhandled rejection in
+ getMentionCandidates -> lib/actions/comments.ts:1372 -> cookies(), __NEXT_ERROR_CODE E251,
+ recorded in M18-scrutiny.md and pass 1. No test failed.)
+```
+
+#### `npx next build` (main app)
+```
+next build exit=0 — full route manifest emitted, including
+├ ƒ /api/extension/attachments
+├ ƒ /api/extension/context
+├ ƒ /api/extension/tasks
+├ ƒ /extension-connect  /  ƒ /extension-connect/exchange
+└ ƒ /w/[workspaceSlug]/t/[taskKey]
+ƒ Proxy (Middleware)
+```
+
+#### `npx vitest run tests/integration/extension-context.test.ts` (live, real Supabase)
+```
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Duration  24.77s
+  AS-555/AS-557: workspace list contains only workspace A, never workspace B
+  AS-555/AS-557: projects/members for workspace A are returned, scoped correctly
+  AS-557: workspace B's context (non-member) rejected 403, none of B's data returned
+  AS-557: no Authorization header -> 401
+  AS-557: a plain member with no explicit access does not see the private project   <- new (F343)
+  AS-557: a workspace owner/admin sees it with no project_members row               <- new (F343)
+  AS-557: a member with an explicit project_members row sees it                     <- new (F343)
+```
+
+#### `extension`: `npm run typecheck` / `npm run lint`
+```
+tsc --noEmit   exit=0 (no output)
+eslint .       exit=0 (no output)
+```
+
+#### `extension`: `npm run build` (from a clean `rm -rf dist dist.zip`)
+```
+sync-version: manifest.json already at 0.1.0 — no change.
+vite v8.2.1 building client environment for production...
+✓ 83 modules transformed.
+dist/service-worker-loader.js                   0.04 kB
+dist/icons/icon16.png                           0.17 kB     <- MIN-7 fixed: emitted once now
+dist/icons/icon48.png                           0.37 kB
+dist/src/popup/index.html                       0.77 kB
+dist/icons/icon128.png                          0.93 kB
+dist/manifest.json                              1.21 kB
+dist/assets/popup-DDsxZpRB.css                  5.34 kB
+dist/assets/extension-connect.ts-8xkWSY0u.js    0.28 kB
+dist/assets/service-worker.ts-De6aCMZE.js       7.67 kB
+dist/assets/upload-Di2_BntD.js                210.36 kB
+dist/assets/popup-BoBWYLjs.js                 231.34 kB
+✓ built in 84ms
+check-no-secret-key: PASS — no "sb_secret_" string found anywhere in dist/.
+Wrote extension/dist.zip (133290 bytes)   <- was 135146 in pass 1
+```
+
+Built `dist/manifest.json` (with `.env`'s VITE_APP_URL=http://localhost:3000):
+`host_permissions: ["http://localhost:3000/*"]`,
+`content_scripts[0].matches: ["http://localhost:3000/extension-connect*"]`,
+`web_accessible_resources[0].matches: ["http://localhost:3000/*"]`,
+`permissions: ["activeTab","storage","scripting"]`, no `<all_urls>`.
+
+Origin-rewrite proof (this validator, scratch outDir, not committed):
+```
+$ VITE_APP_URL=https://app.example.com npx vite build --outDir <scratch>
+  host_permissions            -> ["https://app.example.com/*"]
+  content_scripts[0].matches  -> ["https://app.example.com/extension-connect*"]
+  web_accessible_resources[0].matches -> ["https://app.example.com/*"]
+$ (VITE_APP_URL unset, .env moved aside) npx vite build
+  -> throws from vite.config.ts, non-zero exit. Fails loudly, not silently.
+(.env restored; `git status --porcelain` clean.)
+```
+
+#### `extension`: `npx playwright test`
+```
+  84 passed (2.9m)      <- 81 in pass 1; +3 from F342/F343/F344
+playwright exit=0
+including:
+  ✓ AS_547_element_rect_reaches_the_submitted_description (describe.spec.ts)
+  ✓ AS_548_page_context_flows_into_the_submitted_description (environment-metadata.spec.ts:300)
+  ✓ AS_571_built_manifest_origins_are_derived_from_the_configured_VITE_APP_URL
+```
