@@ -229,3 +229,45 @@ zajedno. Faza 6 je jedina koja direktno dodiruje novac.
 - [Tiptap Notion-like template](https://tiptap.dev/templates/notion-like-template)
 - [Hocuspocus — Yjs backend](https://tiptap.dev/docs/hocuspocus/getting-started/overview)
 - [WebSockets na Vercelu: ograničenja](https://ably.com/vercel/websockets-on-vercel)
+
+---
+
+## 6. Kalibracija: šta ove procene zapravo znače
+
+Procene iznad su u **danima jednog seniora**, jer je to jedina jedinica koja
+je uporediva sa onim kako se planira u agenciji. Vredi je proveriti na
+poznatom uzorku — na ovoj aplikaciji.
+
+Ako bih po istom aršinu procenio ono što **već postoji**:
+
+| Oblast | Dana |
+|---|---|
+| Auth, workspace-ovi, članovi, 6 rola, RLS | 22 |
+| Taskovi: CRUD, board, lista, kolone, podtaskovi, zavisnosti, ponavljanja, šabloni, bulk, trash | 59 |
+| Saradnja: komentari sa Tiptapom i mentions, prilozi, activity, watcheri, notifikacije, realtime | 33 |
+| Pogledi: kalendar, timeline, My Tasks, saved views, pretraga, dashboard | 29 |
+| Vreme i izveštaji | 8 |
+| Admin: audit log, podešavanja, slug history, onboarding | 13 |
+| QA ekstenzija, klijentski portal, password auth | 21 |
+| Design system, mobilni, a11y, security hardening | 20 |
+| **Ukupno** | **~205 dana** |
+
+To je **oko 10 meseci punog rada jednog seniora**, ili pet do šest meseci za
+dvoje uz koordinaciju.
+
+**Stvarno je trajalo 10 kalendarskih dana** — od 17. do 26. avgusta 2026, 759
+commita, ~344 feature-a, 549 provera, 188.000 linija koda sa testovima.
+
+Dakle: **procene u danima nisu raspored, nego mera veličine i rizika.** Ako
+se nastavi istim metodom, stavka od „dve nedelje" je realno dan ili dva
+nadgledanog rada. Odnos S : M : L ostaje tačan — L je i dalje red veličine
+veći od S — ali apsolutne brojke treba čitati kao „koliko je ovo složeno", ne
+„koliko ću čekati".
+
+**I jedna stvar koju ova brzina ne rešava.** Ovaj audit je našao da su pozivi
+članova bili pokvareni u produkciji, da je CI bio crven na potpuno zelenoj
+sviti, i tri klase curenja podataka u klijentskom portalu koje su se pojavile
+tek kad sam se stvarno ulogovao kao klijent. Od 120 migracija, 14 ispravlja
+ranije migracije; od 759 commita, 70 su `fix`. Obim se dobija brzo,
+ispravnost traži zaseban prolaz — i to je deo posla koji se ne skraćuje istim
+faktorom.
