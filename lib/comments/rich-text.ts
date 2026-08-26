@@ -101,6 +101,50 @@ export function appendAttachmentReference(
   };
 }
 
+/**
+ * F339 (M18 scrutiny BLOCKER-4, addComment 500ing on any comment containing
+ * a real mention node): returns a structurally-independent deep clone of a
+ * Tiptap JSONContent document, built from nothing but plain
+ * strings/numbers/booleans/arrays/objects.
+ *
+ * Root cause (confirmed by live repro against the real dev server + a real
+ * "Post" click, not just static reading): ProseMirror interns/structurally
+ * shares `node.attrs` objects across a live document — a mention node's
+ * `{ id, label, mentionSuggestionChar }` attrs object, as returned by
+ * `editor.getJSON()`, can be the SAME object reference the live editor
+ * instance's own document/decoration state is still holding onto at the
+ * moment the comment composer calls this Server Action. React's Flight
+ * client-argument encoder for Server Actions does not always plainly clone
+ * a shared/reused object reference like that — it can instead encode it as
+ * an opaque "temporary reference" (React's mechanism for round-tripping
+ * live, non-serialisable values like functions/refs through a Server
+ * Action call). On the server, a temporary reference throws "Cannot access
+ * <prop> on the server. You cannot dot into a temporary client reference
+ * from a server component" the moment ANY property (e.g. `.attrs.id`) is
+ * read on it — exactly the crash this feature fixes, reproduced 3/3 by a
+ * prior worker and confirmed again here by driving the real composer +
+ * real "Post" button against a live dev server and capturing the exact
+ * server-side stack trace (`collect` -> `extractPlainText` -> `addComment`,
+ * throwing on `node.attrs?.id`).
+ *
+ * Deliberately NOT a change to how `resolveLabel`/labels are computed (the
+ * server-side call sites in lib/actions/comments.ts never pass
+ * `resolveLabel` and never needed to — that half of the scrutiny report's
+ * hypothesis did not hold up under live reproduction). The actual fix is at
+ * the client-to-server boundary itself: round-tripping the document through
+ * `JSON.stringify`/`JSON.parse` immediately before the Server Action call
+ * severs any lingering reference identity to the live ProseMirror document,
+ * guaranteeing every value that crosses the wire is plain, freshly-allocated
+ * JSON data with no possible temporary-reference encoding — confirmed live:
+ * the exact same repro that reliably 500s with the raw `editor.getJSON()`
+ * value succeeds (200, comment persisted, notification created) once the
+ * composer sends `toPlainJson(draft)` instead of `draft`.
+ */
+export function toPlainJson<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export function extractPlainText(
   content: JSONContent | null | undefined,
   resolveLabel?: (userId: string) => string | null,

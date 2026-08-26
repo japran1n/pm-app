@@ -470,31 +470,19 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
       // selected from the real picker (mention-list.tsx) — this part
       // genuinely drives the UI end to end and is kept exactly as such.
       //
-      // AUTONOMOUS_DECISION (documented in the handoff's "Out-of-scope
-      // work needed"): submitting via the real "Post" button reproducibly
-      // 500s on the server — `addComment` (lib/actions/comments.ts:119,
-      // `extractPlainText`) throws "Cannot access id on the server. You
-      // cannot dot into a temporary client reference from a server
-      // component" whenever the submitted body actually contains a real
-      // `mention` node produced by this composer, independent of typing
-      // speed/timing (reproduced 3/3 runs). That is a real defect in
-      // `lib/actions/comments.ts`/`lib/comments/rich-text.ts`, both
-      // outside this feature's Files scope (`tests/e2e/*.spec.ts`,
-      // `.github/workflows/`) — fixing it is out of scope for F272 per
-      // the clarified spec's failure-handling rule ("gaps outside scope
-      // go to Out-of-scope work needed"), so this test does not fix
-      // product code to make itself pass. Instead, past the UI-driven
-      // mention-selection step above, comment SUBMISSION is done via the
-      // admin client, writing the same shape `addComment` would persist
-      // on success, plus the same `create_notification` RPC
-      // `createNotification` (lib/notifications/create-notification.ts)
-      // calls for a `mention` recipient — the exact "admin-client action
-      // stands in for the one real code path that's broken" precedent
-      // tests/e2e/notifications.spec.ts (F209) already established for
-      // its own "user A's action" half. This keeps the genuinely
-      // real/two-context part of this test intact — user B's browser
-      // receiving a live, no-reload notification in its own separate
-      // context — the actual risk this test exists to cover.
+      // F339 (M18 scrutiny BLOCKER-4 fix): submitting via the real "Post"
+      // button used to reproducibly 500 on the server whenever the body
+      // contained a real `mention` node — see lib/comments/rich-text.ts's
+      // `toPlainJson` doc comment for the live-reproduced root cause (a
+      // shared/interned ProseMirror `attrs` object reference being encoded
+      // as an unreadable React "temporary reference" instead of plain data
+      // across the Server Action boundary) and comments-list.tsx's use of
+      // it at both the add- and edit-comment call sites. Now that the
+      // underlying product bug is fixed, this test submits via the real
+      // "Post" button — no more admin-client `insert` +
+      // `create_notification` RPC stand-in — so it exercises the actual
+      // product fan-out path end to end, matching every other assertion in
+      // this file.
       const composer = sheet.getByRole("textbox", { name: "Add a comment" });
       await composer.click();
       await composer.pressSequentially(`@${recipientName.slice(0, 12)}`, {
@@ -522,56 +510,17 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
         sheet.getByText(new RegExp(recipientName)).first(),
       ).toBeVisible({ timeout: 5_000 });
 
-      const mentionTaskId = createdTaskIds[createdTaskIds.length - 1]!;
-      const { data: insertedComment, error: insertCommentError } =
-        await adminClient
-          .from("comments")
-          .insert({
-            task_id: mentionTaskId,
-            user_id: actorUserId,
-            text: `@${recipientName} welcome to the task`,
-            body_json: {
-              type: "doc",
-              content: [
-                {
-                  type: "paragraph",
-                  content: [
-                    { type: "mention", attrs: { id: recipientUserId } },
-                    { type: "text", text: " welcome to the task" },
-                  ],
-                },
-              ],
-            },
-          })
-          .select("id")
-          .single();
-      if (insertCommentError || !insertedComment) {
-        throw new Error(
-          `Failed to seed comment: ${insertCommentError?.message}`,
-        );
-      }
-      const { error: notifyRpcError } = await adminClient.rpc(
-        "create_notification",
-        {
-          p_user_id: recipientUserId,
-          p_workspace_id: workspaceId,
-          p_kind: "mention",
-          p_actor_id: actorUserId,
-          p_task_id: mentionTaskId,
-          p_comment_id: insertedComment.id,
-          // The admin client has no real `auth.uid()` session, so
-          // `p_system: true` is required for `create_notification` to
-          // treat this as a genuine service-role/backend caller (see the
-          // function's own `p_system and auth.uid() is null` guard) —
-          // otherwise it rejects with "no authenticated caller".
-          p_system: true,
-        },
-      );
-      if (notifyRpcError) {
-        throw new Error(
-          `create_notification RPC failed: ${notifyRpcError.message}`,
-        );
-      }
+      await composer.pressSequentially(" welcome to the task", { delay: 20 });
+
+      const postButton = sheet.getByRole("button", { name: "Post" });
+      await expect(postButton).toBeEnabled();
+      await postButton.click();
+
+      // The composer clears (setDraft(null)) once addComment resolves
+      // ok:true — the real, end-to-end confirmation that the Server
+      // Action succeeded rather than 500ing, before this test asserts on
+      // the other context's live delivery below.
+      await expect(composer).toHaveText("", { timeout: 10_000 });
 
       // Confirm the mention notification fan-out itself landed
       // server-side before asserting on the other context's live

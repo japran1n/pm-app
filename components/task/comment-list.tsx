@@ -65,6 +65,7 @@ import {
   appendAttachmentReference,
   docFromPlainText,
   extractPlainText,
+  toPlainJson,
 } from "@/lib/comments/rich-text";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -457,7 +458,13 @@ export function CommentList({
     if (!plainText) return;
 
     startEditTransition(async () => {
-      const result = await editComment(commentId, plainText, editDraft);
+      // F339: same client-to-server boundary fix as the add-comment path
+      // above — see lib/comments/rich-text.ts's `toPlainJson` doc comment.
+      const result = await editComment(
+        commentId,
+        plainText,
+        toPlainJson(editDraft),
+      );
       if (result.ok) {
         setLocalComments((previous) =>
           previous.map((comment) =>
@@ -660,7 +667,19 @@ export function CommentList({
       // validated) and the real Tiptap document — see
       // lib/actions/comments.ts's addComment doc comment for why both are
       // sent and how the server treats them.
-      const result = await addComment(taskId, draftPlainText, draft);
+      //
+      // F339 (M18 scrutiny BLOCKER-4): `draft` is round-tripped through
+      // `toPlainJson` immediately before crossing the Server Action
+      // boundary — see that helper's doc comment
+      // (lib/comments/rich-text.ts) for the live-reproduced root cause
+      // (a shared/interned ProseMirror `attrs` object reference being
+      // encoded as an unreadable React "temporary reference" instead of
+      // plain data whenever the document contains a real `mention` node).
+      const result = await addComment(
+        taskId,
+        draftPlainText,
+        toPlainJson(draft),
+      );
       if (result.ok) {
         setLocalComments((previous) => [...previous, result.data]);
         setDraft(null);
