@@ -32,7 +32,7 @@ export default [
     },
   },
   {
-    files: ["scripts/**/*.mjs", "*.config.mjs", "playwright.config.ts"],
+    files: ["scripts/**/*.mjs", "*.config.mjs", "playwright.config.ts", "vite.config.ts"],
     languageOptions: {
       globals: { ...globals.node },
     },

@@ -111,6 +111,27 @@ export type ReporterIdentity = {
   email: string | null | undefined;
 };
 
+// F342 — M19 scrutiny BLOCKER-2 fix (AS-548): this collector is always
+// invoked from `report-form.tsx`, i.e. from CODE RUNNING INSIDE THE POPUP
+// DOCUMENT. Reading `pageUrl`/viewport/DPR from this module's own ambient
+// `globalThis.location`/`globalThis.window` (the `resolvePageUrl`/
+// `resolveViewport`/`resolveDevicePixelRatio` helpers below) therefore
+// always reports the extension popup's own `chrome-extension://…` URL and
+// its ~380px chrome — never the page the reporter is actually filing a bug
+// about. `page-context.ts`'s `collectPageContextOnActiveTab()` reads the
+// real values from the active tab's own page context (mirroring
+// `element-picker.ts`'s already-correct pattern) and the caller passes them
+// in here as `pageContext`, which always wins when supplied. The ambient
+// fallbacks below are kept only for callers that cannot supply page
+// context (e.g. no active tab could be resolved) and for this module's own
+// unit tests of the browser/OS detection, which are not page-specific.
+export type PageContextOverride = {
+  pageUrl: string;
+  viewportWidth: number;
+  viewportHeight: number;
+  devicePixelRatio: number;
+};
+
 // Minimal shape of the Client Hints low-entropy API this module reads.
 // Not yet in TypeScript's bundled DOM lib as of this mission's TS version,
 // so declared locally rather than widening `Navigator` globally.
@@ -233,9 +254,17 @@ function resolveDevicePixelRatio(): number {
  * `reporter` is supplied by the caller (already-known session identity —
  * see module comment); this function never reaches into chrome.storage or
  * creates its own Supabase client.
+ *
+ * `pageContext`, when supplied, overrides `pageUrl`/`viewportWidth`/
+ * `viewportHeight`/`devicePixelRatio` with the real values read from the
+ * active tab's own page (see `page-context.ts` and this module's own
+ * `PageContextOverride` doc comment above) — callers running inside the
+ * popup document MUST supply this to avoid reporting the popup's own URL
+ * and dimensions instead of the page under test.
  */
 export function collectEnvironmentMetadata(
   reporter: ReporterIdentity,
+  pageContext?: PageContextOverride | null,
 ): EnvironmentMetadata {
   let browserName = UNKNOWN;
   let browserVersion = UNKNOWN;
@@ -265,17 +294,21 @@ export function collectEnvironmentMetadata(
     }
   }
 
-  const viewport = resolveViewport();
+  const viewport = pageContext
+    ? { width: pageContext.viewportWidth, height: pageContext.viewportHeight }
+    : resolveViewport();
 
   return {
-    pageUrl: resolvePageUrl(),
+    pageUrl: pageContext ? pageContext.pageUrl : resolvePageUrl(),
     browserName,
     browserVersion,
     os,
     source,
     viewportWidth: viewport.width,
     viewportHeight: viewport.height,
-    devicePixelRatio: resolveDevicePixelRatio(),
+    devicePixelRatio: pageContext
+      ? pageContext.devicePixelRatio
+      : resolveDevicePixelRatio(),
     reporterId: reporter.id && reporter.id.trim().length > 0 ? reporter.id : UNKNOWN,
     reporterEmail:
       reporter.email && reporter.email.trim().length > 0

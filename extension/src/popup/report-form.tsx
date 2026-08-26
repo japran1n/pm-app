@@ -4,6 +4,7 @@ import { APP_URL } from "../lib/supabase";
 import { getAnnotatedResult, getLastCapture } from "../capture/store";
 import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 import { collectEnvironmentMetadata } from "../capture/environment";
+import { collectPageContextOnActiveTab } from "../capture/page-context";
 import type { PickResult } from "../capture/element-picker";
 import { buildTaskDescription } from "../submit/describe";
 import { getLastReportContext, setLastReportContext } from "../state/preferences";
@@ -399,10 +400,23 @@ export function ReportForm({
     // collected fresh here (not cached) so `capturedAt`/URL/viewport
     // reflect the moment of submission. `collectEnvironmentMetadata` never
     // throws (see environment.ts), so no try/catch is needed around it.
-    const environment = collectEnvironmentMetadata({
-      id: reporterId ?? null,
-      email: reporterEmail ?? null,
-    });
+    //
+    // F342 (M19 scrutiny BLOCKER-2, AS-548): URL/viewport/DPR must describe
+    // the real page the reporter is filing a bug about, not this popup
+    // document. `collectPageContextOnActiveTab()` reads those three fields
+    // from the active tab's own page context (same
+    // `chrome.scripting.executeScript` mechanism the element picker already
+    // uses) and is passed in here — `collectEnvironmentMetadata` only falls
+    // back to its own (popup-scoped) ambient reads if this resolves to
+    // `null` (e.g. no active tab, or a page the extension cannot script).
+    const pageContext = await collectPageContextOnActiveTab();
+    const environment = collectEnvironmentMetadata(
+      {
+        id: reporterId ?? null,
+        email: reporterEmail ?? null,
+      },
+      pageContext,
+    );
     const finalDescription = buildTaskDescription({
       reporterText: description.trim(),
       environment,

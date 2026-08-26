@@ -11,11 +11,22 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
+import { loadEnv } from "vite";
 
 const extensionRoot = path.resolve(import.meta.dirname, "..");
 const distManifestPath = path.join(extensionRoot, "dist", "manifest.json");
 const sourceManifestPath = path.join(extensionRoot, "manifest.json");
 const permissionsDocPath = path.join(extensionRoot, "PERMISSIONS.md");
+
+// F344 (M19 scrutiny BLOCKER-5 / FU-4, AS-571): read the same VITE_APP_URL
+// vite.config.ts used to build dist/manifest.json (via the same `loadEnv`
+// mechanism, "production" mode matching `vite build`'s default) so this
+// suite asserts the built manifest's origins actually match the *configured*
+// app origin — not merely that the source and built copies agree with each
+// other, which is the gap BLOCKER-5 found (both copies could be, and were,
+// hardcoded to the wrong origin in lockstep).
+const builtEnv = loadEnv("production", extensionRoot, "");
+const configuredOrigin = new URL(builtEnv.VITE_APP_URL).origin;
 
 test.beforeAll(() => {
   if (!fs.existsSync(distManifestPath)) {
@@ -35,14 +46,39 @@ test("AS_568_built_manifest_declares_only_the_minimal_justified_permission_set",
 
   // Exactly one host_permissions entry, scoped to the app's own origin —
   // never a wildcard or a second, broader origin.
-  expect(manifest.host_permissions).toEqual(["http://localhost:3000/*"]);
+  expect(manifest.host_permissions).toEqual([`${configuredOrigin}/*`]);
 
   // Exactly one content_scripts entry, scoped to the one-time
   // session-handoff path — not a general page match.
   expect(manifest.content_scripts).toHaveLength(1);
   expect(manifest.content_scripts[0].matches).toEqual([
-    "http://localhost:3000/extension-connect*",
+    `${configuredOrigin}/extension-connect*`,
   ]);
+});
+
+test("AS_571_built_manifest_origins_are_derived_from_the_configured_VITE_APP_URL", () => {
+  // Regression test for M19 BLOCKER-5: a build must actually rewrite the
+  // manifest's origin-scoped fields from VITE_APP_URL, not ship a
+  // hardcoded localhost origin regardless of configuration. This asserts
+  // against the independently-computed `configuredOrigin` (read straight
+  // from .env via the same loadEnv mechanism vite.config.ts uses), so it
+  // cannot pass merely because source and dist manifests agree with each
+  // other while both are wrong.
+  const manifest = JSON.parse(fs.readFileSync(distManifestPath, "utf8"));
+
+  expect(manifest.host_permissions).toEqual([`${configuredOrigin}/*`]);
+  for (const script of manifest.content_scripts ?? []) {
+    for (const match of script.matches ?? []) {
+      expect(match.startsWith(configuredOrigin)).toBe(true);
+    }
+  }
+  if (manifest.web_accessible_resources) {
+    for (const resource of manifest.web_accessible_resources) {
+      for (const match of resource.matches ?? []) {
+        expect(match.startsWith(configuredOrigin)).toBe(true);
+      }
+    }
+  }
 });
 
 test("AS_568_all_urls_never_appears_anywhere_in_the_manifest", () => {

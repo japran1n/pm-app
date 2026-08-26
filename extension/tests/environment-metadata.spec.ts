@@ -18,6 +18,7 @@
 import { test, expect, chromium, type BrowserContext, type Page } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
+import http from "node:http";
 import ts from "typescript";
 
 const distPath = path.resolve(import.meta.dirname, "..", "dist");
@@ -28,6 +29,20 @@ const sourcePath = path.resolve(
   "capture",
   "environment.ts",
 );
+const pageContextSourcePath = path.resolve(
+  import.meta.dirname,
+  "..",
+  "src",
+  "capture",
+  "page-context.ts",
+);
+const describeSourcePath = path.resolve(
+  import.meta.dirname,
+  "..",
+  "src",
+  "submit",
+  "describe.ts",
+);
 
 test.beforeAll(() => {
   if (!fs.existsSync(path.join(distPath, "manifest.json"))) {
@@ -36,6 +51,7 @@ test.beforeAll(() => {
     );
   }
   writeCompiledModule();
+  writeFullFlowModule();
 });
 
 // The extension's own manifest CSP (`script-src 'self'`) blocks inline
@@ -63,6 +79,39 @@ function writeCompiledModule(): void {
 
 test.afterAll(() => {
   fs.rmSync(compiledModulePath, { force: true });
+});
+
+// F342 (M19 scrutiny BLOCKER-2, AS-548): the compiled bundle used by the
+// "full submit flow" test below additionally exposes the real, unduplicated
+// `page-context.ts` (`collectPageContextOnActiveTab`) and `describe.ts`
+// (`buildTaskDescription`) source, transpiled the same way, so the test
+// exercises the SAME three real modules `report-form.tsx` wires together at
+// submit time — not a reimplementation of the wiring.
+const fullFlowModulePath = path.join(distPath, "__f342-full-flow-test.js");
+
+function writeFullFlowModule(): void {
+  const transpile = (filePath: string): string =>
+    ts.transpileModule(fs.readFileSync(filePath, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+    }).outputText;
+
+  const environmentSource = transpile(sourcePath);
+  const pageContextSource = transpile(pageContextSourcePath);
+  const describeSource = transpile(describeSourcePath);
+
+  fs.writeFileSync(
+    fullFlowModulePath,
+    [
+      environmentSource,
+      pageContextSource,
+      describeSource,
+      "window.__fullFlow = { collectEnvironmentMetadata, collectPageContextOnActiveTab, buildTaskDescription };",
+    ].join("\n"),
+  );
+}
+
+test.afterAll(() => {
+  fs.rmSync(fullFlowModulePath, { force: true });
 });
 
 async function launchExtension(): Promise<{
@@ -118,9 +167,16 @@ test("AS_548_reports_real_page_url_browser_os_viewport_and_device_pixel_ratio", 
       })),
     ]);
 
-    // Real page URL, not a placeholder.
+    // Real page URL, not a placeholder. This is a same-page consistency
+    // check for the browser/OS detection tests below (no `pageContext`
+    // override supplied), and is NOT this module's contract for a
+    // real popup+page submission flow — see the
+    // AS_548_page_context_flows_into_the_submitted_description test further
+    // below, which drives page-scoped values from a real, non-popup page
+    // through to what the extension actually submits (M19 scrutiny
+    // BLOCKER-2: the popup-scoped ambient reads exercised here must never
+    // be mistaken for the reported page's own URL/viewport/DPR).
     expect(result.pageUrl).toBe(realState.href);
-    expect(result.pageUrl.startsWith("chrome-extension://")).toBe(true);
 
     // Real viewport, matches the page's own reported size.
     expect(result.viewportWidth).toBe(realState.innerWidth);
@@ -210,6 +266,90 @@ test("AS_548_reports_unknown_rather_than_guessing_when_no_browser_api_is_availab
     expect(result.os).toBe("unknown");
   } finally {
     await context.close();
+  }
+});
+
+// F342 (M19 scrutiny BLOCKER-2, AS-548): proves the fix end-to-end against a
+// REAL, non-popup page with a distinctive, non-popup-sized viewport — a
+// real HTTP fixture server (same pattern
+// `element-picker-selector.spec.ts`'s live-picker tests already use, and
+// covered by the manifest's existing `host_permissions:
+// ["http://localhost:3000/*"]`, no `activeTab` gesture needed), loaded as a
+// real tab distinct from the popup tab. `page.bringToFront()` re-focuses
+// the content tab immediately before invoking the capture flow — exactly
+// `openPopupAndTriggerPick`'s documented workaround for the one real
+// Playwright-harness limitation (a same-window popup tab would otherwise
+// itself count as "active", unlike a real MV3 action popup, which floats
+// over the current tab and is never part of the tab strip at all).
+//
+// The assertion is on the SUBMITTED DESCRIPTION string (what
+// `buildTaskDescription` — the same function `report-form.tsx` calls at
+// submit time — actually produces), not on an intermediate return value,
+// per this feature's mandate to replace the old codified-wrong assertion
+// that merely checked for a `chrome-extension://` prefix.
+function startFixtureServer(): Promise<http.Server> {
+  return new Promise((resolve) => {
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<html><body><h1>F342 real content page</h1></body></html>");
+    });
+    server.listen(3000, () => resolve(server));
+  });
+}
+
+test("AS_548_page_context_flows_into_the_submitted_description", async () => {
+  const server = await startFixtureServer();
+  const { context, extensionId } = await launchExtension();
+
+  try {
+    const contentPage = await context.newPage();
+    // A viewport size nothing like a real extension popup's (~380px wide),
+    // so a false-pass against leftover popup dimensions is impossible.
+    await contentPage.setViewportSize({ width: 1024, height: 768 });
+    await contentPage.goto("http://localhost:3000/");
+    await contentPage.bringToFront();
+
+    const realState = await contentPage.evaluate(() => ({
+      href: window.location.href,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio,
+    }));
+
+    // Opening this tab makes it briefly "active" in this harness (unlike a
+    // real action popup) — re-focus the content page immediately after, per
+    // this test's top comment.
+    const popupPage = await context.newPage();
+    await popupPage.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+    await popupPage.addScriptTag({ url: "/__f342-full-flow-test.js", type: "module" });
+    await popupPage.waitForFunction(() => "__fullFlow" in window);
+    await contentPage.bringToFront();
+
+    const description = await popupPage.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fullFlow = (window as any).__fullFlow;
+      const pageContext = await fullFlow.collectPageContextOnActiveTab();
+      const environment = fullFlow.collectEnvironmentMetadata(
+        { id: null, email: null },
+        pageContext,
+      );
+      return fullFlow.buildTaskDescription({
+        reporterText: "Filed from the F342 real-page test.",
+        environment,
+      });
+    });
+
+    // The submitted description carries the real content page's own URL
+    // and dimensions — not the popup document's.
+    expect(description).toContain(`URL: ${realState.href}`);
+    expect(description).toContain(
+      `Viewport: ${realState.innerWidth} x ${realState.innerHeight} px`,
+    );
+    expect(description).toContain(`Device pixel ratio: ${realState.devicePixelRatio}`);
+    expect(description).not.toContain("chrome-extension://");
+  } finally {
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 

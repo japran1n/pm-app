@@ -66,7 +66,11 @@ test("AS_571_root_build_command_is_repeatable_and_produces_a_distributable_artif
 
   const entries1 = listZipEntries(zipPath);
   expect(entries1).toContain("manifest.json");
-  expect(entries1.some((e) => e.startsWith("public/icons/"))).toBe(true);
+  // F344: manifest.json's icon paths were corrected from "public/icons/..."
+  // to "icons/..." (the icons ship once, not duplicated under both paths —
+  // M19 scrutiny MIN-7), so assert against whatever the built manifest
+  // itself references rather than a hardcoded prefix.
+  expect(entries1.some((e) => e.startsWith("icons/"))).toBe(true);
 
   // Run 2 — same command, from the same (now already-built) state, must
   // still succeed cleanly and reproduce the same artifacts (proves no
@@ -85,7 +89,7 @@ test("AS_571_root_build_command_is_repeatable_and_produces_a_distributable_artif
 
   const entries2 = listZipEntries(zipPath);
   expect(entries2).toContain("manifest.json");
-  expect(entries2.some((e) => e.startsWith("public/icons/"))).toBe(true);
+  expect(entries2.some((e) => e.startsWith("icons/"))).toBe(true);
 });
 
 test("AS_571_version_has_a_single_source_of_truth", () => {
