@@ -264,9 +264,9 @@ notifications, timezone) exists. No feature work beyond identity.
 
 ### M18 scrutiny follow-ups (2026-08-25, from missions/20260818-213033/milestones/M18-scrutiny.md pass 1, blockers)
 
-- F337 m18-scrutiny-header-search-keyboard-operability — fixes AS-523 [CLARIFIED-AUTO]
-- F338 m18-scrutiny-priority-colour-only-indicators — fixes AS-525, AS-526 [CLARIFIED-AUTO]
-- F339 m18-scrutiny-fix-mention-comment-500 — fixes AS-530 (real product bug: addComment 500s on any comment containing a mention node) [CLARIFIED-AUTO]
+- F337 m18-scrutiny-header-search-keyboard-operability — fixes AS-523 [CLARIFIED-AUTO] [COMPLETE]
+- F338 m18-scrutiny-priority-colour-only-indicators — fixes AS-525, AS-526 [CLARIFIED-AUTO] [COMPLETE]
+- F339 m18-scrutiny-fix-mention-comment-500 — fixes AS-530 (real product bug: addComment 500s on any comment containing a mention node) [CLARIFIED-AUTO] [COMPLETE]
 
 ## M19 — QA feedback browser extension
 
