@@ -289,15 +289,15 @@ board URL — say so in the handoff if you take a fallback.
 
 ### Capture
 
-- F283 screenshot-capture-visible-tab — AS-539, AS-541 [CLARIFIED-AUTO] [COMPLETE]
+- F283 screenshot-capture-visible-tab — AS-539 [WITHDRAWN 2026-08-26: whole-tab capture control removed by fbe8a3f, replaced with a region-first flow; capability still exists internally as the crop source but no control invokes it — see M19-scrutiny.md MAJ-1], AS-541 [CLARIFIED-AUTO] [COMPLETE]
 - F284 screenshot-region-select — AS-540 [CLARIFIED-AUTO] [COMPLETE]
 - F285 annotation-canvas — AS-542, AS-543, AS-545 [CLARIFIED-AUTO] [COMPLETE]
 - F286 annotation-blur-tool — AS-544 [CLARIFIED-AUTO] [COMPLETE]
 - F287 element-picker-selector — AS-546, AS-547 [CLARIFIED-AUTO] [COMPLETE]
 - F288 environment-metadata-collector — AS-548, AS-549 [CLARIFIED-AUTO] [COMPLETE]
-- F289 console-log-capture — AS-550, AS-551, AS-552 [CLARIFIED-AUTO] [COMPLETE]
-- F290 network-error-capture — AS-553 [CLARIFIED-AUTO] [COMPLETE]
-- F291 capture-privacy-toggles — AS-554 [CLARIFIED-AUTO] [COMPLETE]
+- F289 console-log-capture — AS-550, AS-551, AS-552 [WITHDRAWN 2026-08-26: removed by 439403d per explicit user request ("not needed, should be gone, not just hidden") — see M19-scrutiny.md BLOCKER-3]
+- F290 network-error-capture — AS-553 [WITHDRAWN 2026-08-26: removed by 439403d per explicit user request, same commit as F289/F291 — see M19-scrutiny.md BLOCKER-3]
+- F291 capture-privacy-toggles — AS-554 [WITHDRAWN 2026-08-26: the toggles this feature added became moot once the capture they gated (F289/F290) was removed by 439403d per explicit user request — see M19-scrutiny.md BLOCKER-3; note this fails safe, since nothing is captured at all]
 
 ### Task creation
 
@@ -313,3 +313,10 @@ board URL — say so in the handoff if you take a fallback.
 - F298 extension-permissions-minimisation — AS-568, AS-569 [CLARIFIED-AUTO] [COMPLETE]
 - F299 extension-a11y-and-keyboard — AS-570 [CLARIFIED-AUTO] [COMPLETE]
 - F300 extension-build-and-packaging — AS-571 [CLARIFIED-AUTO] [COMPLETE]
+
+### M19 scrutiny follow-ups (2026-08-26, from missions/20260818-213033/milestones/M19-scrutiny.md pass 1, blockers)
+
+- F341 m19-scrutiny-element-rect-in-report — fixes AS-547 [CLARIFIED-AUTO]
+- F342 m19-scrutiny-env-metadata-from-page — fixes AS-548 [CLARIFIED-AUTO]
+- F343 m19-scrutiny-context-route-visibility-leak — fixes AS-557 (security: private project disclosure) [CLARIFIED-AUTO]
+- F344 m19-scrutiny-manifest-origin-from-env — fixes AS-571 [CLARIFIED-AUTO]

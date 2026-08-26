@@ -473,3 +473,13 @@ _Appended 2026-08-19. The contract is append-only; these are new IDs, nothing ab
 - AS-570: The extension's popup is operable by keyboard alone.
 - AS-571: The extension is packaged into a distributable artifact by a repeatable build command.
 - AS-572: The task-creation endpoint rejects a request whose session token is missing, expired, or belongs to a different user than the payload claims.
+
+---
+
+## Scope reductions (append-only; the assertions above are never edited or deleted)
+
+Per the mission's hard rule ("The validation contract is immutable once APPROVED exists. New requirements get new assertion IDs; existing assertions are never edited or deleted."), the following assertions from the M19 section above no longer describe features the shipped extension has, by deliberate, authorized decision after they were implemented and verified. This section records the withdrawal; it does not remove the assertion text above.
+
+- **AS-550, AS-551, AS-552 (console log capture), AS-553 (network-error capture), AS-554 (capture privacy toggles)** — withdrawn 2026-08-26. Implemented and independently verified (F289, F290, F291), then deleted in its entirety by commit `439403d`, whose own message states: "per explicit user request — this capability is not needed and should be gone, not just hidden." No re-implementation is planned. Note: because nothing is captured, AS-554's underlying privacy concern (a user believing capture is off while it still runs) cannot occur — the withdrawal fails safe. Source: `missions/20260818-213033/milestones/M19-scrutiny.md`, BLOCKER-3.
+- **AS-539 (whole-visible-area capture control)** — withdrawn 2026-08-26. The dedicated whole-tab capture control was replaced by a region-first capture flow in commit `fbe8a3f` ("select-portion-first capture flow, replacing capture-then-crop"). The underlying `captureVisibleTab` capability still exists internally as the crop source, but no UI control invokes it standalone any longer, and the extension's own test suite now asserts the whole-tab control's absence. Source: `missions/20260818-213033/milestones/M19-scrutiny.md`, MAJ-1.
+
