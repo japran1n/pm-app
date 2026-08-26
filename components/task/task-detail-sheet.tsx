@@ -135,6 +135,7 @@ import { CommentList, type TaskComment } from "@/components/task/comment-list";
 // a second, near-identical action for descriptions. See this feature's
 // handoff, Decisions made.
 import { getMentionCandidates } from "@/lib/actions/comments";
+import { toPlainJson } from "@/lib/comments/rich-text";
 // F196 (AS-358, AS-361): the Comments/Activity toggle — see
 // components/task/activity-feed.tsx's own doc comment for why a toggle
 // was chosen over interleaving the two into one feed.
@@ -713,7 +714,16 @@ export function TaskDetailSheet({
     if (JSON.stringify(previous) === JSON.stringify(next)) return;
 
     startSaveTransition(async () => {
-      const result = await editTask(task.id, { descriptionJson: next });
+      // F340 (same bug class as F339, M18 scrutiny pass 2 FU-M18P2-1):
+      // `next` is `descriptionJson`'s live optimistic mirror, ultimately
+      // sourced from RichTextEditor's `onChange(updatedEditor.getJSON())` —
+      // the exact same live-ProseMirror-document-reference shape that made
+      // addComment/editComment 500 with "Cannot access id on the server"
+      // when a real mention node's `attrs` crossed the Server Action
+      // boundary un-cloned. `toPlainJson` here severs any lingering
+      // reference identity to the live editor the same way F339's fix does
+      // in comment-list.tsx.
+      const result = await editTask(task.id, { descriptionJson: toPlainJson(next) });
       if (result.ok) {
         if ("descriptionJson" in result.data) {
           // The server may have stripped an invisible mention

@@ -13,6 +13,19 @@
 //      description in the same call), matching the trigger's direct-write
 //      condition, so the mention-bearing document survives the very next
 //      write instead of being silently discarded.
+//
+// F340 (M18 scrutiny pass 2, FU-M18P2-1) note: this file calls `editTask`
+// directly as a plain async function with a hand-written plain-object
+// `bodyJson` literal — there is no real browser -> Server Action React
+// Flight RPC boundary in a Vitest process, so this file can never catch
+// (or regress-guard) the live "temporary client reference" 500 that F339
+// fixed for comments and F340 fixed for descriptions (a live
+// ProseMirror-sourced `editor.getJSON()` value crossing that boundary
+// un-cloned). That live boundary is covered instead by
+// tests/e2e/f340-task-description-mention-regression.spec.ts, which drives
+// the real description editor, a real typed `@`-mention, and a real save.
+// This file's own two assertions below (visibility stripping + direct-write
+// survival) remain valid, boundary-independent business-logic guards.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
