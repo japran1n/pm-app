@@ -341,8 +341,16 @@ export function AppSidebar({
 
   return (
     <>
-      {/* Desktop: fixed, always-visible sidebar (this app is desktop-first). */}
-      <aside className="hidden h-svh w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
+      {/* Desktop: pinned, always-visible sidebar (this app is desktop-first).
+          `sticky top-0` rather than `fixed`: the aside stays a real flex
+          item, so it keeps reserving its 240px column and `main` needs no
+          compensating margin — a `fixed` sidebar would drop out of flow and
+          every page's content would slide underneath it.
+          It was already `h-svh`, which sized it to the viewport but did not
+          pin it: the page (not `main`) is the scroll container, so on any
+          view taller than the viewport the whole column scrolled out of
+          sight along with the content. */}
+      <aside className="sticky top-0 hidden h-svh w-60 shrink-0 flex-col self-start border-r bg-sidebar text-sidebar-foreground md:flex">
         <SidebarContent
           workspaceSlug={workspaceSlug}
           workspaces={workspaces}
