@@ -102,7 +102,7 @@ export function HeaderSearch({
         onSelect: () => navigate(`/w/${workspaceSlug}/projects/${task.projectId}/board`),
       })),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate is a stable local function, re-derived from results/workspaceSlug only
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- navigate is intentionally omitted: it's a plain function declaration recreated every render, but it only closes over refs/setters/the stable router, so including it would just cause needless re-derivation without changing behaviour
     [results, workspaceSlug],
   );
 
@@ -382,6 +382,11 @@ function ResultRow({
       id={id}
       type="button"
       role="option"
+      // AS-523/M18-scrutiny BLOCKER-1: this option must NOT be a Tab stop
+      // -- the aria-activedescendant combobox pattern this component
+      // implements keeps DOM focus on the input at all times; options are
+      // "virtually" focused via aria-activedescendant/aria-selected only.
+      tabIndex={-1}
       // AS-523/MAJ-8: reflects the real active-index state driven by
       // Arrow/Home/End on the input, matching `aria-activedescendant`
       // above -- not hardcoded false.
@@ -393,6 +398,11 @@ function ResultRow({
         event.preventDefault();
         onSelect();
       }}
+      // M18-scrutiny BLOCKER-1: a real `click` (e.g. from an assistive
+      // technology synthesizing one, or any caller that never fires a
+      // `mousedown`) must still select -- onMouseDown alone left this
+      // control effectively dead for anything but a raw pointer press.
+      onClick={onSelect}
       className={cn(
         "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
         isActive && "bg-accent text-accent-foreground",

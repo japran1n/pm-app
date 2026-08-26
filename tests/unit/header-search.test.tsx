@@ -277,6 +277,45 @@ describe("HeaderSearch (F267)", () => {
     expect(option).toHaveAccessibleName("Marketing SiteMKT");
   });
 
+  it("test_AS_523_dropdown_options_are_not_tab_stops", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", { name: /search tasks and projects/i });
+    typeQuery(input, "market");
+
+    const option = await screen.findByRole("option", { name: /Marketing Site/i });
+    // The aria-activedescendant combobox pattern requires DOM focus to
+    // stay on the input at all times -- options must be excluded from the
+    // tab sequence entirely (M18-scrutiny BLOCKER-1).
+    expect(option).toHaveAttribute("tabIndex", "-1");
+  });
+
+  it("test_AS_521_a_real_click_event_not_mousedown_on_an_option_navigates_to_it", async () => {
+    searchPalette.mockResolvedValue({
+      projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
+      tasks: [],
+      members: [],
+    });
+
+    render(createElement(HeaderSearch, defaultProps));
+    const input = screen.getByRole("combobox", { name: /search tasks and projects/i });
+    typeQuery(input, "market");
+
+    const option = await screen.findByText("Marketing Site");
+    // Deliberately using `click` (not `mouseDown`) -- M18-scrutiny
+    // BLOCKER-1 found the option had no onClick handler, so a caller that
+    // only fires a real click event (e.g. some assistive tech, or Enter
+    // while focused on a Tab-reached option) landed on a dead control.
+    fireEvent.click(option);
+
+    expect(push).toHaveBeenCalledWith("/w/acme/projects/proj-1/board");
+  });
+
   it("test_AS_520_escape_clears_the_input_and_closes_the_dropdown_via_the_shared_escape_layer_stack", async () => {
     searchPalette.mockResolvedValue({
       projects: [{ type: "project", id: "proj-1", name: "Marketing Site", key: "MKT" }],
