@@ -396,3 +396,95 @@ export async function getPortalTaskDetail(
     })),
   };
 }
+
+// UX-22: the portal landing page used to be only "here is a progress bar
+// per project" — it never answered the two questions a client actually
+// opens the portal for: "is anything waiting on me?" and "what shipped
+// recently?". This reuses the same RLS-scoped tasks/statuses read
+// getPortalProjects already does (so a client still only ever sees rows
+// their `client_visible` grant already allows) and derives two small
+// lists from it instead of adding a second, parallel query path.
+export type PortalOverviewTask = {
+  id: string;
+  title: string;
+  projectId: string;
+  projectName: string;
+  dueDate: string | null;
+  updatedAt: string;
+};
+
+export type PortalOverview = {
+  waitingOnYou: PortalOverviewTask[];
+  deliveredThisWeek: PortalOverviewTask[];
+};
+
+export async function getPortalOverview(
+  workspaceId: string,
+): Promise<PortalOverview> {
+  const supabase = await createClient();
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (!projects?.length) {
+    return { waitingOnYou: [], deliveredThisWeek: [] };
+  }
+
+  const projectIds = projects.map((p) => p.id);
+  const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+
+  const [{ data: tasks }, { data: statuses }] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, title, status, status_id, due_date, project_id, updated_at")
+      .in("project_id", projectIds)
+      .is("deleted_at", null)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("project_statuses")
+      .select("id, project_id, name, category")
+      .in("project_id", projectIds),
+  ]);
+
+  const categoryByStatusId = new Map<string, StatusCategory>();
+  for (const status of (statuses ?? []) as StatusRow[]) {
+    categoryByStatusId.set(status.id, status.category);
+  }
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const waitingOnYou: PortalOverviewTask[] = [];
+  const deliveredThisWeek: PortalOverviewTask[] = [];
+
+  for (const task of tasks ?? []) {
+    const category = task.status_id
+      ? categoryByStatusId.get(task.status_id)
+      : undefined;
+
+    // "Waiting on you" — the status name itself carries the "needs a
+    // client response" signal (e.g. "In Review"); category alone can't
+    // distinguish that from ordinary in-progress work.
+    const isAwaitingReview = /review/i.test(task.status);
+
+    const mapped: PortalOverviewTask = {
+      id: task.id,
+      title: task.title,
+      projectId: task.project_id,
+      projectName: projectNames.get(task.project_id) ?? "",
+      dueDate: task.due_date,
+      updatedAt: task.updated_at,
+    };
+
+    if (isAwaitingReview && category !== "done") {
+      waitingOnYou.push(mapped);
+    } else if (category === "done" && new Date(task.updated_at) >= sevenDaysAgo) {
+      deliveredThisWeek.push(mapped);
+    }
+  }
+
+  return { waitingOnYou, deliveredThisWeek };
+}

@@ -759,6 +759,73 @@ export type Database = {
           },
         ]
       }
+      status_template_items: {
+        Row: {
+          category: string
+          color: string
+          id: string
+          name: string
+          position: number
+          template_id: string
+        }
+        Insert: {
+          category: string
+          color: string
+          id?: string
+          name: string
+          position?: number
+          template_id: string
+        }
+        Update: {
+          category?: string
+          color?: string
+          id?: string
+          name?: string
+          position?: number
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "status_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      status_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_templates_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_activity: {
         Row: {
           actor_id: string | null
@@ -1380,6 +1447,10 @@ export type Database = {
       }
     }
     Functions: {
+      apply_status_template: {
+        Args: { p_project_id: string; p_template_id: string }
+        Returns: undefined
+      }
       can_modify_comment: {
         Args: { target_comment_id: string }
         Returns: boolean
@@ -1456,6 +1527,11 @@ export type Database = {
         Args: { p_name: string; p_workspace_id: string }
         Returns: string
       }
+      get_blocked_count: { Args: { p_workspace_id: string }; Returns: number }
+      get_completed_count: {
+        Args: { p_days?: number; p_timezone?: string; p_workspace_id: string }
+        Returns: number
+      }
       get_dependency_ancestors: {
         Args: { p_task_id: string }
         Returns: {
@@ -1467,6 +1543,10 @@ export type Database = {
         Returns: {
           task_id: string
         }[]
+      }
+      get_due_soon_count: {
+        Args: { p_days?: number; p_timezone?: string; p_workspace_id: string }
+        Returns: number
       }
       get_overdue_count: {
         Args: { p_timezone?: string; p_workspace_id: string }

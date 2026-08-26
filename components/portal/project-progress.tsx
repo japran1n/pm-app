@@ -1,4 +1,11 @@
 import type { PortalProject } from "@/lib/queries/portal";
+import { projectHealthLabel } from "@/components/portal/status-label";
+
+const TONE_CLASS: Record<"ok" | "warn" | "crit", string> = {
+  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  warn: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  crit: "bg-destructive/10 text-destructive",
+};
 
 function formatDate(iso: string): string {
   // Deliberately locale-fixed rather than using the viewer's locale: this
@@ -36,16 +43,23 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
   const donePct = (done / total) * 100;
   const inProgressPct = (inProgress / total) * 100;
 
+  const health = projectHealthLabel({ overdueCount, percentComplete });
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-2xl font-semibold tabular-nums">
           {percentComplete}%
         </span>
-        <span className="text-xs text-muted-foreground">
-          {done} of {total} done
+        <span
+          className={`rounded px-1.5 py-0.5 font-mono text-[0.65rem] font-medium tracking-wide uppercase ${TONE_CLASS[health.tone]}`}
+        >
+          {health.label}
         </span>
       </div>
+      <span className="-mt-2 text-xs text-muted-foreground">
+        {done} of {total} done
+      </span>
 
       <div
         className="flex h-2 w-full overflow-hidden rounded-full bg-muted"

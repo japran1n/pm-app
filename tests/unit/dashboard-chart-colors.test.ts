@@ -17,8 +17,21 @@
 // wiring inside the components themselves, independent of how Recharts
 // chooses to render at runtime.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
+
+// UX-15: both charts now read/write `?priority=`/`?status=` via
+// next/navigation's client hooks for click-to-filter drill-down. Mocked
+// here as plain functions (not real hooks) the same way
+// dashboard-empty-state.test.ts mocks them — that's what keeps this
+// file's "call the component directly, no renderer" pattern (see the
+// header comment below) valid: a real hook would need React's dispatcher,
+// which only exists during an actual render.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  usePathname: () => "/w/acme",
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 import { PriorityBarChart } from "@/components/dashboard/priority-bar-chart";
 import { StatusPieChart } from "@/components/dashboard/status-pie-chart";
@@ -97,7 +110,7 @@ describe("Dashboard chart colors (F073: AS-135)", () => {
       StatusPieChart({ data: STATUS_DATA }) as unknown as ReactNode,
     );
     const byStatus = new Map(
-      cells.map((cell) => [cell.props["data-status"] as string, cell.props.fill]),
+      cells.map((cell) => [cell.props["data-status"] as string, cell.props["data-color"]]),
     );
 
     // Only non-zero-count statuses render a slice (see StatusPieChart's

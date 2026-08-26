@@ -41,6 +41,34 @@ i dashboardi.**
 
 ---
 
+## M3 status — implementirano 2026-08-26
+
+Feature-i F412–F415 su implementirani na grani `feat/estimates-view`:
+
+- **F412** — kolone Estimate/Logged u listi (`components/task/task-list-table.tsx`),
+  batch upit bez N+1 (`lib/queries/time-entries.ts:getTaskLoggedMinutes`).
+- **F413** — traka procenjeno/utrošeno u zaglavlju projekta, crvena kad je
+  prekoračeno (`app/(workspace)/w/[workspaceSlug]/projects/[projectId]/layout.tsx`).
+- **F414** — rollup po osobi (`components/project/person-estimate-rollup.tsx`,
+  `lib/queries/time-entries.ts:getProjectEstimateAndLoggedByPerson`). Estimate
+  se pripisuje `assignee_id` (jedinom "vlasniku" taska), ne svim `task_assignees`.
+- **F415** — demo taskovi dobijaju procenu izvedenu iz prioriteta
+  (`scripts/seed-demo.mjs`).
+
+Provereno u browseru kao `sasa`: Website Redesign pokazuje "29.5h logged of
+27h estimated" crveno, Ana Kovač crveno (14h30m/8h — preko procene), ostali
+u boji teksta. Kolone Estimate/Logged u listi tačne po tasku, "—" za
+taskove bez procene/vremena. Portal (klijent) nikad ne poziva ove upite —
+bezbedno po konstrukciji, ne samo po RLS.
+
+**Napomena:** ova procena/utrošeno funkcionalnost je bila zamišljena kao AS
+provere u ovom planu (AS-559–AS-562), ali se nije stiglo do formalnog
+integracionog testa u ovoj sesiji — pokriveno je ručnom verifikacijom u
+browseru. Vredi dodati integracioni test pre nego što se ovo proglasi
+potpuno zatvorenim.
+
+---
+
 ## M1 — Views kao tabovi po projektu
 
 Zamenjuje fiksni `Board | List` trakom tabova koje tim sam pravi. Svaki tab

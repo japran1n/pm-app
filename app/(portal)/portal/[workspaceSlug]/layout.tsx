@@ -7,6 +7,7 @@ import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { PortalNav } from "@/components/portal/portal-nav";
 
 // C3 (docs/client-portal-plan.md): the client portal's own shell.
 //
@@ -85,20 +86,7 @@ export default async function PortalLayout({
           </Link>
 
           <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1">
-              <Link
-                href={`/portal/${workspace.slug}`}
-                className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Projects
-              </Link>
-              <Link
-                href={`/portal/${workspace.slug}/requests`}
-                className="rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Requests
-              </Link>
-            </nav>
+            <PortalNav workspaceSlug={workspace.slug} />
             <ThemeToggle />
             <form action={signOut}>
               <Button type="submit" variant="ghost" size="sm">

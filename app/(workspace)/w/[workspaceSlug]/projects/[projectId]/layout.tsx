@@ -3,8 +3,14 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
-import { getProjectTimeTotals } from "@/lib/queries/time-entries";
+import {
+  getProjectEstimateAndLoggedByPerson,
+  getProjectTimeTotals,
+} from "@/lib/queries/time-entries";
+import { resolvePeople } from "@/lib/queries/people";
+import { PersonEstimateRollup } from "@/components/project/person-estimate-rollup";
 import { ProjectTabs } from "@/components/project-tabs";
+import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
@@ -93,6 +99,13 @@ export default async function ProjectDetailLayout({
   const timeTotals = await getProjectTimeTotals(project.id);
   const totalMinutes =
     timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
+  // F414: per-person rollup, fetched alongside the project-wide totals
+  // above rather than as a separate page — a lead scanning "who is over"
+  // shouldn't need a second navigation to see it.
+  const personRollup = await getProjectEstimateAndLoggedByPerson(project.id);
+  const personNames = await resolvePeople(
+    personRollup.map((row) => row.userId),
+  );
   const formatHours = (minutes: number) => {
     const hours = minutes / 60;
     return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
@@ -100,6 +113,11 @@ export default async function ProjectDetailLayout({
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
+      <ProjectBreadcrumb
+        workspaceSlug={workspaceSlug}
+        projectId={project.id}
+        projectName={project.name}
+      />
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1.5">
@@ -122,12 +140,44 @@ export default async function ProjectDetailLayout({
         </div>
 
         {(totalMinutes > 0 || timeTotals.estimateMinutes > 0) && (
-          <p className="text-sm text-muted-foreground">
-            {formatHours(totalMinutes)}h logged (
-            {formatHours(timeTotals.billableMinutes)}h billable)
-            {timeTotals.estimateMinutes > 0 &&
-              ` of ${formatHours(timeTotals.estimateMinutes)}h estimated`}
-          </p>
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm text-muted-foreground">
+              {formatHours(totalMinutes)}h logged (
+              {formatHours(timeTotals.billableMinutes)}h billable)
+              {timeTotals.estimateMinutes > 0 &&
+                ` of ${formatHours(timeTotals.estimateMinutes)}h estimated`}
+            </p>
+            {/* F413: a bar alongside the existing text line — the number
+                alone requires doing the division in your head to see
+                whether a project is over. Only rendered once there is an
+                estimate to measure against; a bar with nothing to compare
+                to would just be a full-width bar for every project. */}
+            {timeTotals.estimateMinutes > 0 && (
+              <div
+                className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted"
+                role="img"
+                aria-label={`${formatHours(totalMinutes)} of ${formatHours(timeTotals.estimateMinutes)} hours estimated logged`}
+              >
+                <div
+                  className={
+                    totalMinutes > timeTotals.estimateMinutes
+                      ? "h-full bg-destructive"
+                      : "h-full bg-primary"
+                  }
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      (totalMinutes / timeTotals.estimateMinutes) * 100,
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {personRollup.length > 0 && (
+          <PersonEstimateRollup rows={personRollup} names={personNames} />
         )}
 
         <Separator />

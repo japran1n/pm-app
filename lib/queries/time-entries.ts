@@ -146,3 +146,125 @@ export async function getActiveTimer(): Promise<ActiveTimer | null> {
     },
   };
 }
+
+// F412: per-task logged-time sums, for the list view's "Logged" column and
+// TaskCard's `totalMinutes` (a field that has existed on TaskCardTask since
+// F113 but was never actually populated by any query — the board and list
+// queries only ever set it to `undefined`, so the "time logged" indicator
+// TaskCard already renders has been silently dead until now).
+//
+// One batched query for the whole visible set rather than a per-row RPC —
+// the list/board already fetch N tasks in one round trip, and this should
+// not turn into N+1. Uses the request-scoped client, so RLS
+// (`time_entries_select_active_members`) is what actually restricts the
+// sum: a caller only ever sees minutes logged on tasks visible to them,
+// which for a client account with `client_visible=false` on a task means
+// this returns nothing for it (matching 20260902020000's hardening — a
+// client must not learn logged time even in aggregate).
+export async function getTaskLoggedMinutes(
+  taskIds: string[],
+): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  if (taskIds.length === 0) return totals;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select("task_id, minutes")
+    .in("task_id", taskIds);
+
+  if (error) {
+    console.error("getTaskLoggedMinutes: query failed:", error);
+    return totals;
+  }
+
+  for (const row of data ?? []) {
+    totals.set(row.task_id, (totals.get(row.task_id) ?? 0) + row.minutes);
+  }
+
+  return totals;
+}
+
+export type PersonEstimateVsLogged = {
+  userId: string;
+  estimateMinutes: number;
+  loggedMinutes: number;
+};
+
+// F414: per-person rollup for ONE project — "who is over their estimate on
+// this project", the screen a lead opens before a status meeting.
+// Workspace-wide time-by-person (getWorkspaceTimeByPerson above) is scoped
+// by date range because logged time is a flow; estimate is not — it's a
+// property of a task, not of a period — so this is scoped by project
+// instead, matching the project header's own estimate/logged bar (F413)
+// rather than bolting a mismatched estimate onto a date-range report.
+//
+// Estimate is attributed to `assignee_id`, the same single legacy field
+// the board/list read for the assignee-filter dropdown — a task can have
+// several people in `task_assignees`, but only one is the "owner" an
+// estimate is naturally attributed to. Splitting an estimate across
+// multiple assignees would need a policy this feature's spec doesn't
+// define, so this deliberately does not attempt it.
+export async function getProjectEstimateAndLoggedByPerson(
+  projectId: string,
+): Promise<PersonEstimateVsLogged[]> {
+  const supabase = await createClient();
+
+  const { data: taskRows, error: taskError } = await supabase
+    .from("tasks")
+    .select("id, assignee_id, estimate_minutes")
+    .eq("project_id", projectId)
+    .is("deleted_at", null);
+
+  if (taskError) {
+    console.error(
+      "getProjectEstimateAndLoggedByPerson: task query failed:",
+      taskError,
+    );
+    return [];
+  }
+
+  const estimateByUser = new Map<string, number>();
+  const taskIds: string[] = [];
+  for (const task of taskRows ?? []) {
+    taskIds.push(task.id);
+    if (task.assignee_id && task.estimate_minutes) {
+      estimateByUser.set(
+        task.assignee_id,
+        (estimateByUser.get(task.assignee_id) ?? 0) + task.estimate_minutes,
+      );
+    }
+  }
+
+  const loggedByUser = new Map<string, number>();
+  if (taskIds.length > 0) {
+    const { data: entryRows, error: entryError } = await supabase
+      .from("time_entries")
+      .select("user_id, minutes")
+      .in("task_id", taskIds);
+
+    if (entryError) {
+      console.error(
+        "getProjectEstimateAndLoggedByPerson: time_entries query failed:",
+        entryError,
+      );
+    } else {
+      for (const entry of entryRows ?? []) {
+        loggedByUser.set(
+          entry.user_id,
+          (loggedByUser.get(entry.user_id) ?? 0) + entry.minutes,
+        );
+      }
+    }
+  }
+
+  const userIds = new Set([...estimateByUser.keys(), ...loggedByUser.keys()]);
+
+  return [...userIds]
+    .map((userId) => ({
+      userId,
+      estimateMinutes: estimateByUser.get(userId) ?? 0,
+      loggedMinutes: loggedByUser.get(userId) ?? 0,
+    }))
+    .sort((a, b) => b.loggedMinutes - a.loggedMinutes);
+}

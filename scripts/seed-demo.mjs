@@ -394,6 +394,19 @@ async function main() {
     let position = 0;
     for (const [title, status, priority, dueInDays, assignee, minutes, clientVisible] of spec.tasks) {
       position += 1000;
+      // F415: a deterministic estimate from priority, so the estimate-vs-
+      // logged bar (F413) and per-person rollup (F414) have real numbers
+      // to render instead of every "of Xh estimated" branch staying dark
+      // because no seeded task ever had one.
+      const ESTIMATE_BY_PRIORITY = {
+        urgent: 240,
+        high: 180,
+        medium: 120,
+        low: 60,
+        backlog: 0,
+      };
+      const estimateMinutes = priority ? (ESTIMATE_BY_PRIORITY[priority] ?? 0) : 0;
+
       const { data: task, error: taskError } = await admin
         .from("tasks")
         .insert({
@@ -408,6 +421,7 @@ async function main() {
           assignee_id: userIds[assignee],
           position,
           client_visible: clientVisible === true,
+          estimate_minutes: estimateMinutes > 0 ? estimateMinutes : null,
           tags: status === "done" ? ["shipped"] : ["placeholder"],
         })
         .select("id")

@@ -260,3 +260,116 @@
   color: var(--muted-foreground);
   text-decoration: line-through;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   UX-01 / UX-04 / UX-07 — interaction affordances.
+
+   Tailwind v4's preflight sets `button { cursor: default }` (v3 set
+   `pointer`), so before this block NOTHING in the app changed the cursor on
+   hover: every button, dropdown trigger, tab, toggle and icon control read
+   as inert text. Rather than sprinkling `cursor-pointer` across ~200 call
+   sites — where it is silently forgotten on the next new component — the
+   rule lives once, here, keyed off the semantics each control already
+   declares (a real <button>, `role="button"`, `role="tab"`, …).
+
+   `:where()` keeps specificity at 0 so any component-level `cursor-*`
+   utility (e.g. the timeline's `cursor-ew-resize` drag handles, the
+   `cursor-not-allowed` states already in task-detail-sheet) still wins.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer base {
+  :where(
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="option"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="switch"],
+    [role="radio"],
+    [role="checkbox"],
+    summary,
+    select,
+    label:has(input[type="checkbox"], input[type="radio"]),
+    a[href]
+  ):not(:disabled, [aria-disabled="true"], [data-disabled]) {
+    cursor: pointer;
+  }
+
+  /* UX-05: controls disabled for a *reason* keep their pointer events (so a
+     tooltip can explain why) and say so with the cursor instead of just
+     fading out. */
+  :where(:disabled, [aria-disabled="true"], [data-disabled]) {
+    cursor: not-allowed;
+  }
+
+  /* UX-04: hover feedback used to land in a single frame, which reads as a
+     glitch rather than a response. One short, shared curve for every
+     interactive surface; components that need a different property list
+     (transforms, height) still declare their own. */
+  :where(
+    button,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="option"],
+    a[href],
+    [data-slot="card"],
+    tr[role="button"]
+  ) {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   UX-03 — two named hover patterns, and only two.
+
+   Before this the app said "you can click me" in four different visual
+   languages: the sidebar changed its background to --sidebar-accent, table
+   rows changed theirs to --muted/50, portal cards darkened their border,
+   and task cards raised a shadow. Four events, one meaning — so a user
+   builds four reflexes instead of one.
+
+   `.hover-surface` — rows, nav items, list entries. The surface fills in.
+   `.hover-lift`    — cards. The border tightens, a hairline ring appears.
+
+   New interactive surfaces pick one of these; nothing invents a third.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer components {
+  .hover-surface:hover {
+    background-color: var(--muted);
+  }
+
+  .hover-lift {
+    box-shadow: 0 1px 2px rgb(1 1 1 / 0.04);
+  }
+  .hover-lift:hover {
+    border-color: color-mix(in oklch, var(--border), var(--foreground) 25%);
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 20%),
+      0 2px 8px rgb(1 1 1 / 0.06);
+  }
+  .dark .hover-lift {
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  }
+  .dark .hover-lift:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 25%),
+      0 2px 8px rgb(0 0 0 / 0.4);
+  }
+}

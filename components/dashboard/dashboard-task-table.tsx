@@ -36,6 +36,9 @@ const VALID_PRIORITIES = new Set([
   "low",
   "backlog",
 ]);
+// UX-20: the four KPI tiles above this table each write one of these into
+// `?flag=`.
+const VALID_FLAGS = new Set(["overdue", "due_soon", "blocked", "completed"]);
 
 export async function DashboardTaskTable({
   workspaceId,
@@ -49,6 +52,7 @@ export async function DashboardTaskTable({
     status?: string;
     priority?: string;
     assigneeId?: string;
+    flag?: string;
   };
   /** F124/F275 (AS-207): the viewer's IANA timezone, resolved ONCE per
    * request by the workspace dashboard page
@@ -64,6 +68,7 @@ export async function DashboardTaskTable({
     status?: "todo" | "in_progress" | "in_review" | "done";
     priority?: "urgent" | "high" | "medium" | "low" | "backlog";
     assigneeId?: string;
+    flag?: "overdue" | "due_soon" | "blocked" | "completed";
   } = {};
   if (searchParams.status && VALID_STATUSES.has(searchParams.status)) {
     filters.status = searchParams.status as NonNullable<typeof filters.status>;
@@ -76,14 +81,17 @@ export async function DashboardTaskTable({
   if (searchParams.assigneeId) {
     filters.assigneeId = searchParams.assigneeId;
   }
+  if (searchParams.flag && VALID_FLAGS.has(searchParams.flag)) {
+    filters.flag = searchParams.flag as NonNullable<typeof filters.flag>;
+  }
 
   const hasActiveFilters = Boolean(
-    filters.status || filters.priority || filters.assigneeId,
+    filters.status || filters.priority || filters.assigneeId || filters.flag,
   );
   const clearFiltersHref = `/w/${workspaceSlug}`;
 
   const [tasks, members] = await Promise.all([
-    getWorkspaceListTasks(workspaceId, filters),
+    getWorkspaceListTasks(workspaceId, filters, timezone),
     getWorkspaceMembers(workspaceId),
   ]);
   const assigneeOptions = members.active.map((member) => ({

@@ -31,6 +31,7 @@ import { useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
+import { formatDuration } from "@/lib/time/format-duration";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — reused for the Key
 // column below by both callers of this table (the per-project List view
 // and, via components/dashboard/dashboard-task-table.tsx, the
@@ -300,6 +301,10 @@ export function TaskListTable({
             <TableHead>
               <DueDateSortHeader sort={sort} />
             </TableHead>
+            {/* F412: Estimate/Logged, next to due date since a lead scans
+                schedule and effort together, not effort with priority. */}
+            <TableHead className="text-right">Estimate</TableHead>
+            <TableHead className="text-right">Logged</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -404,6 +409,23 @@ export function TaskListTable({
                     </span>
                     <ListDueDateCell taskId={task.id} dueDate={task.dueDate} />
                   </div>
+                </TableCell>
+                {/* F412: "—" for no estimate rather than "0h" — a task
+                    nobody has sized yet must not read as "sized at zero". */}
+                <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                  {task.estimateMinutes
+                    ? formatDuration(task.estimateMinutes)
+                    : "—"}
+                </TableCell>
+                <TableCell
+                  className={
+                    task.estimateMinutes &&
+                    (task.totalMinutes ?? 0) > task.estimateMinutes
+                      ? "text-right font-mono text-xs tabular-nums text-destructive"
+                      : "text-right font-mono text-xs tabular-nums text-muted-foreground"
+                  }
+                >
+                  {task.totalMinutes ? formatDuration(task.totalMinutes) : "—"}
                 </TableCell>
               </TableRow>
             );

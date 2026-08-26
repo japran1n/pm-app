@@ -6,6 +6,9 @@ import {
   getPriorityCounts,
   getStatusCounts,
   getOverdueCount,
+  getDueSoonCount,
+  getBlockedCount,
+  getCompletedCount,
 } from "@/lib/queries/dashboard";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
@@ -107,10 +110,23 @@ export default async function WorkspacePage({
     });
   }
 
-  const [priorityResult, statusResult, overdueResult] = await Promise.all([
+  const [
+    priorityResult,
+    statusResult,
+    overdueResult,
+    dueSoonResult,
+    blockedResult,
+    completedResult,
+  ] = await Promise.all([
     getPriorityCounts(supabase, workspace.id),
     getStatusCounts(supabase, workspace.id),
     getOverdueCount(supabase, workspace.id, timezone),
+    // UX-20: three more small workspace-scoped counts, fetched alongside
+    // the three that already existed — same "server-fetched RPC results
+    // passed down as plain props" shape, no new round trip pattern.
+    getDueSoonCount(supabase, workspace.id, timezone),
+    getBlockedCount(supabase, workspace.id),
+    getCompletedCount(supabase, workspace.id, timezone),
   ]);
 
   // Error state: log the real error (Sentry-equivalent per this
@@ -118,7 +134,12 @@ export default async function WorkspacePage({
   // render an inline retry rather than throwing, so one failed RPC doesn't
   // take down the whole workspace home page.
   const hasError = Boolean(
-    priorityResult.error || statusResult.error || overdueResult.error,
+    priorityResult.error ||
+      statusResult.error ||
+      overdueResult.error ||
+      dueSoonResult.error ||
+      blockedResult.error ||
+      completedResult.error,
   );
   if (priorityResult.error) {
     console.error(
@@ -135,10 +156,28 @@ export default async function WorkspacePage({
       `[dashboard] get_overdue_count failed for workspace ${workspace.id}: ${overdueResult.error}`,
     );
   }
+  if (dueSoonResult.error) {
+    console.error(
+      `[dashboard] get_due_soon_count failed for workspace ${workspace.id}: ${dueSoonResult.error}`,
+    );
+  }
+  if (blockedResult.error) {
+    console.error(
+      `[dashboard] get_blocked_count failed for workspace ${workspace.id}: ${blockedResult.error}`,
+    );
+  }
+  if (completedResult.error) {
+    console.error(
+      `[dashboard] get_completed_count failed for workspace ${workspace.id}: ${completedResult.error}`,
+    );
+  }
 
   const priorityData = priorityResult.data ?? [];
   const statusData = statusResult.data ?? [];
   const overdueCount = overdueResult.data ?? 0;
+  const dueSoonCount = dueSoonResult.data ?? 0;
+  const blockedCount = blockedResult.data ?? 0;
+  const completedCount = completedResult.data ?? 0;
   const totalTasks = statusData.reduce((sum, datum) => sum + datum.count, 0);
   const isEmpty = !hasError && totalTasks === 0;
 
@@ -161,6 +200,9 @@ export default async function WorkspacePage({
         priorityData={priorityData}
         statusData={statusData}
         overdueCount={overdueCount}
+        dueSoonCount={dueSoonCount}
+        blockedCount={blockedCount}
+        completedCount={completedCount}
         canOfferSampleProject={canOfferSampleProject}
       />
 

@@ -1,19 +1,6 @@
-// F073 (AS-135): the priority half of the dashboard's two charts, fed by
-// F071's `get_priority_counts` RPC via lib/queries/dashboard.ts. Recharts
-// requires a browser (ResizeObserver, SVG measurement), so this is the
-// smallest possible Client Component boundary — it takes already-fetched
-// data as a plain prop, no data fetching of its own — while the workspace
-// home page around it stays a Server Component (AS-155: primary content
-// server-rendered in initial HTML; only this interactive chart hydrates
-// client-side).
-//
-// AS-135: each bar's color comes from `datum.color`, which
-// lib/queries/dashboard.ts populated from lib/task-colors.ts's
-// PRIORITY_COLORS — the same constant the priority badge in
-// components/task/task-card.tsx now uses — so a bar's color always
-// matches that priority's badge color elsewhere in the app.
 "use client";
 
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -27,7 +14,31 @@ import {
 
 import type { PriorityCountDatum } from "@/lib/queries/dashboard";
 
+// UX-15: this chart used to be a picture, not a control — the page below
+// it (app/(workspace)/w/[workspaceSlug]/page.tsx) already reads
+// `?priority=` out of searchParams and threads it into
+// <DashboardTaskTable>'s filters, so all a click needed to do was write
+// that same param. `?priority=none` is left un-clickable: the task table's
+// own VALID_PRIORITIES allow-list has no "none" value, so there is nothing
+// for that segment to filter to.
 export function PriorityBarChart({ data }: { data: PriorityCountDatum[] }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activePriority = searchParams.get("priority");
+
+  function handleBarClick(datum: PriorityCountDatum) {
+    if (datum.priority === "none") return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (activePriority === datum.priority) {
+      params.delete("priority");
+    } else {
+      params.set("priority", datum.priority);
+    }
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   return (
     <ResponsiveContainer width="100%" height={260}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -41,10 +52,22 @@ export function PriorityBarChart({ data }: { data: PriorityCountDatum[] }) {
           height={50}
         />
         <YAxis allowDecimals={false} tick={{ fontSize: 12 }} width={32} />
-        <Tooltip formatter={(value) => [value, "Tasks"]} />
+        <Tooltip
+          formatter={(value) => [value, "Tasks"]}
+          cursor={{ fill: "var(--muted)" }}
+        />
         <Bar dataKey="count" radius={[4, 4, 0, 0]}>
           {data.map((datum) => (
-            <Cell key={datum.priority} fill={datum.color} data-priority={datum.priority} />
+            <Cell
+              key={datum.priority}
+              fill={datum.color}
+              data-priority={datum.priority}
+              onClick={() => handleBarClick(datum)}
+              cursor={datum.priority === "none" ? "default" : "pointer"}
+              opacity={
+                !activePriority || activePriority === datum.priority ? 1 : 0.35
+              }
+            />
           ))}
         </Bar>
       </BarChart>

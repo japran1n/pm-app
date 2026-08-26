@@ -43,6 +43,7 @@ import { getTourStatus } from "@/lib/actions/onboarding-tour";
 // rule, and per this feature's clarified caching note, one fetch per
 // layout render (not a per-navigation client refetch).
 import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
+import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -383,6 +384,7 @@ export default async function WorkspaceLayout({
       <ShortcutProvider />
       <ShortcutHelpDialog />
       <OnboardingTour initialDismissed={tourDismissed} />
+      <BreadcrumbProvider>
       <div className="flex min-h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}
@@ -413,10 +415,12 @@ export default async function WorkspaceLayout({
           <AppHeader
             workspaceId={activeWorkspace.id}
             workspaceSlug={workspaceSlug}
+            workspaceName={activeWorkspace.name}
           />
           {children}
         </main>
       </div>
+      </BreadcrumbProvider>
     </MembershipProvider>
   );
 }

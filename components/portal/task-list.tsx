@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { Inbox } from "lucide-react";
 
 import type {
   PortalProject,
   PortalTask,
   StatusCategory,
 } from "@/lib/queries/portal";
+import { clientStatusLabel } from "@/components/portal/status-label";
+import { EmptyState } from "@/components/empty-state";
 
 function formatDate(iso: string): string {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -68,12 +71,11 @@ export function PortalTaskList({
 
   if (project.tasks.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-muted/30 p-8 text-center">
-        <p className="text-sm font-medium">Nothing shared yet</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The team has not shared any items from this project with you.
-        </p>
-      </div>
+      <EmptyState
+        icon={Inbox}
+        title="Nothing shared yet"
+        description="The team has not shared any items from this project with you."
+      />
     );
   }
 
@@ -81,10 +83,10 @@ export function PortalTaskList({
     <div className="flex flex-col gap-6">
       <h2 className="text-lg font-medium tracking-tight">Shared with you</h2>
 
-      {groups.map(({ statusName, tasks }) => (
+      {groups.map(({ statusName, category, tasks }) => (
         <section key={statusName} className="flex flex-col gap-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {statusName.replace(/_/g, " ")} ({tasks.length})
+            {clientStatusLabel(category, statusName)} ({tasks.length})
           </h3>
 
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -98,7 +100,7 @@ export function PortalTaskList({
                 <li key={task.id}>
                   <Link
                     href={`/portal/${workspaceSlug}/t/${task.id}`}
-                    className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/40"
+                    className="hover-surface flex items-center justify-between gap-4 px-4 py-3"
                   >
                     <span className="text-sm">{task.title}</span>
                     {task.dueDate && (

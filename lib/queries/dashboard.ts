@@ -128,6 +128,47 @@ export async function getOverdueCount(
   return { data: Number(data ?? 0), error: null };
 }
 
+// UX-20: the dashboard's KPI row used to be a single Overdue tile sitting
+// in a 3-column grid with two empty slots. These three fill the row out
+// to four small, meaningful counts (see the migration's own header
+// comment for what each RPC actually counts).
+export async function getDueSoonCount(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  timezone: string,
+): Promise<{ data: number | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("get_due_soon_count", {
+    p_workspace_id: workspaceId,
+    p_timezone: timezone,
+  });
+  if (error) return { data: null, error: error.message };
+  return { data: Number(data ?? 0), error: null };
+}
+
+export async function getBlockedCount(
+  supabase: SupabaseClient,
+  workspaceId: string,
+): Promise<{ data: number | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("get_blocked_count", {
+    p_workspace_id: workspaceId,
+  });
+  if (error) return { data: null, error: error.message };
+  return { data: Number(data ?? 0), error: null };
+}
+
+export async function getCompletedCount(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  timezone: string,
+): Promise<{ data: number | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("get_completed_count", {
+    p_workspace_id: workspaceId,
+    p_timezone: timezone,
+  });
+  if (error) return { data: null, error: error.message };
+  return { data: Number(data ?? 0), error: null };
+}
+
 export async function getStatusCounts(
   supabase: SupabaseClient,
   workspaceId: string,

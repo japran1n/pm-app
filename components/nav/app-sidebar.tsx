@@ -6,7 +6,6 @@ import { useState, useTransition } from "react";
 import {
   LayoutDashboard,
   KanbanSquare,
-  Search,
   Users,
   Clock,
   LogOut,
@@ -71,37 +70,54 @@ import { ProjectNavList, type SidebarProjectItem } from "@/components/nav/projec
 // convenience gate, same caveat as above; the archive page itself
 // independently redirects a guest who navigates there directly (see that
 // page's own `role === "guest"` redirect).
-function navItems(
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+};
+
+// UX-10: this used to be one flat 12-14 item list — no distinction between
+// "used every hour" (My Tasks) and "used once a quarter" (Trash), so the
+// eye had to scan the whole thing every time. Grouped into three fixed
+// bands by how often each screen gets opened, plus an "Other" band for the
+// admin/housekeeping pages at the bottom. Groups are visual only (every
+// item still always renders) — several tests (app-sidebar-*-nav.test.tsx)
+// assert a given link's presence in the static-rendered HTML regardless of
+// grouping, so nothing here is conditionally mounted.
+//
+// "Search" was dropped from this list entirely: it's already reachable
+// from the always-visible header (HeaderSearch, F267) and the `/` shortcut
+// (ShortcutProvider), so a third, permanent nav row for it was pure
+// duplication.
+function navGroups(
   workspaceSlug: string,
   isGuest: boolean,
   canManageWorkspace: boolean,
   hasClient: boolean,
-) {
-  const items = [
+): { label: string | null; items: NavItem[] }[] {
+  const work: NavItem[] = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     // F230 (AS-435): "My Tasks" placed above "Projects" -- per the
-    // feature spec's own "since this is the daily-driver screen" note --
-    // visible to everyone (including guests), same as Dashboard/Projects.
+    // feature spec's own "since this is the daily-driver screen" note.
     { href: `/w/${workspaceSlug}/my-tasks`, label: "My Tasks", icon: ListChecks },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
-    // F241: "Calendar" and "Timeline" nav items -- both pages are
-    // workspace-wide, RLS-scoped-query views with no guest gate of their
-    // own (see their own page.tsx doc comments -- they mirror My Tasks'
-    // structure, not Members/Archive/Templates/Trash's guest-redirect
-    // pattern), so they're visible to everyone including guests, same as
-    // My Tasks/Projects/Search above. Placed after Projects/before Search
-    // as other workspace-wide, non-project-scoped views.
+  ];
+
+  // F241: Calendar/Timeline are workspace-wide, RLS-scoped views with no
+  // guest gate of their own, same as Work above -- visible to everyone.
+  const plan: NavItem[] = [
     { href: `/w/${workspaceSlug}/calendar`, label: "Calendar", icon: CalendarDays },
     { href: `/w/${workspaceSlug}/timeline`, label: "Timeline", icon: GanttChartSquare },
-    { href: `/w/${workspaceSlug}/search`, label: "Search", icon: Search },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
+  ];
+
+  const team: NavItem[] = [
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
     // C5: the client-request inbox. Only present when the workspace has a
     // client at all — a permanent empty inbox for the majority of teams
     // who never use the portal is clutter, and it advertises a feature
-    // they have not opted into. Filtered out for guests alongside
-    // Members/Archive/Templates/Trash: triaging a client's requests is
-    // team work.
+    // they have not opted into.
     ...(hasClient
       ? [
           {
@@ -111,33 +127,36 @@ function navItems(
           },
         ]
       : []),
+  ];
+
+  const other: NavItem[] = [
     { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
-    // F183: "Templates" nav item, gated to non-guests the same way
-    // "Members"/"Archive" already are — a guest never sees an entry point
-    // to /w/[workspaceSlug]/templates from the sidebar; that page
-    // independently redirects a guest who navigates there directly.
+    // F183: gated to non-guests the same way Members/Archive already are.
     { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
-    // F188 (AS-343..352): "Trash" nav item, gated to non-guests the same
-    // way "Members"/"Archive"/"Templates" already are — a guest never
-    // sees an entry point to /w/[workspaceSlug]/trash from the sidebar;
-    // that page independently redirects a guest who navigates there
-    // directly (mirrors F142's archive page pattern exactly).
+    // F188 (AS-343..352): same gating pattern (mirrors F142's archive
+    // page).
     { href: `/w/${workspaceSlug}/trash`, label: "Trash", icon: Trash2 },
     ...(canManageWorkspace
       ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
       : []),
   ];
 
-  return isGuest
-    ? items.filter(
-        (item) =>
-          item.label !== "Members" &&
-          item.label !== "Client requests" &&
-          item.label !== "Archive" &&
-          item.label !== "Templates" &&
-          item.label !== "Trash",
-      )
-    : items;
+  const guestExcluded = new Set([
+    "Members",
+    "Client requests",
+    "Archive",
+    "Templates",
+    "Trash",
+  ]);
+  const filterGuest = (items: NavItem[]) =>
+    isGuest ? items.filter((item) => !guestExcluded.has(item.label)) : items;
+
+  return [
+    { label: null, items: work },
+    { label: "Plan", items: filterGuest(plan) },
+    { label: "Team", items: filterGuest(team) },
+    { label: "Other", items: filterGuest(other) },
+  ].filter((group) => group.items.length > 0);
 }
 
 function SidebarContent({
@@ -168,7 +187,7 @@ function SidebarContent({
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
   const hasClient = useMembership()?.hasClient ?? false;
-  const items = navItems(workspaceSlug, isGuest, canManageWorkspace, hasClient);
+  const groups = navGroups(workspaceSlug, isGuest, canManageWorkspace, hasClient);
 
   return (
     <div className="flex h-full flex-col">
@@ -200,41 +219,51 @@ function SidebarContent({
           Tasks/etc. out of view. */}
       <nav
         data-tour="sidebar-nav"
-        className="flex flex-col gap-0.5 overflow-y-auto p-2"
+        className="flex flex-col gap-3 overflow-y-auto p-2"
       >
-        {items.map(({ href, label, icon: Icon, exact }) => {
-          const isActive = exact
-            ? pathname === href
-            : pathname === href || pathname.startsWith(`${href}/`);
+        {groups.map((group, groupIndex) => (
+          <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
+            {group.label && (
+              <p className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
+                {group.label}
+              </p>
+            )}
+            {group.items.map(({ href, label, icon: Icon, exact }) => {
+              const isActive = exact
+                ? pathname === href
+                : pathname === href || pathname.startsWith(`${href}/`);
 
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-current={isActive ? "page" : undefined}
-              onClick={onNavigate}
-              className={cn(
-                // F265 (AS-518): `max-md:min-h-11` -- this Link is used
-                // both in the always-visible desktop `<aside>` (>= md,
-                // mouse-driven, untouched) AND inside the hamburger-
-                // triggered mobile Sheet (< md, this is the actual
-                // touch-target surface) -- `md` (not `sm`) because that's
-                // the real breakpoint this same component switches
-                // between the two presentations at (see AppSidebar below:
-                // `hidden ... md:flex` / `... md:hidden`), so a `sm:`
-                // check would leave 640-767px tablet widths (where the
-                // mobile Sheet is still what's shown) under-sized.
-                "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
-                isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              )}
-            >
-              <Icon className="size-4 shrink-0" aria-hidden="true" />
-              {label}
-            </Link>
-          );
-        })}
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={isActive ? "page" : undefined}
+                  onClick={onNavigate}
+                  className={cn(
+                    // F265 (AS-518): `max-md:min-h-11` -- this Link is used
+                    // both in the always-visible desktop `<aside>` (>= md,
+                    // mouse-driven, untouched) AND inside the hamburger-
+                    // triggered mobile Sheet (< md, this is the actual
+                    // touch-target surface) -- `md` (not `sm`) because
+                    // that's the real breakpoint this same component
+                    // switches between the two presentations at (see
+                    // AppSidebar below: `hidden ... md:flex` / `...
+                    // md:hidden`), so a `sm:` check would leave 640-767px
+                    // tablet widths (where the mobile Sheet is still what's
+                    // shown) under-sized.
+                    "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium max-md:min-h-11",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <Icon className="size-4 shrink-0" aria-hidden="true" />
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       {/* F262 (AS-509, AS-511, AS-512, AS-513): visible to every role

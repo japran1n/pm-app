@@ -31,7 +31,11 @@ import type { TaskCardTask } from "@/components/task/task-card";
 // the RPC's already-counted totals into the same done/total/percent
 // shape as before.
 import { computeTaskCompletion } from "@/lib/tasks/completion";
+import { getTaskLoggedMinutes } from "@/lib/queries/time-entries";
 import type { RecurrenceRule } from "@/lib/recurrence/next-date";
+import { isOverdue } from "@/lib/tasks/is-overdue";
+import { isDoneStatus } from "@/lib/tasks/status-category";
+import { todayInTimeZone } from "@/lib/time/user-timezone";
 
 // F146 (AS-258): every embedded `projects` relation below can come back
 // from PostgREST as either a single object or a one-element array
@@ -346,7 +350,16 @@ export async function getProjectListTasks(
     throw error;
   }
 
-  return (data ?? []).map((task) => ({
+  const rows = data ?? [];
+
+  // F412: one batched sum of logged time for the whole visible page,
+  // rather than a per-row fetch — see getTaskLoggedMinutes's own doc
+  // comment for why this can't be an N+1.
+  const loggedMinutesByTask = await getTaskLoggedMinutes(
+    rows.map((task) => task.id),
+  );
+
+  return rows.map((task) => ({
     id: task.id,
     title: task.title,
     status: task.status as TaskCardTask["status"],
@@ -363,6 +376,9 @@ export async function getProjectListTasks(
     projectKey: firstRelated(task.projects)?.key,
     // F167 follow-up: see this function's select above.
     estimateMinutes: task.estimate_minutes,
+    // F412: previously always undefined on this path — see
+    // getTaskLoggedMinutes's doc comment.
+    totalMinutes: loggedMinutesByTask.get(task.id) ?? 0,
     // F161 follow-through (AS-287, AS-288): see this function's select
     // above — `task_assignees` always comes back as an array for a
     // one-to-many embed (unlike the single-relation `projects` above,
@@ -399,11 +415,24 @@ export async function getProjectListTasks(
 // on top of that narrows the *already-permitted* rows down to this one
 // workspace specifically, mirroring the `project_id` narrowing the
 // project-scoped query does on top of the same RLS policy.
-export type WorkspaceListTaskFilters = ProjectListTaskFilters;
+// UX-20: the dashboard's four KPI tiles (Overdue / Due soon / Blocked /
+// Completed) each need to link somewhere real, not just show a number —
+// `flag` is that link's target, layered on top of the existing status/
+// priority/assignee filters exactly the way they already compose (AND,
+// same as the rest of this type). "Due soon"/"Overdue"/"Completed" are
+// evaluated with the SAME `lib/time/user-timezone.ts` helpers the RPCs
+// backing the tiles' own counts use (F124's "never disagree" rule), so a
+// tile's number and the list it opens can't drift from each other around
+// a timezone boundary the way two independently-computed date checks
+// could.
+export type WorkspaceListTaskFilters = ProjectListTaskFilters & {
+  flag?: "overdue" | "due_soon" | "blocked" | "completed";
+};
 
 export async function getWorkspaceListTasks(
   workspaceId: string,
   filters?: WorkspaceListTaskFilters,
+  timezone: string = "UTC",
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
@@ -444,6 +473,38 @@ export async function getWorkspaceListTasks(
     query = query.in("id", assigneeTaskIds);
   }
 
+  // UX-20: "blocked" is the one flag that can't be decided from a column
+  // already on `tasks` — it means "has an open (not-done) blocker in
+  // task_dependencies", the same predicate 20260824060000's
+  // get_project_board_tasks RPC uses for a single project's
+  // open_blocker_count, resolved here to an id list the same way
+  // filterTaskIdsByAnyAssignee resolves assignee ids, since RLS on
+  // task_dependencies/tasks already scopes this to rows the caller can
+  // see. "overdue"/"due_soon"/"completed" are decided AFTER the fetch
+  // below instead (they need each task's resolved status category, which
+  // isn't a filterable column either, but is cheap to compute in JS with
+  // the same helper isOverdue()/getWorkspaceListTasks's own map() already
+  // uses per row).
+  if (filters?.flag === "blocked") {
+    const { data: dependencyRows } = await supabase
+      .from("task_dependencies")
+      .select(
+        "blocked_task_id, tasks!task_dependencies_blocking_task_id_fkey(status, deleted_at, project_statuses(category))",
+      )
+      .not("blocking_task_id", "is", null);
+
+    const blockedIds = new Set<string>();
+    for (const row of dependencyRows ?? []) {
+      const blocking = firstRelated(row.tasks);
+      if (!blocking || blocking.deleted_at) continue;
+      const category = firstRelated(blocking.project_statuses)?.category ?? null;
+      if (!isDoneStatus(blocking.status, category)) {
+        blockedIds.add(row.blocked_task_id);
+      }
+    }
+    query = query.in("id", [...blockedIds]);
+  }
+
   query = query.order("created_at", { ascending: true });
 
   // F161 follow-through (AS-287, AS-288): see getProjectListTasks above
@@ -459,7 +520,7 @@ export async function getWorkspaceListTasks(
     throw error;
   }
 
-  return (data ?? []).map((task) => ({
+  const mapped = (data ?? []).map((task) => ({
     id: task.id,
     title: task.title,
     status: task.status as TaskCardTask["status"],
@@ -486,6 +547,42 @@ export async function getWorkspaceListTasks(
     // F179 follow-up (AS-317): see this function's select above.
     recurrence: task.recurrence as RecurrenceRule | null,
   }));
+
+  // UX-20: "overdue"/"due_soon"/"completed" aren't filterable columns —
+  // they're derived from (dueDate, status/statusCategory) exactly the way
+  // TaskCard already decides whether to render its own overdue styling,
+  // so this reuses that same lib/tasks/is-overdue.ts helper instead of a
+  // second, potentially-drifting date comparison.
+  if (filters?.flag === "overdue") {
+    return mapped.filter((task) =>
+      isOverdue(task.dueDate, task.status, timezone, task.statusCategory),
+    );
+  }
+  if (filters?.flag === "due_soon") {
+    const today = todayInTimeZone(timezone) ?? new Date().toISOString().slice(0, 10);
+    const horizon = new Date(`${today}T00:00:00Z`);
+    horizon.setUTCDate(horizon.getUTCDate() + 7);
+    const horizonIso = horizon.toISOString().slice(0, 10);
+    return mapped.filter(
+      (task) =>
+        task.dueDate !== null &&
+        task.dueDate >= today &&
+        task.dueDate < horizonIso &&
+        !isDoneStatus(task.status, task.statusCategory),
+    );
+  }
+  if (filters?.flag === "completed") {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    return mapped.filter(
+      (task) =>
+        isDoneStatus(task.status, task.statusCategory) &&
+        task.updatedAt !== undefined &&
+        new Date(task.updatedAt) >= cutoff,
+    );
+  }
+
+  return mapped;
 }
 
 // F246 (AS-473, AS-474, AS-477): resolves a workspace-scoped task-key URL

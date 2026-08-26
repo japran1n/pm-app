@@ -123,11 +123,26 @@ export function ListFilters({
   const status = searchParams.get("status") ?? ALL_VALUE;
   const priority = searchParams.get("priority") ?? ALL_VALUE;
   const assigneeId = searchParams.get("assigneeId") ?? ALL_VALUE;
+  // UX-20: the dashboard's KPI tiles write `?flag=` (overdue/due_soon/
+  // blocked/completed) — a filter this component didn't create and has no
+  // Select for, but it's still an active constraint on the list below, so
+  // it counts toward "Clear filters" showing up and gets its own dismiss
+  // chip. Always empty for the project List view, which never sets it.
+  const flag = searchParams.get("flag");
+  const flagLabels: Record<string, string> = {
+    overdue: "Overdue",
+    due_soon: "Due soon",
+    blocked: "Blocked",
+    completed: "Completed recently",
+  };
 
   const hasActiveFilters = useMemo(
     () =>
-      status !== ALL_VALUE || priority !== ALL_VALUE || assigneeId !== ALL_VALUE,
-    [status, priority, assigneeId],
+      status !== ALL_VALUE ||
+      priority !== ALL_VALUE ||
+      assigneeId !== ALL_VALUE ||
+      Boolean(flag),
+    [status, priority, assigneeId, flag],
   );
 
   const setParam = useCallback(
@@ -255,6 +270,19 @@ export function ListFilters({
           ))}
         </SelectContent>
       </Select>
+
+      {flag && (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => setParam("flag", null)}
+          aria-label={`Remove ${flagLabels[flag] ?? flag} filter`}
+        >
+          {flagLabels[flag] ?? flag}
+          <X className="size-3.5" aria-hidden="true" />
+        </Button>
+      )}
 
       {hasActiveFilters && (
         <Button

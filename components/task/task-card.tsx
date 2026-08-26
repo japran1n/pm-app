@@ -250,8 +250,12 @@ export function TaskCard({
           : undefined
       }
       className={cn(
-        "border border-border/60 bg-card shadow-sm transition-shadow",
-        onClick && "cursor-pointer hover:shadow-md hover:ring-foreground/20",
+        "border border-border/60 bg-card",
+        // UX-02: the old `hover:ring-foreground/20` never rendered — Tailwind
+        // needs a `ring-*` width utility alongside a `ring-*` color one, and
+        // this card never set the width. `.hover-lift` (globals.css) is the
+        // app's one shared "this card is clickable" treatment.
+        onClick && "hover-lift",
         className,
       )}
     >

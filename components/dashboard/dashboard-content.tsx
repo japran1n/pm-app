@@ -1,10 +1,18 @@
 import Link from "next/link";
+import {
+  AlertTriangle,
+  LayoutDashboard,
+  Ban,
+  CalendarClock,
+  CheckCircle2,
+} from "lucide-react";
 
 import { PriorityBarChart } from "@/components/dashboard/priority-bar-chart";
 import { StatusPieChart } from "@/components/dashboard/status-pie-chart";
-import { OverdueTile } from "@/components/dashboard/overdue-tile";
+import { KpiTile } from "@/components/dashboard/kpi-tile";
 import { DashboardRetryButton } from "@/components/dashboard/dashboard-retry-button";
 import { SampleProjectOffer } from "@/components/onboarding/sample-project-offer";
+import { EmptyState } from "@/components/empty-state";
 import {
   Card,
   CardContent,
@@ -40,6 +48,12 @@ export type DashboardContentProps = {
   priorityData: PriorityCountDatum[];
   statusData: StatusCountDatum[];
   overdueCount: number;
+  /** UX-20: unfinished, due within the next 7 days (not yet overdue). */
+  dueSoonCount: number;
+  /** UX-20: unfinished, with at least one open (not-done) blocker. */
+  blockedCount: number;
+  /** UX-20: entered a done status in the last 7 days. */
+  completedCount: number;
   // F254 (AS-494): the sample-project offer is only ever mounted for a
   // caller who could actually create a project (`canWrite` — viewers are
   // read-only, AS-216/AS-217) — a plain UI-only convenience gate, since
@@ -56,12 +70,21 @@ export function DashboardContent({
   priorityData,
   statusData,
   overdueCount,
+  dueSoonCount,
+  blockedCount,
+  completedCount,
   canOfferSampleProject,
 }: DashboardContentProps) {
   if (hasError) {
     return (
       <Card data-testid="dashboard-error-state">
-        <CardContent className="flex flex-col items-start gap-3 py-6">
+        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+          <div
+            aria-hidden="true"
+            className="flex size-12 items-center justify-center rounded-full bg-destructive/10"
+          >
+            <AlertTriangle className="size-6 text-destructive" />
+          </div>
           <p className="text-sm text-muted-foreground">
             We couldn&apos;t load your dashboard charts.
           </p>
@@ -72,38 +95,75 @@ export function DashboardContent({
   }
 
   if (isEmpty) {
+    // UX-21: this used to hand-roll its own two-`<div>` markup instead of
+    // the shared EmptyState component every other empty surface in the app
+    // uses (board, list view, archive, …) — and this is the very first
+    // screen a brand-new workspace shows. Copy is unchanged
+    // (tests/unit/dashboard-empty-state.test.ts asserts on "No tasks yet",
+    // "create your first project" and the /projects href verbatim).
     return (
-      <Card data-testid="dashboard-empty-state">
-        <CardContent className="flex flex-col items-start gap-4 py-6">
-          <div className="flex flex-col items-start gap-3">
-            <p className="text-sm text-muted-foreground">
-              No tasks yet — create your first project to get started.
-            </p>
+      <EmptyState
+        testId="dashboard-empty-state"
+        icon={LayoutDashboard}
+        title="Nothing here yet"
+        description="No tasks yet — create your first project to get started."
+        action={
+          <>
             <Link
               href={`/w/${workspaceSlug}/projects`}
               className="text-sm text-primary underline-offset-4 hover:underline"
             >
               View projects
             </Link>
-          </div>
-
-          {/* F254 (AS-494): offered, never forced — a viewer (read-only)
-              never sees this control at all. */}
-          {canOfferSampleProject && (
-            <SampleProjectOffer
-              workspaceId={workspaceId}
-              workspaceSlug={workspaceSlug}
-            />
-          )}
-        </CardContent>
-      </Card>
+            {/* F254 (AS-494): offered, never forced — a viewer (read-only)
+                never sees this control at all. */}
+            {canOfferSampleProject && (
+              <SampleProjectOffer
+                workspaceId={workspaceId}
+                workspaceSlug={workspaceSlug}
+              />
+            )}
+          </>
+        }
+      />
     );
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <OverdueTile count={overdueCount} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          href={`/w/${workspaceSlug}?flag=overdue`}
+          icon={AlertTriangle}
+          label="Overdue"
+          count={overdueCount}
+          tone={overdueCount > 0 ? "crit" : "neutral"}
+          description="Past due date, not yet done"
+        />
+        <KpiTile
+          href={`/w/${workspaceSlug}?flag=due_soon`}
+          icon={CalendarClock}
+          label="Due this week"
+          count={dueSoonCount}
+          tone={dueSoonCount > 0 ? "warn" : "neutral"}
+          description="Due in the next 7 days"
+        />
+        <KpiTile
+          href={`/w/${workspaceSlug}?flag=blocked`}
+          icon={Ban}
+          label="Blocked"
+          count={blockedCount}
+          tone={blockedCount > 0 ? "crit" : "neutral"}
+          description="Waiting on an open blocker"
+        />
+        <KpiTile
+          href={`/w/${workspaceSlug}?flag=completed`}
+          icon={CheckCircle2}
+          label="Completed"
+          count={completedCount}
+          tone="ok"
+          description="Done in the last 7 days"
+        />
       </div>
       <div className="grid gap-4 md:grid-cols-2" data-testid="dashboard-charts">
         <Card className="gap-4">

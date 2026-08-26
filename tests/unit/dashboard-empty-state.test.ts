@@ -77,6 +77,9 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
         overdueCount: 0,
+        dueSoonCount: 0,
+        blockedCount: 0,
+        completedCount: 0,
         canOfferSampleProject: true,
       }),
     );
@@ -106,6 +109,9 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         priorityData: ZERO_PRIORITY_DATA,
         statusData: ZERO_STATUS_DATA,
         overdueCount: 0,
+        dueSoonCount: 0,
+        blockedCount: 0,
+        completedCount: 0,
         canOfferSampleProject: true,
       }),
     );
@@ -125,6 +131,9 @@ describe("DashboardContent empty state (F074: AS-130)", () => {
         priorityData: ZERO_PRIORITY_DATA,
         statusData: NONZERO_STATUS_DATA,
         overdueCount: 0,
+        dueSoonCount: 0,
+        blockedCount: 0,
+        completedCount: 0,
         canOfferSampleProject: true,
       }),
     );
