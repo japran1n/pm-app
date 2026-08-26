@@ -406,7 +406,9 @@ export function ReportForm({
     const finalDescription = buildTaskDescription({
       reporterText: description.trim(),
       environment,
-      element: pickedElement ? { selector: pickedElement.selector } : null,
+      element: pickedElement
+        ? { selector: pickedElement.selector, rect: pickedElement.rect }
+        : null,
     });
 
     try {

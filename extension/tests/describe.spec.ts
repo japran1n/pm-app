@@ -108,7 +108,7 @@ test("AS_560_reporters_own_text_comes_before_the_metadata_block", async () => {
         (window as any).__describe.buildTaskDescription({
           reporterText: "MY OWN WORDS FIRST",
           environment: env,
-          element: { selector: "#submit-button" },
+          element: { selector: "#submit-button", rect: { x: 10, y: 20, width: 100, height: 40 } },
         }),
       ENV,
     );
@@ -149,11 +149,46 @@ test("AS_560_element_section_included_when_present", async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__describe.buildTaskDescription({
         reporterText: "Broke here.",
-        element: { selector: "#submit-button" },
+        element: { selector: "#submit-button", rect: { x: 12, y: 34, width: 56, height: 78 } },
       }),
     );
     expect(result).toContain("Picked element:");
     expect(result).toContain("#submit-button");
+  } finally {
+    await context.close();
+  }
+});
+
+// M19 scrutiny BLOCKER-1 (AS-547): the picker collects the element's
+// position and size (`rect`) and the popup displays it to the reporter, but
+// prior to this fix the submit boundary (report-form.tsx) discarded it,
+// sending only `{ selector }`. This test follows the value all the way into
+// the SUBMITTED DESCRIPTION STRING that report-form.tsx actually sends to
+// POST /api/extension/tasks (buildTaskDescription's return value IS that
+// string — see describe.ts's file header) rather than stopping at the
+// picker's own return value the way `element-picker-selector.spec.ts:288`
+// does, which is exactly why that test could pass against the broken
+// behaviour.
+test("AS_547_submitted_description_contains_selector_and_position_and_size", async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const popupPage = await loadDescribeOnPopup(context, extensionId);
+    const submittedDescription = await popupPage.evaluate(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__describe.buildTaskDescription({
+        reporterText: "The submit button is unresponsive.",
+        element: {
+          selector: "#unique-target",
+          rect: { x: 20, y: 20, width: 100, height: 40 },
+        },
+      }),
+    );
+    // A CSS selector...
+    expect(submittedDescription).toContain("#unique-target");
+    // ...AND the element's position and size, both present in the same
+    // string that is actually sent to the server.
+    expect(submittedDescription).toContain("20, 20");
+    expect(submittedDescription).toContain("100 x 40");
   } finally {
     await context.close();
   }

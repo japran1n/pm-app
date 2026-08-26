@@ -130,9 +130,14 @@ function runPickerInPage(): Promise<PickResult> {
       }
 
       const tag = el.tagName.toLowerCase();
+      // Restricted to known-stable test-hook attributes only (matches
+      // selector.ts's STABLE_TEST_HOOK_ATTRIBUTES) — an arbitrary `data-*`
+      // attribute's VALUE is embedded verbatim into the selector below and
+      // could otherwise leak PII (e.g. data-user-email, data-customer-id).
+      const stableTestHookAttributes = ["data-testid", "data-test", "data-cy", "data-qa"];
       const dataAttrNames = Array.from(el.attributes)
         .map((a) => a.name)
-        .filter((name) => name.startsWith("data-"))
+        .filter((name) => stableTestHookAttributes.includes(name))
         .sort((a, b) => (a === "data-testid" ? -1 : b === "data-testid" ? 1 : 0));
       for (const name of dataAttrNames) {
         const value = el.getAttribute(name);

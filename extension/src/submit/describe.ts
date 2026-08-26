@@ -35,6 +35,10 @@ export type DescribeEnvironment = {
 
 export type DescribeElement = {
   selector: string;
+  /** The picked element's bounding box, in the same shape
+   * `element-picker.ts`'s `finish({ rect: ... })` already produces
+   * (viewport-relative CSS pixels from `getBoundingClientRect()`). */
+  rect: { x: number; y: number; width: number; height: number };
 };
 
 export type BuildDescriptionInput = {
@@ -77,7 +81,15 @@ export function buildTaskDescription(input: BuildDescriptionInput): string {
   }
 
   if (input.element) {
-    sections.push(["Picked element:", `  Selector: ${input.element.selector}`].join("\n"));
+    const { rect } = input.element;
+    sections.push(
+      [
+        "Picked element:",
+        `  Selector: ${input.element.selector}`,
+        `  Position: ${rect.x}, ${rect.y}`,
+        `  Size: ${rect.width} x ${rect.height}`,
+      ].join("\n"),
+    );
   }
 
   if (sections.length === 0) {

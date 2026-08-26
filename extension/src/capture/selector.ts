@@ -73,14 +73,25 @@ function idSelector(el: Element): GeneratedSelector | null {
   return null;
 }
 
+/** Known-stable, non-PII-bearing test-hook attribute names. This codebase's
+ * own convention is `data-testid` (verified against `app/`, `components/`,
+ * `lib/`); the other three are the common cross-framework equivalents. Only
+ * these are eligible for Tier 2 — an arbitrary `data-*` attribute (e.g.
+ * `data-user-email`, `data-customer-id`) is never used, since its VALUE is
+ * embedded verbatim into the generated selector and could leak PII into a
+ * selector string sent to the server. */
+const STABLE_TEST_HOOK_ATTRIBUTES = ["data-testid", "data-test", "data-cy", "data-qa"];
+
 /** Tier 2: a `data-*` attribute whose (tag + attribute + value) combination
- * is unique in the document. Prefers `data-testid` when present (the most
- * common convention) but accepts any `data-*` attribute. */
+ * is unique in the document. Restricted to a small allowlist of known-stable
+ * test-hook attributes (see `STABLE_TEST_HOOK_ATTRIBUTES`) rather than any
+ * `data-*` attribute, since arbitrary data attributes may carry sensitive
+ * values. Prefers `data-testid` when present (the most common convention). */
 function dataAttributeSelector(el: Element): GeneratedSelector | null {
   const tag = el.tagName.toLowerCase();
   const dataAttrNames = Array.from(el.attributes)
     .map((a) => a.name)
-    .filter((name) => name.startsWith("data-"))
+    .filter((name) => STABLE_TEST_HOOK_ATTRIBUTES.includes(name))
     .sort((a, b) => (a === "data-testid" ? -1 : b === "data-testid" ? 1 : 0));
 
   for (const name of dataAttrNames) {
