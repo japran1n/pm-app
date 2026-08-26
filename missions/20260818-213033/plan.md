@@ -317,6 +317,6 @@ board URL — say so in the handoff if you take a fallback.
 ### M19 scrutiny follow-ups (2026-08-26, from missions/20260818-213033/milestones/M19-scrutiny.md pass 1, blockers)
 
 - F341 m19-scrutiny-element-rect-in-report — fixes AS-547 [CLARIFIED-AUTO] [COMPLETE]
-- F342 m19-scrutiny-env-metadata-from-page — fixes AS-548 [CLARIFIED-AUTO]
+- F342 m19-scrutiny-env-metadata-from-page — fixes AS-548 [CLARIFIED-AUTO] [COMPLETE]
 - F343 m19-scrutiny-context-route-visibility-leak — fixes AS-557 (security: private project disclosure) [CLARIFIED-AUTO] [COMPLETE]
-- F344 m19-scrutiny-manifest-origin-from-env — fixes AS-571 [CLARIFIED-AUTO]
+- F344 m19-scrutiny-manifest-origin-from-env — fixes AS-571 [CLARIFIED-AUTO] [COMPLETE]
