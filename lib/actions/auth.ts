@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { signInSchema } from "@/lib/validation/auth";
+import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 
 export type SignInResult =
   | { ok: true }
@@ -83,4 +83,119 @@ export async function signOut(): Promise<never> {
   }
 
   redirect("/sign-in");
+}
+
+// --- Password sign-in (testing / demo accounts) -----------------------------
+//
+// The magic-link flow above stays the primary production path. This adds a
+// second, ordinary email-or-username + password path so the app can be
+// exercised repeatedly without an inbox and without hitting Supabase's
+// magic-link send rate limit (the same problem app/dev-login/route.ts
+// works around, but usable from the real sign-in screen and from a
+// deployed preview, not only NODE_ENV=development).
+//
+// Username support: usernames live in each account's Supabase Auth
+// `user_metadata.username` (written by scripts/seed-demo.mjs), not in a
+// `profiles` column — no migration is needed and nothing about the
+// existing schema changes. Resolving one to its email requires the admin
+// client, so that lookup is deliberately gated behind
+// ALLOW_USERNAME_LOGIN=true (defaulting to on in development only): it is
+// a convenience for testing, not a production auth surface. An identifier
+// containing "@" is always treated as an email and never touches the
+// admin client.
+
+export type PasswordSignInResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+function usernameLoginEnabled(): boolean {
+  if (process.env.ALLOW_USERNAME_LOGIN === "true") return true;
+  if (process.env.ALLOW_USERNAME_LOGIN === "false") return false;
+  return process.env.NODE_ENV === "development";
+}
+
+// Maps a bare username onto the email of the account that claims it.
+// Returns null when the username is unknown — the caller reports the same
+// generic "invalid credentials" message either way, so this never becomes
+// a username-enumeration oracle.
+async function resolveUsernameToEmail(username: string): Promise<string | null> {
+  const wanted = username.trim().toLowerCase();
+
+  // GoTrue's admin user list supports a `filter` query param (a substring
+  // match over email) that the JS SDK does not expose. Filtering by the
+  // username narrows thousands of accounts down to a handful server-side;
+  // the exact `user_metadata.username` comparison then happens here, so a
+  // partial email match never signs anyone into the wrong account.
+  const response = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(
+      wanted,
+    )}&per_page=50`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_SECRET_KEY!,
+        Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY!}`,
+      },
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    console.error("resolveUsernameToEmail lookup failed:", response.status);
+    return null;
+  }
+
+  const body = (await response.json()) as {
+    users?: Array<{ email?: string; user_metadata?: { username?: string } }>;
+  };
+
+  const match = (body.users ?? []).find(
+    (u) => String(u.user_metadata?.username ?? "").toLowerCase() === wanted,
+  );
+
+  return match?.email ?? null;
+}
+
+export async function signInWithPassword(
+  _prevState: PasswordSignInResult | null,
+  formData: FormData,
+): Promise<PasswordSignInResult> {
+  const parsed = passwordSignInSchema.safeParse({
+    identifier: formData.get("identifier"),
+    password: formData.get("password"),
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Check your details and try again.",
+    };
+  }
+
+  const { identifier, password } = parsed.data;
+
+  let email: string | null = identifier.includes("@") ? identifier : null;
+  if (!email) {
+    if (!usernameLoginEnabled()) {
+      return { ok: false, error: "Enter the email address for your account." };
+    }
+    email = await resolveUsernameToEmail(identifier);
+  }
+
+  if (!email) {
+    // Same message as a wrong password: no enumeration signal.
+    return { ok: false, error: "Invalid email/username or password." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    console.error("signInWithPassword failed:", error.message);
+    return { ok: false, error: "Invalid email/username or password." };
+  }
+
+  // Session cookies are already written by the SSR client at this point;
+  // /onboarding does the membership check and forwards to the user's
+  // workspace (or shows the create-workspace form for a brand-new account).
+  redirect("/onboarding");
 }
