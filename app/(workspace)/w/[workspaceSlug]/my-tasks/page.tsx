@@ -227,8 +227,13 @@ function MyTaskRowItem({
       )}
       <Badge
         variant="outline"
-        className="shrink-0"
-        style={{ borderColor: PRIORITY_COLORS[priority], color: PRIORITY_COLORS[priority] }}
+        // F338 (M18 scrutiny MAJ-3/FU-G, AS-526): PRIORITY_COLORS as TEXT
+        // color on this text-xs badge fails 4.5:1 for urgent/high/low
+        // (3.76/3.56/3.68:1 on the white card). Keep the colour-coded
+        // border (3:1 threshold, already passing) but use the theme's
+        // default foreground for the text itself.
+        className="shrink-0 text-foreground"
+        style={{ borderColor: PRIORITY_COLORS[priority] }}
       >
         {PRIORITY_LABELS[priority]}
       </Badge>

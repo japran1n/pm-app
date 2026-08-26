@@ -42,7 +42,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
 import { formatTaskKey } from "@/lib/tasks/task-key";
-import { PRIORITY_COLORS } from "@/lib/task-colors";
+import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import { UserAvatarGroup } from "@/components/user-avatar-group";
 import { DayOverflow } from "@/components/calendar/day-overflow";
 import { cn } from "@/lib/utils";
@@ -157,6 +157,7 @@ function TaskChip({
         style={{ backgroundColor: PRIORITY_COLORS[priority] }}
         aria-hidden
       />
+      <span className="sr-only">{PRIORITY_LABELS[priority]}</span>
       {key && (
         <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
           {key}

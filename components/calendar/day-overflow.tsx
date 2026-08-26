@@ -19,7 +19,7 @@ import Link from "next/link";
 
 import type { CalendarTask } from "@/lib/queries/calendar";
 import { formatTaskKey } from "@/lib/tasks/task-key";
-import { PRIORITY_COLORS } from "@/lib/task-colors";
+import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import {
   Popover,
   PopoverContent,
@@ -71,6 +71,7 @@ export function DayOverflow({
                   style={{ backgroundColor: PRIORITY_COLORS[priority] }}
                   aria-hidden
                 />
+                <span className="sr-only">{PRIORITY_LABELS[priority]}</span>
                 {key && (
                   <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                     {key}

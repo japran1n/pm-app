@@ -36,7 +36,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { TimelineBarLayout } from "@/lib/timeline/layout";
 import type { TimelineTask } from "@/lib/queries/timeline";
 import { formatTaskKey } from "@/lib/tasks/task-key";
-import { PRIORITY_COLORS } from "@/lib/task-colors";
+import { PRIORITY_COLORS, PRIORITY_LABELS, PRIORITY_TEXT_ON_COLOR } from "@/lib/task-colors";
 import { cn } from "@/lib/utils";
 
 export const MOVE_PREFIX = "timeline-move:";
@@ -54,10 +54,21 @@ export function TimelineBarDraggable({
   workspaceSlug: string;
   canDrag: boolean;
 }) {
-  const priorityColor = PRIORITY_COLORS[(task.priority as keyof typeof PRIORITY_COLORS) ?? "none"];
+  const priority = (task.priority as keyof typeof PRIORITY_COLORS) ?? "none";
+  const priorityColor = PRIORITY_COLORS[priority];
+  const priorityLabel = PRIORITY_LABELS[priority];
+  const priorityTextColor = PRIORITY_TEXT_ON_COLOR[priority];
   const href = `/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${task.id}`;
   const taskKey = formatTaskKey(task.projectKey, task.number);
-  const label = taskKey ? `${taskKey} ${task.title}` : task.title;
+  // AS-525/AS-526: mirrors components/timeline/timeline-bar.tsx's fix --
+  // priority is folded into the accessible name/title (this component
+  // renders no other priority-bearing text either, including the
+  // no-visible-text marker branch), and the fixed-hex text colour is
+  // picked per-background via PRIORITY_TEXT_ON_COLOR rather than a
+  // hardcoded `text-white` that fails 4.5:1 for urgent/high/low.
+  const label = taskKey
+    ? `${taskKey} ${task.title} (${priorityLabel} priority)`
+    : `${task.title} (${priorityLabel} priority)`;
 
   // Destructured immediately at each hook's own call site -- mirrors
   // components/calendar/day-cell.tsx's `DraggableTaskChip` convention
@@ -100,7 +111,7 @@ export function TimelineBarDraggable({
     <div
       ref={setMoveNodeRef}
       className={cn(
-        "group absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden text-xs text-white shadow-sm transition-opacity hover:opacity-90",
+        "group absolute top-1/2 flex -translate-y-1/2 items-center overflow-hidden text-xs shadow-sm transition-opacity hover:opacity-90",
         layout.kind === "range" ? "h-6 rounded-md" : "h-4 w-4 -translate-x-1/2 rounded-full",
         task.isDone && "opacity-60",
         canDrag && "cursor-grab active:cursor-grabbing",
@@ -109,6 +120,7 @@ export function TimelineBarDraggable({
         left: `${layout.leftPx}px`,
         width: layout.kind === "range" ? `${layout.widthPx}px` : undefined,
         backgroundColor: priorityColor,
+        color: priorityTextColor,
         transform: moveTransform,
         zIndex: anyDragging ? 30 : undefined,
       }}

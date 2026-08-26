@@ -48,8 +48,17 @@ import type { TaskCardTask } from "@/components/task/task-card";
 export const STATUS_COLORS: Record<TaskCardTask["status"], string> = {
   todo: "#64748b", // slate-500 (4.76:1 on white)
   in_progress: "#3b82f6", // blue-500 (3.68:1 on white)
-  in_review: "#d97706", // amber-600 (3.19:1 on white; was amber-500 2.15:1)
-  done: "#16a34a", // green-600 (3.30:1 on white; was green-500 2.28:1)
+  // F338 (M18 scrutiny MAJ-3/FU-G, AS-526): every dot using this map
+  // renders inside `<Badge variant="secondary">`
+  // (task-card.tsx/subtask-list.tsx/dependencies.tsx/bulk-status-action.tsx/
+  // search/page.tsx), i.e. on `--secondary` (#f4f4f5 light / #262626
+  // dark), NOT directly on `--card` as this file's header comment
+  // originally assumed. Amber-600 measures only 2.90:1 there (fails
+  // 3:1) even though it cleared 3:1 against white/dark-card. Amber-700
+  // clears both real surfaces: 4.57:1 light, 3.01:1 dark. See
+  // tests/unit/task-colors-contrast.test.ts.
+  in_review: "#b45309", // amber-700 (4.57:1 on --secondary light, 3.01:1 dark; was amber-600 2.90:1 on the real surface)
+  done: "#15803d", // green-700 (4.56:1 on --secondary light, 3.02:1 dark; was green-600 2.998:1 -- just under 3:1 -- on the real surface)
 };
 
 export const STATUS_LABELS: Record<TaskCardTask["status"], string> = {
@@ -80,6 +89,29 @@ export const PRIORITY_COLORS: Record<Priority | "none", string> = {
   // in both themes.
   backlog: "#71717a", // zinc-500 (4.83:1 on white, 3.41:1 on dark card; was slate-600 2.18:1 on dark)
   none: "#64748b", // slate-500 (4.76:1 on white; was slate-300 1.48:1)
+};
+
+// F338 (M18 scrutiny MAJ-3/FU-G, AS-526): the timeline bar/marker fills
+// its ENTIRE surface with the fixed PRIORITY_COLORS hex above and needs
+// real body text (the task title) to stay legible on it in both themes.
+// Since the background is a theme-invariant fixed hex, a single
+// theme-invariant text colour is needed too -- but neither pure black
+// nor pure white clears the WCAG AA 4.5:1 normal-text threshold against
+// every one of the six values (black fails medium/backlog/none at
+// 4.27/4.35/4.41:1; white fails urgent/high/low at 3.76/3.56/3.68:1), so
+// this is a genuine per-colour "which one wins" pick, not a fixed
+// scheme. Every entry below is the higher-contrast of {black, white}
+// for its own background and clears 4.5:1: urgent 5.58:1, high 5.90:1,
+// medium 4.92:1, low 5.71:1, backlog 4.83:1, none 4.76:1 (against WHITE
+// text) or 5.58/5.90/-/5.71/-/- (against BLACK text) as applicable. See
+// tests/unit/task-colors-contrast.test.ts for the automated check.
+export const PRIORITY_TEXT_ON_COLOR: Record<Priority | "none", string> = {
+  urgent: "#000000",
+  high: "#000000",
+  medium: "#ffffff",
+  low: "#000000",
+  backlog: "#ffffff",
+  none: "#ffffff",
 };
 
 export const PRIORITY_LABELS: Record<Priority | "none", string> = {

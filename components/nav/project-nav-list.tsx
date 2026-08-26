@@ -60,12 +60,23 @@ export type SidebarProjectItem = {
 // themes) so every dot now clears the WCAG AA 3:1 non-text contrast
 // threshold in both light and dark sidebars. See
 // tests/unit/project-nav-dot-contrast.test.ts for the automated check.
+//
+// F338 (M18 scrutiny MAJ-3/FU-G, AS-526): the row this dot sits in isn't
+// always plain `--sidebar` -- the active/hover state applies
+// `bg-sidebar-accent` (see the className below), a genuinely different
+// surface (#f5f5f5 light / #262626 dark) the original test never
+// measured. Re-measured against that real surface, two entries failed:
+// `bg-amber-600` (2.92:1 on the light accent row) and `bg-purple-600`
+// (2.81:1 on the dark accent row). Swapped amber-600 -> amber-700 (clears
+// both: 4.61:1 light / 3.01:1 dark) and purple-600 -> purple-500 (clears
+// all four surfaces: >=3.63:1 everywhere it's measured). See
+// tests/unit/project-nav-dot-contrast.test.ts.
 const DOT_COLORS = [
   "bg-rose-600",
-  "bg-amber-600",
+  "bg-amber-700",
   "bg-emerald-600",
   "bg-sky-600",
-  "bg-purple-600",
+  "bg-purple-500",
   "bg-pink-600",
   "bg-teal-600",
   "bg-orange-600",
