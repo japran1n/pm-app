@@ -216,5 +216,157 @@ describe.skipIf(!haveCreds)(
       const res = await getExtensionContext();
       expect(res.status).toBe(401);
     });
+
+    describe("AS-557: intra-workspace private-project scoping (M19 scrutiny BLOCKER-4)", () => {
+      let privateProjectId: string;
+      let plainMemberEmail: string;
+      let plainMemberPassword: string;
+      let plainMemberAccessToken: string;
+      let explicitMemberEmail: string;
+      let explicitMemberPassword: string;
+      let explicitMemberAccessToken: string;
+      let explicitMemberUserId: string;
+      let plainMemberUserId: string;
+
+      beforeAll(async () => {
+        const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // A private project inside workspace A (the same workspace used by
+        // the outer describe block's tests, where `memberUserId` is an
+        // "owner"). Create two additional users in workspace A: a plain
+        // member with no explicit access to the private project, and a
+        // member with an explicit `project_members` row on it.
+        const { data: privateProj, error: privateProjErr } = await adminClient
+          .from("projects")
+          .insert({
+            workspace_id: workspaceAId,
+            name: "F293 private project (BLOCKER-4)",
+            visibility: "private",
+          })
+          .select("id")
+          .single();
+        if (privateProjErr || !privateProj) {
+          throw new Error(`Failed to create private project: ${privateProjErr?.message}`);
+        }
+        privateProjectId = privateProj.id;
+
+        plainMemberEmail = `f293-plain-${suffix}@example.com`;
+        plainMemberPassword = "Test-password-1!";
+        const { data: plainAuth, error: plainAuthErr } =
+          await adminClient.auth.admin.createUser({
+            email: plainMemberEmail,
+            password: plainMemberPassword,
+            email_confirm: true,
+          });
+        if (plainAuthErr || !plainAuth.user) {
+          throw new Error(`Failed to create plain member: ${plainAuthErr?.message}`);
+        }
+        plainMemberUserId = plainAuth.user.id;
+        const { error: plainInsertErr } = await adminClient
+          .from("workspace_members")
+          .insert({
+            workspace_id: workspaceAId,
+            user_id: plainMemberUserId,
+            role: "member",
+            status: "active",
+          });
+        if (plainInsertErr) {
+          throw new Error(`Failed to seed plain membership: ${plainInsertErr.message}`);
+        }
+
+        explicitMemberEmail = `f293-explicit-${suffix}@example.com`;
+        explicitMemberPassword = "Test-password-1!";
+        const { data: explicitAuth, error: explicitAuthErr } =
+          await adminClient.auth.admin.createUser({
+            email: explicitMemberEmail,
+            password: explicitMemberPassword,
+            email_confirm: true,
+          });
+        if (explicitAuthErr || !explicitAuth.user) {
+          throw new Error(`Failed to create explicit member: ${explicitAuthErr?.message}`);
+        }
+        explicitMemberUserId = explicitAuth.user.id;
+        const { error: explicitInsertErr } = await adminClient
+          .from("workspace_members")
+          .insert({
+            workspace_id: workspaceAId,
+            user_id: explicitMemberUserId,
+            role: "member",
+            status: "active",
+          });
+        if (explicitInsertErr) {
+          throw new Error(
+            `Failed to seed explicit workspace membership: ${explicitInsertErr.message}`,
+          );
+        }
+        const { error: projectMemberInsertErr } = await adminClient
+          .from("project_members")
+          .insert({ project_id: privateProjectId, user_id: explicitMemberUserId });
+        if (projectMemberInsertErr) {
+          throw new Error(
+            `Failed to seed project membership: ${projectMemberInsertErr.message}`,
+          );
+        }
+
+        const plainSignInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+        const { data: plainSession, error: plainSignInErr } =
+          await plainSignInClient.auth.signInWithPassword({
+            email: plainMemberEmail,
+            password: plainMemberPassword,
+          });
+        if (plainSignInErr || !plainSession.session) {
+          throw new Error(`Failed to sign in plain member: ${plainSignInErr?.message}`);
+        }
+        plainMemberAccessToken = plainSession.session.access_token;
+
+        const explicitSignInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+        const { data: explicitSession, error: explicitSignInErr } =
+          await explicitSignInClient.auth.signInWithPassword({
+            email: explicitMemberEmail,
+            password: explicitMemberPassword,
+          });
+        if (explicitSignInErr || !explicitSession.session) {
+          throw new Error(`Failed to sign in explicit member: ${explicitSignInErr?.message}`);
+        }
+        explicitMemberAccessToken = explicitSession.session.access_token;
+      });
+
+      afterAll(async () => {
+        if (privateProjectId) {
+          await adminClient.from("project_members").delete().eq("project_id", privateProjectId);
+          await adminClient.from("projects").delete().eq("id", privateProjectId);
+        }
+        for (const id of [plainMemberUserId, explicitMemberUserId]) {
+          if (id) {
+            await adminClient.from("workspace_members").delete().eq("user_id", id);
+            await adminClient.auth.admin.deleteUser(id);
+          }
+        }
+      });
+
+      it("a plain member with no explicit access does not see the private project", async () => {
+        const res = await getExtensionContext(plainMemberAccessToken, workspaceAId);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        const projectIds = json.projects.map((p: { id: string }) => p.id);
+        expect(projectIds).not.toContain(privateProjectId);
+      });
+
+      it("a workspace owner/admin sees the private project even with no explicit project_members row", async () => {
+        const res = await getExtensionContext(memberAccessToken, workspaceAId);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        const projectIds = json.projects.map((p: { id: string }) => p.id);
+        expect(projectIds).toContain(privateProjectId);
+      });
+
+      it("a member with an explicit project_members row sees the private project", async () => {
+        const res = await getExtensionContext(explicitMemberAccessToken, workspaceAId);
+        expect(res.status).toBe(200);
+        const json = await res.json();
+        const projectIds = json.projects.map((p: { id: string }) => p.id);
+        expect(projectIds).toContain(privateProjectId);
+      });
+    });
   },
 );

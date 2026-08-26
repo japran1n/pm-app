@@ -4,6 +4,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { resolvePeople } from "@/lib/queries/people";
+import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 
 // F293 (AS-555, AS-556, AS-557): the second, read-only Route Handler the
 // report form (extension/src/popup/report-form.tsx) calls to populate its
@@ -164,7 +165,7 @@ export async function GET(request: NextRequest) {
     await Promise.all([
       admin
         .from("projects")
-        .select("id, name")
+        .select("id, name, visibility")
         .eq("workspace_id", workspaceId)
         .is("deleted_at", null)
         .order("name", { ascending: true }),
@@ -199,9 +200,60 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  // AS-557 (M19 scrutiny BLOCKER-4): `projectRows` above was fetched on the
+  // RLS-bypassing admin client, so it includes EVERY project in the
+  // workspace, including visibility='private' ones the caller may not be a
+  // `project_members` row for. Re-run the same rule
+  // `createTaskForUser` (lib/tasks/create.ts) and `uploadAttachmentForUser`
+  // (lib/attachments/upload.ts) already enforce via
+  // `isProjectVisibleToCaller`, batching the `project_members` lookup into a
+  // single query rather than one round trip per private project.
+  const allProjectRows = projectRows ?? [];
+  const privateProjectIds = allProjectRows
+    .filter((row) => ((row.visibility as ProjectVisibility) ?? "workspace") === "private")
+    .map((row) => row.id);
+
+  let visiblePrivateProjectIds = new Set<string>();
+  if (
+    privateProjectIds.length > 0 &&
+    membership.role !== "owner" &&
+    membership.role !== "admin"
+  ) {
+    const { data: privateMemberRows, error: privateMemberError } = await admin
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", user.id)
+      .in("project_id", privateProjectIds);
+
+    if (privateMemberError) {
+      console.error(
+        "extension/context: failed to look up project memberships:",
+        privateMemberError,
+      );
+      return NextResponse.json(
+        { error: "Something went wrong. Please try again in a moment." },
+        { status: 500, headers },
+      );
+    }
+
+    visiblePrivateProjectIds = new Set(
+      (privateMemberRows ?? []).map((row) => row.project_id),
+    );
+  }
+
+  // isProjectVisibleToCaller's rule, applied per row using the batched
+  // lookup above instead of a per-project query: workspace-visible OR
+  // caller is owner/admin OR caller has an explicit project_members row.
+  const visibleProjectRows = allProjectRows.filter((row) => {
+    const visibility = (row.visibility as ProjectVisibility) ?? "workspace";
+    if (visibility === "workspace") return true;
+    if (membership.role === "owner" || membership.role === "admin") return true;
+    return visiblePrivateProjectIds.has(row.id);
+  });
+
   return NextResponse.json(
     {
-      projects: (projectRows ?? []).map((row) => ({ id: row.id, name: row.name })),
+      projects: visibleProjectRows.map((row) => ({ id: row.id, name: row.name })),
       members,
     },
     { status: 200, headers },
