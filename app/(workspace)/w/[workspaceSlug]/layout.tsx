@@ -186,6 +186,24 @@ export default async function WorkspaceLayout({
     );
   }
 
+  // C3 (docs/client-portal-plan.md): a client belongs in the portal, not
+  // here. Placed immediately after the membership lookup and before every
+  // sidebar/notification/tour fetch below, so a client's request never pays
+  // for — or touches — data the portal has no use for.
+  //
+  // Chrome, not enforcement: RLS (20260902010000 / 20260902020000) is what
+  // actually stops a client reading team data, and it holds whether or not
+  // this redirect runs. What this prevents is the confusing middle state
+  // where a client lands in the team app and sees it almost entirely empty
+  // because every query legitimately returned nothing.
+  const currentRole = (memberships ?? []).find(
+    (m) => m.workspace_id === activeWorkspace.id,
+  )?.role;
+
+  if (currentRole === "client") {
+    redirect(`/portal/${activeWorkspace.slug}`);
+  }
+
   // F273 (AS-202): the signed-in person's own display name/avatar for the
   // sidebar footer entry point that links to the profile settings page —
   // without this the profile page (F123) has no in-app way to reach it.
@@ -241,6 +259,18 @@ export default async function WorkspaceLayout({
   // list query" instruction). Non-fatal to the rest of the layout --
   // getFavoriteProjectIds itself already fails open to an empty set.
   const favoriteProjectIds = await getFavoriteProjectIds(activeWorkspace.id);
+
+  // C2: does this workspace have any client at all? Fetched once here,
+  // alongside everything else the layout already loads, and exposed via
+  // MembershipProvider so the task sheet's share toggle (and any later
+  // portal affordance) can hide itself without a per-component query.
+  // `head: true` — only the count matters, never the rows.
+  const { count: clientMemberCount } = await supabase
+    .from("workspace_members")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", activeWorkspace.id)
+    .eq("role", "client")
+    .eq("status", "active");
 
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
@@ -341,7 +371,11 @@ export default async function WorkspaceLayout({
   // own heading (e.g. "Projects", "Members") as the page-title convention
   // instead.
   return (
-    <MembershipProvider role={activeWorkspaceRole} projectRoles={projectRoles}>
+    <MembershipProvider
+      role={activeWorkspaceRole}
+      hasClient={(clientMemberCount ?? 0) > 0}
+      projectRoles={projectRoles}
+    >
       <CommandPalette
         workspaceId={activeWorkspace.id}
         workspaceSlug={workspaceSlug}

@@ -152,58 +152,80 @@ export async function createWorkspace(
   redirect(`/w/${workspace.slug}`);
 }
 
-// AS-007: Finds an auth user by email via admin.auth.admin.listUsers(),
-// paginating through every page rather than relying on the API's single
-// unpaginated default (50 users/page). Supabase's Admin API has no
-// server-side email filter for listUsers (confirmed against the current
-// @supabase/auth-js PageParams type, which only exposes `page`/`perPage`),
-// so an exhaustive paginated scan is the only correct option today. Returns
-// the matching `User`, `null` if no user has that email, or the sentinel
-// `"lookup_failed"` if any page request errors (caller surfaces a generic
-// error rather than silently treating a failed lookup as "no match").
+// AS-007: Finds an auth user by email.
+//
+// Previously this paginated through EVERY user in the project 1000 at a
+// time, because the JS SDK's `PageParams` type exposes only `page` and
+// `perPage` and appeared to offer no server-side filter. That worked while
+// the project had a few hundred users. It no longer does: with tens of
+// thousands of auth rows (this project's test suites create throwaway
+// users on every run), GoTrue answers the very first page with a 500
+// "Database error finding users", so `findAuthUserByEmail` returned
+// "lookup_failed" and every invite failed — reproduced by
+// tests/integration/invite-member.test.ts failing on 5 of 7 cases even
+// when run serially.
+//
+// GoTrue's admin endpoint does have a filter: `GET /admin/users?filter=`
+// does a substring match over email. The SDK does not surface it, so this
+// calls the endpoint directly and then compares emails exactly here —
+// a substring match alone could return a different account (e.g. "an@x.com"
+// matching "ryan@x.com"), which for an invite lookup would attach the
+// invite to the wrong person.
+//
+// Returns the matching `User`, `null` if no user has that email, or the
+// sentinel `"lookup_failed"` if the request errors (the caller surfaces a
+// generic error rather than silently treating a failed lookup as "no
+// match" — an invite silently created for an existing user as if they were
+// new is worse than a visible failure).
 async function findAuthUserByEmail(
   admin: ReturnType<typeof createAdminClient>,
   email: string,
 ): Promise<User | null | "lookup_failed"> {
-  const perPage = 1000;
-  let page = 1;
+  void admin;
 
-  // Upper bound purely as a runaway-loop safety net (1000 pages * 1000
-  // users/page = 1,000,000 users) — not expected to ever be hit in
-  // practice, and the loop's own `nextPage === null` check is what
-  // normally ends it.
-  const maxPages = 1000;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-  while (page <= maxPages) {
-    const { data, error } = await admin.auth.admin.listUsers({
-      page,
-      perPage,
-    });
+  if (!supabaseUrl || !secretKey) {
+    console.error("findAuthUserByEmail: Supabase admin credentials missing");
+    return "lookup_failed";
+  }
 
-    if (error) {
+  const wanted = email.trim().toLowerCase();
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users?filter=${encodeURIComponent(
+        wanted,
+      )}&per_page=200`,
+      {
+        headers: {
+          apikey: secretKey,
+          Authorization: `Bearer ${secretKey}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
       console.error(
-        "findAuthUserByEmail: listUsers page lookup failed:",
-        error,
+        "findAuthUserByEmail: admin user lookup failed:",
+        response.status,
       );
       return "lookup_failed";
     }
 
-    const match = data.users.find(
-      (candidate) => candidate.email?.toLowerCase() === email,
+    const body = (await response.json()) as { users?: User[] };
+
+    return (
+      (body.users ?? []).find(
+        (candidate) => candidate.email?.toLowerCase() === wanted,
+      ) ?? null
     );
-
-    if (match) {
-      return match;
-    }
-
-    if (data.nextPage === null || data.users.length === 0) {
-      return null;
-    }
-
-    page = data.nextPage;
+  } catch (error) {
+    console.error("findAuthUserByEmail: admin user lookup threw:", error);
+    return "lookup_failed";
   }
-
-  return null;
 }
 
 // Invites a user by email to a workspace (AS-007). Only an active
@@ -215,7 +237,7 @@ async function findAuthUserByEmail(
 export async function inviteMember(
   workspaceId: string,
   email: string,
-  role?: "admin" | "member" | "viewer" | "guest",
+  role?: "admin" | "member" | "viewer" | "guest" | "client",
   projectId?: string,
 ): Promise<InviteMemberResult> {
   const parsed = inviteMemberSchema.safeParse({
@@ -623,7 +645,7 @@ export async function revokeInvite(
 export async function changeMemberRole(
   workspaceId: string,
   targetMembershipId: string,
-  newRole: "member" | "admin" | "viewer" | "guest",
+  newRole: "member" | "admin" | "viewer" | "guest" | "client",
 ): Promise<ChangeMemberRoleResult> {
   const parsed = changeMemberRoleSchema.safeParse({
     workspaceId,

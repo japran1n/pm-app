@@ -162,3 +162,28 @@ uloguje i vidi progres", i već je demonstrabilno. C5–C6 su drugi milestone
   zadacima.
 - **Realtime kanali** (`tasks`, `comments` publikacije) — klijentska sesija
   ne sme da se pretplati na ceo projekat; filtrirati na serveru.
+
+---
+
+## Šta je zaista isporučeno (2026-08-26)
+
+Sve faze C1–C8 su implementirane. Tri odstupanja od plana iznad, sa razlogom:
+
+1. **URL portala je `/portal/<workspaceSlug>`, ne `/w/<slug>/portal`.** Dve
+   route grupe ne mogu da dele `w/[slug]` segment. Ispalo je i bolje: nijedna
+   stranica dodata pod `/w/*` kasnije ne može slučajno da nasledi klijentsku
+   sesiju.
+2. **`comments.internal` nije ostavljen za "fazu 2"** — ušao je u C7 odmah,
+   jer bez njega dodavanje klijenta na stari projekat retroaktivno otvara svu
+   internu prepisku. Postojeći komentari su backfill-ovani na `internal = true`.
+3. **Dodata je migracija koju plan nije predvideo** (`20260902020000`), jer je
+   testiranje pravom klijentskom sesijom otkrilo tri kategorije curenja koje
+   čitanje šeme nije pokazalo — pre svega `is_project_visible_to_row`, drugu
+   kopiju pravila vidljivosti.
+
+Rizik #1 iz sekcije 6 gore ("curenje kroz postojeće read putanje") se
+**obistinio** i to je bio najkorisniji deo plana.
+
+Ostaje za kasnije: notifikacija klijentu kad zadatak iz njegovog zahteva
+pređe u done, realtime filtriranje za klijentske sesije, i objedinjavanje
+`is_project_visible_to` sa `is_project_visible_to_row` u jednu implementaciju.

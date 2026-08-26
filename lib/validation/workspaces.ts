@@ -39,9 +39,14 @@ export const inviteMemberSchema = z.object({
     .toLowerCase()
     .min(1, "Email is required.")
     .email("Enter a valid email address."),
+  // C8: "client" joins the invitable roles. Like a guest, a client scoped
+  // to no project sees an empty portal, so the form requires a project for
+  // both — but as a business rule at the call site rather than a schema
+  // constraint, matching how guest already works (an admin can invite
+  // first and grant project access afterward).
   role: z
-    .enum(["admin", "member", "viewer", "guest"], {
-      message: "Role must be admin, member, viewer, or guest.",
+    .enum(["admin", "member", "viewer", "guest", "client"], {
+      message: "Role must be admin, member, viewer, guest, or client.",
     })
     .default("member"),
   projectId: z.string().uuid("Invalid project.").optional(),
@@ -73,8 +78,13 @@ export type RevokeInviteInput = z.infer<typeof revokeInviteSchema>;
 export const changeMemberRoleSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   targetMembershipId: z.string().uuid("Invalid member."),
-  newRole: z.enum(["member", "admin", "viewer", "guest"], {
-    message: "Role must be member, admin, viewer, or guest.",
+  // C8: "client" is accepted here too, so an account added as the wrong
+  // role can be corrected in place. Note what changing TO client does: the
+  // person keeps their project_members rows but their reads collapse to
+  // the shared subset, and changing back restores the previous view — the
+  // role is the only thing that moves, no data is rewritten.
+  newRole: z.enum(["member", "admin", "viewer", "guest", "client"], {
+    message: "Role must be member, admin, viewer, guest, or client.",
   }),
 });
 

@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type InviteRole = "admin" | "member" | "viewer" | "guest";
+type InviteRole = "admin" | "member" | "viewer" | "guest" | "client";
 
 export interface InviteableProject {
   id: string;
@@ -60,8 +60,17 @@ export function InviteMemberForm({
     formEvent.preventDefault();
     setError(null);
 
-    if (role === "guest" && !projectId) {
-      const message = "Choose a project to scope this guest to.";
+    // C8: a client, like a guest, is scoped entirely by project. Inviting
+    // one with no project produces an account whose portal is empty — a
+    // dead end that reads as a broken invite rather than a permission
+    // decision, which is why both roles require the choice up front.
+    const needsProject = role === "guest" || role === "client";
+
+    if (needsProject && !projectId) {
+      const message =
+        role === "client"
+          ? "Choose the project this client should see."
+          : "Choose a project to scope this guest to.";
       setError(message);
       toast.error(message);
       return;
@@ -72,7 +81,7 @@ export function InviteMemberForm({
         workspaceId,
         email,
         role,
-        role === "guest" && projectId ? projectId : undefined,
+        needsProject && projectId ? projectId : undefined,
       );
       if (result.ok) {
         toast.success(`Invite sent to ${result.invitedEmail}.`);
@@ -117,12 +126,13 @@ export function InviteMemberForm({
               value !== "admin" &&
               value !== "member" &&
               value !== "viewer" &&
-              value !== "guest"
+              value !== "guest" &&
+              value !== "client"
             ) {
               return;
             }
             setRole(value);
-            if (value !== "guest") {
+            if (value !== "guest" && value !== "client") {
               setProjectId(null);
             }
           }}
@@ -131,13 +141,15 @@ export function InviteMemberForm({
           <SelectTrigger id="invite-role" size="sm" className="w-28">
             <SelectValue>
               {(value: string) =>
-                value === "guest"
-                  ? "Guest"
-                  : value === "viewer"
-                    ? "Viewer"
-                    : value === "admin"
-                      ? "Admin"
-                      : "Member"
+                value === "client"
+                  ? "Client"
+                  : value === "guest"
+                    ? "Guest"
+                    : value === "viewer"
+                      ? "Viewer"
+                      : value === "admin"
+                        ? "Admin"
+                        : "Member"
               }
             </SelectValue>
           </SelectTrigger>
@@ -146,11 +158,12 @@ export function InviteMemberForm({
             <SelectItem value="admin">Admin</SelectItem>
             <SelectItem value="viewer">Viewer</SelectItem>
             <SelectItem value="guest">Guest</SelectItem>
+            <SelectItem value="client">Client</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {role === "guest" && (
+      {(role === "guest" || role === "client") && (
         <div className="flex flex-col gap-2">
           <Label htmlFor="invite-project">Project</Label>
           <Select

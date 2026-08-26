@@ -3257,7 +3257,7 @@ export async function getTaskDetail(
       // TaskDetailSheetTask.statusCategory (isOverdue's category-aware
       // check) gets real data — same "one query, no second round trip"
       // convention as every other field on this select.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3738,6 +3738,10 @@ export async function getTaskDetail(
           (row) => row.user_id === user.id,
         ),
         dueDate: taskRow.due_date,
+        // C2: whether this task is shared with the workspace's clients —
+        // drives the detail sheet's share toggle. Selected on the same
+        // query as everything else here, no second round trip.
+        clientVisible: taskRow.client_visible ?? false,
         // F236 (AS-453): see this function's task select above.
         startDate: taskRow.start_date,
         tags: taskRow.tags ?? [],

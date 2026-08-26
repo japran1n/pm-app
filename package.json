@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "seed:demo": "node --env-file=.env scripts/seed-demo.mjs"
+    "seed:demo": "node --env-file=.env scripts/seed-demo.mjs",
+    "db:apply": "node --env-file=.env scripts/apply-migration.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

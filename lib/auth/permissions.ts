@@ -11,13 +11,29 @@
 // that is the entire point of AS-230.
 //
 // Workspace roles (see supabase/migrations/*_workspace_members_role_expansion.sql,
-// F126): "owner" | "admin" | "member" | "viewer" | "guest".
+// F126, and 20260902010000_client_role_and_task_client_visibility.sql):
+// "owner" | "admin" | "member" | "viewer" | "guest" | "client".
+//
+// "client" is an external party, not a member of the team: they see a
+// separate portal (docs/client-portal-plan.md) and are read-only across
+// every predicate in this module. Because most predicates here are written
+// as "deny this specific list, allow the rest", every one of them names
+// "client" explicitly rather than relying on a default — a permission that
+// silently admits a new role is how an external party ends up with a
+// delete button.
+//
 // Project roles (see supabase/migrations/20260821140520_project_members.sql,
 // F132): "lead" | "member" | null (null = caller has no project_members row
 // for the project in question, e.g. workspace-level member not added to
 // this specific project).
 
-export type WorkspaceRole = "owner" | "admin" | "member" | "viewer" | "guest";
+export type WorkspaceRole =
+  | "owner"
+  | "admin"
+  | "member"
+  | "viewer"
+  | "guest"
+  | "client";
 export type ProjectRole = "lead" | "member" | null;
 
 // The membership context every predicate below operates on. Callers pass
@@ -52,6 +68,24 @@ export function isResourceOwner(ctx: PermissionContext): boolean {
   return ctx.callerId === ctx.resourceOwnerId;
 }
 
+// --- Client-role predicates ------------------------------------------------
+
+// True when the caller is an external client of this workspace. Every other
+// predicate in this module consults this first, so "client" never falls
+// through into an allow branch written before the role existed.
+export function isClient(ctx: PermissionContext): boolean {
+  return ctx.role === "client";
+}
+
+// Whether the caller belongs in the client portal rather than the team app.
+// The redirect this drives is a convenience, not the security boundary —
+// RLS is (see 20260902010000 / 20260902020000). Its inverse also matters:
+// a team member who navigates to a portal URL is sent back to the app,
+// so the portal is not a second, weaker view of the same data for staff.
+export function canViewClientPortal(ctx: PermissionContext): boolean {
+  return isClient(ctx);
+}
+
 // --- Workspace-level predicates ------------------------------------------
 
 // Owner and admin manage workspace-wide settings (rename, delete, billing).
@@ -68,6 +102,7 @@ export function canManageMembers(ctx: PermissionContext): boolean {
 // (project-scoped) may also manage columns on the projects they lead, even
 // if their workspace role is only "member".
 export function canManageColumns(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "viewer" || ctx.role === "guest") return false;
   if (ctx.role === "owner" || ctx.role === "admin") return true;
   return ctx.projectRole === "lead";
@@ -82,7 +117,7 @@ export function canManageColumns(ctx: PermissionContext): boolean {
 // owner/admin-only *mutation*/audit gates) — a plain member can still see
 // who else is in the workspace, just not invite/remove/change roles.
 export function canViewMembersList(ctx: PermissionContext): boolean {
-  return ctx.role !== "guest";
+  return ctx.role !== "guest" && !isClient(ctx);
 }
 
 // Viewing the workspace audit log. Owner/admin only — this is
@@ -134,7 +169,7 @@ export function canDeleteWorkspace(ctx: PermissionContext): boolean {
 // one, so this generic gate's contract stays exactly "viewer is
 // read-only, every other role's existing write rules are unchanged."
 export function canWrite(ctx: PermissionContext): boolean {
-  return ctx.role !== "viewer";
+  return ctx.role !== "viewer" && !isClient(ctx);
 }
 
 // --- Task-level predicates -------------------------------------------------
@@ -147,6 +182,7 @@ export function canWrite(ctx: PermissionContext): boolean {
 // but a lead's edit rights don't extend beyond what "member" already
 // grants, so no extra branch is needed here.
 export function canEditTask(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "viewer" || ctx.role === "guest") return false;
   return ctx.role === "owner" || ctx.role === "admin" || ctx.role === "member";
 }
@@ -158,6 +194,7 @@ export function canEditTask(ctx: PermissionContext): boolean {
 // scoped to their own creations unless they're also the project lead.
 // Viewer/guest can never delete, regardless of ownership.
 export function canDeleteTask(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "viewer" || ctx.role === "guest") return false;
   if (ctx.role === "owner" || ctx.role === "admin") return true;
   if (ctx.projectRole === "lead") return true;
@@ -176,6 +213,7 @@ export function canDeleteTask(ctx: PermissionContext): boolean {
 // manage any project's members; an existing project lead may manage
 // members of the project(s) they lead even at the workspace "member" role.
 export function canManageProjectMembers(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "owner" || ctx.role === "admin") return true;
   return ctx.projectRole === "lead";
 }
@@ -191,6 +229,7 @@ export function canManageProjectMembers(ctx: PermissionContext): boolean {
 // boundary (RLS + this same rule re-checked in the Server Action); this
 // predicate only decides what the UI shows.
 export function canManageTemplate(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "owner" || ctx.role === "admin") return true;
   return isResourceOwner(ctx);
 }
@@ -205,6 +244,7 @@ export function canManageTemplate(ctx: PermissionContext): boolean {
 // branch -- lib/actions/views.ts only calls the admin-override branch of
 // this predicate for scope === 'shared' views.
 export function canManageSavedView(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
   if (ctx.role === "owner" || ctx.role === "admin") return true;
   return isResourceOwner(ctx);
 }

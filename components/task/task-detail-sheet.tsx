@@ -115,7 +115,10 @@ import {
 // F183 (AS-328 UI half): "Save as template" trigger, next to "Delete
 // task" in this Sheet's footer.
 import { SaveAsTemplateDialog } from "@/components/task/save-as-template-dialog";
-import { useProjectRole } from "@/components/auth/membership-provider";
+import {
+  useMembership,
+  useProjectRole,
+} from "@/components/auth/membership-provider";
 import { TagsEditor } from "@/components/task/tags-editor";
 import {
   SubtaskList,
@@ -153,6 +156,7 @@ import {
   type TimeTrackingActiveTimer,
 } from "@/components/task/time-tracking";
 import { Watchers } from "@/components/task/watchers";
+import { ClientVisibilityToggle } from "@/components/task/client-visibility-toggle";
 // F179 (AS-317, AS-318, AS-319): the recurrence picker + remove control —
 // same "smallest-possible-client-boundary, caller passes current value
 // down, component calls its own Server Action" convention as TagsEditor/
@@ -265,6 +269,9 @@ export type TaskDetailSheetTask = {
    * once this is populated. */
   assigneeIds?: string[];
   dueDate: string | null;
+  /** C2: whether this task is shared with the workspace's clients. Drives
+   * the share toggle in the header; false/undefined both mean internal. */
+  clientVisible?: boolean;
   /** F236 (AS-453): this task's start date, sibling to `dueDate` above —
    * same "plain YYYY-MM-DD string or null" shape, same source
    * (getTaskDetail's own task select, no second round trip). */
@@ -626,6 +633,9 @@ export function TaskDetailSheet({
   // convention already established by CommentList/TimeTracking/
   // AttachmentList in this same codebase.
   const projectRole = useProjectRole(task?.projectId);
+  // C2: hide the share-with-client toggle entirely in workspaces that have
+  // no client — see MembershipProvider's own `hasClient` doc comment.
+  const workspaceHasClient = useMembership()?.hasClient ?? false;
   const canEdit = currentUserRole
     ? canEditTask({ role: currentUserRole, projectRole })
     : true;
@@ -1178,6 +1188,19 @@ export function TaskDetailSheet({
                   than inside the metadata grid the assignee picker lives
                   in — visually subordinate to assignees, per the
                   clarified spec's own ambiguity-resolution note. */}
+              {/* C2: the share-with-client toggle, alongside the watch
+                  toggle rather than in the metadata grid — both are
+                  "who is looking at this" controls, not task fields.
+                  Rendered only when the workspace has at least one
+                  client, so teams that never use the portal never see
+                  an affordance implying an audience they don't have. */}
+              {workspaceHasClient && (
+                <ClientVisibilityToggle
+                  taskId={task.id}
+                  clientVisible={task.clientVisible ?? false}
+                  disabled={!canEdit}
+                />
+              )}
               <Watchers
                 taskId={task.id}
                 watcherIds={task.watcherIds ?? []}

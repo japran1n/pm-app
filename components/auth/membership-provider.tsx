@@ -34,6 +34,13 @@ import { createContext, useContext } from "react";
 import type { ProjectRole, WorkspaceRole } from "@/lib/auth/permissions";
 
 export type MembershipContextValue = {
+  /** C2: whether the ACTIVE workspace has at least one active member with
+   * the `client` role. Client-portal affordances (e.g. the task sheet's
+   * "share with client" toggle) are hidden entirely when it does not —
+   * a control implying an audience that does not exist is worse than no
+   * control. Server-fetched once in the workspace layout alongside the
+   * caller's own role, never a per-component query. */
+  hasClient: boolean;
   /** The caller's workspace role in the ACTIVE workspace (the one the
    * current /w/[workspaceSlug] route is under). */
   role: WorkspaceRole;
@@ -59,15 +66,17 @@ const MembershipContext = createContext<MembershipContextValue | null>(null);
 
 export function MembershipProvider({
   role,
+  hasClient = false,
   projectRoles,
   children,
 }: {
   role: WorkspaceRole;
+  hasClient?: boolean;
   projectRoles: Record<string, ProjectRole>;
   children: React.ReactNode;
 }) {
   return (
-    <MembershipContext.Provider value={{ role, projectRoles }}>
+    <MembershipContext.Provider value={{ role, hasClient, projectRoles }}>
       {children}
     </MembershipContext.Provider>
   );
