@@ -299,14 +299,25 @@ export function CommentList({
 
   useEffect(() => {
     let cancelled = false;
-    getMentionCandidates(taskId).then((result) => {
-      if (cancelled) return;
-      if (result.ok) {
-        setVisibleMentionIds(result.data.userIds);
-      } else {
+    getMentionCandidates(taskId)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) {
+          setVisibleMentionIds(result.data.userIds);
+        } else {
+          setVisibleMentionIds([]);
+        }
+      })
+      // A REJECTED call (not an ok:false result) was previously unhandled:
+      // the action can throw rather than return, and the rejection then
+      // escaped as an unhandled promise rejection instead of degrading the
+      // picker. Same outcome as the ok:false branch above — no mention
+      // candidates offered — because a mention picker that cannot verify
+      // visibility must offer nobody rather than everybody.
+      .catch(() => {
+        if (cancelled) return;
         setVisibleMentionIds([]);
-      }
-    });
+      });
     return () => {
       cancelled = true;
     };
