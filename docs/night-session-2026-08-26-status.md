@@ -136,3 +136,61 @@ nijedno ne ugnežđava drugi interaktivni element unutra.
 Potvrđeno u browseru: assignee popover na Website Redesign listi se
 otvara i radi bez pada, sa "Change assignees" dugmićima vidljivim na
 svakom redu (znak da hidracija ne pada).
+
+
+---
+
+## Optimizacija posle 7 feature-a (bez novih feature-a, po uputstvu)
+
+### Popravljeno
+
+**Stvaran broj otvorenih taskova na Projects stranici.** `openTaskCount`
+je bio hardkodiran na `null` sa komentarom "tasks tabela još ne postoji" —
+taj komentar je iz M4 (F033), stotinama feature-a unazad. Cela mreža je od
+tada, na svakom učitavanju svake Projects stranice, prikazivala "Open
+tasks: pending" umesto pravog broja. Popravljeno jednim batch upitom
+(nikad po projektu — ova funkcija hrani i sidebar), sa "otvoreno" računato
+po kategoriji kolone (`project_statuses.category`), ne po tekstu statusa,
+da ostane tačno i kad tim preimenuje kolone. Neuspeh upita vraća `null`
+(ne lažnu nulu) da postojeće "pending" stanje ostane istinito. Postojeći
+test koji je NAMETAO stari placeholder kao zahtev je ažuriran da proveri
+stvaran broj.
+
+### Provereno, bez izmena
+
+- **Duplirano pravilo vidljivosti** (`is_project_visible_to` /
+  `is_project_visible_to_row`) — proverio sam da su i dalje bajt-za-bajt
+  identična posle svih večerašnjih izmena. Nema drifta. Konsolidacija
+  ostaje kao poseban, pažljiviji zadatak — nisam hteo da rizikujem
+  regresiju u pravilu vidljivosti bez posebnog fokusa na to.
+- **N+1 upiti** — pretražio sam `lib/queries/*.ts` za petlje koje zovu
+  Supabase iznutra. Nema ih; svaka petlja radi nad već preuzetim nizom.
+- **Indeksi za nove tabele** (personal_todos, status_templates,
+  status_template_items) — svi prisutni i tačni.
+- **Workspace delete cascade** (TODO u `lib/actions/workspaces.ts`) —
+  namerno NISAM dirao. Provereno da `WorkspaceLayout`-ov gate već vraća
+  404 na svaku rutu ispod obrisanog workspace-a (workspace red se prvo
+  učitava, RLS ga sakriva čim je `deleted_at` postavljen) — dakle nema
+  vidljivog bug-a ni bezbednosne rupe, samo DB higijena (projekti/taskovi
+  ostaju kao žive vrste u bazi). Kaskadno brisanje kroz
+  projects/tasks/comments/attachments zaslužuje sopstveni pažljiv prolaz
+  (transakcija? RPC? šta sve treba da se kaskadira?), ne nabrzinu večeras.
+
+### Svesno NE urađeno (nova sposobnost, ne popravka — ide u izveštaj)
+
+- **Rate limiting na Server Actions** — bio je P0 #12 u ranijem auditu, i
+  večeras je Supabase rate limit stvarno pogođen više puta (moji testovi
+  + tvoja ranija sesija). Ali to je nova infrastruktura (middleware,
+  memorija za brojače), ne popravka postojećeg — po tvom uputstvu ide u
+  izveštaj za sledeću sesiju, ne u kod sada.
+
+## Sažetak brojeva za jutro
+
+- **7 commit-a** večeras, svaki sa punom test svitom pre push-a.
+- **2631/2631 testova prolazi** (poslednja svita, potpuno čista — prve
+  četiri su imale po jedan rate-limit timeout, nikad stvarnu regresiju).
+- **4 pravа bug-a nađena i popravljena**, sva iz koda koji nisam ja
+  napisao (breadcrumb petlja, 3× dugme-u-dugmetu hidraciona greška).
+- **1 zastareo TODO popravljen** (open task count), star preko 300
+  feature-a.
+- Sve na produkciji: https://pm-app-beige.vercel.app
