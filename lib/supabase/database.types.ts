@@ -751,6 +751,7 @@ export type Database = {
           is_default: boolean
           name: string
           owner_id: string
+          position: number
           project_id: string | null
           scope: string
           updated_at: string
@@ -764,6 +765,7 @@ export type Database = {
           is_default?: boolean
           name: string
           owner_id: string
+          position?: number
           project_id?: string | null
           scope?: string
           updated_at?: string
@@ -777,6 +779,7 @@ export type Database = {
           is_default?: boolean
           name?: string
           owner_id?: string
+          position?: number
           project_id?: string | null
           scope?: string
           updated_at?: string

@@ -44,15 +44,30 @@ export function useBreadcrumbExtra(): BreadcrumbItem[] {
  * unmount so navigating away doesn't leave a stale crumb behind. */
 export function useSetBreadcrumb(items: BreadcrumbItem[]) {
   const ctx = useContext(BreadcrumbContext);
+  const setExtra = ctx?.setExtra;
   const key = items.map((item) => `${item.label}|${item.href ?? ""}`).join(">");
 
   useEffect(() => {
-    if (!ctx) return;
-    ctx.setExtra(items);
-    return () => ctx.setExtra([]);
-    // `key` is a stable serialization of `items`; re-running only when the
-    // actual content changes avoids a render loop from a fresh array
-    // identity on every parent render.
+    if (!setExtra) return;
+    setExtra(items);
+    return () => setExtra([]);
+    // BUGFIX: the previous version depended on `ctx` (the whole context
+    // VALUE object) instead of `setExtra` (the setState function itself).
+    // BreadcrumbProvider builds a fresh `{ extra, setExtra }` object every
+    // render — and it re-renders every time `extra` changes, which is
+    // exactly what calling `setExtra` right here causes. So `ctx` got a
+    // new identity on every run of this effect, which re-triggered this
+    // same effect, which called `setExtra` again... an infinite loop
+    // (visible in prod/dev as React's "Maximum update depth exceeded",
+    // reproducible on every page under the workspace layout, including
+    // ones that render no breadcrumb-consuming child themselves — the
+    // loop lived one level up, in whichever page DID call this hook).
+    // `setExtra` itself (React's useState setter) is referentially stable
+    // for the lifetime of the component, so depending on it directly
+    // instead of on `ctx` re-runs this effect only when the ANNOUNCED
+    // content (`key`) actually changes, which was the original intent.
+    // `key` is a stable serialization of `items`, per the same original
+    // intent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx, key]);
+  }, [setExtra, key]);
 }

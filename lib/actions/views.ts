@@ -224,6 +224,7 @@ export async function createSavedView(input: {
   viewType?: SavedViewType;
   config?: SavedViewConfig;
   isDefault?: boolean;
+  position?: number;
 }): Promise<SavedViewActionResult> {
   const parsed = createSavedViewSchema.safeParse(input);
   if (!parsed.success) {
@@ -287,6 +288,7 @@ export async function createSavedView(input: {
       view_type: parsed.data.viewType,
       config: parsed.data.config,
       is_default: false,
+      ...(parsed.data.position !== undefined ? { position: parsed.data.position } : {}),
     })
     .select("id, workspace_id, project_id, owner_id, name, scope, view_type, config, is_default")
     .single();
@@ -327,6 +329,7 @@ export async function updateSavedView(input: {
   viewType?: SavedViewType;
   config?: SavedViewConfig;
   isDefault?: boolean;
+  position?: number;
 }): Promise<SavedViewActionResult> {
   const parsed = updateSavedViewSchema.safeParse(input);
   if (!parsed.success) {
@@ -369,12 +372,14 @@ export async function updateSavedView(input: {
     view_type?: string;
     config?: Json;
     is_default?: boolean;
+    position?: number;
   } = {};
   if (parsed.data.name !== undefined) patch.name = parsed.data.name;
   if (parsed.data.scope !== undefined) patch.scope = parsed.data.scope;
   if (parsed.data.viewType !== undefined) patch.view_type = parsed.data.viewType;
   if (parsed.data.config !== undefined) patch.config = parsed.data.config as unknown as Json;
   if (parsed.data.isDefault === false) patch.is_default = false;
+  if (parsed.data.position !== undefined) patch.position = parsed.data.position;
 
   // No-op input (Clarified implementation #6): nothing to write and no
   // default change requested -- return the current row without an error

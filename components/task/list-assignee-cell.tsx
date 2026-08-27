@@ -154,7 +154,15 @@ export function ListAssigneeCell({
       >
         {currentPeople.length > 0 ? (
           <>
-            <UserAvatarGroup people={currentPeople} size="sm" />
+            {/* BUGFIX: interactive=false — this renders inside the
+                PopoverTrigger button immediately above; UserAvatarGroup's
+                default per-avatar Tooltip renders a real <button> each,
+                which is invalid HTML nested inside another <button> and
+                was crashing hydration for every row with an assignee (see
+                UserAvatarGroup's own doc comment for the full story). The
+                popover this trigger opens already names every assignee,
+                so the per-avatar hover tooltip was redundant here anyway. */}
+            <UserAvatarGroup people={currentPeople} size="sm" interactive={false} />
             <span className="truncate text-muted-foreground">
               {currentPeople.length === 1
                 ? currentPeople[0]!.name ||

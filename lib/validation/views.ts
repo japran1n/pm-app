@@ -60,6 +60,11 @@ export const createSavedViewSchema = z.object({
   viewType: savedViewTypeSchema.default("list"),
   config: savedViewConfigSchema.default({ filters: [], sort: [], groupBy: null }),
   isDefault: z.boolean().default(false),
+  // F401: optional so every existing caller of createSavedView (the
+  // dropdown's "Save view" dialog) is unaffected — omitting it keeps the
+  // DB column's own default (0). ViewTabs passes an explicit "end of the
+  // row" position when saving a new tab.
+  position: z.number().finite().optional(),
 });
 
 export type CreateSavedViewInput = z.infer<typeof createSavedViewSchema>;
@@ -71,6 +76,11 @@ export const updateSavedViewSchema = z.object({
   viewType: savedViewTypeSchema.optional(),
   config: savedViewConfigSchema.optional(),
   isDefault: z.boolean().optional(),
+  // F401 ("views as tabs"): the tab row's ordering. Reuses the exact same
+  // fractional-index convention as every other reorderable list in this
+  // codebase (lib/board/position.ts's calculatePosition) — no new
+  // ordering scheme invented for this one case.
+  position: z.number().finite().optional(),
 });
 
 export type UpdateSavedViewInput = z.infer<typeof updateSavedViewSchema>;

@@ -68,6 +68,7 @@ import { listSavedViewsForProject, getMyDefaultSavedView } from "@/lib/queries/v
 import { getSavedView } from "@/lib/actions/views";
 import { resolveListViewFilters } from "@/lib/views/resolve-view";
 import { ViewSwitcher } from "@/components/views/view-switcher";
+import { ViewTabs } from "@/components/views/view-tabs";
 import { SaveViewDialog } from "@/components/views/save-view-dialog";
 
 const VALID_PRIORITIES = new Set([
@@ -267,6 +268,11 @@ export default async function ProjectListPage({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* F401 ("views as tabs"): shared list views as a clickable tab row
+          — the SAME `?viewId=` navigation/resolution ViewSwitcher's
+          dropdown already uses below, just more visible. Renders nothing
+          when the project has no shared list views yet. */}
+      <ViewTabs views={savedViews} activeViewId={appliedViewId} />
       {/* Task-creation fix: a user might land on List first (e.g. via a
           bookmarked/shared filtered URL), so it needs its own "New Task"
           entry point rather than relying on the Board view's. */}

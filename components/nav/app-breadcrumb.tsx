@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -92,16 +93,25 @@ export function AppBreadcrumb({
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;
           return (
-            <BreadcrumbItem
-              key={`${crumb.label}-${index}`}
-              className={index === 0 ? "shrink-0" : "min-w-0"}
-            >
-              {isLast || !crumb.href ? (
-                <BreadcrumbPage className="truncate">
-                  {crumb.label}
-                </BreadcrumbPage>
-              ) : (
-                <>
+            // BUGFIX: BreadcrumbSeparator renders its own <li> — the
+            // shadcn Breadcrumb primitives are designed as a flat list of
+            // sibling <li>s (item, separator, item, separator, ...), not
+            // a separator nested INSIDE an item's <li>. Nesting one <li>
+            // inside another is invalid HTML, and — like the identical
+            // button-in-button issue found alongside this one tonight
+            // (components/user-avatar-group.tsx) — React 19's hydration
+            // validator now treats that as a hard, uncaught hydration
+            // failure that breaks ALL client interactivity on the page,
+            // not merely a console warning. Fixed by emitting the
+            // separator as a SIBLING of BreadcrumbItem inside this
+            // Fragment, matching shadcn's own documented usage.
+            <Fragment key={`${crumb.label}-${index}`}>
+              <BreadcrumbItem className={index === 0 ? "shrink-0" : "min-w-0"}>
+                {isLast || !crumb.href ? (
+                  <BreadcrumbPage className="truncate">
+                    {crumb.label}
+                  </BreadcrumbPage>
+                ) : (
                   <BreadcrumbLink
                     render={
                       <Link href={crumb.href} className="truncate">
@@ -109,10 +119,10 @@ export function AppBreadcrumb({
                       </Link>
                     }
                   />
-                  <BreadcrumbSeparator />
-                </>
-              )}
-            </BreadcrumbItem>
+                )}
+              </BreadcrumbItem>
+              {!isLast && crumb.href && <BreadcrumbSeparator />}
+            </Fragment>
           );
         })}
       </BreadcrumbList>

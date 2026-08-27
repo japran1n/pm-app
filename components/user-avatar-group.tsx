@@ -58,6 +58,24 @@ export function UserAvatarGroup({
   // to "Assigned" so every existing caller (F161's assignee groups) keeps
   // its exact previous accessible name with no changes needed there.
   ariaLabelPrefix = "Assigned",
+  // BUGFIX: default true preserves every existing caller's exact prior
+  // behaviour. Set false ONLY when this group is nested inside another
+  // native <button> — components/task/list-assignee-cell.tsx's Popover
+  // trigger IS one, and Base UI's TooltipTrigger below renders a real
+  // <button> per avatar. A <button> inside a <button> is invalid HTML;
+  // React 19's hydration validator now treats it as a hard hydration
+  // failure (an uncaught error that breaks ALL client interactivity on
+  // the page, not merely a console warning), rather than the older
+  // "browser is forgiving, technically-invalid-but-works" behaviour this
+  // code silently relied on since F161/F165. Board's TaskCard never hit
+  // this because its own clickable wrapper uses role="button" on a <div>,
+  // not a real <button> — an ARIA role, not literal HTML nesting.
+  // When false: same avatars, same overflow "+K" chip, no per-avatar
+  // tooltip and no individual focus stop — acceptable here specifically
+  // because the ENCLOSING trigger already opens a popover that names
+  // every assignee, so the collapsed view's hover-tooltip is redundant,
+  // not a lost capability.
+  interactive = true,
 }: {
   people: UserAvatarPerson[];
   /** Display limit before the rest collapse into a "+K" chip. */
@@ -67,6 +85,9 @@ export function UserAvatarGroup({
   /** Prefix for this group's accessible name, e.g. "Assigned" or
    * "Watching" — see doc comment above. */
   ariaLabelPrefix?: string;
+  /** False when nesting inside another native <button> — see doc comment
+   * above. */
+  interactive?: boolean;
 }) {
   if (people.length === 0) return null;
 
@@ -81,43 +102,67 @@ export function UserAvatarGroup({
         data-testid="avatar-group"
         aria-label={`${ariaLabelPrefix}: ${people.map((person) => personLabel(person)).join(", ")}`}
       >
-        {visible.map((person, index) => (
-          <Fragment key={person.id}>
+        {visible.map((person, index) =>
+          interactive ? (
+            <Fragment key={person.id}>
+              <Tooltip>
+                <TooltipTrigger
+                  type="button"
+                  className="relative rounded-full ring-2 ring-background focus-visible:z-10 focus-visible:outline-none focus-visible:ring-ring"
+                  style={index === 0 ? undefined : { marginLeft: overlapPx }}
+                >
+                  <UserAvatar person={person} size={size} />
+                </TooltipTrigger>
+                <TooltipContent>{personLabel(person)}</TooltipContent>
+              </Tooltip>
+            </Fragment>
+          ) : (
+            <span
+              key={person.id}
+              className="relative rounded-full ring-2 ring-background"
+              style={index === 0 ? undefined : { marginLeft: overlapPx }}
+            >
+              <UserAvatar person={person} size={size} />
+            </span>
+          ),
+        )}
+        {hidden.length > 0 &&
+          (interactive ? (
             <Tooltip>
               <TooltipTrigger
                 type="button"
-                className="relative rounded-full ring-2 ring-background focus-visible:z-10 focus-visible:outline-none focus-visible:ring-ring"
-                style={index === 0 ? undefined : { marginLeft: overlapPx }}
+                data-testid="avatar-group-overflow"
+                className="relative flex items-center justify-center rounded-full border border-border bg-muted font-medium text-muted-foreground ring-2 ring-background focus-visible:z-10 focus-visible:outline-none focus-visible:ring-ring"
+                style={{
+                  marginLeft: overlapPx,
+                  width: SIZE_PX[size],
+                  height: SIZE_PX[size],
+                  fontSize: size === "sm" ? 10 : 11,
+                }}
+                aria-label={`${hidden.length} more ${ariaLabelPrefix.toLowerCase()}: ${hidden
+                  .map((person) => personLabel(person))
+                  .join(", ")}`}
               >
-                <UserAvatar person={person} size={size} />
+                +{hidden.length}
               </TooltipTrigger>
-              <TooltipContent>{personLabel(person)}</TooltipContent>
+              <TooltipContent>
+                {hidden.map((person) => personLabel(person)).join(", ")}
+              </TooltipContent>
             </Tooltip>
-          </Fragment>
-        ))}
-        {hidden.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger
-              type="button"
+          ) : (
+            <span
               data-testid="avatar-group-overflow"
-              className="relative flex items-center justify-center rounded-full border border-border bg-muted font-medium text-muted-foreground ring-2 ring-background focus-visible:z-10 focus-visible:outline-none focus-visible:ring-ring"
+              className="relative flex items-center justify-center rounded-full border border-border bg-muted font-medium text-muted-foreground ring-2 ring-background"
               style={{
                 marginLeft: overlapPx,
                 width: SIZE_PX[size],
                 height: SIZE_PX[size],
                 fontSize: size === "sm" ? 10 : 11,
               }}
-              aria-label={`${hidden.length} more ${ariaLabelPrefix.toLowerCase()}: ${hidden
-                .map((person) => personLabel(person))
-                .join(", ")}`}
             >
               +{hidden.length}
-            </TooltipTrigger>
-            <TooltipContent>
-              {hidden.map((person) => personLabel(person)).join(", ")}
-            </TooltipContent>
-          </Tooltip>
-        )}
+            </span>
+          ))}
       </div>
     </TooltipProvider>
   );

@@ -20,6 +20,8 @@ export type SavedViewListItem = {
   config: SavedViewConfig;
   isDefault: boolean;
   isMine: boolean;
+  // F401 ("views as tabs"): tab row order.
+  position: number;
 };
 
 // AS-429: lists every saved view visible to the caller for this project
@@ -38,10 +40,10 @@ export async function listSavedViewsForProject(
 
   const { data, error } = await supabase
     .from("saved_views")
-    .select("id, owner_id, name, scope, view_type, config, is_default")
+    .select("id, owner_id, name, scope, view_type, config, is_default, position")
     .eq("project_id", projectId)
     .eq("view_type", viewType)
-    .order("name", { ascending: true });
+    .order("position", { ascending: true });
 
   if (error || !data) {
     return [];
@@ -56,6 +58,7 @@ export async function listSavedViewsForProject(
     config: row.config as SavedViewConfig,
     isDefault: row.is_default,
     isMine: row.owner_id === user.id,
+    position: row.position,
   }));
 }
 
