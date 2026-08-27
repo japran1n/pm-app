@@ -64,9 +64,35 @@ export type NotificationListItem = {
    * notification predates F207's comment_id column. The panel uses this to
    * deep-link straight to the comment, not just the task. */
   commentId?: string | null;
+  /** F13 (docs/advanced-chat-plan.md, chat @-mentions): a chat mention has
+   * no `task_id`/`comment_id` to key off of (a message id can't reuse
+   * `comment_id` — that column has an FK to `comments`, not `messages`;
+   * see lib/notifications/create-notification.ts's doc comment), so
+   * `sendMessage` stores `{ channelId, messageId }` in the RPC's existing
+   * `payload` jsonb column instead. Only ever populated for a chat
+   * mention; every other kind's fan-out call site still passes an empty
+   * payload. */
+  chatMention?: { channelId: string; messageId: string } | null;
 };
 
 const DEFAULT_LIMIT = 20;
+
+/** F13: reads `{ channelId, messageId }` back out of a row's `payload`
+ * jsonb column — the shape `lib/actions/chat-messages.ts`'s `sendMessage`
+ * writes for a chat mention (see this file's `chatMention` field doc
+ * comment). Returns null for any other shape (every non-chat notification
+ * kind's payload is `{}` — F207's fan-out call sites never populate it),
+ * never throws on malformed/legacy data. */
+function resolveChatMention(
+  payload: unknown,
+): { channelId: string; messageId: string } | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  if (typeof p.channelId === "string" && typeof p.messageId === "string") {
+    return { channelId: p.channelId, messageId: p.messageId };
+  }
+  return null;
+}
 
 /**
  * The current user's notifications for `workspaceId`, newest first
@@ -118,7 +144,7 @@ export async function getNotificationsForWorkspace(
 
   const { data: rows, error } = await supabase
     .from("notifications")
-    .select("id, kind, actor_id, task_id, comment_id, read_at, created_at")
+    .select("id, kind, actor_id, task_id, comment_id, payload, read_at, created_at")
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -230,6 +256,7 @@ export async function getNotificationsForWorkspace(
         : null,
       task: resolveTask(row.task_id),
       commentId: row.comment_id,
+      chatMention: resolveChatMention(row.payload),
     };
   });
 

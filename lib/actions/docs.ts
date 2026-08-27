@@ -1,0 +1,301 @@
+"use server";
+
+// Server Actions for the docs system (W2, docs/docs-system-plan.md).
+//
+// All mutations go through the plain RLS-respecting `createClient()` —
+// `doc_folders`/`docs`' own RLS policies (`is_active_workspace_member`,
+// W1's migration) are the enforcement boundary for both read and write,
+// same "any active workspace member may edit" model the plan's Arhitekturne
+// odluke section calls out (no per-doc ownership or role gating in v1).
+// Every action still independently checks `auth.getUser()` first so an
+// unauthenticated caller gets a clean error rather than falling through to
+// an RLS rejection with an opaque Postgres error.
+//
+// `revalidatePath` uses `/w` broadly (not a specific workspace slug) per
+// this feature's Clarified implementation — the action layer doesn't know
+// the caller's workspaceSlug, only its id, so revalidating the whole `/w`
+// segment (layout-level) is the same "don't know the exact path, revalidate
+// the shared root" convention used elsewhere in this codebase when a slug
+// isn't in scope.
+
+import { revalidatePath } from "next/cache";
+
+import { createClient } from "@/lib/supabase/server";
+
+function revalidateDocs() {
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    // Non-fatal cache-freshness rationale, same convention as every other
+    // action in this codebase (see lib/actions/tasks.ts's createTask etc.).
+    console.error("docs action: revalidatePath failed (non-fatal):", revalidateError);
+  }
+}
+
+async function requireUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user };
+}
+
+// ---------------------------------------------------------------------
+// Folder CRUD
+// ---------------------------------------------------------------------
+
+export async function createDocFolder(
+  workspaceId: string,
+  name: string,
+  parentId: string | null,
+  projectId: string | null,
+): Promise<{ id: string } | { error: string }> {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return { error: "Folder name can't be empty." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to create a folder." };
+  }
+
+  const { data, error } = await supabase
+    .from("doc_folders")
+    .insert({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      parent_id: parentId,
+      name: trimmedName,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    console.error("createDocFolder: insert failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { id: data.id };
+}
+
+export async function renameDocFolder(
+  folderId: string,
+  name: string,
+): Promise<{ error?: string }> {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return { error: "Folder name can't be empty." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to rename a folder." };
+  }
+
+  const { error } = await supabase
+    .from("doc_folders")
+    .update({ name: trimmedName })
+    .eq("id", folderId);
+
+  if (error) {
+    console.error("renameDocFolder: update failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}
+
+// Deletes a folder. Sub-folders cascade-delete (ON DELETE CASCADE on
+// `parent_id`, W1's migration); any doc that lived directly in this folder
+// (or in a cascaded sub-folder) automatically gets `folder_id = null` via
+// ON DELETE SET NULL — the plan's explicit "move to root, don't delete
+// docs" rule falls out of the schema itself, nothing extra to do here.
+export async function deleteDocFolder(
+  folderId: string,
+): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to delete a folder." };
+  }
+
+  const { error } = await supabase
+    .from("doc_folders")
+    .delete()
+    .eq("id", folderId);
+
+  if (error) {
+    console.error("deleteDocFolder: delete failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}
+
+// Moves a folder to a new parent. `newParentId = null` moves it to the
+// scope's root. The `check_doc_folder_scope` trigger (W1's migration) is
+// the actual enforcement that the new parent shares this folder's
+// (workspace_id, project_id) — a mismatched scope raises a Postgres
+// exception here rather than silently moving the folder into a different
+// project's tree.
+export async function moveDocFolder(
+  folderId: string,
+  newParentId: string | null,
+): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to move a folder." };
+  }
+
+  if (newParentId === folderId) {
+    return { error: "A folder can't be moved into itself." };
+  }
+
+  const { error } = await supabase
+    .from("doc_folders")
+    .update({ parent_id: newParentId })
+    .eq("id", folderId);
+
+  if (error) {
+    console.error("moveDocFolder: update failed:", error);
+    // check_doc_folder_scope / doc_folders_no_self_ref last-line-of-defense
+    // errors surface here too — mapped to the same generic message since
+    // neither should be reachable through normal UI flows.
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}
+
+// ---------------------------------------------------------------------
+// Doc CRUD
+// ---------------------------------------------------------------------
+
+// Creates a brand-new empty doc (title="Untitled", content="") so the
+// editor page (W4) always has a real row to load into — the caller
+// navigates to the returned id immediately after this resolves.
+export async function createDoc(
+  workspaceId: string,
+  folderId: string | null,
+  projectId: string | null,
+): Promise<{ id: string } | { error: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to create a document." };
+  }
+
+  const { data, error } = await supabase
+    .from("docs")
+    .insert({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      folder_id: folderId,
+      title: "Untitled",
+      content: "",
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    console.error("createDoc: insert failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { id: data.id };
+}
+
+// Saves the editor's title + content (auto-save, W4). `content` is written
+// verbatim — a plain Markdown string, no serialization/escaping — per the
+// plan's "clean Markdown storage" architecture decision.
+export async function updateDoc(
+  docId: string,
+  title: string,
+  content: string,
+): Promise<{ error?: string }> {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) {
+    return { error: "Title can't be empty." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to save a document." };
+  }
+
+  const { error } = await supabase
+    .from("docs")
+    .update({
+      title: trimmedTitle,
+      content,
+      updated_by: user.id,
+    })
+    .eq("id", docId);
+
+  if (error) {
+    console.error("updateDoc: update failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}
+
+export async function deleteDoc(docId: string): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to delete a document." };
+  }
+
+  const { error } = await supabase.from("docs").delete().eq("id", docId);
+
+  if (error) {
+    console.error("deleteDoc: delete failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}
+
+// Moves a doc to a different folder (or to root, when `newFolderId` is
+// null). No cross-scope validation is needed here beyond what RLS already
+// enforces (workspace membership) — unlike folders, a doc has no
+// `check_doc_folder_scope`-style trigger, so the write is a plain column
+// update.
+export async function moveDoc(
+  docId: string,
+  newFolderId: string | null,
+): Promise<{ error?: string }> {
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { error: "You must be signed in to move a document." };
+  }
+
+  const { error } = await supabase
+    .from("docs")
+    .update({ folder_id: newFolderId })
+    .eq("id", docId);
+
+  if (error) {
+    console.error("moveDoc: update failed:", error);
+    return { error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return {};
+}

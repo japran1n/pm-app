@@ -55,6 +55,14 @@ function taskLabel(task: NotificationListItem["task"]): string {
   return task.key ? `${task.key} ${task.title}` : task.title;
 }
 
+// F13 (docs/advanced-chat-plan.md): a chat mention has no task at all --
+// distinct label so the row reads "mentioned you in a message" rather
+// than the task-oriented "mentioned you in a task" default.
+function itemLabel(notification: NotificationListItem): string {
+  if (!notification.task && notification.chatMention) return "a message";
+  return taskLabel(notification.task);
+}
+
 // AS-386 follow-up: the board page now reads a `?taskId=` query param and
 // opens that task's detail sheet on mount (components/board/board.tsx),
 // so a notification with a resolvable task + project now links straight
@@ -70,6 +78,17 @@ function taskLabel(task: NotificationListItem["task"]): string {
 // the sheet opens — see this feature's other changes). Only appended on
 // the board-deep-link branch — the search-page fallback has nowhere
 // meaningful to carry it.
+// F13 (docs/advanced-chat-plan.md): a chat mention deep-links to
+// `/chat/[channelId]?highlight=[messageId]` per that feature's spec step
+// 3, instead of the task-oriented board/search links below.
+function chatMentionHref(
+  workspaceSlug: string,
+  chatMention: NotificationListItem["chatMention"],
+): string | null {
+  if (!chatMention) return null;
+  return `/w/${workspaceSlug}/chat/${encodeURIComponent(chatMention.channelId)}?highlight=${encodeURIComponent(chatMention.messageId)}`;
+}
+
 function taskHref(
   workspaceSlug: string,
   task: NotificationListItem["task"],
@@ -260,11 +279,9 @@ export function NotificationPanel({
       ) : (
         <ul className="flex max-h-96 flex-col gap-0.5 overflow-y-auto">
           {notifications.map((notification) => {
-            const href = taskHref(
-              workspaceSlug,
-              notification.task,
-              notification.commentId ?? null,
-            );
+            const href =
+              taskHref(workspaceSlug, notification.task, notification.commentId ?? null) ??
+              chatMentionHref(workspaceSlug, notification.chatMention ?? null);
             const isUnread = !notification.readAt;
 
             const content = (
@@ -293,7 +310,7 @@ export function NotificationPanel({
                     </span>{" "}
                     {actionLabel(notification.kind)}{" "}
                     <span className="font-medium">
-                      {taskLabel(notification.task)}
+                      {itemLabel(notification)}
                     </span>
                   </p>
                   <span className="text-xs text-muted-foreground">

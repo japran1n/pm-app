@@ -171,6 +171,80 @@ export type Database = {
           },
         ]
       }
+      channel_members: {
+        Row: {
+          channel_id: string
+          joined_at: string
+          last_read_at: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          joined_at?: string
+          last_read_at?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          joined_at?: string
+          last_read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_members_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          kind: string
+          name: string | null
+          project_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          kind: string
+          name?: string | null
+          project_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          kind?: string
+          name?: string | null
+          project_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checklist_items: {
         Row: {
           checked_at: string | null
@@ -388,6 +462,132 @@ export type Database = {
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_attachments: {
+        Row: {
+          id: string
+          message_id: string | null
+          channel_id: string
+          uploaded_by: string
+          file_name: string
+          mime_type: string | null
+          file_size: number | null
+          storage_path: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          message_id?: string | null
+          channel_id: string
+          uploaded_by: string
+          file_name: string
+          mime_type?: string | null
+          file_size?: number | null
+          storage_path: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          message_id?: string | null
+          channel_id?: string
+          uploaded_by?: string
+          file_name?: string
+          mime_type?: string | null
+          file_size?: number | null
+          storage_path?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      message_reactions: {
+        Row: {
+          channel_id: string
+          created_at: string
+          emoji: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          emoji: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          emoji?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          body_json: Json
+          body_text: string
+          channel_id: string
+          created_at: string
+          deleted_at: string | null
+          edited_at: string | null
+          id: string
+          parent_message_id: string | null
+          sender_id: string
+        }
+        Insert: {
+          body_json: Json
+          body_text?: string
+          channel_id: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          parent_message_id?: string | null
+          sender_id: string
+        }
+        Update: {
+          body_json?: Json
+          body_text?: string
+          channel_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: string
+          parent_message_id?: string | null
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_parent_message_id_fkey"
+            columns: ["parent_message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
             referencedColumns: ["id"]
           },
         ]

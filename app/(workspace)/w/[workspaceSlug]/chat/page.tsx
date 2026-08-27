@@ -12,6 +12,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceChannels } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
+import { ChatMessageSearch } from "@/components/chat/chat-message-search";
 import { DesktopAutoRedirect } from "@/components/chat/desktop-auto-redirect";
 
 export default async function ChatIndexPage({
@@ -34,6 +35,9 @@ export default async function ChatIndexPage({
     <div className="flex min-h-0 flex-1 flex-col md:hidden">
       {channels.length > 0 && (
         <DesktopAutoRedirect href={`/w/${workspaceSlug}/chat/${channels[0].id}`} />
+      )}
+      {workspace && (
+        <ChatMessageSearch workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
       )}
       <ChatNavList
         workspaceSlug={workspaceSlug}

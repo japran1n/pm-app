@@ -15,6 +15,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceChannels } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
+import { ChatMessageSearch } from "@/components/chat/chat-message-search";
 
 export default async function ChatLayout({
   children,
@@ -41,6 +42,7 @@ export default async function ChatLayout({
   return (
     <div className="flex min-h-0 flex-1">
       <aside className="hidden w-64 shrink-0 flex-col border-r md:flex">
+        <ChatMessageSearch workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
         <ChatNavList
           workspaceSlug={workspaceSlug}
           workspaceId={workspace.id}

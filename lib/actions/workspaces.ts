@@ -149,6 +149,49 @@ export async function createWorkspace(
     };
   }
 
+  // F2 (docs/advanced-chat-plan.md): auto-create the workspace-wide
+  // "general" channel and enroll the new owner. Non-fatal on failure (same
+  // "log, don't block the primary action" convention this file already
+  // uses for revalidatePath elsewhere) -- a missing general channel is
+  // recoverable later (F2's addChannelMember / a future retry), whereas
+  // failing workspace creation itself over a chat side effect would not be.
+  try {
+    const { data: channelRow, error: channelError } = await admin
+      .from("channels")
+      .insert({
+        workspace_id: workspace.id,
+        project_id: null,
+        kind: "channel",
+        name: "general",
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+
+    if (channelError || !channelRow) {
+      console.error(
+        "createWorkspace: general channel insert failed (non-fatal):",
+        channelError,
+      );
+    } else {
+      const { error: memberError } = await admin
+        .from("channel_members")
+        .insert({ channel_id: channelRow.id, user_id: user.id });
+
+      if (memberError) {
+        console.error(
+          "createWorkspace: general channel membership insert failed (non-fatal):",
+          memberError,
+        );
+      }
+    }
+  } catch (chatBootstrapError) {
+    console.error(
+      "createWorkspace: general channel bootstrap failed (non-fatal):",
+      chatBootstrapError,
+    );
+  }
+
   redirect(`/w/${workspace.slug}`);
 }
 

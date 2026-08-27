@@ -19,6 +19,7 @@ import {
   CalendarDays,
   GanttChartSquare,
   Inbox,
+  MessageCircle,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -102,6 +103,12 @@ function navGroups(
     // feature spec's own "since this is the daily-driver screen" note.
     { href: `/w/${workspaceSlug}/my-tasks`, label: "My Tasks", icon: ListChecks },
     { href: `/w/${workspaceSlug}/projects`, label: "Projects", icon: KanbanSquare },
+    // F4 (docs/advanced-chat-plan.md): same primary-nav pattern as the
+    // other daily-driver links above -- links to `/chat` (that route's own
+    // page.tsx redirects into the caller's first channel on desktop, or
+    // renders the channel list itself on mobile; see that file's doc
+    // comment).
+    { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle },
   ];
 
   // F241: Calendar/Timeline are workspace-wide, RLS-scoped views with no

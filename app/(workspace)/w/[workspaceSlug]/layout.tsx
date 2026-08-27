@@ -12,6 +12,11 @@ import { AppHeader } from "@/components/nav/app-header";
 // per-fetch role props (e.g. TaskDetailSheet's own currentUserRole) other
 // features already thread through explicitly.
 import { MembershipProvider } from "@/components/auth/membership-provider";
+// F7 (docs/advanced-chat-plan.md): workspace-wide online presence, mounted
+// once here alongside MembershipProvider -- see that provider's own file
+// header for why tracking happens at this layout mount rather than per
+// chat channel.
+import { WorkspacePresenceProvider } from "@/components/nav/workspace-presence-provider";
 import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
 // F208 (AS-379): the sidebar's notification bell needs its initial
 // unread-count + list server-fetched here, same "server-fetched in the
@@ -377,6 +382,10 @@ export default async function WorkspaceLayout({
       hasClient={(clientMemberCount ?? 0) > 0}
       projectRoles={projectRoles}
     >
+      <WorkspacePresenceProvider
+        workspaceId={activeWorkspace.id}
+        currentUserId={user.id}
+      >
       <CommandPalette
         workspaceId={activeWorkspace.id}
         workspaceSlug={workspaceSlug}
@@ -421,6 +430,7 @@ export default async function WorkspaceLayout({
         </main>
       </div>
       </BreadcrumbProvider>
+      </WorkspacePresenceProvider>
     </MembershipProvider>
   );
 }

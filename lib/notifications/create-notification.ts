@@ -22,15 +22,31 @@
 // the failure is now OBSERVED (logged with the recipient/kind/task
 // context) rather than silently dropped.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/lib/supabase/database.types";
+import type { Database, Json } from "@/lib/supabase/database.types";
 import type { NotificationKind } from "@/lib/notifications/fanout";
 
 export type CreateNotificationParams = {
   userId: string;
   workspaceId: string;
   kind: NotificationKind;
-  taskId: string;
+  // F13 (docs/advanced-chat-plan.md, chat @-mentions): every pre-existing
+  // fan-out call site always has a task, so this stayed required until
+  // now. A chat mention has no task at all -- the RPC's own `p_task_id`
+  // argument already defaults to null (supabase/migrations/
+  // 20260823020000_create_notifications.sql's create_notification, and
+  // the `notifications.task_id` column is nullable) -- so this is widened
+  // to optional rather than requiring a schema change, per that
+  // feature's spec step 2 ("proveriti da li prihvata null").
+  taskId?: string;
   commentId?: string;
+  // F13: chat-specific routing data (channelId/messageId) for a mention
+  // that has no task_id/comment_id to key off of -- comment_id can't be
+  // reused for this (notifications.comment_id has an FK to `comments`,
+  // not `messages`, so passing a message id there would violate that
+  // constraint). Stored in the RPC's existing `p_payload` jsonb column
+  // instead -- no new migration needed, matching the plan's "or a new
+  // migration" fallback being unnecessary here.
+  payload?: Record<string, unknown>;
 };
 
 /**
@@ -56,8 +72,9 @@ export async function createNotification(
       p_user_id: params.userId,
       p_workspace_id: params.workspaceId,
       p_kind: params.kind,
-      p_task_id: params.taskId,
+      ...(params.taskId ? { p_task_id: params.taskId } : {}),
       ...(params.commentId ? { p_comment_id: params.commentId } : {}),
+      ...(params.payload ? { p_payload: params.payload as Json } : {}),
     });
 
     if (error) {

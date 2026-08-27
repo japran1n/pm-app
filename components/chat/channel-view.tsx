@@ -14,11 +14,11 @@ import type { JSONContent } from "@tiptap/react";
 
 import { sendMessage } from "@/lib/actions/chat-messages";
 import { markChannelRead } from "@/lib/actions/chat-read";
-import { docFromPlainText } from "@/lib/comments/rich-text";
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
 import { useTypingIndicator } from "@/components/chat/use-typing-indicator";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
+import { ThreadPanel } from "@/components/chat/thread-panel";
 // F7 (docs/advanced-chat-plan.md): "who's online in this channel" strip in
 // the header, reading from the workspace-wide presence context.
 import { useWorkspacePresence } from "@/components/nav/workspace-presence-provider";
@@ -30,6 +30,13 @@ import { UserAvatar } from "@/components/user-avatar";
 // so a burst of messages doesn't fire one Server Action call each.
 const MARK_READ_DEBOUNCE_MS = 1500;
 
+export type ChatMessageAttachment = {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  storagePath: string;
+};
+
 export type ChatMessage = {
   id: string;
   channelId: string;
@@ -39,6 +46,7 @@ export type ChatMessage = {
   editedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
+  attachments?: ChatMessageAttachment[];
 };
 
 export type ChatChannelMember = {
@@ -55,6 +63,7 @@ export function ChannelView({
   initialMessages,
   members,
   currentUserId,
+  initialReplyCounts,
 }: {
   workspaceSlug: string;
   channelId: string;
@@ -62,6 +71,9 @@ export function ChannelView({
   initialMessages: ChatMessage[];
   members: ChatChannelMember[];
   currentUserId: string;
+  // F10 (docs/advanced-chat-plan.md): reply count per top-level message id,
+  // for the "N replies" line under each message.
+  initialReplyCounts?: Record<string, number>;
 }) {
   // Initial page load is newest-first (getChannelMessages, F3), reversed
   // here to oldest-first for top-to-bottom rendering, same convention
@@ -90,6 +102,19 @@ export function ChannelView({
   // message received while it stays open, per F5's spec item 1.
   const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // F10: reply count per top-level message ("N replies" line in
+  // MessageList) and which thread (if any) is currently open in the side
+  // panel. Kept separate from `messages` state above since thread replies
+  // are never part of the main channel's message list (per F10's spec).
+  const [replyCounts, setReplyCounts] = useState<Record<string, number>>(
+    initialReplyCounts ?? {},
+  );
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
+  function handleReplyCountChange(parentMessageId: string, count: number) {
+    setReplyCounts((previous) => ({ ...previous, [parentMessageId]: count }));
+  }
+
   useEffect(() => {
     void markChannelRead(channelId);
 
@@ -110,10 +135,20 @@ export function ChannelView({
   }
 
   useChatMessagesRealtime(channelId, (event) => {
-    // F10 excludes thread replies from the main list; that column doesn't
-    // exist on payloads yet in this milestone beyond passthrough, so this
-    // guard is defensive for when F10 lands.
-    if (event.message.parentMessageId) return;
+    // F10: a reply never joins the main top-level list, but its own
+    // "N replies" count still needs to bump live for a viewer who has the
+    // thread panel closed (ThreadPanel handles the count update itself
+    // while its own panel is open, via onReplyCountChange).
+    if (event.message.parentMessageId) {
+      if (event.type === "insert" && event.message.parentMessageId !== activeThreadId) {
+        const parentId = event.message.parentMessageId;
+        setReplyCounts((previous) => ({
+          ...previous,
+          [parentId]: (previous[parentId] ?? 0) + 1,
+        }));
+      }
+      return;
+    }
 
     setMessages((previous) => {
       if (event.type === "insert") {
@@ -131,14 +166,23 @@ export function ChannelView({
     }
   });
 
-  async function handleSend(text: string) {
-    const result = await sendMessage(channelId, docFromPlainText(text));
+  // F13: mention suggestions scoped to this channel's already-fetched
+  // `members` prop -- never a second client-side fetch, same "server-
+  // fetched, passed down" convention comment-list.tsx documents for its
+  // own `mentionSuggestions`.
+  const mentionSuggestions = members.map((m) => ({
+    id: m.userId,
+    label: m.name || m.email || m.userId,
+  }));
+
+  async function handleSend(bodyJson: JSONContent) {
+    const result = await sendMessage(channelId, bodyJson);
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
     setMessages((previous) => {
       if (previous.some((m) => m.id === result.data.id)) return previous;
-      return [...previous, result.data];
+      return [...previous, result.data as ChatMessage];
     });
     // The caller sent this message themselves, so their own read-cursor
     // should already cover it -- bump last_read_at immediately rather
@@ -151,7 +195,8 @@ export function ChannelView({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Link
           href={`/w/${workspaceSlug}/chat`}
@@ -186,9 +231,30 @@ export function ChannelView({
           </div>
         )}
       </div>
-      <MessageList messages={messages} members={members} currentUserId={currentUserId} />
+      <MessageList
+        messages={messages}
+        members={members}
+        currentUserId={currentUserId}
+        replyCounts={replyCounts}
+        onOpenThread={setActiveThreadId}
+      />
       <TypingIndicatorLine typingUsers={typingUsers} />
-      <MessageComposer onSend={handleSend} onTyping={sendTyping} />
+      <MessageComposer
+        onSend={handleSend}
+        onTyping={sendTyping}
+        mentionSuggestions={mentionSuggestions}
+      />
+    </div>
+    {activeThreadId && (
+      <ThreadPanel
+        channelId={channelId}
+        parentMessageId={activeThreadId}
+        members={members}
+        currentUserId={currentUserId}
+        onClose={() => setActiveThreadId(null)}
+        onReplyCountChange={handleReplyCountChange}
+      />
+    )}
     </div>
   );
 }
