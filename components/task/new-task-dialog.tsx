@@ -351,7 +351,15 @@ export function NewTaskDialog({
                     >
                       {selectedPeople.length > 0 ? (
                         <>
-                          <UserAvatarGroup people={selectedPeople} size="sm" />
+                          {/* BUGFIX: interactive=false — nested inside this
+                              PopoverTrigger's own <button>; see
+                              UserAvatarGroup's doc comment. Same bug, same
+                              fix as list-assignee-cell.tsx. */}
+                          <UserAvatarGroup
+                            people={selectedPeople}
+                            size="sm"
+                            interactive={false}
+                          />
                           <span className="truncate text-muted-foreground">
                             {selectedPeople.length === 1
                               ? assigneeLabels[selectedPeople[0]!.id]

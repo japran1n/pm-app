@@ -1356,7 +1356,15 @@ export function TaskDetailSheet({
                           />
                         ) : currentPeople.length > 0 ? (
                           <>
-                            <UserAvatarGroup people={currentPeople} size="sm" />
+                            {/* BUGFIX: interactive=false — nested inside
+                                this PopoverTrigger's own <button>; see
+                                UserAvatarGroup's doc comment. Same bug,
+                                same fix as list-assignee-cell.tsx. */}
+                            <UserAvatarGroup
+                              people={currentPeople}
+                              size="sm"
+                              interactive={false}
+                            />
                             <span className="truncate text-muted-foreground">
                               {currentPeople.length === 1
                                 ? memberLabel(

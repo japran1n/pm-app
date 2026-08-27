@@ -24,7 +24,7 @@ privremeno zamenilo).
 | 6 | Subtask toggle u listi (kao ClickUp) | ✅ Deploy-ovano |
 | 4 | Lični to-do na My Work | ✅ Deploy-ovano |
 | — | Status Templates (preduslov za #1) | ✅ Deploy-ovano |
-| 1 | Views kao tabovi po projektu | ✅ Napisano i ručno potvrđeno u browseru, **čeka commit** (test svita se vrti) |
+| 1 | Views kao tabovi po projektu | ✅ Deploy-ovano |
 
 ## Šta NIJE urađeno večeras (svesno odloženo)
 
@@ -115,3 +115,24 @@ fajlu, ne pretpostavljeno.
 2. Nastavak: kontinuirana optimizacija postojećeg — performanse,
    bezbednost, testovi, sitni bagovi. Bez novih feature-a; nove ideje idu
    u izveštaj, ne u kod.
+
+
+## Dodatak: sistematska pretraga za isti tip bug-a
+
+Posle ova dva nalaza, pretražio sam ceo `components/` za isti obrazac
+(`UserAvatarGroup` ugnežđen unutar `PopoverTrigger`/`DropdownMenuTrigger`
+koji renderuje pravi `<button>`). Pronađena **dva dodatna mesta** sa istim
+bug-om, oba popravljena istim mehanizmom (`interactive={false}`):
+
+- `components/task/task-detail-sheet.tsx` — assignee popover u task sheet-u.
+- `components/task/new-task-dialog.tsx` — assignee popover u dijalogu za
+  novi task.
+
+Ostala mesta koja koriste `PopoverTrigger`/`DropdownMenuTrigger` sa
+`render={<button>...}` proverena i bezbedna (`day-overflow.tsx`,
+`comment-reactions.tsx`, `dependencies.tsx`, `sortable-task-card.tsx`) —
+nijedno ne ugnežđava drugi interaktivni element unutra.
+
+Potvrđeno u browseru: assignee popover na Website Redesign listi se
+otvara i radi bez pada, sa "Change assignees" dugmićima vidljivim na
+svakom redu (znak da hidracija ne pada).
