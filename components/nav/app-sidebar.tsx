@@ -217,9 +217,17 @@ function SidebarContent({
           (ProjectNavList) is the one that grows/scrolls now, so a
           workspace with many projects never pushes Dashboard/My
           Tasks/etc. out of view. */}
+      {/* BUGFIX: `overflow-y-auto` here was a leftover from before
+          AS-512 moved scrolling down to the Projects section below (see
+          this block's own comment) — a stale class this refactor never
+          removed. Left in place, it doesn't scroll this block (there's
+          nothing to overflow, its content is fixed), but a `flex flex-col`
+          child with `overflow-y-auto` still creates its own independent
+          scroll container, which is what was producing a spurious
+          scrollbar in the primary nav. */}
       <nav
         data-tour="sidebar-nav"
-        className="flex flex-col gap-3 overflow-y-auto p-2"
+        className="flex flex-col gap-3 p-2"
       >
         {groups.map((group, groupIndex) => (
           <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
@@ -285,7 +293,7 @@ function SidebarContent({
         />
       </div>
 
-      <div className="flex flex-col gap-2 border-t p-2">
+      <div className="flex flex-col gap-2 border-t p-3">
         {/* F273 (AS-202): the only in-app entry point to the profile
             settings page (F123) — without this a user has no way to set a
             display name except by typing the URL by hand. Reuses

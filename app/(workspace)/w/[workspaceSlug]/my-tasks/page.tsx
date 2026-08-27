@@ -121,7 +121,7 @@ export default async function MyTasksPage({
 
   if (totalCount === 0) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 p-6">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
         <PersonalTodoList workspaceId={workspace.id} initialTodos={personalTodos} />
         {/* F231 (AS-440): a purposeful empty state with a primary action,
@@ -149,7 +149,7 @@ export default async function MyTasksPage({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
         {/* F231 (AS-441): toggle is a plain link that flips the URL

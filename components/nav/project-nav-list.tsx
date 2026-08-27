@@ -250,9 +250,20 @@ export function ProjectNavList({
             <NewProjectDialog workspaceId={workspaceId} />
           </div>
         ) : (
+          // BUGFIX: `max-h-64` was a redundant, arbitrary hard cap on top
+          // of the OUTER CollapsibleContent's own `min-h-0 overflow-y-auto`
+          // (AS-512's actual "bounded to whatever room remains" mechanism,
+          // just above). With favourites + the rest of the list only
+          // slightly over 256px tall, this inner cap forced a scrollbar to
+          // appear even when the outer flex container had plenty of free
+          // space below it — the sidebar didn't need to scroll at all for
+          // a handful of projects, but looked like it did. Removing the
+          // fixed cap lets this list size itself naturally; the outer
+          // container's own overflow-y-auto is still there as the real
+          // safety net for a workspace with dozens of projects.
           <nav
             aria-label="Projects"
-            className="flex max-h-64 flex-col gap-0.5 overflow-y-auto px-2 pb-2"
+            className="flex flex-col gap-0.5 px-2 pb-2"
           >
             {favoriteProjects.length > 0 && (
               // AS-510: the pinned favourites group, rendered first (above
