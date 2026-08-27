@@ -9,14 +9,16 @@
 // app ... filter deleted_at IS NULL"), even though RLS already enforces it,
 // so this query is correct even if a future policy change ever loosens it.
 //
-// AS-034 (open task count): the `tasks` table does not exist yet (lands in
-// M4, F033+ — confirmed via `find supabase/migrations -iname "*task*"`
-// returning no results). A LEFT JOIN/count against a nonexistent table
-// cannot be executed today, so the count is intentionally omitted here
-// rather than hardcoded to a fake number. `openTaskCount` is typed
-// `number | null` so the UI can render an explicit "pending" state, and the
-// TODO below marks exactly where to wire in the real count once the tasks
-// table exists.
+// AS-034 (open task count): batched below in getWorkspaceProjects via one
+// extra query across every returned project id (never per-project — this
+// function also backs the sidebar's project list, F262). "Open" means the
+// task's board-column CATEGORY isn't "done" (project_statuses.category),
+// not the literal status TEXT — a project can rename/replace its columns
+// (F218+), and this must keep counting correctly against whatever the
+// project's columns are named today. Falls back to the legacy `status !=
+// 'done'` text check only for a task whose `status_id` hasn't been
+// backfilled (same fallback lib/queries/portal.ts's getPortalProjects
+// already uses, kept identical rather than inventing a second one).
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -34,11 +36,10 @@ export type ProjectListItem = {
   // against any pre-F145 row that predates the column (none exist in
   // practice; the trigger backfills every insert going forward).
   key: string | null;
-  // TODO(F033+): replace with a real count once the tasks table exists —
-  // e.g. `projects.select("*, tasks!inner(count)")` filtered to
-  // non-completed, non-deleted tasks, or a dedicated RPC/view. Until then
-  // this is always null (never a fake 0) so the UI can distinguish
-  // "not yet supported" from "genuinely zero open tasks".
+  // AS-034: count of this project's non-deleted, not-"done"-category
+  // tasks. `null` only if the batched count query itself failed (fails
+  // open to "not yet supported" rather than a fake 0); otherwise always a
+  // real number, including 0 for a project with no open tasks.
   openTaskCount: number | null;
 };
 
@@ -64,7 +65,13 @@ export async function getWorkspaceProjects(
     throw error;
   }
 
-  return (data ?? []).map((project) => ({
+  const projects = data ?? [];
+  const openCountByProject = await getOpenTaskCounts(
+    supabase,
+    projects.map((project) => project.id),
+  );
+
+  return projects.map((project) => ({
     id: project.id,
     name: project.name,
     description: project.description,
@@ -72,8 +79,54 @@ export async function getWorkspaceProjects(
     endDate: project.end_date,
     createdAt: project.created_at,
     key: project.key ?? null,
-    openTaskCount: null,
+    // `null` (the count query itself failed) is passed through as-is —
+    // NOT coalesced to 0 — so the UI's existing "pending" state stays
+    // truthful. A failed count must never look identical to a genuinely
+    // empty project.
+    openTaskCount: openCountByProject === null ? null : (openCountByProject.get(project.id) ?? 0),
   }));
+}
+
+// AS-034: one batched query for every project id passed in, never one
+// query per project (this function backs both the Projects page and the
+// sidebar's project list, F262 — an N+1 here would run on every workspace
+// page load). RLS (tasks_select_active_members) still independently
+// scopes every row to what the caller may see, same as every other query
+// in this file. Returns `null` (not an empty map) on a query failure, so
+// the caller can render its "count unavailable" state rather than a
+// fake 0 indistinguishable from a real empty project.
+async function getOpenTaskCounts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectIds: string[],
+): Promise<Map<string, number> | null> {
+  const counts = new Map<string, number>();
+  if (projectIds.length === 0) return counts;
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("project_id, status, project_statuses(category)")
+    .in("project_id", projectIds)
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("getOpenTaskCounts: query failed:", error);
+    return null;
+  }
+
+  for (const task of data ?? []) {
+    const relatedStatus = task.project_statuses as
+      | { category: string }
+      | { category: string }[]
+      | null;
+    const category = Array.isArray(relatedStatus)
+      ? relatedStatus[0]?.category
+      : relatedStatus?.category;
+    const isDone = category ? category === "done" : task.status === "done";
+    if (isDone) continue;
+    counts.set(task.project_id, (counts.get(task.project_id) ?? 0) + 1);
+  }
+
+  return counts;
 }
 
 // F263 (AS-510): the signed-in caller's own favourited project ids, scoped

@@ -194,12 +194,12 @@ export default async function ProjectsPage({
                 </div>
               </CardHeader>
               <CardContent>
-                {/* AS-034: open task count. The `tasks` table doesn't exist
-                    yet (lands M4, F033+), so this is an explicit "pending"
-                    badge rather than a hardcoded 0 — see the TODO in
-                    lib/queries/projects.ts. */}
+                {/* AS-034: open (not "done"-category) task count,
+                    batched in getWorkspaceProjects. `null` only if that
+                    count query itself failed — an explicit "pending"
+                    badge rather than a misleading fake 0 in that case. */}
                 {project.openTaskCount === null ? (
-                  <Badge variant="outline" title="Task counts arrive in a later milestone">
+                  <Badge variant="outline" title="Couldn't load the task count — try refreshing">
                     Open tasks: pending
                   </Badge>
                 ) : (

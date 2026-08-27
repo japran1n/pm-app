@@ -184,12 +184,33 @@ describe.skipIf(!haveAdminCreds)(
       if (wsBProjectErr || !wsBProject) throw new Error(`Failed to seed workspace B project: ${wsBProjectErr?.message}`);
       workspaceBProjectId = wsBProject.id;
 
+      // AS-034 fixture: one open task and one done task on the active
+      // project, so the real-count assertion below has something to
+      // actually distinguish (a project with zero tasks can't tell "counts
+      // correctly" apart from "always returns 0").
+      const { error: tasksErr } = await adminClient.from("tasks").insert([
+        {
+          project_id: activeProjectId,
+          title: "F027 AS-034 open task",
+          status: "todo",
+          author_id: userId,
+        },
+        {
+          project_id: activeProjectId,
+          title: "F027 AS-034 done task",
+          status: "done",
+          author_id: userId,
+        },
+      ]);
+      if (tasksErr) throw new Error(`Failed to seed tasks: ${tasksErr.message}`);
+
       userClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await userClient.auth.signInWithPassword({ email, password });
       if (signInErr) throw new Error(`Failed to sign in test user: ${signInErr.message}`);
     });
 
     afterAll(async () => {
+      await adminClient.from("tasks").delete().eq("project_id", activeProjectId);
       for (const id of [activeProjectId, deletedProjectId, workspaceBProjectId]) {
         if (id) await adminClient.from("projects").delete().eq("id", id);
       }
@@ -211,16 +232,28 @@ describe.skipIf(!haveAdminCreds)(
       expect(projects.map((p) => p.id)).not.toContain(deletedProjectId);
     });
 
-    it("AS-034: open task count is explicitly null (pending), never a fabricated number", async () => {
+    it("AS-034: open task count reflects real, non-done tasks — not a placeholder", async () => {
+      // This assertion used to require openTaskCount to ALWAYS be null —
+      // that was correct only while the tasks table didn't exist yet
+      // (M4/F033). It has existed since early in this mission; the count
+      // is now real, batched via getWorkspaceProjects's own
+      // getOpenTaskCounts (never a per-project query).
       const { getWorkspaceProjects } = await import("@/lib/queries/projects");
       const projects = await getWorkspaceProjects(workspaceAId);
       const active = projects.find((p) => p.id === activeProjectId);
 
       expect(active).toBeDefined();
-      expect(active?.openTaskCount).toBeNull();
-      // Every project's count must be the same explicit "pending" marker,
-      // not e.g. 0 for some and null for others.
-      expect(projects.every((p) => p.openTaskCount === null)).toBe(true);
+      // One "todo" + one "done" seeded above: the done one must not count.
+      expect(active?.openTaskCount).toBe(1);
+    });
+
+    it("AS-034: a project with zero tasks gets a real 0, not null or a missing field", async () => {
+      const { getWorkspaceProjects } = await import("@/lib/queries/projects");
+      const projects = await getWorkspaceProjects(workspaceBId);
+      const project = projects.find((p) => p.id === workspaceBProjectId);
+
+      expect(project).toBeDefined();
+      expect(project?.openTaskCount).toBe(0);
     });
 
     it("AS-042: querying a different workspace id returns a different, correctly scoped project list", async () => {
