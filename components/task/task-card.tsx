@@ -133,6 +133,11 @@ export type TaskCardTask = {
   // today — this is a presentation layer, not a second copy of the
   // parent/child relationship the DB already owns.
   parentTaskId?: string | null;
+  // F434-F440 ("task types"): workspace-owned taxonomy tag (Setup/Design/
+  // Dev/SEO/QA/Add-on/...). Optional/undefined means "no type set OR this
+  // query hasn't been updated to select it" — same safe-default contract
+  // every other optional field on this type follows.
+  taskType?: { id: string; name: string; color: string } | null;
   // F157 (AS-283): how many OPEN blockers (blocking tasks whose own
   // status isn't "done") this task currently has, if any. Selected via
   // the board query's own single project-scoped query

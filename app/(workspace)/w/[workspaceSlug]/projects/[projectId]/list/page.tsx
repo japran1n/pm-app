@@ -54,6 +54,7 @@ import { getProjectColumns } from "@/lib/queries/statuses";
 import { STATUS_LABELS } from "@/lib/task-colors";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
+import { getTaskTypes } from "@/lib/queries/task-types";
 import { NewTaskDialog } from "@/components/task/new-task-dialog";
 import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
@@ -89,6 +90,7 @@ export default async function ProjectListPage({
     status?: string;
     priority?: string;
     assigneeId?: string;
+    taskTypeId?: string;
     sort?: string;
     viewId?: string;
   }>;
@@ -148,7 +150,12 @@ export default async function ProjectListPage({
   // redirect target always carries `viewId`, which short-circuits this
   // branch on the next render).
   const hasAnyViewOrFilterParam = Boolean(
-    query.viewId || query.status || query.priority || query.assigneeId || query.sort,
+    query.viewId ||
+      query.status ||
+      query.priority ||
+      query.assigneeId ||
+      query.taskTypeId ||
+      query.sort,
   );
   if (!hasAnyViewOrFilterParam) {
     const defaultView = await getMyDefaultSavedView(projectId, "list");
@@ -196,6 +203,9 @@ export default async function ProjectListPage({
     if (query.assigneeId) {
       filters.assigneeId = query.assigneeId;
     }
+    if (query.taskTypeId) {
+      filters.taskTypeId = query.taskTypeId;
+    }
   }
 
   // F055 (AS-091): sort is applied on top of the (already-filtered) query
@@ -225,9 +235,12 @@ export default async function ProjectListPage({
   // project's saved views (listSavedViewsForProject) join the same
   // independent-fetches batch — RLS-scoped, so this never returns a view
   // the caller shouldn't see (AS-429/AS-434).
-  const [tasks, timezone, templates, savedViews] = await Promise.all([
+  const [tasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
     getCurrentUserTimezone(supabase),
+    // F434-F440: fetched alongside the rest of this page's independent
+    // batch — workspace is already resolved above.
+    workspace ? getTaskTypes(workspace.id) : Promise.resolve([]),
     // F183 (AS-330 UI half): same fetch-and-pass-down pattern as the board
     // page's own templates prop.
     workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
@@ -282,7 +295,15 @@ export default async function ProjectListPage({
           {workspace && (
             <SaveViewDialog workspaceId={workspace.id} projectId={projectId} />
           )}
-          <ListFilters assigneeOptions={assigneeOptions} statusOptions={statusOptions} />
+          <ListFilters
+          assigneeOptions={assigneeOptions}
+          statusOptions={statusOptions}
+          taskTypeOptions={taskTypes.map((type) => ({
+            value: type.id,
+            label: type.name,
+            color: type.color,
+          }))}
+        />
         </div>
         <div className="flex items-center gap-2">
           <NewFromTemplateButton projectId={projectId} templates={templates} />
@@ -308,6 +329,7 @@ export default async function ProjectListPage({
         timezone={timezone}
         statusOptions={statusOptions}
         projectId={projectId}
+        taskTypeOptions={taskTypes}
       />
     </div>
   );

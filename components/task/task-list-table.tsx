@@ -84,6 +84,7 @@ import { BulkStatusAction } from "@/components/task/bulk-status-action";
 // <BulkActionBar>'s children slot — soft-deletes the selection after a
 // confirmation naming the count.
 import { BulkDeleteAction } from "@/components/task/bulk-delete-action";
+import { ListTaskTypeSelect } from "@/components/task/list-task-type-select";
 
 export function TaskListTable({
   tasks: tasksProp,
@@ -95,8 +96,15 @@ export function TaskListTable({
   timezone,
   statusOptions,
   projectId,
+  taskTypeOptions = [],
 }: {
   tasks: TaskCardTask[];
+  /** F434-F440: the workspace's task types, for the inline per-row
+   * editor. Defaults to empty — a workspace with none defined yet
+   * renders no Type cell/column control at all (nothing to pick from),
+   * same "empty means the feature quietly steps aside" convention
+   * list-filters.tsx's own taskTypeOptions follows. */
+  taskTypeOptions?: { id: string; name: string; color: string }[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
    * avatarUrl), resolved server-side. Renamed from F053's original
    * `assigneeNames: Map<string, string>` now that the Assignee column
@@ -364,6 +372,7 @@ export function TaskListTable({
             <TableHead>Title</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Priority</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead>Assignee</TableHead>
             <TableHead>
               <DueDateSortHeader sort={sort} />
@@ -489,6 +498,13 @@ export function TaskListTable({
                     for the same reason the Status cell above does. */}
                 <TableCell onClick={(event) => event.stopPropagation()}>
                   <ListPrioritySelect taskId={task.id} priority={task.priority} />
+                </TableCell>
+                <TableCell onClick={(event) => event.stopPropagation()}>
+                  <ListTaskTypeSelect
+                    taskId={task.id}
+                    taskType={task.taskType ?? null}
+                    options={taskTypeOptions}
+                  />
                 </TableCell>
                 {/* F250 (AS-484): inline assignee editor. */}
                 <TableCell onClick={(event) => event.stopPropagation()}>

@@ -224,6 +224,8 @@ export type ProjectListTaskFilters = {
   // strategy that keeps a task with several matching assignees to exactly
   // one row.
   assigneeId?: string | string[];
+  // F434-F440: matches tasks whose task_type_id equals this id.
+  taskTypeId?: string;
 };
 
 // F055 (AS-091): due-date sort, applied AFTER filtering — same query, just
@@ -310,13 +312,17 @@ export async function getProjectListTasks(
       // client-side — see TaskCardTask.parentTaskId's own comment for why
       // this is presentation-only and does not remove anything from this
       // already-flat query (AS-275).
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, projects(key), task_assignees(user_id), project_statuses(category)",
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, projects(key), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
 
   if (filters?.status) {
     query = query.eq("status", filters.status);
+  }
+
+  if (filters?.taskTypeId) {
+    query = query.eq("task_type_id", filters.taskTypeId);
   }
   if (filters?.priority) {
     query = query.eq("priority", filters.priority);
@@ -395,6 +401,8 @@ export async function getProjectListTasks(
     // F6: see this function's select above and TaskCardTask.parentTaskId's
     // own comment.
     parentTaskId: task.parent_task_id,
+    // F434-F440: see this function's select above.
+    taskType: firstRelated(task.task_types) ?? null,
   }));
 }
 

@@ -100,6 +100,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 export function ListFilters({
   assigneeOptions,
   statusOptions = DEFAULT_STATUS_OPTIONS,
+  taskTypeOptions = [],
 }: {
   assigneeOptions: AssigneeOption[];
   /** F223 (AS-411): the project's real `project_statuses` columns, in
@@ -107,6 +108,13 @@ export function ListFilters({
    * passed in by the project List page. Falls back to the legacy fixed
    * four for callers without a single project's columns to hand. */
   statusOptions?: { value: string; label: string; color?: string }[];
+  /** F434-F440: the workspace's task types (lib/queries/task-types.ts's
+   * getTaskTypes), in `position` order. Defaults to empty so a caller
+   * that hasn't been updated (existing tests) renders with no type
+   * filter rather than crashing — and a workspace with zero task types
+   * defined yet correctly shows no filter for a taxonomy that doesn't
+   * exist. */
+  taskTypeOptions?: { value: string; label: string; color?: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -123,6 +131,15 @@ export function ListFilters({
   const status = searchParams.get("status") ?? ALL_VALUE;
   const priority = searchParams.get("priority") ?? ALL_VALUE;
   const assigneeId = searchParams.get("assigneeId") ?? ALL_VALUE;
+  const taskTypeId = searchParams.get("taskTypeId") ?? ALL_VALUE;
+
+  const taskTypeLabels = useMemo(() => {
+    const labels: Record<string, string> = { [ALL_VALUE]: "All types" };
+    for (const option of taskTypeOptions) {
+      labels[option.value] = option.label;
+    }
+    return labels;
+  }, [taskTypeOptions]);
   // UX-20: the dashboard's KPI tiles write `?flag=` (overdue/due_soon/
   // blocked/completed) — a filter this component didn't create and has no
   // Select for, but it's still an active constraint on the list below, so
@@ -141,8 +158,9 @@ export function ListFilters({
       status !== ALL_VALUE ||
       priority !== ALL_VALUE ||
       assigneeId !== ALL_VALUE ||
+      taskTypeId !== ALL_VALUE ||
       Boolean(flag),
-    [status, priority, assigneeId, flag],
+    [status, priority, assigneeId, taskTypeId, flag],
   );
 
   const setParam = useCallback(
@@ -270,6 +288,36 @@ export function ListFilters({
           ))}
         </SelectContent>
       </Select>
+
+      {taskTypeOptions.length > 0 && (
+        <Select
+          value={taskTypeId}
+          onValueChange={(value) => setParam("taskTypeId", value)}
+        >
+          <SelectTrigger size="sm" className="w-36" aria-label="Filter by task type">
+            <SelectValue placeholder="Type">
+              {(value: string) => taskTypeLabels[value] ?? value}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_VALUE}>All types</SelectItem>
+            {taskTypeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <span className="flex items-center gap-1.5">
+                  {option.color && (
+                    <span
+                      aria-hidden="true"
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: option.color }}
+                    />
+                  )}
+                  {option.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {flag && (
         <Button

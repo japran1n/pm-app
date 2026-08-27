@@ -1045,6 +1045,41 @@ export type Database = {
           },
         ]
       }
+      task_types: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          position: number
+          workspace_id: string
+        }
+        Insert: {
+          color: string
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          workspace_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_types_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_watchers: {
         Row: {
           created_at: string
@@ -1110,6 +1145,7 @@ export type Database = {
           status: string
           status_id: string | null
           tags: string[]
+          task_type_id: string | null
           title: string
           updated_at: string
         }
@@ -1141,6 +1177,7 @@ export type Database = {
           status?: string
           status_id?: string | null
           tags?: string[]
+          task_type_id?: string | null
           title: string
           updated_at?: string
         }
@@ -1172,6 +1209,7 @@ export type Database = {
           status?: string
           status_id?: string | null
           tags?: string[]
+          task_type_id?: string | null
           title?: string
           updated_at?: string
         }
@@ -1230,6 +1268,13 @@ export type Database = {
             columns: ["status_id"]
             isOneToOne: false
             referencedRelation: "project_statuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_task_type_id_fkey"
+            columns: ["task_type_id"]
+            isOneToOne: false
+            referencedRelation: "task_types"
             referencedColumns: ["id"]
           },
         ]
@@ -1776,6 +1821,7 @@ export type Database = {
           status: string
           status_id: string | null
           tags: string[]
+          task_type_id: string | null
           title: string
           updated_at: string
         }[]

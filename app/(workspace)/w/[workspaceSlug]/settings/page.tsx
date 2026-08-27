@@ -104,6 +104,12 @@ export default async function WorkspaceSettingsPage({
         >
           Status templates
         </Link>
+        <Link
+          href={`/w/${workspaceSlug}/settings/task-types`}
+          className="px-1 pb-2 text-muted-foreground hover:text-foreground"
+        >
+          Task types
+        </Link>
       </nav>
 
       <section className="flex flex-col gap-4">

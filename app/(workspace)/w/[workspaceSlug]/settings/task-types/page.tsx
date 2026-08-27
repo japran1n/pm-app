@@ -3,16 +3,16 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { canManageProject, type WorkspaceRole } from "@/lib/auth/permissions";
-import { getStatusTemplates } from "@/lib/queries/status-templates";
-import { StatusTemplateManager } from "@/components/workspace/status-template-manager";
+import { getTaskTypes } from "@/lib/queries/task-types";
+import { TaskTypeManager } from "@/components/workspace/task-type-manager";
 
-// F428-F430: workspace settings "Status templates" tab. Same access shape
-// as the sibling settings page (app/(workspace)/w/[workspaceSlug]/settings/
-// page.tsx): a guest is denied outright, everyone else can view, and only
-// canManageProject (owner/admin) sees interactive controls — the real
-// enforcement is every action in lib/actions/status-templates.ts
-// re-checking requireWorkspaceAdmin server-side.
-export default async function StatusTemplatesSettingsPage({
+// F434-F440: workspace settings "Task types" tab. Same access shape as
+// the sibling status-templates settings page: a guest/client is denied
+// outright, everyone else can view, only canManageProject (owner/admin)
+// sees interactive controls — the real enforcement is every action in
+// lib/actions/task-types.ts re-checking requireWorkspaceAdmin
+// server-side.
+export default async function TaskTypesSettingsPage({
   params,
 }: {
   params: Promise<{ workspaceSlug: string }>;
@@ -53,14 +53,14 @@ export default async function StatusTemplatesSettingsPage({
   }
 
   const canManage = canManageProject({ role });
-  const templates = await getStatusTemplates(workspace.id);
+  const taskTypes = await getTaskTypes(workspace.id);
 
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-lg font-semibold">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Status templates for {workspace.name}.
+          Task types for {workspace.name}.
         </p>
       </div>
 
@@ -77,29 +77,29 @@ export default async function StatusTemplatesSettingsPage({
         >
           Members
         </Link>
-        <span className="border-b-2 border-primary px-1 pb-2">
-          Status templates
-        </span>
         <Link
-          href={`/w/${workspaceSlug}/settings/task-types`}
+          href={`/w/${workspaceSlug}/settings/status-templates`}
           className="px-1 pb-2 text-muted-foreground hover:text-foreground"
         >
-          Task types
+          Status templates
         </Link>
+        <span className="border-b-2 border-primary px-1 pb-2">
+          Task types
+        </span>
       </nav>
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold">Status templates</h2>
+          <h2 className="text-sm font-semibold">Task types</h2>
           <p className="text-sm text-muted-foreground">
-            Reusable sets of board columns. Apply one from a project&apos;s
-            Settings → Columns page instead of rebuilding columns by hand
-            on every new project.
+            A tag you define once and apply to tasks — Setup, Design, Dev,
+            SEO, QA, Add-on, or whatever fits how your team works. Filter
+            and group by it on any project&apos;s List view.
           </p>
         </div>
-        <StatusTemplateManager
+        <TaskTypeManager
           workspaceId={workspace.id}
-          initialTemplates={templates}
+          initialTaskTypes={taskTypes}
           canManage={canManage}
         />
       </section>
