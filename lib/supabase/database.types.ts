@@ -1134,6 +1134,7 @@ export type Database = {
           last_occurrence_at: string | null
           number: number
           parent_task_id: string | null
+          pending_client_approval: boolean
           points: number | null
           position: number
           priority: string | null
@@ -1166,6 +1167,7 @@ export type Database = {
           last_occurrence_at?: string | null
           number?: number
           parent_task_id?: string | null
+          pending_client_approval?: boolean
           points?: number | null
           position?: number
           priority?: string | null
@@ -1198,6 +1200,7 @@ export type Database = {
           last_occurrence_at?: string | null
           number?: number
           parent_task_id?: string | null
+          pending_client_approval?: boolean
           points?: number | null
           position?: number
           priority?: string | null
@@ -1336,6 +1339,7 @@ export type Database = {
           id: string
           invited_email: string | null
           invited_project_id: string | null
+          portal_last_seen_at: string | null
           role: string
           status: string
           user_id: string | null
@@ -1346,6 +1350,7 @@ export type Database = {
           id?: string
           invited_email?: string | null
           invited_project_id?: string | null
+          portal_last_seen_at?: string | null
           role?: string
           status?: string
           user_id?: string | null
@@ -1356,6 +1361,7 @@ export type Database = {
           id?: string
           invited_email?: string | null
           invited_project_id?: string | null
+          portal_last_seen_at?: string | null
           role?: string
           status?: string
           user_id?: string | null
@@ -1810,6 +1816,7 @@ export type Database = {
           last_occurrence_at: string | null
           number: number
           parent_task_id: string | null
+          pending_client_approval: boolean
           points: number | null
           position: number
           priority: string | null

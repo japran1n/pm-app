@@ -16,6 +16,7 @@
 // for in a query builder.
 
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export type StatusCategory = "not_started" | "in_progress" | "done";
 
@@ -309,6 +310,9 @@ export type PortalTaskDetail = PortalTask & {
   projectName: string;
   description: string | null;
   comments: PortalComment[];
+  // F4 (docs/client-dashboard-features-plan.md): drives the
+  // Approve/Request changes controls on this page.
+  pendingClientApproval: boolean;
 };
 
 // One shared task, with the part of its conversation the client is allowed
@@ -324,7 +328,9 @@ export async function getPortalTaskDetail(
 
   const { data: task, error } = await supabase
     .from("tasks")
-    .select("id, title, status, status_id, due_date, description, project_id")
+    .select(
+      "id, title, status, status_id, due_date, description, project_id, pending_client_approval",
+    )
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -394,6 +400,7 @@ export async function getPortalTaskDetail(
       authorName: names.get(comment.user_id) ?? null,
       isMine: comment.user_id === currentUserId,
     })),
+    pendingClientApproval: task.pending_client_approval ?? false,
   };
 }
 
@@ -439,7 +446,9 @@ export async function getPortalOverview(
   const [{ data: tasks }, { data: statuses }] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, title, status, status_id, due_date, project_id, updated_at")
+      .select(
+        "id, title, status, status_id, due_date, project_id, updated_at, pending_client_approval",
+      )
       .in("project_id", projectIds)
       .is("deleted_at", null)
       .order("updated_at", { ascending: false }),
@@ -465,10 +474,13 @@ export async function getPortalOverview(
       ? categoryByStatusId.get(task.status_id)
       : undefined;
 
-    // "Waiting on you" — the status name itself carries the "needs a
-    // client response" signal (e.g. "In Review"); category alone can't
-    // distinguish that from ordinary in-progress work.
-    const isAwaitingReview = /review/i.test(task.status);
+    // "Waiting on you" — F1 (docs/client-dashboard-features-plan.md):
+    // this used to be inferred from a regex on the status name
+    // (`/review/i`), which only worked for a team whose status happened to
+    // be named exactly "In Review". `pending_client_approval` is the same
+    // signal made explicit: the team sets it, so it survives status
+    // renames and covers any status, not just one whose name matches.
+    const isAwaitingReview = task.pending_client_approval === true;
 
     const mapped: PortalOverviewTask = {
       id: task.id,
@@ -487,4 +499,212 @@ export async function getPortalOverview(
   }
 
   return { waitingOnYou, deliveredThisWeek };
+}
+
+// --- Activity feed (F2, docs/client-dashboard-features-plan.md) -----------
+//
+// "What happened since you were last here" for a client who opens the
+// portal infrequently. Deliberately NOT built on `audit_log`: that table's
+// RLS (20260821211226) is owner/admin read-only by design, on the explicit
+// reasoning that it is a sensitive internal history — extending it to the
+// client role would be a real widening of a boundary stated elsewhere to
+// be load-bearing, for a feature that doesn't need it. Everything this
+// feed shows is derivable from `tasks` and `comments`, which are already
+// the exact RLS-scoped reads this file's other queries use.
+
+export type PortalActivitySummary = {
+  /** Null the first time a client ever opens the portal — the UI shows no
+   * "since" framing in that case, only the two lists below. */
+  since: string | null;
+  completed: PortalOverviewTask[];
+  added: PortalOverviewTask[];
+  commentCount: number;
+};
+
+export async function getPortalActivitySummary(
+  workspaceId: string,
+  userId: string,
+): Promise<PortalActivitySummary> {
+  // Bookkeeping only (the "when did this member last look" timestamp),
+  // not task/comment data — reading and writing it via the admin client is
+  // the deliberate exception to this file's own RLS-only convention (see
+  // top-of-file comment), because workspace_members carries no RLS policy
+  // for a client to update their own row, and the value written back here
+  // is never influenced by anything the caller supplied.
+  const admin = createAdminClient();
+  const { data: memberRow } = await admin
+    .from("workspace_members")
+    .select("id, portal_last_seen_at")
+    .eq("workspace_id", workspaceId)
+    .eq("user_id", userId)
+    .eq("role", "client")
+    .maybeSingle();
+
+  const since = memberRow?.portal_last_seen_at ?? null;
+
+  const supabase = await createClient();
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  const projectIds = (projects ?? []).map((p) => p.id);
+  const projectNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
+
+  const completed: PortalOverviewTask[] = [];
+  const added: PortalOverviewTask[] = [];
+  let commentCount = 0;
+
+  if (projectIds.length > 0) {
+    const sinceFloor = since ?? "1970-01-01T00:00:00.000Z";
+
+    const [{ data: tasks }, { data: statuses }, { data: sharedTasks }] =
+      await Promise.all([
+        supabase
+          .from("tasks")
+          .select(
+            "id, title, status_id, due_date, project_id, created_at, updated_at",
+          )
+          .in("project_id", projectIds)
+          .is("deleted_at", null)
+          .gt("updated_at", sinceFloor),
+        supabase
+          .from("project_statuses")
+          .select("id, project_id, category")
+          .in("project_id", projectIds),
+        // Comments live under client_visible tasks only — fetch that id
+        // set first so the comment count query below doesn't have to
+        // reason about visibility itself (RLS already restricts it, this
+        // is only for the `internal` filter, same belt-and-suspenders
+        // reasoning as elsewhere in this file).
+        supabase
+          .from("tasks")
+          .select("id")
+          .in("project_id", projectIds)
+          .eq("client_visible", true)
+          .is("deleted_at", null),
+      ]);
+
+    const sharedTaskIds = (sharedTasks ?? []).map((t) => t.id);
+
+    const { count } = sharedTaskIds.length
+      ? await supabase
+          .from("comments")
+          .select("id", { count: "exact", head: true })
+          .in("task_id", sharedTaskIds)
+          .eq("internal", false)
+          .is("deleted_at", null)
+          .gt("created_at", sinceFloor)
+      : { count: 0 };
+
+    commentCount = count ?? 0;
+
+    const categoryByStatusId = new Map<string, StatusCategory>();
+    for (const status of statuses ?? []) {
+      categoryByStatusId.set(status.id, status.category as StatusCategory);
+    }
+
+    for (const task of tasks ?? []) {
+      const category = task.status_id
+        ? categoryByStatusId.get(task.status_id)
+        : undefined;
+      const mapped: PortalOverviewTask = {
+        id: task.id,
+        title: task.title,
+        projectId: task.project_id,
+        projectName: projectNames.get(task.project_id) ?? "",
+        dueDate: task.due_date,
+        updatedAt: task.updated_at,
+      };
+
+      if (category === "done") {
+        completed.push(mapped);
+      } else if (task.created_at > sinceFloor) {
+        added.push(mapped);
+      }
+    }
+  }
+
+  // Written back last, after every read above already ran, so this visit
+  // itself is reflected on the client's *next* visit, not this one.
+  if (memberRow) {
+    await admin
+      .from("workspace_members")
+      .update({ portal_last_seen_at: new Date().toISOString() })
+      .eq("id", memberRow.id);
+  }
+
+  return { since, completed, added, commentCount };
+}
+
+// --- Files (F3, docs/client-dashboard-features-plan.md) -------------------
+//
+// One list of every attachment on a task the client can see, instead of
+// making them open each task to find one. RLS-scoped exactly like this
+// file's other queries: attachments join back to tasks, and a client's own
+// SELECT on `tasks` already only returns client_visible rows (20260902010000),
+// so filtering here on client_visible again is belt-and-suspenders, not the
+// real boundary.
+
+export type PortalFile = {
+  id: string;
+  fileName: string;
+  createdAt: string;
+  taskId: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
+};
+
+export async function getPortalFiles(
+  workspaceId: string,
+): Promise<PortalFile[]> {
+  const supabase = await createClient();
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  const projectIds = (projects ?? []).map((p) => p.id);
+  const projectNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
+
+  if (projectIds.length === 0) return [];
+
+  const { data: tasks } = await supabase
+    .from("tasks")
+    .select("id, title, project_id")
+    .in("project_id", projectIds)
+    .eq("client_visible", true)
+    .is("deleted_at", null);
+
+  const taskIds = (tasks ?? []).map((t) => t.id);
+  if (taskIds.length === 0) return [];
+
+  const taskById = new Map((tasks ?? []).map((t) => [t.id, t]));
+
+  const { data: attachments } = await supabase
+    .from("attachments")
+    .select("id, file_name, created_at, task_id")
+    .in("task_id", taskIds)
+    .order("created_at", { ascending: false });
+
+  return (attachments ?? []).flatMap((attachment) => {
+    const task = taskById.get(attachment.task_id);
+    if (!task) return [];
+    return [
+      {
+        id: attachment.id,
+        fileName: attachment.file_name,
+        createdAt: attachment.created_at,
+        taskId: task.id,
+        taskTitle: task.title,
+        projectId: task.project_id,
+        projectName: projectNames.get(task.project_id) ?? "",
+      },
+    ];
+  });
 }

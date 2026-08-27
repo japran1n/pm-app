@@ -157,6 +157,7 @@ import {
 } from "@/components/task/time-tracking";
 import { Watchers } from "@/components/task/watchers";
 import { ClientVisibilityToggle } from "@/components/task/client-visibility-toggle";
+import { PendingApprovalToggle } from "@/components/task/pending-approval-toggle";
 // F179 (AS-317, AS-318, AS-319): the recurrence picker + remove control —
 // same "smallest-possible-client-boundary, caller passes current value
 // down, component calls its own Server Action" convention as TagsEditor/
@@ -272,6 +273,10 @@ export type TaskDetailSheetTask = {
   /** C2: whether this task is shared with the workspace's clients. Drives
    * the share toggle in the header; false/undefined both mean internal. */
   clientVisible?: boolean;
+  /** F1 (docs/client-dashboard-features-plan.md): whether this task is
+   * waiting on a client decision. Only meaningful when clientVisible is
+   * true; false/undefined both mean "not waiting". */
+  pendingClientApproval?: boolean;
   /** F236 (AS-453): this task's start date, sibling to `dueDate` above —
    * same "plain YYYY-MM-DD string or null" shape, same source
    * (getTaskDetail's own task select, no second round trip). */
@@ -1198,6 +1203,17 @@ export function TaskDetailSheet({
                 <ClientVisibilityToggle
                   taskId={task.id}
                   clientVisible={task.clientVisible ?? false}
+                  disabled={!canEdit}
+                />
+              )}
+              {/* F1: asking for a decision only makes sense once the task
+                  is actually visible to the client — shown alongside the
+                  share toggle rather than gated behind it, so the team
+                  sees at a glance that sharing is a prerequisite. */}
+              {workspaceHasClient && task.clientVisible && (
+                <PendingApprovalToggle
+                  taskId={task.id}
+                  pendingClientApproval={task.pendingClientApproval ?? false}
                   disabled={!canEdit}
                 />
               )}

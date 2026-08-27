@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { getPortalTaskDetail } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { PortalConversation } from "@/components/portal/conversation";
+import { PortalApprovalActions } from "@/components/portal/approval-actions";
 
 // C7: one shared task, with the conversation the client is part of.
 export default async function PortalTaskPage({
@@ -56,6 +57,10 @@ export default async function PortalTaskPage({
           <p className="text-sm text-muted-foreground">{task.description}</p>
         )}
       </div>
+
+      {task.pendingClientApproval && (
+        <PortalApprovalActions taskId={task.id} />
+      )}
 
       <PortalConversation
         taskId={task.id}

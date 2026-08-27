@@ -12,7 +12,7 @@ import {
   requireActiveMembership,
   requireWorkspaceAdmin,
 } from "@/lib/auth/require-membership";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canWrite, isClient, type WorkspaceRole } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import {
   uploadAttachmentForUser,
@@ -132,7 +132,7 @@ export async function getAttachmentSignedUrl(
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
     .select(
-      "id, file_url, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+      "id, file_url, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility))",
     )
     .eq("id", attachmentId)
     .maybeSingle();
@@ -145,6 +145,7 @@ export async function getAttachmentSignedUrl(
     | {
         project_id: string;
         deleted_at: string | null;
+        client_visible: boolean;
         projects:
           | { workspace_id: string; visibility: string }
           | { workspace_id: string; visibility: string }[]
@@ -153,6 +154,7 @@ export async function getAttachmentSignedUrl(
     | {
         project_id: string;
         deleted_at: string | null;
+        client_visible: boolean;
         projects:
           | { workspace_id: string; visibility: string }
           | { workspace_id: string; visibility: string }[]
@@ -179,6 +181,20 @@ export async function getAttachmentSignedUrl(
 
   if (!membership.ok) {
     return { ok: false, error: "You don't have permission to view this file." };
+  }
+
+  // F3 (docs/client-dashboard-features-plan.md): isProjectVisibleToCaller
+  // below only re-implements *project*-level visibility (workspace vs
+  // private) — it has no notion of the client role's stricter, per-task
+  // `client_visible` rule, because none of its other callers (team-only
+  // actions) need one. A client whose project is 'workspace'-visible (the
+  // default) would otherwise be able to mint a signed URL for ANY
+  // attachment on ANY task in that project by guessing/enumerating
+  // attachment ids, not just ones the team actually shared. Same "not
+  // found", not "forbidden" — whether an internal attachment exists is not
+  // a client's business.
+  if (isClient({ role: membership.role }) && !taskRow.client_visible) {
+    return { ok: false, error: "Attachment not found." };
   }
 
   // F323 (AS-227, AS-228, AS-229): read-path confidentiality — the caller

@@ -115,3 +115,104 @@ export async function setTaskClientVisibility(
     data: { taskId: parsed.data.taskId, clientVisible: parsed.data.visible },
   };
 }
+
+// F1 (docs/client-dashboard-features-plan.md): "this task needs a decision
+// from the client", independent of `client_visible` above — a task can be
+// shared without waiting on anything, and (in the team UI, at least) this
+// flag is only meaningful once it's shared. Kept as a sibling action in the
+// same file rather than a new one: same caller, same permission gate, same
+// shape, and the two toggles are edited from the same place in the sheet.
+
+const setPendingClientApprovalSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  pending: z.boolean(),
+});
+
+export type SetPendingClientApprovalResult =
+  | { ok: true; data: { taskId: string; pendingClientApproval: boolean } }
+  | { ok: false; error: string };
+
+export async function setPendingClientApproval(
+  taskId: string,
+  pending: boolean,
+): Promise<SetPendingClientApprovalResult> {
+  const parsed = setPendingClientApprovalSchema.safeParse({ taskId, pending });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid task.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, projects!inner(workspace_id)")
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (taskError || !taskRow) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  if (!canEditTask({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change this.",
+    };
+  }
+
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update({ pending_client_approval: parsed.data.pending })
+    .eq("id", parsed.data.taskId);
+
+  if (updateError) {
+    console.error("setPendingClientApproval: update failed:", updateError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  revalidatePath("/w", "layout");
+  revalidatePath("/portal", "layout");
+
+  return {
+    ok: true,
+    data: {
+      taskId: parsed.data.taskId,
+      pendingClientApproval: parsed.data.pending,
+    },
+  };
+}

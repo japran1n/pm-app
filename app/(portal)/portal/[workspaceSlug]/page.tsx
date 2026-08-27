@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckCircle2, Clock3 } from "lucide-react";
 
-import { getPortalProjects, getPortalOverview } from "@/lib/queries/portal";
+import {
+  getPortalProjects,
+  getPortalOverview,
+  getPortalActivitySummary,
+} from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
@@ -41,9 +45,20 @@ export default async function PortalOverviewPage({
 
   if (!workspace) notFound();
 
-  const [projects, overview] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [projects, overview, activity] = await Promise.all([
     getPortalProjects(workspace.id),
     getPortalOverview(workspace.id),
+    // F2: only meaningful for a client session — the layout above already
+    // guarantees anyone reaching this page is a client (canViewClientPortal
+    // redirects everyone else), and `user` is guaranteed by that same
+    // layout's own auth check, so this is safe to call unconditionally.
+    user
+      ? getPortalActivitySummary(workspace.id, user.id)
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -56,6 +71,36 @@ export default async function PortalOverviewPage({
           Progress on the work {workspace.name} is delivering for you.
         </p>
       </div>
+
+      {/* F2 (docs/client-dashboard-features-plan.md): a one-line summary
+          above everything else, for a client who opens the portal
+          infrequently and shouldn't have to hunt for what changed. `since
+          === null` means this is their first-ever visit, where a "what
+          changed" framing makes no sense — nothing renders in that case. */}
+      {activity && activity.since && (
+        <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          Since your last visit ({formatDate(activity.since)}):{" "}
+          <span className="font-medium text-foreground">
+            {activity.completed.length}{" "}
+            {activity.completed.length === 1 ? "task" : "tasks"} completed
+          </span>
+          {", "}
+          <span className="font-medium text-foreground">
+            {activity.added.length} new
+          </span>
+          {activity.commentCount > 0 && (
+            <>
+              {", "}
+              <span className="font-medium text-foreground">
+                {activity.commentCount}{" "}
+                {activity.commentCount === 1 ? "comment" : "comments"}
+              </span>{" "}
+              from the team
+            </>
+          )}
+          .
+        </div>
+      )}
 
       {/* UX-22: the two questions a client actually opens the portal to
           answer — "is anything waiting on me?" and "what shipped

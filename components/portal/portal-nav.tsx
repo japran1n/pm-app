@@ -17,6 +17,12 @@ export function PortalNav({ workspaceSlug }: { workspaceSlug: string }) {
 
   const items = [
     { href: `/portal/${workspaceSlug}`, label: "Projects", exact: true },
+    // F3 (docs/client-dashboard-features-plan.md): a client's own
+    // "everything shared with me" list, one level below Projects rather
+    // than nested per-project — files span tasks across projects and a
+    // client shouldn't have to remember which project a given file lives
+    // under to find it again.
+    { href: `/portal/${workspaceSlug}/files`, label: "Files" },
     { href: `/portal/${workspaceSlug}/requests`, label: "Requests" },
   ];
 
