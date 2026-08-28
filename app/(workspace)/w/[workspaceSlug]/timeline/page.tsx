@@ -33,6 +33,7 @@
 // beside it later without touching the query or the layout maths.
 
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
@@ -139,13 +140,6 @@ export default async function TimelinePage({
   const { start, end } = timelineRangeForZoom(year, month, zoom);
   const pixelsPerDay = PIXELS_PER_DAY_BY_ZOOM[zoom];
 
-  // Both depend only on `workspace.id` (known already), not on each
-  // other's result -- parallel batch.
-  const [tasks, undatedCount] = await Promise.all([
-    getTimelineTasks(workspace.id, start, end),
-    getUndatedTimelineTaskCount(workspace.id),
-  ]);
-
   const prev = previousMonthKey(year, month);
   const next = nextMonthKey(year, month);
   const todayMonth = currentMonthKey(timezone);
@@ -153,21 +147,6 @@ export default async function TimelinePage({
   const hrefFor = (key: string) => `/w/${workspaceSlug}/timeline?month=${key}&zoom=${zoom}`;
   const hrefForZoom = (z: TimelineZoomLevel) =>
     `/w/${workspaceSlug}/timeline?month=${toMonthKey(year, month)}&zoom=${z}`;
-
-  const placeable = tasks.filter((t) => isPlaceableOnTimeline(t));
-  const groups = groupTimelineTasksByProject(placeable);
-
-  // F239 (AS-455): fetched against the SAME `tasks` result this page
-  // already has -- every id in `tasks` is already this caller's own
-  // RLS + project-visibility-filtered set (getTimelineTasks's own doc
-  // comment), so passing `tasks.map(t => t.id)` (not just the rendered
-  // `placeable` subset) as `getTimelineDependencyEdges`'s
-  // `visibleTaskIds` costs nothing extra and stays correct even though
-  // only `placeable` tasks get a row (an edge touching a date-less task
-  // in `tasks` is still correctly omitted downstream, in
-  // `TimelineBody`, because that task has no row position -- never
-  // fetched-then-discarded here).
-  const dependencyEdges = await getTimelineDependencyEdges(tasks.map((t) => t.id));
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -204,10 +183,73 @@ export default async function TimelinePage({
     </div>
   );
 
+  return (
+    <div className="flex flex-col gap-3">
+      {header}
+      {/* Perf (W9b): the header/month-nav above needs only searchParams,
+          not the fetched task set, so it renders immediately -- the
+          heavier task/dependency-edge fetch + Gantt body streams in
+          separately via Suspense instead of blocking the whole page. */}
+      <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
+        <TimelineBodySection
+          workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
+          start={start}
+          end={end}
+          today={today}
+          zoom={zoom}
+          pixelsPerDay={pixelsPerDay}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+// Perf (W9b): extracted so the header above can stream ahead of the
+// task/dependency-edge fetch this component owns -- see the `<Suspense>`
+// call site in `TimelinePage` above for why.
+async function TimelineBodySection({
+  workspaceId,
+  workspaceSlug,
+  start,
+  end,
+  today,
+  zoom,
+  pixelsPerDay,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+  start: string;
+  end: string;
+  today: string | null;
+  zoom: TimelineZoomLevel;
+  pixelsPerDay: number;
+}) {
+  // Both depend only on `workspaceId` (known already), not on each
+  // other's result -- parallel batch.
+  const [tasks, undatedCount] = await Promise.all([
+    getTimelineTasks(workspaceId, start, end),
+    getUndatedTimelineTaskCount(workspaceId),
+  ]);
+
+  const placeable = tasks.filter((t) => isPlaceableOnTimeline(t));
+  const groups = groupTimelineTasksByProject(placeable);
+
+  // F239 (AS-455): fetched against the SAME `tasks` result this page
+  // already has -- every id in `tasks` is already this caller's own
+  // RLS + project-visibility-filtered set (getTimelineTasks's own doc
+  // comment), so passing `tasks.map(t => t.id)` (not just the rendered
+  // `placeable` subset) as `getTimelineDependencyEdges`'s
+  // `visibleTaskIds` costs nothing extra and stays correct even though
+  // only `placeable` tasks get a row (an edge touching a date-less task
+  // in `tasks` is still correctly omitted downstream, in
+  // `TimelineBody`, because that task has no row position -- never
+  // fetched-then-discarded here).
+  const dependencyEdges = await getTimelineDependencyEdges(tasks.map((t) => t.id));
+
   if (groups.length === 0) {
     return (
       <div className="flex flex-col gap-6">
-        {header}
         <p
           className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground"
           data-testid="timeline-empty-message"
@@ -220,8 +262,7 @@ export default async function TimelinePage({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {header}
+    <>
       {/* AS-458: ONE overflow-x-auto container holds both the scale
           header and every row's track, so scrolling never desyncs the
           date labels from the bars beneath them; the task-name column is
@@ -254,7 +295,7 @@ export default async function TimelinePage({
         </div>
       </div>
       <UndatedTimelineFooter count={undatedCount} />
-    </div>
+    </>
   );
 }
 

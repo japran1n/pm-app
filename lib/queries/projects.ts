@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { logger } from "@/lib/observability/logger";
 
 // Data-fetching for the project list page (F027, AS-027, AS-034, AS-042).
@@ -209,7 +210,7 @@ export type ProjectDetail = {
 // every route under /w/[workspaceSlug], and the `.eq("workspace_id", ...)`
 // filter below additionally prevents a projectId from one workspace being
 // read while impersonating a different workspaceId.
-export async function getProjectById(
+export const getProjectById = cache(async function getProjectById(
   workspaceId: string,
   projectId: string,
 ): Promise<ProjectDetail | null> {
@@ -238,7 +239,7 @@ export async function getProjectById(
     createdAt: data.created_at,
     deletedAt: data.deleted_at,
   };
-}
+});
 
 // F142 (AS-250, AS-251, AS-256): data for the archive view
 // (`/w/[workspaceSlug]/archive`).

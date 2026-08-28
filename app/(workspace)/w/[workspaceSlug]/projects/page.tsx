@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
@@ -70,18 +71,12 @@ export default async function ProjectsPage({
     redirect("/onboarding");
   }
 
-  // Perf (W9): caller membership, the project list, favourite ids, and
-  // template options each depend only on `workspace.id`/`user.id` (both
-  // already known) — none depends on another's result — so all four run
-  // as one parallel batch. `getWorkspaceProjects`'s own failure is caught
-  // individually (same try/catch semantics as before) rather than letting
-  // one rejection fail the whole batch.
-  const [
-    { data: callerMembership },
-    projectsResult,
-    favoriteProjectIds,
-    projectTemplateOptions,
-  ] = await Promise.all([
+  // Perf (W9): caller membership and template options each depend only on
+  // `workspace.id`/`user.id` (both already known) — none depends on
+  // another's result — so both run as one parallel batch. The heavier
+  // project list + favourite ids fetch (W9b) is streamed in separately via
+  // `<Suspense>` below so this header/controls area doesn't wait on it.
+  const [{ data: callerMembership }, projectTemplateOptions] = await Promise.all([
     // F029 (AS-030, AS-033): the caller's own role in this workspace
     // decides whether the Archive control is even mounted for them — a
     // plain member must never see it (the server action re-checks
@@ -93,20 +88,6 @@ export default async function ProjectsPage({
       .eq("user_id", user.id)
       .eq("status", "active")
       .maybeSingle(),
-    getWorkspaceProjects(workspace.id).then(
-      (projects) => ({ projects, error: null as unknown }),
-      (error) => {
-        // Same console.error-to-Sentry convention as MembersPage — this
-        // repo has no separate logging library, per tech-decisions.md.
-        logger.error("ProjectsPage: failed to load projects", { error: error });
-        return { projects: null as Awaited<ReturnType<typeof getWorkspaceProjects>> | null, error };
-      },
-    ),
-    // F263 (AS-510): server-fetched alongside the project list above,
-    // same "one fetch, passed down as props" convention this page already
-    // follows for `projects`/`projectTemplateOptions` — not a per-card
-    // client fetch.
-    getFavoriteProjectIds(workspace.id),
     // F184: project-template options for the "Start from template" option
     // in the New Project dialog, server-fetched here and passed down as a
     // typed prop (clarified data-shape answer) rather than the dialog
@@ -123,9 +104,6 @@ export default async function ProjectsPage({
   // re-checks membership + canWrite itself.
   const canSaveTemplate = callerMembership?.role !== "viewer";
 
-  const projects = projectsResult.projects;
-  const loadError = projectsResult.error !== null;
-
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -141,6 +119,72 @@ export default async function ProjectsPage({
         />
       </div>
 
+      {/* Perf (W9b): the project list + favourite ids fetch (and its
+          per-project open-task-count batching in getWorkspaceProjects) is
+          the heaviest data-dependent panel on this page, so it streams in
+          separately via Suspense instead of blocking the header/New
+          Project controls above. */}
+      <Suspense
+        fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}
+      >
+        <ProjectsGridSection
+          workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
+          canArchive={canArchive}
+          canSaveTemplate={canSaveTemplate}
+        />
+      </Suspense>
+
+      <p className="text-sm text-muted-foreground">
+        <Link href={`/w/${workspaceSlug}`} className="underline">
+          Back to workspace home
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+// Perf (W9b): extracted so the header/New Project controls above can
+// stream ahead of the project list + favourite ids fetch this component
+// owns — see the `<Suspense>` call site in `ProjectsPage` above for why.
+async function ProjectsGridSection({
+  workspaceId,
+  workspaceSlug,
+  canArchive,
+  canSaveTemplate,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+  canArchive: boolean;
+  canSaveTemplate: boolean;
+}) {
+  // Perf (W9): the project list and favourite ids each depend only on
+  // `workspaceId` (already known) — neither depends on the other's
+  // result — so both run as one parallel batch. `getWorkspaceProjects`'s
+  // own failure is caught individually (same try/catch semantics as
+  // before) rather than letting the whole batch reject.
+  const [projectsResult, favoriteProjectIds] = await Promise.all([
+    getWorkspaceProjects(workspaceId).then(
+      (projects) => ({ projects, error: null as unknown }),
+      (error) => {
+        // Same console.error-to-Sentry convention as MembersPage — this
+        // repo has no separate logging library, per tech-decisions.md.
+        logger.error("ProjectsPage: failed to load projects", { error: error });
+        return { projects: null as Awaited<ReturnType<typeof getWorkspaceProjects>> | null, error };
+      },
+    ),
+    // F263 (AS-510): server-fetched alongside the project list above,
+    // same "one fetch, passed down as props" convention this page already
+    // follows for `projects`/`projectTemplateOptions` — not a per-card
+    // client fetch.
+    getFavoriteProjectIds(workspaceId),
+  ]);
+
+  const projects = projectsResult.projects;
+  const loadError = projectsResult.error !== null;
+
+  return (
+    <>
       {loadError && (
         <div
           role="alert"
@@ -189,7 +233,7 @@ export default async function ProjectsPage({
                     disabledTitle="You don't have permission to save templates."
                   />
                   <EditProjectDialog
-                    workspaceId={workspace.id}
+                    workspaceId={workspaceId}
                     project={{
                       id: project.id,
                       name: project.name,
@@ -200,7 +244,7 @@ export default async function ProjectsPage({
                   />
                   {canArchive && (
                     <ArchiveProjectDialog
-                      workspaceId={workspace.id}
+                      workspaceId={workspaceId}
                       project={{ id: project.id, name: project.name }}
                     />
                   )}
@@ -226,12 +270,6 @@ export default async function ProjectsPage({
           ))}
         </div>
       )}
-
-      <p className="text-sm text-muted-foreground">
-        <Link href={`/w/${workspaceSlug}`} className="underline">
-          Back to workspace home
-        </Link>
-      </p>
-    </div>
+    </>
   );
 }

@@ -29,6 +29,8 @@
 // touch `month` -- both directions of "filters persist across
 // navigation."
 
+import { Suspense } from "react";
+
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import {
@@ -114,15 +116,12 @@ export default async function CalendarPage({
   // stale/tampered URL value is validated against below. All three reads
   // are RLS-scoped (private projects/their columns never appear here for
   // a caller who can't see them, same visibility posture as the grid
-  // query itself).
-  // Perf (W9): undatedCount is also batched in here -- it only depends on
-  // `workspace.id`, same as the other three, not on the resolved filters
-  // below.
-  const [statusOptions, projects, workspaceMembers, undatedCount] = await Promise.all([
+  // query itself). `undatedCount` moved into `CalendarGridSection` (W9b)
+  // since it's only needed once the grid itself streams in.
+  const [statusOptions, projects, workspaceMembers] = await Promise.all([
     getWorkspaceStatusOptions(workspace.id),
     getWorkspaceProjects(workspace.id),
     getWorkspaceMembers(workspace.id),
-    getUndatedTaskCount(workspace.id),
   ]);
 
   const { filters } = resolveCalendarFilters(
@@ -137,26 +136,6 @@ export default async function CalendarPage({
       validProjectIds: new Set(projects.map((p) => p.id)),
     },
   );
-
-  const tasks = await getCalendarTasks(workspace.id, start, end, filters);
-
-  // F233 (AS-446): tasks with no due date are excluded from the grid by
-  // construction (getCalendarTasks's own `.not("due_date", "is", null)`
-  // filter -- there is no chip anywhere for one) -- this count is what
-  // explains that absence to the viewer instead of it just silently
-  // dropping tasks. Workspace-wide, same visibility rules as the grid
-  // itself (see getUndatedTaskCount's own doc comment). Deliberately
-  // UNFILTERED by F235's own filters (out of this feature's own scope --
-  // see this feature's handoff "Out-of-scope work needed"): it explains
-  // an absence that has nothing to do with which filters are active.
-  // (Fetched above, batched with the other workspace.id-only queries.)
-
-  const tasksByDate = new Map<string, CalendarTask[]>();
-  for (const task of tasks) {
-    const list = tasksByDate.get(task.dueDate) ?? [];
-    list.push(task);
-    tasksByDate.set(task.dueDate, list);
-  }
 
   const prev = previousMonthKey(year, month);
   const next = nextMonthKey(year, month);
@@ -202,10 +181,91 @@ export default async function CalendarPage({
     />
   );
 
+  return (
+    <div className="flex flex-col gap-3">
+      {filtersBar}
+      {/* Perf (W9b): the filters bar above only needs the option-set
+          batch already resolved, not the grid's own task fetch -- the
+          grid + undated-count footer stream in separately via Suspense
+          instead of blocking the filters from appearing. */}
+      <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
+        <CalendarGridSection
+          workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
+          start={start}
+          end={end}
+          filters={filters}
+          grid={grid}
+          dataKey={dataKey}
+          hrefFor={hrefFor}
+          prev={prev}
+          next={next}
+          today={today}
+          hasActiveFilters={hasActiveFilters}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+// Perf (W9b): extracted so the filters bar above can stream ahead of the
+// grid's own task fetch this component owns -- see the `<Suspense>` call
+// site in `CalendarPage` above for why.
+async function CalendarGridSection({
+  workspaceId,
+  workspaceSlug,
+  start,
+  end,
+  filters,
+  grid,
+  dataKey,
+  hrefFor,
+  prev,
+  next,
+  today,
+  hasActiveFilters,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+  start: string;
+  end: string;
+  filters: ReturnType<typeof resolveCalendarFilters>["filters"];
+  grid: ReturnType<typeof buildCalendarMonth>;
+  dataKey: string;
+  hrefFor: (key: string) => string;
+  prev: { year: number; month: number };
+  next: { year: number; month: number };
+  today: { year: number; month: number };
+  hasActiveFilters: boolean;
+}) {
+  // Perf (W9): undatedCount is batched here -- it only depends on
+  // `workspaceId`, same as `getCalendarTasks`, not on the resolved
+  // filters.
+  const [tasks, undatedCount] = await Promise.all([
+    getCalendarTasks(workspaceId, start, end, filters),
+    getUndatedTaskCount(workspaceId),
+  ]);
+
+  // F233 (AS-446): tasks with no due date are excluded from the grid by
+  // construction (getCalendarTasks's own `.not("due_date", "is", null)`
+  // filter -- there is no chip anywhere for one) -- this count is what
+  // explains that absence to the viewer instead of it just silently
+  // dropping tasks. Workspace-wide, same visibility rules as the grid
+  // itself (see getUndatedTaskCount's own doc comment). Deliberately
+  // UNFILTERED by F235's own filters (out of this feature's own scope --
+  // see this feature's handoff "Out-of-scope work needed"): it explains
+  // an absence that has nothing to do with which filters are active.
+
+  const tasksByDate = new Map<string, CalendarTask[]>();
+  for (const task of tasks) {
+    const list = tasksByDate.get(task.dueDate) ?? [];
+    list.push(task);
+    tasksByDate.set(task.dueDate, list);
+  }
+
   if (tasks.length === 0) {
     return (
-      <div className="flex flex-col gap-6">
-        {filtersBar}
+      <>
         <MonthGrid
           grid={grid}
           tasksByDate={tasksByDate}
@@ -230,13 +290,12 @@ export default async function CalendarPage({
             : "No tasks are due this month."}
         </p>
         <UndatedTaskFooter count={undatedCount} />
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {filtersBar}
+    <>
       <MonthGrid
         grid={grid}
         tasksByDate={tasksByDate}
@@ -247,7 +306,7 @@ export default async function CalendarPage({
         todayHref={hrefFor(toMonthKey(today.year, today.month))}
       />
       <UndatedTaskFooter count={undatedCount} />
-    </div>
+    </>
   );
 }
 
