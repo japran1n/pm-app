@@ -1832,6 +1832,16 @@ export type Database = {
         }
         Returns: string[]
       }
+      restore_task_atomic: {
+        Args: { p_task_id: string }
+        Returns: {
+          id: string
+          project_id: string
+          status: string
+          position: number
+          status_was_reset: boolean
+        }[]
+      }
       set_task_assignees_atomic: {
         Args: {
           p_assigned_by: string

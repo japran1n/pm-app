@@ -1698,42 +1698,16 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
     };
   }
 
-  const KNOWN_STATUSES = ["todo", "in_progress", "in_review", "done"] as const;
-  const NOT_STARTED_FALLBACK_STATUS: (typeof KNOWN_STATUSES)[number] = "todo";
-
-  const statusWasReset = !(KNOWN_STATUSES as readonly string[]).includes(
-    taskRow.status,
+  // Restore atomically: the parent's own update and the cascade restore of
+  // its still-deleted children (see this function's doc comment) happen in
+  // a single transaction via RPC, so a mid-sequence failure can never leave
+  // a child still marked deleted under a now-restored, live-looking parent.
+  const { data: restoreRows, error: updateError } = await admin.rpc(
+    "restore_task_atomic",
+    { p_task_id: parsed.data.taskId },
   );
-  const resolvedStatus = statusWasReset
-    ? NOT_STARTED_FALLBACK_STATUS
-    : (taskRow.status as (typeof KNOWN_STATUSES)[number]);
 
-  // Position (per this function's doc comment): append to the end of the
-  // resolved (project, status) column among currently LIVE tasks — the
-  // task's old, stale position is never reused.
-  const { data: lastInColumn } = await admin
-    .from("tasks")
-    .select("position")
-    .eq("project_id", taskRow.project_id)
-    .eq("status", resolvedStatus)
-    .is("deleted_at", null)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const newPosition = calculatePosition(lastInColumn?.position ?? null, null);
-
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({
-      deleted_at: null,
-      deleted_by: null,
-      status: resolvedStatus,
-      position: newPosition,
-    })
-    .eq("id", parsed.data.taskId)
-    .select("id, project_id, status, position")
-    .single();
+  const updated = restoreRows?.[0];
 
   if (updateError || !updated) {
     console.error("restoreTask: update failed:", updateError);
@@ -1742,6 +1716,8 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  const statusWasReset = updated.status_was_reset;
 
   // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record the restore in
   // the task's activity feed. There is no dedicated "restored" kind in
@@ -1776,63 +1752,6 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
       "restoreTask: writeTaskFieldChanges failed (non-fatal):",
       activityError,
     );
-  }
-
-  // Cascade restore (see this function's doc comment above): only the
-  // still-deleted children whose `deleted_via_task_id` points back to
-  // THIS task — never a bulk-deleted sibling with no such provenance.
-  // Bounded by the number of one-level children a single task can have
-  // (F148's one-level nesting limit), never an unbounded set, so a small
-  // per-child loop here (each child needs its OWN end-of-column position,
-  // which a single multi-row `.update()` can't express with per-row
-  // values) stays well within a "no unbounded per-row loop of network
-  // calls" reading of this feature's inherited performance-budget answer.
-  const { data: cascadedChildren } = await admin
-    .from("tasks")
-    .select("id, status")
-    .eq("deleted_via_task_id", parsed.data.taskId)
-    .not("deleted_at", "is", null);
-
-  for (const child of cascadedChildren ?? []) {
-    const childStatusWasReset = !(KNOWN_STATUSES as readonly string[]).includes(
-      child.status,
-    );
-    const childResolvedStatus = childStatusWasReset
-      ? NOT_STARTED_FALLBACK_STATUS
-      : (child.status as (typeof KNOWN_STATUSES)[number]);
-
-    const { data: lastInChildColumn } = await admin
-      .from("tasks")
-      .select("position")
-      .eq("project_id", taskRow.project_id)
-      .eq("status", childResolvedStatus)
-      .is("deleted_at", null)
-      .order("position", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const childPosition = calculatePosition(
-      lastInChildColumn?.position ?? null,
-      null,
-    );
-
-    const { error: childUpdateError } = await admin
-      .from("tasks")
-      .update({
-        deleted_at: null,
-        deleted_by: null,
-        deleted_via_task_id: null,
-        status: childResolvedStatus,
-        position: childPosition,
-      })
-      .eq("id", child.id);
-
-    if (childUpdateError) {
-      console.error(
-        "restoreTask: cascaded-child restore failed (non-fatal, parent already restored):",
-        childUpdateError,
-      );
-    }
   }
 
   const { data: workspaceRow } = await admin
