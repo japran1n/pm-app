@@ -355,6 +355,17 @@ export async function getProjectListTasks(
     referencedTable: "task_assignees",
   });
 
+  // W10 (pagination hardening): this query previously had no upper bound
+  // at all — a project with thousands of tasks meant fetching the entire
+  // table in one round trip. `TaskCardTask[]` flows from here through the
+  // List view page (Server Component), the dashboard's workspace-wide
+  // table (getWorkspaceListTasks below reuses this same shape), and
+  // several client components downstream, so wiring a real cursor/"Load
+  // more" UI end-to-end is out of scope for this pass (see W10 handoff's
+  // "Out-of-scope work needed") — this `.limit()` is a safety cap only,
+  // matching this feature's documented fallback.
+  query = query.limit(1000);
+
   const { data, error } = await query;
 
   if (error) {
@@ -529,6 +540,16 @@ export async function getWorkspaceListTasks(
     ascending: true,
     referencedTable: "task_assignees",
   });
+
+  // W10 (pagination hardening): same unbounded-fetch safety cap as
+  // getProjectListTasks above — workspace-wide, so this is the query most
+  // likely to hit a very large row count. Note the "overdue"/"due_soon"/
+  // "completed" flags are still applied AFTER this fetch (see this
+  // function's own comment above), so on a workspace with >1000
+  // non-deleted tasks the KPI counts computed from `flag`-filtered results
+  // could undercount past this cap — an accepted tradeoff for this pass;
+  // see W10 handoff.
+  query = query.limit(1000);
 
   const { data, error } = await query;
 

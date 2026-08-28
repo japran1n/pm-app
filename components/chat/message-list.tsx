@@ -96,6 +96,9 @@ export function MessageList({
   replyCounts,
   onOpenThread,
   reactions,
+  hasMoreMessages,
+  isLoadingMoreMessages,
+  onLoadMoreMessages,
 }: {
   messages: ChatMessage[];
   members: { userId: string; name: string | null; email: string | null; avatarUrl: string | null }[];
@@ -103,16 +106,44 @@ export function MessageList({
   replyCounts?: Record<string, number>;
   onOpenThread?: (messageId: string) => void;
   reactions?: Map<string, MessageReactionSummary[]>;
+  // W10 (pagination hardening): "Load earlier messages" affordance --
+  // backend already supported a `before` cursor (getChannelMessages), this
+  // wires it into the UI. Optional so callers that don't paginate (e.g.
+  // any future test harness rendering a bare list) don't need to pass
+  // these.
+  hasMoreMessages?: boolean;
+  isLoadingMoreMessages?: boolean;
+  onLoadMoreMessages?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messageCountRef = useRef(0);
+  const firstMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
-    const isNewMessage = messages.length > messageCountRef.current;
+    const firstMessageId = messages[0]?.id ?? null;
+    // A "load earlier messages" prepend changes which message is first
+    // without necessarily changing the count in a way we want to treat as
+    // "new message at the bottom" -- detect it explicitly so the older
+    // page doesn't yank the viewer's scroll position down to the bottom.
+    const isPrepend =
+      firstMessageIdRef.current !== null &&
+      firstMessageId !== firstMessageIdRef.current &&
+      messages.length > messageCountRef.current;
+
+    const isNewMessage =
+      !isPrepend && messages.length > messageCountRef.current;
+
     messageCountRef.current = messages.length;
+    firstMessageIdRef.current = firstMessageId;
+
+    if (isPrepend) {
+      // Keep the viewer looking at the same message they were looking at
+      // before older messages were prepended above it.
+      return;
+    }
 
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const shouldAutoScroll =
@@ -144,6 +175,18 @@ export function MessageList({
       className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 py-3"
       aria-label="Messages"
     >
+      {hasMoreMessages && onLoadMoreMessages && (
+        <div className="flex justify-center pb-2">
+          <button
+            type="button"
+            onClick={onLoadMoreMessages}
+            disabled={isLoadingMoreMessages}
+            className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+          >
+            {isLoadingMoreMessages ? "Loading…" : "Load earlier messages"}
+          </button>
+        </div>
+      )}
       {messages.map((message, index) => {
         const previous = messages[index - 1];
         const sameSenderAsPrevious =

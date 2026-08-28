@@ -12,7 +12,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
-import { sendMessage } from "@/lib/actions/chat-messages";
+import { sendMessage, getChannelMessagesAction } from "@/lib/actions/chat-messages";
 import { markChannelRead } from "@/lib/actions/chat-read";
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
 import { useTypingIndicator } from "@/components/chat/use-typing-indicator";
@@ -83,6 +83,52 @@ export function ChannelView({
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     ),
   );
+
+  // W10 (pagination hardening): getChannelMessages' default page size --
+  // the initial server fetch (app/(workspace)/w/[workspaceSlug]/chat/
+  // [channelId]/page.tsx) doesn't pass an explicit `limit`, so a full
+  // initial page means "there may be more" (fewer than this means we've
+  // already reached the channel's start).
+  const CHANNEL_MESSAGE_PAGE_SIZE = 50;
+  const [hasMoreMessages, setHasMoreMessages] = useState(
+    initialMessages.length >= CHANNEL_MESSAGE_PAGE_SIZE,
+  );
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+
+  async function handleLoadMoreMessages() {
+    if (isLoadingMoreMessages || !hasMoreMessages) return;
+    const oldest = messages[0];
+    if (!oldest) return;
+    setIsLoadingMoreMessages(true);
+    try {
+      const olderPage = await getChannelMessagesAction(channelId, {
+        before: oldest.createdAt,
+        limit: CHANNEL_MESSAGE_PAGE_SIZE,
+      });
+      setHasMoreMessages(olderPage.length >= CHANNEL_MESSAGE_PAGE_SIZE);
+      if (olderPage.length > 0) {
+        setMessages((previous) => {
+          const existingIds = new Set(previous.map((m) => m.id));
+          const toPrepend: ChatMessage[] = [...olderPage]
+            .filter((m) => !existingIds.has(m.id))
+            .sort(
+              (a, b) =>
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+            )
+            // getChannelMessagesAction's return type doesn't carry
+            // attachments (the `before`-cursor query never joins them,
+            // same as F3's original page load before F11 added the
+            // attachments join elsewhere) -- explicit `undefined` matches
+            // ChatMessage.attachments' optional shape rather than relying
+            // on structural leniency.
+            .map((m) => ({ ...m, attachments: undefined }));
+          return [...toPrepend, ...previous];
+        });
+      }
+    } finally {
+      setIsLoadingMoreMessages(false);
+    }
+  }
 
   // F6: broadcast-based typing indicator -- see components/chat/
   // use-typing-indicator.ts and lib/realtime/chat-typing-channel.ts.
@@ -237,6 +283,9 @@ export function ChannelView({
         currentUserId={currentUserId}
         replyCounts={replyCounts}
         onOpenThread={setActiveThreadId}
+        hasMoreMessages={hasMoreMessages}
+        isLoadingMoreMessages={isLoadingMoreMessages}
+        onLoadMoreMessages={() => void handleLoadMoreMessages()}
       />
       <TypingIndicatorLine typingUsers={typingUsers} />
       <MessageComposer

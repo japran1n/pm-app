@@ -24,7 +24,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getThreadMessages } from "@/lib/queries/chat";
+import { getThreadMessages, getChannelMessages } from "@/lib/queries/chat";
 import {
   deleteMessageSchema,
   editMessageSchema,
@@ -308,6 +308,20 @@ export async function getThreadMessagesAction(
   parentMessageId: string,
 ): Promise<ChatMessage[]> {
   const messages = await getThreadMessages(parentMessageId);
+  return messages;
+}
+
+// W10 (pagination hardening): thin Server Action wrapper so the
+// client-side ChannelView/MessageList "Load earlier messages" button can
+// call the server-only getChannelMessages query for an older page (same
+// "wrap the query in an action" convention as getThreadMessagesAction
+// above) -- returns messages newest-first, same shape getChannelMessages
+// itself returns; the caller re-sorts/prepends.
+export async function getChannelMessagesAction(
+  channelId: string,
+  options?: { before?: string; limit?: number },
+): Promise<ChatMessage[]> {
+  const messages = await getChannelMessages(channelId, options);
   return messages;
 }
 
