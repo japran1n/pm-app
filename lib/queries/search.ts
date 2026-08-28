@@ -277,7 +277,10 @@ export async function searchWorkspaceTasks(
   const fullTextResults = resultsPerProject
     .flat()
     .sort((a, b) => Number(b.titleMatches) - Number(a.titleMatches))
-    .map(({ titleMatches: _titleMatches, ...rest }) => rest);
+    .map(({ titleMatches, ...rest }) => {
+      void titleMatches;
+      return rest;
+    });
 
   if (!exactMatch) {
     return fullTextResults;

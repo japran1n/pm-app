@@ -91,17 +91,51 @@ function mapDocRow(row: {
   };
 }
 
+// Base (unscoped) query builders for the two tables this file reads from,
+// factored out so their types can be named below -- `createClient()`
+// (lib/supabase/server.ts) doesn't thread the generated `Database` type
+// through `createServerClient`, so TypeScript infers these as concrete
+// (if loosely-typed) `PostgrestFilterBuilder` instantiations rather than
+// `any`; naming them via `ReturnType` keeps applyScope itself free of
+// `any` without hand-writing that generic's 8 type parameters.
+function docFoldersBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
+  return supabase.from("doc_folders").select(
+    "id, workspace_id, project_id, parent_id, name, position, created_by, created_at",
+  );
+}
+
+function docsBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
+  return supabase.from("docs").select(
+    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at",
+  );
+}
+
+type FolderQuery = ReturnType<typeof docFoldersBaseQuery>;
+type DocsQuery = ReturnType<typeof docsBaseQuery>;
+
 // Applies the (workspaceId, projectId) scope filter shared by every query
 // in this file. `.is("project_id", null)` for workspace scope,
 // `.eq("project_id", projectId)` for project scope — never a loose
 // `.eq("project_id", projectId ?? null)` (`.eq` with a null value does not
-// behave like `.is`).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// behave like `.is`). Overloaded (rather than made generic) because a
+// fully generic signature here forces TypeScript to structurally compare
+// the two tables' `PostgrestFilterBuilder` instantiations against each
+// other, which blows the compiler's instantiation-depth limit.
 function applyScope(
-  query: any,
+  query: FolderQuery,
   workspaceId: string,
   projectId: string | null,
-) {
+): FolderQuery;
+function applyScope(
+  query: DocsQuery,
+  workspaceId: string,
+  projectId: string | null,
+): DocsQuery;
+function applyScope(
+  query: FolderQuery | DocsQuery,
+  workspaceId: string,
+  projectId: string | null,
+): FolderQuery | DocsQuery {
   const scoped = query.eq("workspace_id", workspaceId);
   return projectId === null
     ? scoped.is("project_id", null)
@@ -118,9 +152,7 @@ export async function getDocFolders(
   const supabase = await createClient();
 
   const { data, error } = await applyScope(
-    supabase.from("doc_folders").select(
-      "id, workspace_id, project_id, parent_id, name, position, created_by, created_at",
-    ),
+    docFoldersBaseQuery(supabase),
     workspaceId,
     projectId,
   ).order("position", { ascending: true });
@@ -142,9 +174,7 @@ export async function getDocsInFolder(
   const supabase = await createClient();
 
   let query = applyScope(
-    supabase.from("docs").select(
-      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at",
-    ),
+    docsBaseQuery(supabase),
     workspaceId,
     projectId,
   );
@@ -170,9 +200,7 @@ export async function getAllDocs(
   const supabase = await createClient();
 
   const { data, error } = await applyScope(
-    supabase.from("docs").select(
-      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at",
-    ),
+    docsBaseQuery(supabase),
     workspaceId,
     projectId,
   ).order("position", { ascending: true });

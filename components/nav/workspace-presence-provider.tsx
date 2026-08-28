@@ -73,7 +73,6 @@ export function WorkspacePresenceProvider({
       window.removeEventListener("beforeunload", handleBeforeUnload);
       release?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId, currentUserId]);
 
   return (

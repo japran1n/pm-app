@@ -32,18 +32,18 @@ export function ChatMessageSearch({
   const [isPending, startTransition] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const trimmedQuery = query.trim();
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults(null);
+    if (!trimmedQuery) {
       return;
     }
 
     debounceRef.current = setTimeout(() => {
       startTransition(async () => {
-        const data = await searchMessages(workspaceId, trimmed);
+        const data = await searchMessages(workspaceId, trimmedQuery);
         setResults(data);
       });
     }, 300);
@@ -51,10 +51,14 @@ export function ChatMessageSearch({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, workspaceId]);
+  }, [trimmedQuery, workspaceId]);
 
-  const isOpen = query.trim().length > 0;
+  // Derived directly from the query rather than mirrored via an effect:
+  // as soon as the query is cleared, results should read as "no results"
+  // without waiting for a render->effect->render round trip.
+  const displayedResults = trimmedQuery ? results : null;
+
+  const isOpen = trimmedQuery.length > 0;
 
   return (
     <div className="relative border-b p-2">
@@ -92,14 +96,14 @@ export function ChatMessageSearch({
               Searching...
             </div>
           )}
-          {!isPending && results !== null && results.length === 0 && (
+          {!isPending && displayedResults !== null && displayedResults.length === 0 && (
             <p className="p-3 text-sm text-muted-foreground">
               No messages found.
             </p>
           )}
-          {!isPending && results !== null && results.length > 0 && (
+          {!isPending && displayedResults !== null && displayedResults.length > 0 && (
             <ul className="divide-y">
-              {results.map((r) => (
+              {displayedResults.map((r) => (
                 <li key={r.id}>
                   <Link
                     href={`/w/${workspaceSlug}/chat/${r.channelId}`}

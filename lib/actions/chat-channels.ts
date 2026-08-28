@@ -69,7 +69,7 @@ export async function createChannel(input: {
     };
   }
 
-  const { supabase, user } = await requireUser();
+  const { user } = await requireUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to create a channel." };
   }
@@ -182,7 +182,7 @@ export async function addChannelMember(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request." };
   }
 
-  const { supabase, user } = await requireUser();
+  const { user } = await requireUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage channel members." };
   }
@@ -255,7 +255,7 @@ export async function removeChannelMember(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request." };
   }
 
-  const { supabase, user } = await requireUser();
+  const { user } = await requireUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage channel members." };
   }

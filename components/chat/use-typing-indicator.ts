@@ -81,7 +81,6 @@ export function useTypingIndicator(
       staleTimers.clear();
       setTypingUsers([]);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, currentUserId]);
 
   const sendTyping = useCallback(() => {

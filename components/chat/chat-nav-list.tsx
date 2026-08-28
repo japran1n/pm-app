@@ -21,7 +21,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, Hash, MessageCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -62,11 +62,14 @@ export function ChatNavList({
 
   // Server-fetched counts change (new page load / revalidation) --
   // reconcile local state to match rather than keeping stale numbers
-  // forever.
-  useEffect(() => {
+  // forever. Adjusted during render (rather than in an effect) so the
+  // reconciliation happens in the same render pass as the prop change,
+  // instead of a render -> effect -> extra render cascade.
+  const [prevChannels, setPrevChannels] = useState(channels);
+  if (channels !== prevChannels) {
+    setPrevChannels(channels);
     setUnreadCounts(Object.fromEntries(channels.map((c) => [c.id, c.unreadCount])));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [channels]);
+  }
 
   const channelHrefById = useMemo(
     () =>
@@ -88,19 +91,24 @@ export function ChatNavList({
   });
 
   // F5 acceptance: "Otvaranje kanala nulira broj u roku od 1-2 sekunde" --
-  // zero the active channel's local badge immediately on navigation,
-  // rather than waiting for a fresh server round-trip.
-  useEffect(() => {
+  // zero the active channel's local badge immediately on navigation, rather
+  // than waiting for a fresh server round-trip. Adjusted during render
+  // (rather than in an effect keyed on pathname) so the badge clears in the
+  // same render pass as the navigation, not a render -> effect -> extra
+  // render cascade.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     const activeChannel = channels.find(
       (c) => pathname === channelHrefById.get(c.id),
     );
-    if (!activeChannel) return;
-    setUnreadCounts((previous) =>
-      previous[activeChannel.id] === 0
-        ? previous
-        : { ...previous, [activeChannel.id]: 0 },
-    );
-  }, [pathname, channels, channelHrefById]);
+    if (activeChannel && unreadCounts[activeChannel.id] !== 0) {
+      setUnreadCounts((previous) => ({
+        ...previous,
+        [activeChannel.id]: 0,
+      }));
+    }
+  }
 
   return (
     <Collapsible
