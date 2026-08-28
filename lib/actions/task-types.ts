@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F434-F440: workspace-owned task types (Setup/Design/Dev/SEO/QA/Add-on),
 // and setting one on a task.
@@ -76,7 +78,7 @@ export async function createTaskType(input: unknown): Promise<TaskTypeActionResu
     if (error.code === "23505") {
       return { ok: false, error: "A task type with that name already exists." };
     }
-    console.error("createTaskType failed:", error);
+    logger.error("createTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -125,7 +127,7 @@ export async function updateTaskType(input: unknown): Promise<TaskTypeActionResu
     if (error.code === "23505") {
       return { ok: false, error: "A task type with that name already exists." };
     }
-    console.error("updateTaskType failed:", error);
+    logger.error("updateTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -150,7 +152,7 @@ export async function deleteTaskType(input: unknown): Promise<TaskTypeActionResu
   const { error } = await supabase.from("task_types").delete().eq("id", parsed.data.taskTypeId);
 
   if (error) {
-    console.error("deleteTaskType failed:", error);
+    logger.error("deleteTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -174,7 +176,7 @@ export async function reorderTaskType(input: unknown): Promise<TaskTypeActionRes
     .eq("id", parsed.data.taskTypeId);
 
   if (error) {
-    console.error("reorderTaskType failed:", error);
+    logger.error("reorderTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -239,7 +241,7 @@ export async function setTaskType(input: unknown): Promise<TaskTypeActionResult>
     .eq("id", parsed.data.taskId);
 
   if (error) {
-    console.error("setTaskType failed:", error);
+    logger.error("setTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 

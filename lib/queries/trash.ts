@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F188 (AS-343, AS-347, AS-352): data-fetching for the workspace trash
 // view — deleted tasks and deleted comments, newest first, with origin
 // project, deleter, and time.
@@ -108,13 +110,10 @@ export async function getWorkspaceTrash(
   ]);
 
   if (tasksResult.error) {
-    console.error("getWorkspaceTrash: tasks fetch failed:", tasksResult.error);
+    logger.error("getWorkspaceTrash: tasks fetch failed", { error: tasksResult.error });
   }
   if (commentsResult.error) {
-    console.error(
-      "getWorkspaceTrash: comments fetch failed:",
-      commentsResult.error,
-    );
+    logger.error("getWorkspaceTrash: comments fetch failed", { error: commentsResult.error });
   }
 
   const taskRows = tasksResult.data ?? [];

@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F183: read-side queries for `kind='task'` templates (F181's
 // `task_templates` table). Server-only — used by the templates list page
 // (full detail: creator, created date, payload preview) and by the board/
@@ -61,7 +63,7 @@ export async function getWorkspaceTaskTemplates(
     .order("created_at", { ascending: false });
 
   if (error || !rows) {
-    console.error("getWorkspaceTaskTemplates: query failed:", error);
+    logger.error("getWorkspaceTaskTemplates: query failed", { error: error });
     return [];
   }
 
@@ -106,7 +108,7 @@ export async function getWorkspaceTaskTemplateOptions(
     .order("name", { ascending: true });
 
   if (error || !rows) {
-    console.error("getWorkspaceTaskTemplateOptions: query failed:", error);
+    logger.error("getWorkspaceTaskTemplateOptions: query failed", { error: error });
     return [];
   }
 
@@ -129,7 +131,7 @@ export async function getWorkspaceProjectTemplateOptions(
     .order("name", { ascending: true });
 
   if (error || !rows) {
-    console.error("getWorkspaceProjectTemplateOptions: query failed:", error);
+    logger.error("getWorkspaceProjectTemplateOptions: query failed", { error: error });
     return [];
   }
 

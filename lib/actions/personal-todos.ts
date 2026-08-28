@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F416-F418: personal to-do mutations. No workspace-role check exists or
 // is needed here — `personal_todos_owner_only`'s RLS policy (user_id =
@@ -53,7 +55,7 @@ export async function createPersonalTodo(
   });
 
   if (error) {
-    console.error("createPersonalTodo failed:", error);
+    logger.error("createPersonalTodo failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -74,7 +76,7 @@ export async function toggleTodo(input: unknown): Promise<PersonalTodoActionResu
     .eq("id", parsed.data.todoId);
 
   if (error) {
-    console.error("toggleTodo failed:", error);
+    logger.error("toggleTodo failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -95,7 +97,7 @@ export async function deleteTodo(input: unknown): Promise<PersonalTodoActionResu
     .eq("id", parsed.data.todoId);
 
   if (error) {
-    console.error("deleteTodo failed:", error);
+    logger.error("deleteTodo failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 

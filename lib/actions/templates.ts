@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F182 (AS-330, AS-331, AS-332): task-template create/apply/rename/delete
 // Server Actions. Templates (F181's `task_templates` table, `kind='task'`)
@@ -183,7 +185,7 @@ export async function saveTaskAsTemplate(
     .single();
 
   if (insertError || !inserted) {
-    console.error("saveTaskAsTemplate: insert failed:", insertError);
+    logger.error("saveTaskAsTemplate: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -200,10 +202,7 @@ export async function saveTaskAsTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "saveTaskAsTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("saveTaskAsTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -346,10 +345,7 @@ export async function createTaskFromTemplate(
   );
 
   if (!payloadParsed.success) {
-    console.error(
-      "createTaskFromTemplate: stored payload failed schema validation:",
-      payloadParsed.error,
-    );
+    logger.error("createTaskFromTemplate: stored payload failed schema validation", { error: payloadParsed.error });
     return {
       ok: false,
       error: "This template's saved data is invalid. Please re-save it.",
@@ -425,10 +421,7 @@ export async function createTaskFromTemplate(
         },
       )) as JSONContent;
     } catch (visibilityError) {
-      console.error(
-        "createTaskFromTemplate: mention visibility check failed:",
-        visibilityError,
-      );
+      logger.error("createTaskFromTemplate: mention visibility check failed", { error: visibilityError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -458,7 +451,7 @@ export async function createTaskFromTemplate(
     .single();
 
   if (insertError || !inserted) {
-    console.error("createTaskFromTemplate: insert failed:", insertError);
+    logger.error("createTaskFromTemplate: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -476,10 +469,7 @@ export async function createTaskFromTemplate(
         })),
       );
     if (checklistInsertError) {
-      console.error(
-        "createTaskFromTemplate: checklist insert failed:",
-        checklistInsertError,
-      );
+      logger.error("createTaskFromTemplate: checklist insert failed", { error: checklistInsertError });
     }
   }
 
@@ -494,10 +484,7 @@ export async function createTaskFromTemplate(
         })),
       );
     if (assigneeInsertError) {
-      console.error(
-        "createTaskFromTemplate: assignee insert failed:",
-        assigneeInsertError,
-      );
+      logger.error("createTaskFromTemplate: assignee insert failed", { error: assigneeInsertError });
     } else {
       await admin
         .from("tasks")
@@ -516,10 +503,7 @@ export async function createTaskFromTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "createTaskFromTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("createTaskFromTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -622,7 +606,7 @@ export async function renameTemplate(
     .single();
 
   if (updateError || !updated) {
-    console.error("renameTemplate: update failed:", updateError);
+    logger.error("renameTemplate: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -639,10 +623,7 @@ export async function renameTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "renameTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("renameTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -725,7 +706,7 @@ export async function deleteTemplate(
     .eq("id", parsed.data.templateId);
 
   if (deleteError) {
-    console.error("deleteTemplate: delete failed:", deleteError);
+    logger.error("deleteTemplate: delete failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -742,10 +723,7 @@ export async function deleteTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "deleteTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("deleteTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -853,7 +831,7 @@ export async function saveProjectAsTemplate(
     .order("position", { ascending: true });
 
   if (taskError) {
-    console.error("saveProjectAsTemplate: task read failed:", taskError);
+    logger.error("saveProjectAsTemplate: task read failed", { error: taskError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -916,7 +894,7 @@ export async function saveProjectAsTemplate(
     .single();
 
   if (insertError || !inserted) {
-    console.error("saveProjectAsTemplate: insert failed:", insertError);
+    logger.error("saveProjectAsTemplate: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -933,10 +911,7 @@ export async function saveProjectAsTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "saveProjectAsTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("saveProjectAsTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1059,10 +1034,7 @@ export async function createProjectFromTemplate(
   );
 
   if (!payloadParsed.success) {
-    console.error(
-      "createProjectFromTemplate: stored payload failed schema validation:",
-      payloadParsed.error,
-    );
+    logger.error("createProjectFromTemplate: stored payload failed schema validation", { error: payloadParsed.error });
     return {
       ok: false,
       error: "This template's saved data is invalid. Please re-save it.",
@@ -1083,10 +1055,7 @@ export async function createProjectFromTemplate(
   );
 
   if (rpcError) {
-    console.error(
-      "createProjectFromTemplate: create_project_from_template RPC failed:",
-      rpcError,
-    );
+    logger.error("createProjectFromTemplate: create_project_from_template RPC failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1096,9 +1065,7 @@ export async function createProjectFromTemplate(
   const created = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
   if (!created) {
-    console.error(
-      "createProjectFromTemplate: create_project_from_template RPC returned no row",
-    );
+    logger.error("createProjectFromTemplate: create_project_from_template RPC returned no row");
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1136,10 +1103,7 @@ export async function createProjectFromTemplate(
     .not("description_json", "is", null);
 
   if (insertedTasksError) {
-    console.error(
-      "createProjectFromTemplate: failed to re-fetch inserted tasks for mention sanitisation:",
-      insertedTasksError,
-    );
+    logger.error("createProjectFromTemplate: failed to re-fetch inserted tasks for mention sanitisation", { error: insertedTasksError });
   } else {
     const mentionCtx = {
       projectId: created.project_id as string,
@@ -1169,19 +1133,11 @@ export async function createProjectFromTemplate(
             .eq("id", task.id);
 
           if (updateError) {
-            console.error(
-              "createProjectFromTemplate: failed to write back sanitised description_json for task",
-              task.id,
-              updateError,
-            );
+            logger.error("createProjectFromTemplate: failed to write back sanitised description_json for task", { taskId: task.id, error: updateError });
           }
         }
       } catch (visibilityError) {
-        console.error(
-          "createProjectFromTemplate: mention visibility check failed for task, retrying once",
-          task.id,
-          visibilityError,
-        );
+        logger.error("createProjectFromTemplate: mention visibility check failed for task, retrying once", { taskId: task.id, error: visibilityError });
         // F320 (scrutiny pass 5): a bare log-and-skip here left the
         // original, UNSANITISED (potentially mention-exposing) document in
         // place on a transient check failure — worse than the "log and
@@ -1209,19 +1165,11 @@ export async function createProjectFromTemplate(
               .eq("id", task.id);
 
             if (updateError) {
-              console.error(
-                "createProjectFromTemplate: failed to write back sanitised description_json for task (retry)",
-                task.id,
-                updateError,
-              );
+              logger.error("createProjectFromTemplate: failed to write back sanitised description_json for task (retry)", { taskId: task.id, error: updateError });
             }
           }
         } catch (retryError) {
-          console.error(
-            "createProjectFromTemplate: mention visibility check failed again for task, stripping all mentions as a safe fallback",
-            task.id,
-            retryError,
-          );
+          logger.error("createProjectFromTemplate: mention visibility check failed again for task, stripping all mentions as a safe fallback", { taskId: task.id, error: retryError });
           const stripped = stripAllMentions(
             task.description_json as unknown as JSONContent,
           );
@@ -1231,11 +1179,7 @@ export async function createProjectFromTemplate(
             .eq("id", task.id);
 
           if (fallbackUpdateError) {
-            console.error(
-              "createProjectFromTemplate: failed to write back safe-fallback (all mentions stripped) description_json for task",
-              task.id,
-              fallbackUpdateError,
-            );
+            logger.error("createProjectFromTemplate: failed to write back safe-fallback (all mentions stripped) description_json for task", { taskId: task.id, error: fallbackUpdateError });
           }
         }
       }
@@ -1252,10 +1196,7 @@ export async function createProjectFromTemplate(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "createProjectFromTemplate: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("createProjectFromTemplate: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

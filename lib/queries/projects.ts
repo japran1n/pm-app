@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Data-fetching for the project list page (F027, AS-027, AS-034, AS-042).
 //
 // Uses the normal RLS-respecting client — `projects_select_active_members`
@@ -107,7 +109,7 @@ async function getOpenTaskCounts(
   });
 
   if (error) {
-    console.error("getOpenTaskCounts: RPC failed:", error);
+    logger.error("getOpenTaskCounts: RPC failed", { error: error });
     return null;
   }
 
@@ -153,10 +155,7 @@ export async function getFavoriteProjectIds(
     .eq("user_id", userId);
 
   if (favoriteError) {
-    console.error(
-      "getFavoriteProjectIds: failed to load favourite rows:",
-      favoriteError,
-    );
+    logger.error("getFavoriteProjectIds: failed to load favourite rows", { error: favoriteError });
     return new Set();
   }
 
@@ -176,10 +175,7 @@ export async function getFavoriteProjectIds(
     .in("id", favoriteProjectIds);
 
   if (visibleError) {
-    console.error(
-      "getFavoriteProjectIds: failed to re-check project visibility:",
-      visibleError,
-    );
+    logger.error("getFavoriteProjectIds: failed to re-check project visibility", { error: visibleError });
     return new Set();
   }
 
@@ -343,10 +339,7 @@ export async function getArchivedWorkspaceProjects(
     .is("deleted_at", null);
 
   if (taskError) {
-    console.error(
-      "getArchivedWorkspaceProjects: task count query failed:",
-      taskError,
-    );
+    logger.error("getArchivedWorkspaceProjects: task count query failed", { error: taskError });
   }
 
   const taskCountByProject = new Map<string, number>();

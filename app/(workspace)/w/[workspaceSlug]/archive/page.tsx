@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { logger } from "@/lib/observability/logger";
 
 // F142 (AS-250, AS-251, AS-256): the workspace archive view — every
 // archived project (`projects.deleted_at IS NOT NULL`) in the active
@@ -94,7 +95,7 @@ export default async function ArchivePage({
   try {
     archivedProjects = await getArchivedWorkspaceProjects(workspace.id);
   } catch (error) {
-    console.error("ArchivePage: failed to load archived projects:", error);
+    logger.error("ArchivePage: failed to load archived projects", { error: error });
     loadError = true;
   }
 

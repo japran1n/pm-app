@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F140: `writeAudit()` — the single call site every workspace, project,
 // member, invite, and role-mutation Server Action uses to record an
 // `audit_log` entry (AS-245).
@@ -57,7 +59,7 @@ export async function writeAudit(
     });
 
     if (error) {
-      console.error("writeAudit: write_audit_log_entry RPC failed:", {
+      logger.error("writeAudit: write_audit_log_entry RPC failed", {
         action,
         targetType,
         error,
@@ -68,7 +70,7 @@ export async function writeAudit(
     // elsewhere in this codebase: an audit write must never fail the
     // caller's real action, including on an unexpected throw (e.g. no
     // request/session context at all).
-    console.error("writeAudit: unexpected failure (non-fatal):", {
+    logger.error("writeAudit: unexpected failure (non-fatal)", {
       action,
       targetType,
       unexpectedError,

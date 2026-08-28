@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F428-F430 (docs/plan-daily-work-followups.md): workspace-owned status
 // templates, and applying one to a project's board columns.
@@ -80,7 +82,7 @@ export async function createStatusTemplate(
     if (error.code === "23505") {
       return { ok: false, error: "A template with that name already exists." };
     }
-    console.error("createStatusTemplate failed:", error);
+    logger.error("createStatusTemplate failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -120,7 +122,7 @@ export async function renameStatusTemplate(
     if (error.code === "23505") {
       return { ok: false, error: "A template with that name already exists." };
     }
-    console.error("renameStatusTemplate failed:", error);
+    logger.error("renameStatusTemplate failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -160,7 +162,7 @@ export async function deleteStatusTemplate(
     .eq("id", parsed.data.templateId);
 
   if (error) {
-    console.error("deleteStatusTemplate failed:", error);
+    logger.error("deleteStatusTemplate failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -230,7 +232,7 @@ export async function addTemplateItem(
   });
 
   if (error) {
-    console.error("addTemplateItem failed:", error);
+    logger.error("addTemplateItem failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -261,7 +263,7 @@ export async function updateTemplateItem(
     .eq("id", parsed.data.itemId);
 
   if (error) {
-    console.error("updateTemplateItem failed:", error);
+    logger.error("updateTemplateItem failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -287,7 +289,7 @@ export async function removeTemplateItem(
     .eq("id", parsed.data.itemId);
 
   if (error) {
-    console.error("removeTemplateItem failed:", error);
+    logger.error("removeTemplateItem failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -313,7 +315,7 @@ export async function reorderTemplateItem(
     .eq("id", parsed.data.itemId);
 
   if (error) {
-    console.error("reorderTemplateItem failed:", error);
+    logger.error("reorderTemplateItem failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -355,7 +357,7 @@ export async function applyStatusTemplate(
   });
 
   if (error) {
-    console.error("applyStatusTemplate failed:", error);
+    logger.error("applyStatusTemplate failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 

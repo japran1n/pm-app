@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F205 (AS-378): mentions work in task descriptions as well as comments.
 //
 // F203/F204 built the @-mention picker, storage, render-time display
@@ -175,10 +177,7 @@ export async function notifyNewlyMentionedUsers(params: {
         { onConflict: "task_id,user_id", ignoreDuplicates: true },
       );
     } catch (watcherError) {
-      console.error(
-        "notifyNewlyMentionedUsers: watcher-promotion upsert failed (non-fatal):",
-        watcherError,
-      );
+      logger.error("notifyNewlyMentionedUsers: watcher-promotion upsert failed (non-fatal)", { error: watcherError });
     }
   }
 

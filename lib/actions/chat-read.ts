@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F5 (docs/advanced-chat-plan.md): markChannelRead Server Action --
 // updates the caller's own `channel_members.last_read_at` to now(), the
@@ -52,7 +54,7 @@ export async function markChannelRead(
     // either way this is a best-effort read-cursor bump, so a generic
     // error is returned rather than surfacing raw DB details; callers
     // (ChannelView) don't block the UI on this failing.
-    console.error("markChannelRead: update failed:", error);
+    logger.error("markChannelRead: update failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong marking this channel as read.",

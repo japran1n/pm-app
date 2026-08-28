@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F195: records `task_activity` entries on every task mutation (AS-354,
 // AS-355, AS-356, AS-360).
 //
@@ -166,16 +168,10 @@ export async function writeTaskFieldChanges(
       });
 
       if (error) {
-        console.error(
-          "writeTaskFieldChanges: write_task_activity_entry RPC failed:",
-          { taskId, field: change.field, error },
-        );
+        logger.error("writeTaskFieldChanges: write_task_activity_entry RPC failed", { taskId, field: change.field, error });
       }
     } catch (unexpectedError) {
-      console.error(
-        "writeTaskFieldChanges: unexpected failure (non-fatal):",
-        { taskId, field: change.field, unexpectedError },
-      );
+      logger.error("writeTaskFieldChanges: unexpected failure (non-fatal)", { taskId, field: change.field, unexpectedError });
     }
   }
 }
@@ -208,15 +204,9 @@ export async function writeTaskCommentEvent(
     });
 
     if (error) {
-      console.error(
-        "writeTaskCommentEvent: write_task_activity_entry RPC failed:",
-        { taskId, kind, commentId, error },
-      );
+      logger.error("writeTaskCommentEvent: write_task_activity_entry RPC failed", { taskId, kind, commentId, error });
     }
   } catch (unexpectedError) {
-    console.error(
-      "writeTaskCommentEvent: unexpected failure (non-fatal):",
-      { taskId, kind, commentId, unexpectedError },
-    );
+    logger.error("writeTaskCommentEvent: unexpected failure (non-fatal)", { taskId, kind, commentId, unexpectedError });
   }
 }

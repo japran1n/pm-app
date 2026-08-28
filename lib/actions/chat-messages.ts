@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F3 (docs/advanced-chat-plan.md): Server Actions for sending/editing/
 // soft-deleting a chat message. Pattern mirrors lib/actions/comments.ts /
@@ -156,10 +158,7 @@ async function revalidateChannelPath(
     // the primary mechanism for a sender's own open tab and every other
     // open client to see the new/edited/deleted message; revalidatePath is
     // only a defense-in-depth freshness nudge for a fresh navigation.
-    console.error(
-      "chat-messages: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("chat-messages: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 }
 
@@ -197,10 +196,7 @@ async function notifyMentionedChannelMembers(
       .maybeSingle();
 
     if (channelError || !channelRow) {
-      console.error(
-        "sendMessage: mention notify - channel lookup failed (non-fatal):",
-        channelError,
-      );
+      logger.error("sendMessage: mention notify - channel lookup failed (non-fatal)", { error: channelError });
       return;
     }
 
@@ -218,10 +214,7 @@ async function notifyMentionedChannelMembers(
       .in("user_id", mentionedIds);
 
     if (memberError) {
-      console.error(
-        "sendMessage: mention notify - member lookup failed (non-fatal):",
-        memberError,
-      );
+      logger.error("sendMessage: mention notify - member lookup failed (non-fatal)", { error: memberError });
       return;
     }
 
@@ -243,10 +236,7 @@ async function notifyMentionedChannelMembers(
       );
     }
   } catch (notifyError) {
-    console.error(
-      "sendMessage: mention notification failed (non-fatal):",
-      notifyError,
-    );
+    logger.error("sendMessage: mention notification failed (non-fatal)", { error: notifyError });
   }
 }
 
@@ -282,7 +272,7 @@ async function linkAndLoadAttachments(
     .select("id, storage_path, file_name, mime_type, file_size");
 
   if (linkError || !linked) {
-    console.error("sendMessage: linking attachments failed:", linkError);
+    logger.error("sendMessage: linking attachments failed", { error: linkError });
     return [];
   }
 
@@ -293,10 +283,7 @@ async function linkAndLoadAttachments(
       .createSignedUrl(row.storage_path, CHAT_ATTACHMENT_SIGNED_URL_TTL_SECONDS);
 
     if (signedUrlError) {
-      console.error(
-        "sendMessage: signed URL generation failed for attachment:",
-        signedUrlError,
-      );
+      logger.error("sendMessage: signed URL generation failed for attachment", { error: signedUrlError });
     }
 
     attachments.push({
@@ -395,7 +382,7 @@ export async function sendMessage(
     .single();
 
   if (insertError || !inserted) {
-    console.error("sendMessage: insert failed:", insertError);
+    logger.error("sendMessage: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong sending your message. Please try again.",
@@ -489,7 +476,7 @@ export async function editMessage(
     .single();
 
   if (updateError || !updated) {
-    console.error("editMessage: update failed:", updateError);
+    logger.error("editMessage: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong editing your message. Please try again.",
@@ -565,7 +552,7 @@ export async function deleteMessage(
     .single();
 
   if (updateError || !updated) {
-    console.error("deleteMessage: update failed:", updateError);
+    logger.error("deleteMessage: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong deleting your message. Please try again.",

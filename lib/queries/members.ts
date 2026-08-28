@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Data-fetching for the members list page (F017, AS-023).
 //
 // workspace_members rows are readable via the normal RLS-respecting client
@@ -57,7 +59,7 @@ export async function getWorkspaceMembers(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("getWorkspaceMembers: fetch failed:", error);
+    logger.error("getWorkspaceMembers: fetch failed", { error: error });
     throw error;
   }
 

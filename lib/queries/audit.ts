@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F141: workspace audit log query + the single action-to-sentence mapping
 // (AS-246, AS-248).
 //
@@ -241,7 +243,7 @@ export async function getAuditLogPage(
   const { data, error } = await query;
 
   if (error) {
-    console.error("getAuditLogPage: fetch failed:", error);
+    logger.error("getAuditLogPage: fetch failed", { error: error });
     throw error;
   }
 

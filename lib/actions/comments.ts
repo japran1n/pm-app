@@ -12,6 +12,7 @@ import {
   editCommentSchema,
   restoreCommentSchema,
 } from "@/lib/validation/comments";
+import { logger } from "@/lib/observability/logger";
 import { docFromPlainText, extractPlainText } from "@/lib/comments/rich-text";
 import {
   sanitiseMentionsForVisibility,
@@ -247,10 +248,7 @@ export async function addComment(
       },
     );
   } catch (visibilityError) {
-    console.error(
-      "addComment: mention visibility check failed:",
-      visibilityError,
-    );
+    logger.error("addComment: mention visibility check failed", { error: visibilityError });
     return {
       ok: false,
       error: "Something went wrong posting your comment. Please try again.",
@@ -281,7 +279,7 @@ export async function addComment(
     .single();
 
   if (insertError || !inserted) {
-    console.error("addComment: insert failed:", insertError);
+    logger.error("addComment: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -317,10 +315,7 @@ export async function addComment(
     // best-effort side effect, not the source of truth for whether the
     // comment was posted (mirrors the non-fatal revalidatePath/broadcast
     // handling elsewhere in this file).
-    console.error(
-      "addComment: auto-watch upsert failed (non-fatal):",
-      watcherError,
-    );
+    logger.error("addComment: auto-watch upsert failed (non-fatal)", { error: watcherError });
   }
 
   // F207 (AS-374, AS-375, AS-381, AS-382, AS-384): notify the task's
@@ -387,10 +382,7 @@ export async function addComment(
       );
     }
   } catch (fanoutError) {
-    console.error(
-      "addComment: notification fan-out failed (non-fatal):",
-      fanoutError,
-    );
+    logger.error("addComment: notification fan-out failed (non-fatal)", { error: fanoutError });
   }
 
   // F195 (AS-356): comment additions appear in the same task_activity feed
@@ -403,10 +395,7 @@ export async function addComment(
       inserted.id,
     );
   } catch (activityError) {
-    console.error(
-      "addComment: writeTaskCommentEvent failed (non-fatal):",
-      activityError,
-    );
+    logger.error("addComment: writeTaskCommentEvent failed (non-fatal)", { error: activityError });
   }
 
   const { data: workspaceRow } = await admin
@@ -424,10 +413,7 @@ export async function addComment(
       // request/render context (e.g. this action invoked from a test
       // harness). The insert itself already succeeded, so this is not an
       // action failure.
-      console.error(
-        "addComment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("addComment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -631,7 +617,7 @@ export async function deleteComment(
     .single();
 
   if (deleteError || !deleted || !deleted.deleted_at) {
-    console.error("deleteComment: update failed:", deleteError);
+    logger.error("deleteComment: update failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -649,10 +635,7 @@ export async function deleteComment(
       deleted.id,
     );
   } catch (activityError) {
-    console.error(
-      "deleteComment: writeTaskCommentEvent failed (non-fatal):",
-      activityError,
-    );
+    logger.error("deleteComment: writeTaskCommentEvent failed (non-fatal)", { error: activityError });
   }
 
   // F104 (AS-101 fix): notify live viewers via Realtime Broadcast instead
@@ -691,10 +674,7 @@ export async function deleteComment(
     // best-effort live-propagation notification, not the source of
     // truth — AS-102/reload always reflects the real deleted_at state
     // via RLS regardless of whether this broadcast is delivered).
-    console.error(
-      "deleteComment: broadcast failed (non-fatal):",
-      broadcastError,
-    );
+    logger.error("deleteComment: broadcast failed (non-fatal)", { error: broadcastError });
   }
 
   const { data: workspaceRow } = await admin
@@ -708,10 +688,7 @@ export async function deleteComment(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as addComment above.
-      console.error(
-        "deleteComment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("deleteComment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -918,7 +895,7 @@ export async function restoreComment(
     .single();
 
   if (restoreError || !restored || restored.deleted_at !== null) {
-    console.error("restoreComment: update failed:", restoreError);
+    logger.error("restoreComment: update failed", { error: restoreError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -966,10 +943,7 @@ export async function restoreComment(
     // deleteComment's broadcast try/catch above. A reload always reflects
     // the real deleted_at state via RLS regardless of whether this
     // broadcast is delivered.
-    console.error(
-      "restoreComment: broadcast failed (non-fatal):",
-      broadcastError,
-    );
+    logger.error("restoreComment: broadcast failed (non-fatal)", { error: broadcastError });
   }
 
   const { data: workspaceRow } = await admin
@@ -982,10 +956,7 @@ export async function restoreComment(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "restoreComment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("restoreComment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1187,10 +1158,7 @@ export async function editComment(
       },
     );
   } catch (visibilityError) {
-    console.error(
-      "editComment: mention visibility check failed:",
-      visibilityError,
-    );
+    logger.error("editComment: mention visibility check failed", { error: visibilityError });
     return {
       ok: false,
       error: "Something went wrong updating your comment. Please try again.",
@@ -1214,7 +1182,7 @@ export async function editComment(
     .single();
 
   if (updateError || !updated) {
-    console.error("editComment: update failed:", updateError);
+    logger.error("editComment: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1305,10 +1273,7 @@ export async function editComment(
       );
     }
   } catch (fanoutError) {
-    console.error(
-      "editComment: notification fan-out failed (non-fatal):",
-      fanoutError,
-    );
+    logger.error("editComment: notification fan-out failed (non-fatal)", { error: fanoutError });
   }
 
   // F104-style realtime delivery: postgres_changes UPDATE subscriptions
@@ -1333,10 +1298,7 @@ export async function editComment(
     });
     await supabase.removeChannel(broadcastChannel);
   } catch (broadcastError) {
-    console.error(
-      "editComment: broadcast failed (non-fatal):",
-      broadcastError,
-    );
+    logger.error("editComment: broadcast failed (non-fatal)", { error: broadcastError });
   }
 
   const { data: workspaceRow } = await admin
@@ -1349,10 +1311,7 @@ export async function editComment(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "editComment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("editComment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1446,7 +1405,7 @@ export async function getMentionCandidates(
     .eq("status", "active");
 
   if (memberError) {
-    console.error("getMentionCandidates: member fetch failed:", memberError);
+    logger.error("getMentionCandidates: member fetch failed", { error: memberError });
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 
@@ -1475,10 +1434,7 @@ export async function getMentionCandidates(
       projectVisibility: projectRow?.visibility ?? "workspace",
     });
   } catch (visibilityError) {
-    console.error(
-      "getMentionCandidates: mention visibility resolution failed:",
-      visibilityError,
-    );
+    logger.error("getMentionCandidates: mention visibility resolution failed", { error: visibilityError });
     return { ok: false, error: "Something went wrong. Please try again." };
   }
 

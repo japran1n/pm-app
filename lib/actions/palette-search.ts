@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F242 (AS-460, AS-461, AS-466): the command palette's search Server
 // Action — searches projects, tasks, and members in one workspace and
@@ -245,10 +247,10 @@ export async function resolveRecentItems(
   ]);
 
   if (projectsResult.error) {
-    console.error("resolveRecentItems: project read failed:", projectsResult.error);
+    logger.error("resolveRecentItems: project read failed", { error: projectsResult.error });
   }
   if (tasksResult.error) {
-    console.error("resolveRecentItems: task read failed:", tasksResult.error);
+    logger.error("resolveRecentItems: task read failed", { error: tasksResult.error });
   }
 
   // Re-order resolved rows back to most-recently-visited-first (the `.in()`

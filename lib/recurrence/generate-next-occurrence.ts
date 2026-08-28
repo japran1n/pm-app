@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F177 (AS-315, AS-320, AS-321): generates the next occurrence of a
 // recurring task when it completes. Pure orchestration over the pieces
 // F175/F176 already built (`recurrence`/`recurrence_parent_id`/
@@ -184,7 +186,7 @@ export async function generateNextOccurrence(
     .maybeSingle();
 
   if (insertError) {
-    console.error("generateNextOccurrence: insert failed:", insertError);
+    logger.error("generateNextOccurrence: insert failed", { error: insertError });
     return { generated: false, reason: "insert failed" };
   }
 
@@ -205,10 +207,7 @@ export async function generateNextOccurrence(
         })),
       );
     if (checklistInsertError) {
-      console.error(
-        "generateNextOccurrence: checklist insert failed:",
-        checklistInsertError,
-      );
+      logger.error("generateNextOccurrence: checklist insert failed", { error: checklistInsertError });
     }
   }
 
@@ -223,10 +222,7 @@ export async function generateNextOccurrence(
         })),
       );
     if (assigneeInsertError) {
-      console.error(
-        "generateNextOccurrence: assignee insert failed:",
-        assigneeInsertError,
-      );
+      logger.error("generateNextOccurrence: assignee insert failed", { error: assigneeInsertError });
     }
   }
 
@@ -262,16 +258,10 @@ export async function generateNextOccurrence(
       },
     );
     if (activityError) {
-      console.error(
-        "generateNextOccurrence: write_task_activity_entry RPC failed (non-fatal):",
-        activityError,
-      );
+      logger.error("generateNextOccurrence: write_task_activity_entry RPC failed (non-fatal)", { error: activityError });
     }
   } catch (unexpectedActivityError) {
-    console.error(
-      "generateNextOccurrence: activity write unexpected failure (non-fatal):",
-      unexpectedActivityError,
-    );
+    logger.error("generateNextOccurrence: activity write unexpected failure (non-fatal)", { error: unexpectedActivityError });
   }
 
   return { generated: true, taskId: inserted.id, dueDate: inserted.due_date as string };

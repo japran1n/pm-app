@@ -11,6 +11,7 @@ import {
   reorderChecklistItemSchema,
   deleteChecklistItemSchema,
 } from "@/lib/validation/checklist";
+import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { calculatePosition } from "@/lib/board/position";
 
@@ -143,10 +144,7 @@ async function revalidateWorkspace(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        `${actionLabel}: revalidatePath failed (non-fatal):`,
-        revalidateError,
-      );
+      logger.error(`${actionLabel}: revalidatePath failed (non-fatal)`, { error: revalidateError });
     }
   }
 }
@@ -270,7 +268,7 @@ export async function addChecklistItem(
     .single();
 
   if (insertError || !inserted) {
-    console.error("addChecklistItem: insert failed:", insertError);
+    logger.error("addChecklistItem: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -395,7 +393,7 @@ export async function toggleChecklistItem(
     .single();
 
   if (updateError || !updated) {
-    console.error("toggleChecklistItem: update failed:", updateError);
+    logger.error("toggleChecklistItem: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -480,7 +478,7 @@ export async function renameChecklistItem(
     .single();
 
   if (updateError || !updated) {
-    console.error("renameChecklistItem: update failed:", updateError);
+    logger.error("renameChecklistItem: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -565,7 +563,7 @@ export async function reorderChecklistItem(
     .single();
 
   if (updateError || !updated) {
-    console.error("reorderChecklistItem: update failed:", updateError);
+    logger.error("reorderChecklistItem: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -649,7 +647,7 @@ export async function deleteChecklistItem(
     .select("id");
 
   if (deleteError || !deletedRows || deletedRows.length === 0) {
-    console.error("deleteChecklistItem: delete failed:", deleteError);
+    logger.error("deleteChecklistItem: delete failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

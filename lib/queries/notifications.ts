@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F208: data-fetching for the notification bell + panel (AS-379, AS-385).
 //
 // Read path: F206's `notifications` table already scopes SELECT to
@@ -164,7 +166,7 @@ export async function getNotificationsForWorkspace(
   ]);
 
   if (error) {
-    console.error("getNotificationsForWorkspace: fetch failed:", error);
+    logger.error("getNotificationsForWorkspace: fetch failed", { error: error });
     return {
       list: [],
       unreadCount: 0,
@@ -173,10 +175,7 @@ export async function getNotificationsForWorkspace(
   }
 
   if (unreadError) {
-    console.error(
-      "getNotificationsForWorkspace: unread lookup failed:",
-      unreadError,
-    );
+    logger.error("getNotificationsForWorkspace: unread lookup failed", { error: unreadError });
   }
 
   const taskIds = Array.from(
@@ -201,10 +200,7 @@ export async function getNotificationsForWorkspace(
   ]);
 
   if (taskRows.error) {
-    console.error(
-      "getNotificationsForWorkspace: task lookup failed:",
-      taskRows.error,
-    );
+    logger.error("getNotificationsForWorkspace: task lookup failed", { error: taskRows.error });
   }
 
   const taskById = new Map(

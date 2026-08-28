@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { watchTaskSchema, unwatchTaskSchema } from "@/lib/validation/watchers";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { logger } from "@/lib/observability/logger";
 
 // F164: self-serve watch/unwatch Server Actions (AS-295, AS-296). Pattern
 // mirrors lib/actions/comments.ts's addComment: Zod-validated input,
@@ -121,7 +122,7 @@ export async function watchTask(taskId: string): Promise<WatchTaskResult> {
     );
 
   if (upsertError) {
-    console.error("watchTask: upsert failed:", upsertError);
+    logger.error("watchTask: upsert failed", { error: upsertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -176,7 +177,7 @@ export async function unwatchTask(taskId: string): Promise<UnwatchTaskResult> {
     );
 
   if (upsertError) {
-    console.error("unwatchTask: upsert failed:", upsertError);
+    logger.error("unwatchTask: upsert failed", { error: upsertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

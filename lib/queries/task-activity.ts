@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F196: task activity feed query (AS-358, AS-361), reading the `task_activity`
 // rows F194 created and F195 writes.
 //
@@ -85,7 +87,7 @@ export async function getTaskActivityPage(
     .limit(boundedLimit + 1);
 
   if (error) {
-    console.error("getTaskActivityPage: fetch failed:", error);
+    logger.error("getTaskActivityPage: fetch failed", { error: error });
     return {
       rows: [],
       hasMore: false,

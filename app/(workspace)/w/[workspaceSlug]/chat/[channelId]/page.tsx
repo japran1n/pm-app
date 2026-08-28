@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F4 (docs/advanced-chat-plan.md): the thread view for one channel --
 // Server Component fetches the initial message page + channel + member
 // list, ChannelView (Client Component) owns the interactive
@@ -37,7 +39,7 @@ export default async function ChatChannelPage({
     .maybeSingle();
 
   if (channelError) {
-    console.error("ChatChannelPage: channel lookup failed:", channelError);
+    logger.error("ChatChannelPage: channel lookup failed", { error: channelError });
   }
 
   if (!channel) {

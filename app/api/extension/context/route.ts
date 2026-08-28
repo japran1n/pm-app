@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { resolvePeople } from "@/lib/queries/people";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
+import { logger } from "@/lib/observability/logger";
 
 // F293 (AS-555, AS-556, AS-557): the second, read-only Route Handler the
 // report form (extension/src/popup/report-form.tsx) calls to populate its
@@ -111,10 +112,7 @@ export async function GET(request: NextRequest) {
       .eq("status", "active");
 
     if (membershipsError) {
-      console.error(
-        "extension/context: failed to look up memberships:",
-        membershipsError,
-      );
+      logger.error("extension/context: failed to look up memberships", { error: membershipsError });
       return NextResponse.json(
         { error: "Something went wrong. Please try again in a moment." },
         { status: 500, headers },
@@ -133,10 +131,7 @@ export async function GET(request: NextRequest) {
       .order("name", { ascending: true });
 
     if (workspacesError) {
-      console.error(
-        "extension/context: failed to look up workspaces:",
-        workspacesError,
-      );
+      logger.error("extension/context: failed to look up workspaces", { error: workspacesError });
       return NextResponse.json(
         { error: "Something went wrong. Please try again in a moment." },
         { status: 500, headers },
@@ -177,10 +172,7 @@ export async function GET(request: NextRequest) {
     ]);
 
   if (projectsError || membersError) {
-    console.error(
-      "extension/context: failed to look up projects/members:",
-      projectsError ?? membersError,
-    );
+    logger.error("extension/context: failed to look up projects/members", { error: projectsError ?? membersError });
     return NextResponse.json(
       { error: "Something went wrong. Please try again in a moment." },
       { status: 500, headers },
@@ -226,10 +218,7 @@ export async function GET(request: NextRequest) {
       .in("project_id", privateProjectIds);
 
     if (privateMemberError) {
-      console.error(
-        "extension/context: failed to look up project memberships:",
-        privateMemberError,
-      );
+      logger.error("extension/context: failed to look up project memberships", { error: privateMemberError });
       return NextResponse.json(
         { error: "Something went wrong. Please try again in a moment." },
         { status: 500, headers },

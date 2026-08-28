@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F263 (AS-510): favourite/unfavourite a project. Toggle-style Server
 // Action pair, following this mission's established
@@ -88,7 +90,7 @@ export async function favoriteProject(
     );
 
   if (error) {
-    console.error("favoriteProject: write failed:", error);
+    logger.error("favoriteProject: write failed", { error: error });
     return { ok: false, error: "Could not favourite this project." };
   }
 
@@ -121,7 +123,7 @@ export async function unfavoriteProject(
     .eq("project_id", parsed.data.projectId);
 
   if (error) {
-    console.error("unfavoriteProject: write failed:", error);
+    logger.error("unfavoriteProject: write failed", { error: error });
     return { ok: false, error: "Could not remove this favourite." };
   }
 

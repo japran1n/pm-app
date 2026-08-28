@@ -10,6 +10,7 @@ import {
   getBlockedCount,
   getCompletedCount,
 } from "@/lib/queries/dashboard";
+import { logger } from "@/lib/observability/logger";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
@@ -142,34 +143,22 @@ export default async function WorkspacePage({
       completedResult.error,
   );
   if (priorityResult.error) {
-    console.error(
-      `[dashboard] get_priority_counts failed for workspace ${workspace.id}: ${priorityResult.error}`,
-    );
+    logger.error(`[dashboard] get_priority_counts failed for workspace ${workspace.id}: ${priorityResult.error}`);
   }
   if (statusResult.error) {
-    console.error(
-      `[dashboard] get_status_counts failed for workspace ${workspace.id}: ${statusResult.error}`,
-    );
+    logger.error(`[dashboard] get_status_counts failed for workspace ${workspace.id}: ${statusResult.error}`);
   }
   if (overdueResult.error) {
-    console.error(
-      `[dashboard] get_overdue_count failed for workspace ${workspace.id}: ${overdueResult.error}`,
-    );
+    logger.error(`[dashboard] get_overdue_count failed for workspace ${workspace.id}: ${overdueResult.error}`);
   }
   if (dueSoonResult.error) {
-    console.error(
-      `[dashboard] get_due_soon_count failed for workspace ${workspace.id}: ${dueSoonResult.error}`,
-    );
+    logger.error(`[dashboard] get_due_soon_count failed for workspace ${workspace.id}: ${dueSoonResult.error}`);
   }
   if (blockedResult.error) {
-    console.error(
-      `[dashboard] get_blocked_count failed for workspace ${workspace.id}: ${blockedResult.error}`,
-    );
+    logger.error(`[dashboard] get_blocked_count failed for workspace ${workspace.id}: ${blockedResult.error}`);
   }
   if (completedResult.error) {
-    console.error(
-      `[dashboard] get_completed_count failed for workspace ${workspace.id}: ${completedResult.error}`,
-    );
+    logger.error(`[dashboard] get_completed_count failed for workspace ${workspace.id}: ${completedResult.error}`);
   }
 
   const priorityData = priorityResult.data ?? [];

@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F4 (docs/client-dashboard-features-plan.md): the client's half of the F1
 // approval flag — Approve or Request changes, from the portal, on a task
@@ -115,7 +117,7 @@ export async function approvePortalTask(
     .eq("id", taskId);
 
   if (updateError) {
-    console.error("approvePortalTask: update failed:", updateError);
+    logger.error("approvePortalTask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -127,10 +129,7 @@ export async function approvePortalTask(
   // failure of the approval the client just performed.
   const commentResult = await addComment(taskId, "✅ Approved.");
   if (!commentResult.ok) {
-    console.error(
-      "approvePortalTask: trail comment failed:",
-      commentResult.error,
-    );
+    logger.error("approvePortalTask: trail comment failed", { error: commentResult.error });
   }
 
   revalidatePath("/portal", "layout");
@@ -170,7 +169,7 @@ export async function requestPortalTaskChanges(
     .eq("id", parsed.data.taskId);
 
   if (updateError) {
-    console.error("requestPortalTaskChanges: update failed:", updateError);
+    logger.error("requestPortalTaskChanges: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -186,10 +185,7 @@ export async function requestPortalTaskChanges(
   );
 
   if (!commentResult.ok) {
-    console.error(
-      "requestPortalTaskChanges: comment failed:",
-      commentResult.error,
-    );
+    logger.error("requestPortalTaskChanges: comment failed", { error: commentResult.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

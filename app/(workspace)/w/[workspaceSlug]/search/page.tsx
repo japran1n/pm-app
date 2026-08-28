@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F069 (AS-116, AS-119, AS-120): workspace-wide task search page.
 //
 // Server Component for data-fetching (per the clarified spec) — the search
@@ -81,7 +83,7 @@ export default async function SearchPage({
     try {
       results = await searchWorkspaceTasks(workspace.id, q);
     } catch (error) {
-      console.error("SearchPage: failed to search tasks:", error);
+      logger.error("SearchPage: failed to search tasks", { error: error });
       loadError = true;
     }
   }

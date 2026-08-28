@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Shared "default workspace" lookup (AS-005 / AS-003 adjacent).
 //
 // Both the auth callback route (app/(auth)/auth/callback/route.ts) and the
@@ -28,10 +30,7 @@ export async function getDefaultWorkspaceSlug(
     .maybeSingle();
 
   if (membershipError) {
-    console.error(
-      "getDefaultWorkspaceSlug: failed to look up workspace memberships:",
-      membershipError,
-    );
+    logger.error("getDefaultWorkspaceSlug: failed to look up workspace memberships", { error: membershipError });
   }
 
   if (!membership) {
@@ -45,10 +44,7 @@ export async function getDefaultWorkspaceSlug(
     .maybeSingle();
 
   if (workspaceError) {
-    console.error(
-      "getDefaultWorkspaceSlug: failed to look up workspace slug:",
-      workspaceError,
-    );
+    logger.error("getDefaultWorkspaceSlug: failed to look up workspace slug", { error: workspaceError });
   }
 
   return workspace?.slug ?? undefined;

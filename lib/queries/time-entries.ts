@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { logger } from "@/lib/observability/logger";
 
 export type ProjectTimeTotals = {
   billableMinutes: number;
@@ -70,7 +71,7 @@ export async function getWorkspaceTimeByPerson(
 
   if (error || !data) {
     if (error) {
-      console.error("getWorkspaceTimeByPerson: rpc failed:", error);
+      logger.error("getWorkspaceTimeByPerson: rpc failed", { error: error });
     }
     return [];
   }
@@ -174,7 +175,7 @@ export async function getTaskLoggedMinutes(
     .in("task_id", taskIds);
 
   if (error) {
-    console.error("getTaskLoggedMinutes: query failed:", error);
+    logger.error("getTaskLoggedMinutes: query failed", { error: error });
     return totals;
   }
 
@@ -217,10 +218,7 @@ export async function getProjectEstimateAndLoggedByPerson(
     .is("deleted_at", null);
 
   if (taskError) {
-    console.error(
-      "getProjectEstimateAndLoggedByPerson: task query failed:",
-      taskError,
-    );
+    logger.error("getProjectEstimateAndLoggedByPerson: task query failed", { error: taskError });
     return [];
   }
 
@@ -244,10 +242,7 @@ export async function getProjectEstimateAndLoggedByPerson(
       .in("task_id", taskIds);
 
     if (entryError) {
-      console.error(
-        "getProjectEstimateAndLoggedByPerson: time_entries query failed:",
-        entryError,
-      );
+      logger.error("getProjectEstimateAndLoggedByPerson: time_entries query failed", { error: entryError });
     } else {
       for (const entry of entryRows ?? []) {
         loggedByUser.set(

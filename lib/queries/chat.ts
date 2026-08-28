@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F2/F3/F4 (docs/advanced-chat-plan.md): read queries for chat channels and
 // a channel's messages.
 import "server-only";
@@ -75,7 +77,7 @@ export async function getChannelMessages(
   const { data, error } = await query;
 
   if (error || !data) {
-    console.error("getChannelMessages: query failed:", error);
+    logger.error("getChannelMessages: query failed", { error: error });
     return [];
   }
 
@@ -103,7 +105,7 @@ export async function getReplyCounts(
     .not("parent_message_id", "is", null);
 
   if (error || !data) {
-    console.error("getReplyCounts: query failed:", error);
+    logger.error("getReplyCounts: query failed", { error: error });
     return {};
   }
 
@@ -135,7 +137,7 @@ export async function getThreadMessages(
     .order("created_at", { ascending: true });
 
   if (error || !data) {
-    console.error("getThreadMessages: query failed:", error);
+    logger.error("getThreadMessages: query failed", { error: error });
     return [];
   }
 
@@ -183,7 +185,7 @@ export async function getWorkspaceChannels(
     .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
 
   if (memberError) {
-    console.error("getWorkspaceChannels: membership query failed:", memberError);
+    logger.error("getWorkspaceChannels: membership query failed", { error: memberError });
     return [];
   }
 
@@ -199,7 +201,7 @@ export async function getWorkspaceChannels(
     .in("id", channelIds);
 
   if (channelError || !channelRows) {
-    console.error("getWorkspaceChannels: channels query failed:", channelError);
+    logger.error("getWorkspaceChannels: channels query failed", { error: channelError });
     return [];
   }
 
@@ -223,7 +225,7 @@ export async function getWorkspaceChannels(
   );
 
   if (summaryError) {
-    console.error("getWorkspaceChannels: channel summary RPC failed:", summaryError);
+    logger.error("getWorkspaceChannels: channel summary RPC failed", { error: summaryError });
   }
 
   for (const row of summaries ?? []) {
@@ -314,10 +316,7 @@ export async function searchChannelMessages(
 
   if (channelError || !channelRows || channelRows.length === 0) {
     if (channelError) {
-      console.error(
-        "searchChannelMessages: channel query failed:",
-        channelError,
-      );
+      logger.error("searchChannelMessages: channel query failed", { error: channelError });
     }
     return [];
   }
@@ -337,7 +336,7 @@ export async function searchChannelMessages(
     .limit(limit);
 
   if (messageError) {
-    console.error("searchChannelMessages: search query failed:", messageError);
+    logger.error("searchChannelMessages: search query failed", { error: messageError });
     return [];
   }
 
@@ -403,7 +402,7 @@ export async function getMessageReactions(
     .in("message_id", messageIds);
 
   if (error) {
-    console.error("getMessageReactions: query failed:", error);
+    logger.error("getMessageReactions: query failed", { error: error });
     return byMessage;
   }
 
@@ -432,7 +431,7 @@ export async function getChannelMembers(
     .eq("channel_id", channelId);
 
   if (error) {
-    console.error("getChannelMembers: query failed:", error);
+    logger.error("getChannelMembers: query failed", { error: error });
     return [];
   }
 

@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F228: saved-view Server Actions (AS-428, AS-430, AS-431). Schema/RLS
 // laid down by F227 (supabase/migrations/20260826010000_create_saved_views.sql)
@@ -211,7 +213,7 @@ async function revalidateViewRoutes(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     }
   } catch (revalidateError) {
-    console.error("views: revalidatePath failed (non-fatal):", revalidateError);
+    logger.error("views: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 }
 
@@ -294,7 +296,7 @@ export async function createSavedView(input: {
     .single();
 
   if (insertError || !inserted) {
-    console.error("createSavedView: insert failed:", insertError);
+    logger.error("createSavedView: insert failed", { error: insertError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -308,7 +310,7 @@ export async function createSavedView(input: {
       p_view_id: inserted.id,
     });
     if (rpcError) {
-      console.error("createSavedView: set_saved_view_default failed:", rpcError);
+      logger.error("createSavedView: set_saved_view_default failed", { error: rpcError });
     } else {
       record = { ...record, isDefault: true };
     }
@@ -426,7 +428,7 @@ export async function updateSavedView(input: {
       .single();
 
     if (updateError || !updated) {
-      console.error("updateSavedView: update failed:", updateError);
+      logger.error("updateSavedView: update failed", { error: updateError });
       return { ok: false, error: GENERIC_ERROR };
     }
     updatedRow = updated;
@@ -437,7 +439,7 @@ export async function updateSavedView(input: {
       p_view_id: view.id,
     });
     if (rpcError) {
-      console.error("updateSavedView: set_saved_view_default failed:", rpcError);
+      logger.error("updateSavedView: set_saved_view_default failed", { error: rpcError });
       return { ok: false, error: GENERIC_ERROR };
     }
   }
@@ -492,7 +494,7 @@ export async function deleteSavedView(viewId: string): Promise<DeleteSavedViewRe
   const { error: deleteError } = await client.from("saved_views").delete().eq("id", view.id);
 
   if (deleteError) {
-    console.error("deleteSavedView: delete failed:", deleteError);
+    logger.error("deleteSavedView: delete failed", { error: deleteError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -537,7 +539,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
     p_view_id: view.id,
   });
   if (rpcError) {
-    console.error("setDefaultSavedView: rpc failed:", rpcError);
+    logger.error("setDefaultSavedView: rpc failed", { error: rpcError });
     return { ok: false, error: GENERIC_ERROR };
   }
 

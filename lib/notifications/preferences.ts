@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F211 (AS-391, AS-396): notification preferences — the read side F207's
 // fan-out call sites (lib/actions/tasks.ts, lib/actions/comments.ts,
 // lib/notifications/mentions.ts) consult before writing an in-app
@@ -90,10 +92,7 @@ export async function filterRecipientsByInAppPreference(
     .in("user_id", userIds);
 
   if (error || !data) {
-    console.error(
-      "filterRecipientsByInAppPreference: preferences read failed (fail-open, non-fatal):",
-      error,
-    );
+    logger.error("filterRecipientsByInAppPreference: preferences read failed (fail-open, non-fatal)", { error: error });
     return recipients;
   }
 

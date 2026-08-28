@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F434-F440: read-side for workspace task types. RLS-respecting client —
 // task_types_select_active_members already scopes rows to active
 // workspace members.
@@ -21,7 +23,7 @@ export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
     .order("position");
 
   if (error) {
-    console.error("getTaskTypes failed:", error);
+    logger.error("getTaskTypes failed", { error: error });
     return [];
   }
 

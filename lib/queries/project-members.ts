@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F133: data-fetching for the project settings/members panel
 // (AS-225, AS-236).
 //
@@ -39,7 +41,7 @@ export async function getProjectMembers(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("getProjectMembers: fetch failed:", error);
+    logger.error("getProjectMembers: fetch failed", { error: error });
     throw error;
   }
 
@@ -99,14 +101,11 @@ export async function getAddableWorkspaceMembers(
     ]);
 
   if (memberError) {
-    console.error("getAddableWorkspaceMembers: member fetch failed:", memberError);
+    logger.error("getAddableWorkspaceMembers: member fetch failed", { error: memberError });
     throw memberError;
   }
   if (existingError) {
-    console.error(
-      "getAddableWorkspaceMembers: existing-member fetch failed:",
-      existingError,
-    );
+    logger.error("getAddableWorkspaceMembers: existing-member fetch failed", { error: existingError });
     throw existingError;
   }
 
@@ -164,14 +163,11 @@ export async function getVisibilityLossPreview(
     ]);
 
   if (memberError) {
-    console.error("getVisibilityLossPreview: member fetch failed:", memberError);
+    logger.error("getVisibilityLossPreview: member fetch failed", { error: memberError });
     throw memberError;
   }
   if (explicitError) {
-    console.error(
-      "getVisibilityLossPreview: explicit-member fetch failed:",
-      explicitError,
-    );
+    logger.error("getVisibilityLossPreview: explicit-member fetch failed", { error: explicitError });
     throw explicitError;
   }
 

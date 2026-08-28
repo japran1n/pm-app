@@ -2,6 +2,7 @@ import { notFound, redirect, permanentRedirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+import { logger } from "@/lib/observability/logger";
 // F267 (AS-519, AS-520, AS-521, AS-522): the header search bar, rendered
 // above every workspace page's own content, alongside the sidebar (see
 // that component's own file-header comment for why the notification
@@ -107,10 +108,7 @@ export default async function WorkspaceLayout({
       .maybeSingle();
 
   if (activeWorkspaceError) {
-    console.error(
-      "WorkspaceLayout: failed to look up workspace by slug:",
-      activeWorkspaceError,
-    );
+    logger.error("WorkspaceLayout: failed to look up workspace by slug", { error: activeWorkspaceError });
   }
 
   if (!activeWorkspace) {
@@ -139,10 +137,7 @@ export default async function WorkspaceLayout({
       .maybeSingle();
 
     if (slugHistoryError) {
-      console.error(
-        "WorkspaceLayout: failed to look up slug history:",
-        slugHistoryError,
-      );
+      logger.error("WorkspaceLayout: failed to look up slug history", { error: slugHistoryError });
     }
 
     if (slugHistoryRow) {
@@ -211,7 +206,7 @@ export default async function WorkspaceLayout({
     getWorkspaceProjects(activeWorkspace.id).then(
       (projects) => ({ projects, error: null }),
       (error) => {
-        console.error("WorkspaceLayout: failed to look up workspace projects for sidebar:", error);
+        logger.error("WorkspaceLayout: failed to look up workspace projects for sidebar", { error: error });
         return { projects: [] as Awaited<ReturnType<typeof getWorkspaceProjects>>, error };
       },
     ),
@@ -237,13 +232,13 @@ export default async function WorkspaceLayout({
   ]);
 
   if (membershipsError) {
-    console.error("WorkspaceLayout: failed to look up user's memberships:", membershipsError);
+    logger.error("WorkspaceLayout: failed to look up user's memberships", { error: membershipsError });
   }
   if (currentUserProfileError) {
-    console.error("WorkspaceLayout: failed to look up current user's profile:", currentUserProfileError);
+    logger.error("WorkspaceLayout: failed to look up current user's profile", { error: currentUserProfileError });
   }
   if (projectMemberRowsError) {
-    console.error("WorkspaceLayout: failed to look up caller's project memberships:", projectMemberRowsError);
+    logger.error("WorkspaceLayout: failed to look up caller's project memberships", { error: projectMemberRowsError });
   }
 
   const sidebarProjects = sidebarProjectsResult.projects;
@@ -289,7 +284,7 @@ export default async function WorkspaceLayout({
     : { data: [], error: null };
 
   if (workspacesError) {
-    console.error("WorkspaceLayout: failed to look up member workspaces:", workspacesError);
+    logger.error("WorkspaceLayout: failed to look up member workspaces", { error: workspacesError });
   }
 
   // The active workspace is guaranteed to be an active membership (we just

@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F219: board column ("project status") management actions (AS-404,
 // AS-405, AS-414, AS-415).
@@ -171,7 +173,7 @@ async function revalidateProjectSettings(workspaceSlug: string, projectId: strin
     // Non-fatal: revalidatePath throws outside an active request/render
     // context (e.g. invoked from a test harness) — the write already
     // succeeded. Same convention as every other lib/actions/*.ts file.
-    console.error("statuses: revalidatePath failed (non-fatal):", revalidateError);
+    logger.error("statuses: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 }
 
@@ -239,7 +241,7 @@ export async function addColumn(input: {
     if (insertError?.code === "23505") {
       return { ok: false, error: "A column with this name already exists." };
     }
-    console.error("addColumn: insert failed:", insertError);
+    logger.error("addColumn: insert failed", { error: insertError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -321,7 +323,7 @@ export async function updateColumn(input: {
     if (updateError?.code === "23505") {
       return { ok: false, error: "A column with this name already exists." };
     }
-    console.error("updateColumn: update failed:", updateError);
+    logger.error("updateColumn: update failed", { error: updateError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -410,7 +412,7 @@ export async function reorderColumn(
     .single();
 
   if (updateError || !updated) {
-    console.error("reorderColumn: update failed:", updateError);
+    logger.error("reorderColumn: update failed", { error: updateError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -503,7 +505,7 @@ export async function removeColumn(columnId: string): Promise<RemoveColumnResult
     if (deleteError.message?.includes("at least one board column")) {
       return { ok: false, error: "A project must have at least one board column." };
     }
-    console.error("removeColumn: delete failed:", deleteError);
+    logger.error("removeColumn: delete failed", { error: deleteError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -612,7 +614,7 @@ export async function removeColumnWithReassignment(
     if (rpcError.message?.includes("at least one board column")) {
       return { ok: false, error: "A project must have at least one board column." };
     }
-    console.error("removeColumnWithReassignment: rpc failed:", rpcError);
+    logger.error("removeColumnWithReassignment: rpc failed", { error: rpcError });
     return { ok: false, error: GENERIC_ERROR };
   }
 

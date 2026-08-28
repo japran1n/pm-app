@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F428: read-side for workspace status templates. RLS-respecting client —
 // `status_templates_select_active_members` already scopes rows to active
 // workspace members (20260903010000_status_templates.sql).
@@ -30,7 +32,7 @@ export async function getStatusTemplates(
     .order("name");
 
   if (templatesError) {
-    console.error("getStatusTemplates: templates query failed:", templatesError);
+    logger.error("getStatusTemplates: templates query failed", { error: templatesError });
     return [];
   }
   if (!templates?.length) return [];
@@ -45,7 +47,7 @@ export async function getStatusTemplates(
     .order("position");
 
   if (itemsError) {
-    console.error("getStatusTemplates: items query failed:", itemsError);
+    logger.error("getStatusTemplates: items query failed", { error: itemsError });
   }
 
   return templates.map((template) => ({

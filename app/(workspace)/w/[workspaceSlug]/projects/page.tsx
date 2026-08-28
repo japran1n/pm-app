@@ -17,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { logger } from "@/lib/observability/logger";
 
 // F027 (AS-027, AS-034, AS-042): lists every non-deleted project in the
 // active workspace. Server Component — primary content is rendered into
@@ -95,7 +96,7 @@ export default async function ProjectsPage({
   } catch (error) {
     // Same console.error-to-Sentry convention as MembersPage — this repo
     // has no separate logging library, per tech-decisions.md.
-    console.error("ProjectsPage: failed to load projects:", error);
+    logger.error("ProjectsPage: failed to load projects", { error: error });
     loadError = true;
   }
 

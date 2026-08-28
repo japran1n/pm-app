@@ -4,6 +4,7 @@ import {
   MAX_AVATAR_SIZE_BYTES,
   ALLOWED_AVATAR_MIME_TYPES,
 } from "@/lib/validation/profile";
+import { logger } from "@/lib/observability/logger";
 
 // Validates create-workspace input (AS-006) before it reaches Supabase.
 export const createWorkspaceSchema = z.object({
@@ -216,7 +217,7 @@ export async function findAvailableSlug(
     .like("slug", `${baseSlug}%`);
 
   if (error) {
-    console.error("createWorkspace: slug uniqueness check failed:", error);
+    logger.error("createWorkspace: slug uniqueness check failed", { error: error });
     // Fall back to the base slug; the insert's unique constraint on `slug`
     // is the final backstop if this races with another creation.
     return baseSlug;

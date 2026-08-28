@@ -6,6 +6,7 @@ import { getWorkspaceTrash } from "@/lib/queries/trash";
 import { TrashFilters } from "@/components/trash/trash-filters";
 import { TrashList } from "@/components/trash/trash-list";
 import { canPurge as canPurgePredicate } from "@/lib/auth/permissions";
+import { logger } from "@/lib/observability/logger";
 
 // F188 (AS-343, AS-347, AS-352): the workspace trash view — every deleted
 // task and deleted comment (`deleted_at IS NOT NULL`) visible to the
@@ -91,7 +92,7 @@ export default async function TrashPage({
   try {
     allItems = await getWorkspaceTrash(workspace.id);
   } catch (error) {
-    console.error("TrashPage: failed to load trash:", error);
+    logger.error("TrashPage: failed to load trash", { error: error });
     loadError = true;
   }
 

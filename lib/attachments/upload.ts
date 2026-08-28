@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Plain (non-"use server") module holding the shared attachment-upload
 // implementation. This file MUST NOT carry a "use server" directive: every
 // exported async function inside a "use server" module is auto-registered
@@ -220,7 +222,7 @@ export async function uploadAttachmentForUser(
     });
 
   if (uploadError) {
-    console.error("uploadAttachment: storage upload failed:", uploadError);
+    logger.error("uploadAttachment: storage upload failed", { error: uploadError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -244,7 +246,7 @@ export async function uploadAttachmentForUser(
     .single();
 
   if (insertError || !inserted) {
-    console.error("uploadAttachment: row insert failed:", insertError);
+    logger.error("uploadAttachment: row insert failed", { error: insertError });
     // Best-effort cleanup so a failed row insert doesn't leave an orphaned
     // Storage object behind (mirrors AS-114's "no orphans accumulate
     // silently" intent, applied here to the upload-failure path too, and is
@@ -264,10 +266,7 @@ export async function uploadAttachmentForUser(
     .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
-    console.error(
-      "uploadAttachment: signed URL generation failed:",
-      signedUrlError,
-    );
+    logger.error("uploadAttachment: signed URL generation failed", { error: signedUrlError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -285,10 +284,7 @@ export async function uploadAttachmentForUser(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as addComment.
-      console.error(
-        "uploadAttachment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("uploadAttachment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

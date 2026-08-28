@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F304 (D2/FU-4 scrutiny fix): the ONE place that actually calls the
 // `create_notification` RPC (F206's SECURITY DEFINER function).
 //
@@ -78,29 +80,23 @@ export async function createNotification(
     });
 
     if (error) {
-      console.error(
-        `${context}: create_notification RPC failed (non-fatal):`,
-        {
+      logger.error(`${context}: create_notification RPC failed (non-fatal)`, {
           kind: params.kind,
           userId: params.userId,
           taskId: params.taskId,
           error,
-        },
-      );
+        });
       return { ok: false };
     }
 
     return { ok: true };
   } catch (thrown) {
-    console.error(
-      `${context}: create_notification RPC threw (non-fatal):`,
-      {
+    logger.error(`${context}: create_notification RPC threw (non-fatal)`, {
         kind: params.kind,
         userId: params.userId,
         taskId: params.taskId,
         error: thrown,
-      },
-    );
+      });
     return { ok: false };
   }
 }

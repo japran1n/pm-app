@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F8 (docs/advanced-chat-plan.md): toggle an emoji reaction on a chat
 // message. Literal copy-paste of lib/actions/comment-reactions.ts's
@@ -152,10 +154,7 @@ export async function toggleMessageReaction(
       .eq("emoji", row.emoji);
 
     if (deleteError) {
-      console.error(
-        "toggleMessageReaction: delete-after-conflict failed:",
-        deleteError,
-      );
+      logger.error("toggleMessageReaction: delete-after-conflict failed", { error: deleteError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -164,7 +163,7 @@ export async function toggleMessageReaction(
 
     reacted = false;
   } else {
-    console.error("toggleMessageReaction: insert failed:", insertError);
+    logger.error("toggleMessageReaction: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -177,10 +176,7 @@ export async function toggleMessageReaction(
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as toggleReaction /
       // sendMessage.
-      console.error(
-        "toggleMessageReaction: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("toggleMessageReaction: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F131: project_members Server Action layer (AS-224 — "a project has an
 // explicit member list; adding a member grants access").
@@ -109,10 +111,7 @@ async function revalidateWorkspace(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        `${actionLabel}: revalidatePath failed (non-fatal):`,
-        revalidateError,
-      );
+      logger.error(`${actionLabel}: revalidatePath failed (non-fatal)`, { error: revalidateError });
     }
   }
 }
@@ -214,7 +213,7 @@ export async function addProjectMember(
     if (insertError?.code === "23505") {
       return { ok: false, error: "That user is already a member of this project." };
     }
-    console.error("addProjectMember: insert failed:", insertError);
+    logger.error("addProjectMember: insert failed", { error: insertError });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -301,7 +300,7 @@ export async function removeProjectMember(
     .select("id");
 
   if (deleteError || !deletedRows || deletedRows.length === 0) {
-    console.error("removeProjectMember: delete failed:", deleteError);
+    logger.error("removeProjectMember: delete failed", { error: deleteError });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -396,7 +395,7 @@ export async function updateProjectVisibility(
     .single();
 
   if (updateError || !updated) {
-    console.error("updateProjectVisibility: update failed:", updateError);
+    logger.error("updateProjectVisibility: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

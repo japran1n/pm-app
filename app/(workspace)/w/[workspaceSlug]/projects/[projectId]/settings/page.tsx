@@ -7,6 +7,7 @@ import {
   type ProjectRole,
   type WorkspaceRole,
 } from "@/lib/auth/permissions";
+import { logger } from "@/lib/observability/logger";
 import {
   getAddableWorkspaceMembers,
   getProjectMembers,
@@ -125,7 +126,7 @@ export default async function ProjectSettingsPage({
       lossPreview = await getVisibilityLossPreview(workspace.id, project.id);
     }
   } catch (error) {
-    console.error("ProjectSettingsPage: failed to load member data:", error);
+    logger.error("ProjectSettingsPage: failed to load member data", { error: error });
     loadError = true;
   }
 

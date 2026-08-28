@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
+import { logger } from "@/lib/observability/logger";
 
 export type SignInResult =
   | { ok: true }
@@ -51,7 +52,7 @@ export async function signInWithMagicLink(
   if (error) {
     // Log detail server-side only; never surface raw Supabase error text
     // to the client (AS-146/AS-148 pattern: generic message on failure).
-    console.error("signInWithMagicLink failed:", error);
+    logger.error("signInWithMagicLink failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -79,7 +80,7 @@ export async function signOut(): Promise<never> {
     // Log detail server-side only; the session cookies are cleared by
     // Supabase's signOut call regardless of this error in practice, but log
     // for visibility rather than silently swallowing it.
-    console.error("signOut failed:", error);
+    logger.error("signOut failed", { error: error });
   }
 
   redirect("/sign-in");
@@ -140,7 +141,7 @@ async function resolveUsernameToEmail(username: string): Promise<string | null> 
   );
 
   if (!response.ok) {
-    console.error("resolveUsernameToEmail lookup failed:", response.status);
+    logger.error("resolveUsernameToEmail lookup failed", { error: response.status });
     return null;
   }
 
@@ -190,7 +191,7 @@ export async function signInWithPassword(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    console.error("signInWithPassword failed:", error.message);
+    logger.error("signInWithPassword failed", { error: error.message });
     return { ok: false, error: "Invalid email/username or password." };
   }
 

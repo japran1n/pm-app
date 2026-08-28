@@ -5,6 +5,7 @@ import { ProfileForm } from "@/components/profile/profile-form";
 import { NotificationPreferencesForm } from "@/components/notifications/preferences-form";
 import { getNotificationPreferences } from "@/lib/actions/notification-preferences";
 import { ReplayTourButton } from "@/components/onboarding/replay-tour-button";
+import { logger } from "@/lib/observability/logger";
 
 // F123 (AS-202): the profile settings page — display name, avatar upload
 // with live preview, and timezone. Server Component for data loading, per
@@ -39,7 +40,7 @@ export default async function ProfileSettingsPage() {
   if (error) {
     // Real error logging: this repo has no error-tracking SDK wired up
     // yet, matching every other page's existing convention.
-    console.error("ProfileSettingsPage: failed to load profile:", error);
+    logger.error("ProfileSettingsPage: failed to load profile", { error: error });
   }
 
   // F120's on_auth_user_created trigger guarantees a profiles row exists
@@ -76,10 +77,7 @@ export default async function ProfileSettingsPage() {
   // "no row yet".
   const preferencesResult = await getNotificationPreferences();
   if (!preferencesResult.ok) {
-    console.error(
-      "ProfileSettingsPage: failed to load notification preferences:",
-      preferencesResult.error,
-    );
+    logger.error("ProfileSettingsPage: failed to load notification preferences", { error: preferencesResult.error });
   }
   const notificationPreferences = preferencesResult.ok
     ? preferencesResult.data

@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // C5 + C6 (docs/client-portal-plan.md): the client-request lifecycle.
 //
@@ -142,7 +144,7 @@ export async function createClientRequest(
     .single();
 
   if (error || !data) {
-    console.error("createClientRequest failed:", error);
+    logger.error("createClientRequest failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -181,7 +183,7 @@ export async function withdrawClientRequest(
     .eq("id", parsed.data.requestId);
 
   if (error) {
-    console.error("withdrawClientRequest failed:", error);
+    logger.error("withdrawClientRequest failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -229,7 +231,7 @@ export async function declineClientRequest(
     .eq("id", parsed.data.requestId);
 
   if (error) {
-    console.error("declineClientRequest failed:", error);
+    logger.error("declineClientRequest failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -285,19 +287,14 @@ export async function acceptClientRequest(
   );
 
   if (rpcError) {
-    console.error(
-      "acceptClientRequest: accept_client_request_atomic RPC failed:",
-      rpcError,
-    );
+    logger.error("acceptClientRequest: accept_client_request_atomic RPC failed", { error: rpcError });
     return { ok: false, error: GENERIC_ERROR };
   }
 
   const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
   if (!rpcResult?.task_id) {
-    console.error(
-      "acceptClientRequest: accept_client_request_atomic RPC returned no task_id",
-    );
+    logger.error("acceptClientRequest: accept_client_request_atomic RPC returned no task_id");
     return { ok: false, error: GENERIC_ERROR };
   }
 

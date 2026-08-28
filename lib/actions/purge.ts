@@ -8,6 +8,7 @@ import { purgeTrashItemSchema, PURGE_CONFIRMATION_PHRASE } from "@/lib/validatio
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canPurge } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
+import { logger } from "@/lib/observability/logger";
 
 // F192 (AS-348, AS-349): permanently (hard-)deletes an already-trashed
 // task or comment, plus every dependent row/Storage object it owns. This
@@ -162,7 +163,7 @@ export async function purgeTrashItem(
     );
 
     if (purgeError || !purgeRows || purgeRows.length === 0) {
-      console.error("purgeTrashItem: purge_task RPC failed:", purgeError);
+      logger.error("purgeTrashItem: purge_task RPC failed", { error: purgeError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -184,10 +185,7 @@ export async function purgeTrashItem(
         .from(ATTACHMENTS_BUCKET)
         .remove(paths);
       if (storageError) {
-        console.error(
-          "purgeTrashItem: storage removal failed after purge_task succeeded:",
-          storageError,
-        );
+        logger.error("purgeTrashItem: storage removal failed after purge_task succeeded", { error: storageError });
       }
     }
   } else {
@@ -197,7 +195,7 @@ export async function purgeTrashItem(
     );
 
     if (purgeError || !purgeRows || purgeRows.length === 0) {
-      console.error("purgeTrashItem: purge_comment RPC failed:", purgeError);
+      logger.error("purgeTrashItem: purge_comment RPC failed", { error: purgeError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -228,10 +226,7 @@ export async function purgeTrashItem(
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same convention as every
       // other Server Action in this codebase.
-      console.error(
-        "purgeTrashItem: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("purgeTrashItem: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

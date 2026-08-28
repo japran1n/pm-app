@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F11 (docs/advanced-chat-plan.md): Server Actions for uploading/removing a
 // chat attachment and minting a fresh signed URL for display. Pattern
@@ -130,10 +132,7 @@ export async function getChatAttachmentSignedUrl(
     .createSignedUrl(attachmentRow.storage_path, SIGNED_URL_TTL_SECONDS);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
-    console.error(
-      "getChatAttachmentSignedUrl: signed URL generation failed:",
-      signedUrlError,
-    );
+    logger.error("getChatAttachmentSignedUrl: signed URL generation failed", { error: signedUrlError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

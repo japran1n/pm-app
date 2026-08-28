@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F11 (docs/advanced-chat-plan.md): shared chat-attachment upload
 // implementation. Plain (non-"use server") module for the same reason
 // lib/attachments/upload.ts documents at its own file header (M17
@@ -128,7 +130,7 @@ export async function uploadChatAttachmentForUser(
     });
 
   if (uploadError) {
-    console.error("uploadChatAttachment: storage upload failed:", uploadError);
+    logger.error("uploadChatAttachment: storage upload failed", { error: uploadError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -154,7 +156,7 @@ export async function uploadChatAttachmentForUser(
     .single();
 
   if (insertError || !inserted) {
-    console.error("uploadChatAttachment: row insert failed:", insertError);
+    logger.error("uploadChatAttachment: row insert failed", { error: insertError });
     // Storage-first-then-insert cleanup on failure, same invariant as
     // uploadAttachmentForUser -- no orphaned Storage object survives a
     // failed row insert.
@@ -170,10 +172,7 @@ export async function uploadChatAttachmentForUser(
     .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
-    console.error(
-      "uploadChatAttachment: signed URL generation failed:",
-      signedUrlError,
-    );
+    logger.error("uploadChatAttachment: signed URL generation failed", { error: signedUrlError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -228,10 +227,7 @@ export async function deletePendingChatAttachmentForUser(
     .remove([existing.storage_path]);
 
   if (storageError) {
-    console.error(
-      "deletePendingChatAttachment: storage removal failed:",
-      storageError,
-    );
+    logger.error("deletePendingChatAttachment: storage removal failed", { error: storageError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -244,11 +240,8 @@ export async function deletePendingChatAttachmentForUser(
     .eq("id", attachmentId);
 
   if (deleteError) {
-    console.error(
-      "deletePendingChatAttachment: row delete failed after storage removal succeeded " +
-        `(attachment ${attachmentId}):`,
-      deleteError,
-    );
+    logger.error("deletePendingChatAttachment: row delete failed after storage removal succeeded " +
+        `(attachment ${attachmentId}):`, { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

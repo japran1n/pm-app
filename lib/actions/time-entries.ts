@@ -8,6 +8,7 @@ import {
   deleteTimeEntrySchema,
   type EditTimeEntryUpdates,
 } from "@/lib/validation/time-entries";
+import { logger } from "@/lib/observability/logger";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -183,7 +184,7 @@ export async function logTimeEntry(
     .single();
 
   if (insertError || !inserted) {
-    console.error("logTimeEntry: insert failed:", insertError);
+    logger.error("logTimeEntry: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -350,7 +351,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
   const started = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
   if (rpcError || !started) {
-    console.error("startTimer: start_timer_atomic failed:", rpcError);
+    logger.error("startTimer: start_timer_atomic failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -393,7 +394,7 @@ export async function stopTimer(): Promise<StopTimerResult> {
     await supabase.rpc("stop_timer_atomic");
 
   if (rpcError) {
-    console.error("stopTimer: stop_timer_atomic failed:", rpcError);
+    logger.error("stopTimer: stop_timer_atomic failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -597,7 +598,7 @@ export async function editTimeEntry(
     .single();
 
   if (updateError || !updated) {
-    console.error("editTimeEntry: update failed:", updateError);
+    logger.error("editTimeEntry: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -771,7 +772,7 @@ export async function deleteTimeEntry(
     .eq("id", parsed.data.entryId);
 
   if (deleteError) {
-    console.error("deleteTimeEntry: delete failed:", deleteError);
+    logger.error("deleteTimeEntry: delete failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

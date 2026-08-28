@@ -21,6 +21,7 @@ import {
   slugify,
   findAvailableSlug,
 } from "@/lib/validation/workspaces";
+import { logger } from "@/lib/observability/logger";
 import {
   requireWorkspaceAdmin,
   requireWorkspaceOwner,
@@ -127,10 +128,7 @@ export async function createWorkspace(
   );
 
   if (createError) {
-    console.error(
-      "createWorkspace: create_workspace_with_owner RPC failed:",
-      createError,
-    );
+    logger.error("createWorkspace: create_workspace_with_owner RPC failed", { error: createError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -140,9 +138,7 @@ export async function createWorkspace(
   const workspace = Array.isArray(created) ? created[0] : created;
 
   if (!workspace) {
-    console.error(
-      "createWorkspace: create_workspace_with_owner RPC returned no row",
-    );
+    logger.error("createWorkspace: create_workspace_with_owner RPC returned no row");
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -169,27 +165,18 @@ export async function createWorkspace(
       .single();
 
     if (channelError || !channelRow) {
-      console.error(
-        "createWorkspace: general channel insert failed (non-fatal):",
-        channelError,
-      );
+      logger.error("createWorkspace: general channel insert failed (non-fatal)", { error: channelError });
     } else {
       const { error: memberError } = await admin
         .from("channel_members")
         .insert({ channel_id: channelRow.id, user_id: user.id });
 
       if (memberError) {
-        console.error(
-          "createWorkspace: general channel membership insert failed (non-fatal):",
-          memberError,
-        );
+        logger.error("createWorkspace: general channel membership insert failed (non-fatal)", { error: memberError });
       }
     }
   } catch (chatBootstrapError) {
-    console.error(
-      "createWorkspace: general channel bootstrap failed (non-fatal):",
-      chatBootstrapError,
-    );
+    logger.error("createWorkspace: general channel bootstrap failed (non-fatal)", { error: chatBootstrapError });
   }
 
   redirect(`/w/${workspace.slug}`);
@@ -230,7 +217,7 @@ async function findAuthUserByEmail(
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 
   if (!supabaseUrl || !secretKey) {
-    console.error("findAuthUserByEmail: Supabase admin credentials missing");
+    logger.error("findAuthUserByEmail: Supabase admin credentials missing");
     return "lookup_failed";
   }
 
@@ -251,10 +238,7 @@ async function findAuthUserByEmail(
     );
 
     if (!response.ok) {
-      console.error(
-        "findAuthUserByEmail: admin user lookup failed:",
-        response.status,
-      );
+      logger.error("findAuthUserByEmail: admin user lookup failed", { error: response.status });
       return "lookup_failed";
     }
 
@@ -266,7 +250,7 @@ async function findAuthUserByEmail(
       ) ?? null
     );
   } catch (error) {
-    console.error("findAuthUserByEmail: admin user lookup threw:", error);
+    logger.error("findAuthUserByEmail: admin user lookup threw", { error: error });
     return "lookup_failed";
   }
 }
@@ -337,10 +321,7 @@ export async function inviteMember(
     .maybeSingle();
 
   if (existingByEmailError) {
-    console.error(
-      "inviteMember: existing-member lookup failed:",
-      existingByEmailError,
-    );
+    logger.error("inviteMember: existing-member lookup failed", { error: existingByEmailError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -389,10 +370,7 @@ export async function inviteMember(
         .maybeSingle();
 
     if (existingMembershipError) {
-      console.error(
-        "inviteMember: existing-membership-by-user lookup failed:",
-        existingMembershipError,
-      );
+      logger.error("inviteMember: existing-membership-by-user lookup failed", { error: existingMembershipError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -425,10 +403,7 @@ export async function inviteMember(
       .maybeSingle();
 
     if (targetProjectError) {
-      console.error(
-        "inviteMember: project lookup failed:",
-        targetProjectError,
-      );
+      logger.error("inviteMember: project lookup failed", { error: targetProjectError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -465,7 +440,7 @@ export async function inviteMember(
     .single();
 
   if (insertError) {
-    console.error("inviteMember: insert failed:", insertError);
+    logger.error("inviteMember: insert failed", { error: insertError });
     // A unique-index violation here means a concurrent request won the
     // race between the pre-check above and this insert.
     if (insertError.code === "23505") {
@@ -504,10 +479,7 @@ export async function inviteMember(
       // succeeded above, so this is a non-fatal cache-freshness miss, not
       // an invite failure — log and continue rather than surfacing an
       // error for a successful invite.
-      console.error(
-        "inviteMember: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("inviteMember: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -577,7 +549,7 @@ export async function revokeInvite(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("revokeInvite: target lookup failed:", lookupError);
+    logger.error("revokeInvite: target lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -605,7 +577,7 @@ export async function revokeInvite(
     .eq("status", "invited");
 
   if (deleteError) {
-    console.error("revokeInvite: delete failed:", deleteError);
+    logger.error("revokeInvite: delete failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -633,10 +605,7 @@ export async function revokeInvite(
       // revalidatePath throws outside an active request/render context
       // (e.g. this action invoked from a test harness). The revoke itself
       // already succeeded, so this is not an action failure.
-      console.error(
-        "revokeInvite: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("revokeInvite: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -743,7 +712,7 @@ export async function changeMemberRole(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("changeMemberRole: target lookup failed:", lookupError);
+    logger.error("changeMemberRole: target lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -794,10 +763,7 @@ export async function changeMemberRole(
       .eq("status", "active");
 
     if (ownerCountError) {
-      console.error(
-        "changeMemberRole: owner count check failed:",
-        ownerCountError,
-      );
+      logger.error("changeMemberRole: owner count check failed", { error: ownerCountError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -820,7 +786,7 @@ export async function changeMemberRole(
     .eq("status", "active");
 
   if (updateError) {
-    console.error("changeMemberRole: update failed:", updateError);
+    logger.error("changeMemberRole: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -850,10 +816,7 @@ export async function changeMemberRole(
       // request/render context (e.g. this action invoked from a test
       // harness). The role change itself already succeeded, so this is
       // not an action failure.
-      console.error(
-        "changeMemberRole: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("changeMemberRole: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -920,7 +883,7 @@ export async function removeMember(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("removeMember: target lookup failed:", lookupError);
+    logger.error("removeMember: target lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -964,7 +927,7 @@ export async function removeMember(
   );
 
   if (rpcError) {
-    console.error("removeMember: remove_workspace_member RPC failed:", rpcError);
+    logger.error("removeMember: remove_workspace_member RPC failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1015,10 +978,7 @@ export async function removeMember(
       // context (e.g. this action invoked from a test harness). The
       // removal itself already succeeded, so this is not an action
       // failure.
-      console.error(
-        "removeMember: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("removeMember: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1109,10 +1069,7 @@ export async function transferOwnership(
   );
 
   if (rpcError) {
-    console.error(
-      "transferOwnership: transfer_workspace_ownership RPC failed:",
-      rpcError,
-    );
+    logger.error("transferOwnership: transfer_workspace_ownership RPC failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1173,10 +1130,7 @@ export async function transferOwnership(
       // context (e.g. this action invoked from a test harness). The
       // transfer itself already succeeded, so this is not an action
       // failure.
-      console.error(
-        "transferOwnership: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("transferOwnership: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1246,7 +1200,7 @@ export async function deleteWorkspace(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("deleteWorkspace: workspace lookup failed:", lookupError);
+    logger.error("deleteWorkspace: workspace lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1268,7 +1222,7 @@ export async function deleteWorkspace(
     .is("deleted_at", null);
 
   if (updateError) {
-    console.error("deleteWorkspace: soft-delete update failed:", updateError);
+    logger.error("deleteWorkspace: soft-delete update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1289,10 +1243,7 @@ export async function deleteWorkspace(
     // file: revalidatePath throws outside an active request/render context
     // (e.g. this action invoked from a test harness). The soft-delete
     // itself already succeeded, so this is not an action failure.
-    console.error(
-      "deleteWorkspace: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("deleteWorkspace: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   // Find the caller's next remaining active workspace membership (if any)
@@ -1396,7 +1347,7 @@ export async function renameWorkspace(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("renameWorkspace: workspace lookup failed:", lookupError);
+    logger.error("renameWorkspace: workspace lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1415,7 +1366,7 @@ export async function renameWorkspace(
     .single();
 
   if (updateError || !updated) {
-    console.error("renameWorkspace: update failed:", updateError);
+    logger.error("renameWorkspace: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1441,10 +1392,7 @@ export async function renameWorkspace(
     // this file: revalidatePath throws outside an active request/render
     // context (e.g. this action invoked from a test harness). The rename
     // itself already succeeded, so this is not an action failure.
-    console.error(
-      "renameWorkspace: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("renameWorkspace: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   return { ok: true, data: { name: updated.name } };
@@ -1520,7 +1468,7 @@ export async function changeWorkspaceSlug(
     .maybeSingle();
 
   if (lookupError) {
-    console.error("changeWorkspaceSlug: workspace lookup failed:", lookupError);
+    logger.error("changeWorkspaceSlug: workspace lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1550,10 +1498,7 @@ export async function changeWorkspaceSlug(
     .maybeSingle();
 
   if (liveCollisionError) {
-    console.error(
-      "changeWorkspaceSlug: live-slug collision check failed:",
-      liveCollisionError,
-    );
+    logger.error("changeWorkspaceSlug: live-slug collision check failed", { error: liveCollisionError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1576,10 +1521,7 @@ export async function changeWorkspaceSlug(
     .maybeSingle();
 
   if (historyCollisionError) {
-    console.error(
-      "changeWorkspaceSlug: history-slug collision check failed:",
-      historyCollisionError,
-    );
+    logger.error("changeWorkspaceSlug: history-slug collision check failed", { error: historyCollisionError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1613,10 +1555,7 @@ export async function changeWorkspaceSlug(
   );
 
   if (rpcError) {
-    console.error(
-      "changeWorkspaceSlug: change_workspace_slug_atomic RPC failed:",
-      rpcError,
-    );
+    logger.error("changeWorkspaceSlug: change_workspace_slug_atomic RPC failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1626,9 +1565,7 @@ export async function changeWorkspaceSlug(
   const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
   if (!rpcResult?.slug) {
-    console.error(
-      "changeWorkspaceSlug: change_workspace_slug_atomic RPC returned no slug",
-    );
+    logger.error("changeWorkspaceSlug: change_workspace_slug_atomic RPC returned no slug");
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1657,10 +1594,7 @@ export async function changeWorkspaceSlug(
     // changed" reason.
     revalidatePath(`/w/${oldSlug}`, "layout");
   } catch (revalidateError) {
-    console.error(
-      "changeWorkspaceSlug: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("changeWorkspaceSlug: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   return { ok: true, data: { slug: updated.slug } };
@@ -1748,10 +1682,7 @@ export async function uploadWorkspaceLogo(
     .maybeSingle();
 
   if (lookupError) {
-    console.error(
-      "uploadWorkspaceLogo: workspace lookup failed:",
-      lookupError,
-    );
+    logger.error("uploadWorkspaceLogo: workspace lookup failed", { error: lookupError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1789,10 +1720,7 @@ export async function uploadWorkspaceLogo(
     });
 
   if (uploadError) {
-    console.error(
-      "uploadWorkspaceLogo: storage upload failed:",
-      uploadError,
-    );
+    logger.error("uploadWorkspaceLogo: storage upload failed", { error: uploadError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1818,10 +1746,7 @@ export async function uploadWorkspaceLogo(
     .eq("id", parsed.data.workspaceId);
 
   if (updateError) {
-    console.error(
-      "uploadWorkspaceLogo: workspaces update failed:",
-      updateError,
-    );
+    logger.error("uploadWorkspaceLogo: workspaces update failed", { error: updateError });
     // Best-effort cleanup so a failed workspaces update doesn't leave the
     // just-uploaded Storage object orphaned — mirrors uploadAvatar's own
     // post-Storage-success cleanup.
@@ -1848,10 +1773,7 @@ export async function uploadWorkspaceLogo(
   try {
     revalidatePath("/", "layout");
   } catch (revalidateError) {
-    console.error(
-      "uploadWorkspaceLogo: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("uploadWorkspaceLogo: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   return { ok: true, data: { logoUrl } };

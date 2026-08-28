@@ -9,6 +9,7 @@ import {
   updateProfileSchema,
   matchesDeclaredAvatarMimeType,
 } from "@/lib/validation/profile";
+import { logger } from "@/lib/observability/logger";
 
 // Storage bucket + path convention fixed by F121
 // (supabase/migrations/20260818201642_create_avatars_bucket.sql): bucket
@@ -110,7 +111,7 @@ export async function uploadAvatar(
     });
 
   if (uploadError) {
-    console.error("uploadAvatar: storage upload failed:", uploadError);
+    logger.error("uploadAvatar: storage upload failed", { error: uploadError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -141,7 +142,7 @@ export async function uploadAvatar(
     .eq("id", user.id);
 
   if (updateError) {
-    console.error("uploadAvatar: profiles update failed:", updateError);
+    logger.error("uploadAvatar: profiles update failed", { error: updateError });
     // Best-effort cleanup so a failed profiles update doesn't leave the
     // just-uploaded Storage object orphaned — mirrors
     // uploadAttachment's post-Storage-success cleanup pattern in
@@ -163,10 +164,7 @@ export async function uploadAvatar(
     revalidatePath("/", "layout");
   } catch (revalidateError) {
     // Non-fatal cache-freshness rationale, same as uploadAttachment.
-    console.error(
-      "uploadAvatar: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("uploadAvatar: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   return { ok: true, data: { avatarUrl } };
@@ -241,7 +239,7 @@ export async function updateProfile(
     .eq("id", user.id);
 
   if (updateError) {
-    console.error("updateProfile: profiles update failed:", updateError);
+    logger.error("updateProfile: profiles update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -258,10 +256,7 @@ export async function updateProfile(
     revalidatePath("/", "layout");
   } catch (revalidateError) {
     // Non-fatal cache-freshness rationale, same as uploadAvatar.
-    console.error(
-      "updateProfile: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("updateProfile: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 
   return {

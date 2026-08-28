@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F208: mark-read / mark-all-read Server Actions (AS-386, AS-387).
 //
@@ -69,7 +71,7 @@ export async function markNotificationRead(
     .select("id");
 
   if (error) {
-    console.error("markNotificationRead: update failed:", error);
+    logger.error("markNotificationRead: update failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -123,7 +125,7 @@ export async function markAllNotificationsRead(
     .is("read_at", null);
 
   if (error) {
-    console.error("markAllNotificationsRead: update failed:", error);
+    logger.error("markAllNotificationsRead: update failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

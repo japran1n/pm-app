@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F2 (docs/advanced-chat-plan.md): Server Actions for channel creation and
 // membership. Pattern mirrors lib/actions/comments.ts / lib/actions/tasks.ts:
@@ -28,10 +30,7 @@ function revalidateChat() {
     // not the slug used in the /w/[workspaceSlug] route segment.
     revalidatePath("/w", "layout");
   } catch (revalidateError) {
-    console.error(
-      "chat-channels action: revalidatePath failed (non-fatal):",
-      revalidateError,
-    );
+    logger.error("chat-channels action: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 }
 
@@ -142,7 +141,7 @@ export async function createChannel(input: {
   );
 
   if (rpcError || !channelId) {
-    console.error("createChannel: create_channel_atomic RPC failed:", rpcError);
+    logger.error("createChannel: create_channel_atomic RPC failed", { error: rpcError });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -221,7 +220,7 @@ export async function addChannelMember(
     if (insertError.code === "23505") {
       return { ok: true };
     }
-    console.error("addChannelMember: insert failed:", insertError);
+    logger.error("addChannelMember: insert failed", { error: insertError });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -273,7 +272,7 @@ export async function removeChannelMember(
     .eq("user_id", parsed.data.userId);
 
   if (deleteError) {
-    console.error("removeChannelMember: delete failed:", deleteError);
+    logger.error("removeChannelMember: delete failed", { error: deleteError });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 

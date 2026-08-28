@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F211 (AS-391, AS-396): read/write the signed-in user's notification
 // preferences. Pattern mirrors lib/actions/profile.ts's updateProfile:
@@ -97,7 +99,7 @@ export async function getNotificationPreferences(): Promise<GetNotificationPrefe
     .maybeSingle();
 
   if (error) {
-    console.error("getNotificationPreferences: read failed:", error);
+    logger.error("getNotificationPreferences: read failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -184,7 +186,7 @@ export async function updateNotificationPreferences(
     .single();
 
   if (error || !data) {
-    console.error("updateNotificationPreferences: write failed:", error);
+    logger.error("updateNotificationPreferences: write failed", { error: error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

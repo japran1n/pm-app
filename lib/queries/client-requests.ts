@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // C5 team side: the request inbox.
 //
 // Read through the caller's own session, so
@@ -55,7 +57,7 @@ export async function getWorkspaceClientRequests(
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("getWorkspaceClientRequests failed:", error);
+    logger.error("getWorkspaceClientRequests failed", { error: error });
     return [];
   }
 

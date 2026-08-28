@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F226 (AS-422, AS-424): read/write the signed-in user's per-project board
 // view preferences -- swimlane grouping mode and, per grouping mode, which
@@ -58,7 +60,7 @@ export async function getBoardSwimlanePrefs(
     .maybeSingle();
 
   if (error) {
-    console.error("getBoardSwimlanePrefs: read failed:", error);
+    logger.error("getBoardSwimlanePrefs: read failed", { error: error });
     return { ok: false, error: "Could not load your board preferences." };
   }
 
@@ -120,7 +122,7 @@ export async function upsertBoardSwimlanePrefs(
     .maybeSingle();
 
   if (readError) {
-    console.error("upsertBoardSwimlanePrefs: read failed:", readError);
+    logger.error("upsertBoardSwimlanePrefs: read failed", { error: readError });
     return { ok: false, error: "Could not save your board preferences." };
   }
 
@@ -160,7 +162,7 @@ export async function upsertBoardSwimlanePrefs(
     );
 
   if (writeError) {
-    console.error("upsertBoardSwimlanePrefs: write failed:", writeError);
+    logger.error("upsertBoardSwimlanePrefs: write failed", { error: writeError });
     return { ok: false, error: "Could not save your board preferences." };
   }
 

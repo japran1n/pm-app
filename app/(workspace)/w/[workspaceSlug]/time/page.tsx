@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F115 (AS-173, AS-174): per-person time report for the current workspace.
 //
 // Server Component for data-fetching, following SearchPage's convention
@@ -104,7 +106,7 @@ export default async function TimeReportPage({
       getWorkspaceTimeByPerson(workspace.id, startDate, endDate),
     ]);
   } catch (error) {
-    console.error("TimeReportPage: failed to load time report:", error);
+    logger.error("TimeReportPage: failed to load time report", { error: error });
     loadError = true;
   }
 

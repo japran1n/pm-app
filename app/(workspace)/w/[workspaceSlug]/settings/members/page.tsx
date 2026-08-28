@@ -7,6 +7,7 @@ import {
   canViewMembersList,
   type WorkspaceRole,
 } from "@/lib/auth/permissions";
+import { logger } from "@/lib/observability/logger";
 import { InviteMemberForm } from "@/components/invite-member-form";
 import { RevokeInviteButton } from "@/components/revoke-invite-button";
 import { MemberRoleSelect } from "@/components/member-role-select";
@@ -106,7 +107,7 @@ export default async function MembersPage({
     // follows every other page/action's existing convention of
     // console.error rather than introducing a new dependency out of scope
     // for this feature.
-    console.error("MembersPage: failed to load members:", error);
+    logger.error("MembersPage: failed to load members", { error: error });
     loadError = true;
   }
 

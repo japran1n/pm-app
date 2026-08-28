@@ -25,6 +25,7 @@ import {
   type EditTaskUpdates,
   type BulkUpdateTasksUpdates,
 } from "@/lib/validation/tasks";
+import { logger } from "@/lib/observability/logger";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
@@ -471,10 +472,7 @@ async function revalidateWorkspaceForTaskAssignment(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        `${actionLabel}: revalidatePath failed (non-fatal):`,
-        revalidateError,
-      );
+      logger.error(`${actionLabel}: revalidatePath failed (non-fatal)`, { error: revalidateError });
     }
   }
 }
@@ -526,10 +524,7 @@ async function setTaskAssigneesCore(
     .eq("task_id", taskId);
 
   if (currentError) {
-    console.error(
-      "setTaskAssigneesCore: failed to read current assignees:",
-      currentError,
-    );
+    logger.error("setTaskAssigneesCore: failed to read current assignees", { error: currentError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -576,7 +571,7 @@ async function setTaskAssigneesCore(
   );
 
   if (rpcError) {
-    console.error("setTaskAssigneesCore: set_task_assignees_atomic failed:", rpcError);
+    logger.error("setTaskAssigneesCore: set_task_assignees_atomic failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -620,10 +615,7 @@ async function setTaskAssigneesCore(
       );
     }
   } catch (fanoutError) {
-    console.error(
-      "setTaskAssigneesCore: notification fan-out failed (non-fatal):",
-      fanoutError,
-    );
+    logger.error("setTaskAssigneesCore: notification fan-out failed (non-fatal)", { error: fanoutError });
   }
 
   // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record every assignee
@@ -657,10 +649,7 @@ async function setTaskAssigneesCore(
     ];
     await writeTaskFieldChanges(supabase, taskId, changes);
   } catch (activityError) {
-    console.error(
-      "setTaskAssigneesCore: writeTaskFieldChanges failed (non-fatal):",
-      activityError,
-    );
+    logger.error("setTaskAssigneesCore: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
   }
 
   await revalidateWorkspaceForTaskAssignment(
@@ -764,10 +753,7 @@ export async function addTaskAssignee(
     .eq("task_id", parsed.data.taskId);
 
   if (currentError) {
-    console.error(
-      "addTaskAssignee: failed to read current assignees:",
-      currentError,
-    );
+    logger.error("addTaskAssignee: failed to read current assignees", { error: currentError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -811,10 +797,7 @@ export async function removeTaskAssignee(
     .eq("task_id", parsed.data.taskId);
 
   if (currentError) {
-    console.error(
-      "removeTaskAssignee: failed to read current assignees:",
-      currentError,
-    );
+    logger.error("removeTaskAssignee: failed to read current assignees", { error: currentError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1020,10 +1003,7 @@ export async function editTask(
           },
         )) as JSONContent;
       } catch (visibilityError) {
-        console.error(
-          "editTask: mention visibility check failed:",
-          visibilityError,
-        );
+        logger.error("editTask: mention visibility check failed", { error: visibilityError });
         return {
           ok: false,
           error: "Something went wrong saving your changes. Please try again.",
@@ -1139,7 +1119,7 @@ export async function editTask(
         error: "Start date must not be after the due date.",
       };
     }
-    console.error("editTask: update failed:", updateError);
+    logger.error("editTask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1220,17 +1200,11 @@ export async function editTask(
           );
         }
       } catch (fanoutError) {
-        console.error(
-          "editTask: notification fan-out failed (non-fatal):",
-          fanoutError,
-        );
+        logger.error("editTask: notification fan-out failed (non-fatal)", { error: fanoutError });
       }
     }
   } catch (activityError) {
-    console.error(
-      "editTask: writeTaskFieldChanges failed (non-fatal):",
-      activityError,
-    );
+    logger.error("editTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
   }
 
   // F205 (AS-378): "notify only newly added mentions, diffed against the
@@ -1256,10 +1230,7 @@ export async function editTask(
         admin,
       });
     } catch (notifyError) {
-      console.error(
-        "editTask: notifyNewlyMentionedUsers failed (non-fatal):",
-        notifyError,
-      );
+      logger.error("editTask: notifyNewlyMentionedUsers failed (non-fatal)", { error: notifyError });
     }
   }
 
@@ -1274,10 +1245,7 @@ export async function editTask(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "editTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("editTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1470,7 +1438,7 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
   const deleted = cascadeRows?.[0];
 
   if (deleteError || !deleted || !deleted.deleted_at) {
-    console.error("deleteTask: cascade_delete_task failed:", deleteError);
+    logger.error("deleteTask: cascade_delete_task failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1488,10 +1456,7 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "deleteTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("deleteTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1710,7 +1675,7 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
   const updated = restoreRows?.[0];
 
   if (updateError || !updated) {
-    console.error("restoreTask: update failed:", updateError);
+    logger.error("restoreTask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1748,10 +1713,7 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
       { field: "status", oldValue: null, newValue: updated.status },
     ]);
   } catch (activityError) {
-    console.error(
-      "restoreTask: writeTaskFieldChanges failed (non-fatal):",
-      activityError,
-    );
+    logger.error("restoreTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
   }
 
   const { data: workspaceRow } = await admin
@@ -1766,10 +1728,7 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
       revalidatePath(`/w/${workspaceRow.slug}/trash`);
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "restoreTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("restoreTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -1928,7 +1887,7 @@ export async function promoteSubtask(
     .single();
 
   if (updateError || !updated) {
-    console.error("promoteSubtask: update failed:", updateError);
+    logger.error("promoteSubtask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -1946,10 +1905,7 @@ export async function promoteSubtask(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "promoteSubtask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("promoteSubtask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -2091,7 +2047,7 @@ export async function updateTaskTags(
     .single();
 
   if (updateError || !updated) {
-    console.error("updateTaskTags: update failed:", updateError);
+    logger.error("updateTaskTags: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -2109,10 +2065,7 @@ export async function updateTaskTags(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "updateTaskTags: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("updateTaskTags: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -2285,7 +2238,7 @@ export async function moveTaskStatus(
     .single();
 
   if (updateError || !updated) {
-    console.error("moveTaskStatus: update failed:", updateError);
+    logger.error("moveTaskStatus: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -2301,10 +2254,7 @@ export async function moveTaskStatus(
     );
     await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
   } catch (activityError) {
-    console.error(
-      "moveTaskStatus: writeTaskFieldChanges failed (non-fatal):",
-      activityError,
-    );
+    logger.error("moveTaskStatus: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
   }
 
   // F207 (AS-294, AS-382, AS-384): a status change notifies the task's
@@ -2345,10 +2295,7 @@ export async function moveTaskStatus(
       );
     }
   } catch (fanoutError) {
-    console.error(
-      "moveTaskStatus: notification fan-out failed (non-fatal):",
-      fanoutError,
-    );
+    logger.error("moveTaskStatus: notification fan-out failed (non-fatal)", { error: fanoutError });
   }
 
   // F177 (AS-315, AS-320, AS-321): a recurring task that just transitioned
@@ -2385,10 +2332,7 @@ export async function moveTaskStatus(
       // Non-fatal: the status change already succeeded above. Generation
       // is best-effort additive behavior, never a reason to fail the
       // user's completion action.
-      console.error(
-        "moveTaskStatus: generateNextOccurrence failed (non-fatal):",
-        recurrenceError,
-      );
+      logger.error("moveTaskStatus: generateNextOccurrence failed (non-fatal)", { error: recurrenceError });
     }
   }
 
@@ -2403,10 +2347,7 @@ export async function moveTaskStatus(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "moveTaskStatus: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("moveTaskStatus: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -2573,7 +2514,7 @@ export async function reorderTask(
     .single();
 
   if (updateError || !updated) {
-    console.error("reorderTask: update failed:", updateError);
+    logger.error("reorderTask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -2591,10 +2532,7 @@ export async function reorderTask(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "reorderTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("reorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -2776,7 +2714,7 @@ export async function moveAndReorderTask(
     .single();
 
   if (updateError || !updated) {
-    console.error("moveAndReorderTask: update failed:", updateError);
+    logger.error("moveAndReorderTask: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -2797,10 +2735,7 @@ export async function moveAndReorderTask(
       );
       await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
     } catch (activityError) {
-      console.error(
-        "moveAndReorderTask: writeTaskFieldChanges failed (non-fatal):",
-        activityError,
-      );
+      logger.error("moveAndReorderTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
     }
 
     // F306 (D9/FU-3 scrutiny fix, AS-294, AS-382): notify the task's
@@ -2839,10 +2774,7 @@ export async function moveAndReorderTask(
         );
       }
     } catch (fanoutError) {
-      console.error(
-        "moveAndReorderTask: notification fan-out failed (non-fatal):",
-        fanoutError,
-      );
+      logger.error("moveAndReorderTask: notification fan-out failed (non-fatal)", { error: fanoutError });
     }
   }
 
@@ -2857,10 +2789,7 @@ export async function moveAndReorderTask(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "moveAndReorderTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("moveAndReorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -3015,7 +2944,7 @@ export async function getOpenBlockers(
     .eq("blocked_task_id", parsed.data.taskId);
 
   if (blockersError) {
-    console.error("getOpenBlockers: dependency fetch failed:", blockersError);
+    logger.error("getOpenBlockers: dependency fetch failed", { error: blockersError });
     return {
       ok: false,
       error:
@@ -3380,10 +3309,7 @@ export async function getTaskDetail(
   ]);
 
   if (commentsResult.error) {
-    console.error(
-      "getTaskDetail: comments fetch failed:",
-      commentsResult.error,
-    );
+    logger.error("getTaskDetail: comments fetch failed", { error: commentsResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3409,10 +3335,7 @@ export async function getTaskDetail(
       .order("created_at", { ascending: true });
 
     if (reactionsError) {
-      console.error(
-        "getTaskDetail: reactions fetch failed:",
-        reactionsError,
-      );
+      logger.error("getTaskDetail: reactions fetch failed", { error: reactionsError });
       return {
         ok: false,
         error: "Something went wrong loading this task. Please try again.",
@@ -3435,10 +3358,7 @@ export async function getTaskDetail(
   }
 
   if (attachmentsResult.error) {
-    console.error(
-      "getTaskDetail: attachments fetch failed:",
-      attachmentsResult.error,
-    );
+    logger.error("getTaskDetail: attachments fetch failed", { error: attachmentsResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3446,10 +3366,7 @@ export async function getTaskDetail(
   }
 
   if (childrenResult.error) {
-    console.error(
-      "getTaskDetail: children fetch failed:",
-      childrenResult.error,
-    );
+    logger.error("getTaskDetail: children fetch failed", { error: childrenResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3457,10 +3374,7 @@ export async function getTaskDetail(
   }
 
   if (parentResult.error) {
-    console.error(
-      "getTaskDetail: parent fetch failed:",
-      parentResult.error,
-    );
+    logger.error("getTaskDetail: parent fetch failed", { error: parentResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3468,10 +3382,7 @@ export async function getTaskDetail(
   }
 
   if (recurrenceSourceResult.error) {
-    console.error(
-      "getTaskDetail: recurrence source fetch failed:",
-      recurrenceSourceResult.error,
-    );
+    logger.error("getTaskDetail: recurrence source fetch failed", { error: recurrenceSourceResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3479,10 +3390,7 @@ export async function getTaskDetail(
   }
 
   if (checklistResult.error) {
-    console.error(
-      "getTaskDetail: checklist fetch failed:",
-      checklistResult.error,
-    );
+    logger.error("getTaskDetail: checklist fetch failed", { error: checklistResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3490,10 +3398,7 @@ export async function getTaskDetail(
   }
 
   if (blockedByResult.error) {
-    console.error(
-      "getTaskDetail: blocked-by dependencies fetch failed:",
-      blockedByResult.error,
-    );
+    logger.error("getTaskDetail: blocked-by dependencies fetch failed", { error: blockedByResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3501,10 +3406,7 @@ export async function getTaskDetail(
   }
 
   if (blocksResult.error) {
-    console.error(
-      "getTaskDetail: blocks dependencies fetch failed:",
-      blocksResult.error,
-    );
+    logger.error("getTaskDetail: blocks dependencies fetch failed", { error: blocksResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3512,10 +3414,7 @@ export async function getTaskDetail(
   }
 
   if (assigneesResult.error) {
-    console.error(
-      "getTaskDetail: assignees fetch failed:",
-      assigneesResult.error,
-    );
+    logger.error("getTaskDetail: assignees fetch failed", { error: assigneesResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3523,10 +3422,7 @@ export async function getTaskDetail(
   }
 
   if (watchersResult.error) {
-    console.error(
-      "getTaskDetail: watchers fetch failed:",
-      watchersResult.error,
-    );
+    logger.error("getTaskDetail: watchers fetch failed", { error: watchersResult.error });
     return {
       ok: false,
       error: "Something went wrong loading this task. Please try again.",
@@ -3948,10 +3844,7 @@ export async function toggleDescriptionChecklistItem(
     .single();
 
   if (updateError || !updated) {
-    console.error(
-      "toggleDescriptionChecklistItem: update failed:",
-      updateError,
-    );
+    logger.error("toggleDescriptionChecklistItem: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -4206,7 +4099,7 @@ export async function duplicateTask(
     .single();
 
   if (insertError || !inserted) {
-    console.error("duplicateTask: insert failed:", insertError);
+    logger.error("duplicateTask: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -4225,10 +4118,7 @@ export async function duplicateTask(
       p_new_task_id: inserted.id,
     });
     if (atomicError) {
-      console.error(
-        "duplicateTask: duplicate_task_atomic failed:",
-        atomicError,
-      );
+      logger.error("duplicateTask: duplicate_task_atomic failed", { error: atomicError });
       // Roll back the task insert too — don't leave a task with no
       // checklist/assignees.
       await admin.from("tasks").delete().eq("id", inserted.id);
@@ -4270,10 +4160,7 @@ export async function duplicateTask(
           );
         }
       } catch (fanoutError) {
-        console.error(
-          "duplicateTask: notification fan-out failed (non-fatal):",
-          fanoutError,
-        );
+        logger.error("duplicateTask: notification fan-out failed (non-fatal)", { error: fanoutError });
       }
     }
   }
@@ -4289,10 +4176,7 @@ export async function duplicateTask(
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
-      console.error(
-        "duplicateTask: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("duplicateTask: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -4561,7 +4445,7 @@ export async function bulkUpdateTasks(
     .select("id, status, assignee_id, priority, due_date");
 
   if (updateError) {
-    console.error("bulkUpdateTasks: update failed:", updateError);
+    logger.error("bulkUpdateTasks: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -4596,10 +4480,7 @@ export async function bulkUpdateTasks(
       await writeTaskFieldChanges(supabase, row.id as string, changes);
     }
   } catch (activityError) {
-    console.error(
-      "bulkUpdateTasks: writeTaskFieldChanges failed (non-fatal):",
-      activityError,
-    );
+    logger.error("bulkUpdateTasks: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
   }
 
   // F306 (D9/FU-3 scrutiny fix, AS-294, AS-380, AS-382): fan out
@@ -4701,10 +4582,7 @@ export async function bulkUpdateTasks(
       }
     }
   } catch (fanoutError) {
-    console.error(
-      "bulkUpdateTasks: notification fan-out failed (non-fatal):",
-      fanoutError,
-    );
+    logger.error("bulkUpdateTasks: notification fan-out failed (non-fatal)", { error: fanoutError });
   }
 
   for (const workspaceId of distinctWorkspaceIds) {
@@ -4898,7 +4776,7 @@ export async function bulkDeleteTasks(
   );
 
   if (rpcError) {
-    console.error("bulkDeleteTasks: bulk_delete_tasks_atomic failed:", rpcError);
+    logger.error("bulkDeleteTasks: bulk_delete_tasks_atomic failed", { error: rpcError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

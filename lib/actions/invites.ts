@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F016: invite-accept-on-signin (AS-008, AS-009).
 //
 // When a user signs in (magic link), any workspace_members rows that were
@@ -54,10 +56,7 @@ export async function activateInvitedMemberships(
     .is("user_id", null);
 
   if (selectError) {
-    console.error(
-      "activateInvitedMemberships: failed to look up pending invites:",
-      selectError,
-    );
+    logger.error("activateInvitedMemberships: failed to look up pending invites", { error: selectError });
     return [];
   }
 
@@ -84,10 +83,7 @@ export async function activateInvitedMemberships(
   try {
     supabase = await createClient();
   } catch (createClientError) {
-    console.error(
-      "activateInvitedMemberships: createClient failed (non-fatal, audit logging skipped):",
-      createClientError,
-    );
+    logger.error("activateInvitedMemberships: createClient failed (non-fatal, audit logging skipped)", { error: createClientError });
   }
 
   for (const row of pending) {
@@ -103,11 +99,7 @@ export async function activateInvitedMemberships(
       .maybeSingle();
 
     if (updateError) {
-      console.error(
-        "activateInvitedMemberships: failed to activate invite row:",
-        row.id,
-        updateError,
-      );
+      logger.error("activateInvitedMemberships: failed to activate invite row", { inviteId: row.id, error: updateError });
       continue;
     }
 
@@ -164,11 +156,7 @@ export async function activateInvitedMemberships(
         // pair; 23505 (unique_project_user violation) is treated as a
         // harmless no-op rather than logged as a failure.
         if (projectMemberError && projectMemberError.code !== "23505") {
-          console.error(
-            "activateInvitedMemberships: failed to grant guest project access:",
-            row.id,
-            projectMemberError,
-          );
+          logger.error("activateInvitedMemberships: failed to grant guest project access", { inviteId: row.id, error: projectMemberError });
         }
       }
     }

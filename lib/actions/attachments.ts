@@ -8,6 +8,7 @@ import {
   deleteAttachmentSchema,
   getAttachmentSignedUrlSchema,
 } from "@/lib/validation/attachments";
+import { logger } from "@/lib/observability/logger";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -222,10 +223,7 @@ export async function getAttachmentSignedUrl(
     .createSignedUrl(attachmentRow.file_url, SIGNED_URL_TTL_SECONDS);
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
-    console.error(
-      "getAttachmentSignedUrl: signed URL generation failed:",
-      signedUrlError,
-    );
+    logger.error("getAttachmentSignedUrl: signed URL generation failed", { error: signedUrlError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -421,10 +419,7 @@ export async function deleteAttachment(
     .remove([attachmentRow.file_url]);
 
   if (storageError) {
-    console.error(
-      "deleteAttachment: storage removal failed:",
-      storageError,
-    );
+    logger.error("deleteAttachment: storage removal failed", { error: storageError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -443,11 +438,8 @@ export async function deleteAttachment(
     // dangling-reference row (visible/loud on next access), not a
     // silently-accumulating orphaned file — see the AS-114 rationale
     // above. Logged so it is never silent even in this worst case.
-    console.error(
-      "deleteAttachment: row delete failed after storage removal succeeded " +
-        `(attachment ${parsed.data.attachmentId}, path ${attachmentRow.file_url}):`,
-      deleteError,
-    );
+    logger.error("deleteAttachment: row delete failed after storage removal succeeded " +
+        `(attachment ${parsed.data.attachmentId}, path ${attachmentRow.file_url}):`, { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -466,10 +458,7 @@ export async function deleteAttachment(
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as the other actions in
       // this file.
-      console.error(
-        "deleteAttachment: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("deleteAttachment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

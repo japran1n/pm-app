@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F416-F418: read-side for a caller's own personal to-dos. RLS
 // (personal_todos_owner_only) already restricts every row to
 // `user_id = auth.uid()` — no admin client, no extra filter needed here,
@@ -24,7 +26,7 @@ export async function getPersonalTodos(
     .order("position");
 
   if (error) {
-    console.error("getPersonalTodos failed:", error);
+    logger.error("getPersonalTodos failed", { error: error });
     return [];
   }
 

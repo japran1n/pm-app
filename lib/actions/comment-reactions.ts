@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { toggleReactionSchema } from "@/lib/validation/comment-reactions";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
+import { logger } from "@/lib/observability/logger";
 
 // F200: toggle a reaction on a comment (AS-367). Pattern mirrors
 // lib/actions/watchers.ts / lib/actions/comments.ts: Zod-validated input,
@@ -183,7 +184,7 @@ export async function toggleReaction(
       .eq("emoji", row.emoji);
 
     if (deleteError) {
-      console.error("toggleReaction: delete-after-conflict failed:", deleteError);
+      logger.error("toggleReaction: delete-after-conflict failed", { error: deleteError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
@@ -192,7 +193,7 @@ export async function toggleReaction(
 
     reacted = false;
   } else {
-    console.error("toggleReaction: insert failed:", insertError);
+    logger.error("toggleReaction: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -211,10 +212,7 @@ export async function toggleReaction(
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as addComment in
       // lib/actions/comments.ts.
-      console.error(
-        "toggleReaction: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("toggleReaction: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

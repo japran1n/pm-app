@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // F122 (AS-214): shared batched person-summary resolver, extracted so
 // `lib/queries/assignee-names.ts` (task assignees) and `lib/queries/
 // members.ts` (workspace member list) don't each carry their own
@@ -78,7 +80,7 @@ export async function resolvePeople(
     .in("id", ids);
 
   if (profileError) {
-    console.error("resolvePeople: profiles fetch failed:", profileError);
+    logger.error("resolvePeople: profiles fetch failed", { error: profileError });
   }
 
   const profileById = new Map(
@@ -95,7 +97,7 @@ export async function resolvePeople(
         try {
           const { data, error } = await admin.auth.admin.getUserById(id);
           if (error) {
-            console.error("resolvePeople: getUserById failed for", id, error);
+            logger.error("resolvePeople: getUserById failed for", { userId: id, error });
           } else if (data?.user) {
             email = data.user.email ?? null;
             metadataName =
@@ -103,7 +105,7 @@ export async function resolvePeople(
               null;
           }
         } catch (lookupError) {
-          console.error("resolvePeople: getUserById threw for", id, lookupError);
+          logger.error("resolvePeople: getUserById threw for", { userId: id, error: lookupError });
         }
       }
 

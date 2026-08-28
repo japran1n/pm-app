@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // Server Actions for the docs system (W2, docs/docs-system-plan.md).
 //
@@ -28,7 +30,7 @@ function revalidateDocs() {
   } catch (revalidateError) {
     // Non-fatal cache-freshness rationale, same convention as every other
     // action in this codebase (see lib/actions/tasks.ts's createTask etc.).
-    console.error("docs action: revalidatePath failed (non-fatal):", revalidateError);
+    logger.error("docs action: revalidatePath failed (non-fatal)", { error: revalidateError });
   }
 }
 
@@ -73,7 +75,7 @@ export async function createDocFolder(
     .single();
 
   if (error || !data) {
-    console.error("createDocFolder: insert failed:", error);
+    logger.error("createDocFolder: insert failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -102,7 +104,7 @@ export async function renameDocFolder(
     .eq("id", folderId);
 
   if (error) {
-    console.error("renameDocFolder: update failed:", error);
+    logger.error("renameDocFolder: update failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -130,7 +132,7 @@ export async function deleteDocFolder(
     .eq("id", folderId);
 
   if (error) {
-    console.error("deleteDocFolder: delete failed:", error);
+    logger.error("deleteDocFolder: delete failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -164,7 +166,7 @@ export async function moveDocFolder(
     .eq("id", folderId);
 
   if (error) {
-    console.error("moveDocFolder: update failed:", error);
+    logger.error("moveDocFolder: update failed", { error: error });
     // check_doc_folder_scope / doc_folders_no_self_ref last-line-of-defense
     // errors surface here too — mapped to the same generic message since
     // neither should be reachable through normal UI flows.
@@ -207,7 +209,7 @@ export async function createDoc(
     .single();
 
   if (error || !data) {
-    console.error("createDoc: insert failed:", error);
+    logger.error("createDoc: insert failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -244,7 +246,7 @@ export async function updateDoc(
     .eq("id", docId);
 
   if (error) {
-    console.error("updateDoc: update failed:", error);
+    logger.error("updateDoc: update failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -262,7 +264,7 @@ export async function deleteDoc(docId: string): Promise<{ error?: string }> {
   const { error } = await supabase.from("docs").delete().eq("id", docId);
 
   if (error) {
-    console.error("deleteDoc: delete failed:", error);
+    logger.error("deleteDoc: delete failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -291,7 +293,7 @@ export async function moveDoc(
     .eq("id", docId);
 
   if (error) {
-    console.error("moveDoc: update failed:", error);
+    logger.error("moveDoc: update failed", { error: error });
     return { error: "Something went wrong. Please try again in a moment." };
   }
 

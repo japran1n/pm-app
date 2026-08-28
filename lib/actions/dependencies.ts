@@ -9,6 +9,7 @@ import {
   createDependencySchema,
   deleteDependencySchema,
 } from "@/lib/validation/dependencies";
+import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { formatTaskKey, parseTaskKeyQuery } from "@/lib/tasks/task-key";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
@@ -109,10 +110,7 @@ async function revalidateWorkspace(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        `${actionLabel}: revalidatePath failed (non-fatal):`,
-        revalidateError,
-      );
+      logger.error(`${actionLabel}: revalidatePath failed (non-fatal)`, { error: revalidateError });
     }
   }
 }
@@ -234,7 +232,7 @@ export async function createDependency(
       return { ok: false, error: "This dependency already exists." };
     }
 
-    console.error("createDependency: insert failed:", insertError);
+    logger.error("createDependency: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -349,7 +347,7 @@ export async function deleteDependency(
     .eq("id", parsed.data.dependencyId);
 
   if (deleteError) {
-    console.error("deleteDependency: delete failed:", deleteError);
+    logger.error("deleteDependency: delete failed", { error: deleteError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -464,10 +462,7 @@ export async function getDependencyCandidates(
   );
 
   if (closureError) {
-    console.error(
-      "getDependencyCandidates: reachability lookup failed:",
-      closureError,
-    );
+    logger.error("getDependencyCandidates: reachability lookup failed", { error: closureError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -495,10 +490,7 @@ export async function getDependencyCandidates(
     .eq(existingMatchColumn, taskId);
 
   if (existingError) {
-    console.error(
-      "getDependencyCandidates: existing-edge lookup failed:",
-      existingError,
-    );
+    logger.error("getDependencyCandidates: existing-edge lookup failed", { error: existingError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -521,10 +513,7 @@ export async function getDependencyCandidates(
     .is("deleted_at", null);
 
   if (projectsError) {
-    console.error(
-      "getDependencyCandidates: projects lookup failed:",
-      projectsError,
-    );
+    logger.error("getDependencyCandidates: projects lookup failed", { error: projectsError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -603,10 +592,7 @@ export async function getDependencyCandidates(
   const { data: taskRows, error: tasksError } = await candidateQuery;
 
   if (tasksError) {
-    console.error(
-      "getDependencyCandidates: candidate task lookup failed:",
-      tasksError,
-    );
+    logger.error("getDependencyCandidates: candidate task lookup failed", { error: tasksError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Data-fetching for the client portal (C3/C4, docs/client-portal-plan.md).
 //
 // Every query here uses the ordinary RLS-respecting server client, never
@@ -80,7 +82,7 @@ export async function getPortalProjects(
     .order("name");
 
   if (projectsError) {
-    console.error("getPortalProjects: failed to load projects:", projectsError);
+    logger.error("getPortalProjects: failed to load projects", { error: projectsError });
     return [];
   }
   if (!projects?.length) return [];
@@ -102,10 +104,10 @@ export async function getPortalProjects(
     ]);
 
   if (tasksError) {
-    console.error("getPortalProjects: failed to load tasks:", tasksError);
+    logger.error("getPortalProjects: failed to load tasks", { error: tasksError });
   }
   if (statusesError) {
-    console.error("getPortalProjects: failed to load statuses:", statusesError);
+    logger.error("getPortalProjects: failed to load statuses", { error: statusesError });
   }
 
   const categoryByStatusId = new Map<string, StatusCategory>();
@@ -197,7 +199,7 @@ export async function getWorkspaceRoleForCurrentUser(
     .maybeSingle();
 
   if (error) {
-    console.error("getWorkspaceRoleForCurrentUser failed:", error);
+    logger.error("getWorkspaceRoleForCurrentUser failed", { error: error });
     return null;
   }
   return data?.role ?? null;
@@ -250,7 +252,7 @@ export async function getPortalRequests(
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("getPortalRequests failed:", error);
+    logger.error("getPortalRequests failed", { error: error });
     return [];
   }
 

@@ -8,6 +8,7 @@ import {
   KNOWN_AUDIT_ACTIONS,
   getAuditLogPage,
 } from "@/lib/queries/audit";
+import { logger } from "@/lib/observability/logger";
 import { AuditFilters } from "@/components/audit/audit-filters";
 import { AuditTable } from "@/components/audit/audit-table";
 
@@ -97,7 +98,7 @@ export default async function AuditLogPage({
       limit,
     );
   } catch (error) {
-    console.error("AuditLogPage: failed to load audit log:", error);
+    logger.error("AuditLogPage: failed to load audit log", { error: error });
     loadError = true;
   }
 
@@ -118,7 +119,7 @@ export default async function AuditLogPage({
       avatarUrl: member.avatarUrl,
     }));
   } catch (error) {
-    console.error("AuditLogPage: failed to load actor filter options:", error);
+    logger.error("AuditLogPage: failed to load actor filter options", { error: error });
   }
 
   const actionOptions = KNOWN_AUDIT_ACTIONS.map((action) => ({

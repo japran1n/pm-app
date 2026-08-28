@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // C2 team-side half (docs/client-portal-plan.md): the control that decides
 // what a client actually sees.
@@ -101,7 +103,7 @@ export async function setTaskClientVisibility(
     .eq("id", parsed.data.taskId);
 
   if (updateError) {
-    console.error("setTaskClientVisibility: update failed:", updateError);
+    logger.error("setTaskClientVisibility: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -198,7 +200,7 @@ export async function setPendingClientApproval(
     .eq("id", parsed.data.taskId);
 
   if (updateError) {
-    console.error("setPendingClientApproval: update failed:", updateError);
+    logger.error("setPendingClientApproval: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

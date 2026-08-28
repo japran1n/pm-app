@@ -1,3 +1,5 @@
+import { logger } from "@/lib/observability/logger";
+
 // Plain (non-"use server") module holding the shared task-creation
 // implementation. This file MUST NOT carry a "use server" directive: every
 // exported async function inside a "use server" module is auto-registered
@@ -291,7 +293,7 @@ export async function createTaskForUser(
     .single();
 
   if (insertError || !inserted) {
-    console.error("createTaskForUser: insert failed:", insertError);
+    logger.error("createTaskForUser: insert failed", { error: insertError });
     // F149: the app-level parent checks above already cover the common
     // cases, but a race (parent deleted/re-parented between the check and
     // this insert) can still hit enforce_task_parent_rules()'s trigger
@@ -350,16 +352,10 @@ export async function createTaskForUser(
           );
         }
       } catch (fanoutError) {
-        console.error(
-          "createTaskForUser: notification fan-out failed (non-fatal):",
-          fanoutError,
-        );
+        logger.error("createTaskForUser: notification fan-out failed (non-fatal)", { error: fanoutError });
       }
     } else {
-      console.error(
-        "createTaskForUser: no notifyClient supplied, skipping task_assigned fan-out (non-fatal):",
-        { taskId: inserted.id },
-      );
+      logger.error("createTaskForUser: no notifyClient supplied, skipping task_assigned fan-out (non-fatal)", { taskId: inserted.id });
     }
   }
 
@@ -378,10 +374,7 @@ export async function createTaskForUser(
       // request/render context (e.g. this action invoked from a test
       // harness). The insert itself already succeeded, so this is not an
       // action failure.
-      console.error(
-        "createTaskForUser: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("createTaskForUser: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 

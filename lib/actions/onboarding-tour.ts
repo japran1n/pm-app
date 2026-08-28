@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F253 (AS-491, AS-492, AS-493): the signed-in user's first-run guided
 // tour state. `profiles.tour_completed_at` is the single source of truth
@@ -40,7 +42,7 @@ export async function getTourStatus(): Promise<GetTourStatusResult> {
     .maybeSingle();
 
   if (error) {
-    console.error("getTourStatus: read failed:", error);
+    logger.error("getTourStatus: read failed", { error: error });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
@@ -91,7 +93,7 @@ async function writeTourCompletedAt(
     .eq("id", user.id);
 
   if (error) {
-    console.error("writeTourCompletedAt: write failed:", error);
+    logger.error("writeTourCompletedAt: write failed", { error: error });
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 

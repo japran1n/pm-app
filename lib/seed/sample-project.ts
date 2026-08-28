@@ -1,4 +1,6 @@
 "use server";
+import { logger } from "@/lib/observability/logger";
+
 
 // F254 (AS-494): "A brand-new workspace offers to create a sample project so
 // the app is not empty on first login."
@@ -163,11 +165,7 @@ export async function createSampleProject(
     );
 
     if (!created.ok) {
-      console.error(
-        "createSampleProject: sample task creation failed (skipping this task):",
-        task.title,
-        created.error,
-      );
+      logger.error("createSampleProject: sample task creation failed (skipping this task)", { taskTitle: task.title, error: created.error });
       continue;
     }
 
@@ -185,10 +183,7 @@ export async function createSampleProject(
         "Confirm the goals and scope with the team",
       );
       if (!checklistResult.ok) {
-        console.error(
-          "createSampleProject: sample checklist item failed (non-fatal):",
-          checklistResult.error,
-        );
+        logger.error("createSampleProject: sample checklist item failed (non-fatal)", { error: checklistResult.error });
       }
 
       const secondChecklistResult = await addChecklistItem(
@@ -196,10 +191,7 @@ export async function createSampleProject(
         "List who needs to sign off",
       );
       if (!secondChecklistResult.ok) {
-        console.error(
-          "createSampleProject: sample checklist item failed (non-fatal):",
-          secondChecklistResult.error,
-        );
+        logger.error("createSampleProject: sample checklist item failed (non-fatal)", { error: secondChecklistResult.error });
       }
 
       const commentResult = await addComment(
@@ -207,10 +199,7 @@ export async function createSampleProject(
         "Welcome! This is a sample task — edit it, check things off, or delete the whole project whenever you're ready.",
       );
       if (!commentResult.ok) {
-        console.error(
-          "createSampleProject: sample comment failed (non-fatal):",
-          commentResult.error,
-        );
+        logger.error("createSampleProject: sample comment failed (non-fatal)", { error: commentResult.error });
       }
     }
   }

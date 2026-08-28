@@ -10,6 +10,7 @@ import {
   editProjectSchema,
   restoreProjectSchema,
 } from "@/lib/validation/projects";
+import { logger } from "@/lib/observability/logger";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -134,7 +135,7 @@ export async function createProject(
     .single();
 
   if (insertError || !inserted) {
-    console.error("createProject: insert failed:", insertError);
+    logger.error("createProject: insert failed", { error: insertError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -163,10 +164,7 @@ export async function createProject(
       // revalidatePath throws outside an active request/render context (e.g.
       // this action invoked from a test harness). The insert itself already
       // succeeded, so this is not an action failure.
-      console.error(
-        "createProject: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("createProject: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -323,7 +321,7 @@ export async function editProject(
     .single();
 
   if (updateError || !updated) {
-    console.error("editProject: update failed:", updateError);
+    logger.error("editProject: update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -348,10 +346,7 @@ export async function editProject(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "editProject: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("editProject: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -516,7 +511,7 @@ export async function archiveProject(
   }
 
   if (updateError || !updated) {
-    console.error("archiveProject: soft-delete update failed:", updateError);
+    logger.error("archiveProject: soft-delete update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -540,10 +535,7 @@ export async function archiveProject(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "archiveProject: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("archiveProject: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
@@ -694,7 +686,7 @@ export async function restoreProject(
   }
 
   if (updateError || !updated) {
-    console.error("restoreProject: restore update failed:", updateError);
+    logger.error("restoreProject: restore update failed", { error: updateError });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
@@ -728,10 +720,7 @@ export async function restoreProject(
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
     } catch (revalidateError) {
-      console.error(
-        "restoreProject: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
+      logger.error("restoreProject: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
   }
 
