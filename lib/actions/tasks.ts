@@ -561,41 +561,29 @@ async function setTaskAssigneesCore(
     };
   }
 
-  if (toRemove.length > 0) {
-    const { error: deleteError } = await admin
-      .from("task_assignees")
-      .delete()
-      .eq("task_id", taskId)
-      .in("user_id", toRemove);
+  // Atomic: DELETE removed assignees + INSERT added assignees + recompute
+  // the `tasks.assignee_id` mirror all happen inside a single Postgres
+  // function/transaction, so a failure partway through can never leave
+  // the task with a stripped or partial assignee set (see migration
+  // 20260905050000_set_task_assignees_atomic.sql).
+  const { data: mirrorResult, error: rpcError } = await admin.rpc(
+    "set_task_assignees_atomic",
+    {
+      p_task_id: taskId,
+      p_desired_user_ids: desiredUserIds,
+      p_assigned_by: userId,
+    },
+  );
 
-    if (deleteError) {
-      console.error("setTaskAssigneesCore: delete failed:", deleteError);
-      return {
-        ok: false,
-        error: "Something went wrong. Please try again in a moment.",
-      };
-    }
+  if (rpcError) {
+    console.error("setTaskAssigneesCore: set_task_assignees_atomic failed:", rpcError);
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
   }
 
-  if (toAdd.length > 0) {
-    const { error: insertError } = await admin.from("task_assignees").insert(
-      toAdd.map((id) => ({
-        task_id: taskId,
-        user_id: id,
-        assigned_by: userId,
-      })),
-    );
-
-    if (insertError) {
-      console.error("setTaskAssigneesCore: insert failed:", insertError);
-      return {
-        ok: false,
-        error: "Something went wrong. Please try again in a moment.",
-      };
-    }
-  }
-
-  const mirror = await syncMirrorAssigneeId(admin, taskId);
+  const mirror = (mirrorResult as string | null) ?? null;
 
   // F207 (AS-380, AS-384): notify every newly-added assignee
   // (`toAdd` — never a re-notify of someone already assigned, and never

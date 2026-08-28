@@ -1824,6 +1824,14 @@ export type Database = {
           slug: string
         }[]
       }
+      set_task_assignees_atomic: {
+        Args: {
+          p_assigned_by: string
+          p_desired_user_ids: string[]
+          p_task_id: string
+        }
+        Returns: string
+      }
       derive_project_key_base: { Args: { p_name: string }; Returns: string }
       generate_due_recurring_occurrences: { Args: never; Returns: number }
       generate_unique_project_key: {
