@@ -28,7 +28,7 @@ SET search_path = public
 AS $$
   SELECT t.project_id, count(*) AS open_count
   FROM tasks t
-  JOIN project_statuses ps ON ps.id = t.status
+  JOIN project_statuses ps ON ps.id = t.status_id
   WHERE t.project_id = ANY(project_ids)
     AND t.deleted_at IS NULL
     AND ps.category != 'done'
