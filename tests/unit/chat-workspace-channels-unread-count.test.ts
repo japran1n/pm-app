@@ -1,7 +1,9 @@
-// F5 (docs/advanced-chat-plan.md): unit tests for getWorkspaceChannels'
-// unread_count computation -- messages with created_at strictly after the
-// caller's channel_members.last_read_at count as unread, per channel,
-// via one aggregate messages query (no N+1 per channel).
+// F5/W3 (docs/advanced-chat-plan.md): unit tests for getWorkspaceChannels'
+// unread_count and lastMessageAt computation -- both are now sourced from a
+// single `get_chat_channel_summaries` RPC round-trip (W3 fix for two
+// provably-wrong client-side queries: an unfiltered "since epoch" unread
+// query, and a globally-ordered "top N*2 messages" latest-message query that
+// could starve every channel except the busiest one).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -27,19 +29,9 @@ function makeChannelsQuery(channelRows: Row[]) {
   };
 }
 
-function makeMessagesQuery(messageRows: Row[]) {
-  return {
-    select: vi.fn(() => ({
-      in: vi.fn(() => ({
-        order: vi.fn(async () => ({ data: messageRows, error: null })),
-      })),
-    })),
-  };
-}
-
 let memberRows: Row[];
 let channelRows: Row[];
-let messageRows: Row[];
+let summaryRows: Row[];
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
@@ -49,8 +41,13 @@ vi.mock("@/lib/supabase/server", () => ({
     from: vi.fn((table: string) => {
       if (table === "channel_members") return makeChannelMembersQuery(memberRows);
       if (table === "channels") return makeChannelsQuery(channelRows);
-      if (table === "messages") return makeMessagesQuery(messageRows);
       throw new Error(`unexpected table ${table}`);
+    }),
+    rpc: vi.fn(async (fnName: string) => {
+      if (fnName === "get_chat_channel_summaries") {
+        return { data: summaryRows, error: null };
+      }
+      throw new Error(`unexpected rpc ${fnName}`);
     }),
   })),
 }));
@@ -67,9 +64,7 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
   });
 
   it("test_AS_unread_count_counts_only_messages_after_the_caller_last_read_at", async () => {
-    memberRows = [
-      { channel_id: "chan-1", last_read_at: "2026-08-27T10:00:00.000Z" },
-    ];
+    memberRows = [{ channel_id: "chan-1" }];
     channelRows = [
       {
         id: "chan-1",
@@ -80,10 +75,15 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
         created_at: "2026-08-01T00:00:00.000Z",
       },
     ];
-    messageRows = [
-      { channel_id: "chan-1", created_at: "2026-08-27T11:00:00.000Z" }, // after -> unread
-      { channel_id: "chan-1", created_at: "2026-08-27T12:00:00.000Z" }, // after -> unread
-      { channel_id: "chan-1", created_at: "2026-08-27T09:00:00.000Z" }, // before -> read
+    // The RPC itself is responsible for comparing message created_at against
+    // channel_members.last_read_at server-side; this test asserts the query
+    // layer correctly surfaces whatever the RPC returns.
+    summaryRows = [
+      {
+        channel_id: "chan-1",
+        last_message_at: "2026-08-27T12:00:00.000Z",
+        unread_count: 2,
+      },
     ];
 
     const result = await getWorkspaceChannels("ws-1");
@@ -93,9 +93,7 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
   });
 
   it("test_AS_unread_count_is_zero_when_every_message_predates_last_read_at", async () => {
-    memberRows = [
-      { channel_id: "chan-1", last_read_at: "2026-08-27T23:00:00.000Z" },
-    ];
+    memberRows = [{ channel_id: "chan-1" }];
     channelRows = [
       {
         id: "chan-1",
@@ -106,8 +104,12 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
         created_at: "2026-08-01T00:00:00.000Z",
       },
     ];
-    messageRows = [
-      { channel_id: "chan-1", created_at: "2026-08-27T11:00:00.000Z" },
+    summaryRows = [
+      {
+        channel_id: "chan-1",
+        last_message_at: "2026-08-27T11:00:00.000Z",
+        unread_count: 0,
+      },
     ];
 
     const result = await getWorkspaceChannels("ws-1");
@@ -116,10 +118,7 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
   });
 
   it("test_AS_unread_count_is_computed_independently_per_channel", async () => {
-    memberRows = [
-      { channel_id: "chan-1", last_read_at: "2026-08-27T10:00:00.000Z" },
-      { channel_id: "chan-2", last_read_at: "2026-08-27T10:00:00.000Z" },
-    ];
+    memberRows = [{ channel_id: "chan-1" }, { channel_id: "chan-2" }];
     channelRows = [
       {
         id: "chan-1",
@@ -138,9 +137,9 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
         created_at: "2026-08-01T00:00:00.000Z",
       },
     ];
-    messageRows = [
-      { channel_id: "chan-1", created_at: "2026-08-27T11:00:00.000Z" },
-      { channel_id: "chan-2", created_at: "2026-08-27T09:00:00.000Z" },
+    summaryRows = [
+      { channel_id: "chan-1", last_message_at: "2026-08-27T11:00:00.000Z", unread_count: 1 },
+      { channel_id: "chan-2", last_message_at: "2026-08-27T09:00:00.000Z", unread_count: 0 },
     ];
 
     const result = await getWorkspaceChannels("ws-1");
@@ -148,5 +147,77 @@ describe("getWorkspaceChannels unread_count (F5)", () => {
 
     expect(byId.get("chan-1")).toBe(1);
     expect(byId.get("chan-2")).toBe(0);
+  });
+
+  it("test_AS_last_message_at_is_reported_per_channel_even_when_one_channel_owns_the_most_recent_messages", async () => {
+    // Bug 2 regression: a globally-ordered "top N*2 rows" query would let a
+    // single busy channel (chan-busy) own every row in the result set,
+    // starving chan-quiet-1/2/3 of a lastMessageAt entirely. The RPC (DISTINCT
+    // ON per channel_id) must report every channel's own most recent message
+    // regardless of how many messages other channels have.
+    memberRows = [
+      { channel_id: "chan-busy" },
+      { channel_id: "chan-quiet-1" },
+      { channel_id: "chan-quiet-2" },
+      { channel_id: "chan-quiet-3" },
+    ];
+    channelRows = [
+      {
+        id: "chan-busy",
+        workspace_id: "ws-1",
+        project_id: null,
+        kind: "channel",
+        name: "busy",
+        created_at: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        id: "chan-quiet-1",
+        workspace_id: "ws-1",
+        project_id: null,
+        kind: "channel",
+        name: "quiet-1",
+        created_at: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        id: "chan-quiet-2",
+        workspace_id: "ws-1",
+        project_id: null,
+        kind: "channel",
+        name: "quiet-2",
+        created_at: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        id: "chan-quiet-3",
+        workspace_id: "ws-1",
+        project_id: null,
+        kind: "channel",
+        name: "quiet-3",
+        created_at: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    // chan-busy owns the most recent message in the whole workspace, but
+    // every quiet channel still has its own (older, but real) last message.
+    summaryRows = [
+      { channel_id: "chan-busy", last_message_at: "2026-08-27T23:59:00.000Z", unread_count: 0 },
+      { channel_id: "chan-quiet-1", last_message_at: "2026-08-20T10:00:00.000Z", unread_count: 0 },
+      { channel_id: "chan-quiet-2", last_message_at: "2026-08-19T10:00:00.000Z", unread_count: 0 },
+      { channel_id: "chan-quiet-3", last_message_at: "2026-08-18T10:00:00.000Z", unread_count: 0 },
+    ];
+
+    const result = await getWorkspaceChannels("ws-1");
+    const byId = new Map(result.map((r) => [r.id, r.lastMessageAt]));
+
+    expect(byId.get("chan-busy")).toBe("2026-08-27T23:59:00.000Z");
+    expect(byId.get("chan-quiet-1")).toBe("2026-08-20T10:00:00.000Z");
+    expect(byId.get("chan-quiet-2")).toBe("2026-08-19T10:00:00.000Z");
+    expect(byId.get("chan-quiet-3")).toBe("2026-08-18T10:00:00.000Z");
+
+    // Sidebar activity ordering: most-recently-active channel first.
+    expect(result.map((r) => r.id)).toEqual([
+      "chan-busy",
+      "chan-quiet-1",
+      "chan-quiet-2",
+      "chan-quiet-3",
+    ]);
   });
 });

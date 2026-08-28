@@ -172,12 +172,14 @@ export async function getWorkspaceChannels(
 ): Promise<WorkspaceChannelRow[]> {
   const supabase = await createClient();
 
-  // F5: last_read_at is fetched alongside channel_id here (not a separate
-  // query) -- it's the read-cursor the unread-count computation below
-  // compares each message's created_at against.
+  // F5/W3: last_read_at itself is no longer read here -- the summary RPC
+  // below re-derives it from the caller's own channel_members row via
+  // auth.uid() (security definer), which is also the access boundary that
+  // stops one user from reading another user's read-cursor. This query
+  // only needs the set of channel ids the caller belongs to.
   const { data: memberRows, error: memberError } = await supabase
     .from("channel_members")
-    .select("channel_id, last_read_at")
+    .select("channel_id")
     .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
 
   if (memberError) {
@@ -188,11 +190,6 @@ export async function getWorkspaceChannels(
   const channelIds = (memberRows ?? []).map((row) => row.channel_id);
   if (channelIds.length === 0) {
     return [];
-  }
-
-  const lastReadAtByChannel = new Map<string, string>();
-  for (const row of memberRows ?? []) {
-    lastReadAtByChannel.set(row.channel_id, row.last_read_at);
   }
 
   const { data: channelRows, error: channelError } = await supabase
@@ -206,60 +203,34 @@ export async function getWorkspaceChannels(
     return [];
   }
 
-  // Two targeted queries instead of one unbounded fetch of all message rows:
-  // 1. Latest message per channel (for sidebar "last activity" sort) — limit 1
-  //    per channel via a high per-channel limit; only created_at needed.
-  // 2. Unread messages since last_read_at per channel — filtered server-side.
+  // W3: last-message-per-channel and unread-count-per-channel are both
+  // computed in a single RPC round-trip (`get_chat_channel_summaries`)
+  // rather than fetching message rows into JS. PostgREST can't express
+  // `DISTINCT ON`, and a global `order + limit` (the old approach) doesn't
+  // guarantee one row per channel; a naive unread query without a
+  // real per-channel date filter can also silently truncate under
+  // PostgREST's max-rows cap. The RPC derives the caller's own channels
+  // and last_read_at from auth.uid() internally (security definer), so it
+  // cannot be used to read another user's read-cursor.
   const channelIdList = channelRows.map((c) => c.id);
 
   const lastMessageAtByChannel = new Map<string, string>();
   const unreadCountByChannel = new Map<string, number>();
 
-  // Fetch only the most-recent message per channel (created_at DESC, limit 1
-  // per channel). PostgREST does not support DISTINCT ON, so we fetch the
-  // top-N rows and pick the first per channel in JS — the limit (channelIds *
-  // 1) means we get at most one row per channel after sorting.
-  const [{ data: recentMessages, error: latestError }, { data: unreadMessages, error: unreadError }] =
-    await Promise.all([
-      supabase
-        .from("messages")
-        .select("channel_id, created_at")
-        .in("channel_id", channelIdList)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(channelIdList.length * 2),
-      // Unread messages: only rows newer than the caller's last_read_at per channel.
-      // Uses the per-channel lastReadAt already resolved above; filter server-side
-      // via a max(last_read_at) across all membership rows.
-      supabase
-        .from("messages")
-        .select("channel_id, created_at")
-        .in("channel_id", channelIdList)
-        .is("deleted_at", null)
-        .gt("created_at", new Date(0).toISOString()), // base filter; refined per-channel below
-    ]);
+  const { data: summaries, error: summaryError } = await supabase.rpc(
+    "get_chat_channel_summaries",
+    { p_channel_ids: channelIdList },
+  );
 
-  if (latestError) {
-    console.error("getWorkspaceChannels: latest-message query failed:", latestError);
-  }
-  if (unreadError) {
-    console.error("getWorkspaceChannels: unread query failed:", unreadError);
+  if (summaryError) {
+    console.error("getWorkspaceChannels: channel summary RPC failed:", summaryError);
   }
 
-  for (const row of recentMessages ?? []) {
-    if (!lastMessageAtByChannel.has(row.channel_id)) {
-      lastMessageAtByChannel.set(row.channel_id, row.created_at);
+  for (const row of summaries ?? []) {
+    if (row.last_message_at) {
+      lastMessageAtByChannel.set(row.channel_id, row.last_message_at);
     }
-  }
-
-  for (const row of unreadMessages ?? []) {
-    const lastReadAt = lastReadAtByChannel.get(row.channel_id);
-    if (lastReadAt && row.created_at > lastReadAt) {
-      unreadCountByChannel.set(
-        row.channel_id,
-        (unreadCountByChannel.get(row.channel_id) ?? 0) + 1,
-      );
-    }
+    unreadCountByChannel.set(row.channel_id, Number(row.unread_count ?? 0));
   }
 
   return channelRows

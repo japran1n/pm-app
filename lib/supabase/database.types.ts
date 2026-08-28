@@ -1765,6 +1765,14 @@ export type Database = {
               id: string
             }[]
           }
+      get_chat_channel_summaries: {
+        Args: { p_channel_ids: string[] }
+        Returns: {
+          channel_id: string
+          last_message_at: string | null
+          unread_count: number
+        }[]
+      }
       create_notification: {
         Args: {
           p_actor_id?: string
