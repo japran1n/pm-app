@@ -347,12 +347,6 @@ export async function sendMessage(
   });
 
   if (!parsed.success) {
-    console.error(
-      "[sendMessage] Zod validation failed. channelId received:",
-      JSON.stringify(channelId),
-      "type:", typeof channelId,
-      "issues:", JSON.stringify(parsed.error.issues),
-    );
     return {
       ok: false,
       error: parsed.error.issues[0]?.message ?? "Enter a valid message.",

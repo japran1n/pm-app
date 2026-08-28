@@ -11,6 +11,13 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// chat-messages.ts imports getThreadMessages from lib/queries/chat.ts, which
+// is `import "server-only"` -- not resolvable in this plain-node Vitest
+// environment. Mirrors the same mock already used by
+// tests/unit/chat-workspace-channels-unread-count.test.ts for the identical
+// reason.
+vi.mock("server-only", () => ({}));
+
 const CHANNEL_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_USER_ID = "33333333-3333-4333-8333-333333333333";

@@ -107,10 +107,19 @@ describe("ProjectNavList (F262)", () => {
       }),
     );
 
+    // Per commit 94c95a9: the redundant inner `max-h-64` cap on the `<nav>`
+    // itself was removed (it forced a scrollbar for as few as 4-5 projects
+    // even with free space below). AS-512's actual mechanism is the outer
+    // CollapsibleContent wrapper's own `min-h-0 overflow-y-auto`, which is
+    // what bounds this section within the sidebar's remaining flex space --
+    // assert against that real scroll container instead of the inner `<nav>`.
     const list = container.querySelector('nav[aria-label="Projects"]');
     expect(list).toBeTruthy();
-    expect(list?.className).toContain("overflow-y-auto");
-    expect(list?.className).toContain("max-h-");
+
+    const scrollContainer = list?.closest('[class*="overflow-y-auto"]');
+    expect(scrollContainer).toBeTruthy();
+    expect(scrollContainer?.className).toContain("overflow-y-auto");
+    expect(scrollContainer?.className).toContain("min-h-0");
   });
 
   it("AS-513: zero projects shows a create-project action inline, not just empty space", () => {

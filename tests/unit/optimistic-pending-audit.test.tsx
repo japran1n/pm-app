@@ -44,9 +44,10 @@ vi.mock("sonner", () => ({
   },
 }));
 
-// window.confirm is used by RemoveMemberButton before it ever calls the
-// action — auto-confirm for these tests.
-vi.stubGlobal("confirm", vi.fn(() => true));
+// RemoveMemberButton no longer uses window.confirm -- it now opens a shadcn
+// AlertDialog for confirmation (components/remove-member-button.tsx), so
+// tests below click through the dialog's "Remove" action button instead of
+// stubbing window.confirm.
 
 afterEach(() => {
   cleanup();
@@ -120,6 +121,9 @@ describe("F256 AS-498: a failed mutation rolls back and explains what failed", (
 
     const button = screen.getByRole("button", { name: /remove jane doe/i });
     fireEvent.click(button);
+
+    const confirmButton = await screen.findByRole("button", { name: /^remove$/i });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => expect(removeMemberMock).toHaveBeenCalledTimes(1));
 
