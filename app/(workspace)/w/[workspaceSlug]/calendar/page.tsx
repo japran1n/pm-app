@@ -75,18 +75,26 @@ export default async function CalendarPage({
   } = await searchParams;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  // RLS-scoped lookup (workspaces_select_active_members) -- same
-  // "reaching this route already means the caller is an active member"
-  // fallback pattern the My Tasks page uses one level up.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  // Perf (W9): auth, the workspace-by-slug lookup, and the caller's
+  // timezone are independent of each other once `supabase` exists.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+    timezone,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    // RLS-scoped lookup (workspaces_select_active_members) -- same
+    // "reaching this route already means the caller is an active member"
+    // fallback pattern the My Tasks page uses one level up.
+    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+    // F124/AS-450: the viewer's timezone -- both which month opens by
+    // default AND which day cell is "today" depend on it, same
+    // "resolve once, thread down" convention the My Tasks page follows.
+    getCurrentUserTimezone(supabase),
+  ]);
 
   if (!workspace || !user) {
     return (
@@ -95,11 +103,6 @@ export default async function CalendarPage({
       </p>
     );
   }
-
-  // F124/AS-450: the viewer's timezone is resolved first -- both which
-  // month opens by default AND which day cell is "today" depend on it,
-  // same "resolve once, thread down" convention the My Tasks page follows.
-  const timezone = await getCurrentUserTimezone(supabase);
 
   const parsed = parseMonthKey(monthParam);
   const { year, month } = parsed ?? currentMonthKey(timezone);
@@ -112,10 +115,14 @@ export default async function CalendarPage({
   // are RLS-scoped (private projects/their columns never appear here for
   // a caller who can't see them, same visibility posture as the grid
   // query itself).
-  const [statusOptions, projects, workspaceMembers] = await Promise.all([
+  // Perf (W9): undatedCount is also batched in here -- it only depends on
+  // `workspace.id`, same as the other three, not on the resolved filters
+  // below.
+  const [statusOptions, projects, workspaceMembers, undatedCount] = await Promise.all([
     getWorkspaceStatusOptions(workspace.id),
     getWorkspaceProjects(workspace.id),
     getWorkspaceMembers(workspace.id),
+    getUndatedTaskCount(workspace.id),
   ]);
 
   const { filters } = resolveCalendarFilters(
@@ -142,7 +149,7 @@ export default async function CalendarPage({
   // UNFILTERED by F235's own filters (out of this feature's own scope --
   // see this feature's handoff "Out-of-scope work needed"): it explains
   // an absence that has nothing to do with which filters are active.
-  const undatedCount = await getUndatedTaskCount(workspace.id);
+  // (Fetched above, batched with the other workspace.id-only queries.)
 
   const tasksByDate = new Map<string, CalendarTask[]>();
   for (const task of tasks) {

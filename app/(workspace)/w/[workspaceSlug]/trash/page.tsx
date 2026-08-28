@@ -52,19 +52,22 @@ export default async function TrashPage({
   const resolvedSearchParams = await searchParams;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+
+  // Perf (W9): auth and the workspace-by-slug lookup are independent of
+  // each other.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
+  ]);
 
   if (!user) {
     redirect("/sign-in");
   }
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
 
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
@@ -72,13 +75,31 @@ export default async function TrashPage({
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  let allItems: Awaited<ReturnType<typeof getWorkspaceTrash>> = [];
+  let loadError = false;
+
+  // Perf (W9): the caller's membership role and the trash list both
+  // depend only on `workspace.id`/`user.id` (already known), not on each
+  // other -- fetched in parallel. The guest redirect below still runs
+  // before anything is rendered, so a guest never sees this page's
+  // content even though the (cheap, RLS-scoped) trash query already ran
+  // alongside the role check.
+  const [{ data: ownMembership }, trashResult] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    getWorkspaceTrash(workspace.id).then(
+      (items) => ({ items, error: null as unknown }),
+      (error) => {
+        logger.error("TrashPage: failed to load trash", { error: error });
+        return { items: [] as Awaited<ReturnType<typeof getWorkspaceTrash>>, error };
+      },
+    ),
+  ]);
 
   const role = ownMembership?.role ?? "guest";
 
@@ -86,15 +107,8 @@ export default async function TrashPage({
     redirect(`/w/${workspaceSlug}`);
   }
 
-  let allItems: Awaited<ReturnType<typeof getWorkspaceTrash>> = [];
-  let loadError = false;
-
-  try {
-    allItems = await getWorkspaceTrash(workspace.id);
-  } catch (error) {
-    logger.error("TrashPage: failed to load trash", { error: error });
-    loadError = true;
-  }
+  allItems = trashResult.items;
+  loadError = trashResult.error !== null;
 
   const typeFilter = resolvedSearchParams.type;
   const items =

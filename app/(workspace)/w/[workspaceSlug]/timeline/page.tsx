@@ -97,18 +97,28 @@ export default async function TimelinePage({
   const zoom: TimelineZoomLevel = resolveTimelineZoom(zoomParam);
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  // RLS-scoped lookup (workspaces_select_active_members) -- same
-  // "reaching this route already means the caller is an active member"
-  // fallback pattern the calendar/My Tasks pages use.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  // Perf (W9): auth, the workspace-by-slug lookup, and the caller's
+  // timezone are all independent of each other once `supabase` exists --
+  // none reads a value the others produce -- so they run as one parallel
+  // batch instead of three serial round-trips.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+    timezone,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    // RLS-scoped lookup (workspaces_select_active_members) -- same
+    // "reaching this route already means the caller is an active member"
+    // fallback pattern the calendar/My Tasks pages use.
+    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+    // AS-457: "today" for the timeline's own line is resolved from the
+    // SAME per-user timezone helper the calendar/My Tasks/overdue badge
+    // already share -- never a second "what day is it" implementation.
+    getCurrentUserTimezone(supabase),
+  ]);
 
   if (!workspace || !user) {
     return (
@@ -118,10 +128,6 @@ export default async function TimelinePage({
     );
   }
 
-  // AS-457: "today" for the timeline's own line is resolved from the
-  // SAME per-user timezone helper the calendar/My Tasks/overdue badge
-  // already share -- never a second "what day is it" implementation.
-  const timezone = await getCurrentUserTimezone(supabase);
   const today = todayInTimeZone(timezone);
 
   const parsed = parseMonthKey(monthParam);
@@ -133,8 +139,12 @@ export default async function TimelinePage({
   const { start, end } = timelineRangeForZoom(year, month, zoom);
   const pixelsPerDay = PIXELS_PER_DAY_BY_ZOOM[zoom];
 
-  const tasks = await getTimelineTasks(workspace.id, start, end);
-  const undatedCount = await getUndatedTimelineTaskCount(workspace.id);
+  // Both depend only on `workspace.id` (known already), not on each
+  // other's result -- parallel batch.
+  const [tasks, undatedCount] = await Promise.all([
+    getTimelineTasks(workspace.id, start, end),
+    getUndatedTimelineTaskCount(workspace.id),
+  ]);
 
   const prev = previousMonthKey(year, month);
   const next = nextMonthKey(year, month);

@@ -29,19 +29,22 @@ export default async function ProjectColumnsSettingsPage({
   const { workspaceSlug, projectId } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+
+  // Perf (W9): auth and the workspace-by-slug lookup are independent of
+  // each other -- neither reads a value the other produces.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
+  ]);
 
   if (!user) {
     redirect("/sign-in");
   }
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
 
   if (!workspace) {
     redirect("/onboarding");
@@ -59,34 +62,43 @@ export default async function ProjectColumnsSettingsPage({
     notFound();
   }
 
-  const { data: ownWorkspaceMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const { data: ownProjectMembership } = await supabase
-    .from("project_members")
-    .select("project_role")
-    .eq("project_id", project.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // Perf (W9): the caller's workspace role, project role, and the
+  // project's own columns each depend only on ids already resolved above
+  // (workspace.id, project.id, user.id) -- none depends on another's
+  // result -- so all three run as one parallel batch instead of three
+  // serial round-trips.
+  const [
+    { data: ownWorkspaceMembership },
+    { data: ownProjectMembership },
+    { data: columnsData, error: columnsError },
+  ] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    supabase
+      .from("project_members")
+      .select("project_role")
+      .eq("project_id", project.id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    // AS-404/AS-411 read path: the project's actual columns, in board
+    // order. Performance budget (Clarified implementation #8): one query,
+    // no per-column follow-up call.
+    supabase
+      .from("project_statuses")
+      .select("id, name, color, category, position")
+      .eq("project_id", project.id)
+      .order("position", { ascending: true }),
+  ]);
 
   const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const projectRole = (ownProjectMembership?.project_role ?? null) as ProjectRole;
 
   const canManage = canManageColumns({ role: workspaceRole, projectRole });
-
-  // AS-404/AS-411 read path: the project's actual columns, in board order.
-  // Performance budget (Clarified implementation #8): one query, no
-  // per-column follow-up call.
-  const { data: columnsData, error: columnsError } = await supabase
-    .from("project_statuses")
-    .select("id, name, color, category, position")
-    .eq("project_id", project.id)
-    .order("position", { ascending: true });
 
   const columns: ProjectColumn[] = (columnsData ?? []).map((row) => ({
     id: row.id,

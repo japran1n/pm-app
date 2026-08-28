@@ -49,19 +49,22 @@ export default async function ProjectSettingsPage({
   const { workspaceSlug, projectId } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+
+  // Perf (W9): auth and the workspace-by-slug lookup are independent of
+  // each other.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
+  ]);
 
   if (!user) {
     redirect("/sign-in");
   }
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
 
   if (!workspace) {
     redirect("/onboarding");
@@ -88,20 +91,24 @@ export default async function ProjectSettingsPage({
     | "workspace"
     | "private";
 
-  const { data: ownWorkspaceMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const { data: ownProjectMembership } = await supabase
-    .from("project_members")
-    .select("project_role")
-    .eq("project_id", project.id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // Perf (W9): both depend only on ids already known (workspace.id,
+  // project.id, user.id), not on each other's result.
+  const [{ data: ownWorkspaceMembership }, { data: ownProjectMembership }] =
+    await Promise.all([
+      supabase
+        .from("workspace_members")
+        .select("role")
+        .eq("workspace_id", workspace.id)
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .maybeSingle(),
+      supabase
+        .from("project_members")
+        .select("project_role")
+        .eq("project_id", project.id)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
   const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const projectRole = (ownProjectMembership?.project_role ?? null) as ProjectRole;
@@ -118,13 +125,19 @@ export default async function ProjectSettingsPage({
   let loadError = false;
 
   try {
-    members = await getProjectMembers(project.id);
-    if (canManage) {
-      addable = await getAddableWorkspaceMembers(workspace.id, project.id);
-    }
-    if (canToggleVisibility) {
-      lossPreview = await getVisibilityLossPreview(workspace.id, project.id);
-    }
+    // Perf (W9): none of these three depend on each other's result --
+    // `addable`/`lossPreview` are conditionally fetched (per
+    // canManage/canToggleVisibility, both already known), but whenever
+    // fetched they run alongside `members` instead of after it.
+    [members, addable, lossPreview] = await Promise.all([
+      getProjectMembers(project.id),
+      canManage
+        ? getAddableWorkspaceMembers(workspace.id, project.id)
+        : Promise.resolve(addable),
+      canToggleVisibility
+        ? getVisibilityLossPreview(workspace.id, project.id)
+        : Promise.resolve(lossPreview),
+    ]);
   } catch (error) {
     logger.error("ProjectSettingsPage: failed to load member data", { error: error });
     loadError = true;

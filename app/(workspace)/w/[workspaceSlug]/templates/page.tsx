@@ -28,39 +28,47 @@ export default async function TemplatesPage({
   const { workspaceSlug } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+
+  // Perf (W9): auth and the workspace-by-slug lookup are independent of
+  // each other.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
+  ]);
 
   if (!user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
   if (!workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  // Perf (W9): the caller's membership role and the template list both
+  // depend only on `workspace.id`/`user.id` (already known), not on each
+  // other -- fetched in parallel. The guest redirect below still runs
+  // before anything renders.
+  const [{ data: ownMembership }, templates] = await Promise.all([
+    supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    getWorkspaceTaskTemplates(workspace.id),
+  ]);
 
   const role = ownMembership?.role ?? "guest";
 
   if (role === "guest") {
     redirect(`/w/${workspaceSlug}`);
   }
-
-  const templates = await getWorkspaceTaskTemplates(workspace.id);
 
   return (
     <div className="flex flex-col gap-8 p-6">

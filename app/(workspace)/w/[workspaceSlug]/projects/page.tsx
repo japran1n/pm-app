@@ -46,19 +46,22 @@ export default async function ProjectsPage({
   const { workspaceSlug } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+
+  // Perf (W9): auth and the workspace-by-slug lookup are independent of
+  // each other.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
+  ]);
 
   if (!user) {
     redirect("/sign-in");
   }
-
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
 
   // Defensive fallback only — the layout guard above already redirects
   // away (via notFound()) when the workspace can't be resolved for this
@@ -67,17 +70,49 @@ export default async function ProjectsPage({
     redirect("/onboarding");
   }
 
-  // F029 (AS-030, AS-033): the caller's own role in this workspace decides
-  // whether the Archive control is even mounted for them — a plain member
-  // must never see it (the server action re-checks independently, this is
-  // just the UI half of defense in depth).
-  const { data: callerMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  // Perf (W9): caller membership, the project list, favourite ids, and
+  // template options each depend only on `workspace.id`/`user.id` (both
+  // already known) — none depends on another's result — so all four run
+  // as one parallel batch. `getWorkspaceProjects`'s own failure is caught
+  // individually (same try/catch semantics as before) rather than letting
+  // one rejection fail the whole batch.
+  const [
+    { data: callerMembership },
+    projectsResult,
+    favoriteProjectIds,
+    projectTemplateOptions,
+  ] = await Promise.all([
+    // F029 (AS-030, AS-033): the caller's own role in this workspace
+    // decides whether the Archive control is even mounted for them — a
+    // plain member must never see it (the server action re-checks
+    // independently, this is just the UI half of defense in depth).
+    supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspace.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    getWorkspaceProjects(workspace.id).then(
+      (projects) => ({ projects, error: null as unknown }),
+      (error) => {
+        // Same console.error-to-Sentry convention as MembersPage — this
+        // repo has no separate logging library, per tech-decisions.md.
+        logger.error("ProjectsPage: failed to load projects", { error: error });
+        return { projects: null as Awaited<ReturnType<typeof getWorkspaceProjects>> | null, error };
+      },
+    ),
+    // F263 (AS-510): server-fetched alongside the project list above,
+    // same "one fetch, passed down as props" convention this page already
+    // follows for `projects`/`projectTemplateOptions` — not a per-card
+    // client fetch.
+    getFavoriteProjectIds(workspace.id),
+    // F184: project-template options for the "Start from template" option
+    // in the New Project dialog, server-fetched here and passed down as a
+    // typed prop (clarified data-shape answer) rather than the dialog
+    // querying Supabase directly.
+    getWorkspaceProjectTemplateOptions(workspace.id),
+  ]);
 
   const canArchive =
     callerMembership?.role === "owner" || callerMembership?.role === "admin";
@@ -88,31 +123,8 @@ export default async function ProjectsPage({
   // re-checks membership + canWrite itself.
   const canSaveTemplate = callerMembership?.role !== "viewer";
 
-  let projects: Awaited<ReturnType<typeof getWorkspaceProjects>> | null = null;
-  let loadError = false;
-
-  try {
-    projects = await getWorkspaceProjects(workspace.id);
-  } catch (error) {
-    // Same console.error-to-Sentry convention as MembersPage — this repo
-    // has no separate logging library, per tech-decisions.md.
-    logger.error("ProjectsPage: failed to load projects", { error: error });
-    loadError = true;
-  }
-
-  // F263 (AS-510): server-fetched alongside the project list above, same
-  // "one fetch, passed down as props" convention this page already
-  // follows for `projects`/`projectTemplateOptions` — not a per-card
-  // client fetch.
-  const favoriteProjectIds = await getFavoriteProjectIds(workspace.id);
-
-  // F184: project-template options for the "Start from template" option
-  // in the New Project dialog, server-fetched here and passed down as a
-  // typed prop (clarified data-shape answer) rather than the dialog
-  // querying Supabase directly.
-  const projectTemplateOptions = await getWorkspaceProjectTemplateOptions(
-    workspace.id,
-  );
+  const projects = projectsResult.projects;
+  const loadError = projectsResult.error !== null;
 
   return (
     <div className="flex flex-col gap-8 p-6">

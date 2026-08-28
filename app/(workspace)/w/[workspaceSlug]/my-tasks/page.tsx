@@ -52,19 +52,27 @@ export default async function MyTasksPage({
   const includeWatched = watched === "1";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  // RLS-scoped lookup (workspaces_select_active_members) -- same fallback
-  // pattern the project List page uses one level up: reaching this route
-  // already means the caller is an active member, this just resolves the
-  // id.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  // Perf (W9): auth, the workspace-by-slug lookup, and the caller's
+  // timezone are independent of each other once `supabase` exists.
+  const [
+    {
+      data: { user },
+    },
+    { data: workspace },
+    timezone,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    // RLS-scoped lookup (workspaces_select_active_members) -- same
+    // fallback pattern the project List page uses one level up: reaching
+    // this route already means the caller is an active member, this just
+    // resolves the id.
+    supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle(),
+    // F124 (AS-207): the viewer's timezone -- bucketing (AS-436) depends
+    // on it -- same "resolve once, thread down" convention the project
+    // List page follows for its own timezone prop.
+    getCurrentUserTimezone(supabase),
+  ]);
 
   if (!workspace || !user) {
     return (
@@ -74,10 +82,6 @@ export default async function MyTasksPage({
     );
   }
 
-  // F124 (AS-207): the viewer's timezone is resolved first, since
-  // bucketing (AS-436) depends on it -- same "resolve once, thread down"
-  // convention the project List page follows for its own timezone prop.
-  const timezone = await getCurrentUserTimezone(supabase);
   const [realBuckets, personalTodos] = await Promise.all([
     getMyTasks(workspace.id, user.id, timezone, includeWatched),
     // F416-F418: fetched alongside the task buckets, not as a second
