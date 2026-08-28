@@ -4294,40 +4294,32 @@ export async function duplicateTask(
     };
   }
 
-  if (cloned.checklistItems.length > 0) {
-    const { error: checklistInsertError } = await admin
-      .from("checklist_items")
-      .insert(
-        cloned.checklistItems.map((item) => ({
-          task_id: inserted.id,
-          content: item.content,
-          position: item.position,
-        })),
-      );
-    if (checklistInsertError) {
+  // Atomicity fix (W7b): checklist items and assignees are copied inside a
+  // single database transaction via RPC. Previously these were two
+  // independent inserts whose failures were only logged, leaving an orphan
+  // task on the board with a missing checklist and/or assignees while the
+  // caller still saw ok:true. If the RPC fails, the newly-inserted task is
+  // rolled back too, so the caller never sees a partially-duplicated task.
+  if (cloned.checklistItems.length > 0 || cloned.assigneeIds.length > 0) {
+    const { error: atomicError } = await admin.rpc("duplicate_task_atomic", {
+      p_source_task_id: parsed.data.taskId,
+      p_new_task_id: inserted.id,
+    });
+    if (atomicError) {
       console.error(
-        "duplicateTask: checklist insert failed:",
-        checklistInsertError,
+        "duplicateTask: duplicate_task_atomic failed:",
+        atomicError,
       );
+      // Roll back the task insert too — don't leave a task with no
+      // checklist/assignees.
+      await admin.from("tasks").delete().eq("id", inserted.id);
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
     }
-  }
 
-  if (cloned.assigneeIds.length > 0) {
-    const { error: assigneeInsertError } = await admin
-      .from("task_assignees")
-      .insert(
-        cloned.assigneeIds.map((assigneeId) => ({
-          task_id: inserted.id,
-          user_id: assigneeId,
-          assigned_by: user.id,
-        })),
-      );
-    if (assigneeInsertError) {
-      console.error(
-        "duplicateTask: assignee insert failed:",
-        assigneeInsertError,
-      );
-    } else {
+    if (cloned.assigneeIds.length > 0) {
       await syncMirrorAssigneeId(admin, inserted.id);
 
       // F306 (D9/FU-3 scrutiny fix, AS-380): the duplicate carries over

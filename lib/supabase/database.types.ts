@@ -1832,6 +1832,10 @@ export type Database = {
         }
         Returns: string
       }
+      duplicate_task_atomic: {
+        Args: { p_new_task_id: string; p_source_task_id: string }
+        Returns: undefined
+      }
       derive_project_key_base: { Args: { p_name: string }; Returns: string }
       generate_due_recurring_occurrences: { Args: never; Returns: number }
       generate_unique_project_key: {
