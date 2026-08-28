@@ -7,19 +7,6 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    env:
-      # F278: required for the integration (vitest) and e2e (Playwright)
-      # suites to run against the real linked Supabase project instead of
-      # being silently skipped. Must be set as repository secrets in GitHub
-      # (Settings > Secrets and variables > Actions) — see
-      # missions/20260818-213033/handoffs/F278-handoff.md for the exact
-      # names and where the values come from. CI is intentionally NOT
-      # tolerant of these being absent: tests/integration/*.test.ts and
-      # tests/e2e/*.spec.ts hard-fail (rather than skip) when `CI` is set
-      # and credentials are missing.
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,17 +26,72 @@ jobs:
       - name: Lint
         run: npx eslint .
 
+      # W6: CI no longer points at the shared production Supabase project
+      # (see missions/20260828-hardening/plan.md "W6" and
+      # missions/20260828-hardening/handoffs/W6-handoff.md). Instead it
+      # starts an ephemeral local Supabase stack via the CLI, which
+      # replays all committed migrations from supabase/migrations against
+      # a throwaway Postgres + Auth + Storage instance in Docker (already
+      # present on ubuntu-latest runners), then reads the generated URL
+      # and keys back out with `supabase status -o env`. No repository
+      # secrets, no shared-tenant Auth rate limits, no risk to real user
+      # data. The Supabase CLI is installed explicitly below rather than
+      # assumed preinstalled, per the CLI's own GitHub Actions guide:
+      # https://supabase.com/docs/guides/local-development/cli/getting-started#running-supabase-locally
+      # and https://supabase.com/docs/guides/cli/github-action/config-diff
+      - name: Setup Supabase CLI
+        # Verified current major version via
+        # https://github.com/supabase/setup-cli (README, 2026-08-28):
+        # latest release is v3.x; `@v3` is the correct tag (not `@v1`).
+        uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Start local Supabase stack
+        run: supabase start
+
+      - name: Export local Supabase env vars
+        # `supabase status -o env --override-name` maps the CLI's local
+        # connection info onto the exact env var names the app and test
+        # suite expect (NEXT_PUBLIC_SUPABASE_URL, the publishable/anon
+        # key, and the secret/service_role key), appending them to
+        # $GITHUB_ENV so every later step in this job inherits them.
+        # Verified against `supabase status --help` (v2.x, 2026-08-28):
+        # the -o env / --override-name flags exist for exactly this
+        # purpose. Local dev keys are fixed, well-known demo JWTs (not
+        # secrets) baked into the CLI/Docker images, so no repository
+        # secret is needed here.
+        run: |
+          supabase status -o env \
+            --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
+            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
+            --override-name auth.service_role_key=SUPABASE_SECRET_KEY \
+            >> "$GITHUB_ENV"
+
+      - name: Build
+        # F278-style hard-fail intent preserved: NEXT_PUBLIC_SUPABASE_URL /
+        # NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY / SUPABASE_SECRET_KEY are now
+        # always present (from the local stack above) rather than
+        # conditionally-present repository secrets, so `npm run build` and
+        # every step below always has real credentials to build/test
+        # against — it can no longer silently run without them.
+        run: npm run build
+
       - name: Unit + integration tests
         # F278: same command the local pre-worker-exit hook runs (see
         # tech-decisions.md "How to run tests"), kept in sync intentionally.
-        # With NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-        # / SUPABASE_SECRET_KEY present above, the integration suite (which
-        # was previously silently `describe.skipIf`-skipped in CI) now runs
-        # for real; if those secrets are absent, the affected test files
-        # hard-fail instead of reporting green.
+        # Runs against the local Supabase stack started above instead of
+        # production. tests/integration/*.test.ts and tests/e2e/*.spec.ts
+        # still hard-fail (rather than skip) when `CI` is set and these
+        # vars are missing — that behaviour is unchanged, only the source
+        # of the vars changed from repo secrets to the local stack.
         run: npm run test
 
       - name: End-to-end tests (Playwright)
         run: |
           npx playwright install --with-deps
           npx playwright test
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop
