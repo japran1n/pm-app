@@ -28,6 +28,7 @@ import {
 import { logger } from "@/lib/observability/logger";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { withAuthz } from "@/lib/actions/authz";
 import { canWrite, canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import {
   isProjectVisibleToCaller,
@@ -1327,146 +1328,102 @@ export type DeleteTaskResult =
 // a harmless no-op), or a child task itself (children can't have their
 // own children per F148, so the cascade branch is always a no-op there
 // too) — no branching needed here on which kind of task this is.
-export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
-  const parsed = deleteTaskSchema.safeParse({ taskId });
+// W11 (mission 20260828-hardening): migrated onto withAuthz — see
+// lib/actions/authz.ts's doc comment for the pipeline this now runs
+// (Zod -> getUser -> admin client -> resolveWorkspace -> membership ->
+// canWrite -> isProjectVisibleToCaller) in place of the hand-written
+// preamble every sibling action in this file still carries.
+const deleteTaskImpl = withAuthz(
+  deleteTaskSchema,
+  {
+    requireWrite: true,
+    // AS-055: any role, no per-task ownership check — mirrors editTask's
+    // membership check exactly. Deliberately `canWrite` (withAuthz's
+    // default), not `canDeleteTask` — canDeleteTask additionally scopes
+    // plain members to their own creations, which would regress AS-055.
+    membershipError: "You don't have permission to delete this task.",
+    writeError: "Viewers don't have permission to delete tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to delete tasks.",
+    // Look up the task's owning workspace (via its project) so membership
+    // is checked against the real workspace, never one supplied by the
+    // caller. An already-deleted task behaves as "not found", same
+    // convention as assignTask/editTask's task lookup — this also makes
+    // deleteTask naturally idempotent-safe (a second delete call just
+    // reports "not found" rather than re-touching the row).
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
 
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid task.",
-    };
-  }
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
 
-  if (!user) {
-    return { ok: false, error: "You must be signed in to delete a task." };
-  }
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
 
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // An already-deleted task behaves as "not found", same convention as
-  // assignTask/editTask's task lookup — this also makes deleteTask
-  // naturally idempotent-safe (a second delete call just reports "not
-  // found" rather than re-touching the row).
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side. AS-055: any role, no per-task
-  // ownership check — mirrors editTask's membership check exactly.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to delete this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223). Deliberately
-  // `canWrite`, not `canDeleteTask` — this action's existing model (AS-055)
-  // is "any active role may delete, no per-task ownership check", and
-  // `canDeleteTask` additionally scopes plain members to their own
-  // creations, which would regress AS-055 for members. Only the new
-  // viewer exclusion is being added here.
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to delete tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to delete tasks.",
-    };
-  }
-
-  // AS-267: single atomic RPC call — soft-deletes this task AND cascades
-  // to any live children in one transaction (see doc comment above).
-  // F188/AS-347: `p_deleted_by` is stamped inside the same RPC call (see
-  // 20260822210000_cascade_delete_task_deleted_by.sql's doc comment) so
-  // the trash view can show who deleted this task without a second write.
-  const { data: cascadeRows, error: deleteError } = await admin.rpc(
-    "cascade_delete_task",
-    { p_task_id: parsed.data.taskId, p_deleted_by: user.id },
-  );
-
-  const deleted = cascadeRows?.[0];
-
-  if (deleteError || !deleted || !deleted.deleted_at) {
-    logger.error("deleteTask: cascade_delete_task failed", { error: deleteError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("deleteTask: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: deleted.id,
-      deletedAt: deleted.deleted_at,
+        extra: {},
+      };
     },
-  };
+  },
+  async (input, ctx): Promise<DeleteTaskResult> => {
+    // AS-267: single atomic RPC call — soft-deletes this task AND cascades
+    // to any live children in one transaction (see doc comment above).
+    // F188/AS-347: `p_deleted_by` is stamped inside the same RPC call (see
+    // 20260822210000_cascade_delete_task_deleted_by.sql's doc comment) so
+    // the trash view can show who deleted this task without a second write.
+    const { data: cascadeRows, error: deleteError } = await ctx.admin.rpc(
+      "cascade_delete_task",
+      { p_task_id: input.taskId, p_deleted_by: ctx.user.id },
+    );
+
+    const deleted = cascadeRows?.[0];
+
+    if (deleteError || !deleted || !deleted.deleted_at) {
+      logger.error("deleteTask: cascade_delete_task failed", { error: deleteError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("deleteTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: deleted.id,
+        deletedAt: deleted.deleted_at,
+      },
+    };
+  },
+);
+
+export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
+  return deleteTaskImpl({ taskId });
 }
 
 export type RestoreTaskResult =
@@ -1567,181 +1524,136 @@ export type RestoreTaskResult =
 // action in this file's "deleted_at is null means not found for a
 // delete-scoped lookup" convention, inverted for a restore-scoped lookup
 // (`deleted_at is NOT null` required).
-export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
-  const parsed = restoreTaskSchema.safeParse({ taskId });
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment.
+const restoreTaskImpl = withAuthz(
+  restoreTaskSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to restore this task.",
+    writeError: "Viewers don't have permission to restore tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to restore tasks.",
+    // Only a currently soft-deleted task is eligible — a live (never-
+    // deleted or already-restored) task behaves as "not found", the
+    // inverse of deleteTask's own lookup convention. AS-351:
+    // `projects.deleted_at` is deliberately not selected here — this
+    // function has no reason to branch on whether the project is
+    // archived, and selecting it would invite a future edit to
+    // accidentally start writing it.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .not("deleted_at", "is", null)
+        .maybeSingle();
 
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid task.",
-    };
-  }
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
 
-  if (!user) {
-    return { ok: false, error: "You must be signed in to restore a task." };
-  }
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
 
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // Only a currently soft-deleted task is eligible — a live (never-
-  // deleted or already-restored) task behaves as "not found", the inverse
-  // of deleteTask's own lookup convention. AS-351: `projects.deleted_at`
-  // is deliberately not selected here — this function has no reason to
-  // branch on whether the project is archived, and selecting it would
-  // invite a future edit to accidentally start writing it.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select(
-      "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .not("deleted_at", "is", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side. Same "any active role, no per-task
-  // ownership check" model as deleteTask (AS-055).
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to restore this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only, same gate deleteTask
-  // uses for the exact same "any active role but viewer" model.
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to restore tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to restore tasks.",
-    };
-  }
-
-  // Restore atomically: the parent's own update and the cascade restore of
-  // its still-deleted children (see this function's doc comment) happen in
-  // a single transaction via RPC, so a mid-sequence failure can never leave
-  // a child still marked deleted under a now-restored, live-looking parent.
-  const { data: restoreRows, error: updateError } = await admin.rpc(
-    "restore_task_atomic",
-    { p_task_id: parsed.data.taskId },
-  );
-
-  const updated = restoreRows?.[0];
-
-  if (updateError || !updated) {
-    logger.error("restoreTask: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const statusWasReset = updated.status_was_reset;
-
-  // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record the restore in
-  // the task's activity feed. There is no dedicated "restored" kind in
-  // F194's closed task_activity_kind vocabulary ('field_changed',
-  // 'comment_added', 'comment_deleted') and no migration is in this
-  // feature's Files scope (lib/actions/tasks.ts only), so this follows
-  // the exact precedent
-  // supabase/migrations/20260822231000_recurrence_scheduled_generation_
-  // activity.sql's own doc comment sets for "no dedicated kind exists":
-  // 'field_changed' on the closest-fitting real field. `status` is the
-  // closest fit here — a restored task always ends up with a concrete,
-  // visible status again, `p_old_value := null` (there was no visible
-  // status while soft-deleted/in trash) and `p_new_value :=
-  // resolvedStatus`. This is deliberately activity-only, NOT a watcher/
-  // assignee notification — per this feature's own scoping note, restoring
-  // a task from trash is not treated as a fan-out-worthy event the way a
-  // live status/assignee change is; see the handoff's Decisions Made.
-  // Non-fatal, same convention as every other post-write activity write
-  // in this file.
-  try {
-    // diffTaskFields skips a key absent from `before` (no prior value to
-    // diff against) — restore's "before" is genuinely absent (the task
-    // had no visible status while in trash), so the change is built
-    // directly here rather than through diffTaskFields's "both present"
-    // comparison, matching the SQL-side precedent's own `p_old_value :=
-    // null` choice referenced above.
-    await writeTaskFieldChanges(supabase, parsed.data.taskId, [
-      { field: "status", oldValue: null, newValue: updated.status },
-    ]);
-  } catch (activityError) {
-    logger.error("restoreTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-      revalidatePath(`/w/${workspaceRow.slug}/trash`);
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("restoreTask: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      projectId: updated.project_id,
-      status: updated.status,
-      position: updated.position,
-      statusWasReset,
+        extra: {},
+      };
     },
-  };
+  },
+  async (input, ctx): Promise<RestoreTaskResult> => {
+    // Restore atomically: the parent's own update and the cascade restore
+    // of its still-deleted children (see this function's doc comment)
+    // happen in a single transaction via RPC, so a mid-sequence failure
+    // can never leave a child still marked deleted under a now-restored,
+    // live-looking parent.
+    const { data: restoreRows, error: updateError } = await ctx.admin.rpc(
+      "restore_task_atomic",
+      { p_task_id: input.taskId },
+    );
+
+    const updated = restoreRows?.[0];
+
+    if (updateError || !updated) {
+      logger.error("restoreTask: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const statusWasReset = updated.status_was_reset;
+
+    // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): record the restore in
+    // the task's activity feed. There is no dedicated "restored" kind in
+    // F194's closed task_activity_kind vocabulary ('field_changed',
+    // 'comment_added', 'comment_deleted') and no migration is in this
+    // feature's Files scope (lib/actions/tasks.ts only), so this follows
+    // the exact precedent
+    // supabase/migrations/20260822231000_recurrence_scheduled_generation_
+    // activity.sql's own doc comment sets for "no dedicated kind exists":
+    // 'field_changed' on the closest-fitting real field. `status` is the
+    // closest fit here — a restored task always ends up with a concrete,
+    // visible status again, `p_old_value := null` (there was no visible
+    // status while soft-deleted/in trash) and `p_new_value :=
+    // resolvedStatus`. This is deliberately activity-only, NOT a watcher/
+    // assignee notification — per this feature's own scoping note,
+    // restoring a task from trash is not treated as a fan-out-worthy event
+    // the way a live status/assignee change is; see the handoff's
+    // Decisions Made. Non-fatal, same convention as every other post-write
+    // activity write in this file.
+    try {
+      // diffTaskFields skips a key absent from `before` (no prior value to
+      // diff against) — restore's "before" is genuinely absent (the task
+      // had no visible status while in trash), so the change is built
+      // directly here rather than through diffTaskFields's "both present"
+      // comparison, matching the SQL-side precedent's own `p_old_value :=
+      // null` choice referenced above.
+      await writeTaskFieldChanges(ctx.supabase, input.taskId, [
+        { field: "status", oldValue: null, newValue: updated.status },
+      ]);
+    } catch (activityError) {
+      logger.error("restoreTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+        revalidatePath(`/w/${workspaceRow.slug}/trash`);
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("restoreTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        projectId: updated.project_id,
+        status: updated.status,
+        position: updated.position,
+        statusWasReset,
+      },
+    };
+  },
+);
+
+export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
+  return restoreTaskImpl({ taskId });
 }
 
 export type PromoteSubtaskResult =
@@ -1779,143 +1691,100 @@ export type PromoteSubtaskResult =
 // (`parent_task_id` already null) is a no-op — this returns `ok: true`
 // without writing to the database, so the caller doesn't have to special-
 // case "already promoted" as an error.
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment.
+const promoteSubtaskImpl = withAuthz(
+  promoteSubtaskSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to promote this task.",
+    writeError: "Viewers don't have permission to promote tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to promote tasks.",
+    // A soft-deleted task behaves as "not found", same convention as every
+    // other action in this file. `parent_task_id` is threaded through as
+    // `extra` so the handler's zero-state check below doesn't need a
+    // second query.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, parent_task_id, deleted_at, projects!inner(id, workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: {
+          taskRow: { id: taskRow.id, parentTaskId: taskRow.parent_task_id as string | null },
+        },
+      };
+    },
+  },
+  async (input, ctx): Promise<PromoteSubtaskResult> => {
+    // Zero-state (Clarified implementation Q6): already top-level — no-op,
+    // ok without writing.
+    if (ctx.taskRow.parentTaskId === null) {
+      return { ok: true, data: { id: ctx.taskRow.id, parentTaskId: null } };
+    }
+
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      .update({ parent_task_id: null })
+      .eq("id", input.taskId)
+      .select("id, parent_task_id")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("promoteSubtask: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("promoteSubtask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        parentTaskId: null,
+      },
+    };
+  },
+);
+
 export async function promoteSubtask(
   taskId: string,
 ): Promise<PromoteSubtaskResult> {
-  const parsed = promoteSubtaskSchema.safeParse({ taskId });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid task.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to promote a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as every
-  // other action in this file.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select(
-      "id, parent_task_id, deleted_at, projects!inner(id, workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to promote this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to promote tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to promote tasks.",
-    };
-  }
-
-  // Zero-state (Clarified implementation Q6): already top-level — no-op,
-  // ok without writing.
-  if (taskRow.parent_task_id === null) {
-    return { ok: true, data: { id: taskRow.id, parentTaskId: null } };
-  }
-
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ parent_task_id: null })
-    .eq("id", parsed.data.taskId)
-    .select("id, parent_task_id")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("promoteSubtask: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("promoteSubtask: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      parentTaskId: null,
-    },
-  };
+  return promoteSubtaskImpl({ taskId });
 }
 
 export type UpdateTaskTagsResult =
@@ -1943,139 +1812,91 @@ export type UpdateTaskTagsResult =
 // There is no "omit tags to leave unchanged" branch the way editTask has
 // for its optional fields; `tags` is always a required array argument, so
 // every call is an explicit, full replacement of the tag list.
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment.
+const updateTaskTagsImpl = withAuthz(
+  updateTaskTagsSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to update this task's tags.",
+    writeError: "Viewers don't have permission to update tags.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to update tags.",
+    // A soft-deleted task behaves as "not found", same convention as
+    // assignTask/editTask/deleteTask's task lookup.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: {},
+      };
+    },
+  },
+  async (input, ctx): Promise<UpdateTaskTagsResult> => {
+    // AS-066: `input.tags` may legitimately be `[]` here — that is written
+    // as-is, never coerced to null.
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      .update({ tags: input.tags })
+      .eq("id", input.taskId)
+      .select("id, tags")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("updateTaskTags: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("updateTaskTags: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        tags: updated.tags ?? [],
+      },
+    };
+  },
+);
+
 export async function updateTaskTags(
   taskId: string,
   tags: string[],
 ): Promise<UpdateTaskTagsResult> {
-  const parsed = updateTaskTagsSchema.safeParse({ taskId, tags });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Enter valid tags.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to update tags." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as
-  // assignTask/editTask/deleteTask's task lookup.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side. Any role, no per-task ownership
-  // check — mirrors editTask's (AS-061) and deleteTask's membership model.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to update this task's tags.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to update tags.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to update tags.",
-    };
-  }
-
-  // AS-066: `parsed.data.tags` may legitimately be `[]` here — that is
-  // written as-is, never coerced to null.
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ tags: parsed.data.tags })
-    .eq("id", parsed.data.taskId)
-    .select("id, tags")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("updateTaskTags: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("updateTaskTags: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      tags: updated.tags ?? [],
-    },
-  };
+  return updateTaskTagsImpl({ taskId, tags });
 }
 
 export type MoveTaskStatusResult =
@@ -2104,6 +1925,222 @@ export type MoveTaskStatusResult =
 // regardless of authorship/assignment — mirrors editTask (AS-061) and
 // deleteTask (AS-055): no per-task ownership check, only workspace
 // membership.
+type MoveTaskStatusTaskRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  description_json: Json | null;
+  priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+  estimate_minutes: number | null;
+  due_date: string | null;
+  recurrence: unknown;
+  recurrence_parent_id: string | null;
+  status: string;
+};
+
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment. The task row is threaded through as
+// `extra` so the recurrence-generation step below doesn't need a second
+// query for it.
+const moveTaskStatusImpl = withAuthz(
+  moveTaskStatusSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to move this task.",
+    writeError: "Viewers don't have permission to move tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to move tasks.",
+    // A soft-deleted task behaves as "not found", same convention as
+    // assignTask/editTask/deleteTask's task lookup.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      const { projects: _ignoredProjects, deleted_at: _ignoredDeletedAt, ...taskFields } = taskRow;
+      void _ignoredProjects;
+      void _ignoredDeletedAt;
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: { taskRow: taskFields as MoveTaskStatusTaskRow },
+      };
+    },
+  },
+  async (input, ctx): Promise<MoveTaskStatusResult> => {
+    const taskRow = ctx.taskRow;
+
+    // F221 (AS-409): `input.status` must name one of THIS project's real
+    // board columns — the DB trigger that derives `status_id` from
+    // `(project_id, name)` (F218's `sync_task_status_and_status_id`) fails
+    // silently (leaves status_id null) for an unmatched name rather than
+    // raising, so this check is the real guard against a stale/forged
+    // column name reaching the DB.
+    // F222 (AS-410): `category` selected alongside `id` so the recurrence
+    // "moved into a done-category status" check below (isDoneStatus) can
+    // use this SAME lookup instead of re-deriving/re-fetching it — no
+    // second query, no second source of truth for "is the target column
+    // done".
+    const { data: columnMatch } = await ctx.admin
+      .from("project_statuses")
+      .select("id, category")
+      .eq("project_id", ctx.projectId as string)
+      .eq("name", input.status)
+      .maybeSingle();
+
+    if (!columnMatch) {
+      return {
+        ok: false,
+        error: "That column no longer exists. Refresh the board and try again.",
+      };
+    }
+
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      .update({ status: input.status })
+      .eq("id", input.taskId)
+      .select("id, status")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("moveTaskStatus: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    // F195 (AS-354, AS-355): record the status change. Non-fatal, mirrors
+    // editTask's own activity write above.
+    try {
+      const changes = diffTaskFields(
+        { status: taskRow.status },
+        { status: updated.status },
+      );
+      await writeTaskFieldChanges(ctx.supabase, input.taskId, changes);
+    } catch (activityError) {
+      logger.error("moveTaskStatus: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
+    }
+
+    // F207 (AS-294, AS-382, AS-384): a status change notifies the task's
+    // current active watchers (excluding the actor). Non-fatal, same
+    // convention as writeTaskFieldChanges above. Uses the caller's own
+    // session (`supabase`) so create_notification pins actor_id to
+    // auth.uid() server-side — see setTaskAssigneesCore's identical
+    // rationale above.
+    try {
+      const { data: watcherRows } = await ctx.admin
+        .from("task_watchers")
+        .select("user_id")
+        .eq("task_id", input.taskId)
+        .eq("is_watching", true);
+      const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
+
+      const computedRecipients = computeFanoutRecipients({
+        type: "status_changed",
+        actorId: ctx.user.id,
+        watcherIds,
+      });
+      // F211 (AS-391): drop recipients who have this kind's in-app channel
+      // disabled before ever calling create_notification.
+      const recipients = await filterRecipientsByInAppPreference(
+        ctx.admin,
+        computedRecipients ?? [],
+      );
+      for (const recipient of recipients ?? []) {
+        await createNotification(
+          ctx.supabase,
+          {
+            userId: recipient.userId,
+            workspaceId: ctx.workspaceId,
+            kind: recipient.kind,
+            taskId: input.taskId,
+          },
+          "moveTaskStatus",
+        );
+      }
+    } catch (fanoutError) {
+      logger.error("moveTaskStatus: notification fan-out failed (non-fatal)", { error: fanoutError });
+    }
+
+    // F177 (AS-315, AS-320, AS-321): a recurring task that just
+    // transitioned into a done-category status generates its next
+    // occurrence, in the same logical unit as this status write
+    // (immediately after it succeeds, same request). Per this feature's
+    // Clarified implementation, this is purely additive — a failure or
+    // legitimate no-op here (no recurrence, no due date, archived project,
+    // already generated) never turns the status change itself into a
+    // failure; the user's completion always succeeds.
+    if (isDoneStatus(input.status, columnMatch.category) && taskRow.recurrence) {
+      try {
+        const timezone = await getCurrentUserTimezone(ctx.supabase);
+        await generateNextOccurrence(
+          ctx.admin,
+          {
+            id: taskRow.id,
+            project_id: taskRow.project_id,
+            title: taskRow.title,
+            description: taskRow.description,
+            description_json: taskRow.description_json,
+            priority: taskRow.priority,
+            estimate_minutes: taskRow.estimate_minutes,
+            due_date: taskRow.due_date,
+            recurrence: taskRow.recurrence,
+            recurrence_parent_id: taskRow.recurrence_parent_id,
+          },
+          ctx.user.id,
+          timezone,
+        );
+      } catch (recurrenceError) {
+        // Non-fatal: the status change already succeeded above. Generation
+        // is best-effort additive behavior, never a reason to fail the
+        // user's completion action.
+        logger.error("moveTaskStatus: generateNextOccurrence failed (non-fatal)", { error: recurrenceError });
+      }
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("moveTaskStatus: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        status: updated.status,
+      },
+    };
+  },
+);
+
 export async function moveTaskStatus(
   taskId: string,
   // F221 (AS-409): any of the project's real `project_statuses` column
@@ -2111,253 +2148,7 @@ export async function moveTaskStatus(
   // doc comment.
   newStatus: string,
 ): Promise<MoveTaskStatusResult> {
-  const parsed = moveTaskStatusSchema.safeParse({
-    taskId,
-    status: newStatus,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid status.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to move a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as
-  // assignTask/editTask/deleteTask's task lookup.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select(
-      "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to move this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to move tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to move tasks.",
-    };
-  }
-
-  // F221 (AS-409): `parsed.data.status` must name one of THIS project's
-  // real board columns — the DB trigger that derives `status_id` from
-  // `(project_id, name)` (F218's `sync_task_status_and_status_id`) fails
-  // silently (leaves status_id null) for an unmatched name rather than
-  // raising, so this check is the real guard against a stale/forged
-  // column name reaching the DB.
-  // F222 (AS-410): `category` selected alongside `id` so the recurrence
-  // "moved into a done-category status" check below (isDoneStatus) can
-  // use this SAME lookup instead of re-deriving/re-fetching it — no
-  // second query, no second source of truth for "is the target column
-  // done".
-  const { data: columnMatch } = await admin
-    .from("project_statuses")
-    .select("id, category")
-    .eq("project_id", project.id)
-    .eq("name", parsed.data.status)
-    .maybeSingle();
-
-  if (!columnMatch) {
-    return {
-      ok: false,
-      error: "That column no longer exists. Refresh the board and try again.",
-    };
-  }
-
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ status: parsed.data.status })
-    .eq("id", parsed.data.taskId)
-    .select("id, status")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("moveTaskStatus: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // F195 (AS-354, AS-355): record the status change. Non-fatal, mirrors
-  // editTask's own activity write above.
-  try {
-    const changes = diffTaskFields(
-      { status: taskRow.status },
-      { status: updated.status },
-    );
-    await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
-  } catch (activityError) {
-    logger.error("moveTaskStatus: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
-  }
-
-  // F207 (AS-294, AS-382, AS-384): a status change notifies the task's
-  // current active watchers (excluding the actor). Non-fatal, same
-  // convention as writeTaskFieldChanges above. Uses the caller's own
-  // session (`supabase`) so create_notification pins actor_id to
-  // auth.uid() server-side — see setTaskAssigneesCore's identical
-  // rationale above.
-  try {
-    const { data: watcherRows } = await admin
-      .from("task_watchers")
-      .select("user_id")
-      .eq("task_id", parsed.data.taskId)
-      .eq("is_watching", true);
-    const watcherIds = (watcherRows ?? []).map((row) => row.user_id as string);
-
-    const computedRecipients = computeFanoutRecipients({
-      type: "status_changed",
-      actorId: user.id,
-      watcherIds,
-    });
-    // F211 (AS-391): drop recipients who have this kind's in-app channel
-    // disabled before ever calling create_notification.
-    const recipients = await filterRecipientsByInAppPreference(
-      admin,
-      computedRecipients ?? [],
-    );
-    for (const recipient of recipients ?? []) {
-      await createNotification(
-        supabase,
-        {
-          userId: recipient.userId,
-          workspaceId,
-          kind: recipient.kind,
-          taskId: parsed.data.taskId,
-        },
-        "moveTaskStatus",
-      );
-    }
-  } catch (fanoutError) {
-    logger.error("moveTaskStatus: notification fan-out failed (non-fatal)", { error: fanoutError });
-  }
-
-  // F177 (AS-315, AS-320, AS-321): a recurring task that just transitioned
-  // into a done-category status generates its next occurrence, in the same
-  // logical unit as this status write (immediately after it succeeds, same
-  // request). Per this feature's Clarified implementation, this is purely
-  // additive — a failure or legitimate no-op here (no recurrence, no due
-  // date, archived project, already generated) never turns the status
-  // change itself into a failure; the user's completion always succeeds.
-  if (
-    isDoneStatus(parsed.data.status, columnMatch.category) &&
-    taskRow.recurrence
-  ) {
-    try {
-      const timezone = await getCurrentUserTimezone(supabase);
-      await generateNextOccurrence(
-        admin,
-        {
-          id: taskRow.id,
-          project_id: taskRow.project_id,
-          title: taskRow.title,
-          description: taskRow.description,
-          description_json: taskRow.description_json,
-          priority: taskRow.priority,
-          estimate_minutes: taskRow.estimate_minutes,
-          due_date: taskRow.due_date,
-          recurrence: taskRow.recurrence,
-          recurrence_parent_id: taskRow.recurrence_parent_id,
-        },
-        user.id,
-        timezone,
-      );
-    } catch (recurrenceError) {
-      // Non-fatal: the status change already succeeded above. Generation
-      // is best-effort additive behavior, never a reason to fail the
-      // user's completion action.
-      logger.error("moveTaskStatus: generateNextOccurrence failed (non-fatal)", { error: recurrenceError });
-    }
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("moveTaskStatus: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      status: updated.status,
-    },
-  };
+  return moveTaskStatusImpl({ taskId, status: newStatus });
 }
 
 export type ReorderTaskResult =
@@ -2406,143 +2197,93 @@ export type ReorderTaskResult =
 // Any active workspace member may reorder any task in that workspace,
 // regardless of authorship/assignment — mirrors moveTaskStatus/editTask/
 // deleteTask: no per-task ownership check, only workspace membership.
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment.
+const reorderTaskImpl = withAuthz(
+  reorderTaskSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to reorder this task.",
+    writeError: "Viewers don't have permission to reorder tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to reorder tasks.",
+    // A soft-deleted task behaves as "not found", same convention as
+    // moveTaskStatus/editTask/deleteTask's task lookup.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: {},
+      };
+    },
+  },
+  async (input, ctx): Promise<ReorderTaskResult> => {
+    // AS-070/AS-078: position only — status is deliberately absent from
+    // this payload. AS-080: this UPDATE only ever sets `position`, and the
+    // tasks_set_updated_at trigger's WHEN clause (see migration referenced
+    // above) is what actually keeps updated_at untouched for this case.
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      .update({ position: input.position })
+      .eq("id", input.taskId)
+      .select("id, position")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("reorderTask: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("reorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        position: updated.position,
+      },
+    };
+  },
+);
+
 export async function reorderTask(
   taskId: string,
   newPosition: number,
 ): Promise<ReorderTaskResult> {
-  const parsed = reorderTaskSchema.safeParse({
-    taskId,
-    position: newPosition,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid position.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to reorder a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as
-  // moveTaskStatus/editTask/deleteTask's task lookup.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to reorder this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to reorder tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to reorder tasks.",
-    };
-  }
-
-  // AS-070/AS-078: position only — status is deliberately absent from this
-  // payload. AS-080: this UPDATE only ever sets `position`, and the
-  // tasks_set_updated_at trigger's WHEN clause (see migration referenced
-  // above) is what actually keeps updated_at untouched for this case.
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ position: parsed.data.position })
-    .eq("id", parsed.data.taskId)
-    .select("id, position")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("reorderTask: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("reorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      position: updated.position,
-    },
-  };
+  return reorderTaskImpl({ taskId, position: newPosition });
 }
 
 export type MoveAndReorderTaskResult =
@@ -2583,6 +2324,169 @@ export type MoveAndReorderTaskResult =
 // union return, generic user-facing errors with details only logged
 // server-side (AS-146). No per-task ownership check, only workspace
 // membership, same as its two single-purpose siblings.
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment. The pre-move `status` is threaded
+// through as `extra` so the "did status actually change" diff below
+// doesn't need a second query.
+const moveAndReorderTaskImpl = withAuthz(
+  moveAndReorderTaskSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to move this task.",
+    writeError: "Viewers don't have permission to move tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to move tasks.",
+    // A soft-deleted task behaves as "not found", same convention as
+    // moveTaskStatus/reorderTask's task lookup.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, deleted_at, status, projects!inner(id, workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: { previousStatus: taskRow.status as string },
+      };
+    },
+  },
+  async (input, ctx): Promise<MoveAndReorderTaskResult> => {
+    // F221 (AS-409): same column-name guard as moveTaskStatus above — see
+    // that function's doc comment for why this check (not just the DB
+    // trigger) is the real backstop against an unmatched/stale column
+    // name.
+    const { data: columnMatch } = await ctx.admin
+      .from("project_statuses")
+      .select("id")
+      .eq("project_id", ctx.projectId as string)
+      .eq("name", input.status)
+      .maybeSingle();
+
+    if (!columnMatch) {
+      return {
+        ok: false,
+        error: "That column no longer exists. Refresh the board and try again.",
+      };
+    }
+
+    // Single UPDATE, both columns set together — atomic by construction.
+    // If this fails (constraint violation, connection drop, etc.), NEITHER
+    // status NOR position changes; there is no partial-commit state for
+    // the client to be inconsistent with.
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      .update({ status: input.status, position: input.position })
+      .eq("id", input.taskId)
+      .select("id, status, position")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("moveAndReorderTask: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): the board drag path was
+    // the single most common way a task's status ever changes and had
+    // ZERO activity entry — record the status change exactly like
+    // moveTaskStatus does above, non-fatal. Guarded on an actual status
+    // change (unlike a pure in-column reorder, which never touches
+    // `status` at all) so a same-column drag doesn't fabricate a "status
+    // changed" entry/notify.
+    if (ctx.previousStatus !== updated.status) {
+      try {
+        const changes = diffTaskFields(
+          { status: ctx.previousStatus },
+          { status: updated.status },
+        );
+        await writeTaskFieldChanges(ctx.supabase, input.taskId, changes);
+      } catch (activityError) {
+        logger.error("moveAndReorderTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
+      }
+
+      // F306 (D9/FU-3 scrutiny fix, AS-294, AS-382): notify the task's
+      // current active watchers of the status change — same fan-out
+      // moveTaskStatus performs, routed through the same shared helpers.
+      // Non-fatal.
+      try {
+        const { data: watcherRows } = await ctx.admin
+          .from("task_watchers")
+          .select("user_id")
+          .eq("task_id", input.taskId)
+          .eq("is_watching", true);
+        const watcherIds = (watcherRows ?? []).map(
+          (row) => row.user_id as string,
+        );
+
+        const computedRecipients = computeFanoutRecipients({
+          type: "status_changed",
+          actorId: ctx.user.id,
+          watcherIds,
+        });
+        const recipients = await filterRecipientsByInAppPreference(
+          ctx.admin,
+          computedRecipients ?? [],
+        );
+        for (const recipient of recipients ?? []) {
+          await createNotification(
+            ctx.supabase,
+            {
+              userId: recipient.userId,
+              workspaceId: ctx.workspaceId,
+              kind: recipient.kind,
+              taskId: input.taskId,
+            },
+            "moveAndReorderTask",
+          );
+        }
+      } catch (fanoutError) {
+        logger.error("moveAndReorderTask: notification fan-out failed (non-fatal)", { error: fanoutError });
+      }
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("moveAndReorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+    }
+
+    return {
+      ok: true,
+      data: {
+        id: updated.id,
+        status: updated.status,
+        position: updated.position,
+      },
+    };
+  },
+);
+
 export async function moveAndReorderTask(
   taskId: string,
   // F221 (AS-409): any of the project's real `project_statuses` column
@@ -2590,217 +2494,11 @@ export async function moveAndReorderTask(
   newStatus: string,
   newPosition: number,
 ): Promise<MoveAndReorderTaskResult> {
-  const parsed = moveAndReorderTaskSchema.safeParse({
+  return moveAndReorderTaskImpl({
     taskId,
     status: newStatus,
     position: newPosition,
   });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid status or position.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to move a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Look up the task's owning workspace (via its project) so membership is
-  // checked against the real workspace, never one supplied by the caller.
-  // A soft-deleted task behaves as "not found", same convention as
-  // moveTaskStatus/reorderTask's task lookup.
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select(
-      "id, deleted_at, status, projects!inner(id, workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to move this task.",
-    };
-  }
-
-  // F128 (AS-216, AS-217): viewers are read-only (canWrite deliberately
-  // does not exclude guest — see its doc comment in lib/auth/permissions.ts;
-  // guest write access is separately scoped by F134's AS-223).
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to move tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to move tasks.",
-    };
-  }
-
-  // F221 (AS-409): same column-name guard as moveTaskStatus above — see
-  // that function's doc comment for why this check (not just the DB
-  // trigger) is the real backstop against an unmatched/stale column name.
-  const { data: columnMatch } = await admin
-    .from("project_statuses")
-    .select("id")
-    .eq("project_id", project.id)
-    .eq("name", parsed.data.status)
-    .maybeSingle();
-
-  if (!columnMatch) {
-    return {
-      ok: false,
-      error: "That column no longer exists. Refresh the board and try again.",
-    };
-  }
-
-  // Single UPDATE, both columns set together — atomic by construction. If
-  // this fails (constraint violation, connection drop, etc.), NEITHER
-  // status NOR position changes; there is no partial-commit state for the
-  // client to be inconsistent with.
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    .update({ status: parsed.data.status, position: parsed.data.position })
-    .eq("id", parsed.data.taskId)
-    .select("id, status, position")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("moveAndReorderTask: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // F306 (D9/FU-3 scrutiny fix, AS-353, AS-355): the board drag path was
-  // the single most common way a task's status ever changes and had ZERO
-  // activity entry — record the status change exactly like moveTaskStatus
-  // does above, non-fatal. Guarded on an actual status change (unlike a
-  // pure in-column reorder, which never touches `status` at all) so a
-  // same-column drag doesn't fabricate a "status changed" entry/notify.
-  if (taskRow.status !== updated.status) {
-    try {
-      const changes = diffTaskFields(
-        { status: taskRow.status },
-        { status: updated.status },
-      );
-      await writeTaskFieldChanges(supabase, parsed.data.taskId, changes);
-    } catch (activityError) {
-      logger.error("moveAndReorderTask: writeTaskFieldChanges failed (non-fatal)", { error: activityError });
-    }
-
-    // F306 (D9/FU-3 scrutiny fix, AS-294, AS-382): notify the task's
-    // current active watchers of the status change — same fan-out
-    // moveTaskStatus performs, routed through the same shared helpers.
-    // Non-fatal.
-    try {
-      const { data: watcherRows } = await admin
-        .from("task_watchers")
-        .select("user_id")
-        .eq("task_id", parsed.data.taskId)
-        .eq("is_watching", true);
-      const watcherIds = (watcherRows ?? []).map(
-        (row) => row.user_id as string,
-      );
-
-      const computedRecipients = computeFanoutRecipients({
-        type: "status_changed",
-        actorId: user.id,
-        watcherIds,
-      });
-      const recipients = await filterRecipientsByInAppPreference(
-        admin,
-        computedRecipients ?? [],
-      );
-      for (const recipient of recipients ?? []) {
-        await createNotification(
-          supabase,
-          {
-            userId: recipient.userId,
-            workspaceId,
-            kind: recipient.kind,
-            taskId: parsed.data.taskId,
-          },
-          "moveAndReorderTask",
-        );
-      }
-    } catch (fanoutError) {
-      logger.error("moveAndReorderTask: notification fan-out failed (non-fatal)", { error: fanoutError });
-    }
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("moveAndReorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
-    }
-  }
-
-  return {
-    ok: true,
-    data: {
-      id: updated.id,
-      status: updated.status,
-      position: updated.position,
-    },
-  };
 }
 
 export type GetOpenBlockersResult =
@@ -2845,144 +2543,111 @@ export type GetOpenBlockersResult =
 // active workspace member may check any task's blockers in that
 // workspace — no per-task ownership check, same convention as every
 // other read/write in this file.
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment. A pure read, so `requireWrite` is
+// left at its default `false`; only membership + F323 visibility gate it.
+const getOpenBlockersImpl = withAuthz(
+  getOpenBlockersSchema,
+  {
+    membershipError: "You don't have permission to view this task.",
+    requireVisibility: true,
+    // F323 (AS-227, AS-228, AS-229): read-path confidentiality — returns
+    // the SAME "Task not found" message this function already uses for a
+    // genuinely missing/deleted task (never a permission-denied message),
+    // so a read-path leak never even confirms the task exists.
+    visibilityError: "Task not found.",
+    // Same task -> project -> workspace lookup convention as
+    // moveTaskStatus/reorderTask/etc. — the real owning workspace is
+    // resolved server-side, never trusted from the client. A soft-deleted
+    // task behaves as "not found".
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: {},
+      };
+    },
+  },
+  async (input, ctx): Promise<GetOpenBlockersResult> => {
+    // Same blocked_task_id -> blocking task embed + FK disambiguation as
+    // getTaskDetail's own blockedByQuery below (F155's two same-table FKs,
+    // task_dependencies_blocking_task_id_fkey/_blocked_task_id_fkey).
+    // F222 (AS-410): `status_id, project_statuses(category)` added to the
+    // embedded `blocking` task so "is this blocker still open" is decided
+    // by the blocker's own column CATEGORY, not the literal string "done"
+    // — same fallback rule as every other call site
+    // (lib/tasks/status-category.ts's isDoneStatus).
+    const { data: rows, error: blockersError } = await ctx.admin
+      .from("task_dependencies")
+      .select(
+        "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, status_id, number, deleted_at, projects(key), project_statuses(category))",
+      )
+      .eq("blocked_task_id", input.taskId);
+
+    if (blockersError) {
+      logger.error("getOpenBlockers: dependency fetch failed", { error: blockersError });
+      return {
+        ok: false,
+        error:
+          "Something went wrong checking this task's blockers. Please try again.",
+      };
+    }
+
+    const openBlockers: DependencyRelatedTask[] = (rows ?? [])
+      .map((row) => {
+        const blocking = Array.isArray(row.blocking)
+          ? row.blocking[0]
+          : row.blocking;
+        const blockingStatusCategory = Array.isArray(blocking?.project_statuses)
+          ? blocking.project_statuses[0]?.category
+          : blocking?.project_statuses?.category;
+        if (
+          !blocking ||
+          blocking.deleted_at ||
+          isDoneStatus(blocking.status, blockingStatusCategory)
+        ) {
+          return null;
+        }
+        const blockingProject = Array.isArray(blocking.projects)
+          ? blocking.projects[0]
+          : blocking.projects;
+        const related: DependencyRelatedTask = {
+          dependencyId: row.id,
+          taskId: blocking.id,
+          title: blocking.title,
+          status: blocking.status as DependencyRelatedTask["status"],
+          projectKey: blockingProject?.key,
+          number: blocking.number,
+        };
+        return related;
+      })
+      .filter((row): row is DependencyRelatedTask => row !== null);
+
+    return { ok: true, data: openBlockers };
+  },
+);
+
 export async function getOpenBlockers(
   taskId: string,
 ): Promise<GetOpenBlockersResult> {
-  const parsed = getOpenBlockersSchema.safeParse({ taskId });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid task.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to view this task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Same task -> project -> workspace lookup convention as
-  // moveTaskStatus/reorderTask/etc. above — the real owning workspace is
-  // resolved server-side, never trusted from the client. A soft-deleted
-  // task behaves as "not found".
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Defense in depth (AS-143): re-check the caller is an active member of
-  // the task's workspace, server-side.
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to view this task.",
-    };
-  }
-
-  // F323 (AS-227, AS-228, AS-229): read-path confidentiality — the caller
-  // must be able to SEE this task's project themselves, not just be an
-  // active workspace member (see isProjectVisibleToCaller's doc comment in
-  // lib/actions/project-visibility.ts). Returns the SAME "Task not found"
-  // message this function already uses for a genuinely missing/deleted
-  // task (never a permission-denied message), so a read-path leak never
-  // even confirms the task exists.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  // Same blocked_task_id -> blocking task embed + FK disambiguation as
-  // getTaskDetail's own blockedByQuery below (F155's two same-table FKs,
-  // task_dependencies_blocking_task_id_fkey/_blocked_task_id_fkey).
-  // F222 (AS-410): `status_id, project_statuses(category)` added to the
-  // embedded `blocking` task so "is this blocker still open" is decided
-  // by the blocker's own column CATEGORY, not the literal string "done"
-  // — same fallback rule as every other call site
-  // (lib/tasks/status-category.ts's isDoneStatus).
-  const { data: rows, error: blockersError } = await admin
-    .from("task_dependencies")
-    .select(
-      "id, blocking:tasks!task_dependencies_blocking_task_id_fkey(id, title, status, status_id, number, deleted_at, projects(key), project_statuses(category))",
-    )
-    .eq("blocked_task_id", parsed.data.taskId);
-
-  if (blockersError) {
-    logger.error("getOpenBlockers: dependency fetch failed", { error: blockersError });
-    return {
-      ok: false,
-      error:
-        "Something went wrong checking this task's blockers. Please try again.",
-    };
-  }
-
-  const openBlockers: DependencyRelatedTask[] = (rows ?? [])
-    .map((row) => {
-      const blocking = Array.isArray(row.blocking)
-        ? row.blocking[0]
-        : row.blocking;
-      const blockingStatusCategory = Array.isArray(blocking?.project_statuses)
-        ? blocking.project_statuses[0]?.category
-        : blocking?.project_statuses?.category;
-      if (
-        !blocking ||
-        blocking.deleted_at ||
-        isDoneStatus(blocking.status, blockingStatusCategory)
-      ) {
-        return null;
-      }
-      const blockingProject = Array.isArray(blocking.projects)
-        ? blocking.projects[0]
-        : blocking.projects;
-      const related: DependencyRelatedTask = {
-        dependencyId: row.id,
-        taskId: blocking.id,
-        title: blocking.title,
-        status: blocking.status as DependencyRelatedTask["status"],
-        projectKey: blockingProject?.key,
-        number: blocking.number,
-      };
-      return related;
-    })
-    .filter((row): row is DependencyRelatedTask => row !== null);
-
-  return { ok: true, data: openBlockers };
+  return getOpenBlockersImpl({ taskId });
 }
 
 // BUGFIX (TaskDetailSheet was fully built but never rendered anywhere):
@@ -3718,160 +3383,122 @@ export type ToggleDescriptionChecklistItemResult =
 //      including why this differs from F153's structured checklist (whose
 //      items are separate rows, so concurrent toggles of different items
 //      never collide at the row level).
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment. Uses `canEditTask` (via
+// `writeCheck`), not the default `canWrite` — same narrower gate
+// editTask itself uses, since this is a write to the same row.
+const toggleDescriptionChecklistItemImpl = withAuthz(
+  toggleDescriptionChecklistItemSchema,
+  {
+    requireWrite: true,
+    writeCheck: canEditTask,
+    membershipError: "You don't have permission to edit this task.",
+    writeError: "Viewers don't have permission to edit tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to edit tasks.",
+    // Same task lookup as editTask above — this action is a narrower
+    // write to the same row, so it is permission-checked identically
+    // (AS-061: any active member, no ownership restriction; viewers/
+    // guests cannot edit, mirroring editTask's own gate).
+    // `description_json` is threaded through as `extra` so the handler
+    // doesn't need a second query.
+    resolveWorkspace: async (input, admin) => {
+      const { data: taskRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, deleted_at, description_json, projects!inner(id, workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (error || !taskRow) return { ok: false, error: "Task not found." };
+
+      const project = Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects;
+
+      if (!project?.workspace_id) return { ok: false, error: "Task not found." };
+
+      return {
+        ok: true,
+        workspaceId: project.workspace_id,
+        projectId: project.id,
+        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+        extra: {
+          descriptionJson: taskRow.description_json as JSONContent | null,
+        },
+      };
+    },
+  },
+  async (input, ctx): Promise<ToggleDescriptionChecklistItemResult> => {
+    const currentDoc = ctx.descriptionJson ?? {
+      type: "doc",
+      content: [],
+    };
+
+    const updatedDoc = setTaskItemChecked(
+      currentDoc,
+      input.itemId,
+      input.checked,
+    );
+
+    if (!updatedDoc) {
+      return {
+        ok: false,
+        error:
+          "This checklist item no longer exists. Reload the task to see the latest description.",
+      };
+    }
+
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("tasks")
+      // Only description_json is written — description is deliberately
+      // absent from this payload (see this function's doc comment, point 1
+      // above).
+      .update({ description_json: updatedDoc })
+      .eq("id", input.taskId)
+      .select("description_json")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("toggleDescriptionChecklistItem: update failed", { error: updateError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
+
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        console.warn(
+          "toggleDescriptionChecklistItem: revalidatePath failed (non-fatal):",
+          revalidateError,
+        );
+      }
+    }
+
+    return {
+      ok: true,
+      data: { descriptionJson: updated.description_json as JSONContent },
+    };
+  },
+);
+
 export async function toggleDescriptionChecklistItem(
   taskId: string,
   itemId: string,
   checked: boolean,
 ): Promise<ToggleDescriptionChecklistItemResult> {
-  const parsed = toggleDescriptionChecklistItemSchema.safeParse({
-    taskId,
-    itemId,
-    checked,
-  });
-
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid checklist item.",
-    };
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { ok: false, error: "You must be signed in to edit a task." };
-  }
-
-  const admin = createAdminClient();
-
-  // Same task lookup + membership + canEditTask gate as editTask above —
-  // this action is a narrower write to the same row, so it is
-  // permission-checked identically (AS-061: any active member, no
-  // ownership restriction; viewers/guests cannot edit, mirroring
-  // editTask's own gate).
-  const { data: taskRow, error: taskError } = await admin
-    .from("tasks")
-    .select(
-      "id, deleted_at, description_json, projects!inner(id, workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (taskError || !taskRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = Array.isArray(taskRow.projects)
-    ? taskRow.projects[0]
-    : taskRow.projects;
-  const workspaceId = project?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to edit this task.",
-    };
-  }
-
-  if (!canEditTask({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to edit tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE this task's
-  // project themselves, not just be an active workspace member — see
-  // isProjectVisibleToCaller's doc comment above `loadTaskAssignContext`.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId: project.id,
-        visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to edit tasks.",
-    };
-  }
-
-  const currentDoc = (taskRow.description_json as JSONContent | null) ?? {
-    type: "doc",
-    content: [],
-  };
-
-  const updatedDoc = setTaskItemChecked(
-    currentDoc,
-    parsed.data.itemId,
-    parsed.data.checked,
-  );
-
-  if (!updatedDoc) {
-    return {
-      ok: false,
-      error:
-        "This checklist item no longer exists. Reload the task to see the latest description.",
-    };
-  }
-
-  const { data: updated, error: updateError } = await admin
-    .from("tasks")
-    // Only description_json is written — description is deliberately
-    // absent from this payload (see this function's doc comment, point 1
-    // above).
-    .update({ description_json: updatedDoc })
-    .eq("id", parsed.data.taskId)
-    .select("description_json")
-    .single();
-
-  if (updateError || !updated) {
-    logger.error("toggleDescriptionChecklistItem: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
-
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      console.warn(
-        "toggleDescriptionChecklistItem: revalidatePath failed (non-fatal):",
-        revalidateError,
-      );
-    }
-  }
-
-  return {
-    ok: true,
-    data: { descriptionJson: updated.description_json as JSONContent },
-  };
+  return toggleDescriptionChecklistItemImpl({ taskId, itemId, checked });
 }
 
 export type DuplicateTaskResult =
@@ -3929,268 +3556,247 @@ export type DuplicateTaskResult =
 // all — this function has no query against `comments`/`attachments`/
 // `time_entries` for the source. The new task's key/number is freshly
 // assigned by the DB trigger, never copied from the source row.
-export async function duplicateTask(
-  taskId: string,
-): Promise<DuplicateTaskResult> {
-  const parsed = duplicateTaskSchema.safeParse({ taskId });
+type DuplicateTaskSourceRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  description_json: Json | null;
+  status: string;
+  priority: "urgent" | "high" | "medium" | "low" | "backlog" | null;
+  tags: string[] | null;
+  position: number;
+  estimate_minutes: number | null;
+};
 
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues[0]?.message ?? "Invalid task.",
-    };
-  }
+// W11: migrated onto withAuthz — see deleteTaskImpl above and
+// lib/actions/authz.ts's doc comment. The source row is threaded through
+// as `extra` so the handler doesn't need a second query for it.
+const duplicateTaskImpl = withAuthz(
+  duplicateTaskSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to duplicate this task.",
+    // Same gate createTask/editTask use: viewers/guests are read-only
+    // (AS-216/AS-217) — duplicating a task creates a new one, so it's a
+    // write, gated the same way createTask's own write is.
+    writeError: "Viewers don't have permission to duplicate tasks.",
+    requireVisibility: true,
+    visibilityError: "Viewers don't have permission to duplicate tasks.",
+    resolveWorkspace: async (input, admin) => {
+      const { data: sourceRow, error } = await admin
+        .from("tasks")
+        .select(
+          "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id, visibility)",
+        )
+        .eq("id", input.taskId)
+        .is("deleted_at", null)
+        .maybeSingle();
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+      if (error || !sourceRow) return { ok: false, error: "Task not found." };
 
-  if (!user) {
-    return { ok: false, error: "You must be signed in to duplicate a task." };
-  }
+      const project = sourceRow.projects as
+        | { workspace_id: string; visibility: string | null }
+        | { workspace_id: string; visibility: string | null }[]
+        | null;
+      const projectRow = Array.isArray(project) ? project[0] : project;
 
-  const admin = createAdminClient();
+      if (!projectRow?.workspace_id) return { ok: false, error: "Task not found." };
 
-  const { data: sourceRow, error: sourceError } = await admin
-    .from("tasks")
-    .select(
-      "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id, visibility)",
-    )
-    .eq("id", parsed.data.taskId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (sourceError || !sourceRow) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const project = sourceRow.projects as
-    | { workspace_id: string; visibility: string | null }
-    | { workspace_id: string; visibility: string | null }[]
-    | null;
-  const projectRow = Array.isArray(project) ? project[0] : project;
-  const workspaceId = projectRow?.workspace_id;
-
-  if (!workspaceId) {
-    return { ok: false, error: "Task not found." };
-  }
-
-  const membership = await requireActiveMembership(
-    admin,
-    workspaceId,
-    user.id,
-  );
-
-  if (!membership.ok) {
-    return {
-      ok: false,
-      error: "You don't have permission to duplicate this task.",
-    };
-  }
-
-  // Same gate createTask/editTask use: viewers/guests are read-only
-  // (AS-216/AS-217) — duplicating a task creates a new one, so it's a
-  // write, gated the same way createTask's own write is.
-  if (!canWrite({ role: membership.role })) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to duplicate tasks.",
-    };
-  }
-
-  // F322 (AS-227, AS-228): the caller must be able to SEE the source
-  // task's project themselves, not just be an active workspace member —
-  // see isProjectVisibleToCaller's doc comment above
-  // `loadTaskAssignContext`. Uses `sourceRow.project_id` (already selected
-  // as a top-level column) rather than the embedded `projects` row's own
-  // id, which isn't selected here.
-  if (
-    !(await isProjectVisibleToCaller(
-      admin,
-      {
+      return {
+        ok: true,
+        workspaceId: projectRow.workspace_id,
+        // F322 (AS-227, AS-228): uses `sourceRow.project_id` (already
+        // selected as a top-level column) rather than the embedded
+        // `projects` row's own id, which isn't selected here.
         projectId: sourceRow.project_id,
         visibility:
           (projectRow?.visibility as ProjectVisibility) ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    ))
-  ) {
-    return {
-      ok: false,
-      error: "Viewers don't have permission to duplicate tasks.",
-    };
-  }
+        extra: { sourceRow: sourceRow as unknown as DuplicateTaskSourceRow },
+      };
+    },
+  },
+  async (input, ctx): Promise<DuplicateTaskResult> => {
+    const sourceRow = ctx.sourceRow;
 
-  const [assigneesResult, checklistResult] = await Promise.all([
-    admin
-      .from("task_assignees")
-      .select("user_id, created_at")
-      .eq("task_id", parsed.data.taskId)
-      .order("created_at", { ascending: true }),
-    admin
-      .from("checklist_items")
-      .select("content, position")
-      .eq("task_id", parsed.data.taskId)
-      .order("position", { ascending: true }),
-  ]);
+    const [assigneesResult, checklistResult] = await Promise.all([
+      ctx.admin
+        .from("task_assignees")
+        .select("user_id, created_at")
+        .eq("task_id", input.taskId)
+        .order("created_at", { ascending: true }),
+      ctx.admin
+        .from("checklist_items")
+        .select("content, position")
+        .eq("task_id", input.taskId)
+        .order("position", { ascending: true }),
+    ]);
 
-  const cloned = cloneTaskFields({
-    title: sourceRow.title,
-    description: sourceRow.description,
-    description_json: sourceRow.description_json,
-    assigneeIds: (assigneesResult.data ?? []).map((row) => row.user_id as string),
-    priority: sourceRow.priority,
-    checklistItems: (checklistResult.data ?? []).map((row) => ({
-      content: row.content as string,
-      position: row.position as number,
-    })),
-    estimate_minutes: sourceRow.estimate_minutes,
-  });
-
-  // AS-327: land in the SAME status as the original, never the recurrence
-  // allow-list's "todo" reset — cloneTaskFields.status is deliberately
-  // ignored here (that reset is specific to recurring occurrences, not
-  // duplication), and the source's own current status is used instead.
-  const targetStatus = sourceRow.status;
-
-  // AS-327: positioned right after the original in its current column.
-  // The source's own position is the previous-sibling anchor; its current
-  // next sibling by position (same project + status column) is the
-  // next-sibling anchor.
-  const { data: nextSibling } = await admin
-    .from("tasks")
-    .select("position")
-    .eq("project_id", sourceRow.project_id)
-    .eq("status", targetStatus)
-    .is("deleted_at", null)
-    .gt("position", sourceRow.position)
-    .order("position", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  const newPosition = calculatePosition(
-    sourceRow.position as number,
-    nextSibling?.position ?? null,
-  );
-
-  const { data: inserted, error: insertError } = await admin
-    .from("tasks")
-    .insert({
-      project_id: sourceRow.project_id,
-      // AS-324: the duplicate's title is distinctly marked, never an exact
-      // copy of the source's title.
-      title: `Copy of ${cloned.title}`,
-      description: cloned.description,
-      description_json: cloned.description_json as Json,
-      status: targetStatus,
-      priority: cloned.priority,
-      tags: sourceRow.tags ?? [],
-      estimate_minutes: cloned.estimate_minutes,
-      author_id: user.id,
-      position: newPosition,
-      // No `number`/key supplied: F145's assign_task_key trigger assigns
-      // this new row its OWN project-sequential number on insert, exactly
-      // like every other task-creation path in this file (createTaskForUser
-      // above never supplies one either) — never copied from the source.
-    })
-    .select("id, project_id, title, status, position, number")
-    .single();
-
-  if (insertError || !inserted) {
-    logger.error("duplicateTask: insert failed", { error: insertError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // Atomicity fix (W7b): checklist items and assignees are copied inside a
-  // single database transaction via RPC. Previously these were two
-  // independent inserts whose failures were only logged, leaving an orphan
-  // task on the board with a missing checklist and/or assignees while the
-  // caller still saw ok:true. If the RPC fails, the newly-inserted task is
-  // rolled back too, so the caller never sees a partially-duplicated task.
-  if (cloned.checklistItems.length > 0 || cloned.assigneeIds.length > 0) {
-    const { error: atomicError } = await admin.rpc("duplicate_task_atomic", {
-      p_source_task_id: parsed.data.taskId,
-      p_new_task_id: inserted.id,
+    const cloned = cloneTaskFields({
+      title: sourceRow.title,
+      description: sourceRow.description,
+      description_json: sourceRow.description_json,
+      assigneeIds: (assigneesResult.data ?? []).map((row) => row.user_id as string),
+      priority: sourceRow.priority,
+      checklistItems: (checklistResult.data ?? []).map((row) => ({
+        content: row.content as string,
+        position: row.position as number,
+      })),
+      estimate_minutes: sourceRow.estimate_minutes,
     });
-    if (atomicError) {
-      logger.error("duplicateTask: duplicate_task_atomic failed", { error: atomicError });
-      // Roll back the task insert too — don't leave a task with no
-      // checklist/assignees.
-      await admin.from("tasks").delete().eq("id", inserted.id);
+
+    // AS-327: land in the SAME status as the original, never the
+    // recurrence allow-list's "todo" reset — cloneTaskFields.status is
+    // deliberately ignored here (that reset is specific to recurring
+    // occurrences, not duplication), and the source's own current status
+    // is used instead.
+    const targetStatus = sourceRow.status;
+
+    // AS-327: positioned right after the original in its current column.
+    // The source's own position is the previous-sibling anchor; its
+    // current next sibling by position (same project + status column) is
+    // the next-sibling anchor.
+    const { data: nextSibling } = await ctx.admin
+      .from("tasks")
+      .select("position")
+      .eq("project_id", sourceRow.project_id)
+      .eq("status", targetStatus)
+      .is("deleted_at", null)
+      .gt("position", sourceRow.position)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    const newPosition = calculatePosition(
+      sourceRow.position,
+      nextSibling?.position ?? null,
+    );
+
+    const { data: inserted, error: insertError } = await ctx.admin
+      .from("tasks")
+      .insert({
+        project_id: sourceRow.project_id,
+        // AS-324: the duplicate's title is distinctly marked, never an
+        // exact copy of the source's title.
+        title: `Copy of ${cloned.title}`,
+        description: cloned.description,
+        description_json: cloned.description_json as Json,
+        status: targetStatus,
+        priority: cloned.priority,
+        tags: sourceRow.tags ?? [],
+        estimate_minutes: cloned.estimate_minutes,
+        author_id: ctx.user.id,
+        position: newPosition,
+        // No `number`/key supplied: F145's assign_task_key trigger assigns
+        // this new row its OWN project-sequential number on insert, exactly
+        // like every other task-creation path in this file
+        // (createTaskForUser above never supplies one either) — never
+        // copied from the source.
+      })
+      .select("id, project_id, title, status, position, number")
+      .single();
+
+    if (insertError || !inserted) {
+      logger.error("duplicateTask: insert failed", { error: insertError });
       return {
         ok: false,
         error: "Something went wrong. Please try again in a moment.",
       };
     }
 
-    if (cloned.assigneeIds.length > 0) {
-      await syncMirrorAssigneeId(admin, inserted.id);
+    // Atomicity fix (W7b): checklist items and assignees are copied inside
+    // a single database transaction via RPC. Previously these were two
+    // independent inserts whose failures were only logged, leaving an
+    // orphan task on the board with a missing checklist and/or assignees
+    // while the caller still saw ok:true. If the RPC fails, the newly-
+    // inserted task is rolled back too, so the caller never sees a
+    // partially-duplicated task.
+    if (cloned.checklistItems.length > 0 || cloned.assigneeIds.length > 0) {
+      const { error: atomicError } = await ctx.admin.rpc(
+        "duplicate_task_atomic",
+        { p_source_task_id: input.taskId, p_new_task_id: inserted.id },
+      );
+      if (atomicError) {
+        logger.error("duplicateTask: duplicate_task_atomic failed", { error: atomicError });
+        // Roll back the task insert too — don't leave a task with no
+        // checklist/assignees.
+        await ctx.admin.from("tasks").delete().eq("id", inserted.id);
+        return {
+          ok: false,
+          error: "Something went wrong. Please try again in a moment.",
+        };
+      }
 
-      // F306 (D9/FU-3 scrutiny fix, AS-380): the duplicate carries over
-      // the source's assignees but never notified them — routed through
-      // the same shared helpers every other fan-out call site uses. Like
-      // createTaskForUser above, this is a creation, not a *change*, so
-      // no task_activity entry is written for it, only the notification.
-      // Non-fatal.
-      try {
-        const computedRecipients = computeFanoutRecipients({
-          type: "assigned",
-          actorId: user.id,
-          assigneeIds: cloned.assigneeIds,
-        });
-        const recipients = await filterRecipientsByInAppPreference(
-          admin,
-          computedRecipients ?? [],
-        );
-        for (const recipient of recipients ?? []) {
-          await createNotification(
-            supabase,
-            {
-              userId: recipient.userId,
-              workspaceId,
-              kind: recipient.kind,
-              taskId: inserted.id,
-            },
-            "duplicateTask",
+      if (cloned.assigneeIds.length > 0) {
+        await syncMirrorAssigneeId(ctx.admin, inserted.id);
+
+        // F306 (D9/FU-3 scrutiny fix, AS-380): the duplicate carries over
+        // the source's assignees but never notified them — routed through
+        // the same shared helpers every other fan-out call site uses. Like
+        // createTaskForUser above, this is a creation, not a *change*, so
+        // no task_activity entry is written for it, only the notification.
+        // Non-fatal.
+        try {
+          const computedRecipients = computeFanoutRecipients({
+            type: "assigned",
+            actorId: ctx.user.id,
+            assigneeIds: cloned.assigneeIds,
+          });
+          const recipients = await filterRecipientsByInAppPreference(
+            ctx.admin,
+            computedRecipients ?? [],
           );
+          for (const recipient of recipients ?? []) {
+            await createNotification(
+              ctx.supabase,
+              {
+                userId: recipient.userId,
+                workspaceId: ctx.workspaceId,
+                kind: recipient.kind,
+                taskId: inserted.id,
+              },
+              "duplicateTask",
+            );
+          }
+        } catch (fanoutError) {
+          logger.error("duplicateTask: notification fan-out failed (non-fatal)", { error: fanoutError });
         }
-      } catch (fanoutError) {
-        logger.error("duplicateTask: notification fan-out failed (non-fatal)", { error: fanoutError });
       }
     }
-  }
 
-  const { data: workspaceRow } = await admin
-    .from("workspaces")
-    .select("slug")
-    .eq("id", workspaceId)
-    .maybeSingle();
+    const { data: workspaceRow } = await ctx.admin
+      .from("workspaces")
+      .select("slug")
+      .eq("id", ctx.workspaceId)
+      .maybeSingle();
 
-  if (workspaceRow?.slug) {
-    try {
-      revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-    } catch (revalidateError) {
-      // Non-fatal cache-freshness rationale, same as createTask above.
-      logger.error("duplicateTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+    if (workspaceRow?.slug) {
+      try {
+        revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      } catch (revalidateError) {
+        // Non-fatal cache-freshness rationale, same as createTask above.
+        logger.error("duplicateTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
     }
-  }
 
-  return {
-    ok: true,
-    data: {
-      id: inserted.id,
-      projectId: inserted.project_id,
-      title: inserted.title,
-      status: inserted.status,
-      position: inserted.position,
-      number: inserted.number,
-    },
-  };
+    return {
+      ok: true,
+      data: {
+        id: inserted.id,
+        projectId: inserted.project_id,
+        title: inserted.title,
+        status: inserted.status,
+        position: inserted.position,
+        number: inserted.number,
+      },
+    };
+  },
+);
+
+export async function duplicateTask(
+  taskId: string,
+): Promise<DuplicateTaskResult> {
+  return duplicateTaskImpl({ taskId });
 }
 
 // ---------------------------------------------------------------------
