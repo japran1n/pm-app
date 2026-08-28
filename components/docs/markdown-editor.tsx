@@ -43,18 +43,9 @@ import {
   Quote,
   Heading1,
   Heading2,
-  Loader2,
-  Sparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { updateDoc } from "@/lib/actions/docs";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -77,10 +68,6 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [status, setStatus] = useState<SaveStatus>("idle");
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiInstruction, setAiInstruction] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   // Debounced auto-save (plan: 800ms after the user stops typing, no manual
   // Save button). A plain setTimeout ref is used rather than pulling in a
@@ -152,34 +139,6 @@ export function MarkdownEditor({
 
   if (!editor) return null;
 
-  async function handleAiEdit() {
-    if (!editor || !aiInstruction.trim()) return;
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const markdown = (
-        editor.storage as unknown as { markdown: { getMarkdown(): string } }
-      ).markdown.getMarkdown();
-      const res = await fetch("/api/docs/ai-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: markdown,
-          instruction: aiInstruction,
-        }),
-      });
-      if (!res.ok) throw new Error("AI edit failed");
-      const { result } = await res.json();
-      editor.commands.setContent(result);
-      setAiOpen(false);
-      setAiInstruction("");
-    } catch {
-      setAiError("Something went wrong, try again.");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
@@ -196,16 +155,7 @@ export function MarkdownEditor({
         </span>
       </div>
 
-      <Toolbar
-        editor={editor}
-        aiOpen={aiOpen}
-        setAiOpen={setAiOpen}
-        aiInstruction={aiInstruction}
-        setAiInstruction={setAiInstruction}
-        aiLoading={aiLoading}
-        aiError={aiError}
-        onAiEdit={handleAiEdit}
-      />
+      <Toolbar editor={editor} />
 
       <EditorContent editor={editor} />
     </div>
@@ -218,22 +168,8 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 function Toolbar({
   editor,
-  aiOpen,
-  setAiOpen,
-  aiInstruction,
-  setAiInstruction,
-  aiLoading,
-  aiError,
-  onAiEdit,
 }: {
   editor: NonNullable<ReturnType<typeof useEditor>>;
-  aiOpen: boolean;
-  setAiOpen: (open: boolean) => void;
-  aiInstruction: string;
-  setAiInstruction: (value: string) => void;
-  aiLoading: boolean;
-  aiError: string | null;
-  onAiEdit: () => void;
 }) {
   const items: Array<{
     label: string;
@@ -305,49 +241,6 @@ function Toolbar({
           <Icon className="size-3.5" />
         </Button>
       ))}
-      <Separator orientation="vertical" className="mx-1 h-5" />
-      <Popover open={aiOpen} onOpenChange={setAiOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="AI Edit"
-              title="AI Edit"
-            >
-              <Sparkles className="size-3.5" />
-            </Button>
-          }
-        />
-        <PopoverContent className="flex w-72 flex-col gap-2">
-          <Textarea
-            placeholder="Describe what to change..."
-            value={aiInstruction}
-            onChange={(event) => setAiInstruction(event.target.value)}
-            rows={3}
-          />
-          {aiError && <p className="text-xs text-destructive">{aiError}</p>}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setAiOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={onAiEdit}
-              disabled={aiLoading || !aiInstruction.trim()}
-            >
-              {aiLoading ? "Applying..." : "Apply"}
-            </Button>
-          </div>
-        </PopoverContent>
-      </Popover>
     </div>
   );
 }
