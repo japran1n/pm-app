@@ -1,5 +1,6 @@
 import { PasswordSignInForm } from "@/components/auth/password-sign-in-form";
 import { SignInForm } from "@/components/auth/sign-in-form";
+import { Logo } from "@/components/brand/logo";
 import {
   Tabs,
   TabsContent,
@@ -39,7 +40,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
   return (
     <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-10 p-6">
-      <span className="text-xl font-semibold tracking-tight">pm-app</span>
+      <Logo className="h-5 w-auto text-foreground" />
 
       <div className="flex w-full max-w-sm flex-col gap-8">
         <div className="flex flex-col gap-2 text-center">

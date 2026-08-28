@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
@@ -50,18 +50,10 @@ export default async function ProjectDetailLayout({
   const { workspaceSlug, projectId } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect("/sign-in");
-  }
-
-  // RLS-backed lookup (`workspaces_select_active_members`) — a null result
-  // here means either the workspace doesn't exist or the caller isn't an
-  // active member, both of which the layout guard above already redirects
-  // away from; this is a defensive fallback only.
+  // Parent workspace layout already verified auth and active membership —
+  // no redundant getUser() needed here. The workspace lookup is still
+  // required because this layout needs workspace.id for getProjectById.
   const { data: workspace } = await supabase
     .from("workspaces")
     .select("id, name")
@@ -69,7 +61,7 @@ export default async function ProjectDetailLayout({
     .maybeSingle();
 
   if (!workspace) {
-    redirect("/onboarding");
+    notFound();
   }
 
   const project = await getProjectById(workspace.id, projectId);
@@ -96,13 +88,15 @@ export default async function ProjectDetailLayout({
   // F168 (AS-303): the same RPC also returns the project's summed task
   // estimate, rendered alongside the logged total. AS-304 (excluding a
   // soft-deleted task's estimate) is likewise enforced inside the RPC.
-  const timeTotals = await getProjectTimeTotals(project.id);
+  // timeTotals and personRollup are independent of each other — run in
+  // parallel (P4: eliminates one serial round-trip per project page load).
+  const [timeTotals, personRollup] = await Promise.all([
+    getProjectTimeTotals(project.id),
+    getProjectEstimateAndLoggedByPerson(project.id),
+  ]);
   const totalMinutes =
     timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
-  // F414: per-person rollup, fetched alongside the project-wide totals
-  // above rather than as a separate page — a lead scanning "who is over"
-  // shouldn't need a second navigation to see it.
-  const personRollup = await getProjectEstimateAndLoggedByPerson(project.id);
+  // F414: per-person rollup display names — depends on personRollup, so serial.
   const personNames = await resolvePeople(
     personRollup.map((row) => row.userId),
   );

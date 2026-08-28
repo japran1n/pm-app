@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { CreateWorkspaceForm } from "@/components/onboarding/create-workspace-form";
 import { createClient } from "@/lib/supabase/server";
 import { getDefaultWorkspaceSlug } from "@/lib/queries/workspaces";
+import { Logo } from "@/components/brand/logo";
 
 // Server Component shell (primary content server-rendered, AS-155); the
 // interactive create-workspace form is the sole Client Component boundary.
@@ -31,7 +32,7 @@ export default async function OnboardingPage() {
 
   return (
     <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-10 p-6">
-      <span className="text-xl font-semibold tracking-tight">pm-app</span>
+      <Logo className="h-5 w-auto text-foreground" />
 
       <div className="flex w-full max-w-sm flex-col gap-8">
         <div className="flex flex-col gap-2 text-center">

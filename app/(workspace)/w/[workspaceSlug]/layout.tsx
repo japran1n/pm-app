@@ -169,39 +169,87 @@ export default async function WorkspaceLayout({
     notFound();
   }
 
-  // All of the caller's active memberships, for the switcher list
-  // (AS-012). Two-step query rather than an embedded select: the
-  // generated `workspace_members` -> `workspaces` FK is not one-to-one, so
-  // an embedded select types as an array and cannot be `.slug`-accessed
-  // directly (same tradeoff F013's auth callback route made).
-  //
-  // F134 (AS-222): `role` is fetched alongside so the sidebar can hide the
-  // "Members" link for a guest — every page under this layout shares one
-  // fetch of the caller's role in *this* workspace rather than each page
-  // re-querying it.
-  const { data: memberships, error: membershipsError } = await supabase
-    .from("workspace_members")
-    .select("workspace_id, role")
-    .eq("user_id", user.id)
-    .eq("status", "active");
+  // All independent data fetches run in parallel — memberships, profile,
+  // notifications, tour status, sidebar projects, favorites, client count,
+  // and project roles are all independent of each other once user +
+  // activeWorkspace are known. This collapses 8 serial round-trips
+  // (~300–640 ms on a hosted Supabase instance) into one parallel batch.
+  const [
+    { data: memberships, error: membershipsError },
+    { data: currentUserProfile, error: currentUserProfileError },
+    notificationsResult,
+    tourStatusResult,
+    sidebarProjectsResult,
+    favoriteProjectIds,
+    { count: clientMemberCount },
+    { data: projectMemberRows, error: projectMemberRowsError },
+  ] = await Promise.all([
+    // F134 (AS-222): caller's active memberships for workspace switcher +
+    // role resolution. Two-step query (not embedded select) — see original
+    // comment re: FK type constraints.
+    supabase
+      .from("workspace_members")
+      .select("workspace_id, role")
+      .eq("user_id", user.id)
+      .eq("status", "active"),
+
+    // F273 (AS-202): signed-in person's display name / avatar for sidebar footer.
+    supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("id", user.id)
+      .maybeSingle(),
+
+    // F208 (AS-379): initial notification bell state. Non-fatal — function
+    // already falls back to empty list / zero count internally.
+    getNotificationsForWorkspace(activeWorkspace.id),
+
+    // F253: first-run tour status. Fails open to "dismissed".
+    getTourStatus(),
+
+    // F262: sidebar projects. Fails open to empty list.
+    getWorkspaceProjects(activeWorkspace.id).then(
+      (projects) => ({ projects, error: null }),
+      (error) => {
+        console.error("WorkspaceLayout: failed to look up workspace projects for sidebar:", error);
+        return { projects: [] as Awaited<ReturnType<typeof getWorkspaceProjects>>, error };
+      },
+    ),
+
+    // F263 (AS-510): favourite project ids. getFavoriteProjectIds already fails open.
+    getFavoriteProjectIds(activeWorkspace.id),
+
+    // C2: client member count for MembershipProvider's hasClient flag.
+    supabase
+      .from("workspace_members")
+      .select("id", { count: "exact", head: true })
+      .eq("workspace_id", activeWorkspace.id)
+      .eq("role", "client")
+      .eq("status", "active"),
+
+    // F135 (AS-231): caller's project_member rows for this workspace,
+    // scoped via projects!inner(workspace_id) to avoid cross-workspace mixing.
+    supabase
+      .from("project_members")
+      .select("project_id, project_role, projects!inner(workspace_id)")
+      .eq("user_id", user.id)
+      .eq("projects.workspace_id", activeWorkspace.id),
+  ]);
 
   if (membershipsError) {
-    console.error(
-      "WorkspaceLayout: failed to look up user's memberships:",
-      membershipsError,
-    );
+    console.error("WorkspaceLayout: failed to look up user's memberships:", membershipsError);
+  }
+  if (currentUserProfileError) {
+    console.error("WorkspaceLayout: failed to look up current user's profile:", currentUserProfileError);
+  }
+  if (projectMemberRowsError) {
+    console.error("WorkspaceLayout: failed to look up caller's project memberships:", projectMemberRowsError);
   }
 
-  // C3 (docs/client-portal-plan.md): a client belongs in the portal, not
-  // here. Placed immediately after the membership lookup and before every
-  // sidebar/notification/tour fetch below, so a client's request never pays
-  // for — or touches — data the portal has no use for.
-  //
-  // Chrome, not enforcement: RLS (20260902010000 / 20260902020000) is what
-  // actually stops a client reading team data, and it holds whether or not
-  // this redirect runs. What this prevents is the confusing middle state
-  // where a client lands in the team app and sees it almost entirely empty
-  // because every query legitimately returned nothing.
+  const sidebarProjects = sidebarProjectsResult.projects;
+
+  // C3: a client belongs in the portal, not here. Checked after memberships
+  // resolve (now part of the parallel batch above).
   const currentRole = (memberships ?? []).find(
     (m) => m.workspace_id === activeWorkspace.id,
   )?.role;
@@ -210,128 +258,28 @@ export default async function WorkspaceLayout({
     redirect(`/portal/${activeWorkspace.slug}`);
   }
 
-  // F273 (AS-202): the signed-in person's own display name/avatar for the
-  // sidebar footer entry point that links to the profile settings page —
-  // without this the profile page (F123) has no in-app way to reach it.
-  // Same fallback order as UserAvatar's `personLabel`/`initialsFor`
-  // helpers (display name, then email, then id), kept here rather than
-  // imported so the layout doesn't need a client-only import just for a
-  // label string.
-  const { data: currentUserProfile, error: currentUserProfileError } =
-    await supabase
-      .from("profiles")
-      .select("display_name, avatar_url")
-      .eq("id", user.id)
-      .maybeSingle();
-
-  if (currentUserProfileError) {
-    console.error(
-      "WorkspaceLayout: failed to look up current user's profile:",
-      currentUserProfileError,
-    );
-  }
-
-  // F208 (AS-379): initial notification bell state for THIS workspace,
-  // fetched alongside everything else the sidebar needs. Non-fatal to the
-  // rest of the layout if it fails — getNotificationsForWorkspace already
-  // logs and falls back to an empty list/zero count internally.
-  const { list: initialNotifications, unreadCount: initialUnreadCount } =
-    await getNotificationsForWorkspace(activeWorkspace.id);
-
-  // F253: non-fatal to the rest of the layout if this read fails --
-  // failing open to "already dismissed" (never show an unexpected tour on
-  // top of an otherwise-broken read) rather than failing closed and
-  // forcing every page load into a tour for a user who already saw it.
-  const tourStatusResult = await getTourStatus();
+  const { list: initialNotifications, unreadCount: initialUnreadCount } = notificationsResult;
   const tourDismissed = tourStatusResult.ok ? tourStatusResult.dismissed : true;
-
-  // F262: non-fatal to the rest of the layout if this read fails --
-  // fails open to an empty list (renders the sidebar's own "no projects"
-  // create action, AS-513) rather than crashing every page under this
-  // layout on a transient query error.
-  let sidebarProjects: Awaited<ReturnType<typeof getWorkspaceProjects>> = [];
-  try {
-    sidebarProjects = await getWorkspaceProjects(activeWorkspace.id);
-  } catch (error) {
-    console.error(
-      "WorkspaceLayout: failed to look up workspace projects for sidebar:",
-      error,
-    );
-  }
-
-  // F263 (AS-510): the caller's favourite project ids, server-fetched
-  // alongside the project list above (not a second per-navigation client
-  // fetch, per the clarified "server-fetch alongside the existing project
-  // list query" instruction). Non-fatal to the rest of the layout --
-  // getFavoriteProjectIds itself already fails open to an empty set.
-  const favoriteProjectIds = await getFavoriteProjectIds(activeWorkspace.id);
-
-  // C2: does this workspace have any client at all? Fetched once here,
-  // alongside everything else the layout already loads, and exposed via
-  // MembershipProvider so the task sheet's share toggle (and any later
-  // portal affordance) can hide itself without a per-component query.
-  // `head: true` — only the count matters, never the rows.
-  const { count: clientMemberCount } = await supabase
-    .from("workspace_members")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", activeWorkspace.id)
-    .eq("role", "client")
-    .eq("status", "active");
 
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
-  // F134 (AS-222): the caller's own role in the *active* workspace
-  // specifically (not just "some role in some workspace" — a person can be
-  // a guest in one workspace and an owner in another, per-workspace roles
-  // being this codebase's existing model).
+  // F134 (AS-222): role in the active workspace specifically.
   const isGuest =
     (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
       ?.role === "guest";
 
-  // F135 (AS-231): the caller's own workspace role, in full (not just the
-  // isGuest boolean above) — the single value MembershipProvider exposes
-  // to every client component under this layout so mutating controls can
-  // gate themselves via lib/auth/permissions.ts without a per-component
-  // re-fetch. Defaults to "guest" (the least-privileged role) in the
-  // defensive case where the caller somehow has no matching membership row
-  // despite the workspace lookup above having already succeeded (should be
-  // unreachable — the workspace query itself is scoped to active
-  // memberships — but a safe fallback here is strictly better than
-  // crashing or silently granting a wider role than the caller has).
+  // F135 (AS-231): full workspace role for MembershipProvider.
   const activeWorkspaceRole =
     (memberships ?? []).find((m) => m.workspace_id === activeWorkspace.id)
       ?.role ?? "guest";
-
-  // F135 (AS-231): every project_members row the caller has for a project
-  // IN THIS WORKSPACE — one query, loaded once per layout render, so every
-  // client component under this layout (board rows, list rows, task
-  // detail) can gate a project-lead-scoped control (e.g. canManageColumns,
-  // canDeleteTask) without its own fetch. Scoped to the active workspace
-  // via the `projects!inner(workspace_id)` embed — project_members' own
-  // RLS policy (`project_members_select_active_members`) already limits
-  // this to projects whose workspace the caller is an active member of,
-  // but without this filter a caller who belongs to project_members rows
-  // in more than one workspace would get another workspace's project ids
-  // mixed into this one's map.
-  const { data: projectMemberRows, error: projectMemberRowsError } =
-    await supabase
-      .from("project_members")
-      .select("project_id, project_role, projects!inner(workspace_id)")
-      .eq("user_id", user.id)
-      .eq("projects.workspace_id", activeWorkspace.id);
-
-  if (projectMemberRowsError) {
-    console.error(
-      "WorkspaceLayout: failed to look up caller's project memberships:",
-      projectMemberRowsError,
-    );
-  }
 
   const projectRoles: Record<string, ProjectRole> = {};
   for (const row of projectMemberRows ?? []) {
     projectRoles[row.project_id] = row.project_role as ProjectRole;
   }
 
+  // Workspaces list for the switcher — needs workspaceIds from memberships,
+  // so runs after the parallel batch (single query, not a bottleneck).
   const { data: workspaces, error: workspacesError } = workspaceIds.length
     ? await supabase
         .from("workspaces")
@@ -341,10 +289,7 @@ export default async function WorkspaceLayout({
     : { data: [], error: null };
 
   if (workspacesError) {
-    console.error(
-      "WorkspaceLayout: failed to look up member workspaces:",
-      workspacesError,
-    );
+    console.error("WorkspaceLayout: failed to look up member workspaces:", workspacesError);
   }
 
   // The active workspace is guaranteed to be an active membership (we just

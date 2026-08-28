@@ -33,6 +33,7 @@ export function PasswordSignInForm() {
           type="text"
           autoComplete="username"
           placeholder="you@example.com"
+          autoFocus
           required
           disabled={isPending}
           aria-invalid={state?.ok === false}

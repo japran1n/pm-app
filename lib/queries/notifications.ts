@@ -142,12 +142,26 @@ export async function getNotificationsForWorkspace(
     return { list: [], unreadCount: 0 };
   }
 
-  const { data: rows, error } = await supabase
-    .from("notifications")
-    .select("id, kind, actor_id, task_id, comment_id, payload, read_at, created_at")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  // Both notification queries are independent of each other — run in
+  // parallel (P7: eliminates one serial round-trip per layout render).
+  const [
+    { data: rows, error },
+    { data: unreadRows, error: unreadError },
+  ] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select("id, kind, actor_id, task_id, comment_id, payload, read_at, created_at")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    // F210: fetched without `limit` because unreadCount must reflect every
+    // unread row, not just the page the panel renders.
+    supabase
+      .from("notifications")
+      .select("id, task_id")
+      .eq("workspace_id", workspaceId)
+      .is("read_at", null),
+  ]);
 
   if (error) {
     console.error("getNotificationsForWorkspace: fetch failed:", error);
@@ -157,16 +171,6 @@ export async function getNotificationsForWorkspace(
       error: "Couldn't load notifications.",
     };
   }
-
-  // F210: fetched separately from `rows` (no `limit`) because unreadCount
-  // must reflect every unread row, not just the page the panel renders —
-  // e.g. 25 unread with `limit: 20` still needs to know the accessibility
-  // of all 25, not just the first 20.
-  const { data: unreadRows, error: unreadError } = await supabase
-    .from("notifications")
-    .select("id, task_id")
-    .eq("workspace_id", workspaceId)
-    .is("read_at", null);
 
   if (unreadError) {
     console.error(

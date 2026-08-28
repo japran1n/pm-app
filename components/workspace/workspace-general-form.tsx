@@ -215,6 +215,7 @@ export function WorkspaceGeneralForm({
             aria-describedby={formError ? "workspace-name-error" : undefined}
             className="max-w-sm"
           />
+          <p className="text-xs text-muted-foreground text-right max-w-sm">{name.length}/80</p>
         </div>
 
         {formError && (
@@ -266,6 +267,7 @@ export function WorkspaceGeneralForm({
             aria-describedby={slugError ? "workspace-slug-error" : undefined}
             className="max-w-sm"
           />
+          <p className="text-xs text-muted-foreground text-right max-w-sm">{slug.length}/80</p>
           <p className="text-sm text-muted-foreground">
             Changing this updates the workspace&rsquo;s URL. Links using the
             old URL will keep working — they redirect here automatically.

@@ -99,11 +99,22 @@ export default async function ProjectListPage({
   const query = await searchParams;
   const basePath = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
-  // F223 (AS-411): the project's real board columns, fetched up front so
-  // both the filter's validation (below) and <ListFilters>/<TaskListTable>
-  // read from the same real list — never a fixed four-value Set that a
-  // renamed/custom column could never appear in.
-  const columns = await getProjectColumns(projectId);
+  // F223 (AS-411) + workspace members: run in parallel — columns and
+  // workspace lookup are independent of each other (P5: eliminates one
+  // serial round-trip per list page load).
+  const supabase = await createClient();
+  const [columns, { data: workspace }] = await Promise.all([
+    getProjectColumns(projectId),
+    supabase
+      .from("workspaces")
+      .select("id")
+      .eq("slug", workspaceSlug)
+      .maybeSingle(),
+  ]);
+  const workspaceMembers = workspace
+    ? await getWorkspaceMembers(workspace.id)
+    : { active: [], pending: [] };
+
   const validStatusNames = new Set(columns.map((column) => column.name));
   // F221's own convention for a custom column name flowing through the
   // legacy fixed-four `TaskCardTask["status"]` union — see
@@ -119,19 +130,6 @@ export default async function ProjectListPage({
       column.name,
     color: column.color,
   }));
-
-  // RLS-scoped lookup (workspaces_select_active_members) — same fallback
-  // pattern as the project detail layout: reaching this route already
-  // means the caller is an active member, this just resolves the id.
-  const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-  const workspaceMembers = workspace
-    ? await getWorkspaceMembers(workspace.id)
-    : { active: [], pending: [] };
   // F229 (AS-433 dangling-member class): the set of assignee ids a
   // saved view's `assigneeId` filter is validated against — the same
   // "currently active workspace member" set the page already resolves

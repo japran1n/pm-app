@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, isAfter, subHours } from "date-fns";
 
 import type { JSONContent } from "@tiptap/react";
 
@@ -169,7 +169,9 @@ export function ThreadPanel({
                     : authorLabel(parent.senderId, members)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDistanceToNow(new Date(parent.createdAt), { addSuffix: true })}
+                  {isAfter(new Date(parent.createdAt), subHours(new Date(), 24))
+                    ? formatDistanceToNow(new Date(parent.createdAt), { addSuffix: true })
+                    : format(new Date(parent.createdAt), "MMM d, HH:mm")}
                 </span>
               </div>
               <p className="whitespace-pre-wrap text-sm">
@@ -210,9 +212,9 @@ export function ThreadPanel({
                           : authorLabel(reply.senderId, members)}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(reply.createdAt), {
-                          addSuffix: true,
-                        })}
+                        {isAfter(new Date(reply.createdAt), subHours(new Date(), 24))
+                          ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })
+                          : format(new Date(reply.createdAt), "MMM d, HH:mm")}
                       </span>
                     </div>
                     <p className="whitespace-pre-wrap text-sm">

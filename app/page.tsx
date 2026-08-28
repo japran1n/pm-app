@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/brand/logo";
 
 export default function Home() {
   return (
     <div className="flex min-h-svh flex-1 flex-col items-center justify-center gap-8 px-4 text-center">
       <div className="flex flex-col items-center gap-3">
-        <span className="text-2xl font-semibold tracking-tight">pm-app</span>
+        <Logo className="h-6 w-auto text-foreground" />
         <h1 className="max-w-md text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
           Project management, kept simple.
         </h1>

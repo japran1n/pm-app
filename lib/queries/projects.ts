@@ -90,11 +90,11 @@ export async function getWorkspaceProjects(
 // AS-034: one batched query for every project id passed in, never one
 // query per project (this function backs both the Projects page and the
 // sidebar's project list, F262 — an N+1 here would run on every workspace
-// page load). RLS (tasks_select_active_members) still independently
-// scopes every row to what the caller may see, same as every other query
-// in this file. Returns `null` (not an empty map) on a query failure, so
-// the caller can render its "count unavailable" state rather than a
-// fake 0 indistinguishable from a real empty project.
+// page load). Uses a server-side RPC (get_open_task_counts) that returns
+// one row per project instead of all task rows — eliminates unbounded
+// row transfer for large workspaces. Returns `null` (not an empty map) on
+// a query failure, so the caller can render its "count unavailable" state
+// rather than a fake 0 indistinguishable from a real empty project.
 async function getOpenTaskCounts(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectIds: string[],
@@ -102,28 +102,17 @@ async function getOpenTaskCounts(
   const counts = new Map<string, number>();
   if (projectIds.length === 0) return counts;
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("project_id, status, project_statuses(category)")
-    .in("project_id", projectIds)
-    .is("deleted_at", null);
+  const { data, error } = await supabase.rpc("get_open_task_counts", {
+    project_ids: projectIds,
+  });
 
   if (error) {
-    console.error("getOpenTaskCounts: query failed:", error);
+    console.error("getOpenTaskCounts: RPC failed:", error);
     return null;
   }
 
-  for (const task of data ?? []) {
-    const relatedStatus = task.project_statuses as
-      | { category: string }
-      | { category: string }[]
-      | null;
-    const category = Array.isArray(relatedStatus)
-      ? relatedStatus[0]?.category
-      : relatedStatus?.category;
-    const isDone = category ? category === "done" : task.status === "done";
-    if (isDone) continue;
-    counts.set(task.project_id, (counts.get(task.project_id) ?? 0) + 1);
+  for (const row of data ?? []) {
+    counts.set(row.project_id, Number(row.open_count));
   }
 
   return counts;
@@ -145,14 +134,15 @@ async function getOpenTaskCounts(
 // and getTourStatus already follow for this layout).
 export async function getFavoriteProjectIds(
   workspaceId: string,
+  preloadedUserId?: string,
 ): Promise<Set<string>> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
-    return new Set();
+  let userId = preloadedUserId;
+  if (!userId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new Set();
+    userId = user.id;
   }
 
   // Own-row favourites read (RLS: project_favorites_select_own already
@@ -160,7 +150,7 @@ export async function getFavoriteProjectIds(
   const { data: favoriteRows, error: favoriteError } = await supabase
     .from("project_favorites")
     .select("project_id")
-    .eq("user_id", user.id);
+    .eq("user_id", userId);
 
   if (favoriteError) {
     console.error(

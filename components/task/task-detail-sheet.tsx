@@ -703,7 +703,12 @@ export function TaskDetailSheet({
   function handleTitleBlur() {
     if (!task) return;
     const trimmed = title.trim();
-    if (!trimmed || trimmed === task.title) {
+    if (!trimmed) {
+      setTitle(task.title);
+      toast.error("Title can't be empty.");
+      return;
+    }
+    if (trimmed === task.title) {
       setTitle(task.title);
       return;
     }
@@ -1183,7 +1188,7 @@ export function TaskDetailSheet({
                   ) ?? task.recurrenceSource.title}
                 </button>
               )}
-              <SheetTitle>Task details</SheetTitle>
+              <SheetTitle className="sr-only">{task?.title ?? "Task details"}</SheetTitle>
               <SheetDescription className="sr-only">
                 View and edit this task&apos;s title, description, status,
                 priority, assignee, and due date.
@@ -1402,7 +1407,7 @@ export function TaskDetailSheet({
                         )}
                       </PopoverTrigger>
                       <PopoverContent align="start" className="w-64 p-1">
-                        <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+                        <div role="listbox" aria-multiselectable="true" aria-label="Assignees" className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
                           {members.length === 0 && (
                             <p className="px-2 py-1.5 text-sm text-muted-foreground">
                               No workspace members.
@@ -1416,8 +1421,8 @@ export function TaskDetailSheet({
                               <button
                                 key={member.userId}
                                 type="button"
-                                role="menuitemcheckbox"
-                                aria-checked={checked}
+                                role="option"
+                                aria-selected={checked}
                                 disabled={isAssigning || !canEdit}
                                 onClick={() =>
                                   handleAssigneesToggle(member.userId)

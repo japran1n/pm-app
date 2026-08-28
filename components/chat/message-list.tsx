@@ -18,7 +18,7 @@
 // UX problem).
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, isAfter, subHours } from "date-fns";
 import { Pencil, Trash2, SmilePlus } from "lucide-react";
 
 import { extractPlainText, docFromPlainText } from "@/lib/comments/rich-text";
@@ -237,7 +237,9 @@ function MessageRow({
               {isOwn ? "You" : authorLabel(message.senderId, members)}
             </span>
             <span className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })}
+              {isAfter(new Date(message.createdAt), subHours(new Date(), 24))
+                ? formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })
+                : format(new Date(message.createdAt), "MMM d, HH:mm")}
             </span>
           </div>
         )}

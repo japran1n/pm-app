@@ -272,8 +272,9 @@ export async function removeChannelMember(
   // Leaving yourself is always allowed if you're a member; removing
   // someone else requires the caller to already be a member of that same
   // channel (mirrors channel_members_delete_self_or_existing_member RLS).
-  const callerMayRemove =
-    userId === user.id ? !!callerMembership : !!callerMembership;
+  // Both cases require an active membership — the distinction is preserved
+  // here for future role-based enforcement if needed.
+  const callerMayRemove = !!callerMembership;
 
   if (!callerMayRemove) {
     return { ok: false, error: "You don't have permission to remove this member." };

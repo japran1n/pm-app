@@ -25,8 +25,8 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "pm-app",
-  description: "pm-app",
+  title: "Goodguys Studio",
+  description: "Goodguys Studio is your team's workspace for projects, tasks, and clients.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

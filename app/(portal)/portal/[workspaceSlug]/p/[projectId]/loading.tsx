@@ -1,0 +1,14 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
+export default function PortalProjectLoading() {
+  return (
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <Skeleton className="h-7 w-48" />
+      <div className="flex flex-col gap-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-12 rounded-lg" />
+        ))}
+      </div>
+    </div>
+  );
+}

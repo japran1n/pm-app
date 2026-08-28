@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 import { mintExtensionHandoffToken } from "@/lib/extension-handoff";
+import { Logo } from "@/components/brand/logo";
 
 // F281 (AS-532/AS-533): the page a user lands on when they click "Connect"
 // in the extension popup (opened via `chrome.tabs.create`, a top-level
@@ -29,7 +30,7 @@ export default async function ExtensionConnectPage() {
   if (!user) {
     return (
       <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
-        <span className="text-xl font-semibold tracking-tight">pm-app</span>
+        <Logo className="h-5 w-auto text-foreground" />
         <div className="flex max-w-sm flex-col gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">
             Sign in to connect the extension

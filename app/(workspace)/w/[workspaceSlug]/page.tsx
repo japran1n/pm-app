@@ -12,8 +12,8 @@ import {
 } from "@/lib/queries/dashboard";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
-import { DashboardContent } from "@/components/dashboard/dashboard-content";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
+import { DashboardContentLazy as DashboardContent } from "@/components/dashboard/dashboard-content-lazy";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
 // the workspace home dashboard — a priority bar chart (F071's

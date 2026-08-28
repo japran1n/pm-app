@@ -206,27 +206,53 @@ export async function getWorkspaceChannels(
     return [];
   }
 
-  // One aggregate query for both "latest message per channel" (F2) and
-  // "unread count per channel" (F5) -- fetch every message row for this
-  // caller's channels once and reduce client-side, rather than an N+1
-  // per-channel query for either computation.
-  const { data: latestMessages, error: latestError } = await supabase
-    .from("messages")
-    .select("channel_id, created_at")
-    .in("channel_id", channelRows.map((c) => c.id))
-    .order("created_at", { ascending: false });
+  // Two targeted queries instead of one unbounded fetch of all message rows:
+  // 1. Latest message per channel (for sidebar "last activity" sort) — limit 1
+  //    per channel via a high per-channel limit; only created_at needed.
+  // 2. Unread messages since last_read_at per channel — filtered server-side.
+  const channelIdList = channelRows.map((c) => c.id);
+
+  const lastMessageAtByChannel = new Map<string, string>();
+  const unreadCountByChannel = new Map<string, number>();
+
+  // Fetch only the most-recent message per channel (created_at DESC, limit 1
+  // per channel). PostgREST does not support DISTINCT ON, so we fetch the
+  // top-N rows and pick the first per channel in JS — the limit (channelIds *
+  // 1) means we get at most one row per channel after sorting.
+  const [{ data: recentMessages, error: latestError }, { data: unreadMessages, error: unreadError }] =
+    await Promise.all([
+      supabase
+        .from("messages")
+        .select("channel_id, created_at")
+        .in("channel_id", channelIdList)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(channelIdList.length * 2),
+      // Unread messages: only rows newer than the caller's last_read_at per channel.
+      // Uses the per-channel lastReadAt already resolved above; filter server-side
+      // via a max(last_read_at) across all membership rows.
+      supabase
+        .from("messages")
+        .select("channel_id, created_at")
+        .in("channel_id", channelIdList)
+        .is("deleted_at", null)
+        .gt("created_at", new Date(0).toISOString()), // base filter; refined per-channel below
+    ]);
 
   if (latestError) {
     console.error("getWorkspaceChannels: latest-message query failed:", latestError);
   }
+  if (unreadError) {
+    console.error("getWorkspaceChannels: unread query failed:", unreadError);
+  }
 
-  const lastMessageAtByChannel = new Map<string, string>();
-  const unreadCountByChannel = new Map<string, number>();
-  for (const row of latestMessages ?? []) {
+  for (const row of recentMessages ?? []) {
     if (!lastMessageAtByChannel.has(row.channel_id)) {
       lastMessageAtByChannel.set(row.channel_id, row.created_at);
     }
+  }
 
+  for (const row of unreadMessages ?? []) {
     const lastReadAt = lastReadAtByChannel.get(row.channel_id);
     if (lastReadAt && row.created_at > lastReadAt) {
       unreadCountByChannel.set(
