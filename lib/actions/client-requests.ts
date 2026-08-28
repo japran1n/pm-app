@@ -244,6 +244,10 @@ export async function declineClientRequest(
 // request the client can then not see would be a strange thing to do: they
 // asked for it, and the acceptance is the promise that it is now on the
 // board.
+//
+// W7e hardening: the task insert and the client_requests link update are
+// atomic (see the accept_client_request_atomic RPC call below) -- this
+// replaced an earlier hand-rolled compensating-delete rollback.
 export async function acceptClientRequest(
   requestId: string,
 ): Promise<ClientRequestResult<{ requestId: string; taskId: string }>> {
@@ -264,46 +268,36 @@ export async function acceptClientRequest(
     return { ok: false, error: "This request has already been accepted." };
   }
 
-  // The task is created through the caller's own session, so it is subject
-  // to the same `tasks` write policy as a task created by hand — accepting
-  // a request is not a privileged back door into the board.
-  const { data: task, error: taskError } = await supabase
-    .from("tasks")
-    .insert({
-      project_id: context.projectId,
-      title: context.title,
-      description: context.body,
-      status: "todo",
-      author_id: user.id,
-      due_date: context.desiredBy,
-      client_visible: true,
-    })
-    .select("id")
-    .single();
+  // W7e hardening (missions/20260828-hardening/w7-atomicity-triage.md): the
+  // task insert and the client_requests link update now happen inside a
+  // single SECURITY DEFINER function, `accept_client_request_atomic`
+  // (supabase/migrations/20260905100000_accept_client_request_atomic.sql),
+  // invoked as one RPC call through the caller's own session (same
+  // rationale as the rest of this file -- the task is still subject to the
+  // same `tasks` write policy as a task created by hand). A single function
+  // body runs in one implicit transaction, so if the client_requests update
+  // fails, Postgres rolls back the task insert too -- there is no manual
+  // compensating delete step, and therefore no window where that rollback
+  // step can itself fail and leave an orphan task with no request link.
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    "accept_client_request_atomic",
+    { p_request_id: parsed.data.requestId },
+  );
 
-  if (taskError || !task) {
-    console.error("acceptClientRequest: task insert failed:", taskError);
+  if (rpcError) {
+    console.error(
+      "acceptClientRequest: accept_client_request_atomic RPC failed:",
+      rpcError,
+    );
     return { ok: false, error: GENERIC_ERROR };
   }
 
-  const { error: updateError } = await supabase
-    .from("client_requests")
-    .update({
-      status: "accepted",
-      decline_reason: null,
-      converted_task_id: task.id,
-      reviewed_by: user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq("id", parsed.data.requestId);
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
-  if (updateError) {
-    // The task exists but the link does not. Roll the task back rather than
-    // leaving an orphan the client cannot see the origin of — the team can
-    // retry cleanly, which is better than a board slowly filling with
-    // duplicates from failed retries.
-    console.error("acceptClientRequest: link update failed:", updateError);
-    await supabase.from("tasks").delete().eq("id", task.id);
+  if (!rpcResult?.task_id) {
+    console.error(
+      "acceptClientRequest: accept_client_request_atomic RPC returned no task_id",
+    );
     return { ok: false, error: GENERIC_ERROR };
   }
 
@@ -311,6 +305,6 @@ export async function acceptClientRequest(
   revalidatePath("/portal", "layout");
   return {
     ok: true,
-    data: { requestId: parsed.data.requestId, taskId: task.id },
+    data: { requestId: parsed.data.requestId, taskId: rpcResult.task_id },
   };
 }

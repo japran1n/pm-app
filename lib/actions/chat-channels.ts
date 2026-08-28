@@ -49,11 +49,10 @@ export type CreateChannelResult =
 
 // Creates a channel (or a DM thread) and enrolls the creator plus any
 // explicitly listed members. Per the plan's spec: if project-scoped,
-// re-verify project visibility for the caller; do the channel insert +
-// member inserts as a sequence with a compensating delete on failure
-// (mirrors createTaskForUser's "insert then roll back on a later failed
-// step" approach — there is no single RPC for this yet, unlike
-// create_workspace_with_owner, so the rollback is explicit here).
+// re-verify project visibility for the caller; the channel insert + member
+// inserts happen atomically inside the `create_channel_atomic` RPC (W7e
+// hardening -- see the comment just above that RPC call below for why this
+// replaced an earlier hand-rolled compensating-delete rollback).
 export async function createChannel(input: {
   workspaceId: string;
   kind: "channel" | "dm";
@@ -116,53 +115,40 @@ export async function createChannel(input: {
     }
   }
 
-  const { data: channelRow, error: insertChannelError } = await admin
-    .from("channels")
-    .insert({
-      workspace_id: parsed.data.workspaceId,
-      project_id: projectId,
-      kind: parsed.data.kind,
-      name: parsed.data.kind === "channel" ? parsed.data.name?.trim() : null,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
-
-  if (insertChannelError || !channelRow) {
-    console.error("createChannel: channel insert failed:", insertChannelError);
-    return { ok: false, error: "Something went wrong. Please try again in a moment." };
-  }
-
-  // Creator + any explicitly listed members, de-duplicated. Failure here
-  // rolls back the channel row (no orphaned, memberless channel), same
-  // "compensate on later step failure" rationale createTaskForUser uses for
-  // its own multi-insert sequences.
+  // Creator + any explicitly listed members, de-duplicated.
   const memberIds = Array.from(
     new Set([user.id, ...(parsed.data.memberIds ?? [])]),
   );
 
-  const { error: insertMembersError } = await admin
-    .from("channel_members")
-    .insert(memberIds.map((memberId) => ({ channel_id: channelRow.id, user_id: memberId })));
+  // W7e hardening (missions/20260828-hardening/w7-atomicity-triage.md): both
+  // inserts (the channel row and its member rows) now happen inside a
+  // single SECURITY DEFINER function, `create_channel_atomic`
+  // (supabase/migrations/20260905090000_create_channel_atomic.sql), invoked
+  // as one RPC call. A single function body runs in one implicit
+  // transaction, so if the member insert fails, Postgres rolls back the
+  // channel insert too -- there is no manual compensating delete step, and
+  // therefore no window where that rollback step can itself fail and leave
+  // an orphaned, memberless channel behind.
+  const { data: channelId, error: rpcError } = await admin.rpc(
+    "create_channel_atomic",
+    {
+      p_workspace_id: parsed.data.workspaceId,
+      p_project_id: projectId,
+      p_kind: parsed.data.kind,
+      p_name: parsed.data.kind === "channel" ? (parsed.data.name?.trim() ?? null) : null,
+      p_created_by: user.id,
+      p_member_ids: memberIds,
+    },
+  );
 
-  if (insertMembersError) {
-    console.error("createChannel: member insert failed:", insertMembersError);
-    const { error: rollbackError } = await admin
-      .from("channels")
-      .delete()
-      .eq("id", channelRow.id);
-    if (rollbackError) {
-      console.error(
-        "createChannel: rollback delete failed after member insert failure:",
-        rollbackError,
-      );
-    }
+  if (rpcError || !channelId) {
+    console.error("createChannel: create_channel_atomic RPC failed:", rpcError);
     return { ok: false, error: "Something went wrong. Please try again in a moment." };
   }
 
   revalidateChat();
 
-  return { ok: true, data: { id: channelRow.id } };
+  return { ok: true, data: { id: channelId as string } };
 }
 
 export type AddChannelMemberResult = { ok: true } | { ok: false; error: string };

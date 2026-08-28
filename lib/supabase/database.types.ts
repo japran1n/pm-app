@@ -1824,6 +1824,33 @@ export type Database = {
           slug: string
         }[]
       }
+      create_channel_atomic: {
+        Args: {
+          p_created_by: string
+          p_kind: string
+          p_member_ids: string[]
+          p_name: string | null
+          p_project_id: string | null
+          p_workspace_id: string
+        }
+        Returns: string
+      }
+      accept_client_request_atomic: {
+        Args: { p_request_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
+      change_workspace_slug_atomic: {
+        Args: {
+          p_new_slug: string
+          p_old_slug: string
+          p_workspace_id: string
+        }
+        Returns: {
+          slug: string
+        }[]
+      }
       bulk_delete_tasks_atomic: {
         Args: {
           p_deleted_at: string

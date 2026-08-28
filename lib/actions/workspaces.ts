@@ -1466,12 +1466,12 @@ export async function renameWorkspace(
 // renders next to the slug field, not a generic failure toast).
 //
 // AS-241: on a successful change, the OLD slug is inserted into
-// `workspace_slug_history` in the same request (best-effort — see the
-// insert's own error handling below) before `workspaces.slug` is updated,
-// so the workspace layout (app/(workspace)/w/[workspaceSlug]/layout.tsx)
-// can resolve a request for the old slug to this workspace's new one and
-// issue a permanent redirect instead of 404ing. See that layout for the
-// redirect side of this feature.
+// `workspace_slug_history` atomically with the `workspaces.slug` update
+// (both happen inside the `change_workspace_slug_atomic` RPC -- see the
+// comment above that call below), so the workspace layout
+// (app/(workspace)/w/[workspaceSlug]/layout.tsx) can resolve a request for
+// the old slug to this workspace's new one and issue a permanent redirect
+// instead of 404ing. See that layout for the redirect side of this feature.
 export async function changeWorkspaceSlug(
   workspaceId: string,
   slug: string,
@@ -1592,23 +1592,30 @@ export async function changeWorkspaceSlug(
 
   const oldSlug = workspaceRow.slug;
 
-  // AS-241: record the retired slug before flipping `workspaces.slug`, so
-  // a crash/error between the two steps leans toward "old URL still
-  // 404s" rather than "old URL is live" (a missing history row is safe;
-  // a stray one pointing at a slug that was never actually retired is
-  // not). If this insert fails (e.g. a race lost the old_slug unique
-  // constraint to a concurrent change of some other workspace's slug back
-  // to this exact value, vanishingly unlikely but not impossible), the
-  // whole change is rejected rather than proceeding without a working
-  // redirect for the slug being abandoned.
-  const { error: historyInsertError } = await admin
-    .from("workspace_slug_history")
-    .insert({ workspace_id: parsed.data.workspaceId, old_slug: oldSlug });
+  // W7e hardening (missions/20260828-hardening/w7-atomicity-triage.md): the
+  // history insert (AS-241) and the `workspaces.slug` update now happen
+  // inside a single SECURITY DEFINER function,
+  // `change_workspace_slug_atomic`
+  // (supabase/migrations/20260905110000_change_workspace_slug_atomic.sql),
+  // invoked as one RPC call. A single function body runs in one implicit
+  // transaction, so if the workspaces update fails, Postgres rolls back the
+  // history insert too -- there is no manual compensating delete step, and
+  // therefore no window where that cleanup delete can itself fail and leave
+  // a phantom history row pointing at a slug the workspace never actually
+  // stopped using.
+  const { data: rpcRows, error: rpcError } = await admin.rpc(
+    "change_workspace_slug_atomic",
+    {
+      p_workspace_id: parsed.data.workspaceId,
+      p_old_slug: oldSlug,
+      p_new_slug: newSlug,
+    },
+  );
 
-  if (historyInsertError) {
+  if (rpcError) {
     console.error(
-      "changeWorkspaceSlug: history insert failed:",
-      historyInsertError,
+      "changeWorkspaceSlug: change_workspace_slug_atomic RPC failed:",
+      rpcError,
     );
     return {
       ok: false,
@@ -1616,33 +1623,19 @@ export async function changeWorkspaceSlug(
     };
   }
 
-  const { data: updated, error: updateError } = await admin
-    .from("workspaces")
-    .update({ slug: newSlug })
-    .eq("id", parsed.data.workspaceId)
-    .select("slug")
-    .single();
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
 
-  if (updateError || !updated) {
-    console.error("changeWorkspaceSlug: update failed:", updateError);
-    // Best-effort compensating cleanup: remove the history row we just
-    // wrote so a failed slug change doesn't leave a phantom redirect
-    // target pointing at a slug the workspace never actually stopped
-    // using. Non-fatal if this also fails — the history row is at worst
-    // a harmless (if theoretically confusing) redirect to a workspace
-    // that already owns that exact slug, since the update above did not
-    // take effect.
-    await admin
-      .from("workspace_slug_history")
-      .delete()
-      .eq("workspace_id", parsed.data.workspaceId)
-      .eq("old_slug", oldSlug);
-
+  if (!rpcResult?.slug) {
+    console.error(
+      "changeWorkspaceSlug: change_workspace_slug_atomic RPC returned no slug",
+    );
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
+
+  const updated = { slug: rpcResult.slug as string };
 
   // F140 convention: every workspace-mutating action records an audit_log
   // entry via writeAudit (AS-245-adjacent — not itself an assigned
