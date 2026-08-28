@@ -1824,6 +1824,14 @@ export type Database = {
           slug: string
         }[]
       }
+      bulk_delete_tasks_atomic: {
+        Args: {
+          p_deleted_at: string
+          p_deleted_by: string
+          p_task_ids: string[]
+        }
+        Returns: string[]
+      }
       set_task_assignees_atomic: {
         Args: {
           p_assigned_by: string

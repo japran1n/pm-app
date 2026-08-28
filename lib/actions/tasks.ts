@@ -4965,54 +4965,28 @@ export async function bulkDeleteTasks(
 
   const deletedAt = new Date().toISOString();
 
-  // The one real delete write: a single `UPDATE ... WHERE id = ANY(...)`
-  // statement, per this feature's Clarified performance-budget answer.
-  // F188/AS-347: `deleted_by` is stamped on the same UPDATE that sets
-  // `deleted_at`, so the trash view can show who deleted every task in
-  // this call — no second write needed.
-  const { data: deletedRows, error: deleteError } = await admin
-    .from("tasks")
-    .update({ deleted_at: deletedAt, deleted_by: user.id })
-    .in("id", allowedIds)
-    .is("deleted_at", null)
-    .select("id");
+  // The soft-delete of the requested tasks and the cascade soft-delete of
+  // their direct children now happen atomically inside a single RPC
+  // (F188/AS-347, AS-267 cascade parity), so a mid-sequence failure can
+  // never leave children visible on the board under a now-deleted parent.
+  const { data: rpcDeletedIds, error: rpcError } = await admin.rpc(
+    "bulk_delete_tasks_atomic",
+    {
+      p_task_ids: allowedIds,
+      p_deleted_by: user.id,
+      p_deleted_at: deletedAt,
+    },
+  );
 
-  if (deleteError) {
-    console.error("bulkDeleteTasks: delete failed:", deleteError);
+  if (rpcError) {
+    console.error("bulkDeleteTasks: bulk_delete_tasks_atomic failed:", rpcError);
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
   }
 
-  const succeededIds = (deletedRows ?? []).map((row) => row.id as string);
-
-  // AS-267 cascade parity (partial — see this function's doc comment and
-  // this feature's handoff Out-of-scope note): soft-deletes every
-  // currently-live direct child of any task just deleted, in one second
-  // statement covering every affected parent, so no child is left visible
-  // on the board under a now-deleted parent. Unlike the single-task
-  // cascade_delete_task RPC, this does NOT stamp `deleted_via_task_id`
-  // (that requires a per-row column-to-column assignment the Supabase JS
-  // `.update()` builder can't express without a new RPC, which is outside
-  // this feature's Files scope) — a child cascaded here is soft-deleted
-  // exactly like its parent, just without F189's future restore-cascade
-  // provenance marker. Flagged in the handoff rather than silently
-  // claiming full parity with deleteTask's cascade.
-  if (succeededIds.length > 0) {
-    const { error: cascadeError } = await admin
-      .from("tasks")
-      .update({ deleted_at: deletedAt, deleted_by: user.id })
-      .in("parent_task_id", succeededIds)
-      .is("deleted_at", null);
-
-    if (cascadeError) {
-      console.error(
-        "bulkDeleteTasks: child cascade update failed (non-fatal, parents already deleted):",
-        cascadeError,
-      );
-    }
-  }
+  const succeededIds = (rpcDeletedIds as string[] | null) ?? [];
 
   for (const workspaceId of distinctWorkspaceIds) {
     if (!roleByWorkspace.has(workspaceId)) continue;
