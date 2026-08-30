@@ -20,10 +20,12 @@ vi.mock("sonner", () => ({
 }));
 
 let resolveToggle: ((value: unknown) => void) | null = null;
+const pendingResolvers: Array<(value: unknown) => void> = [];
 const toggleTodo = vi.fn(
   (_input: unknown) =>
     new Promise((resolve) => {
       resolveToggle = resolve;
+      pendingResolvers.push(resolve);
     }),
 );
 
@@ -44,6 +46,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   resolveToggle = null;
+  pendingResolvers.length = 0;
 });
 
 const TODOS: PersonalTodo[] = [
@@ -123,5 +126,37 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
 
     resolveToggle?.({ ok: true });
     await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+  });
+
+  // F015: rapid check-then-uncheck before the first response resolves must
+  // leave the committed state matching the LAST user action (unchecked),
+  // even if the first (check) response resolves after the second (uncheck).
+  it("test_AS_012_AS_014_rapid_toggle_commits_last_user_intent_when_responses_resolve_out_of_order", async () => {
+    const checkbox = renderList(TODOS);
+
+    // First click: check.
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(toggleTodo).toHaveBeenCalledTimes(1));
+    expect(toggleTodo).toHaveBeenNthCalledWith(1, { todoId: "todo-1", isDone: true });
+
+    // Second click before the first response arrives: uncheck.
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(toggleTodo).toHaveBeenCalledTimes(2));
+    expect(toggleTodo).toHaveBeenNthCalledWith(2, { todoId: "todo-1", isDone: false });
+
+    expect(pendingResolvers).toHaveLength(2);
+    const [resolveFirst, resolveSecond] = pendingResolvers;
+
+    // Resolve out of order: the second (uncheck) response lands first,
+    // then the first (check) response lands last.
+    resolveSecond({ ok: true });
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+
+    resolveFirst({ ok: true });
+
+    // Final committed state must reflect the last user action (unchecked),
+    // not whichever response happened to resolve last.
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
   });
 });

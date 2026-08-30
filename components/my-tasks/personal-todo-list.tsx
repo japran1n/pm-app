@@ -4,7 +4,7 @@
 // terse — this is not a task (no assignee/status/priority), just a
 // one-line reminder that would otherwise live on a sticky note.
 
-import { startTransition, useOptimistic, useState } from "react";
+import { startTransition, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -67,11 +67,33 @@ export function PersonalTodoList({
     router.refresh();
   }
 
+  // F015: tracks the most recently issued toggle request per todo id, so
+  // that a stale response arriving after a newer toggle can be ignored
+  // instead of clobbering the committed state with outdated intent.
+  const latestToggleRef = useRef(new Map<string, number>());
+
   function handleToggle(todo: PersonalTodo) {
+    // F015: capture the intended value as a local const at the START of
+    // this handler, before any await. Rapid toggles of the same row can
+    // resolve out of order; committing with this captured value (rather
+    // than re-computing `!todo.isDone` after the await, against a possibly
+    // stale closure) guarantees each response commits the intent that was
+    // true when that click happened.
+    const intendedIsDone = !todo.isDone;
+    const requestId = (latestToggleRef.current.get(todo.id) ?? 0) + 1;
+    latestToggleRef.current.set(todo.id, requestId);
+
     startTransition(async () => {
       setOptimisticIsDone(todo.id);
       try {
-        const result = await toggleTodo({ todoId: todo.id, isDone: !todo.isDone });
+        const result = await toggleTodo({ todoId: todo.id, isDone: intendedIsDone });
+
+        // If a later toggle on this same todo has been issued since this
+        // one started, this response is stale: skip the commit so the
+        // final state matches the LAST user action, not whichever response
+        // happens to resolve last.
+        if (latestToggleRef.current.get(todo.id) !== requestId) return;
+
         if (!result.ok) {
           // No manual revert needed: useOptimistic reverts to the committed
           // `todos` state automatically once this transition settles, since
@@ -82,9 +104,10 @@ export function PersonalTodoList({
           return;
         }
         setTodos((current) =>
-          current.map((t) => (t.id === todo.id ? { ...t, isDone: !todo.isDone } : t)),
+          current.map((t) => (t.id === todo.id ? { ...t, isDone: intendedIsDone } : t)),
         );
       } catch {
+        if (latestToggleRef.current.get(todo.id) !== requestId) return;
         // F013: a thrown rejection (network loss, 500, serialization
         // error) gets the same toast as an `{ ok: false }` return —
         // useOptimistic still reverts automatically once this transition
