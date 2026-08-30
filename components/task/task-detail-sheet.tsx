@@ -636,6 +636,13 @@ export function TaskDetailSheet({
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(
     task?.status,
   );
+  // F004 (AS-007, AS-008): the Priority Select's own optimistic mirror —
+  // same hook, same "badge updates instantly, useOptimistic auto-reverts
+  // once the enclosing transition settles" contract as optimisticStatus
+  // immediately above, just for `task.priority` instead of `task.status`.
+  const [optimisticPriority, setOptimisticPriority] = useOptimistic(
+    task?.priority,
+  );
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -899,14 +906,30 @@ export function TaskDetailSheet({
     });
   }
 
+  // F004 (AS-007, AS-008): mirrors handleStatusChange's own shape above —
+  // the optimistic value is applied synchronously, inside the same
+  // transition, BEFORE the await, so the badge updates before editTask's
+  // server round trip resolves (AS-007). useOptimistic's own automatic
+  // revert-when-transition-settles behavior handles AS-008; the toast is
+  // the only manual work a failure needs.
   function handlePriorityChange(value: string | null) {
     if (!task) return;
     const next =
       value && value !== NO_PRIORITY_VALUE
         ? (value as NonNullable<TaskDetailSheetTask["priority"]>)
         : null;
-    if (next === task.priority) return;
-    saveField({ priority: next }, "Priority updated.");
+    if (next === (optimisticPriority ?? task.priority)) return;
+
+    const nextLabel = next ? PRIORITY_LABELS[next] : "No priority";
+    startSaveTransition(async () => {
+      setOptimisticPriority(next);
+      const result = await editTask(task.id, { priority: next });
+      if (result.ok) {
+        toast.success("Priority updated.");
+      } else {
+        toast.error(`Failed to set priority to ${nextLabel}`);
+      }
+    });
   }
 
   function handleDueDateChange(value: string) {
@@ -1322,7 +1345,7 @@ export function TaskDetailSheet({
                 <div className="flex flex-col gap-2">
                   <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
                   <Select
-                    value={task.priority ?? NO_PRIORITY_VALUE}
+                    value={(optimisticPriority ?? task.priority) ?? NO_PRIORITY_VALUE}
                     onValueChange={handlePriorityChange}
                     disabled={isSavingField || !canEdit}
                   >
