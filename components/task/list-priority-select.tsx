@@ -32,11 +32,14 @@
 // falls back to the base (server) value on the next render — the same
 // "revert to prior value" behaviour AS-002 asks for — and this component
 // only has to surface the `toast.error` alongside it.
-import { useOptimistic, useTransition } from "react";
-import { toast } from "sonner";
+//
+// F007: the useOptimistic + useTransition + toast-on-error triplet above
+// is now the shared lib/hooks/use-optimistic-action.ts hook — same
+// behaviour, no longer hand-rolled per component.
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { editTask } from "@/lib/actions/tasks";
+import { useOptimisticAction } from "@/lib/hooks/use-optimistic-action";
 import type { TaskCardTask } from "@/components/task/task-card";
 import {
   Select,
@@ -73,10 +76,20 @@ export function ListPrioritySelect({
   const membership = useMembership();
   const canEdit = membership ? canWrite({ role: membership.role }) : true;
 
-  const [isSaving, startTransition] = useTransition();
-  const [localValue, setOptimisticValue] = useOptimistic<
+  const [localValue, isSaving, runChange] = useOptimisticAction<
     TaskCardTask["priority"]
-  >(priority);
+  >(
+    priority,
+    async (next) => {
+      const result = await editTask(taskId, { priority: next });
+      // AS-002: no manual revert needed — the hook's `useOptimistic` falls
+      // back to the base `priority` prop once this transition settles
+      // without that prop having changed. Only the toast is this
+      // component's responsibility, and the hook handles that too.
+      return result.ok ? undefined : { error: "Failed to update priority" };
+    },
+    "Failed to update priority",
+  );
 
   function handleChange(value: string | null) {
     if (value === null) return;
@@ -84,19 +97,9 @@ export function ListPrioritySelect({
       value === NO_PRIORITY_VALUE ? null : (value as Priority);
     if (next === localValue) return;
 
-    startTransition(async () => {
-      // AS-001: applied inside the transition so it renders immediately,
-      // before `editTask` resolves.
-      setOptimisticValue(next);
-      const result = await editTask(taskId, { priority: next });
-      if (!result.ok) {
-        // AS-002: no manual revert needed — `useOptimistic` falls back to
-        // the base `priority` prop once this transition settles without
-        // that prop having changed. Only the toast is this component's
-        // responsibility.
-        toast.error("Failed to update priority");
-      }
-    });
+    // AS-001: applied inside the hook's transition so it renders
+    // immediately, before `editTask` resolves.
+    runChange(next);
   }
 
   // F251 (AS-489): a viewer/guest gets plain, non-interactive text — not

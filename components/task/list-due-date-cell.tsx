@@ -25,11 +25,13 @@
 // falls back to the base (server) value on the next render — the "revert
 // to prior value" behaviour AS-004 asks for — this component only has to
 // surface the `toast.error` alongside it.
-import { useOptimistic, useTransition } from "react";
-import { toast } from "sonner";
+// F007: retrofitted onto the shared lib/hooks/use-optimistic-action.ts
+// hook — same useOptimistic + useTransition + toast-on-error behaviour
+// this file's own F002 comment above describes, no longer hand-rolled.
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { editTask } from "@/lib/actions/tasks";
+import { useOptimisticAction } from "@/lib/hooks/use-optimistic-action";
 import { Input } from "@/components/ui/input";
 
 export function ListDueDateCell({
@@ -42,27 +44,26 @@ export function ListDueDateCell({
   const membership = useMembership();
   const canEdit = membership ? canWrite({ role: membership.role }) : true;
 
-  const [isSaving, startTransition] = useTransition();
-  const [localValue, setOptimisticValue] = useOptimistic<string | null>(
+  const [localValue, isSaving, runChange] = useOptimisticAction<
+    string | null
+  >(
     dueDate,
+    async (next) => {
+      const result = await editTask(taskId, { dueDate: next });
+      // AS-004: no manual revert needed — the hook's `useOptimistic` falls
+      // back to the base `dueDate` prop once this transition settles
+      // without that prop having changed. Only the toast is this
+      // component's responsibility, and the hook handles that too.
+      return result.ok ? undefined : { error: "Failed to update due date" };
+    },
+    "Failed to update due date",
   );
 
   function handleChange(next: string | null) {
     if (next === localValue) return;
-
-    startTransition(async () => {
-      // AS-003: applied inside the transition so the cell renders the new
-      // date immediately, before `editTask` resolves.
-      setOptimisticValue(next);
-      const result = await editTask(taskId, { dueDate: next });
-      if (!result.ok) {
-        // AS-004: no manual revert needed — `useOptimistic` falls back to
-        // the base `dueDate` prop once this transition settles without
-        // that prop having changed. Only the toast is this component's
-        // responsibility.
-        toast.error("Failed to update due date");
-      }
-    });
+    // AS-003: applied inside the hook's transition so the cell renders the
+    // new date immediately, before `editTask` resolves.
+    runChange(next);
   }
 
   // F251 (AS-489): viewer/guest gets plain text, not a disabled input —
