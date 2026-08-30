@@ -723,19 +723,84 @@ export function TaskDetailSheet({
     });
   }
 
+  // F005 (AS-009, AS-010, AS-011): title gets its OWN transition, separate
+  // from `isSavingField` (shared by status/priority/dueDate/startDate/
+  // description above) — a dedicated pending flag so AS-009's "visual
+  // saving indicator" reflects the title mutation specifically, matching
+  // this Sheet's own established convention of a per-control transition
+  // for anything that needs its own indicator (isAssigning, isDeleting).
+  const [isSavingTitle, startTitleSaveTransition] = useTransition();
+  // Escape's own revert (below) calls `element.blur()` synchronously to
+  // commit the cancel — but that blur event fires with `title`'s CLOSURE
+  // value from the current render, before the `setTitle(task.title)` state
+  // update a few lines earlier in the same handler has actually been
+  // applied. Without this guard, handleTitleBlur would read the
+  // about-to-be-discarded edit (still "Discard me", not yet "reverted")
+  // and save it — exactly backwards from Escape's contract. This ref (not
+  // state — no render should ever depend on it) is set for the duration of
+  // that synchronous blur() call only.
+  const isCancellingTitleEditRef = useRef(false);
+
   function handleTitleBlur() {
     if (!task) return;
+    if (isCancellingTitleEditRef.current) return;
     const trimmed = title.trim();
     if (!trimmed) {
       setTitle(task.title);
       toast.error("Title can't be empty.");
       return;
     }
+    if (trimmed.length > 500) {
+      setTitle(task.title);
+      toast.error("Title can't be longer than 500 characters.");
+      return;
+    }
     if (trimmed === task.title) {
+      // AS-011: still counts as a commit (no separate dialog exists to
+      // open) — just a no-op save since nothing actually changed.
       setTitle(task.title);
       return;
     }
-    saveField({ title: trimmed }, "Title updated.");
+
+    // AS-010: captured before the transition starts so a server failure
+    // can revert the displayed title to exactly what it was pre-edit,
+    // independent of whatever `task.title` prop value the caller's own
+    // refetch/realtime path may have already moved on to by the time this
+    // async call resolves.
+    const previousTitle = task.title;
+    startTitleSaveTransition(async () => {
+      const result = await editTask(task.id, { title: trimmed });
+      if (result.ok) {
+        toast.success("Title updated.");
+      } else {
+        setTitle(previousTitle);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  // F005 (AS-011): Enter commits immediately (no Shift+Enter newline — this
+  // is a single-line title, not the rich-text description below) by
+  // blurring the input, which reuses handleTitleBlur's own save path — no
+  // second, parallel commit implementation. Escape cancels the edit and
+  // reverts to the last SAVED title (`task.title`, not whatever
+  // `previousTitle` a prior in-flight save may have captured), then blurs
+  // so the input doesn't stay focused on a value it just discarded.
+  // `stopPropagation` keeps this a title-only cancel: F247's global
+  // Escape-layer stack (useEscapeLayer above) listens on `document` and
+  // would otherwise treat the same keystroke as "close the whole Sheet."
+  function handleTitleKeyDown(keyEvent: React.KeyboardEvent<HTMLInputElement>) {
+    if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      keyEvent.currentTarget.blur();
+    } else if (keyEvent.key === "Escape") {
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      if (task) setTitle(task.title);
+      isCancellingTitleEditRef.current = true;
+      keyEvent.currentTarget.blur();
+      isCancellingTitleEditRef.current = false;
+    }
   }
 
   // F205 (AS-378): the description editor's own @-mention save path.
@@ -1287,14 +1352,35 @@ export function TaskDetailSheet({
             </SheetHeader>
             <div className="flex flex-col gap-6 overflow-y-auto px-6">
               <div className="flex flex-col gap-2">
-                <Label htmlFor={`task-title-${task.id}`}>Title</Label>
+                <Label
+                  htmlFor={`task-title-${task.id}`}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  Title
+                  {/* AS-009: pending indicator, shown for as long as the
+                      title save is in flight — same Loader2 spinner this
+                      Sheet already uses for the assignee picker's
+                      isAssigning state above. */}
+                  {isSavingTitle && (
+                    <Loader2
+                      className="size-3 animate-spin text-muted-foreground"
+                      aria-hidden="true"
+                      data-testid="title-saving-indicator"
+                    />
+                  )}
+                  <span className="sr-only" role="status">
+                    {isSavingTitle ? "Saving title…" : ""}
+                  </span>
+                </Label>
                 <Input
                   id={`task-title-${task.id}`}
                   value={title}
-                  disabled={isSavingField || !canEdit}
+                  disabled={isSavingTitle || isSavingField || !canEdit}
                   title={editDisabledTitle}
+                  maxLength={500}
                   onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                   onBlur={handleTitleBlur}
+                  onKeyDown={handleTitleKeyDown}
                   className="text-base font-medium"
                 />
               </div>
