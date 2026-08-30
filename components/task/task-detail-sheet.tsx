@@ -33,7 +33,7 @@
 // should only open the sheet once it has a task, but is handled rather
 // than left to crash).
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
@@ -620,6 +620,22 @@ export function TaskDetailSheet({
   // import comment above.
   useEscapeLayer(open, () => onOpenChange(false));
   const [isSavingField, startSaveTransition] = useTransition();
+  // F003 (AS-005, AS-006): the status Select's badge/value updates the
+  // instant a change is chosen — no waiting on moveTaskStatus's round
+  // trip — via React's built-in useOptimistic, mirroring
+  // list-status-select.tsx's own local-state optimistic pattern but using
+  // the dedicated hook since this value is derived straight from the
+  // `task` prop (not a separately-synced local field like `title`/
+  // `dueDate` above). useOptimistic auto-reverts to the base `task.status`
+  // once the enclosing transition (handleStatusChange's
+  // startSaveTransition below) settles, which is what produces AS-006's
+  // "revert on failure" for free — no manual rollback needed. On success,
+  // it likewise reverts to `task.status` until the caller's own
+  // realtime/refetch path updates that prop, per this feature's clarified
+  // "Realtime event ... reconciled after transition settles" answer.
+  const [optimisticStatus, setOptimisticStatus] = useOptimistic(
+    task?.status,
+  );
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -857,17 +873,28 @@ export function TaskDetailSheet({
   async function handleStatusChange(value: string | null) {
     if (!task || value === null) return;
     const next = value as TaskDetailSheetTask["status"];
-    if (next === task.status) return;
+    if (next === (optimisticStatus ?? task.status)) return;
 
     const proceed = await confirmIfMovingToDone(task.id, next);
     if (!proceed) return;
 
+    const nextLabel = STATUS_LABELS[next];
     startSaveTransition(async () => {
+      // AS-005: applied synchronously, inside this same transition, before
+      // the `await` below — the Select's value/badge (bound to
+      // `optimisticStatus` further down) re-renders with the new status
+      // immediately, without waiting on moveTaskStatus's server round trip.
+      setOptimisticStatus(next);
       const result = await moveTaskStatus(task.id, next);
       if (result.ok) {
         toast.success("Status updated.");
       } else {
-        toast.error(result.error);
+        // AS-006: useOptimistic itself reverts `optimisticStatus` back to
+        // the base `task.status` once this transition settles (see the
+        // hook's own doc comment above) — this toast is the ONLY manual
+        // work a failure needs, phrased with the target status name per
+        // this feature's clarified failure-handling answer.
+        toast.error(`Failed to set status to ${nextLabel}`);
       }
     });
   }
@@ -1267,7 +1294,7 @@ export function TaskDetailSheet({
                       immediately below: `value` stays bound directly to
                       `task.status`. */}
                   <Select
-                    value={task.status}
+                    value={optimisticStatus ?? task.status}
                     onValueChange={handleStatusChange}
                     disabled={isSavingField || !canEdit}
                   >
