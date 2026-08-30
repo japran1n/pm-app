@@ -4,7 +4,7 @@
 // terse — this is not a task (no assignee/status/priority), just a
 // one-line reminder that would otherwise live on a sticky note.
 
-import { useState } from "react";
+import { startTransition, useOptimistic, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +32,17 @@ export function PersonalTodoList({
   const [newTitle, setNewTitle] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // F006: optimistic checkbox toggle. `optimisticTodos` is derived from the
+  // committed `todos` state; toggling flips isDone immediately for instant
+  // strikethrough feedback, then automatically reverts to the committed
+  // state if the transition completes without `setTodos` being called
+  // (i.e. on server failure).
+  const [optimisticTodos, setOptimisticIsDone] = useOptimistic(
+    todos,
+    (state, toggledId: string) =>
+      state.map((t) => (t.id === toggledId ? { ...t, isDone: !t.isDone } : t)),
+  );
+
   async function handleCreate() {
     const title = newTitle.trim();
     if (!title || isSubmitting) return;
@@ -56,17 +67,23 @@ export function PersonalTodoList({
     router.refresh();
   }
 
-  async function handleToggle(todo: PersonalTodo) {
-    setTodos((current) =>
-      current.map((t) => (t.id === todo.id ? { ...t, isDone: !t.isDone } : t)),
-    );
-    const result = await toggleTodo({ todoId: todo.id, isDone: !todo.isDone });
-    if (!result.ok) {
+  function handleToggle(todo: PersonalTodo) {
+    startTransition(async () => {
+      setOptimisticIsDone(todo.id);
+      const result = await toggleTodo({ todoId: todo.id, isDone: !todo.isDone });
+      if (!result.ok) {
+        // No manual revert needed: useOptimistic reverts to the committed
+        // `todos` state automatically once this transition settles, since
+        // `setTodos` is never called on the failure path.
+        // F006/AS-013: fixed error copy per clarified spec, independent of
+        // the server-provided message.
+        toast.error("Failed to update task");
+        return;
+      }
       setTodos((current) =>
-        current.map((t) => (t.id === todo.id ? { ...t, isDone: todo.isDone } : t)),
+        current.map((t) => (t.id === todo.id ? { ...t, isDone: !todo.isDone } : t)),
       );
-      toast.error(result.error);
-    }
+    });
   }
 
   async function handleDelete(todoId: string) {
@@ -87,7 +104,7 @@ export function PersonalTodoList({
       </p>
 
       <ul className="flex flex-col gap-1">
-        {todos.map((todo) => (
+        {optimisticTodos.map((todo) => (
           <li key={todo.id} className="group flex items-center gap-2">
             <Checkbox
               checked={todo.isDone}
@@ -113,7 +130,7 @@ export function PersonalTodoList({
             </button>
           </li>
         ))}
-        {todos.length === 0 && (
+        {optimisticTodos.length === 0 && (
           <li className="text-sm text-muted-foreground">Nothing here yet.</li>
         )}
       </ul>
