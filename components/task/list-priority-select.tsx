@@ -13,19 +13,29 @@
 // membership/visibility server-side (AS-143, F322's private-project
 // rule) regardless of what this control renders.
 //
-// Optimistic update + revert-on-failure + exactly one toast via the
-// shared lib/hooks/use-inline-field-edit.ts hook (see that file's doc
-// comment for why status keeps its own copy of this pattern rather than
-// being retrofitted onto the hook).
+// Optimistic update + revert-on-failure + exactly one toast — see the
+// F001 comment below for the current React.useOptimistic implementation.
 //
 // Keyboard (AS-487): shadcn/Base UI's <Select> already opens on
 // Enter/Space, is fully arrow-key navigable, commits the highlighted
 // option on Enter, and closes-without-changing on Escape — the same
 // built-in behaviour list-status-select.tsx already relies on, so no
 // extra keydown handling is needed here.
+//
+// F001 (AS-001, AS-002): uses React.useOptimistic directly (per this
+// feature's Clarified implementation — the shared lib/hooks/use-inline-
+// field-edit.ts hook is left for F007 to fold this cell into later)
+// instead of that hook's own hand-rolled local-state + isSaving pattern.
+// `useOptimistic` derives its optimistic value from the `priority` prop
+// itself, so a failed `editTask` call needs no manual revert: once the
+// transition settles without the prop having changed, React automatically
+// falls back to the base (server) value on the next render — the same
+// "revert to prior value" behaviour AS-002 asks for — and this component
+// only has to surface the `toast.error` alongside it.
+import { useOptimistic, useTransition } from "react";
+import { toast } from "sonner";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
-import { useInlineFieldEdit } from "@/lib/hooks/use-inline-field-edit";
 import { editTask } from "@/lib/actions/tasks";
 import type { TaskCardTask } from "@/components/task/task-card";
 import {
@@ -63,23 +73,30 @@ export function ListPrioritySelect({
   const membership = useMembership();
   const canEdit = membership ? canWrite({ role: membership.role }) : true;
 
-  const { localValue, isSaving, commit } = useInlineFieldEdit<
+  const [isSaving, startTransition] = useTransition();
+  const [localValue, setOptimisticValue] = useOptimistic<
     TaskCardTask["priority"]
-  >({
-    taskId,
-    value: priority,
-    action: async (id, value) => {
-      const result = await editTask(id, { priority: value });
-      if (!result.ok) return result;
-      return { ok: true, data: result.data.priority as TaskCardTask["priority"] };
-    },
-  });
+  >(priority);
 
   function handleChange(value: string | null) {
     if (value === null) return;
     const next: TaskCardTask["priority"] =
       value === NO_PRIORITY_VALUE ? null : (value as Priority);
-    commit(next);
+    if (next === localValue) return;
+
+    startTransition(async () => {
+      // AS-001: applied inside the transition so it renders immediately,
+      // before `editTask` resolves.
+      setOptimisticValue(next);
+      const result = await editTask(taskId, { priority: next });
+      if (!result.ok) {
+        // AS-002: no manual revert needed — `useOptimistic` falls back to
+        // the base `priority` prop once this transition settles without
+        // that prop having changed. Only the toast is this component's
+        // responsibility.
+        toast.error("Failed to update priority");
+      }
+    });
   }
 
   // F251 (AS-489): a viewer/guest gets plain, non-interactive text — not
