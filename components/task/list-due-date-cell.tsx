@@ -10,26 +10,25 @@
 // `YYYY-MM-DD` plain-string convention editTaskSchema validates
 // server-side.
 //
-// Optimistic update + revert-on-failure + exactly one toast via the
-// shared lib/hooks/use-inline-field-edit.ts hook.
-//
-// Keyboard (AS-487):
-//  - Enter commits and blurs.
-//  - Escape reverts to the pre-edit value (not just closes/blurs) — a
-//    native `<input type="date">` has no Select-style built-in dropdown
-//    to fall back on, so this registers itself as an F244 Escape layer
-//    (lib/hooks/use-shortcut.ts) ONLY while the field has an uncommitted
-//    edit, so pressing Escape reverts exactly this field and nothing
-//    else on the page's escape-layer stack, and stops registering the
-//    instant there is nothing to revert (so Escape falls through to
-//    whatever's actually on top — e.g. a genuinely open dialog — the
-//    rest of the time). No local `stopPropagation`/`preventDefault` on
-//    Escape here: fighting the shared stack with a second handler is
-//    exactly what this feature's spec says not to do.
-import { useEscapeLayer } from "@/lib/hooks/use-shortcut";
+// F002 (AS-003, AS-004): uses `React.useOptimistic` directly, mirroring
+// F001's list-priority-select.tsx conversion (see that file's own F001
+// comment for the full rationale) instead of the shared lib/hooks/
+// use-inline-field-edit.ts hook this cell previously used. A native
+// `<input type="date">`'s onChange already fires once per finalized pick
+// (browser date-picker UX), not per keystroke the way a text field would,
+// so — per this feature's clarified "date picker closes on select; no
+// separate confirm needed" — the change handler commits immediately
+// instead of the old draft-state + separate onBlur/Enter commit step.
+// `useOptimistic` derives its optimistic value from the `dueDate` prop
+// itself, so a failed `editTask` call needs no manual revert: once the
+// transition settles without that prop having changed, React automatically
+// falls back to the base (server) value on the next render — the "revert
+// to prior value" behaviour AS-004 asks for — this component only has to
+// surface the `toast.error` alongside it.
+import { useOptimistic, useTransition } from "react";
+import { toast } from "sonner";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
-import { useInlineFieldEdit } from "@/lib/hooks/use-inline-field-edit";
 import { editTask } from "@/lib/actions/tasks";
 import { Input } from "@/components/ui/input";
 
@@ -43,20 +42,28 @@ export function ListDueDateCell({
   const membership = useMembership();
   const canEdit = membership ? canWrite({ role: membership.role }) : true;
 
-  const { localValue, setLocalValue, isSaving, commit, revert, committedValue } =
-    useInlineFieldEdit<string | null>({
-      taskId,
-      value: dueDate,
-      action: async (id, value) => {
-        const result = await editTask(id, { dueDate: value });
-        if (!result.ok) return result;
-        return { ok: true, data: result.data.dueDate };
-      },
+  const [isSaving, startTransition] = useTransition();
+  const [localValue, setOptimisticValue] = useOptimistic<string | null>(
+    dueDate,
+  );
+
+  function handleChange(next: string | null) {
+    if (next === localValue) return;
+
+    startTransition(async () => {
+      // AS-003: applied inside the transition so the cell renders the new
+      // date immediately, before `editTask` resolves.
+      setOptimisticValue(next);
+      const result = await editTask(taskId, { dueDate: next });
+      if (!result.ok) {
+        // AS-004: no manual revert needed — `useOptimistic` falls back to
+        // the base `dueDate` prop once this transition settles without
+        // that prop having changed. Only the toast is this component's
+        // responsibility.
+        toast.error("Failed to update due date");
+      }
     });
-
-  const isDirty = localValue !== committedValue;
-
-  useEscapeLayer(isDirty, revert);
+  }
 
   // F251 (AS-489): viewer/guest gets plain text, not a disabled input —
   // see list-priority-select.tsx's identical comment for the rationale.
@@ -79,15 +86,11 @@ export function ListDueDateCell({
           ? undefined
           : "You don't have permission to change this task's due date."
       }
-      onChange={(event) => setLocalValue(event.target.value || null)}
-      onBlur={() => commit(localValue)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          commit(localValue);
-          (event.target as HTMLInputElement).blur();
-        }
-      }}
+      // Follow-up decision: stop click propagation so interacting with the
+      // date input doesn't also open the row's detail sheet underneath it
+      // (same convention as the other list-view cells' TableCell wrapper).
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => handleChange(event.target.value || null)}
       className="h-8 w-36 text-xs"
     />
   );

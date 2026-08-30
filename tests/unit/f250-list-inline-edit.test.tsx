@@ -20,14 +20,17 @@
 // Select's use of the SAME shared hook (same file) means this coverage
 // transfers to it without needing to drive its popup open in jsdom.
 //
-// AS-487 (operable by keyboard alone): Enter commits, Escape reverts (not
-// just closes) via the due-date field's onKeyDown + F244 escape-layer
-// registration, and every control in the row is a real, non-hover-only,
-// tab-reachable element (button/input/select trigger).
+// AS-487 (operable by keyboard alone): every control in the row is a real,
+// non-hover-only, tab-reachable element (button/input/select trigger). The
+// due-date field's Enter-commits/Escape-reverts keyboard behaviour was
+// removed when F002 converted it to commit on change directly (see
+// components/task/list-due-date-cell.tsx's F002 comment) — a native
+// `<input type="date">`'s change event already only fires once per
+// finalized pick, so there is no longer an uncommitted draft state for
+// Escape to revert.
 
 import { createElement } from "react";
 import {
-  act,
   cleanup,
   fireEvent,
   render,
@@ -134,8 +137,24 @@ describe("F250 list-view inline editing", () => {
     expect(trigger).not.toBeDisabled();
   });
 
-  it("test_AS_485_due_date_edit_saves_without_a_reload_via_the_real_editTask_action", async () => {
-    editTaskMock.mockResolvedValue({ ok: true, data: { dueDate: "2026-09-15" } });
+  it("test_AS_485_due_date_edit_calls_the_real_editTask_action_and_updates_immediately", async () => {
+    // F002 (AS-003, AS-004): ListDueDateCell now commits on change directly
+    // via React.useOptimistic (see that file's F002 comment) instead of
+    // this suite's previous draft + separate Enter/blur-commit step — same
+    // conversion list-priority-select.tsx already went through for F001,
+    // whose own dedicated optimistic-update test file (tests/unit/
+    // list-priority-select-optimistic.test.tsx) is this file's model. The
+    // full instant-update / revert-on-failure / toast proof for AS-003 and
+    // AS-004 now lives in tests/unit/list-due-date-cell-optimistic.test.tsx;
+    // this test keeps only the "wired to the real Server Action, not a
+    // parallel path" proof AS-485 asks for at this file's level.
+    let resolveEditTask: (value: unknown) => void = () => {};
+    editTaskMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveEditTask = resolve;
+        }),
+    );
 
     render(createElement(ListDueDateCell, { taskId: "task-1", dueDate: "2026-09-01" }));
 
@@ -144,86 +163,19 @@ describe("F250 list-view inline editing", () => {
     ) as HTMLInputElement;
 
     fireEvent.change(input, { target: { value: "2026-09-15" } });
-    // AS-487: Enter commits.
-    fireEvent.keyDown(input, { key: "Enter" });
 
-    await waitFor(() => {
-      expect(editTaskMock).toHaveBeenCalledWith("task-1", {
-        dueDate: "2026-09-15",
-      });
+    // AS-003: the cell shows the new date immediately — before the
+    // Server Action's promise has resolved at all.
+    await waitFor(() => expect(input.value).toBe("2026-09-15"));
+    expect(editTaskMock).toHaveBeenCalledWith("task-1", {
+      dueDate: "2026-09-15",
     });
 
     // No page reload / navigation is triggered — the value is simply
     // reflected in the same input (no window.location change, no router
     // push observed by the next/navigation mock above).
-    await waitFor(() => {
-      expect(input.value).toBe("2026-09-15");
-    });
-  });
-
-  it("test_AS_485_a_rejected_due_date_edit_reverts_the_value_and_shows_exactly_one_toast", async () => {
-    editTaskMock.mockResolvedValue({
-      ok: false,
-      error: "You don't have permission to edit this task.",
-    });
-
-    render(createElement(ListDueDateCell, { taskId: "task-1", dueDate: "2026-09-01" }));
-
-    const input = screen.getByLabelText(
-      "Change due date for task task-1",
-    ) as HTMLInputElement;
-
-    fireEvent.change(input, { target: { value: "2026-09-15" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledTimes(1);
-      expect(toastError).toHaveBeenCalledWith(
-        "You don't have permission to edit this task.",
-      );
-    });
-
-    // Reverted to the original server value — no lingering optimistic
-    // failure left on screen (AS-485's "visible failure state" is the
-    // toast; the field itself returns to an actionable, correct value).
-    await waitFor(() => {
-      expect(input.value).toBe("2026-09-01");
-    });
-  });
-
-  it("test_AS_487_escape_reverts_an_uncommitted_due_date_edit_to_the_pre_edit_value_without_saving", async () => {
-    render(createElement(ListDueDateCell, { taskId: "task-1", dueDate: "2026-09-01" }));
-
-    const input = screen.getByLabelText(
-      "Change due date for task task-1",
-    ) as HTMLInputElement;
-
-    fireEvent.change(input, { target: { value: "2026-09-30" } });
-    expect(input.value).toBe("2026-09-30");
-
-    // F244's escape-layer stack is what actually fires Escape handling
-    // app-wide (shortcut-provider.tsx calls popTopEscapeLayer()) — this
-    // exercises the SAME mechanism directly rather than re-simulating the
-    // provider's document listener, proving the cell cooperates with the
-    // shared stack instead of a competing local Escape handler.
-    const { popTopEscapeLayer } = await import("@/lib/hooks/use-shortcut");
-    act(() => {
-      popTopEscapeLayer();
-    });
-
-    expect(input.value).toBe("2026-09-01");
-    expect(editTaskMock).not.toHaveBeenCalled();
-  });
-
-  it("test_AS_487_escape_does_not_register_a_layer_once_the_field_has_no_uncommitted_edit", async () => {
-    render(createElement(ListDueDateCell, { taskId: "task-1", dueDate: "2026-09-01" }));
-
-    // Nothing typed — the field is clean, so it must not occupy the
-    // topmost escape layer (which would otherwise swallow an unrelated
-    // Escape meant for something else on the page, e.g. an open dialog).
-    const { popTopEscapeLayer } = await import("@/lib/hooks/use-shortcut");
-    const handled = popTopEscapeLayer();
-    expect(handled).toBe(false);
+    resolveEditTask({ ok: true, data: { dueDate: "2026-09-15" } });
+    await waitFor(() => {});
   });
 
   it("test_AS_484_assignee_edit_calls_the_existing_setTaskAssignees_server_action", async () => {
