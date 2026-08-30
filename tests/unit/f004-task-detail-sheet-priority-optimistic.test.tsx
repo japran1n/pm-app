@@ -199,4 +199,18 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
     await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
     expect(toastError).toHaveBeenCalledWith("Failed to set priority to High");
   });
+
+  // F013 (AS-008): a thrown rejection (network loss, 500, serialization
+  // error) must revert + toast exactly like an `{ ok: false }` return —
+  // not just be silently swallowed.
+  it("test_AS_008_priority_reverts_and_shows_an_error_toast_when_server_action_throws", async () => {
+    editTask.mockImplementationOnce(() => Promise.reject(new Error("network")));
+
+    const prioritySelect = await openSheetAndGetPrioritySelect();
+
+    fireEvent.change(prioritySelect, { target: { value: "high" } });
+
+    await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
+    expect(toastError).toHaveBeenCalledWith("Failed to set priority to High");
+  });
 });

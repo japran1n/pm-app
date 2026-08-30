@@ -113,10 +113,7 @@ describe("ListPrioritySelect optimistic update (F001: AS-001, AS-002)", () => {
   });
 
   it("test_AS_002_priority_cell_reverts_and_shows_error_toast_when_server_action_throws", async () => {
-    const editTaskMock = vi.fn(async () => ({
-      ok: false as const,
-      error: "Failed to update priority",
-    }));
+    const editTaskMock = vi.fn().mockRejectedValue(new Error("network"));
     vi.doMock("@/lib/actions/tasks", () => ({ editTask: editTaskMock }));
 
     const { ListPrioritySelect } = await import("@/components/task/list-priority-select");

@@ -94,6 +94,21 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
     expect(toastError).toHaveBeenCalledWith("Failed to update task");
   });
 
+  // F013 (AS-013): a thrown rejection (network loss, 500, serialization
+  // error) must revert + toast exactly like an `{ ok: false }` return —
+  // not just be silently swallowed.
+  it("test_AS_013_checkbox_reverts_and_shows_an_error_toast_when_the_server_action_throws", async () => {
+    toggleTodo.mockImplementationOnce(() => Promise.reject(new Error("network")));
+
+    const checkbox = renderList(TODOS);
+
+    fireEvent.click(checkbox);
+
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
+    expect(toastError).toHaveBeenCalledWith("Failed to update task");
+  });
+
   it("test_AS_014_unchecking_a_completed_task_marks_it_incomplete_immediately", async () => {
     const checkbox = renderList(DONE_TODOS);
 

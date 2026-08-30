@@ -34,13 +34,21 @@ export function useOptimisticAction<T>(
       // `await` below — the caller renders the new value immediately,
       // without waiting for `action`'s server round trip.
       setOptimisticValue(newValue);
-      const result = await action(newValue);
-      if (result && "error" in result) {
-        // No manual revert needed: `useOptimistic` falls back to the
-        // base `current` value once this transition settles without
-        // `current` itself having changed — this toast is the only
-        // manual work a failure needs.
-        toast.error(result.error || errorMessage);
+      try {
+        const result = await action(newValue);
+        if (result && "error" in result) {
+          // No manual revert needed: `useOptimistic` falls back to the
+          // base `current` value once this transition settles without
+          // `current` itself having changed — this toast is the only
+          // manual work a failure needs.
+          toast.error(result.error || errorMessage);
+        }
+      } catch {
+        // A thrown rejection (network loss, 500, serialization error)
+        // gets the same treatment as an `{ error }` return: no manual
+        // revert needed, `useOptimistic` still falls back to `current`
+        // once this transition settles.
+        toast.error(errorMessage);
       }
     });
   }

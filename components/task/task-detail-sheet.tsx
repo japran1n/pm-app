@@ -714,11 +714,19 @@ export function TaskDetailSheet({
   function saveField(updates: EditTaskUpdates, successMessage: string) {
     if (!task) return;
     startSaveTransition(async () => {
-      const result = await editTask(task.id, updates);
-      if (result.ok) {
-        toast.success(successMessage);
-      } else {
-        toast.error(result.error);
+      try {
+        const result = await editTask(task.id, updates);
+        if (result.ok) {
+          toast.success(successMessage);
+        } else {
+          toast.error(result.error);
+        }
+      } catch {
+        // F013: a thrown rejection (network loss, 500, serialization
+        // error) gets the same toast treatment as an `{ ok: false }`
+        // return — no separate revert needed here since this path has
+        // no local optimistic mirror of its own.
+        toast.error("Failed to save. Please try again.");
       }
     });
   }
@@ -957,15 +965,23 @@ export function TaskDetailSheet({
       // `optimisticStatus` further down) re-renders with the new status
       // immediately, without waiting on moveTaskStatus's server round trip.
       setOptimisticStatus(next);
-      const result = await moveTaskStatus(task.id, next);
-      if (result.ok) {
-        toast.success("Status updated.");
-      } else {
-        // AS-006: useOptimistic itself reverts `optimisticStatus` back to
-        // the base `task.status` once this transition settles (see the
-        // hook's own doc comment above) — this toast is the ONLY manual
-        // work a failure needs, phrased with the target status name per
-        // this feature's clarified failure-handling answer.
+      try {
+        const result = await moveTaskStatus(task.id, next);
+        if (result.ok) {
+          toast.success("Status updated.");
+        } else {
+          // AS-006: useOptimistic itself reverts `optimisticStatus` back to
+          // the base `task.status` once this transition settles (see the
+          // hook's own doc comment above) — this toast is the ONLY manual
+          // work a failure needs, phrased with the target status name per
+          // this feature's clarified failure-handling answer.
+          toast.error(`Failed to set status to ${nextLabel}`);
+        }
+      } catch {
+        // F013: a thrown rejection (network loss, 500, serialization
+        // error) is treated identically to an `{ ok: false }` return —
+        // useOptimistic still reverts automatically once this transition
+        // settles.
         toast.error(`Failed to set status to ${nextLabel}`);
       }
     });
@@ -988,10 +1004,17 @@ export function TaskDetailSheet({
     const nextLabel = next ? PRIORITY_LABELS[next] : "No priority";
     startSaveTransition(async () => {
       setOptimisticPriority(next);
-      const result = await editTask(task.id, { priority: next });
-      if (result.ok) {
-        toast.success("Priority updated.");
-      } else {
+      try {
+        const result = await editTask(task.id, { priority: next });
+        if (result.ok) {
+          toast.success("Priority updated.");
+        } else {
+          toast.error(`Failed to set priority to ${nextLabel}`);
+        }
+      } catch {
+        // F013: a thrown rejection gets the same toast as an
+        // `{ ok: false }` return; useOptimistic still reverts
+        // automatically once this transition settles.
         toast.error(`Failed to set priority to ${nextLabel}`);
       }
     });

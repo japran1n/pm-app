@@ -213,4 +213,22 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
       "Failed to set status to In progress",
     );
   });
+
+  // F013 (AS-006): a thrown rejection (network loss, 500, serialization
+  // error) must revert + toast exactly like an `{ ok: false }` return —
+  // not just be silently swallowed.
+  it("test_AS_006_status_reverts_and_shows_an_error_toast_when_server_action_throws", async () => {
+    moveTaskStatus.mockImplementationOnce(() =>
+      Promise.reject(new Error("network")),
+    );
+
+    const statusSelect = await openSheetAndGetStatusSelect();
+
+    fireEvent.change(statusSelect, { target: { value: "in_progress" } });
+
+    await waitFor(() => expect(statusSelect.value).toBe("todo"));
+    expect(toastError).toHaveBeenCalledWith(
+      "Failed to set status to In progress",
+    );
+  });
 });

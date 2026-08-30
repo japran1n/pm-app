@@ -70,19 +70,27 @@ export function PersonalTodoList({
   function handleToggle(todo: PersonalTodo) {
     startTransition(async () => {
       setOptimisticIsDone(todo.id);
-      const result = await toggleTodo({ todoId: todo.id, isDone: !todo.isDone });
-      if (!result.ok) {
-        // No manual revert needed: useOptimistic reverts to the committed
-        // `todos` state automatically once this transition settles, since
-        // `setTodos` is never called on the failure path.
-        // F006/AS-013: fixed error copy per clarified spec, independent of
-        // the server-provided message.
+      try {
+        const result = await toggleTodo({ todoId: todo.id, isDone: !todo.isDone });
+        if (!result.ok) {
+          // No manual revert needed: useOptimistic reverts to the committed
+          // `todos` state automatically once this transition settles, since
+          // `setTodos` is never called on the failure path.
+          // F006/AS-013: fixed error copy per clarified spec, independent of
+          // the server-provided message.
+          toast.error("Failed to update task");
+          return;
+        }
+        setTodos((current) =>
+          current.map((t) => (t.id === todo.id ? { ...t, isDone: !todo.isDone } : t)),
+        );
+      } catch {
+        // F013: a thrown rejection (network loss, 500, serialization
+        // error) gets the same toast as an `{ ok: false }` return —
+        // useOptimistic still reverts automatically once this transition
+        // settles.
         toast.error("Failed to update task");
-        return;
       }
-      setTodos((current) =>
-        current.map((t) => (t.id === todo.id ? { ...t, isDone: !todo.isDone } : t)),
-      );
     });
   }
 

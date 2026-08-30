@@ -87,11 +87,8 @@ describe("ListDueDateCell optimistic update (F002: AS-003, AS-004)", () => {
     vi.doUnmock("@/lib/actions/tasks");
   });
 
-  it("test_AS_004_due_date_cell_reverts_and_shows_error_toast_when_server_action_rejects", async () => {
-    const editTaskMock = vi.fn(async () => ({
-      ok: false as const,
-      error: "Failed to update due date",
-    }));
+  it("test_AS_004_due_date_cell_reverts_and_shows_error_toast_when_server_action_throws", async () => {
+    const editTaskMock = vi.fn().mockRejectedValue(new Error("network"));
     vi.doMock("@/lib/actions/tasks", () => ({ editTask: editTaskMock }));
 
     const { ListDueDateCell } = await import("@/components/task/list-due-date-cell");
