@@ -213,4 +213,49 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
     await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
     expect(toastError).toHaveBeenCalledWith("Failed to set priority to High");
   });
+
+  // F014 (AS-007): the null-collapse regression — clearing an already-set
+  // priority to "No priority" must show "No priority" immediately, not
+  // silently fall back to the task's stale (still "high") priority. This is
+  // the case `optimisticPriority ?? task.priority` got wrong: `??` cannot
+  // tell "no optimistic override yet" apart from "explicitly cleared to
+  // null", so the cleared value collapsed straight back to task.priority.
+  it("test_AS_007_clearing_priority_to_null_updates_immediately_before_the_server_responds", async () => {
+    (getTaskDetail as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (taskId: string) => ({
+        ok: true,
+        data: {
+          task: {
+            id: taskId,
+            title: "Priority task",
+            description: null,
+            status: "todo",
+            priority: "high",
+            assigneeId: null,
+            dueDate: null,
+            tags: [],
+          },
+          comments: [],
+          attachments: [],
+          currentUserId: "user-1",
+          currentUserRole: "member",
+        },
+      }),
+    );
+
+    const prioritySelect = await openSheetAndGetPrioritySelect();
+    expect(prioritySelect.value).toBe("high");
+
+    fireEvent.change(prioritySelect, { target: { value: "__none__" } });
+
+    // The optimistic clear must be visible before editTask's promise
+    // resolves at all — proves the "No priority" state did not wait on the
+    // server, and did NOT collapse back to the stale "high" task.priority.
+    await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
+    expect(editTask).toHaveBeenCalledWith("t1", { priority: null });
+    expect(resolveEditTask).not.toBeNull();
+
+    resolveEditTask?.({ ok: true, data: { priority: null } });
+    await waitFor(() => {});
+  });
 });

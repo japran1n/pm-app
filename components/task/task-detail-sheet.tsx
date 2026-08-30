@@ -636,13 +636,17 @@ export function TaskDetailSheet({
   const [optimisticStatus, setOptimisticStatus] = useOptimistic(
     task?.status,
   );
-  // F004 (AS-007, AS-008): the Priority Select's own optimistic mirror —
-  // same hook, same "badge updates instantly, useOptimistic auto-reverts
-  // once the enclosing transition settles" contract as optimisticStatus
-  // immediately above, just for `task.priority` instead of `task.status`.
-  const [optimisticPriority, setOptimisticPriority] = useOptimistic(
-    task?.priority,
-  );
+  // F004/F014 (AS-007, AS-008): the Priority Select's own optimistic
+  // mirror. Unlike optimisticStatus above, this cannot pass task?.priority
+  // as the useOptimistic baseline: `??` can't distinguish "no override yet"
+  // from "explicitly cleared to null", so a cleared priority would collapse
+  // back to task.priority on every render (F014 fix). Instead the baseline
+  // is always `undefined` ("no override"); `null` is a real, distinct
+  // override value meaning "cleared to No priority". Display logic below
+  // must use `!== undefined`, never `??`, to read this state.
+  const [optimisticPriority, setOptimisticPriority] = useOptimistic<
+    TaskDetailSheetTask["priority"] | undefined
+  >(undefined);
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -999,7 +1003,9 @@ export function TaskDetailSheet({
       value && value !== NO_PRIORITY_VALUE
         ? (value as NonNullable<TaskDetailSheetTask["priority"]>)
         : null;
-    if (next === (optimisticPriority ?? task.priority)) return;
+    const currentPriority =
+      optimisticPriority !== undefined ? optimisticPriority : task.priority;
+    if (next === currentPriority) return;
 
     const nextLabel = next ? PRIORITY_LABELS[next] : "No priority";
     startSaveTransition(async () => {
@@ -1454,7 +1460,11 @@ export function TaskDetailSheet({
                 <div className="flex flex-col gap-2">
                   <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
                   <Select
-                    value={(optimisticPriority ?? task.priority) ?? NO_PRIORITY_VALUE}
+                    value={
+                      (optimisticPriority !== undefined
+                        ? optimisticPriority
+                        : task.priority) ?? NO_PRIORITY_VALUE
+                    }
                     onValueChange={handlePriorityChange}
                     disabled={isSavingField || !canEdit}
                   >
