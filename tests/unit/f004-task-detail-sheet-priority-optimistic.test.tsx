@@ -204,14 +204,43 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
   // error) must revert + toast exactly like an `{ ok: false }` return —
   // not just be silently swallowed.
   it("test_AS_008_priority_reverts_and_shows_an_error_toast_when_server_action_throws", async () => {
-    editTask.mockImplementationOnce(() => Promise.reject(new Error("network")));
+    // The base (server) priority starts at "high" — a different value
+    // than the one we change to below — so the revert assertion can only
+    // pass if the revert logic actually runs it back to this starting
+    // value. Starting and asserting at the same value would pass
+    // trivially even if the revert code were deleted.
+    (getTaskDetail as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (taskId: string) => ({
+        ok: true,
+        data: {
+          task: {
+            id: taskId,
+            title: "Priority task",
+            description: null,
+            status: "todo",
+            priority: "high",
+            assigneeId: null,
+            dueDate: null,
+            tags: [],
+          },
+          comments: [],
+          attachments: [],
+          currentUserId: "user-1",
+          currentUserRole: "member",
+        },
+      }),
+    );
 
     const prioritySelect = await openSheetAndGetPrioritySelect();
+    expect(prioritySelect.value).toBe("high");
 
-    fireEvent.change(prioritySelect, { target: { value: "high" } });
+    editTask.mockImplementationOnce(() => Promise.reject(new Error("network")));
 
-    await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
-    expect(toastError).toHaveBeenCalledWith("Failed to set priority to High");
+    fireEvent.change(prioritySelect, { target: { value: "low" } });
+    await waitFor(() => expect(prioritySelect.value).toBe("low"));
+
+    await waitFor(() => expect(prioritySelect.value).toBe("high"));
+    expect(toastError).toHaveBeenCalledWith("Failed to set priority to Low");
   });
 
   // F014 (AS-007): the null-collapse regression — clearing an already-set

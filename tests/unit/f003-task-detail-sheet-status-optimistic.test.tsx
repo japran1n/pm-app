@@ -218,17 +218,46 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
   // error) must revert + toast exactly like an `{ ok: false }` return —
   // not just be silently swallowed.
   it("test_AS_006_status_reverts_and_shows_an_error_toast_when_server_action_throws", async () => {
+    // The base (server) status starts at "in_progress" — a different
+    // value than the one we change to below — so the revert assertion
+    // can only pass if the revert logic actually runs it back to this
+    // starting value. Starting and asserting at the same value would
+    // pass trivially even if the revert code were deleted.
+    (getTaskDetail as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (taskId: string) => ({
+        ok: true,
+        data: {
+          task: {
+            id: taskId,
+            title: "Status task",
+            description: null,
+            status: "in_progress",
+            priority: null,
+            assigneeId: null,
+            dueDate: null,
+            tags: [],
+          },
+          comments: [],
+          attachments: [],
+          currentUserId: "user-1",
+          currentUserRole: "member",
+        },
+      }),
+    );
+
+    const statusSelect = await openSheetAndGetStatusSelect();
+    expect(statusSelect.value).toBe("in_progress");
+
     moveTaskStatus.mockImplementationOnce(() =>
       Promise.reject(new Error("network")),
     );
 
-    const statusSelect = await openSheetAndGetStatusSelect();
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+    await waitFor(() => expect(statusSelect.value).toBe("done"));
 
-    fireEvent.change(statusSelect, { target: { value: "in_progress" } });
-
-    await waitFor(() => expect(statusSelect.value).toBe("todo"));
+    await waitFor(() => expect(statusSelect.value).toBe("in_progress"));
     expect(toastError).toHaveBeenCalledWith(
-      "Failed to set status to In progress",
+      "Failed to set status to Done",
     );
   });
 });

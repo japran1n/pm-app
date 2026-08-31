@@ -133,4 +133,38 @@ describe("ListPrioritySelect optimistic update (F001: AS-001, AS-002)", () => {
 
     vi.doUnmock("@/lib/actions/tasks");
   });
+
+  it("test_AS_002_priority_cell_reverts_and_shows_error_toast_when_server_returns_ok_false", async () => {
+    let resolveEditTask: (value: unknown) => void = () => {};
+    const editTaskMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveEditTask = resolve;
+        }),
+    );
+    vi.doMock("@/lib/actions/tasks", () => ({ editTask: editTaskMock }));
+
+    const { ListPrioritySelect } = await import("@/components/task/list-priority-select");
+
+    render(createElement(ListPrioritySelect, { taskId: "task-1", priority: "medium" }));
+
+    const select = screen.getByLabelText("Change priority for task task-1");
+    fireEvent.change(select, { target: { value: "urgent" } });
+
+    await waitFor(() =>
+      expect((select as HTMLSelectElement).value).toBe("urgent"),
+    );
+
+    resolveEditTask({ ok: false, error: "Network error" });
+
+    // Reverts back to the prior server value once the failed action settles.
+    await waitFor(() =>
+      expect((select as HTMLSelectElement).value).toBe("medium"),
+    );
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith("Failed to update priority"),
+    );
+
+    vi.doUnmock("@/lib/actions/tasks");
+  });
 });

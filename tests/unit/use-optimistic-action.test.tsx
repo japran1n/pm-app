@@ -87,7 +87,7 @@ describe("useOptimisticAction (F007)", () => {
   });
 
   it("test_AS_failure_hook_reverts_and_calls_toast_on_action_rejection_with_generic_message", async () => {
-    const action = vi.fn(async () => ({ error: "" }));
+    const action = vi.fn().mockRejectedValue(new Error("fail"));
 
     render(
       createElement(Harness, {
