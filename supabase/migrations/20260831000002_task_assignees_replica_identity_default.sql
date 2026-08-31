@@ -1,0 +1,21 @@
+-- F042 (AS-018): revert `task_assignees` replica identity from FULL back to
+-- DEFAULT.
+--
+-- Scrutiny-6 finding: 20260831000001_task_assignees_realtime_publication.sql
+-- set `replica identity full` on `public.task_assignees`. Supabase Realtime
+-- does not apply RLS to DELETE events, so REPLICA IDENTITY FULL broadcasts
+-- every column of the deleted row (including `assigned_by` and
+-- `created_at`) to every authenticated subscriber, regardless of whether
+-- they're allowed to see that assignment.
+--
+-- `task_assignees`' primary key is the composite (task_id, user_id), so
+-- REPLICA IDENTITY DEFAULT already includes `user_id` in DELETE payloads.
+-- The browser-side filter in `use-my-tasks-realtime.ts` only needs
+-- `user_id` to decide whether an unassign event is relevant to the current
+-- viewer, so DEFAULT is sufficient and reduces the blast radius of DELETE
+-- broadcasts to just the primary key columns.
+--
+-- This is an append-only migration; the prior migration that set
+-- REPLICA IDENTITY FULL is left unmodified per the immutable-migrations
+-- rule.
+alter table public.task_assignees replica identity default;
