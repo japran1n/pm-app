@@ -127,7 +127,11 @@ export default async function MyTasksPage({
     return (
       <div className="flex flex-col gap-4 p-6">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
-        <PersonalTodoList workspaceId={workspace.id} initialTodos={personalTodos} />
+        <PersonalTodoList
+          workspaceId={workspace.id}
+          initialTodos={personalTodos}
+          currentUserId={user.id}
+        />
         {/* F231 (AS-440): a purposeful empty state with a primary action,
             not a dead end -- links to Projects so the caller can go find
             work to pick up, per the shared empty-state convention
@@ -175,7 +179,11 @@ export default async function MyTasksPage({
           }
         />
       </div>
-      <PersonalTodoList workspaceId={workspace.id} initialTodos={personalTodos} />
+      <PersonalTodoList
+        workspaceId={workspace.id}
+        initialTodos={personalTodos}
+        currentUserId={user.id}
+      />
       {BUCKET_ORDER.map(({ key, label }) => {
         const rows = realBuckets[key];
         if (rows.length === 0) return null;

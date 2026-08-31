@@ -14,15 +14,41 @@ import type { PersonalTodo } from "@/lib/queries/personal-todos";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { useMyTasksRealtime } from "@/components/my-tasks/use-my-tasks-realtime";
 
 export function PersonalTodoList({
   workspaceId,
   initialTodos,
+  currentUserId,
 }: {
   workspaceId: string;
   initialTodos: PersonalTodo[];
+  // F008 (AS-015, AS-016, AS-017): optional -- absent in any test/story
+  // render that doesn't care about live task assignment updates. When
+  // present, mounts the My Tasks Realtime subscription here since this is
+  // the one Client Component boundary already present on the My Tasks
+  // page (My Tasks itself is otherwise a Server Component, F230/F231).
+  currentUserId?: string;
 }) {
   const router = useRouter();
+
+  // F008: the real task buckets rendered above/below this component are
+  // server-fetched (MyTasksPage, getMyTasks) -- this hook's own state is
+  // scoped to personal to-dos only, so a live task assignment/status/
+  // un-assignment change is surfaced by asking the server to re-render
+  // (router.refresh()) rather than by this component reaching into
+  // another component's task rows. F011's reconcileMyTasksRealtimeTask
+  // pure helper is the intended building block for a future, more
+  // targeted client-side reconciliation of the task list itself; wiring
+  // it into a stateful task-list client component is out of this
+  // feature's scope (see this feature's handoff).
+  useMyTasksRealtime({
+    userId: currentUserId,
+    onInsert: () => router.refresh(),
+    onUpdate: () => router.refresh(),
+    onDelete: () => router.refresh(),
+  });
+
   const [todos, setTodos] = useState(initialTodos);
   const [syncedInitial, setSyncedInitial] = useState(initialTodos);
   // F019/F020: ids with an in-flight or just-committed toggle, tracked as
