@@ -159,4 +159,111 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
     await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
     expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
   });
+
+  // F019 (AS-012, AS-014): if router.refresh() causes the server-fetched
+  // initialTodos prop to re-render with a NEW array identity while a toggle
+  // is still in-flight, the pre-toggle server value must not silently
+  // clobber the optimistic/committed state for that row.
+  it("test_AS_012_optimistic_check_survives_a_server_data_refresh_that_arrives_before_the_toggle_resolves", async () => {
+    const { rerender } = render(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: TODOS }),
+    );
+    const checkbox = screen.getByLabelText(/mark "write handoff"/i) as HTMLButtonElement;
+
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "true"));
+    expect(toggleTodo).toHaveBeenCalledWith({ todoId: "todo-1", isDone: true });
+
+    // Simulate router.refresh() delivering fresh server data (still the
+    // stale pre-toggle value, since the server hasn't committed yet) via a
+    // NEW array identity, before the toggle promise resolves.
+    const staleServerTodos: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: false, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: staleServerTodos }),
+    );
+
+    // The optimistic/in-flight state must NOT be reset by the stale sync.
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Write handoff")).toHaveClass("line-through");
+
+    // Now the toggle resolves successfully and the committed state settles.
+    resolveToggle?.({ ok: true });
+    await waitFor(() => {
+      expect(checkbox).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByText("Write handoff")).toHaveClass("line-through");
+    });
+  });
+
+  it("test_AS_014_optimistic_uncheck_survives_a_server_data_refresh_that_arrives_before_the_toggle_resolves", async () => {
+    const { rerender } = render(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: DONE_TODOS }),
+    );
+    const checkbox = screen.getByLabelText(/mark "write handoff"/i) as HTMLButtonElement;
+
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+    expect(toggleTodo).toHaveBeenCalledWith({ todoId: "todo-1", isDone: false });
+
+    const staleServerTodos: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: true, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: staleServerTodos }),
+    );
+
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
+
+    resolveToggle?.({ ok: true });
+    await waitFor(() => {
+      expect(checkbox).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
+    });
+  });
+
+  // F019 (AS-012, AS-014): a boolean checkbox field is masked while
+  // useOptimistic's pending action is still applying its flip, so a plain
+  // aria-checked assertion during the in-flight window can pass even with
+  // the render-phase reset bug present. This test instead proves the fix
+  // mechanism directly: the WHOLE row object must be preserved (not just
+  // isDone) for an in-flight id when new `initialTodos` data arrives via a
+  // NEW array identity mid-toggle. If the render-phase sync blindly
+  // replaces the row (the reverted bug), a concurrently-changed field like
+  // `title` leaks through into the DOM even though this row's own toggle
+  // hasn't settled yet.
+  it("test_AS_012_AS_014_in_flight_row_is_not_clobbered_by_a_stale_sync_mid_toggle", async () => {
+    const { rerender } = render(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: TODOS }),
+    );
+    const checkbox = screen.getByLabelText(/mark "write handoff"/i) as HTMLButtonElement;
+
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "true"));
+
+    // Simulate router.refresh() delivering a fresh `initialTodos` array
+    // (new identity) for the SAME row while the toggle is still in-flight.
+    const staleWithDifferentTitle: PersonalTodo[] = [
+      { id: "todo-1", title: "STALE TITLE FROM SERVER", isDone: false, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, {
+        workspaceId: "workspace-1",
+        initialTodos: staleWithDifferentTitle,
+      }),
+    );
+
+    // Toggle fails: useOptimistic reverts to the committed base state once
+    // the transition settles.
+    resolveToggle?.({ ok: false });
+    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+
+    // The in-flight row's original data must have been preserved through
+    // the stale sync — not silently replaced with the server's payload.
+    expect(screen.getByText("Write handoff")).toBeInTheDocument();
+    expect(screen.queryByText("STALE TITLE FROM SERVER")).not.toBeInTheDocument();
+  });
 });

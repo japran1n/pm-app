@@ -25,9 +25,37 @@ export function PersonalTodoList({
   const router = useRouter();
   const [todos, setTodos] = useState(initialTodos);
   const [syncedInitial, setSyncedInitial] = useState(initialTodos);
+  // F019: ids with an in-flight toggle, tracked as component state (not a
+  // ref) so it can safely be read during render — refs must never be read
+  // during render. When fresh server data arrives (initialTodos changes
+  // identity, e.g. from router.refresh()) while a toggle is still pending,
+  // we must not let the server's pre-toggle value clobber the
+  // optimistic/committed local state for that row. Rows not in this set
+  // still sync from the server as usual.
+  const [pendingToggleIds, setPendingToggleIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   if (initialTodos !== syncedInitial) {
     setSyncedInitial(initialTodos);
-    setTodos(initialTodos);
+    if (pendingToggleIds.size === 0) {
+      setTodos(initialTodos);
+    } else {
+      const merged = initialTodos.map((serverTodo) => {
+        if (!pendingToggleIds.has(serverTodo.id)) return serverTodo;
+        const inFlight = todos.find((t) => t.id === serverTodo.id);
+        return inFlight ?? serverTodo;
+      });
+      // Only replace the committed array when something actually differs
+      // (by reference) from the current one. If every entry is unchanged —
+      // the common case where only in-flight rows exist — skip the state
+      // update entirely so we don't force an unnecessary base-state change
+      // while a toggle is still pending.
+      const unchanged =
+        merged.length === todos.length && merged.every((t, i) => t === todos[i]);
+      if (!unchanged) {
+        setTodos(merged);
+      }
+    }
   }
   const [newTitle, setNewTitle] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,6 +110,18 @@ export function PersonalTodoList({
     const intendedIsDone = !todo.isDone;
     const requestId = (latestToggleRef.current.get(todo.id) ?? 0) + 1;
     latestToggleRef.current.set(todo.id, requestId);
+    // F019: mark this row in-flight so a server-data sync arriving before
+    // this settles doesn't reset it to the pre-toggle value.
+    setPendingToggleIds((current) => new Set(current).add(todo.id));
+
+    function clearPending() {
+      setPendingToggleIds((current) => {
+        if (!current.has(todo.id)) return current;
+        const next = new Set(current);
+        next.delete(todo.id);
+        return next;
+      });
+    }
 
     startTransition(async () => {
       setOptimisticIsDone(todo.id);
@@ -91,7 +131,8 @@ export function PersonalTodoList({
         // If a later toggle on this same todo has been issued since this
         // one started, this response is stale: skip the commit so the
         // final state matches the LAST user action, not whichever response
-        // happens to resolve last.
+        // happens to resolve last. Leave the row marked in-flight — the
+        // newer request will settle it.
         if (latestToggleRef.current.get(todo.id) !== requestId) return;
 
         if (!result.ok) {
@@ -101,11 +142,13 @@ export function PersonalTodoList({
           // F006/AS-013: fixed error copy per clarified spec, independent of
           // the server-provided message.
           toast.error("Failed to update task");
+          clearPending();
           return;
         }
         setTodos((current) =>
           current.map((t) => (t.id === todo.id ? { ...t, isDone: intendedIsDone } : t)),
         );
+        clearPending();
       } catch {
         if (latestToggleRef.current.get(todo.id) !== requestId) return;
         // F013: a thrown rejection (network loss, 500, serialization
@@ -113,6 +156,7 @@ export function PersonalTodoList({
         // useOptimistic still reverts automatically once this transition
         // settles.
         toast.error("Failed to update task");
+        clearPending();
       }
     });
   }
