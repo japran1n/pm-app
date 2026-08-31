@@ -323,8 +323,15 @@ describe("reconcileCalendarRealtimeEvent (AS-019, AS-020, AS-021, AS-022)", () =
     expect(Object.values(next).flat().find((t) => t.id === "t9")).toBeUndefined();
   });
 
-  it("ignores a DELETE event for a project outside the caller's visible set (AS-022)", () => {
-    const byDateWithPrivate: CalendarTasksByDate = {
+  // F029/AS-022: `tasks` has no `replica identity full`, so a DELETE's
+  // `old` record only ever carries `{id}` in production -- `old.project_id`
+  // is never actually populated by real Supabase Realtime broadcasts, so a
+  // test fabricating it would exercise a code path that can never run. The
+  // real backstop is "is this id in our own local state" -- a DELETE for
+  // an id this client never had (e.g. it belonged to a project this
+  // caller can't see, so it was never inserted locally) is a no-op.
+  it("ignores a DELETE event for a task id not present in local state (AS-022)", () => {
+    const byDateWithOnlyT1: CalendarTasksByDate = {
       "2026-09-01": [existingTask],
     };
     const event = {
@@ -332,18 +339,74 @@ describe("reconcileCalendarRealtimeEvent (AS-019, AS-020, AS-021, AS-022)", () =
       schema: "public",
       table: "tasks",
       new: {},
-      old: { id: "t1", project_id: "private-project" },
+      old: { id: "invisible-task" },
     } as unknown as CalendarRealtimeEvent;
 
     const next = reconcileCalendarRealtimeEvent(
-      byDateWithPrivate,
+      byDateWithOnlyT1,
       event,
       visibleProjectIds,
     );
 
-    // t1 belongs to project-1 in local state, but the event claims a
-    // different (invisible) project_id -- treated as untrustworthy and
-    // skipped rather than trusted to remove a real, visible task.
-    expect(next).toEqual(byDateWithPrivate);
+    // "invisible-task" was never in local state (this client never saw
+    // it, e.g. it belongs to a project outside this caller's visibility)
+    // -- the DELETE is skipped rather than trusted, and t1 is untouched.
+    expect(next).toEqual(byDateWithOnlyT1);
+  });
+
+  it("removes a task on DELETE when its id IS present in local state, even with no project_id on old (AS-022)", () => {
+    const event = {
+      eventType: "DELETE",
+      schema: "public",
+      table: "tasks",
+      new: {},
+      // Realistic shape: `old` carries only `{id}` -- no `project_id`,
+      // reflecting the actual replica-identity-default payload shape.
+      old: { id: "t1" },
+    } as unknown as CalendarRealtimeEvent;
+
+    const next = reconcileCalendarRealtimeEvent(
+      baseByDate(),
+      event,
+      visibleProjectIds,
+    );
+
+    expect(Object.values(next).flat().find((t) => t.id === "t1")).toBeUndefined();
+  });
+
+  // AS-020: isDone is derived from the INSERT row's own `status` column
+  // (degraded/no-category path) rather than hardcoded `false`.
+  it("derives isDone from the payload's status on INSERT rather than hardcoding false (AS-020)", () => {
+    const event = insertOrUpdateEvent("INSERT", {
+      id: "t4",
+      status: "done",
+      due_date: "2026-09-11",
+    });
+
+    const next = reconcileCalendarRealtimeEvent(
+      baseByDate(),
+      event,
+      visibleProjectIds,
+    );
+
+    const inserted = next["2026-09-11"]?.[0];
+    expect(inserted?.status).toBe("done");
+    expect(inserted?.isDone).toBe(true);
+  });
+
+  it("keeps isDone false on INSERT when the payload's status is not 'done' (AS-020)", () => {
+    const event = insertOrUpdateEvent("INSERT", {
+      id: "t5",
+      status: "todo",
+      due_date: "2026-09-12",
+    });
+
+    const next = reconcileCalendarRealtimeEvent(
+      baseByDate(),
+      event,
+      visibleProjectIds,
+    );
+
+    expect(next["2026-09-12"]?.[0]?.isDone).toBe(false);
   });
 });

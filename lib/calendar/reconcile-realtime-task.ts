@@ -20,22 +20,40 @@
 // come from `project_statuses`/`projects`/`task_assignees` joins the
 // initial server fetch resolves but a Realtime `tasks` event never
 // carries. A newly-INSERTed task this client didn't already have is
-// appended with those fields defaulted (`statusCategory: null, isDone:
-// false, projectKey: null, projectName: ""`, `assignees: []`) so it's
-// visible immediately (AS-020) rather than silently dropped; a task this
-// client already has (UPDATE) keeps its previously-resolved joined fields
-// and only patches the columns the event actually carries.
+// appended with `statusCategory`, `projectKey`, `projectName` and
+// `assignees` defaulted (genuinely unresolvable from this row alone) so
+// it's visible immediately (AS-020) rather than silently dropped, but
+// `isDone` is DERIVED from the row's own `status` column
+// (`isDoneStatus(row.status)`, degraded/no-category path) rather than
+// hardcoded `false` — see F029's handoff. A task this client already has
+// (UPDATE) keeps its previously-resolved joined fields and only patches
+// the columns the event actually carries.
 //
-// AS-022 backstop: `visibleProjectIds` (the caller's own workspace's
-// project id set, from the same `getWorkspaceProjects` read the page
-// already does) gates every event, INSERT/UPDATE/DELETE alike, before it
-// touches local state — see subscribe-calendar-realtime.ts's own doc
-// comment for why this is required specifically for DELETE (RLS does not
-// apply to DELETE broadcasts) and is a harmless, redundant-but-safe extra
-// check for INSERT/UPDATE (RLS already gates those).
+// AS-022 backstop, DELETE: see the `eventType === "DELETE"` branch below
+// for why this checks local-state presence, not `old.project_id` (F029
+// fix — the previous project_id check was permanently inert because
+// `tasks` lacks `replica identity full`).
+//
+// AS-022 backstop, INSERT/UPDATE: `visibleProjectIds` (the caller's own
+// workspace's project id set, from the same `getWorkspaceProjects` read
+// the page already does) gates INSERT/UPDATE before either touches local
+// state — RLS already gates these at the Postgres level, so this is a
+// harmless, redundant-but-safe extra check, not the primary mechanism.
+//
+// Known limitation (F029, not fixed here): if the calendar page is ever
+// filtered by URL params (status/priority/assigneeId/projectId), a
+// realtime-INSERTed task that doesn't match the active filter will still
+// appear — `CalendarDayGrid` (components/calendar/calendar-day-grid.tsx)
+// does not currently receive those filter values as props, only
+// `workspaceId`/`projectIds` (visibility, not filtering). Wiring filters
+// through requires the calendar page to thread its resolved filter object
+// into `CalendarDayGrid` → `useCalendarRealtime` → this function; left as
+// a documented gap rather than guessed at, since no such prop channel
+// exists to hang a filter check off of today.
 
 import type { CalendarTask } from "@/lib/queries/calendar";
 import type { CalendarRealtimeEvent } from "@/lib/tasks/subscribe-calendar-realtime";
+import { isDoneStatus } from "@/lib/tasks/status-category";
 import type { DateOnly } from "@/lib/time/user-timezone";
 
 export type CalendarTasksByDate = Record<string, CalendarTask[]>;
@@ -71,10 +89,24 @@ export function reconcileCalendarRealtimeEvent(
   visibleProjectIds: ReadonlySet<string>,
 ): CalendarTasksByDate {
   if (event.eventType === "DELETE") {
+    // AS-022: `tasks` has no `replica identity full`, so a DELETE's `old`
+    // record only ever carries `{id}` -- `old.project_id` is always
+    // undefined and can never be trusted to gate this event (the previous
+    // `if (projectId && !visibleProjectIds.has(projectId))` check was
+    // therefore permanently inert: `projectId` was always falsy, so every
+    // DELETE fell through to `removeTaskEverywhere` unconditionally).
+    // The client-side backstop for "don't let a DELETE for a task outside
+    // this caller's visibility remove local state" instead checks whether
+    // the deleted id is present in the caller's OWN local `byDate` state
+    // to begin with: a task only ever entered `byDate` via the initial
+    // (RLS-gated) server fetch or a prior RLS-gated INSERT/UPDATE, so "not
+    // present locally" is equivalent to "not visible to this caller" --
+    // and also cheaply no-ops on DELETE events for tasks this client never
+    // had (e.g. undated tasks, or another workspace's tasks slipping
+    // through before the channel is properly scoped).
     const deletedId = event.old?.id;
-    const projectId = event.old?.project_id;
     if (!deletedId) return byDate;
-    if (projectId && !visibleProjectIds.has(projectId)) return byDate;
+    if (!findTask(byDate, deletedId)) return byDate;
     return removeTaskEverywhere(byDate, deletedId);
   }
 
@@ -114,13 +146,29 @@ export function reconcileCalendarRealtimeEvent(
         id: row.id,
         title: row.title,
         status: row.status,
+        // AS-020: a bare `tasks` row event never carries the
+        // `project_statuses(category)` join the initial server fetch
+        // resolves, so `statusCategory` genuinely can't be known here and
+        // stays `null` (the field lib/tasks/status-category.ts already
+        // treats as the "status_id unresolved, degrade to literal string
+        // comparison" case). `isDone` IS derivable from `row.status`
+        // alone via that same degraded path -- `isDoneStatus(row.status)`
+        // (no category arg) falls back to a literal `status === "done"`
+        // comparison instead of always hardcoding `false`, which is
+        // wrong for any task realtime-inserted with a "done" status.
         statusCategory: null,
-        isDone: false,
+        isDone: isDoneStatus(row.status),
         priority: row.priority,
         dueDate: row.due_date as DateOnly,
         number: row.number,
         projectId: row.project_id,
         projectKey: null,
+        // `projectKey`/`projectName`/`assignees` require joins
+        // (`projects`, `task_assignees`) a bare `tasks` row event never
+        // carries -- genuinely unavailable here, not merely unused, so
+        // these stay defaulted rather than fabricated. See this feature's
+        // handoff for the follow-up needed to resolve them (e.g. a
+        // client-side lookup against the already-fetched project list).
         projectName: "",
         assignees: [],
       };
