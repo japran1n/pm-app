@@ -64,14 +64,18 @@ import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import { planReschedule } from "@/lib/calendar/reschedule";
+import { reconcileCalendarRealtimeEvent } from "@/lib/calendar/reconcile-realtime-task";
 import type { CalendarTask } from "@/lib/queries/calendar";
 import type { DateOnly } from "@/lib/time/user-timezone";
 import { DayCell } from "@/components/calendar/day-cell";
+import { useCalendarRealtime } from "@/components/calendar/use-calendar-realtime";
 
 export function CalendarDayGrid({
   days,
   tasksByDate,
   workspaceSlug,
+  workspaceId,
+  projectIds,
 }: {
   days: CalendarDay[];
   /** Plain serializable object -- the Server Component caller
@@ -80,8 +84,31 @@ export function CalendarDayGrid({
    * serializable RSC prop). */
   tasksByDate: Record<string, CalendarTask[]>;
   workspaceSlug: string;
+  /** F009 (AS-019..AS-022): the current workspace's id (Realtime channel
+   * scope) and the caller's own visible project id set (client-side
+   * backstop gate for the DELETE-events-skip-RLS gap -- see
+   * subscribe-calendar-realtime.ts's own doc comment). Optional so any
+   * existing test that renders this component without them (pre-F009)
+   * keeps working -- realtime is simply not subscribed without a
+   * `workspaceId`. */
+  workspaceId?: string;
+  projectIds?: string[];
 }) {
   const [byDate, setByDate] = useState(tasksByDate);
+
+  // F009 (AS-019, AS-020, AS-021, AS-022): live updates from other users
+  // -- due-date changes, new dated tasks, and due-date removals/deletes --
+  // land in this same `byDate` state the drag-and-drop optimistic update
+  // (F234) already owns, via the shared pure reconciler.
+  const visibleProjectIds = new Set(projectIds ?? []);
+  useCalendarRealtime({
+    workspaceId: workspaceId ?? "",
+    onDueDateChange: (event) => {
+      setByDate((current) =>
+        reconcileCalendarRealtimeEvent(current, event, visibleProjectIds),
+      );
+    },
+  });
 
   // F135/F225 pattern reused verbatim (see board.tsx's identical
   // `canDrag` line): `null` (no provider in the tree, e.g. a test that

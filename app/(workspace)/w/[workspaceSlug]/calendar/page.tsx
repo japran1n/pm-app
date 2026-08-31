@@ -192,6 +192,7 @@ export default async function CalendarPage({
         <CalendarGridSection
           workspaceId={workspace.id}
           workspaceSlug={workspaceSlug}
+          projectIds={projects.map((p) => p.id)}
           start={start}
           end={end}
           filters={filters}
@@ -214,6 +215,7 @@ export default async function CalendarPage({
 async function CalendarGridSection({
   workspaceId,
   workspaceSlug,
+  projectIds,
   start,
   end,
   filters,
@@ -227,6 +229,10 @@ async function CalendarGridSection({
 }: {
   workspaceId: string;
   workspaceSlug: string;
+  /** F009 (AS-019..AS-022): every project id visible to this caller in
+   * this workspace -- threaded through to CalendarDayGrid's Realtime
+   * client-side visibility backstop. */
+  projectIds: string[];
   start: string;
   end: string;
   filters: ReturnType<typeof resolveCalendarFilters>["filters"];
@@ -270,6 +276,8 @@ async function CalendarGridSection({
           grid={grid}
           tasksByDate={tasksByDate}
           workspaceSlug={workspaceSlug}
+          workspaceId={workspaceId}
+          projectIds={projectIds}
           dataKey={dataKey}
           prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
           nextHref={hrefFor(toMonthKey(next.year, next.month))}
@@ -300,6 +308,8 @@ async function CalendarGridSection({
         grid={grid}
         tasksByDate={tasksByDate}
         workspaceSlug={workspaceSlug}
+        workspaceId={workspaceId}
+        projectIds={projectIds}
         dataKey={dataKey}
         prevHref={hrefFor(toMonthKey(prev.year, prev.month))}
         nextHref={hrefFor(toMonthKey(next.year, next.month))}

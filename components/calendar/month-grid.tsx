@@ -30,6 +30,8 @@ export function MonthGrid({
   grid,
   tasksByDate,
   workspaceSlug,
+  workspaceId,
+  projectIds,
   dataKey,
   prevHref,
   nextHref,
@@ -38,6 +40,12 @@ export function MonthGrid({
   grid: CalendarMonth;
   tasksByDate: Map<string, CalendarTask[]>;
   workspaceSlug: string;
+  /** F009 (AS-019..AS-022): threaded straight through to
+   * `CalendarDayGrid`'s Realtime subscription -- see that component's own
+   * doc comment. Optional so any existing caller/test that doesn't pass
+   * these keeps rendering exactly as before, just without live updates. */
+  workspaceId?: string;
+  projectIds?: string[];
   /** B1 fix (AS-442, AS-443, AS-448): a string that changes exactly when
    * the SERVER data (month + active filters) changes -- the caller
    * (calendar/page.tsx) derives it from the same month key + filter
@@ -128,6 +136,8 @@ export function MonthGrid({
           days={grid.days}
           tasksByDate={tasksByDateObject}
           workspaceSlug={workspaceSlug}
+          workspaceId={workspaceId}
+          projectIds={projectIds}
         />
       </div>
     </div>
