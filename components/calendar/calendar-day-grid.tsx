@@ -101,11 +101,25 @@ export function CalendarDayGrid({
   // land in this same `byDate` state the drag-and-drop optimistic update
   // (F234) already owns, via the shared pure reconciler.
   const visibleProjectIds = new Set(projectIds ?? []);
+  // F040 (AS-022): scope realtime INSERT/UPDATE delivery to the currently
+  // rendered grid's own date window (`days` already includes any leading/
+  // trailing days from adjacent months, so `days[0]`/`days[last]` are the
+  // true visible bounds) -- an event for a due_date outside this window
+  // belongs to a month the caller isn't looking at right now.
+  const visibleDateRange =
+    days.length > 0
+      ? { start: days[0].date, end: days[days.length - 1].date }
+      : undefined;
   useCalendarRealtime({
     workspaceId: workspaceId ?? "",
     onDueDateChange: (event) => {
       setByDate((current) =>
-        reconcileCalendarRealtimeEvent(current, event, visibleProjectIds),
+        reconcileCalendarRealtimeEvent(
+          current,
+          event,
+          visibleProjectIds,
+          visibleDateRange,
+        ),
       );
     },
   });

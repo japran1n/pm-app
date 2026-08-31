@@ -50,6 +50,24 @@
 // into `CalendarDayGrid` → `useCalendarRealtime` → this function; left as
 // a documented gap rather than guessed at, since no such prop channel
 // exists to hang a filter check off of today.
+//
+// F040 (AS-022, delivery scoping): `visibleDateRange` is the CURRENTLY
+// DISPLAYED calendar window's inclusive `[start, end]` "YYYY-MM-DD"
+// bounds — `CalendarDayGrid` derives it from `days[0].date` /
+// `days[days.length - 1].date` (the full rendered grid, including
+// leading/trailing days from adjacent months, per month-grid.ts). An
+// INSERT/UPDATE for a task whose `due_date` falls outside this window is
+// for a month/week the caller isn't looking at right now — dropping it
+// into `byDate` would silently grow an off-screen bucket the grid never
+// renders, which is harmless today but wastes memory and would surface a
+// stale/wrong-looking task the moment the user navigates to that month
+// without a fresh server fetch. String comparison is safe here: both the
+// bounds and `row.due_date` are lexically-sortable "YYYY-MM-DD" values
+// (`DateOnly`), so `<`/`>` compares chronologically without ever parsing
+// into a `Date` (this file's month-grid.ts sibling already leans on the
+// same property). `visibleDateRange` is OPTIONAL and defaults to "no
+// scoping" (all callers, including every existing test, keep working
+// unchanged) — the calendar page always passes it in practice.
 
 import type { CalendarTask } from "@/lib/queries/calendar";
 import type { CalendarRealtimeEvent } from "@/lib/tasks/subscribe-calendar-realtime";
@@ -87,6 +105,7 @@ export function reconcileCalendarRealtimeEvent(
   byDate: CalendarTasksByDate,
   event: CalendarRealtimeEvent,
   visibleProjectIds: ReadonlySet<string>,
+  visibleDateRange?: { start: DateOnly; end: DateOnly },
 ): CalendarTasksByDate {
   if (event.eventType === "DELETE") {
     // AS-022: `tasks` has no `replica identity full`, so a DELETE's `old`
@@ -123,6 +142,20 @@ export function reconcileCalendarRealtimeEvent(
 
   if (!row.due_date) {
     // UPDATE clearing due_date (AS-021).
+    return removeTaskEverywhere(byDate, row.id);
+  }
+
+  // F040 (AS-022): the row has a due_date, but it may fall outside the
+  // window the caller is currently displaying (see this file's header
+  // comment on `visibleDateRange`). Out-of-window INSERTs are simply
+  // ignored (nothing to render); out-of-window UPDATEs also remove any
+  // stale in-window placement the task previously had, since it moved
+  // out of view.
+  if (
+    visibleDateRange &&
+    (row.due_date < visibleDateRange.start ||
+      row.due_date > visibleDateRange.end)
+  ) {
     return removeTaskEverywhere(byDate, row.id);
   }
 
