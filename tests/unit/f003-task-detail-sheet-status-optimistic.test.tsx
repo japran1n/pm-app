@@ -194,9 +194,13 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
     expect(moveTaskStatus).toHaveBeenCalledWith("t1", "done");
     expect(resolveMoveTaskStatus).not.toBeNull();
 
-    // Cleanup: resolve so the pending transition doesn't leak across tests.
+    // F023: the badge must NOT snap back to the stale "todo" value once
+    // this transition settles after a SUCCESSFUL save — it must stay on
+    // the new "done" value until the caller's own refetch/realtime path
+    // catches up (which this test never triggers).
     resolveMoveTaskStatus?.({ ok: true, data: { status: "done" } });
-    await waitFor(() => {});
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Status updated."));
+    expect(statusSelect.value).toBe("done");
   });
 
   it("test_AS_006_status_reverts_and_shows_an_error_toast_on_server_failure", async () => {

@@ -200,9 +200,13 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
     expect(editTask).toHaveBeenCalledWith("t1", { priority: "high" });
     expect(resolveEditTask).not.toBeNull();
 
-    // Cleanup: resolve so the pending transition doesn't leak across tests.
+    // F023: the badge must NOT snap back to the stale "__none__" value
+    // once this transition settles after a SUCCESSFUL save — it must stay
+    // on the new "high" value until the caller's own refetch/realtime
+    // path catches up (which this test never triggers).
     resolveEditTask?.({ ok: true, data: { priority: "high" } });
-    await waitFor(() => {});
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Priority updated."));
+    expect(prioritySelect.value).toBe("high");
   });
 
   it("test_AS_008_priority_reverts_and_shows_an_error_toast_on_server_failure", async () => {
@@ -320,7 +324,11 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
     expect(editTask).toHaveBeenCalledWith("t1", { priority: null });
     expect(resolveEditTask).not.toBeNull();
 
+    // F023: same post-success snap-back check as the other AS-007 test
+    // above, for the "cleared to No priority" case specifically.
     resolveEditTask?.({ ok: true, data: { priority: null } });
-    await waitFor(() => {});
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Priority updated."));
+    expect(prioritySelect.value).toBe("__none__");
+    expect(badgeText()).toContain("No priority");
   });
 });

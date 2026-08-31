@@ -647,6 +647,25 @@ export function TaskDetailSheet({
   const [optimisticPriority, setOptimisticPriority] = useOptimistic<
     TaskDetailSheetTask["priority"] | undefined
   >(undefined);
+  // F023 (AS-005, AS-007 fix): useOptimistic's own baseline (`task.status` /
+  // `undefined`) is what the optimistic value reverts to once the
+  // enclosing transition settles — including on SUCCESS, not just failure.
+  // The `task` prop itself only moves on to the new value once the
+  // caller's own refetch/realtime path catches up, which is not
+  // synchronous with the Server Action resolving. Without a local,
+  // separately-committed mirror, the badge visibly snaps back to the
+  // stale `task.status`/`task.priority` for however long that gap lasts.
+  // These two states are that mirror: set on a successful save, read
+  // ahead of both the optimistic value and the `task` prop by the Select
+  // `value` bindings below, and re-cleared whenever a different task is
+  // synced in (so a freshly opened task never shows a stale confirmed
+  // value from the previously open one).
+  const [confirmedStatus, setConfirmedStatus] = useState<
+    TaskDetailSheetTask["status"] | undefined
+  >(undefined);
+  const [confirmedPriority, setConfirmedPriority] = useState<
+    TaskDetailSheetTask["priority"] | undefined
+  >(undefined);
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -709,6 +728,10 @@ export function TaskDetailSheet({
     setDueDate(task.dueDate ?? "");
     setStartDate(task.startDate ?? "");
     setDescriptionJson(task.descriptionJson);
+    // F023: a newly opened task must never show a confirmed value carried
+    // over from whatever task was previously open in this same Sheet.
+    setConfirmedStatus(undefined);
+    setConfirmedPriority(undefined);
   } else if (!open && syncedTaskId !== null) {
     // Sheet closed — clear the sync marker so reopening the same task
     // (e.g. after an external update) re-syncs from the latest props.
@@ -962,7 +985,8 @@ export function TaskDetailSheet({
   async function handleStatusChange(value: string | null) {
     if (!task || value === null) return;
     const next = value as TaskDetailSheetTask["status"];
-    if (next === (optimisticStatus ?? task.status)) return;
+    const currentStatus = confirmedStatus ?? optimisticStatus ?? task.status;
+    if (next === currentStatus) return;
 
     const proceed = await confirmIfMovingToDone(task.id, next);
     if (!proceed) return;
@@ -977,6 +1001,11 @@ export function TaskDetailSheet({
       try {
         const result = await moveTaskStatus(task.id, next);
         if (result.ok) {
+          // F023 (AS-005): commit the confirmed value so the badge stays
+          // on `next` even after this transition settles and
+          // useOptimistic's own baseline reverts — see confirmedStatus's
+          // doc comment above.
+          setConfirmedStatus(next);
           toast.success("Status updated.");
         } else {
           // AS-006: useOptimistic itself reverts `optimisticStatus` back to
@@ -1009,7 +1038,11 @@ export function TaskDetailSheet({
         ? (value as NonNullable<TaskDetailSheetTask["priority"]>)
         : null;
     const currentPriority =
-      optimisticPriority !== undefined ? optimisticPriority : task.priority;
+      confirmedPriority !== undefined
+        ? confirmedPriority
+        : optimisticPriority !== undefined
+          ? optimisticPriority
+          : task.priority;
     if (next === currentPriority) return;
 
     const nextLabel = next ? PRIORITY_LABELS[next] : "No priority";
@@ -1018,6 +1051,9 @@ export function TaskDetailSheet({
       try {
         const result = await editTask(task.id, { priority: next });
         if (result.ok) {
+          // F023 (AS-007): same "commit a confirmed value" fix as
+          // handleStatusChange above.
+          setConfirmedPriority(next);
           toast.success("Priority updated.");
         } else {
           toast.error(`Failed to set priority to ${nextLabel}`);
@@ -1437,7 +1473,7 @@ export function TaskDetailSheet({
                       immediately below: `value` stays bound directly to
                       `task.status`. */}
                   <Select
-                    value={optimisticStatus ?? task.status}
+                    value={confirmedStatus ?? optimisticStatus ?? task.status}
                     onValueChange={handleStatusChange}
                     disabled={isSavingField || !canEdit}
                   >
@@ -1466,9 +1502,11 @@ export function TaskDetailSheet({
                   <Label htmlFor={`task-priority-${task.id}`}>Priority</Label>
                   <Select
                     value={
-                      (optimisticPriority !== undefined
-                        ? optimisticPriority
-                        : task.priority) ?? NO_PRIORITY_VALUE
+                      (confirmedPriority !== undefined
+                        ? confirmedPriority
+                        : optimisticPriority !== undefined
+                          ? optimisticPriority
+                          : task.priority) ?? NO_PRIORITY_VALUE
                     }
                     onValueChange={handlePriorityChange}
                     disabled={isSavingField || !canEdit}
