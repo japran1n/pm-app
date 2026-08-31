@@ -102,7 +102,15 @@ describe("F034/AS-020: calendar isDone re-derives from a tasks UPDATE's new stat
     id: "t1",
     title: "Ship it",
     status: "todo",
-    statusCategory: null,
+    // AS-020/F036: realistic non-null statusCategory (as every existing
+    // task in local state actually has, resolved by the initial server
+    // fetch's `project_statuses` join) — this reproduces the real bug:
+    // `isDoneStatus(row.status, existing.statusCategory)` short-circuits
+    // on a non-null category and ignores `row.status` entirely, so a task
+    // moved to a "done"-category status would still read as not-done
+    // because the STALE `existing.statusCategory` ("in_progress") gets
+    // consulted instead of the NEW status.
+    statusCategory: "in_progress",
     isDone: false,
     priority: "medium",
     dueDate: "2026-08-31" as CalendarTask["dueDate"],
@@ -144,7 +152,12 @@ describe("F034/AS-020: calendar isDone re-derives from a tasks UPDATE's new stat
   });
 
   it("test_AS_020_marks_isDone_false_when_an_update_moves_a_tracked_done_task_back_to_todo", () => {
-    const byDate = byDateWith({ ...baseTask, status: "done", isDone: true });
+    const byDate = byDateWith({
+      ...baseTask,
+      status: "done",
+      statusCategory: "done",
+      isDone: true,
+    });
     const event = {
       eventType: "UPDATE",
       schema: "public",

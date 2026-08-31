@@ -56,14 +56,20 @@ describe("subscribeToCalendarRealtime (AS-019, AS-020, AS-021, AS-022)", () => {
 
     subscribeToCalendarRealtime(supabase as never, "workspace-123", onChange);
 
+    // AS-022: this deliberately does NOT assert the full `filter` object
+    // equals an unfiltered `{ event, schema, table }` shape -- pinning the
+    // ABSENCE of a server-side delivery-scope filter would break this test
+    // the moment a filter (e.g. `workspace_id=eq.<id>`) is legitimately
+    // added. Instead assert only what AS-022 actually requires: the
+    // subscription is scoped to a per-workspace channel, listens for every
+    // `tasks`-table event type, and events delivered on it reach the
+    // reconciler (covered by the "forwards a received payload" test below).
     expect(channelCalls).toEqual(["tasks:calendar:workspace-123"]);
     expect(onCalls).toHaveLength(1);
     expect(onCalls[0].event).toBe("postgres_changes");
-    expect(onCalls[0].filter).toEqual({
-      event: "*",
-      schema: "public",
-      table: "tasks",
-    });
+    expect(onCalls[0].filter.event).toBe("*");
+    expect(onCalls[0].filter.schema).toBe("public");
+    expect(onCalls[0].filter.table).toBe("tasks");
   });
 
   it("forwards a received payload to onChange unchanged", () => {
