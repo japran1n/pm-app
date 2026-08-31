@@ -305,6 +305,30 @@ describe("CommandPalette navigate(): resetPaletteState clears the realtime patch
       expect(sharedOnCalls.length).toBeGreaterThan(0);
     });
 
+    // Switch the query to a SINGLE SPACE, not "". This is the critical
+    // detail: the quick-actions group's visibility gate
+    // (`hasQuery = query.trim().length > 0`, command-palette.tsx) is
+    // TRIMMED, so " " already counts as empty and the quick actions
+    // render. But the realtime subscription's teardown gate in
+    // `use-palette-search-realtime.ts` (`query.length === 0`) is
+    // UNTRIMMED, so with a length-1 " " query the channel is judged
+    // non-empty and is kept alive. That discrepancy is exactly the bug
+    // AS-024 exists to guard: a DELETE event arriving while the query is
+    // " " is still processed by the (still-subscribed) realtime handler
+    // and tombstones a task into `realtimePatches`, even though the UI is
+    // already showing the quick-actions view as if the query were fully
+    // empty. `handleQueryChange` only clears the patch map on its own
+    // `!trimmed` branch, which already ran once when the query became
+    // " " (before the DELETE below) — it does not run again for
+    // later-arriving realtime events, so this is the one state in which
+    // quick actions are visible AND the patch map can still be live
+    // repopulated. That makes quick-action close's own
+    // `resetPaletteState()` call (command-palette.tsx:447) the only thing
+    // standing between this stray tombstone and the next real search —
+    // removing it lets the tombstone survive and silently suppress a real
+    // task from every subsequent result set.
+    fireEvent.change(input, { target: { value: " " } });
+
     act(() => {
       sharedOnCalls[0].callback({
         eventType: "DELETE",
@@ -314,35 +338,6 @@ describe("CommandPalette navigate(): resetPaletteState clears the realtime patch
         old: { id: "t1" },
       });
     });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Old title")).not.toBeInTheDocument();
-    });
-
-    // Clear the query to surface the quick-actions group ("Actions" is
-    // only rendered for the empty-query state).
-    //
-    // IMPORTANT CAVEAT (documented rather than silently worked around):
-    // `handleQueryChange` (command-palette.tsx) already clears the patch
-    // map itself whenever the query transitions to empty (see F030's
-    // AS-023 comment above it) — and quick actions are ONLY reachable
-    // when the query IS empty. So by the time this quick action's own
-    // `resetPaletteState()` call (command-palette.tsx:447) runs, the map
-    // is *already* empty via that unrelated path, on every real code
-    // path (confirmed: the realtime subscription itself is torn down —
-    // its listener removed from the shared-channel `Set` in
-    // lib/realtime/shared-topic-channel.ts — the instant the query goes
-    // empty, so no later-arriving realtime event can repopulate the map
-    // before this branch runs either). That makes line 447's
-    // `resetPaletteState()` call provably equivalent-mutant with respect
-    // to the patch map specifically: removing it changes no observable
-    // behaviour, so no black-box test — including this one — can kill
-    // that mutant without a change to the surrounding gating logic
-    // (tracked as out-of-scope follow-up work below). This test still
-    // asserts the map is empty post-close, exercising the branch and
-    // guarding the (still real, still worth covering) invariant that a
-    // quick-action close never leaves stale results/query state behind.
-    fireEvent.change(input, { target: { value: "" } });
 
     // "Toggle theme" is the one quick action whose `run()` returns
     // `navigateTo: null` — its `onSelect` branch calls `setOpen(false)`
