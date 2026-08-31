@@ -24,6 +24,7 @@ import type {
 } from "@/lib/palette/palette-search-types";
 import { PALETTE_ACTIONS } from "@/components/command/actions";
 import { useRecentItems } from "@/lib/hooks/use-recent-items";
+import { usePaletteSearchRealtime } from "@/lib/hooks/use-palette-search-realtime";
 import { useMembership } from "@/components/auth/membership-provider";
 import { SHORTCUT_EVENTS } from "@/lib/hooks/use-shortcut";
 
@@ -225,6 +226,12 @@ export function CommandPalette({
       }
     };
   }, []);
+
+  // F012 (AS-023, AS-024): keep search results reconciled against live
+  // task title changes/deletions while the palette is open with a query —
+  // no-ops (and unsubscribes) once the query is empty, matching the
+  // "recents, not search results" state above.
+  usePaletteSearchRealtime(workspaceId, query, setResults);
 
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;

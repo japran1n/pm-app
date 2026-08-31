@@ -1,0 +1,94 @@
+// F012 (AS-023, AS-024): keeps the command palette's search results in
+// sync with live task title/deletion changes while the palette is open
+// with a non-empty query.
+//
+// Thin Client Component hook, mirroring components/board/use-board-realtime.ts's
+// split — the actual channel wiring lives in
+// lib/palette/subscribe-palette-search-realtime.ts (a plain, React-free
+// function), and the merge logic lives in
+// lib/palette/reconcile-palette-search-results.ts (also plain/pure), so both
+// halves are unit-testable without a DOM/React runtime.
+//
+// Only subscribes when `query.length > 0` — an empty query renders recents,
+// not search results (command-palette.tsx), so there is nothing to
+// reconcile and no channel is opened. Effect cleanup (unmount, or `query`
+// transitioning back to empty / palette closing which clears `query`)
+// releases the shared channel subscription.
+//
+// Reconciliation is debounced to at most once per 100ms (clarified
+// "Debounce: don't reconcile more than once per 100ms") — a burst of
+// events (e.g. several tasks updated at once) coalesces into a single
+// state update using the LATEST payload per task id rather than replaying
+// every intermediate event, which also keeps this from firing a new server
+// search (side-effect verification: reconcile never calls searchPalette).
+
+"use client";
+
+import { useEffect, useRef } from "react";
+
+import { createClient } from "@/lib/supabase/client";
+import type { PaletteSearchResults } from "@/lib/palette/palette-search-types";
+import { reconcilePaletteSearchResults } from "@/lib/palette/reconcile-palette-search-results";
+import {
+  subscribeToPaletteSearchRealtime,
+  type PaletteRealtimeEvent,
+} from "@/lib/palette/subscribe-palette-search-realtime";
+
+const RECONCILE_DEBOUNCE_MS = 100;
+
+export function usePaletteSearchRealtime(
+  workspaceId: string,
+  query: string,
+  setResults: React.Dispatch<React.SetStateAction<PaletteSearchResults>>,
+) {
+  const pendingEvents = useRef<PaletteRealtimeEvent[]>([]);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setResultsRef = useRef(setResults);
+
+  useEffect(() => {
+    setResultsRef.current = setResults;
+  }, [setResults]);
+
+  useEffect(() => {
+    if (!workspaceId || query.length === 0) return;
+
+    const supabase = createClient();
+
+    function flush() {
+      debounceTimer.current = null;
+      const events = pendingEvents.current;
+      pendingEvents.current = [];
+      if (events.length === 0) return;
+
+      setResultsRef.current((current) =>
+        events.reduce(
+          (acc, event) => reconcilePaletteSearchResults(acc, event),
+          current,
+        ),
+      );
+    }
+
+    function onChange(event: PaletteRealtimeEvent) {
+      pendingEvents.current.push(event);
+      if (debounceTimer.current === null) {
+        debounceTimer.current = setTimeout(flush, RECONCILE_DEBOUNCE_MS);
+      }
+    }
+
+    const unsubscribe = subscribeToPaletteSearchRealtime(
+      supabase,
+      workspaceId,
+      onChange,
+    );
+
+    return () => {
+      unsubscribe();
+      if (debounceTimer.current !== null) {
+        clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+      }
+      pendingEvents.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId, query.length > 0]);
+}
