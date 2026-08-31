@@ -1,36 +1,45 @@
-// F008 (AS-015, AS-016, AS-017, AS-018): Realtime subscription for the My
-// Tasks page. Every task assigned to the current user, across every
-// project the caller can see, should reflect live INSERT/UPDATE/DELETE
+// F008/F025 (AS-015, AS-016, AS-017, AS-018): Realtime subscription for the
+// My Tasks page. Every task assigned to the current user, across every
+// project the caller can see, should reflect live assignment/status/delete
 // changes without a manual page refresh.
 //
 // Follows the same "thin client hook + shared ref-counted channel" pattern
 // established by the board's own Realtime hook
 // (components/board/use-board-realtime.ts, F049) and reuses
 // lib/realtime/shared-topic-channel.ts (F329) to avoid the React
-// StrictMode double-subscribe crash documented there. Unlike the board
-// hook, this one is scoped per-USER (not per-project) since My Tasks spans
-// every project the caller can see: channel/topic name is
-// `tasks:my-tasks:<userId>`, filtered server-side via Realtime's row
-// filter syntax to `assignee_id=eq.<userId>` (AS-018 -- only tasks
-// currently assigned to the caller are delivered; Realtime additionally
-// re-applies the `tasks` table's own RLS SELECT policy
-// (tasks_select_active_members) before broadcasting, so a payload can
-// never arrive for a project the caller isn't a member of, even if
-// `assignee_id` happened to match).
+// StrictMode double-subscribe crash documented there.
 //
-// State ownership is left to the caller (per the clarified "callback-based"
-// API contract) -- this hook has no opinion on how the three events turn
-// into a new task list; F011's `reconcileMyTasksRealtimeTask` pure helper
-// is the intended reconciliation function for callers that hold a task
-// array in state.
+// F025 root-cause fix: `tasks.assignee_id` is DEPRECATED (see
+// supabase/migrations/20260822020000_task_assignees_table.sql) --
+// assignment is now resolved through the `task_assignees` join table
+// (many-to-many). F008's original implementation filtered Realtime's
+// `postgres_changes` on `tasks.assignee_id=eq.<userId>`, which:
+//   1. never fires for tasks assigned solely via `task_assignees` (the
+//      write path every current caller uses -- AS-015 broken for every
+//      real assignment), and
+//   2. is structurally incapable of representing un-assignment (AS-017)
+//      even for the legacy column: Supabase evaluates an UPDATE's row
+//      filter against the NEW record, so a change that makes the filter
+//      newly FALSE (row leaving the filtered set) is dropped server-side,
+//      never delivered to the client at all.
 //
-// Un-assignment (AS-017) has no dedicated Postgres event: it arrives as an
-// UPDATE whose `new.assignee_id` is no longer the caller's id (typically
-// null, but any other user's id also means "no longer mine"). This hook
-// treats any UPDATE where `new.assignee_id !== userId` as equivalent to a
-// removal by invoking `onDelete` with the row's id, rather than forwarding
-// it to `onUpdate` -- callers only ever need to reason about "is this task
-// still in my list," not re-derive that from the raw payload themselves.
+// Fix: subscribe to TWO tables, both with no row filter (correctness is
+// enforced by each table's own RLS SELECT policy, which Realtime
+// re-applies before broadcasting -- the caller only ever receives rows
+// they're allowed to see):
+//   - `task_assignees`: INSERT with matching `user_id` means "task just
+//     became mine" (AS-015); DELETE with matching `user_id` means "task
+//     just stopped being mine" (AS-017). Both are forwarded as a
+//     `onAssignmentChange` signal (kind: "assigned" | "unassigned") rather
+//     than as a full task row, since `task_assignees` doesn't carry task
+//     fields -- callers that need the fresh row (e.g. this feature's own
+//     `PersonalTodoList` wiring) refetch/refresh in response.
+//   - `tasks`: UPDATE forwards to `onUpdate` for any task already in the
+//     caller's list (AS-016 -- status/field changes); DELETE forwards to
+//     `onDelete` (AS-018). `tasks` INSERT is intentionally not treated as
+//     "new to my list" here -- a brand-new task row is never itself an
+//     assignment; the assignment side is what `task_assignees` INSERT
+//     covers.
 import { useEffect } from "react";
 import type { RealtimePostgresChangesPayload, SupabaseClient } from "@supabase/supabase-js";
 
@@ -39,23 +48,37 @@ import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 
 export type MyTasksRealtimeTaskRow = {
   id: string;
-  assignee_id: string | null;
   [key: string]: unknown;
 };
 
-export type MyTasksRealtimeEvent = RealtimePostgresChangesPayload<MyTasksRealtimeTaskRow>;
+export type MyTasksRealtimeTaskEvent = RealtimePostgresChangesPayload<MyTasksRealtimeTaskRow>;
+
+export type TaskAssigneeRow = {
+  task_id: string;
+  user_id: string;
+  [key: string]: unknown;
+};
+
+export type MyTasksRealtimeAssigneeEvent = RealtimePostgresChangesPayload<TaskAssigneeRow>;
 
 export type UseMyTasksRealtimeOptions = {
   userId: string | undefined;
-  onInsert: (row: MyTasksRealtimeTaskRow) => void;
+  // AS-015: a task_assignees row was inserted for this user (new
+  // assignment). Callers typically refetch/refresh here since only the
+  // task id is known, not the full task row.
+  onAssigned: (taskId: string) => void;
+  // AS-017: a task_assignees row was deleted for this user (un-assigned).
+  onUnassigned: (taskId: string) => void;
+  // AS-016: an already-visible task was updated (status, title, etc.).
   onUpdate: (row: MyTasksRealtimeTaskRow) => void;
+  // AS-018: a task was deleted outright.
   onDelete: (taskId: string) => void;
 };
 
 // Validates just enough of an incoming payload's shape to safely dispatch
 // it -- a non-empty string `id` on the relevant record. Malformed/partial
-// payloads (which should never happen against the real `tasks` table, but
-// a defensive check per the clarified "validate before calling callbacks"
+// payloads (which should never happen against the real tables, but a
+// defensive check per the clarified "validate before calling callbacks"
 // answer) are silently dropped rather than throwing or forwarding garbage
 // to the caller's state.
 function hasValidId(record: unknown): record is { id: string } {
@@ -68,14 +91,27 @@ function hasValidId(record: unknown): record is { id: string } {
   );
 }
 
+function hasValidTaskAssignee(record: unknown): record is TaskAssigneeRow {
+  return (
+    typeof record === "object" &&
+    record !== null &&
+    "task_id" in record &&
+    typeof (record as { task_id: unknown }).task_id === "string" &&
+    (record as { task_id: string }).task_id.length > 0 &&
+    "user_id" in record &&
+    typeof (record as { user_id: unknown }).user_id === "string" &&
+    (record as { user_id: string }).user_id.length > 0
+  );
+}
+
 export function subscribeToMyTasksRealtime(
   supabase: SupabaseClient,
   userId: string,
-  handlers: Pick<UseMyTasksRealtimeOptions, "onInsert" | "onUpdate" | "onDelete">,
+  handlers: Pick<UseMyTasksRealtimeOptions, "onAssigned" | "onUnassigned" | "onUpdate" | "onDelete">,
 ): () => void {
   const topic = `tasks:my-tasks:${userId}`;
 
-  return acquireSharedTopicChannel<MyTasksRealtimeEvent>(
+  return acquireSharedTopicChannel<MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent>(
     supabase,
     topic,
     (dispatch) =>
@@ -86,31 +122,51 @@ export function subscribeToMyTasksRealtime(
           {
             event: "*",
             schema: "public",
-            table: "tasks",
-            filter: `assignee_id=eq.${userId}`,
+            table: "task_assignees",
           },
-          (payload: MyTasksRealtimeEvent) => {
+          (payload: MyTasksRealtimeAssigneeEvent) => {
+            dispatch(payload);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "tasks",
+          },
+          (payload: MyTasksRealtimeTaskEvent) => {
             dispatch(payload);
           },
         )
         .subscribe(),
     (event) => {
-      switch (event.eventType) {
-        case "INSERT": {
-          if (!hasValidId(event.new)) return;
-          handlers.onInsert(event.new as MyTasksRealtimeTaskRow);
-          return;
-        }
-        case "UPDATE": {
-          if (!hasValidId(event.new)) return;
-          const row = event.new as MyTasksRealtimeTaskRow;
-          if (row.assignee_id !== userId) {
-            // AS-017: un-assigned (or re-assigned to someone else) --
-            // treat as a removal from this user's My Tasks list.
-            handlers.onDelete(row.id);
+      if (event.table === "task_assignees") {
+        switch (event.eventType) {
+          case "INSERT": {
+            if (!hasValidTaskAssignee(event.new)) return;
+            const row = event.new as TaskAssigneeRow;
+            if (row.user_id !== userId) return;
+            handlers.onAssigned(row.task_id);
             return;
           }
-          handlers.onUpdate(row);
+          case "DELETE": {
+            if (!hasValidTaskAssignee(event.old)) return;
+            const row = event.old as TaskAssigneeRow;
+            if (row.user_id !== userId) return;
+            handlers.onUnassigned(row.task_id);
+            return;
+          }
+          default:
+            return;
+        }
+      }
+
+      // event.table === "tasks"
+      switch (event.eventType) {
+        case "UPDATE": {
+          if (!hasValidId(event.new)) return;
+          handlers.onUpdate(event.new as MyTasksRealtimeTaskRow);
           return;
         }
         case "DELETE": {
@@ -126,16 +182,17 @@ export function subscribeToMyTasksRealtime(
 }
 
 /**
- * Subscribes to Realtime changes for tasks assigned to `userId`. Calls
- * `onInsert`/`onUpdate`/`onDelete` for as long as this component stays
- * mounted; unsubscribes (via the shared ref-counted channel registry)
- * automatically on unmount or when `userId` changes. A `undefined` userId
- * is a deliberate no-op -- there is nothing to scope the subscription to
- * before the caller is known.
+ * Subscribes to Realtime changes affecting tasks assigned to `userId`.
+ * Calls `onAssigned`/`onUnassigned`/`onUpdate`/`onDelete` for as long as
+ * this component stays mounted; unsubscribes (via the shared ref-counted
+ * channel registry) automatically on unmount or when `userId` changes. A
+ * `undefined` userId is a deliberate no-op -- there is nothing to scope the
+ * subscription to before the caller is known.
  */
 export function useMyTasksRealtime({
   userId,
-  onInsert,
+  onAssigned,
+  onUnassigned,
   onUpdate,
   onDelete,
 }: UseMyTasksRealtimeOptions) {
@@ -144,7 +201,8 @@ export function useMyTasksRealtime({
 
     const supabase = createClient();
     const unsubscribe = subscribeToMyTasksRealtime(supabase, userId, {
-      onInsert,
+      onAssigned,
+      onUnassigned,
       onUpdate,
       onDelete,
     });

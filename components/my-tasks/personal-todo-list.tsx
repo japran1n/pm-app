@@ -32,19 +32,20 @@ export function PersonalTodoList({
 }) {
   const router = useRouter();
 
-  // F008: the real task buckets rendered above/below this component are
-  // server-fetched (MyTasksPage, getMyTasks) -- this hook's own state is
-  // scoped to personal to-dos only, so a live task assignment/status/
-  // un-assignment change is surfaced by asking the server to re-render
-  // (router.refresh()) rather than by this component reaching into
-  // another component's task rows. F011's reconcileMyTasksRealtimeTask
+  // F008/F025: the real task buckets rendered above/below this component
+  // are server-fetched (MyTasksPage, getMyTasks) -- this hook's own state
+  // is scoped to personal to-dos only, so a live task assignment/status/
+  // un-assignment/delete change is surfaced by asking the server to
+  // re-render (router.refresh()) rather than by this component reaching
+  // into another component's task rows. F011's reconcileMyTasksRealtimeTask
   // pure helper is the intended building block for a future, more
   // targeted client-side reconciliation of the task list itself; wiring
   // it into a stateful task-list client component is out of this
   // feature's scope (see this feature's handoff).
   useMyTasksRealtime({
     userId: currentUserId,
-    onInsert: () => router.refresh(),
+    onAssigned: () => router.refresh(),
+    onUnassigned: () => router.refresh(),
     onUpdate: () => router.refresh(),
     onDelete: () => router.refresh(),
   });

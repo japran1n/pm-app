@@ -1,24 +1,32 @@
-// F008: unit tests for the My Tasks Realtime subscription wiring
+// F008/F025: unit tests for the My Tasks Realtime subscription wiring
 // (components/my-tasks/use-my-tasks-realtime.ts). Same DOM-less
 // `subscribeTo*Realtime` pattern as the board's own Realtime tests
 // (tests/unit/board-realtime-subscription.test.ts) -- verifies the exact
-// channel/table/filter configuration passed to the Supabase client and
-// that the registered postgres_changes callback correctly reconciles the
-// three event shapes (INSERT, UPDATE-status, UPDATE-unassign, DELETE)
-// into the onInsert/onUpdate/onDelete callback contract.
+// channel/table configuration passed to the Supabase client and that the
+// registered postgres_changes callbacks correctly reconcile
+// task_assignees INSERT/DELETE and tasks UPDATE/DELETE into the
+// onAssigned/onUnassigned/onUpdate/onDelete callback contract.
+//
+// F025: `tasks.assignee_id` is DEPRECATED -- assignment now flows through
+// the `task_assignees` join table (see
+// supabase/migrations/20260822020000_task_assignees_table.sql). This
+// suite replaces F008's original assertions (which pinned the buggy
+// `assignee_id=eq.<userId>` row filter on `tasks`) with coverage of the
+// two-table, no-row-filter subscription.
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
   subscribeToMyTasksRealtime,
-  type MyTasksRealtimeEvent,
+  type MyTasksRealtimeAssigneeEvent,
+  type MyTasksRealtimeTaskEvent,
 } from "@/components/my-tasks/use-my-tasks-realtime";
 
 function createMockSupabaseClient() {
   const onCalls: Array<{
     event: string;
     filter: Record<string, unknown>;
-    callback: (payload: MyTasksRealtimeEvent) => void;
+    callback: (payload: MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent) => void;
   }> = [];
   const channelCalls: string[] = [];
   const removedChannels: unknown[] = [];
@@ -28,7 +36,7 @@ function createMockSupabaseClient() {
       (
         event: string,
         filter: Record<string, unknown>,
-        callback: (payload: MyTasksRealtimeEvent) => void,
+        callback: (payload: MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent) => void,
       ) => {
         onCalls.push({ event, filter, callback });
         return channelObject;
@@ -50,33 +58,53 @@ function createMockSupabaseClient() {
   return { supabase, onCalls, channelCalls, removedChannels, channelObject };
 }
 
+function callbackFor(
+  onCalls: ReturnType<typeof createMockSupabaseClient>["onCalls"],
+  table: string,
+) {
+  const entry = onCalls.find((c) => c.filter.table === table);
+  if (!entry) throw new Error(`no .on() registered for table ${table}`);
+  return entry.callback;
+}
+
 describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
-  it("subscribes on a per-user channel filtered to the tasks table and assignee_id, for all events", () => {
+  it("subscribes on a per-user channel to task_assignees and tasks, with no row filter", () => {
     const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete: vi.fn(),
     });
 
     expect(channelCalls).toEqual(["tasks:my-tasks:user-1"]);
-    expect(onCalls).toHaveLength(1);
-    expect(onCalls[0].event).toBe("postgres_changes");
-    expect(onCalls[0].filter).toEqual({
+    expect(onCalls).toHaveLength(2);
+
+    const assigneesCall = onCalls.find((c) => c.filter.table === "task_assignees");
+    expect(assigneesCall?.filter).toEqual({
+      event: "*",
+      schema: "public",
+      table: "task_assignees",
+    });
+    expect(assigneesCall?.filter.filter).toBeUndefined();
+
+    const tasksCall = onCalls.find((c) => c.filter.table === "tasks");
+    expect(tasksCall?.filter).toEqual({
       event: "*",
       schema: "public",
       table: "tasks",
-      filter: "assignee_id=eq.user-1",
     });
+    expect(tasksCall?.filter.filter).toBeUndefined();
   });
 
-  it("AS-015: calls onInsert when an INSERT event arrives with matching assignee_id", () => {
+  it("AS-015: calls onAssigned when a task_assignees row is INSERTed for this user", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
-    const onInsert = vi.fn();
+    const onAssigned = vi.fn();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert,
+      onAssigned,
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete: vi.fn(),
     });
@@ -84,22 +112,95 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
     const payload = {
       eventType: "INSERT",
       schema: "public",
-      table: "tasks",
-      new: { id: "t1", assignee_id: "user-1", title: "New task", status: "todo" },
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-1" },
       old: {},
-    } as unknown as MyTasksRealtimeEvent;
+    } as unknown as MyTasksRealtimeAssigneeEvent;
 
-    onCalls[0].callback(payload);
+    callbackFor(onCalls, "task_assignees")(payload);
 
-    expect(onInsert).toHaveBeenCalledExactlyOnceWith(payload.new);
+    expect(onAssigned).toHaveBeenCalledExactlyOnceWith("t1");
   });
 
-  it("AS-016: calls onUpdate when a status change UPDATE arrives with assignee_id unchanged", () => {
+  it("does not call onAssigned when a task_assignees INSERT is for a different user", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onAssigned = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned,
+      onUnassigned: vi.fn(),
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const payload = {
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-2" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent;
+
+    callbackFor(onCalls, "task_assignees")(payload);
+
+    expect(onAssigned).not.toHaveBeenCalled();
+  });
+
+  it("AS-017: calls onUnassigned when a task_assignees row is DELETEd for this user", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onUnassigned = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned,
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const payload = {
+      eventType: "DELETE",
+      schema: "public",
+      table: "task_assignees",
+      new: {},
+      old: { task_id: "t1", user_id: "user-1" },
+    } as unknown as MyTasksRealtimeAssigneeEvent;
+
+    callbackFor(onCalls, "task_assignees")(payload);
+
+    expect(onUnassigned).toHaveBeenCalledExactlyOnceWith("t1");
+  });
+
+  it("does not call onUnassigned when a task_assignees DELETE is for a different user", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onUnassigned = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned,
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const payload = {
+      eventType: "DELETE",
+      schema: "public",
+      table: "task_assignees",
+      new: {},
+      old: { task_id: "t1", user_id: "user-2" },
+    } as unknown as MyTasksRealtimeAssigneeEvent;
+
+    callbackFor(onCalls, "task_assignees")(payload);
+
+    expect(onUnassigned).not.toHaveBeenCalled();
+  });
+
+  it("AS-016: calls onUpdate when a tasks row UPDATE arrives", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onUpdate = vi.fn();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate,
       onDelete: vi.fn(),
     });
@@ -108,69 +209,22 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       eventType: "UPDATE",
       schema: "public",
       table: "tasks",
-      new: { id: "t1", assignee_id: "user-1", title: "Task 1", status: "done" },
-      old: { id: "t1", assignee_id: "user-1", status: "todo" },
-    } as unknown as MyTasksRealtimeEvent;
+      new: { id: "t1", title: "Task 1", status: "done" },
+      old: { id: "t1", status: "todo" },
+    } as unknown as MyTasksRealtimeTaskEvent;
 
-    onCalls[0].callback(payload);
+    callbackFor(onCalls, "tasks")(payload);
 
     expect(onUpdate).toHaveBeenCalledExactlyOnceWith(payload.new);
   });
 
-  it("AS-017 (failure test): calls onDelete when an UPDATE event sets assignee_id to null", () => {
-    const { supabase, onCalls } = createMockSupabaseClient();
-    const onDelete = vi.fn();
-    const onUpdate = vi.fn();
-
-    subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
-      onUpdate,
-      onDelete,
-    });
-
-    const payload = {
-      eventType: "UPDATE",
-      schema: "public",
-      table: "tasks",
-      new: { id: "t1", assignee_id: null, title: "Task 1", status: "todo" },
-      old: { id: "t1", assignee_id: "user-1", status: "todo" },
-    } as unknown as MyTasksRealtimeEvent;
-
-    onCalls[0].callback(payload);
-
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith("t1");
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-
-  it("AS-017: calls onDelete when an UPDATE event re-assigns the task to a different user", () => {
+  it("AS-018: calls onDelete when a tasks row DELETE arrives", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onDelete = vi.fn();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
-      onUpdate: vi.fn(),
-      onDelete,
-    });
-
-    const payload = {
-      eventType: "UPDATE",
-      schema: "public",
-      table: "tasks",
-      new: { id: "t1", assignee_id: "user-2", title: "Task 1", status: "todo" },
-      old: { id: "t1", assignee_id: "user-1", status: "todo" },
-    } as unknown as MyTasksRealtimeEvent;
-
-    onCalls[0].callback(payload);
-
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith("t1");
-  });
-
-  it("calls onDelete when a DELETE event arrives", () => {
-    const { supabase, onCalls } = createMockSupabaseClient();
-    const onDelete = vi.fn();
-
-    subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete,
     });
@@ -181,23 +235,25 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       table: "tasks",
       new: {},
       old: { id: "t1" },
-    } as unknown as MyTasksRealtimeEvent;
+    } as unknown as MyTasksRealtimeTaskEvent;
 
-    onCalls[0].callback(payload);
+    callbackFor(onCalls, "tasks")(payload);
 
     expect(onDelete).toHaveBeenCalledExactlyOnceWith("t1");
   });
 
-  it("AS-018: scopes different users to different channels/topics (no cross-user leakage at the subscription level)", () => {
+  it("scopes different users to different channels/topics (no cross-user leakage at the subscription level)", () => {
     const { supabase, channelCalls } = createMockSupabaseClient();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete: vi.fn(),
     });
     subscribeToMyTasksRealtime(supabase as never, "user-2", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete: vi.fn(),
     });
@@ -205,35 +261,37 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
     expect(channelCalls).toEqual(["tasks:my-tasks:user-1", "tasks:my-tasks:user-2"]);
   });
 
-  it("validates payload shape: drops an INSERT/UPDATE event whose new record has no id", () => {
+  it("validates payload shape: drops a tasks UPDATE event whose new record has no id", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
-    const onInsert = vi.fn();
     const onUpdate = vi.fn();
-    const onDelete = vi.fn();
 
-    subscribeToMyTasksRealtime(supabase as never, "user-1", { onInsert, onUpdate, onDelete });
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
+      onUpdate,
+      onDelete: vi.fn(),
+    });
 
-    const malformedInsert = {
-      eventType: "INSERT",
+    const malformedUpdate = {
+      eventType: "UPDATE",
       schema: "public",
       table: "tasks",
-      new: { assignee_id: "user-1" },
+      new: { title: "no id" },
       old: {},
-    } as unknown as MyTasksRealtimeEvent;
+    } as unknown as MyTasksRealtimeTaskEvent;
 
-    onCalls[0].callback(malformedInsert);
+    callbackFor(onCalls, "tasks")(malformedUpdate);
 
-    expect(onInsert).not.toHaveBeenCalled();
     expect(onUpdate).not.toHaveBeenCalled();
-    expect(onDelete).not.toHaveBeenCalled();
   });
 
-  it("validates payload shape: drops a DELETE event whose old record has no id", () => {
+  it("validates payload shape: drops a tasks DELETE event whose old record has no id", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onDelete = vi.fn();
 
     subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete,
     });
@@ -244,18 +302,45 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       table: "tasks",
       new: {},
       old: {},
-    } as unknown as MyTasksRealtimeEvent;
+    } as unknown as MyTasksRealtimeTaskEvent;
 
-    onCalls[0].callback(malformedDelete);
+    callbackFor(onCalls, "tasks")(malformedDelete);
 
     expect(onDelete).not.toHaveBeenCalled();
+  });
+
+  it("validates payload shape: drops a task_assignees event with a missing task_id/user_id", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onAssigned = vi.fn();
+    const onUnassigned = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned,
+      onUnassigned,
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const malformedInsert = {
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { user_id: "user-1" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent;
+
+    callbackFor(onCalls, "task_assignees")(malformedInsert);
+
+    expect(onAssigned).not.toHaveBeenCalled();
+    expect(onUnassigned).not.toHaveBeenCalled();
   });
 
   it("returns an unsubscribe function that removes the channel (deferred teardown, F329 pattern)", async () => {
     const { supabase, removedChannels, channelObject } = createMockSupabaseClient();
 
     const unsubscribe = subscribeToMyTasksRealtime(supabase as never, "user-1", {
-      onInsert: vi.fn(),
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
       onUpdate: vi.fn(),
       onDelete: vi.fn(),
     });
