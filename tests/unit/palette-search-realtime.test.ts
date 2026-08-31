@@ -139,6 +139,22 @@ describe("subscribeToPaletteSearchRealtime", () => {
       table: "tasks",
     });
   });
+
+  // AS-024: without this assertion, deleting the `.subscribe()` call from
+  // subscribe-palette-search-realtime.ts leaves this suite green -- `.on()`
+  // wiring alone doesn't join the Realtime channel, so no event would ever
+  // actually be delivered in production even though every other assertion
+  // here (which drives events directly through the captured `.on()`
+  // callback) would still pass.
+  it("AS-024: calls .subscribe() on the channel so events are actually delivered", () => {
+    const { supabase, channelCalls } = createMockSupabaseClient();
+
+    subscribeToPaletteSearchRealtime(supabase as never, "ws-1", vi.fn());
+
+    expect(channelCalls).toEqual(["tasks:ws-1"]);
+    const channelObject = (supabase.channel as unknown as { mock: { results: Array<{ value: { subscribe: (...args: unknown[]) => unknown } }> } }).mock.results[0].value;
+    expect(channelObject.subscribe).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("reconcilePaletteSearchResults (AS-023, AS-024)", () => {
@@ -308,6 +324,60 @@ describe("CommandPalette wiring to Realtime (AS-023, AS-024)", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Renamed title")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old title")).not.toBeInTheDocument();
+  });
+
+  it("F030 (AS-023): a realtime title patch survives a subsequent (stale) search response returning the old title", async () => {
+    const { searchPalette } = await import("@/lib/actions/palette-search");
+    const searchPaletteMock = vi.mocked(searchPalette);
+
+    await openPaletteWithQuery("old");
+
+    const callback = wiringOnCalls[0].callback;
+
+    act(() => {
+      callback({
+        eventType: "UPDATE",
+        schema: "public",
+        table: "tasks",
+        new: { id: "t1", title: "New Title" },
+        old: { id: "t1" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("New Title")).toBeInTheDocument();
+    });
+
+    // Simulate a slower, now-resolving search response for the SAME
+    // (still-current) request, returning the stale pre-patch title — the
+    // realtime patch must not be clobbered.
+    searchPaletteMock.mockResolvedValueOnce({
+      projects: [],
+      tasks: [
+        {
+          type: "task",
+          id: "t1",
+          title: "Old title",
+          projectId: "p1",
+          projectName: "Project 1",
+          projectKey: "P1",
+          number: 1,
+        },
+      ],
+      members: [],
+    });
+
+    const input = screen.getByPlaceholderText("Type a command or search...");
+    fireEvent.change(input, { target: { value: "old2" } });
+
+    await waitFor(() => {
+      expect(searchPaletteMock).toHaveBeenCalledWith("ws-1", "old2");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("New Title")).toBeInTheDocument();
     });
     expect(screen.queryByText("Old title")).not.toBeInTheDocument();
   });

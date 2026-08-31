@@ -194,7 +194,7 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
     expect(onUnassigned).not.toHaveBeenCalled();
   });
 
-  it("AS-016: calls onUpdate when a tasks row UPDATE arrives", () => {
+  it("AS-016: calls onUpdate when a tasks row UPDATE arrives for an already-tracked task", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onUpdate = vi.fn();
 
@@ -204,6 +204,18 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       onUpdate,
       onDelete: vi.fn(),
     });
+
+    // F031/AS-018: `tasks` UPDATE/DELETE only propagate for tasks this
+    // subscriber already tracks -- establish that via a prior
+    // `task_assignees` INSERT for this user, mirroring how a caller would
+    // actually come to know about "t1" in a real session.
+    callbackFor(onCalls, "task_assignees")({
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-1" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent);
 
     const payload = {
       eventType: "UPDATE",
@@ -218,7 +230,66 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
     expect(onUpdate).toHaveBeenCalledExactlyOnceWith(payload.new);
   });
 
-  it("AS-018: calls onDelete when a tasks row DELETE arrives", () => {
+  it("AS-018: calls onDelete when a tasks row DELETE arrives for an already-tracked task", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onDelete = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
+      onUpdate: vi.fn(),
+      onDelete,
+    });
+
+    callbackFor(onCalls, "task_assignees")({
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-1" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent);
+
+    const payload = {
+      eventType: "DELETE",
+      schema: "public",
+      table: "tasks",
+      new: {},
+      old: { id: "t1" },
+    } as unknown as MyTasksRealtimeTaskEvent;
+
+    callbackFor(onCalls, "tasks")(payload);
+
+    expect(onDelete).toHaveBeenCalledExactlyOnceWith("t1");
+  });
+
+  it("AS-018: does NOT call onUpdate for a tasks row UPDATE that's RLS-visible but never tracked (workspace-wide leak fix)", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onUpdate = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
+      onUpdate,
+      onDelete: vi.fn(),
+    });
+
+    // No task_assignees event has ever established "t-other" as this
+    // user's -- it's a task in another project, still RLS-visible on the
+    // shared `tasks` topic (no row filter), but never assigned to user-1.
+    const payload = {
+      eventType: "UPDATE",
+      schema: "public",
+      table: "tasks",
+      new: { id: "t-other", title: "Someone else's task", status: "done" },
+      old: { id: "t-other", status: "todo" },
+    } as unknown as MyTasksRealtimeTaskEvent;
+
+    callbackFor(onCalls, "tasks")(payload);
+
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+
+  it("AS-018: does NOT call onDelete for a tasks row DELETE that's RLS-visible but never tracked", () => {
     const { supabase, onCalls } = createMockSupabaseClient();
     const onDelete = vi.fn();
 
@@ -234,12 +305,12 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       schema: "public",
       table: "tasks",
       new: {},
-      old: { id: "t1" },
+      old: { id: "t-other" },
     } as unknown as MyTasksRealtimeTaskEvent;
 
     callbackFor(onCalls, "tasks")(payload);
 
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith("t1");
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it("scopes different users to different channels/topics (no cross-user leakage at the subscription level)", () => {
