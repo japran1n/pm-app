@@ -20,6 +20,7 @@ import { searchPalette, resolveRecentItems } from "@/lib/actions/palette-search"
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type {
   PaletteSearchResults,
+  PaletteTaskResult,
   ResolvedRecentItems,
 } from "@/lib/palette/palette-search-types";
 import { PALETTE_ACTIONS } from "@/components/command/actions";
@@ -62,6 +63,30 @@ const EMPTY_RECENTS: ResolvedRecentItems = { projects: [], tasks: [] };
 // dropped rather than clobbering a newer, faster response).
 const DEBOUNCE_MS = 200;
 
+// F030 (AS-023): a search response resolving AFTER a realtime patch has
+// already updated a task's title must NOT clobber that patch — merge
+// pending realtime patches into every incoming search response before
+// calling `setResults`, rather than trusting the response verbatim.
+// `applyRealtimePatches` is a pure helper (kept outside the component so
+// it's trivially unit-testable) that layers a `Map<taskId, patch>` onto a
+// `PaletteSearchResults`'s `tasks` array.
+function applyRealtimePatches(
+  results: PaletteSearchResults,
+  patches: Map<string, Partial<PaletteTaskResult>>,
+): PaletteSearchResults {
+  if (patches.size === 0) return results;
+
+  let changed = false;
+  const tasks = results.tasks.map((task) => {
+    const patch = patches.get(task.id);
+    if (!patch) return task;
+    changed = true;
+    return { ...task, ...patch };
+  });
+
+  return changed ? { ...results, tasks } : results;
+}
+
 export function CommandPalette({
   workspaceId,
   workspaceSlug,
@@ -81,6 +106,9 @@ export function CommandPalette({
 
   const latestRequestId = React.useRef(0);
   const debounceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // F030 (AS-023): pending realtime title patches, keyed by task id — see
+  // `applyRealtimePatches` above and `handleRealtimeResults` below.
+  const realtimePatches = React.useRef(new Map<string, Partial<PaletteTaskResult>>());
 
   // AS-465: resolve recents (against the caller's CURRENT visibility —
   // see resolveRecentItems's own doc comment) every time the palette
@@ -168,6 +196,7 @@ export function CommandPalette({
       setQuery("");
       setResults(EMPTY_RESULTS);
       setLoading(false);
+      realtimePatches.current.clear();
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
@@ -194,6 +223,7 @@ export function CommandPalette({
       latestRequestId.current += 1;
       setResults(EMPTY_RESULTS);
       setLoading(false);
+      realtimePatches.current.clear();
       return;
     }
 
@@ -206,7 +236,11 @@ export function CommandPalette({
           // AS-460/466: only the most recent request may update the UI —
           // a stale, slower response for an earlier keystroke is dropped.
           if (requestId !== latestRequestId.current) return;
-          setResults(results);
+          // F030 (AS-023): re-apply any realtime title patches already
+          // captured for tasks that reappear in this (possibly stale
+          // w.r.t. realtime) search response, so a realtime rename never
+          // gets reverted by a slower in-flight search.
+          setResults(applyRealtimePatches(results, realtimePatches.current));
           setLoading(false);
         })
         .catch((error) => {
@@ -231,7 +265,49 @@ export function CommandPalette({
   // task title changes/deletions while the palette is open with a query —
   // no-ops (and unsubscribes) once the query is empty, matching the
   // "recents, not search results" state above.
-  usePaletteSearchRealtime(workspaceId, query, setResults);
+  // F030 (AS-023): wrap `setResults` so every realtime update is both
+  // applied to the current results (existing F012 behaviour) AND recorded
+  // in `realtimePatches` — diffing the reconciled state against the prior
+  // state per task id, so a patch survives even if the task is momentarily
+  // absent from `results` (e.g. mid-debounce) and reappears via a later
+  // search response.
+  const handleRealtimeResults = React.useCallback<
+    React.Dispatch<React.SetStateAction<PaletteSearchResults>>
+  >((update) => {
+    setResults((current) => {
+      const next =
+        typeof update === "function"
+          ? (update as (value: PaletteSearchResults) => PaletteSearchResults)(
+              current,
+            )
+          : update;
+
+      const previousTasksById = new Map(
+        current.tasks.map((task) => [task.id, task] as const),
+      );
+      const nextTaskIds = new Set(next.tasks.map((task) => task.id));
+
+      for (const task of next.tasks) {
+        const previous = previousTasksById.get(task.id);
+        if (!previous || previous.title !== task.title) {
+          realtimePatches.current.set(task.id, { title: task.title });
+        }
+      }
+
+      // A task that disappeared from `next` (soft-deleted, per
+      // reconcilePaletteSearchResults) can no longer be re-patched onto a
+      // future search response — drop any stale patch for it.
+      for (const id of previousTasksById.keys()) {
+        if (!nextTaskIds.has(id)) {
+          realtimePatches.current.delete(id);
+        }
+      }
+
+      return next;
+    });
+  }, []);
+
+  usePaletteSearchRealtime(workspaceId, query, handleRealtimeResults);
 
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
