@@ -70,19 +70,43 @@ const DEBOUNCE_MS = 200;
 // `applyRealtimePatches` is a pure helper (kept outside the component so
 // it's trivially unit-testable) that layers a `Map<taskId, patch>` onto a
 // `PaletteSearchResults`'s `tasks` array.
+// AS-024 (F034 fix): a deleted task must stay excluded from search results
+// even if a search request that was already in flight resolves AFTER the
+// deletion. The realtime DELETE handler below used to `.delete(id)` the
+// task out of `realtimePatches`, which meant "no patch recorded" -- a
+// later-resolving search response naming that same (now-deleted) id had
+// nothing to override it, so the deleted task would resurrect in the UI.
+// Instead, deletion is recorded as an explicit tombstone entry
+// (`{ _deleted: true }`) that stays in the map for the rest of this
+// palette session, and `applyRealtimePatches` filters any task carrying
+// that tombstone out of the merged results entirely (rather than patching
+// its fields), so a stale search response can never bring it back.
+type RealtimeTaskPatch = Partial<PaletteTaskResult> | { _deleted: true };
+
+function isTombstone(
+  patch: RealtimeTaskPatch,
+): patch is { _deleted: true } {
+  return "_deleted" in patch && patch._deleted === true;
+}
+
 function applyRealtimePatches(
   results: PaletteSearchResults,
-  patches: Map<string, Partial<PaletteTaskResult>>,
+  patches: Map<string, RealtimeTaskPatch>,
 ): PaletteSearchResults {
   if (patches.size === 0) return results;
 
   let changed = false;
-  const tasks = results.tasks.map((task) => {
+  const tasks: PaletteTaskResult[] = [];
+  for (const task of results.tasks) {
     const patch = patches.get(task.id);
-    if (!patch) return task;
+    if (!patch) {
+      tasks.push(task);
+      continue;
+    }
     changed = true;
-    return { ...task, ...patch };
-  });
+    if (isTombstone(patch)) continue;
+    tasks.push({ ...task, ...patch });
+  }
 
   return changed ? { ...results, tasks } : results;
 }
@@ -108,7 +132,7 @@ export function CommandPalette({
   const debounceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // F030 (AS-023): pending realtime title patches, keyed by task id — see
   // `applyRealtimePatches` above and `handleRealtimeResults` below.
-  const realtimePatches = React.useRef(new Map<string, Partial<PaletteTaskResult>>());
+  const realtimePatches = React.useRef(new Map<string, RealtimeTaskPatch>());
 
   // AS-465: resolve recents (against the caller's CURRENT visibility —
   // see resolveRecentItems's own doc comment) every time the palette
@@ -294,12 +318,17 @@ export function CommandPalette({
         }
       }
 
-      // A task that disappeared from `next` (soft-deleted, per
-      // reconcilePaletteSearchResults) can no longer be re-patched onto a
-      // future search response — drop any stale patch for it.
+      // AS-024 (F034 fix): a task that disappeared from `next`
+      // (soft-deleted, per reconcilePaletteSearchResults) must be
+      // tombstoned, NOT removed from `realtimePatches` -- removing the
+      // entry entirely left a later-resolving, stale search response for
+      // this same id with no patch to override it, resurrecting the
+      // deleted task (AS-024 failure). The tombstone stays in the map for
+      // the rest of this palette session so `applyRealtimePatches` keeps
+      // filtering the task out of every future response.
       for (const id of previousTasksById.keys()) {
         if (!nextTaskIds.has(id)) {
-          realtimePatches.current.delete(id);
+          realtimePatches.current.set(id, { _deleted: true });
         }
       }
 

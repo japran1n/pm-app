@@ -138,6 +138,17 @@ export function reconcileCalendarRealtimeEvent(
         ...existing,
         title: row.title,
         status: row.status,
+        // AS-020 (F034 fix): an UPDATE that changes a task's status (e.g.
+        // moving it into/out of a "done" column) must re-derive `isDone`
+        // from the NEW status rather than silently carrying over the
+        // stale value from when this task was first inserted into local
+        // state -- `...existing` above would otherwise leave `isDone`
+        // permanently pinned to whatever it was on first sight. Reuses
+        // the existing task's already-resolved `statusCategory` when
+        // present (same category-aware/degraded-literal-comparison
+        // contract as the INSERT branch below) since a bare `tasks` row
+        // event never itself carries the category join.
+        isDone: isDoneStatus(row.status, existing.statusCategory),
         priority: row.priority,
         dueDate: row.due_date as DateOnly,
         number: row.number ?? existing.number,
