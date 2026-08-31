@@ -189,12 +189,41 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
     expect(checkbox).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Write handoff")).toHaveClass("line-through");
 
-    // Now the toggle resolves successfully and the committed state settles.
+    // Now the toggle resolves successfully and commits.
     resolveToggle?.({ ok: true });
     await waitFor(() => {
       expect(checkbox).toHaveAttribute("aria-checked", "true");
       expect(screen.getByText("Write handoff")).toHaveClass("line-through");
     });
+
+    // F020: the guard must persist PAST the commit tick too. A second,
+    // still-stale server sync (e.g. a router.refresh() whose fetch was
+    // in-flight before the toggle committed and lands with pre-toggle data
+    // just after) must NOT silently revert the row. Without the durable
+    // guard fix, `setTodos`/the guard closing at the same tick as commit
+    // means this stale post-commit sync clobbers the confirmed value.
+    const staleServerTodosPostCommit: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: false, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, {
+        workspaceId: "workspace-1",
+        initialTodos: staleServerTodosPostCommit,
+      }),
+    );
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Write handoff")).toHaveClass("line-through");
+
+    // Only once server data actually matches the confirmed value does the
+    // guard release and future syncs behave normally.
+    const matchingServerTodos: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: true, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: matchingServerTodos }),
+    );
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Write handoff")).toHaveClass("line-through");
   });
 
   it("test_AS_014_optimistic_uncheck_survives_a_server_data_refresh_that_arrives_before_the_toggle_resolves", async () => {
@@ -223,6 +252,31 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
       expect(checkbox).toHaveAttribute("aria-checked", "false");
       expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
     });
+
+    // F020: a stale server sync arriving in the same tick as (or shortly
+    // after) commit — carrying the pre-toggle `isDone: true` value — must
+    // not silently revert the confirmed unchecked state.
+    const staleServerTodosPostCommit: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: true, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, {
+        workspaceId: "workspace-1",
+        initialTodos: staleServerTodosPostCommit,
+      }),
+    );
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
+
+    // Once server data matches the confirmed value, the guard releases.
+    const matchingServerTodos: PersonalTodo[] = [
+      { id: "todo-1", title: "Write handoff", isDone: false, position: 1000 },
+    ];
+    rerender(
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: matchingServerTodos }),
+    );
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
   });
 
   // F019 (AS-012, AS-014): a boolean checkbox field is masked while

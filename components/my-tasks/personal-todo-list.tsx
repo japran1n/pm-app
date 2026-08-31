@@ -25,26 +25,47 @@ export function PersonalTodoList({
   const router = useRouter();
   const [todos, setTodos] = useState(initialTodos);
   const [syncedInitial, setSyncedInitial] = useState(initialTodos);
-  // F019: ids with an in-flight toggle, tracked as component state (not a
-  // ref) so it can safely be read during render — refs must never be read
-  // during render. When fresh server data arrives (initialTodos changes
-  // identity, e.g. from router.refresh()) while a toggle is still pending,
-  // we must not let the server's pre-toggle value clobber the
-  // optimistic/committed local state for that row. Rows not in this set
-  // still sync from the server as usual.
-  const [pendingToggleIds, setPendingToggleIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
+  // F019/F020: ids with an in-flight or just-committed toggle, tracked as
+  // component state (not a ref) so it can safely be read during render —
+  // refs must never be read during render. Maps id -> the isDone value this
+  // toggle has committed (or intends to commit) to. When fresh server data
+  // arrives (initialTodos changes identity, e.g. from router.refresh())
+  // while a row is in this map, we must not let a server value that
+  // disagrees with the confirmed value clobber local state for that row —
+  // this covers both the in-flight window AND the window between
+  // `setTodos` committing and the next server sync actually reflecting that
+  // write (a `router.refresh()` triggered concurrently can otherwise land
+  // with pre-toggle data and silently revert the row). The entry is removed
+  // only once an incoming server value for that row matches the confirmed
+  // value, or the toggle fails (reverting to whatever the server currently
+  // says). Rows not in this map still sync from the server as usual.
+  const [pendingToggles, setPendingToggles] = useState<ReadonlyMap<string, boolean>>(
+    () => new Map(),
   );
   if (initialTodos !== syncedInitial) {
     setSyncedInitial(initialTodos);
-    if (pendingToggleIds.size === 0) {
+    if (pendingToggles.size === 0) {
       setTodos(initialTodos);
     } else {
+      const stillPending = new Map(pendingToggles);
       const merged = initialTodos.map((serverTodo) => {
-        if (!pendingToggleIds.has(serverTodo.id)) return serverTodo;
-        const inFlight = todos.find((t) => t.id === serverTodo.id);
-        return inFlight ?? serverTodo;
+        const confirmedIsDone = pendingToggles.get(serverTodo.id);
+        if (confirmedIsDone === undefined) return serverTodo;
+        if (serverTodo.isDone === confirmedIsDone) {
+          // Server has caught up with the confirmed value — safe to stop
+          // guarding this row.
+          stillPending.delete(serverTodo.id);
+          return serverTodo;
+        }
+        // Server data disagrees with the confirmed value (stale read that
+        // raced the commit): keep the confirmed local value instead of
+        // letting the server's stale value overwrite it.
+        const local = todos.find((t) => t.id === serverTodo.id);
+        return local ? local : { ...serverTodo, isDone: confirmedIsDone };
       });
+      if (stillPending.size !== pendingToggles.size) {
+        setPendingToggles(stillPending);
+      }
       // Only replace the committed array when something actually differs
       // (by reference) from the current one. If every entry is unchanged —
       // the common case where only in-flight rows exist — skip the state
@@ -110,14 +131,15 @@ export function PersonalTodoList({
     const intendedIsDone = !todo.isDone;
     const requestId = (latestToggleRef.current.get(todo.id) ?? 0) + 1;
     latestToggleRef.current.set(todo.id, requestId);
-    // F019: mark this row in-flight so a server-data sync arriving before
-    // this settles doesn't reset it to the pre-toggle value.
-    setPendingToggleIds((current) => new Set(current).add(todo.id));
+    // F019/F020: mark this row in-flight, keyed to the value we intend to
+    // commit, so a server-data sync arriving before OR shortly after this
+    // settles doesn't reset it to a stale pre-toggle value.
+    setPendingToggles((current) => new Map(current).set(todo.id, intendedIsDone));
 
     function clearPending() {
-      setPendingToggleIds((current) => {
+      setPendingToggles((current) => {
         if (!current.has(todo.id)) return current;
-        const next = new Set(current);
+        const next = new Map(current);
         next.delete(todo.id);
         return next;
       });
@@ -148,7 +170,12 @@ export function PersonalTodoList({
         setTodos((current) =>
           current.map((t) => (t.id === todo.id ? { ...t, isDone: intendedIsDone } : t)),
         );
-        clearPending();
+        // F020: do NOT clearPending() here. The commit above and any
+        // `router.refresh()` triggered elsewhere race independently; if a
+        // refresh's server read happened before this write landed, it can
+        // arrive with the stale pre-toggle value. Leave this row guarded
+        // (keyed to `intendedIsDone`) until the sync effect above observes
+        // server data that actually matches the confirmed value.
       } catch {
         if (latestToggleRef.current.get(todo.id) !== requestId) return;
         // F013: a thrown rejection (network loss, 500, serialization
