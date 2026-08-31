@@ -20,6 +20,14 @@ import { reconcileCalendarRealtimeEvent } from "@/lib/calendar/reconcile-realtim
 import type { CalendarTasksByDate } from "@/lib/calendar/reconcile-realtime-task";
 import type { CalendarRealtimeEvent } from "@/lib/tasks/subscribe-calendar-realtime";
 import type { CalendarTask } from "@/lib/queries/calendar";
+import {
+  applyRealtimePatches,
+  type RealtimeTaskPatch,
+} from "@/components/command/command-palette";
+import type {
+  PaletteSearchResults,
+  PaletteTaskResult,
+} from "@/lib/palette/palette-search-types";
 
 function createMockSupabaseClient() {
   const onCalls: Array<{ table: string; callback: (payload: unknown) => void }> = [];
@@ -184,34 +192,27 @@ describe("F034/AS-020: calendar isDone re-derives from a tasks UPDATE's new stat
 });
 
 describe("F034/AS-024: a deleted palette task stays tombstoned against a stale search response", () => {
-  // Mirrors command-palette.tsx's private helpers by re-implementing the
-  // same tombstone contract against a plain Map, since those functions are
-  // module-private. This still fails if the source regresses to a
-  // `.delete(id)`-based (non-tombstone) implementation, because a
-  // `.delete(id)`-based map would have no entry left to filter the task
-  // back out with once the stale response "re-adds" it below.
-  type PaletteTask = { id: string; title: string };
-  type Patch = Partial<PaletteTask> | { _deleted: true };
-
-  function applyPatches(
-    tasks: PaletteTask[],
-    patches: Map<string, Patch>,
-  ): PaletteTask[] {
-    const out: PaletteTask[] = [];
-    for (const task of tasks) {
-      const patch = patches.get(task.id);
-      if (!patch) {
-        out.push(task);
-        continue;
-      }
-      if ("_deleted" in patch && patch._deleted) continue;
-      out.push({ ...task, ...patch });
-    }
-    return out;
+  // Exercises the REAL production `applyRealtimePatches` (exported from
+  // components/command/command-palette.tsx) rather than a local
+  // re-implementation — this test fails if `isTombstone`/the tombstone
+  // branch is ever removed or regressed to a `.delete(id)`-based
+  // (non-tombstone) map, because a `.delete(id)`-based map would have no
+  // entry left to filter the task back out with once the stale response
+  // "re-adds" it below.
+  function task(id: string, title: string): PaletteTaskResult {
+    return {
+      type: "task",
+      id,
+      title,
+      projectId: "p1",
+      projectName: "Project 1",
+      projectKey: "P1",
+      number: 1,
+    };
   }
 
   it("test_AS_024_stale_search_response_does_not_resurrect_a_realtime_deleted_task", () => {
-    const patches = new Map<string, Patch>();
+    const patches = new Map<string, RealtimeTaskPatch>();
 
     // Realtime DELETE arrives first: task removed from live results and
     // tombstoned.
@@ -219,13 +220,28 @@ describe("F034/AS-024: a deleted palette task stays tombstoned against a stale s
 
     // A slower search request that was in flight before the delete now
     // resolves, still naming the deleted task.
-    const staleResponseTasks: PaletteTask[] = [
-      { id: "t1", title: "Old title" },
-      { id: "t2", title: "Still here" },
-    ];
+    const staleResponse: PaletteSearchResults = {
+      projects: [],
+      members: [],
+      tasks: [task("t1", "Old title"), task("t2", "Still here")],
+    };
 
-    const merged = applyPatches(staleResponseTasks, patches);
+    const merged = applyRealtimePatches(staleResponse, patches);
 
-    expect(merged.map((task) => task.id)).toEqual(["t2"]);
+    expect(merged.tasks.map((t) => t.id)).toEqual(["t2"]);
+  });
+
+  it("test_AS_024_a_task_with_no_tombstone_passes_through_unchanged", () => {
+    const patches = new Map<string, RealtimeTaskPatch>();
+    const response: PaletteSearchResults = {
+      projects: [],
+      members: [],
+      tasks: [task("t1", "Old title")],
+    };
+
+    const merged = applyRealtimePatches(response, patches);
+
+    expect(merged).toBe(response);
+    expect(merged.tasks.map((t) => t.id)).toEqual(["t1"]);
   });
 });

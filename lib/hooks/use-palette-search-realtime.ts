@@ -36,18 +36,34 @@ import {
 
 const RECONCILE_DEBOUNCE_MS = 100;
 
+// AS-024 (F037 fix): `onDeletedTaskId` fires for EVERY delete/soft-delete
+// event this hook observes, unconditionally — independent of whether the
+// task happens to be present in the caller's current results state. The
+// caller previously derived "was this task deleted?" by diffing its own
+// results before/after `setResults`, which meant a DELETE arriving for a
+// task that hadn't made it into `results` yet (e.g. still mid-debounce on
+// the initial search) produced no signal at all, so no tombstone was ever
+// recorded and a slower, later-resolving search response could resurrect
+// the task. Deriving the deleted id straight from the raw event here closes
+// that gap.
 export function usePaletteSearchRealtime(
   workspaceId: string,
   query: string,
   setResults: React.Dispatch<React.SetStateAction<PaletteSearchResults>>,
+  onDeletedTaskId?: (id: string) => void,
 ) {
   const pendingEvents = useRef<PaletteRealtimeEvent[]>([]);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setResultsRef = useRef(setResults);
+  const onDeletedTaskIdRef = useRef(onDeletedTaskId);
 
   useEffect(() => {
     setResultsRef.current = setResults;
   }, [setResults]);
+
+  useEffect(() => {
+    onDeletedTaskIdRef.current = onDeletedTaskId;
+  }, [onDeletedTaskId]);
 
   useEffect(() => {
     if (!workspaceId || query.length === 0) return;
@@ -70,6 +86,26 @@ export function usePaletteSearchRealtime(
       const events = pendingEvents.current;
       pendingEvents.current = [];
       if (events.length === 0) return;
+
+      // AS-024: report every delete/soft-delete unconditionally, BEFORE
+      // (and independent of) the results reduce below, so the caller can
+      // record a tombstone even for a task it never had in `results`.
+      const onDeletedTaskId = onDeletedTaskIdRef.current;
+      if (onDeletedTaskId) {
+        for (const event of events) {
+          if (event.eventType === "DELETE") {
+            const id = (event.old as { id?: string } | undefined)?.id;
+            if (id) onDeletedTaskId(id);
+            continue;
+          }
+          if (event.eventType === "UPDATE") {
+            const row = event.new as
+              | { id?: string; deleted_at?: string | null }
+              | undefined;
+            if (row?.id && row.deleted_at) onDeletedTaskId(row.id);
+          }
+        }
+      }
 
       setResultsRef.current((current) =>
         events.reduce(

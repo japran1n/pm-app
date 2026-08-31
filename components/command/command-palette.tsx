@@ -81,15 +81,15 @@ const DEBOUNCE_MS = 200;
 // palette session, and `applyRealtimePatches` filters any task carrying
 // that tombstone out of the merged results entirely (rather than patching
 // its fields), so a stale search response can never bring it back.
-type RealtimeTaskPatch = Partial<PaletteTaskResult> | { _deleted: true };
+export type RealtimeTaskPatch = Partial<PaletteTaskResult> | { _deleted: true };
 
-function isTombstone(
+export function isTombstone(
   patch: RealtimeTaskPatch,
 ): patch is { _deleted: true } {
   return "_deleted" in patch && patch._deleted === true;
 }
 
-function applyRealtimePatches(
+export function applyRealtimePatches(
   results: PaletteSearchResults,
   patches: Map<string, RealtimeTaskPatch>,
 ): PaletteSearchResults {
@@ -183,7 +183,14 @@ export function CommandPalette({
       if (!isModifierK) return;
 
       event.preventDefault();
-      setOpen((current) => !current);
+      setOpen((current) => {
+        const next = !current;
+        // AS-024: this toggle bypasses `handleOpenChange` entirely (it
+        // calls `setOpen` directly), so without this the patch map/state
+        // reset never ran on a Cmd+K-driven close.
+        if (!next) resetPaletteState();
+        return next;
+      });
     }
 
     document.addEventListener("keydown", onKeyDown);
@@ -213,18 +220,32 @@ export function CommandPalette({
   // the handler avoids an extra render-then-effect round trip), so the
   // next open starts from the neutral "type to search" prompt rather than
   // showing stale results.
+  // AS-024 (F037 fix): the single reset routine, called from EVERY path
+  // that closes the palette (Radix's `onOpenChange`, `navigate`'s explicit
+  // `setOpen(false)`, and the Cmd+K toggle handler below) so the tombstone
+  // map can never survive into a later palette session and incorrectly
+  // suppress a task that's since come back (e.g. undone, or a different
+  // task later reusing... in practice: so a NEW session always starts from
+  // a neutral, empty patch map rather than carrying forward tombstones from
+  // a previous open). Previously only `handleOpenChange` did this reset,
+  // so the Cmd+K keydown listener's `setOpen((current) => !current)` toggle
+  // and `navigate`'s direct `setOpen(false)` both bypassed it entirely.
+  function resetPaletteState() {
+    latestRequestId.current += 1;
+    setQuery("");
+    setResults(EMPTY_RESULTS);
+    setLoading(false);
+    realtimePatches.current.clear();
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+  }
+
   function handleOpenChange(next: boolean) {
     setOpen(next);
     if (!next) {
-      latestRequestId.current += 1;
-      setQuery("");
-      setResults(EMPTY_RESULTS);
-      setLoading(false);
-      realtimePatches.current.clear();
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-        debounceTimer.current = null;
-      }
+      resetPaletteState();
     }
   }
 
@@ -309,7 +330,6 @@ export function CommandPalette({
       const previousTasksById = new Map(
         current.tasks.map((task) => [task.id, task] as const),
       );
-      const nextTaskIds = new Set(next.tasks.map((task) => task.id));
 
       for (const task of next.tasks) {
         const previous = previousTasksById.get(task.id);
@@ -318,25 +338,30 @@ export function CommandPalette({
         }
       }
 
-      // AS-024 (F034 fix): a task that disappeared from `next`
-      // (soft-deleted, per reconcilePaletteSearchResults) must be
-      // tombstoned, NOT removed from `realtimePatches` -- removing the
-      // entry entirely left a later-resolving, stale search response for
-      // this same id with no patch to override it, resurrecting the
-      // deleted task (AS-024 failure). The tombstone stays in the map for
-      // the rest of this palette session so `applyRealtimePatches` keeps
-      // filtering the task out of every future response.
-      for (const id of previousTasksById.keys()) {
-        if (!nextTaskIds.has(id)) {
-          realtimePatches.current.set(id, { _deleted: true });
-        }
-      }
-
       return next;
     });
   }, []);
 
-  usePaletteSearchRealtime(workspaceId, query, handleRealtimeResults);
+  // AS-024 (F037 fix): tombstone recorded UNCONDITIONALLY for every
+  // delete/soft-delete event this hook reports, regardless of whether the
+  // task is (or ever was) present in `results` -- previously the tombstone
+  // was only written by diffing `results` before/after a `setResults` call,
+  // which meant a DELETE arriving for a task that hadn't made it into
+  // `results` yet (e.g. still mid-debounce on the very first search) wrote
+  // no tombstone at all, so a later-resolving search response for that same
+  // id was never filtered out (AS-024 failure). The tombstone stays in the
+  // map for the rest of this palette session so `applyRealtimePatches`
+  // keeps filtering the task out of every future response.
+  const handleTaskDeleted = React.useCallback((id: string) => {
+    realtimePatches.current.set(id, { _deleted: true });
+  }, []);
+
+  usePaletteSearchRealtime(
+    workspaceId,
+    query,
+    handleRealtimeResults,
+    handleTaskDeleted,
+  );
 
   const trimmedQuery = query.trim();
   const hasQuery = trimmedQuery.length > 0;
@@ -346,7 +371,10 @@ export function CommandPalette({
     results.members.length > 0;
 
   function navigate(path: string) {
+    // AS-024: bypasses `handleOpenChange` (calls `setOpen` directly), so
+    // reset explicitly here too — same reasoning as the Cmd+K toggle above.
     setOpen(false);
+    resetPaletteState();
     router.push(path);
   }
 
@@ -413,7 +441,10 @@ export function CommandPalette({
                     if (navigateTo) {
                       navigate(navigateTo);
                     } else {
+                      // AS-024: same bypass-of-handleOpenChange issue as
+                      // `navigate` above.
                       setOpen(false);
+                      resetPaletteState();
                     }
                   }}
                 >
