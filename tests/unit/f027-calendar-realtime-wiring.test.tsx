@@ -219,9 +219,51 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     expect(screen.queryByText("Existing task")).not.toBeInTheDocument();
   });
 
-  it("test_AS_022_subscribes_on_the_workspace_scoped_calendar_channel", () => {
+  it("test_AS_022_DELETE_with_minimal_old_id_payload_removes_the_task_from_the_grid", () => {
+    // Replica identity default on `tasks` means a real DELETE's `old` only
+    // ever carries `{id}` -- this is the realistic minimal payload shape.
+    // Proves the grid actually unwires from useCalendarRealtime: if the
+    // `useCalendarRealtime({...})` call in calendar-day-grid.tsx were
+    // removed, `onCalls` would stay empty, `dispatch` would throw on
+    // `onCalls[0]`, and this test would fail.
     renderGrid({ "2026-09-01": [existingTask()] });
 
-    expect(channelCalls).toEqual([`tasks:calendar:workspace-${workspaceCounter}`]);
+    expect(
+      screen.getByTestId("calendar-day-cell-2026-09-01"),
+    ).toHaveTextContent("Existing task");
+
+    dispatch({
+      eventType: "DELETE",
+      schema: "public",
+      table: "tasks",
+      new: {},
+      old: { id: "t1" },
+    });
+
+    expect(screen.queryByText("Existing task")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("calendar-day-cell-2026-09-01"),
+    ).not.toHaveTextContent("Existing task");
+  });
+
+  it("test_AS_022_ignores_an_INSERT_for_a_task_outside_the_caller_visible_projects", () => {
+    // AS-022: "Calendar realtime only delivers events for tasks the current
+    // user is permitted to see." projectIds=["project-1"] is the caller's
+    // visible set; an event for a task in a different project must never
+    // reach the rendered grid, even though the mocked channel forwards it.
+    renderGrid({ "2026-09-01": [existingTask()] });
+
+    dispatch(
+      insertOrUpdateEvent("INSERT", {
+        id: "t9",
+        title: "Task from a private project",
+        project_id: "private-project",
+        due_date: "2026-09-03",
+      }),
+    );
+
+    expect(
+      screen.queryByText("Task from a private project"),
+    ).not.toBeInTheDocument();
   });
 });
