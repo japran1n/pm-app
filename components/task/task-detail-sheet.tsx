@@ -992,6 +992,16 @@ export function TaskDetailSheet({
     if (!proceed) return;
 
     const nextLabel = STATUS_LABELS[next];
+    // F024: clear the confirmed mirror as a plain, non-transition update,
+    // BEFORE entering startSaveTransition below — otherwise a stale
+    // confirmedStatus from a PRIOR successful save masks this new
+    // optimistic value during the transition (2nd+ change in the same open
+    // sheet). Ordinary `useState` setters called INSIDE a transition are
+    // deferred until that transition settles (unlike `useOptimistic`'s own
+    // dispatcher, which is specifically designed to render immediately) —
+    // so clearing it here, ahead of the transition, is what actually makes
+    // it take effect before the badge re-renders.
+    setConfirmedStatus(undefined);
     startSaveTransition(async () => {
       // AS-005: applied synchronously, inside this same transition, before
       // the `await` below — the Select's value/badge (bound to
@@ -1046,6 +1056,11 @@ export function TaskDetailSheet({
     if (next === currentPriority) return;
 
     const nextLabel = next ? PRIORITY_LABELS[next] : "No priority";
+    // F024: clear the confirmed mirror as a plain, non-transition update,
+    // BEFORE entering startSaveTransition below — see handleStatusChange's
+    // own comment above for why this must happen outside the transition to
+    // actually take effect before the badge re-renders.
+    setConfirmedPriority(undefined);
     startSaveTransition(async () => {
       setOptimisticPriority(next);
       try {

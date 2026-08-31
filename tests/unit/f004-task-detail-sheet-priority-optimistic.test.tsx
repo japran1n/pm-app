@@ -209,6 +209,35 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
     expect(prioritySelect.value).toBe("high");
   });
 
+  // F024: after a FIRST successful save commits `confirmedPriority`, a
+  // SECOND change in the same open sheet must still be reflected
+  // immediately — the stale confirmed mirror from the first save must not
+  // mask the new optimistic value while the second save's own request is
+  // in flight.
+  it("test_AS_007_second_priority_change_after_a_successful_first_change_updates_immediately", async () => {
+    const prioritySelect = await openSheetAndGetPrioritySelect();
+
+    fireEvent.change(prioritySelect, { target: { value: "high" } });
+    await waitFor(() => expect(prioritySelect.value).toBe("high"));
+    resolveEditTask?.({ ok: true, data: { priority: "high" } });
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Priority updated."));
+    expect(prioritySelect.value).toBe("high");
+
+    fireEvent.change(prioritySelect, { target: { value: "low" } });
+
+    // Must reflect the SECOND change immediately, not stay pinned on the
+    // first change's confirmed "high" value while this second save is
+    // still in flight.
+    await waitFor(() => expect(prioritySelect.value).toBe("low"));
+    expect(resolveEditTask).not.toBeNull();
+
+    resolveEditTask?.({ ok: true, data: { priority: "low" } });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Priority updated."),
+    );
+    expect(prioritySelect.value).toBe("low");
+  });
+
   it("test_AS_008_priority_reverts_and_shows_an_error_toast_on_server_failure", async () => {
     const prioritySelect = await openSheetAndGetPrioritySelect();
 

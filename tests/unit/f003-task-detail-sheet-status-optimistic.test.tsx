@@ -203,6 +203,34 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
     expect(statusSelect.value).toBe("done");
   });
 
+  // F024: after a FIRST successful save commits `confirmedStatus`, a SECOND
+  // change in the same open sheet must still be reflected immediately — the
+  // stale confirmed mirror from the first save must not mask the new
+  // optimistic value while the second save's own request is in flight.
+  it("test_AS_005_second_status_change_after_a_successful_first_change_updates_immediately", async () => {
+    const statusSelect = await openSheetAndGetStatusSelect();
+
+    fireEvent.change(statusSelect, { target: { value: "done" } });
+    await waitFor(() => expect(statusSelect.value).toBe("done"));
+    resolveMoveTaskStatus?.({ ok: true, data: { status: "done" } });
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Status updated."));
+    expect(statusSelect.value).toBe("done");
+
+    fireEvent.change(statusSelect, { target: { value: "in_progress" } });
+
+    // Must reflect the SECOND change immediately, not stay pinned on the
+    // first change's confirmed "done" value while this second save is
+    // still in flight.
+    await waitFor(() => expect(statusSelect.value).toBe("in_progress"));
+    expect(resolveMoveTaskStatus).not.toBeNull();
+
+    resolveMoveTaskStatus?.({ ok: true, data: { status: "in_progress" } });
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Status updated."),
+    );
+    expect(statusSelect.value).toBe("in_progress");
+  });
+
   it("test_AS_006_status_reverts_and_shows_an_error_toast_on_server_failure", async () => {
     const statusSelect = await openSheetAndGetStatusSelect();
 
