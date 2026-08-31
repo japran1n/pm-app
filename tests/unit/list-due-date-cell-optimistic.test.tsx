@@ -88,7 +88,22 @@ describe("ListDueDateCell optimistic update (F002: AS-003, AS-004)", () => {
   });
 
   it("test_AS_004_due_date_cell_reverts_and_shows_error_toast_when_server_action_throws", async () => {
-    const editTaskMock = vi.fn().mockRejectedValue(new Error("network"));
+    // Deferred (not already-settled) rejection: this lets us observe the
+    // DISPLAYED optimistic value (2026-09-15) WHILE the action is still
+    // pending, then separately observe the DISPLAYED value revert back to
+    // the pre-change value (2026-09-01) once the rejection settles. An
+    // already-settled mock (mockRejectedValue) resolves on the same
+    // microtask as the optimistic apply, which can hide a regression where
+    // the auto-revert behaviour of useOptimistic is silently dropped (e.g.
+    // swapped for plain useState) — both phases must be checked to
+    // discriminate.
+    let rejectEditTask: (reason: unknown) => void = () => {};
+    const editTaskMock = vi.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectEditTask = reject;
+        }),
+    );
     vi.doMock("@/lib/actions/tasks", () => ({ editTask: editTaskMock }));
 
     const { ListDueDateCell } = await import("@/components/task/list-due-date-cell");
@@ -103,7 +118,14 @@ describe("ListDueDateCell optimistic update (F002: AS-003, AS-004)", () => {
 
     fireEvent.change(input, { target: { value: "2026-09-15" } });
 
-    // Reverts back to the prior server value once the failed action settles.
+    // Phase 1: the displayed value is the new date, before editTask's
+    // promise has settled at all.
+    await waitFor(() => expect(input.value).toBe("2026-09-15"));
+
+    rejectEditTask(new Error("network"));
+
+    // Phase 2: the displayed value reverts back to the prior server value
+    // once the failed action settles.
     await waitFor(() => expect(input.value).toBe("2026-09-01"));
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith("Failed to update due date"),
@@ -114,11 +136,15 @@ describe("ListDueDateCell optimistic update (F002: AS-003, AS-004)", () => {
 
   it("test_AS_004_clearing_a_due_date_is_also_optimistic_and_reverts_on_failure", async () => {
     // Follow-up decision: the clear-date action (setting null) is
-    // optimistic too, not just picking a new date.
-    const editTaskMock = vi.fn(async () => ({
-      ok: false as const,
-      error: "Failed to update due date",
-    }));
+    // optimistic too, not just picking a new date. Deferred resolution for
+    // the same discriminating reason as the test above.
+    let resolveEditTask: (value: unknown) => void = () => {};
+    const editTaskMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveEditTask = resolve;
+        }),
+    );
     vi.doMock("@/lib/actions/tasks", () => ({ editTask: editTaskMock }));
 
     const { ListDueDateCell } = await import("@/components/task/list-due-date-cell");
@@ -137,6 +163,12 @@ describe("ListDueDateCell optimistic update (F002: AS-003, AS-004)", () => {
       expect(editTaskMock).toHaveBeenCalledWith("task-1", { dueDate: null }),
     );
 
+    // Phase 1: the displayed value is cleared, before the action settles.
+    await waitFor(() => expect(input.value).toBe(""));
+
+    resolveEditTask({ ok: false, error: "Failed to update due date" });
+
+    // Phase 2: the displayed value reverts once the action reports failure.
     await waitFor(() => expect(input.value).toBe("2026-09-01"));
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith("Failed to update due date"),

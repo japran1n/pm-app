@@ -87,7 +87,20 @@ describe("useOptimisticAction (F007)", () => {
   });
 
   it("test_AS_failure_hook_reverts_and_calls_toast_on_action_rejection_with_generic_message", async () => {
-    const action = vi.fn().mockRejectedValue(new Error("fail"));
+    // Deferred (not already-settled) rejection, mirroring the success
+    // test's pattern: this lets us observe the optimistic "new" value
+    // WHILE the action is still pending, before separately observing the
+    // revert to "old" once it settles. Both phases must hold — a plain
+    // useState swap-in for useOptimistic still applies "new" synchronously
+    // (phase 1 alone can't catch the regression) but never reverts once
+    // the rejection settles (phase 2 is what discriminates).
+    let rejectAction: (reason: unknown) => void = () => {};
+    const action = vi.fn(
+      () =>
+        new Promise<void | { error: string }>((_resolve, reject) => {
+          rejectAction = reject;
+        }),
+    );
 
     render(
       createElement(Harness, {
@@ -100,8 +113,15 @@ describe("useOptimisticAction (F007)", () => {
 
     fireEvent.click(screen.getByTestId("run"));
 
-    // Reverts back to the base `current` value once the failed transition
-    // settles.
+    // Phase 1: the optimistic value is applied immediately, before the
+    // action's promise has settled at all.
+    await waitFor(() => expect(screen.getByTestId("value").textContent).toBe("new"));
+    expect(toastErrorMock).not.toHaveBeenCalled();
+
+    rejectAction(new Error("fail"));
+
+    // Phase 2: once the rejection settles, the value reverts back to the
+    // base `current` value.
     await waitFor(() => expect(screen.getByTestId("value").textContent).toBe("old"));
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith("Failed to update"),
@@ -109,7 +129,13 @@ describe("useOptimisticAction (F007)", () => {
   });
 
   it("test_AS_failure_hook_shows_actions_own_error_message_when_provided", async () => {
-    const action = vi.fn(async () => ({ error: "Specific server error" }));
+    let resolveAction: (value: void | { error: string }) => void = () => {};
+    const action = vi.fn(
+      () =>
+        new Promise<void | { error: string }>((resolve) => {
+          resolveAction = resolve;
+        }),
+    );
 
     render(
       createElement(Harness, {
@@ -122,6 +148,12 @@ describe("useOptimisticAction (F007)", () => {
 
     fireEvent.click(screen.getByTestId("run"));
 
+    // Phase 1: optimistic value applied before the action settles.
+    await waitFor(() => expect(screen.getByTestId("value").textContent).toBe("new"));
+
+    resolveAction({ error: "Specific server error" });
+
+    // Phase 2: reverts once the action reports its own error.
     await waitFor(() => expect(screen.getByTestId("value").textContent).toBe("old"));
     await waitFor(() =>
       expect(toastErrorMock).toHaveBeenCalledWith("Specific server error"),
