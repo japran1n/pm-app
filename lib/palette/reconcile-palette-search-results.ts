@@ -17,11 +17,23 @@ export function reconcilePaletteSearchResults(
   event: PaletteRealtimeEvent,
 ): PaletteSearchResults {
   if (event.eventType === "UPDATE") {
-    const row = event.new as { id?: string; title?: string; status?: string } | undefined;
+    const row = event.new as
+      | { id?: string; title?: string; status?: string; deleted_at?: string | null }
+      | undefined;
     if (!row?.id) return results;
 
     const index = results.tasks.findIndex((task) => task.id === row.id);
     if (index === -1) return results;
+
+    // deleteTask (F-soft-delete) sets deleted_at rather than issuing a SQL
+    // DELETE, so a soft-deleted task arrives as an UPDATE event, not a
+    // DELETE event. Treat a non-null deleted_at the same as a hard delete.
+    if (row.deleted_at) {
+      return {
+        ...results,
+        tasks: results.tasks.filter((task) => task.id !== row.id),
+      };
+    }
 
     const existing = results.tasks[index];
     const updated = {

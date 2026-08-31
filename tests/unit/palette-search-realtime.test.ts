@@ -1,15 +1,95 @@
+// @vitest-environment jsdom
+//
 // F012 (AS-023, AS-024): unit tests for the command palette's Realtime
 // reconciliation — mirrors tests/unit/board-realtime-subscription.test.ts's
 // split between "is the subscription configured correctly" (mocked
 // Supabase client, no DOM) and "does the pure reconcile logic apply
 // events correctly" (reconcilePaletteSearchResults).
+//
+// F026: also proves the command palette component itself is WIRED to
+// `usePaletteSearchRealtime` (not just the pure reconcile function in
+// isolation) — mirrors tests/unit/f027-calendar-realtime-wiring.test.tsx's
+// "mock the channel, fire its callback, assert on screen" shape. Covers
+// both a plain title UPDATE and a soft-delete UPDATE (deleted_at set,
+// since deleteTask never issues a SQL DELETE in this app — see
+// lib/palette/reconcile-palette-search-results.ts's header comment).
 
-import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
 
 import { subscribeToPaletteSearchRealtime } from "@/lib/palette/subscribe-palette-search-realtime";
 import { reconcilePaletteSearchResults } from "@/lib/palette/reconcile-palette-search-results";
 import type { PaletteRealtimeEvent } from "@/lib/palette/subscribe-palette-search-realtime";
 import type { PaletteSearchResults } from "@/lib/palette/palette-search-types";
+
+// jsdom has no ResizeObserver/scrollIntoView; cmdk's CommandList uses both.
+// Test-environment shims only, matching
+// tests/unit/command-palette-shell.test.tsx's own setup.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+if (typeof HTMLElement.prototype.scrollIntoView !== "function") {
+  HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock("@/lib/actions/palette-search", () => ({
+  searchPalette: vi.fn(async () => ({
+    projects: [],
+    tasks: [
+      {
+        type: "task",
+        id: "t1",
+        title: "Old title",
+        projectId: "p1",
+        projectName: "Project 1",
+        projectKey: "P1",
+        number: 1,
+      },
+    ],
+    members: [],
+  })),
+  resolveRecentItems: vi.fn(async () => ({ projects: [], tasks: [] })),
+}));
+
+const wiringOnCalls: Array<{ callback: (payload: unknown) => void }> = [];
+const wiringChannelCalls: string[] = [];
+
+function makeFakeWiringSupabase() {
+  const channelObject = {
+    on: vi.fn(
+      (_event: string, _filter: unknown, callback: (payload: unknown) => void) => {
+        wiringOnCalls.push({ callback });
+        return channelObject;
+      },
+    ),
+    subscribe: vi.fn(() => channelObject),
+  };
+
+  return {
+    channel: vi.fn((name: string) => {
+      wiringChannelCalls.push(name);
+      return channelObject;
+    }),
+    removeChannel: vi.fn(),
+  };
+}
+
+const fakeWiringSupabase = makeFakeWiringSupabase();
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => fakeWiringSupabase,
+}));
+
+import { CommandPalette } from "@/components/command/command-palette";
 
 function createMockSupabaseClient() {
   const onCalls: Array<{
@@ -157,5 +237,98 @@ describe("reconcilePaletteSearchResults (AS-023, AS-024)", () => {
     const next = reconcilePaletteSearchResults(baseResults, event);
 
     expect(next).toEqual(baseResults);
+  });
+
+  it("AS-024: removes the matching task on UPDATE when deleted_at is set (soft delete)", () => {
+    // deleteTask sets deleted_at rather than issuing a SQL DELETE, so a
+    // soft-deleted task arrives as an UPDATE event in production, not a
+    // DELETE event — this is the real-world path, unlike the hard-DELETE
+    // test above which is effectively dead code against this app's
+    // deleteTask implementation.
+    const event = {
+      eventType: "UPDATE",
+      schema: "public",
+      table: "tasks",
+      new: { id: "t1", title: "Old title", deleted_at: "2026-08-31T00:00:00Z" },
+      old: { id: "t1" },
+    } as unknown as PaletteRealtimeEvent;
+
+    const next = reconcilePaletteSearchResults(baseResults, event);
+
+    expect(next.tasks.find((t) => t.id === "t1")).toBeUndefined();
+    expect(next.tasks).toHaveLength(1);
+  });
+});
+
+// F026: component-level wiring — proves <CommandPalette> is actually
+// connected to `usePaletteSearchRealtime`, not just that the pure
+// reconcile function behaves correctly in isolation.
+describe("CommandPalette wiring to Realtime (AS-023, AS-024)", () => {
+  afterEach(() => {
+    cleanup();
+    wiringOnCalls.length = 0;
+    wiringChannelCalls.length = 0;
+  });
+
+  async function openPaletteWithQuery(query: string) {
+    render(
+      createElement(CommandPalette, { workspaceId: "ws-1", workspaceSlug: "acme" }),
+    );
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+
+    const input = await waitFor(() =>
+      screen.getByPlaceholderText("Type a command or search..."),
+    );
+    fireEvent.change(input, { target: { value: query } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Old title")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(wiringOnCalls.length).toBeGreaterThan(0);
+    });
+  }
+
+  it("AS-023: a title UPDATE realtime event updates the rendered palette result", async () => {
+    await openPaletteWithQuery("old");
+
+    const callback = wiringOnCalls[0].callback;
+
+    act(() => {
+      callback({
+        eventType: "UPDATE",
+        schema: "public",
+        table: "tasks",
+        new: { id: "t1", title: "Renamed title" },
+        old: { id: "t1" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Renamed title")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Old title")).not.toBeInTheDocument();
+  });
+
+  it("AS-024: an UPDATE event with deleted_at set removes the task from the rendered palette results", async () => {
+    await openPaletteWithQuery("old");
+
+    const callback = wiringOnCalls[0].callback;
+
+    act(() => {
+      callback({
+        eventType: "UPDATE",
+        schema: "public",
+        table: "tasks",
+        new: { id: "t1", title: "Old title", deleted_at: "2026-08-31T00:00:00Z" },
+        old: { id: "t1" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Old title")).not.toBeInTheDocument();
+    });
   });
 });

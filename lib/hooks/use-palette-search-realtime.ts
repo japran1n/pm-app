@@ -52,7 +52,18 @@ export function usePaletteSearchRealtime(
   useEffect(() => {
     if (!workspaceId || query.length === 0) return;
 
-    const supabase = createClient();
+    // Guard against environments where a Supabase browser client cannot be
+    // constructed (e.g. missing NEXT_PUBLIC_SUPABASE_* env vars in a test
+    // environment that renders this component without mocking the client).
+    // Mirrors the "lazy-initialize only when actually subscribing" pattern
+    // so a misconfigured/absent client degrades to "no live updates"
+    // instead of crashing the whole component tree.
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      return;
+    }
 
     function flush() {
       debounceTimer.current = null;
