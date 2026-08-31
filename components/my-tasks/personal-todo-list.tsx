@@ -44,6 +44,12 @@ export function PersonalTodoList({
   // feature's scope (see this feature's handoff).
   useMyTasksRealtime({
     userId: currentUserId,
+    // F032 (AS-016, AS-018): seed the hook's tracked-id set with the
+    // server-rendered todo ids so `tasks` UPDATE/DELETE events for tasks
+    // already visible on this page are recognised immediately, without
+    // requiring a `task_assignees` INSERT to have fired first this
+    // session. See use-my-tasks-realtime.ts for the tracked-id contract.
+    initialTaskIds: initialTodos.map((todo) => todo.id),
     onAssigned: () => router.refresh(),
     onUnassigned: () => router.refresh(),
     onUpdate: () => router.refresh(),

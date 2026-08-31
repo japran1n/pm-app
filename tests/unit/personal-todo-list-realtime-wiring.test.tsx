@@ -141,29 +141,20 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-016: a real tasks UPDATE payload for an already-tracked task triggers a refresh whose fresh data renders", () => {
+  it("AS-016: a real tasks UPDATE payload for a task already visible on this page (seeded via initialTaskIds, F032) triggers a refresh whose fresh data renders", () => {
     render(<Harness />);
 
-    // Establish that t1 is tracked (mirrors it being assigned to this user
-    // earlier in the session) before the UPDATE arrives.
-    act(() =>
-      callbackFor("task_assignees")({
-        eventType: "INSERT",
-        schema: "public",
-        table: "task_assignees",
-        new: { task_id: "t1", user_id: "user-1" },
-        old: {},
-      }),
-    );
-    refresh.mockClear();
-
+    // No task_assignees INSERT fires first -- production wiring seeds the
+    // tracked-id set directly from the server-rendered `initialTodos` ids
+    // (F032), so "todo-1" is already tracked at mount without any prior
+    // assignment event this session.
     act(() =>
       callbackFor("tasks")({
         eventType: "UPDATE",
         schema: "public",
         table: "tasks",
-        new: { id: "t1", title: "Task 1", status: "done" },
-        old: { id: "t1", title: "Task 1", status: "todo" },
+        new: { id: "todo-1", title: "First reminder", status: "done" },
+        old: { id: "todo-1", title: "First reminder", status: "todo" },
       }),
     );
 
@@ -188,19 +179,8 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-018: a real tasks DELETE payload for an already-tracked task triggers a refresh whose fresh data renders", () => {
+  it("AS-018: a real tasks DELETE payload for a task already visible on this page (seeded via initialTaskIds, F032) triggers a refresh whose fresh data renders", () => {
     render(<Harness />);
-
-    act(() =>
-      callbackFor("task_assignees")({
-        eventType: "INSERT",
-        schema: "public",
-        table: "task_assignees",
-        new: { task_id: "t1", user_id: "user-1" },
-        old: {},
-      }),
-    );
-    refresh.mockClear();
 
     act(() =>
       callbackFor("tasks")({
@@ -208,7 +188,7 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
         schema: "public",
         table: "tasks",
         new: {},
-        old: { id: "t1" },
+        old: { id: "todo-1" },
       }),
     );
 
