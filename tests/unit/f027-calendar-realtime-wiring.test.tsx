@@ -52,6 +52,24 @@ vi.mock("@/lib/supabase/client", () => ({
   createClient: () => fakeSupabase,
 }));
 
+// F041 (MUT-N wiring test): spy on the real reconciler while keeping its
+// real implementation (so every other test's DOM assertions still work
+// unchanged) -- this lets one test assert on the exact arguments
+// `CalendarDayGrid` passes it, catching a mutant that drops/undefines the
+// `visibleDateRange` argument at the call site even though no DOM query in
+// this file can otherwise distinguish that mutation.
+const reconcileSpy = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/calendar/reconcile-realtime-task", async (importActual) => {
+  const actual = await importActual<
+    typeof import("@/lib/calendar/reconcile-realtime-task")
+  >();
+  reconcileSpy.mockImplementation(actual.reconcileCalendarRealtimeEvent);
+  return {
+    ...actual,
+    reconcileCalendarRealtimeEvent: reconcileSpy,
+  };
+});
+
 import { CalendarDayGrid } from "@/components/calendar/calendar-day-grid";
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
@@ -61,6 +79,7 @@ afterEach(() => {
   vi.clearAllMocks();
   onCalls.length = 0;
   channelCalls.length = 0;
+  reconcileSpy.mockClear();
 });
 
 function day(date: string, isCurrentMonth = true): CalendarDay {
@@ -244,6 +263,38 @@ describe("F027 (AS-019..AS-022): CalendarDayGrid is wired to useCalendarRealtime
     expect(
       screen.getByTestId("calendar-day-cell-2026-09-01"),
     ).not.toHaveTextContent("Existing task");
+  });
+
+  it("test_AS_022_passes_the_rendered_grid_own_date_window_to_the_reconciler", () => {
+    // F041 (scrutiny-6 MUT-N fix): a mutant that replaces the
+    // `visibleDateRange` argument at the call site
+    // (components/calendar/calendar-day-grid.tsx) with `undefined` leaves
+    // every DOM-assertion test in this suite green, because `days()`
+    // above only renders 5 contiguous days -- any due_date OUTSIDE that
+    // window can never gain a rendered `<DayCell>` regardless of whether
+    // scoping ran, so no DOM query can distinguish "scoped and dropped"
+    // from "unscoped but nothing to render into". This test instead spies
+    // on the real (un-mocked) `reconcileCalendarRealtimeEvent` export and
+    // asserts the grid calls it with the ACTUAL 4th argument derived from
+    // `days[0].date`/`days[days.length - 1].date` (2026-09-01..2026-09-05,
+    // per `days()` above) -- not `undefined` -- proving the wiring exists
+    // independent of what any individual event happens to render.
+    renderGrid({ "2026-09-01": [existingTask()] });
+
+    dispatch(
+      insertOrUpdateEvent("INSERT", {
+        id: "t3",
+        title: "Some new task",
+        due_date: "2026-09-02",
+      }),
+    );
+
+    expect(reconcileSpy).toHaveBeenCalled();
+    const lastCallArgs = reconcileSpy.mock.calls.at(-1)!;
+    expect(lastCallArgs[3]).toEqual({
+      start: "2026-09-01",
+      end: "2026-09-05",
+    });
   });
 
   it("test_AS_022_ignores_an_INSERT_for_a_task_outside_the_caller_visible_projects", () => {

@@ -32,6 +32,18 @@ export function useCalendarRealtime({
   workspaceId: string;
   onDueDateChange: (event: CalendarRealtimeEvent) => void;
 }) {
+  // F041 (AS-022 fix): `onDueDateChange` is an inline closure at the call
+  // site (calendar-day-grid.tsx) that captures `visibleDateRange` — the
+  // currently displayed month's date window. That range changes every time
+  // the caller navigates months, but this effect previously only re-ran on
+  // `workspaceId` change (`deps: [workspaceId]`), so the *original* mount's
+  // callback — and its stale `visibleDateRange` closure — kept running the
+  // subscription for the entire lifetime of the component. A realtime
+  // event arriving after navigating to a different month would be scoped
+  // against the OLD month's window, not the currently visible one. Adding
+  // `onDueDateChange` to deps re-subscribes (tear down + re-create the
+  // channel) whenever the caller's closure identity changes, keeping the
+  // captured `visibleDateRange` fresh.
   useEffect(() => {
     if (!workspaceId) return;
 
@@ -43,6 +55,5 @@ export function useCalendarRealtime({
     );
 
     return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, onDueDateChange]);
 }

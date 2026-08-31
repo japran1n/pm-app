@@ -112,19 +112,40 @@ describe("F040/AS-022: calendar realtime is scoped to the displayed date window"
     expect(next["2026-09-20"]).toBeUndefined();
   });
 
-  it("test_AS_022_without_a_visibleDateRange_no_scoping_is_applied_backward_compat", () => {
-    // No `visibleDateRange` passed (matches every pre-F040 caller/test) --
-    // this documents that the default behavior is unscoped, so this test
-    // fails if the INSERT path itself is ever removed/broken, not just if
-    // scoping regresses.
-    const byDate: CalendarTasksByDate = {};
+  it("test_AS_022_same_out_of_window_insert_is_admitted_without_a_range_but_ignored_with_one", () => {
+    // F041 (scrutiny-6 MUT-N fix): drive the SAME out-of-window event
+    // through the reconciler twice -- once with `visibleDateRange`
+    // undefined, once with it set -- and assert the two calls produce
+    // DIFFERENT outcomes. A prior version of this suite only asserted the
+    // undefined-range call's own result in isolation, which stayed green
+    // even if `calendar-day-grid.tsx` stopped passing `visibleDateRange`
+    // through to the reconciler entirely (the undefined-range branch would
+    // just run unconditionally and the assertion would still pass). This
+    // comparison is non-vacuous: it fails if the `visibleDateRange`
+    // parameter is ever dropped/ignored, because both branches would then
+    // produce the same (unscoped) result.
+    const outOfWindowDueDate = "2099-01-01";
 
-    const next = reconcileCalendarRealtimeEvent(
-      byDate,
-      insertEvent("2099-01-01"),
+    const admittedWithoutRange = reconcileCalendarRealtimeEvent(
+      {},
+      insertEvent(outOfWindowDueDate),
       new Set(["p1"]),
+      undefined,
+    );
+    const ignoredWithRange = reconcileCalendarRealtimeEvent(
+      {},
+      insertEvent(outOfWindowDueDate),
+      new Set(["p1"]),
+      RANGE,
     );
 
-    expect(next["2099-01-01"]?.map((t) => t.id)).toEqual(["t1"]);
+    // No range: nothing scopes delivery, so the calendar's "show all
+    // tasks" behavior (no active date window, e.g. a list/agenda view that
+    // hasn't adopted date scoping) admits the out-of-window task.
+    expect(admittedWithoutRange[outOfWindowDueDate]?.map((t) => t.id)).toEqual(["t1"]);
+    // With a range: the same event, for a date outside the currently
+    // displayed month, is dropped instead.
+    expect(ignoredWithRange[outOfWindowDueDate]).toBeUndefined();
+    expect(admittedWithoutRange).not.toEqual(ignoredWithRange);
   });
 });
