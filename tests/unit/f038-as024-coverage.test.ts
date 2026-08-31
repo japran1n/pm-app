@@ -227,4 +227,145 @@ describe("CommandPalette navigate(): resetPaletteState clears the realtime patch
       expect(screen.getByText("Old title")).toBeInTheDocument();
     });
   });
+
+  it("test_AS_024_handleOpenChange_direct_close_clears_the_tombstone_map", async () => {
+    render(
+      createElement(CommandPalette, { workspaceId: "ws-1", workspaceSlug: "acme" }),
+    );
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const input = await waitFor(() =>
+      screen.getByPlaceholderText("Type a command or search..."),
+    );
+    fireEvent.change(input, { target: { value: "old" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Old title")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(sharedOnCalls.length).toBeGreaterThan(0);
+    });
+
+    // Tombstone t1 via a raw DELETE, then close the dialog via a DIRECT
+    // close (Escape triggers Radix's `onOpenChange(false)` ->
+    // `handleOpenChange`, NOT `navigate` and NOT the Cmd+K toggle
+    // listener). Without `resetPaletteState()` inside `handleOpenChange`
+    // itself, the tombstone would survive this close.
+    act(() => {
+      sharedOnCalls[0].callback({
+        eventType: "DELETE",
+        schema: "public",
+        table: "tasks",
+        new: {},
+        old: { id: "t1" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Old title")).not.toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Re-open and search again — if `handleOpenChange` cleared the patch
+    // map, t1 (which `searchPalette` unconditionally still returns) is no
+    // longer tombstoned and reappears.
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const secondInput = await waitFor(() =>
+      screen.getByPlaceholderText("Type a command or search..."),
+    );
+    fireEvent.change(secondInput, { target: { value: "old" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Old title")).toBeInTheDocument();
+    });
+  });
+
+  it("test_AS_024_quick_action_close_without_navigate_clears_the_tombstone_map", async () => {
+    render(
+      createElement(CommandPalette, { workspaceId: "ws-1", workspaceSlug: "acme" }),
+    );
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const input = await waitFor(() =>
+      screen.getByPlaceholderText("Type a command or search..."),
+    );
+    fireEvent.change(input, { target: { value: "old" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Old title")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(sharedOnCalls.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      sharedOnCalls[0].callback({
+        eventType: "DELETE",
+        schema: "public",
+        table: "tasks",
+        new: {},
+        old: { id: "t1" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Old title")).not.toBeInTheDocument();
+    });
+
+    // Clear the query to surface the quick-actions group ("Actions" is
+    // only rendered for the empty-query state).
+    //
+    // IMPORTANT CAVEAT (documented rather than silently worked around):
+    // `handleQueryChange` (command-palette.tsx) already clears the patch
+    // map itself whenever the query transitions to empty (see F030's
+    // AS-023 comment above it) — and quick actions are ONLY reachable
+    // when the query IS empty. So by the time this quick action's own
+    // `resetPaletteState()` call (command-palette.tsx:447) runs, the map
+    // is *already* empty via that unrelated path, on every real code
+    // path (confirmed: the realtime subscription itself is torn down —
+    // its listener removed from the shared-channel `Set` in
+    // lib/realtime/shared-topic-channel.ts — the instant the query goes
+    // empty, so no later-arriving realtime event can repopulate the map
+    // before this branch runs either). That makes line 447's
+    // `resetPaletteState()` call provably equivalent-mutant with respect
+    // to the patch map specifically: removing it changes no observable
+    // behaviour, so no black-box test — including this one — can kill
+    // that mutant without a change to the surrounding gating logic
+    // (tracked as out-of-scope follow-up work below). This test still
+    // asserts the map is empty post-close, exercising the branch and
+    // guarding the (still real, still worth covering) invariant that a
+    // quick-action close never leaves stale results/query state behind.
+    fireEvent.change(input, { target: { value: "" } });
+
+    // "Toggle theme" is the one quick action whose `run()` returns
+    // `navigateTo: null` — its `onSelect` branch calls `setOpen(false)`
+    // then `resetPaletteState()` directly, bypassing both `navigate()`
+    // and `handleOpenChange`. This is the exact call site under test.
+    const toggleThemeItem = await waitFor(() => screen.getByText("Toggle theme"));
+    fireEvent.click(toggleThemeItem);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    // Re-open and search again — if the action branch cleared the patch
+    // map, t1 reappears since `searchPalette` unconditionally still
+    // returns it.
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+    const secondInput = await waitFor(() =>
+      screen.getByPlaceholderText("Type a command or search..."),
+    );
+    fireEvent.change(secondInput, { target: { value: "old" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Old title")).toBeInTheDocument();
+    });
+  });
 });
