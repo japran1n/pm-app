@@ -123,6 +123,13 @@ export default async function MyTasksPage({
     }
   }
 
+  // F035 (AS-016 fix): the real `tasks.id` values for every task on this
+  // page, across all buckets -- threaded down to <PersonalTodoList> so its
+  // realtime subscription's tracked-id set is seeded with actual task ids
+  // rather than personal-todo ids (which live in a different table and can
+  // never match).
+  const allTaskIds = BUCKET_ORDER.flatMap(({ key }) => realBuckets[key].map((row) => row.id));
+
   if (totalCount === 0) {
     return (
       <div className="flex flex-col gap-4 p-6">
@@ -131,6 +138,7 @@ export default async function MyTasksPage({
           workspaceId={workspace.id}
           initialTodos={personalTodos}
           currentUserId={user.id}
+          initialTaskIds={allTaskIds}
         />
         {/* F231 (AS-440): a purposeful empty state with a primary action,
             not a dead end -- links to Projects so the caller can go find
@@ -183,6 +191,7 @@ export default async function MyTasksPage({
         workspaceId={workspace.id}
         initialTodos={personalTodos}
         currentUserId={user.id}
+        initialTaskIds={allTaskIds}
       />
       {BUCKET_ORDER.map(({ key, label }) => {
         const rows = realBuckets[key];

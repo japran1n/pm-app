@@ -20,6 +20,7 @@ export function PersonalTodoList({
   workspaceId,
   initialTodos,
   currentUserId,
+  initialTaskIds,
 }: {
   workspaceId: string;
   initialTodos: PersonalTodo[];
@@ -29,6 +30,17 @@ export function PersonalTodoList({
   // the one Client Component boundary already present on the My Tasks
   // page (My Tasks itself is otherwise a Server Component, F230/F231).
   currentUserId?: string;
+  // F035 (AS-016 fix): real `tasks.id` values for the tasks already
+  // rendered on this page (from the server-fetched My Tasks buckets --
+  // getMyTasks), NOT personal-todo ids. Personal to-dos live in a
+  // different table (`personal_todos`) and their ids never match a
+  // `tasks.id`, so seeding the realtime hook's tracked-id set with them
+  // (the previous bug) meant a `tasks` UPDATE for an already-visible task
+  // could never be recognised until an unrelated `task_assignees` INSERT
+  // happened to fire first this session. Optional -- defaults to empty,
+  // same safe fallback `useMyTasksRealtime` already documents for a
+  // caller that doesn't have this list yet.
+  initialTaskIds?: string[];
 }) {
   const router = useRouter();
 
@@ -44,12 +56,15 @@ export function PersonalTodoList({
   // feature's scope (see this feature's handoff).
   useMyTasksRealtime({
     userId: currentUserId,
-    // F032 (AS-016, AS-018): seed the hook's tracked-id set with the
-    // server-rendered todo ids so `tasks` UPDATE/DELETE events for tasks
-    // already visible on this page are recognised immediately, without
-    // requiring a `task_assignees` INSERT to have fired first this
-    // session. See use-my-tasks-realtime.ts for the tracked-id contract.
-    initialTaskIds: initialTodos.map((todo) => todo.id),
+    // F035 (AS-016, AS-018): seed the hook's tracked-id set with the
+    // server-rendered TASK ids (from getMyTasks, threaded down as
+    // `initialTaskIds`) -- NOT personal-todo ids, which come from a
+    // different table and never match a `tasks.id` -- so `tasks`
+    // UPDATE/DELETE events for tasks already visible on this page are
+    // recognised immediately, without requiring a `task_assignees` INSERT
+    // to have fired first this session. See use-my-tasks-realtime.ts for
+    // the tracked-id contract.
+    initialTaskIds,
     onAssigned: () => router.refresh(),
     onUnassigned: () => router.refresh(),
     onUpdate: () => router.refresh(),

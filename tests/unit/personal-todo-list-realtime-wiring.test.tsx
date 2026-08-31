@@ -97,6 +97,10 @@ afterEach(() => {
   currentSupabase = makeFakeSupabase();
 });
 
+// F035: distinct ids -- "todo-1" (personal_todos table) must never be used
+// as a stand-in for a `tasks.id`. AS-016/AS-018 seed the realtime hook's
+// tracked-id set from `initialTaskIds` (real task ids, e.g. "task-1"), NOT
+// from the personal-todo ids rendered by this component.
 const initialTodos: PersonalTodo[] = [{ id: "todo-1", title: "First reminder", isDone: false, position: 0 }];
 const updatedTodos: PersonalTodo[] = [
   { id: "todo-1", title: "First reminder", isDone: false, position: 0 },
@@ -111,7 +115,12 @@ function Harness() {
   const [todos, setTodos] = useState(initialTodos);
   refresh.mockImplementation(() => setTodos(updatedTodos));
   return (
-    <PersonalTodoList workspaceId="ws-1" initialTodos={todos} currentUserId="user-1" />
+    <PersonalTodoList
+      workspaceId="ws-1"
+      initialTodos={todos}
+      currentUserId="user-1"
+      initialTaskIds={["task-1"]}
+    />
   );
 }
 
@@ -141,20 +150,21 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-016: a real tasks UPDATE payload for a task already visible on this page (seeded via initialTaskIds, F032) triggers a refresh whose fresh data renders", () => {
+  it("AS-016: a real tasks UPDATE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", () => {
     render(<Harness />);
 
     // No task_assignees INSERT fires first -- production wiring seeds the
-    // tracked-id set directly from the server-rendered `initialTodos` ids
-    // (F032), so "todo-1" is already tracked at mount without any prior
-    // assignment event this session.
+    // tracked-id set directly from the server-fetched real TASK ids passed
+    // as `initialTaskIds` (F035, NOT the personal-todo ids), so "task-1" is
+    // already tracked at mount without any prior assignment event this
+    // session.
     act(() =>
       callbackFor("tasks")({
         eventType: "UPDATE",
         schema: "public",
         table: "tasks",
-        new: { id: "todo-1", title: "First reminder", status: "done" },
-        old: { id: "todo-1", title: "First reminder", status: "todo" },
+        new: { id: "task-1", title: "Some task", status: "done" },
+        old: { id: "task-1", title: "Some task", status: "todo" },
       }),
     );
 
@@ -179,7 +189,7 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
     expect(screen.getByText("Second reminder (arrived live)")).toBeInTheDocument();
   });
 
-  it("AS-018: a real tasks DELETE payload for a task already visible on this page (seeded via initialTaskIds, F032) triggers a refresh whose fresh data renders", () => {
+  it("AS-018: a real tasks DELETE payload for a task already visible on this page (seeded via initialTaskIds, F035) triggers a refresh whose fresh data renders", () => {
     render(<Harness />);
 
     act(() =>
@@ -188,7 +198,7 @@ describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", ()
         schema: "public",
         table: "tasks",
         new: {},
-        old: { id: "todo-1" },
+        old: { id: "task-1" },
       }),
     );
 
