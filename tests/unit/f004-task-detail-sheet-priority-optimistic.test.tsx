@@ -76,7 +76,25 @@ vi.mock("@/components/ui/select", () => ({
   },
   SelectItem: ({ value, children }: { value: string; children: ReactNode }) =>
     createElement("option", { value }, children),
-  SelectValue: () => null,
+  // F018: previously `() => null`, which made every displayed-text
+  // assertion trivially pass (or trivially never find "high") regardless
+  // of what value the Select was actually bound to. Now it renders the
+  // real render-prop `children` function against the *current* `latestValue`
+  // snapshot at THIS render (same per-instance-snapshot rationale as
+  // SelectContent above), so a query for visible "No priority" text is a
+  // genuine assertion on the production value binding, not the stub.
+  SelectValue: ({
+    children,
+  }: {
+    children?: (value: string) => ReactNode;
+    placeholder?: string;
+  }) => {
+    const value = latestValue;
+    if (typeof children === "function" && value !== undefined) {
+      return children(value);
+    }
+    return null;
+  },
 }));
 
 // Resolved manually per-test so the "instant" optimistic update can be
@@ -274,13 +292,31 @@ describe("TaskDetailSheet priority Select optimistic update (F004, AS-007, AS-00
 
     const prioritySelect = await openSheetAndGetPrioritySelect();
     expect(prioritySelect.value).toBe("high");
+    const priorityFieldRoot = prioritySelect.parentElement!;
+    // The SelectValue-rendered badge text is a bare text node sitting
+    // alongside the native <select> (whose <option>s always list every
+    // label regardless of current value) — so read the field's own text
+    // with the <select>'s subtree stripped out to isolate just the badge.
+    const badgeText = () => {
+      const clone = priorityFieldRoot.cloneNode(true) as HTMLElement;
+      clone.querySelector("select")?.remove();
+      return clone.textContent ?? "";
+    };
+    expect(badgeText()).toContain("High");
 
     fireEvent.change(prioritySelect, { target: { value: "__none__" } });
 
     // The optimistic clear must be visible before editTask's promise
     // resolves at all — proves the "No priority" state did not wait on the
     // server, and did NOT collapse back to the stale "high" task.priority.
+    // Both the Select's bound `value` prop AND the rendered badge text
+    // (via SelectValue's render-prop, now actually wired up in the mock
+    // above) must read "No priority" / "__none__", not "high" — this is
+    // exactly the assertion that fails if F014's `(optimisticPriority ??
+    // task.priority)` collapse regresses.
     await waitFor(() => expect(prioritySelect.value).toBe("__none__"));
+    expect(badgeText()).toContain("No priority");
+    expect(badgeText()).not.toContain("High");
     expect(editTask).toHaveBeenCalledWith("t1", { priority: null });
     expect(resolveEditTask).not.toBeNull();
 
