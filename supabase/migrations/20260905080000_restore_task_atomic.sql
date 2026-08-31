@@ -22,7 +22,7 @@ returns table (
   id uuid,
   project_id uuid,
   status text,
-  position float8,
+  "position" float8,
   status_was_reset boolean
 )
 language plpgsql
@@ -59,13 +59,13 @@ begin
   v_status_was_reset := not (v_current_status = any(v_known_statuses));
   v_resolved_status := case when v_status_was_reset then 'todo' else v_current_status end;
 
-  select t.position
+  select t."position"
     into v_last_position
   from public.tasks t
   where t.project_id = v_project_id
     and t.status = v_resolved_status
     and t.deleted_at is null
-  order by t.position desc
+  order by t."position" desc
   limit 1;
 
   v_new_position := coalesce(v_last_position, 0) + 1000;
@@ -74,7 +74,7 @@ begin
   set deleted_at = null,
       deleted_by = null,
       status = v_resolved_status,
-      position = v_new_position
+      "position" = v_new_position
   where public.tasks.id = p_task_id;
 
   -- Cascade restore: only still-deleted children whose deleted_via_task_id
@@ -90,13 +90,13 @@ begin
       else 'todo'
     end;
 
-    select t.position
+    select t."position"
       into v_child_last_position
     from public.tasks t
     where t.project_id = v_project_id
       and t.status = v_child_resolved_status
       and t.deleted_at is null
-    order by t.position desc
+    order by t."position" desc
     limit 1;
 
     v_child_position := coalesce(v_child_last_position, 0) + 1000;
@@ -106,7 +106,7 @@ begin
         deleted_by = null,
         deleted_via_task_id = null,
         status = v_child_resolved_status,
-        position = v_child_position
+        "position" = v_child_position
     where public.tasks.id = v_child.id;
   end loop;
 
