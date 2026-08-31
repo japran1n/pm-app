@@ -39,9 +39,19 @@ export function PersonalTodoList({
   // only once an incoming server value for that row matches the confirmed
   // value, or the toggle fails (reverting to whatever the server currently
   // says). Rows not in this map still sync from the server as usual.
-  const [pendingToggles, setPendingToggles] = useState<ReadonlyMap<string, boolean>>(
-    () => new Map(),
-  );
+  // F022: track per-row guard entries with a `committed` flag rather than
+  // releasing the guard by comparing the incoming server value against the
+  // confirmed value. Value-equality release freezes a row permanently if the
+  // write never actually persists (server value never matches) or if another
+  // actor toggles the row back to the pre-toggle value before the next sync
+  // (a coincidental equality match that isn't actually "caught up"). Instead:
+  // a row stays guarded (server data ignored) until the local commit
+  // (`setTodos` on toggle success) sets `committed: true`, after which the
+  // VERY NEXT server payload is accepted unconditionally and the guard entry
+  // is removed — regardless of what value that payload carries.
+  const [pendingToggles, setPendingToggles] = useState<
+    ReadonlyMap<string, { isDone: boolean; committed: boolean }>
+  >(() => new Map());
   if (initialTodos !== syncedInitial) {
     setSyncedInitial(initialTodos);
     if (pendingToggles.size === 0) {
@@ -49,19 +59,18 @@ export function PersonalTodoList({
     } else {
       const stillPending = new Map(pendingToggles);
       const merged = initialTodos.map((serverTodo) => {
-        const confirmedIsDone = pendingToggles.get(serverTodo.id);
-        if (confirmedIsDone === undefined) return serverTodo;
-        if (serverTodo.isDone === confirmedIsDone) {
-          // Server has caught up with the confirmed value — safe to stop
-          // guarding this row.
-          stillPending.delete(serverTodo.id);
-          return serverTodo;
+        const entry = pendingToggles.get(serverTodo.id);
+        if (entry === undefined) return serverTodo;
+        if (!entry.committed) {
+          // Still in-flight (or committed locally but not yet marked as
+          // such) — keep the local confirmed value, ignore this server read.
+          const local = todos.find((t) => t.id === serverTodo.id);
+          return local ? local : { ...serverTodo, isDone: entry.isDone };
         }
-        // Server data disagrees with the confirmed value (stale read that
-        // raced the commit): keep the confirmed local value instead of
-        // letting the server's stale value overwrite it.
-        const local = todos.find((t) => t.id === serverTodo.id);
-        return local ? local : { ...serverTodo, isDone: confirmedIsDone };
+        // Committed: accept this server payload unconditionally and release
+        // the guard for this row.
+        stillPending.delete(serverTodo.id);
+        return serverTodo;
       });
       if (stillPending.size !== pendingToggles.size) {
         setPendingToggles(stillPending);
@@ -134,13 +143,25 @@ export function PersonalTodoList({
     // F019/F020: mark this row in-flight, keyed to the value we intend to
     // commit, so a server-data sync arriving before OR shortly after this
     // settles doesn't reset it to a stale pre-toggle value.
-    setPendingToggles((current) => new Map(current).set(todo.id, intendedIsDone));
+    setPendingToggles((current) =>
+      new Map(current).set(todo.id, { isDone: intendedIsDone, committed: false }),
+    );
 
     function clearPending() {
       setPendingToggles((current) => {
         if (!current.has(todo.id)) return current;
         const next = new Map(current);
         next.delete(todo.id);
+        return next;
+      });
+    }
+
+    function markCommitted() {
+      setPendingToggles((current) => {
+        const entry = current.get(todo.id);
+        if (!entry || entry.committed) return current;
+        const next = new Map(current);
+        next.set(todo.id, { ...entry, committed: true });
         return next;
       });
     }
@@ -170,12 +191,15 @@ export function PersonalTodoList({
         setTodos((current) =>
           current.map((t) => (t.id === todo.id ? { ...t, isDone: intendedIsDone } : t)),
         );
-        // F020: do NOT clearPending() here. The commit above and any
+        markCommitted();
+        // F020/F022: do NOT clearPending() here. The commit above and any
         // `router.refresh()` triggered elsewhere race independently; if a
         // refresh's server read happened before this write landed, it can
-        // arrive with the stale pre-toggle value. Leave this row guarded
-        // (keyed to `intendedIsDone`) until the sync effect above observes
-        // server data that actually matches the confirmed value.
+        // arrive with the stale pre-toggle value. Instead mark this row's
+        // guard entry as `committed`; the sync effect above then accepts the
+        // VERY NEXT server payload unconditionally (rather than requiring it
+        // to match `intendedIsDone`, which could freeze the row forever if
+        // the write never actually persisted or another actor re-toggled it).
       } catch {
         if (latestToggleRef.current.get(todo.id) !== requestId) return;
         // F013: a thrown rejection (network loss, 500, serialization
@@ -191,6 +215,14 @@ export function PersonalTodoList({
   async function handleDelete(todoId: string) {
     const previous = todos;
     setTodos((current) => current.filter((t) => t.id !== todoId));
+    // F022: a deleted row can no longer receive a meaningful server sync —
+    // clear any guard entry so it doesn't linger in the map forever.
+    setPendingToggles((current) => {
+      if (!current.has(todoId)) return current;
+      const next = new Map(current);
+      next.delete(todoId);
+      return next;
+    });
     const result = await deleteTodo({ todoId });
     if (!result.ok) {
       setTodos(previous);

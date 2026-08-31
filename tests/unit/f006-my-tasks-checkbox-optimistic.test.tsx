@@ -7,9 +7,21 @@
 // fails (AS-013).
 
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+// F022: after the toggle rejects, `waitFor(aria-checked="false")` alone can
+// resolve during the OPTIMISTIC pending flip rather than after the actual
+// revert (useOptimistic already renders the flipped value synchronously on
+// click, before any rejection). Flushing a macrotask tick via `act()` forces
+// past that transition boundary so the assertion genuinely observes
+// post-revert state, not a same-value coincidence.
+async function flushPendingTransitions() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
 const toastError = vi.fn();
 vi.mock("sonner", () => ({
@@ -92,9 +104,12 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
 
     resolveToggle?.({ ok: false, error: "Something went wrong." });
 
-    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+    // Flush past the optimistic transition boundary before asserting the
+    // ORIGINAL (pre-toggle) state was restored.
+    await flushPendingTransitions();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Failed to update task"));
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
     expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
-    expect(toastError).toHaveBeenCalledWith("Failed to update task");
   });
 
   // F013 (AS-013): a thrown rejection (network loss, 500, serialization
@@ -107,9 +122,10 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
 
     fireEvent.click(checkbox);
 
-    await waitFor(() => expect(checkbox).toHaveAttribute("aria-checked", "false"));
+    await flushPendingTransitions();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Failed to update task"));
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
     expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
-    expect(toastError).toHaveBeenCalledWith("Failed to update task");
   });
 
   it("test_AS_014_unchecking_a_completed_task_marks_it_incomplete_immediately", async () => {
@@ -196,31 +212,33 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
       expect(screen.getByText("Write handoff")).toHaveClass("line-through");
     });
 
-    // F020: the guard must persist PAST the commit tick too. A second,
-    // still-stale server sync (e.g. a router.refresh() whose fetch was
-    // in-flight before the toggle committed and lands with pre-toggle data
-    // just after) must NOT silently revert the row. Without the durable
-    // guard fix, `setTodos`/the guard closing at the same tick as commit
-    // means this stale post-commit sync clobbers the confirmed value.
-    const staleServerTodosPostCommit: PersonalTodo[] = [
+    // F022: guard release is commit-ordered, not value-equality based. Once
+    // this row's commit has landed (`setTodos` above), the guard entry is
+    // marked committed and the VERY NEXT server payload is accepted
+    // unconditionally — even if it happens to be stale — rather than
+    // requiring it to match the confirmed value first. This trades a single
+    // best-effort race window for never permanently freezing a row (the
+    // F020 equality-based release could freeze forever if the write never
+    // persisted, or if another actor toggled the row back to a value that
+    // coincidentally matched a stale read).
+    const nextServerSyncAfterCommit: PersonalTodo[] = [
       { id: "todo-1", title: "Write handoff", isDone: false, position: 1000 },
     ];
     rerender(
       createElement(PersonalTodoList, {
         workspaceId: "workspace-1",
-        initialTodos: staleServerTodosPostCommit,
+        initialTodos: nextServerSyncAfterCommit,
       }),
     );
-    expect(checkbox).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText("Write handoff")).toHaveClass("line-through");
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
 
-    // Only once server data actually matches the confirmed value does the
-    // guard release and future syncs behave normally.
-    const matchingServerTodos: PersonalTodo[] = [
+    // The guard has now released; further syncs apply normally.
+    const laterServerTodos: PersonalTodo[] = [
       { id: "todo-1", title: "Write handoff", isDone: true, position: 1000 },
     ];
     rerender(
-      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: matchingServerTodos }),
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: laterServerTodos }),
     );
     expect(checkbox).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText("Write handoff")).toHaveClass("line-through");
@@ -253,27 +271,28 @@ describe("PersonalTodoList optimistic checkbox toggle (F006, AS-012, AS-013, AS-
       expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
     });
 
-    // F020: a stale server sync arriving in the same tick as (or shortly
-    // after) commit — carrying the pre-toggle `isDone: true` value — must
-    // not silently revert the confirmed unchecked state.
-    const staleServerTodosPostCommit: PersonalTodo[] = [
+    // F022: guard release is commit-ordered, not value-equality based — the
+    // very next server payload after commit is accepted unconditionally
+    // (even if stale), releasing the guard immediately rather than waiting
+    // for a value match.
+    const nextServerSyncAfterCommit: PersonalTodo[] = [
       { id: "todo-1", title: "Write handoff", isDone: true, position: 1000 },
     ];
     rerender(
       createElement(PersonalTodoList, {
         workspaceId: "workspace-1",
-        initialTodos: staleServerTodosPostCommit,
+        initialTodos: nextServerSyncAfterCommit,
       }),
     );
-    expect(checkbox).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
+    expect(checkbox).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Write handoff")).toHaveClass("line-through");
 
-    // Once server data matches the confirmed value, the guard releases.
-    const matchingServerTodos: PersonalTodo[] = [
+    // The guard has now released; further syncs apply normally.
+    const laterServerTodos: PersonalTodo[] = [
       { id: "todo-1", title: "Write handoff", isDone: false, position: 1000 },
     ];
     rerender(
-      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: matchingServerTodos }),
+      createElement(PersonalTodoList, { workspaceId: "workspace-1", initialTodos: laterServerTodos }),
     );
     expect(checkbox).toHaveAttribute("aria-checked", "false");
     expect(screen.getByText("Write handoff")).not.toHaveClass("line-through");
