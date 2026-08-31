@@ -781,12 +781,17 @@ export function TaskDetailSheet({
     // async call resolves.
     const previousTitle = task.title;
     startTitleSaveTransition(async () => {
-      const result = await editTask(task.id, { title: trimmed });
-      if (result.ok) {
-        toast.success("Title updated.");
-      } else {
+      try {
+        const result = await editTask(task.id, { title: trimmed });
+        if (result.ok) {
+          toast.success("Title updated.");
+        } else {
+          setTitle(previousTitle);
+          toast.error(result.error);
+        }
+      } catch {
         setTitle(previousTitle);
-        toast.error(result.error);
+        toast.error("Failed to save title");
       }
     });
   }

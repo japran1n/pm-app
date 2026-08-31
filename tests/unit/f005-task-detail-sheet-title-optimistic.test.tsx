@@ -168,6 +168,20 @@ describe("TaskDetailSheet title optimistic save (F005, AS-009, AS-010, AS-011)",
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Title updated."));
   });
 
+  it("test_AS_010_title_reverts_and_shows_error_toast_when_the_save_throws_instead_of_rejecting", async () => {
+    editTask.mockImplementationOnce(() =>
+      Promise.reject(new Error("network")),
+    );
+
+    const titleInput = await openSheetAndGetTitleInput();
+
+    fireEvent.change(titleInput, { target: { value: "Broken edit" } });
+    fireEvent.blur(titleInput);
+
+    await waitFor(() => expect(titleInput.value).toBe("Original title"));
+    expect(toastError).toHaveBeenCalledWith("Failed to save title");
+  });
+
   it("test_AS_011_escape_cancels_the_edit_and_reverts_without_saving", async () => {
     const titleInput = await openSheetAndGetTitleInput();
 
