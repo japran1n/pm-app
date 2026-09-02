@@ -170,11 +170,16 @@ export async function requestPortalTaskChanges(
   const caller = await requireClientCaller(resolved.workspaceId);
   if (!caller.ok) return caller;
 
+  // Same reasoning as approvePortalTask above: a plain RLS-respecting
+  // UPDATE is not reachable for a `client` role, so this routes through
+  // `request_portal_task_changes_atomic` (20260906010000), the sibling of
+  // `approve_portal_task_atomic` that shares the same caller/visibility/
+  // pending re-verification via `assert_portal_task_actionable_by_client`.
   const supabase = await createClient();
-  const { error: updateError } = await supabase
-    .from("tasks")
-    .update({ pending_client_approval: false })
-    .eq("id", parsed.data.taskId);
+  const { error: updateError } = await supabase.rpc(
+    "request_portal_task_changes_atomic",
+    { p_task_id: parsed.data.taskId },
+  );
 
   if (updateError) {
     logger.error("requestPortalTaskChanges: update failed", { error: updateError });
