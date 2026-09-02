@@ -56,6 +56,13 @@ export type PortalProject = {
   percentComplete: number | null;
   nextDue: PortalTask | null;
   overdueCount: number;
+  // The project's board columns (status name + category), independent of
+  // which columns currently hold a shared task. Carried down so the client
+  // list can resolve the category for a status it receives over Realtime
+  // (e.g. a task moved into a Done column that had zero shared tasks at
+  // render time) without a second round trip -- `tasks.status`/`status_id`
+  // never carry `category` themselves; only `project_statuses` does.
+  statuses: { id: string; name: string; category: StatusCategory }[];
 };
 
 type StatusRow = {
@@ -177,6 +184,9 @@ export async function getPortalProjects(
       percentComplete: total === 0 ? null : Math.round((done / total) * 100),
       nextDue,
       overdueCount,
+      statuses: ((statuses ?? []) as StatusRow[])
+        .filter((s) => s.project_id === project.id)
+        .map((s) => ({ id: s.id, name: s.name, category: s.category })),
     };
   });
 }

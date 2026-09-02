@@ -96,6 +96,10 @@ const project: PortalProject = {
   percentComplete: 0,
   nextDue: null,
   overdueCount: 0,
+  statuses: [
+    { id: "status-1", name: "In review", category: "in_progress" },
+    { id: "status-2", name: "Done", category: "done" },
+  ],
 };
 
 describe("PortalTaskList (F009)", () => {
@@ -122,6 +126,40 @@ describe("PortalTaskList (F009)", () => {
 
     expect(screen.getByText("Draft homepage copy v2")).toBeInTheDocument();
     expect(screen.queryByText("Draft homepage copy")).not.toBeInTheDocument();
+  });
+
+  it("test_AS_021_status_change_to_done_moves_row_and_updates_heading_live", () => {
+    render(<PortalTaskList project={project} workspaceSlug="acme" />);
+
+    // Seeded status "In review" always renders "Waiting on your review"
+    // (name-based override in clientStatusLabel), regardless of category.
+    expect(screen.getByText(/Waiting on your review/i)).toBeInTheDocument();
+
+    const callback = tasksCallback();
+    act(() => {
+      callback({
+        eventType: "UPDATE",
+        new: {
+          id: "task-1",
+          title: "Draft homepage copy",
+          status: "Done",
+          status_id: "status-2",
+          project_id: "project-1",
+          client_visible: true,
+          deleted_at: null,
+        },
+        old: {},
+      });
+    });
+
+    // A task whose status moves to a Done column must render under the
+    // "Delivered" heading (category "done") -- not stay grouped under the
+    // stale "Waiting on your review" heading -- without a reload. This
+    // fails against `category: existing?.category ?? "not_started"`,
+    // which pins the row to its seeded (in_progress) category forever, so
+    // the heading would incorrectly stay "Waiting on your review".
+    expect(screen.queryByText(/Waiting on your review/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Delivered/i)).toBeInTheDocument();
   });
 
   it("test_AS_022_delete_removes_the_row_live", () => {

@@ -111,6 +111,7 @@ type RawTaskRow = {
   id: string;
   title?: string;
   status?: string;
+  status_id?: string | null;
   due_date?: string | null;
   project_id?: string;
   client_visible: boolean | null;
@@ -118,24 +119,72 @@ type RawTaskRow = {
   [key: string]: unknown;
 };
 
+// Status -> category lookup, built once from the server-rendered project's
+// `statuses` (the project's board columns), independent of which columns
+// currently hold a shared task. Looked up by `status_id` first (stable
+// across a column rename), falling back to the status *name* for the same
+// reason `getPortalProjects` does server-side.
+type CategoryLookup = {
+  byId: Map<string, StatusCategory>;
+  byName: Map<string, StatusCategory>;
+};
+
+function buildCategoryLookup(
+  statuses: PortalProject["statuses"],
+): CategoryLookup {
+  const byId = new Map<string, StatusCategory>();
+  const byName = new Map<string, StatusCategory>();
+  for (const status of statuses) {
+    byId.set(status.id, status.category);
+    byName.set(status.name, status.category);
+  }
+  return { byId, byName };
+}
+
+function resolveCategory(
+  lookup: CategoryLookup,
+  statusId: string | null | undefined,
+  statusName: string | undefined,
+  fallback: StatusCategory,
+): StatusCategory {
+  if (statusId && lookup.byId.has(statusId)) {
+    return lookup.byId.get(statusId)!;
+  }
+  if (statusName && lookup.byName.has(statusName)) {
+    return lookup.byName.get(statusName)!;
+  }
+  return fallback;
+}
+
 function mergeIncomingTask(
   raw: RawTaskRow,
   existing: LiveTask | undefined,
   fallbackProjectId: string,
+  categoryLookup: CategoryLookup,
 ): LiveTask {
+  const status = raw.status ?? existing?.status ?? "";
+  const statusId =
+    raw.status !== undefined ? (raw.status_id ?? null) : (existing?.statusId ?? null);
   return {
     id: raw.id,
     title: raw.title ?? existing?.title ?? "",
-    status: raw.status ?? existing?.status ?? "",
-    statusId: existing?.statusId ?? null,
+    status,
+    statusId,
     dueDate:
       raw.due_date !== undefined ? raw.due_date : (existing?.dueDate ?? null),
-    // The category (which drives grouping) is not carried on the `tasks`
-    // row itself -- it lives on `project_statuses`. An already-tracked
-    // task keeps the category it was seeded/last known with; a task this
-    // session has never seen before falls back to "not_started" (the
-    // safest default: it will not be mistaken for finished work).
-    category: existing?.category ?? "not_started",
+    // Resolved against this project's status->category lookup so a task
+    // moved into a different column (e.g. a Done column) is grouped,
+    // labelled and overdue-styled correctly the moment the Realtime UPDATE
+    // arrives -- not just after a reload re-seeds it from the server. Only
+    // when the incoming status is genuinely unknown to this project's
+    // lookup does it fall back to the last-known (or "not_started" for a
+    // never-seen task) category.
+    category: resolveCategory(
+      categoryLookup,
+      statusId,
+      status,
+      existing?.category ?? "not_started",
+    ),
     project_id: raw.project_id ?? existing?.project_id ?? fallbackProjectId,
     client_visible: raw.client_visible,
     deleted_at: raw.deleted_at,
@@ -146,6 +195,7 @@ export function subscribeToPortalTaskListRealtime(
   supabase: SupabaseClient,
   projectId: string,
   onChange: (updater: (current: LiveTask[]) => LiveTask[]) => void,
+  categoryLookup: CategoryLookup,
 ): () => void {
   const topic = `portal:project:${projectId}:tasks`;
 
@@ -178,7 +228,7 @@ export function subscribeToPortalTaskListRealtime(
           return current;
         }
         const existing = current.find((task) => task.id === raw.id);
-        const merged = mergeIncomingTask(raw, existing, projectId);
+        const merged = mergeIncomingTask(raw, existing, projectId, categoryLookup);
 
         const syntheticEvent = {
           ...event,
@@ -219,9 +269,10 @@ export function PortalTaskList({
       supabase,
       project.id,
       setTasks,
+      buildCategoryLookup(project.statuses),
     );
     return unsubscribe;
-  }, [project.id]);
+  }, [project.id, project.statuses]);
 
   const groups = groupTasks(tasks);
   const today = todayIso();
