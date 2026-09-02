@@ -228,6 +228,146 @@ describe("PortalApprovalActions (F005)", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
+  it("test_AS_016_ref_is_cleared_after_a_rejected_action_allowing_retry", async () => {
+    // Same rationale as `test_AS_016_handler_guard_rejects_whitespace_only_message_even_when_enabled`:
+    // the real Base UI `Button` enforces `disabled` inside its own click
+    // closure, so waiting on React's `isPending` to settle (and the real
+    // button's `disabled` attribute to clear) after a rejection is a race
+    // against React's transition scheduling that has nothing to do with
+    // AS-016. The stub Button below always forwards `onClick`, so a second
+    // click deterministically reaches `handleRequestChanges` regardless of
+    // `isPending` timing, and only `inFlightRef.current` can still be
+    // blocking it — which is exactly what this assertion is about.
+    vi.resetModules();
+    vi.doMock("@/components/ui/button", () => ({
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        ...rest
+      }: {
+        children?: ReactNode;
+        disabled?: boolean;
+        onClick?: MouseEventHandler<HTMLButtonElement>;
+        [key: string]: unknown;
+      }) =>
+        createElement(
+          "button",
+          { ...rest, "data-disabled": disabled ? "" : undefined, onClick },
+          children,
+        ),
+    }));
+
+    const { PortalApprovalActions: UnguardedUiComponent } = await import(
+      "./approval-actions"
+    );
+
+    const first = deferred<never>();
+    requestChangesMock.mockReturnValueOnce(first.promise);
+
+    render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
+      target: { value: "please fix the header" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/sent — the team will follow up/i)).toBeInTheDocument(),
+    );
+    expect(requestChangesMock).toHaveBeenCalledTimes(1);
+
+    first.reject(new Error("network down"));
+
+    // Reverts back to the form on failure, with the message preserved.
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/describe what you'd like changed/i)).toHaveValue(
+        "please fix the header",
+      ),
+    );
+
+    // The in-flight ref must have been cleared on the failure path (not
+    // only on success) — otherwise the Send button is permanently inert
+    // and a second click, even one that genuinely reaches the handler,
+    // issues no new call.
+    const second = deferred<{ ok: true; data: { taskId: string } }>();
+    requestChangesMock.mockReturnValueOnce(second.promise);
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() => expect(requestChangesMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByText(/sent — the team will follow up/i)).toBeInTheDocument(),
+    );
+    second.resolve({ ok: true, data: { taskId: "task-1" } });
+
+    vi.doUnmock("@/components/ui/button");
+    vi.resetModules();
+  });
+
+  it("test_AS_016_ref_is_cleared_after_ok_false_allowing_retry", async () => {
+    vi.resetModules();
+    vi.doMock("@/components/ui/button", () => ({
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        ...rest
+      }: {
+        children?: ReactNode;
+        disabled?: boolean;
+        onClick?: MouseEventHandler<HTMLButtonElement>;
+        [key: string]: unknown;
+      }) =>
+        createElement(
+          "button",
+          { ...rest, "data-disabled": disabled ? "" : undefined, onClick },
+          children,
+        ),
+    }));
+
+    const { PortalApprovalActions: UnguardedUiComponent } = await import(
+      "./approval-actions"
+    );
+
+    const first = deferred<{ ok: false; error: string }>();
+    requestChangesMock.mockReturnValueOnce(first.promise);
+
+    render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
+      target: { value: "please fix the header" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/sent — the team will follow up/i)).toBeInTheDocument(),
+    );
+    expect(requestChangesMock).toHaveBeenCalledTimes(1);
+
+    first.resolve({ ok: false, error: "Something went wrong." });
+
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText(/describe what you'd like changed/i)).toHaveValue(
+        "please fix the header",
+      ),
+    );
+
+    const second = deferred<{ ok: true; data: { taskId: string } }>();
+    requestChangesMock.mockReturnValueOnce(second.promise);
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() => expect(requestChangesMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByText(/sent — the team will follow up/i)).toBeInTheDocument(),
+    );
+    second.resolve({ ok: true, data: { taskId: "task-1" } });
+
+    vi.doUnmock("@/components/ui/button");
+    vi.resetModules();
+  });
+
   it("test_AS_016_request_changes_with_whitespace_only_message_issues_no_call", async () => {
     render(createElement(PortalApprovalActions, { taskId: "task-1" }));
 
