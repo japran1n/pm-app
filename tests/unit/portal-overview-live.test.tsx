@@ -26,8 +26,23 @@ afterEach(() => {
   capturedOnChange = undefined;
 });
 
+// F012: usePortalOverviewRealtime now awaits `auth.getSession()` and hands
+// its token to `realtime.setAuth()` BEFORE subscribing (fixes AS-029's
+// real-world unauthenticated-join race -- see that hook's own comment).
+// The mocked client needs both, resolving immediately, so this component
+// test's existing synchronous `capturedOnChange` assertions keep working
+// without adding a real async wait to every test below.
 vi.mock("@/lib/supabase/client", () => ({
-  createClient: vi.fn(() => ({})),
+  createClient: vi.fn(() => ({
+    auth: {
+      getSession: vi.fn(() =>
+        Promise.resolve({
+          data: { session: { access_token: "test-access-token" } },
+        }),
+      ),
+    },
+    realtime: { setAuth: vi.fn(() => Promise.resolve()) },
+  })),
 }));
 
 const unsubscribeSpy = vi.fn();
@@ -49,7 +64,14 @@ vi.mock("@/lib/portal/subscribe-portal-overview-realtime", async () => {
 });
 
 import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
+import { subscribeToPortalOverviewRealtime } from "@/lib/portal/subscribe-portal-overview-realtime";
 import type { PortalOverview } from "@/lib/queries/portal";
+
+const subscribeMock = vi.mocked(subscribeToPortalOverviewRealtime);
+
+afterEach(() => {
+  subscribeMock.mockClear();
+});
 
 const baseOverview: PortalOverview = {
   waitingOnYou: [
@@ -65,19 +87,29 @@ const baseOverview: PortalOverview = {
   deliveredThisWeek: [],
 };
 
-function renderLive(overview: PortalOverview = baseOverview) {
-  return render(
+async function renderLive(overview: PortalOverview = baseOverview) {
+  const result = render(
     createElement(PortalOverviewLive, {
       workspaceId: "ws-1",
       workspaceSlug: "acme",
       initialOverview: overview,
     }),
   );
+  // F012: the hook's effect now awaits `getSession()` then `setAuth()`
+  // (both mocked to resolve immediately) before it actually subscribes --
+  // flush those microtasks so `capturedOnChange`/`subscribeMock` are set
+  // before each test interacts with them, same as the real browser does
+  // once session hydration settles.
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  return result;
 }
 
 describe("PortalOverviewLive", () => {
-  it("test_AS_018_task_leaving_pending_approval_leaves_waiting_on_you", () => {
-    renderLive();
+  it("test_AS_018_task_leaving_pending_approval_leaves_waiting_on_you", async () => {
+    await renderLive();
 
     expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
 
@@ -108,8 +140,8 @@ describe("PortalOverviewLive", () => {
     ).toBeInTheDocument();
   });
 
-  it("test_AS_019_task_becoming_pending_approval_and_client_visible_appears_in_waiting_on_you", () => {
-    renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
+  it("test_AS_019_task_becoming_pending_approval_and_client_visible_appears_in_waiting_on_you", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
 
     expect(
       screen.getByText("Nothing waiting on you right now."),
@@ -137,8 +169,8 @@ describe("PortalOverviewLive", () => {
     expect(screen.getByText("Approve new logo")).toBeInTheDocument();
   });
 
-  it("test_AS_020_row_failing_client_visible_predicate_is_never_rendered", () => {
-    renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
+  it("test_AS_020_row_failing_client_visible_predicate_is_never_rendered", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
 
     // Reaches the client as a raw event exactly as AS-020 describes, but
     // client_visible is false -- must never render, whether it's a brand
@@ -168,8 +200,8 @@ describe("PortalOverviewLive", () => {
     ).toBeInTheDocument();
   });
 
-  it("test_AS_020_row_that_was_visible_and_becomes_invisible_is_removed", () => {
-    renderLive();
+  it("test_AS_020_row_that_was_visible_and_becomes_invisible_is_removed", async () => {
+    await renderLive();
 
     expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
 
@@ -197,13 +229,43 @@ describe("PortalOverviewLive", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("test_AS_024_subscription_is_torn_down_on_unmount", () => {
-    const { unmount } = renderLive();
+  it("test_AS_024_subscription_is_torn_down_on_unmount", async () => {
+    const { unmount } = await renderLive();
 
     expect(unsubscribeSpy).not.toHaveBeenCalled();
 
     unmount();
 
     expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_AS_024_subscription_is_torn_down_and_reacquired_when_workspace_id_changes", async () => {
+    const { rerender } = await renderLive();
+
+    expect(subscribeMock).toHaveBeenCalledTimes(1);
+    expect(subscribeMock.mock.calls[0]?.[1]).toBe("ws-1");
+    expect(unsubscribeSpy).not.toHaveBeenCalled();
+
+    // Same component instance, but the workspace it's scoped to changes
+    // mid-life (e.g. the portal viewer navigates to a different client
+    // workspace without a full page reload). The old channel must be
+    // released and a new one acquired for the new workspaceId -- staying
+    // subscribed to the old workspace's topic would leak stale updates
+    // (or none at all) into the new workspace's view.
+    rerender(
+      createElement(PortalOverviewLive, {
+        workspaceId: "ws-2",
+        workspaceSlug: "acme",
+        initialOverview: baseOverview,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
+    expect(subscribeMock).toHaveBeenCalledTimes(2);
+    expect(subscribeMock.mock.calls[1]?.[1]).toBe("ws-2");
   });
 });
