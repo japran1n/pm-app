@@ -127,14 +127,22 @@ export function subscribeToMyTasksRealtime(
   // direct tests) that don't need to seed it.
   trackedTaskIds: Set<string> = new Set(),
 ): () => void {
-  const topic = `tasks:my-tasks:${userId}`;
+  // F003 (AS-007): each binding lives on its OWN Realtime channel/topic.
+  // Supabase reports SUBSCRIBED for a binding on an unpublished table and
+  // then silently delivers nothing for EVERY binding sharing that same
+  // channel -- co-locating `task_assignees` and `tasks` on one channel
+  // means a publication gap in either table silently kills BOTH streams.
+  // Splitting them means a dead binding on one topic can never take the
+  // other down with it (AS-008, AS-009).
+  const assigneesTopic = `tasks:my-tasks:${userId}:assignees`;
+  const tasksTopic = `tasks:my-tasks:${userId}:tasks`;
 
-  return acquireSharedTopicChannel<MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent>(
+  const releaseAssignees = acquireSharedTopicChannel<MyTasksRealtimeAssigneeEvent>(
     supabase,
-    topic,
+    assigneesTopic,
     (dispatch) =>
       supabase
-        .channel(topic)
+        .channel(assigneesTopic)
         .on(
           "postgres_changes",
           {
@@ -146,6 +154,41 @@ export function subscribeToMyTasksRealtime(
             dispatch(payload);
           },
         )
+        .subscribe(),
+    (event) => {
+      switch (event.eventType) {
+        case "INSERT": {
+          if (!hasValidTaskAssignee(event.new)) return;
+          const row = event.new as TaskAssigneeRow;
+          if (row.user_id !== userId) return;
+          // AS-011: `trackedTaskIds` is the SAME Set instance passed to
+          // the `tasks` channel's handler below -- an assignment learned
+          // here is immediately visible there, even if the `tasks`
+          // channel is (or later becomes) the dead one.
+          trackedTaskIds.add(row.task_id);
+          handlers.onAssigned(row.task_id);
+          return;
+        }
+        case "DELETE": {
+          if (!hasValidTaskAssignee(event.old)) return;
+          const row = event.old as TaskAssigneeRow;
+          if (row.user_id !== userId) return;
+          trackedTaskIds.delete(row.task_id);
+          handlers.onUnassigned(row.task_id);
+          return;
+        }
+        default:
+          return;
+      }
+    },
+  );
+
+  const releaseTasks = acquireSharedTopicChannel<MyTasksRealtimeTaskEvent>(
+    supabase,
+    tasksTopic,
+    (dispatch) =>
+      supabase
+        .channel(tasksTopic)
         .on(
           "postgres_changes",
           {
@@ -159,34 +202,10 @@ export function subscribeToMyTasksRealtime(
         )
         .subscribe(),
     (event) => {
-      if (event.table === "task_assignees") {
-        switch (event.eventType) {
-          case "INSERT": {
-            if (!hasValidTaskAssignee(event.new)) return;
-            const row = event.new as TaskAssigneeRow;
-            if (row.user_id !== userId) return;
-            trackedTaskIds.add(row.task_id);
-            handlers.onAssigned(row.task_id);
-            return;
-          }
-          case "DELETE": {
-            if (!hasValidTaskAssignee(event.old)) return;
-            const row = event.old as TaskAssigneeRow;
-            if (row.user_id !== userId) return;
-            trackedTaskIds.delete(row.task_id);
-            handlers.onUnassigned(row.task_id);
-            return;
-          }
-          default:
-            return;
-        }
-      }
-
-      // event.table === "tasks". AS-018: only forward events for tasks
-      // already tracked as "mine" -- an UPDATE/DELETE that's merely
-      // RLS-visible (a task in another project, or assigned to someone
-      // else) is not something this caller currently sees, so it must not
-      // be propagated.
+      // AS-018: only forward events for tasks already tracked as "mine"
+      // -- an UPDATE/DELETE that's merely RLS-visible (a task in another
+      // project, or assigned to someone else) is not something this
+      // caller currently sees, so it must not be propagated.
       switch (event.eventType) {
         case "UPDATE": {
           if (!hasValidId(event.new)) return;
@@ -208,6 +227,13 @@ export function subscribeToMyTasksRealtime(
       }
     },
   );
+
+  // AS-010: unsubscribe releases BOTH channels; no channel survives a
+  // caller's unmount.
+  return () => {
+    releaseAssignees();
+    releaseTasks();
+  };
 }
 
 /**

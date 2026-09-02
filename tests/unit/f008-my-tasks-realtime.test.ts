@@ -22,32 +22,46 @@ import {
   type MyTasksRealtimeTaskEvent,
 } from "@/components/my-tasks/use-my-tasks-realtime";
 
+// F003: two distinct channel objects, keyed by topic, since
+// `task_assignees` and `tasks` now each live on their own Realtime
+// channel -- a single shared `channelObject` would silently mask the
+// split this suite exists to verify.
 function createMockSupabaseClient() {
   const onCalls: Array<{
     event: string;
     filter: Record<string, unknown>;
     callback: (payload: MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent) => void;
+    topic: string;
   }> = [];
   const channelCalls: string[] = [];
   const removedChannels: unknown[] = [];
+  const channelObjectsByTopic = new Map<string, ReturnType<typeof makeChannelObject>>();
 
-  const channelObject = {
-    on: vi.fn(
-      (
-        event: string,
-        filter: Record<string, unknown>,
-        callback: (payload: MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent) => void,
-      ) => {
-        onCalls.push({ event, filter, callback });
-        return channelObject;
-      },
-    ),
-    subscribe: vi.fn(() => channelObject),
-  };
+  function makeChannelObject(topic: string) {
+    const channelObject = {
+      on: vi.fn(
+        (
+          event: string,
+          filter: Record<string, unknown>,
+          callback: (payload: MyTasksRealtimeTaskEvent | MyTasksRealtimeAssigneeEvent) => void,
+        ) => {
+          onCalls.push({ event, filter, callback, topic });
+          return channelObject;
+        },
+      ),
+      subscribe: vi.fn(() => channelObject),
+    };
+    return channelObject;
+  }
 
   const supabase = {
     channel: vi.fn((name: string) => {
       channelCalls.push(name);
+      let channelObject = channelObjectsByTopic.get(name);
+      if (!channelObject) {
+        channelObject = makeChannelObject(name);
+        channelObjectsByTopic.set(name, channelObject);
+      }
       return channelObject;
     }),
     removeChannel: vi.fn((ch: unknown) => {
@@ -55,7 +69,7 @@ function createMockSupabaseClient() {
     }),
   };
 
-  return { supabase, onCalls, channelCalls, removedChannels, channelObject };
+  return { supabase, onCalls, channelCalls, removedChannels, channelObjectsByTopic };
 }
 
 function callbackFor(
@@ -78,7 +92,12 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       onDelete: vi.fn(),
     });
 
-    expect(channelCalls).toEqual(["tasks:my-tasks:user-1"]);
+    // F003/AS-007: task_assignees and tasks now live on two distinct
+    // channels/topics, not one shared channel.
+    expect(channelCalls).toEqual([
+      "tasks:my-tasks:user-1:assignees",
+      "tasks:my-tasks:user-1:tasks",
+    ]);
     expect(onCalls).toHaveLength(2);
 
     const assigneesCall = onCalls.find((c) => c.filter.table === "task_assignees");
@@ -329,7 +348,12 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
       onDelete: vi.fn(),
     });
 
-    expect(channelCalls).toEqual(["tasks:my-tasks:user-1", "tasks:my-tasks:user-2"]);
+    expect(channelCalls).toEqual([
+      "tasks:my-tasks:user-1:assignees",
+      "tasks:my-tasks:user-1:tasks",
+      "tasks:my-tasks:user-2:assignees",
+      "tasks:my-tasks:user-2:tasks",
+    ]);
   });
 
   it("validates payload shape: drops a tasks UPDATE event whose new record has no id", () => {
@@ -406,8 +430,8 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
     expect(onUnassigned).not.toHaveBeenCalled();
   });
 
-  it("returns an unsubscribe function that removes the channel (deferred teardown, F329 pattern)", async () => {
-    const { supabase, removedChannels, channelObject } = createMockSupabaseClient();
+  it("AS-010: returns an unsubscribe function that removes BOTH channels (deferred teardown, F329 pattern)", async () => {
+    const { supabase, removedChannels, channelObjectsByTopic } = createMockSupabaseClient();
 
     const unsubscribe = subscribeToMyTasksRealtime(supabase as never, "user-1", {
       onAssigned: vi.fn(),
@@ -419,6 +443,151 @@ describe("subscribeToMyTasksRealtime (AS-015, AS-016, AS-017, AS-018)", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(removedChannels).toEqual([channelObject]);
+    const assigneesChannel = channelObjectsByTopic.get("tasks:my-tasks:user-1:assignees");
+    const tasksChannel = channelObjectsByTopic.get("tasks:my-tasks:user-1:tasks");
+    expect(removedChannels).toHaveLength(2);
+    expect(removedChannels).toEqual(expect.arrayContaining([assigneesChannel, tasksChannel]));
+  });
+
+  it("AS-007: opens task_assignees and tasks bindings on two distinct channel topics", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned: vi.fn(),
+      onUnassigned: vi.fn(),
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const assigneesCall = onCalls.find((c) => c.filter.table === "task_assignees");
+    const tasksCall = onCalls.find((c) => c.filter.table === "tasks");
+
+    expect(assigneesCall?.topic).toBe("tasks:my-tasks:user-1:assignees");
+    expect(tasksCall?.topic).toBe("tasks:my-tasks:user-1:tasks");
+    expect(assigneesCall?.topic).not.toBe(tasksCall?.topic);
+  });
+
+  it("AS-008: with the task_assignees binding dead, a tasks UPDATE for a tracked task still reaches onUpdate", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onUpdate = vi.fn();
+    // Seed the shared tracked-id set directly via the trackedTaskIds
+    // param rather than routing through the (dead) assignees channel, to
+    // simulate a task this session already knows about.
+    const trackedTaskIds = new Set<string>(["t1"]);
+
+    subscribeToMyTasksRealtime(
+      supabase as never,
+      "user-1",
+      {
+        onAssigned: vi.fn(),
+        onUnassigned: vi.fn(),
+        onUpdate,
+        onDelete: vi.fn(),
+      },
+      trackedTaskIds,
+    );
+
+    const tasksCallback = onCalls.find((c) => c.filter.table === "tasks")!.callback;
+
+    const payload = {
+      eventType: "UPDATE",
+      schema: "public",
+      table: "tasks",
+      new: { id: "t1", title: "Task 1", status: "done" },
+      old: { id: "t1", status: "todo" },
+    } as unknown as MyTasksRealtimeTaskEvent;
+
+    // Deliberately never invoke the assignees channel's callback -- it
+    // is "dead" for this test (e.g. its table isn't in the publication,
+    // so Supabase never delivers to it). If the two bindings were on one
+    // channel, killing the assignees binding would silently kill this
+    // tasks delivery too; on two channels it can't.
+    tasksCallback(payload);
+
+    expect(onUpdate).toHaveBeenCalledExactlyOnceWith(payload.new);
+  });
+
+  it("AS-009: with the tasks binding dead, a task_assignees INSERT for the current user still reaches onAssigned", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onAssigned = vi.fn();
+
+    subscribeToMyTasksRealtime(supabase as never, "user-1", {
+      onAssigned,
+      onUnassigned: vi.fn(),
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    });
+
+    const assigneesCallback = onCalls.find((c) => c.filter.table === "task_assignees")!.callback;
+
+    // Deliberately never call the tasks channel's callback -- it is
+    // "dead" for this test.
+    const payload = {
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-1" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent;
+
+    assigneesCallback(payload);
+
+    expect(onAssigned).toHaveBeenCalledExactlyOnceWith("t1");
+  });
+
+  it("AS-011: an assignment learned on the assignees channel makes a tasks UPDATE for that id deliverable on the tasks channel", () => {
+    const { supabase, onCalls } = createMockSupabaseClient();
+    const onUpdate = vi.fn();
+    const trackedTaskIds = new Set<string>();
+
+    subscribeToMyTasksRealtime(
+      supabase as never,
+      "user-1",
+      {
+        onAssigned: vi.fn(),
+        onUnassigned: vi.fn(),
+        onUpdate,
+        onDelete: vi.fn(),
+      },
+      trackedTaskIds,
+    );
+
+    const assigneesCallback = onCalls.find((c) => c.filter.table === "task_assignees")!.callback;
+    const tasksCallback = onCalls.find((c) => c.filter.table === "tasks")!.callback;
+
+    // Before any assignment event, a tasks UPDATE for "t1" is not
+    // forwarded -- it isn't tracked yet.
+    const preAssignmentPayload = {
+      eventType: "UPDATE",
+      schema: "public",
+      table: "tasks",
+      new: { id: "t1", status: "todo" },
+      old: { id: "t1", status: "backlog" },
+    } as unknown as MyTasksRealtimeTaskEvent;
+    tasksCallback(preAssignmentPayload);
+    expect(onUpdate).not.toHaveBeenCalled();
+
+    // Assignment arrives on the OTHER (assignees) channel.
+    assigneesCallback({
+      eventType: "INSERT",
+      schema: "public",
+      table: "task_assignees",
+      new: { task_id: "t1", user_id: "user-1" },
+      old: {},
+    } as unknown as MyTasksRealtimeAssigneeEvent);
+
+    // Now a tasks UPDATE for the same id, delivered on the SEPARATE tasks
+    // channel, is forwarded -- proving the tracked-id set is shared
+    // across both channels rather than scoped per-channel.
+    const postAssignmentPayload = {
+      eventType: "UPDATE",
+      schema: "public",
+      table: "tasks",
+      new: { id: "t1", status: "done" },
+      old: { id: "t1", status: "todo" },
+    } as unknown as MyTasksRealtimeTaskEvent;
+    tasksCallback(postAssignmentPayload);
+
+    expect(onUpdate).toHaveBeenCalledExactlyOnceWith(postAssignmentPayload.new);
   });
 });
