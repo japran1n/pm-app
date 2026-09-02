@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle2, Clock3 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 import {
   getPortalProjects,
@@ -10,6 +10,10 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
+// F008 (AS-018, AS-019, AS-020, AS-024): the only two regions on this page
+// that need to update live -- see that component's own header comment for
+// why the rest of the page stays a plain server-rendered RSC.
+import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
 
 function formatDate(iso: string): string {
   // Same fixed en-GB short form as project-progress.tsx, for the same
@@ -107,69 +111,11 @@ export default async function PortalOverviewPage({
           recently?" — surfaced above the project grid instead of buried
           inside each project's own task list. */}
       {projects.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-            <div className="flex items-center gap-2">
-              <Clock3
-                aria-hidden="true"
-                className="size-4 text-amber-600 dark:text-amber-400"
-              />
-              <h2 className="text-sm font-semibold">Waiting on you</h2>
-            </div>
-            {overview.waitingOnYou.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nothing waiting on you right now.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {overview.waitingOnYou.map((task) => (
-                  <li key={task.id}>
-                    <Link
-                      href={`/portal/${workspace.slug}/t/${task.id}`}
-                      className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate">{task.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {task.projectName}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-            <div className="flex items-center gap-2">
-              <CheckCircle2
-                aria-hidden="true"
-                className="size-4 text-emerald-600 dark:text-emerald-400"
-              />
-              <h2 className="text-sm font-semibold">Delivered this week</h2>
-            </div>
-            {overview.deliveredThisWeek.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Nothing delivered in the last 7 days.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {overview.deliveredThisWeek.map((task) => (
-                  <li key={task.id}>
-                    <Link
-                      href={`/portal/${workspace.slug}/t/${task.id}`}
-                      className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate">{task.title}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {formatDate(task.updatedAt)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+        <PortalOverviewLive
+          workspaceId={workspace.id}
+          workspaceSlug={workspace.slug}
+          initialOverview={overview}
+        />
       )}
 
       {projects.length === 0 ? (
