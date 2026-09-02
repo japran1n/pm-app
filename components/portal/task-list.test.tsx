@@ -10,6 +10,13 @@
 // `subscribeToPortalTaskListRealtime` itself is the real implementation, so
 // deleting the subscription call, the `client_visible`/`deleted_at` gate,
 // or the unmount teardown breaks these tests, not just the code.
+//
+// F023: the effect now routes through `subscribeWhenAuthenticated`
+// (lib/realtime/subscribe-when-authenticated.ts), which awaits
+// `auth.getSession()` + `realtime.setAuth()` before ever calling
+// `.channel()`. The mock client below provides both (resolving
+// immediately by default), and `flushAuthHydration()` drains that real
+// microtask chain after render.
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,6 +54,14 @@ function makeFakeSupabase() {
     removeChannel: vi.fn((channel: unknown) => {
       removeChannelCalls.push(channel);
     }),
+    auth: {
+      getSession: vi.fn(() =>
+        Promise.resolve({
+          data: { session: { access_token: "test-access-token" } },
+        }),
+      ),
+    },
+    realtime: { setAuth: vi.fn(() => Promise.resolve()) },
   };
 }
 
@@ -62,6 +77,18 @@ function tasksCallback() {
   const match = onCalls.find((call) => call.filter.table === "tasks");
   if (!match) throw new Error('no .on() callback captured for table "tasks"');
   return match.callback;
+}
+
+// Drains the real `getSession().then(...).then(setAuth).then(subscribe)`
+// microtask chain `subscribeWhenAuthenticated` runs before ever touching
+// `.channel()`. Not a shortcut around that path -- the mocked promises
+// above resolve for real, this just waits for them under `act`.
+async function flushAuthHydration() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 afterEach(() => {
@@ -103,8 +130,9 @@ const project: PortalProject = {
 };
 
 describe("PortalTaskList (F009)", () => {
-  it("test_AS_021_status_or_title_change_lands_live", () => {
+  it("test_AS_021_status_or_title_change_lands_live", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
 
     expect(screen.getByText("Draft homepage copy")).toBeInTheDocument();
 
@@ -128,8 +156,9 @@ describe("PortalTaskList (F009)", () => {
     expect(screen.queryByText("Draft homepage copy")).not.toBeInTheDocument();
   });
 
-  it("test_AS_021_status_change_to_done_moves_row_and_updates_heading_live", () => {
+  it("test_AS_021_status_change_to_done_moves_row_and_updates_heading_live", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
 
     // Seeded status "In review" always renders "Waiting on your review"
     // (name-based override in clientStatusLabel), regardless of category.
@@ -162,8 +191,9 @@ describe("PortalTaskList (F009)", () => {
     expect(screen.getByText(/Delivered/i)).toBeInTheDocument();
   });
 
-  it("test_AS_022_delete_removes_the_row_live", () => {
+  it("test_AS_022_delete_removes_the_row_live", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
     expect(screen.getByText("Draft homepage copy")).toBeInTheDocument();
 
     const callback = tasksCallback();
@@ -180,8 +210,9 @@ describe("PortalTaskList (F009)", () => {
     expect(screen.getByText("Nothing shared yet")).toBeInTheDocument();
   });
 
-  it("test_AS_022_client_visible_false_removes_the_row_live", () => {
+  it("test_AS_022_client_visible_false_removes_the_row_live", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
     expect(screen.getByText("Draft homepage copy")).toBeInTheDocument();
 
     const callback = tasksCallback();
@@ -204,8 +235,9 @@ describe("PortalTaskList (F009)", () => {
     expect(screen.getByText("Nothing shared yet")).toBeInTheDocument();
   });
 
-  it("test_AS_022_update_for_a_different_project_is_ignored", () => {
+  it("test_AS_022_update_for_a_different_project_is_ignored", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
     const callback = tasksCallback();
     act(() => {
       callback({
@@ -227,11 +259,12 @@ describe("PortalTaskList (F009)", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("test_AS_024_channel_torn_down_on_unmount", () => {
+  it("test_AS_024_channel_torn_down_on_unmount", async () => {
     vi.useFakeTimers();
     const { unmount } = render(
       <PortalTaskList project={project} workspaceSlug="acme" />,
     );
+    await flushAuthHydration();
 
     expect(channelCalls).toContain("portal:project:project-1:tasks");
 
@@ -244,16 +277,18 @@ describe("PortalTaskList (F009)", () => {
     expect(currentSupabase.removeChannel).toHaveBeenCalledTimes(1);
   });
 
-  it("test_AS_024_no_channel_leak_across_remount", () => {
+  it("test_AS_024_no_channel_leak_across_remount", async () => {
     vi.useFakeTimers();
     const { unmount } = render(
       <PortalTaskList project={project} workspaceSlug="acme" />,
     );
+    await flushAuthHydration();
     unmount();
 
     const { unmount: unmountTwo } = render(
       <PortalTaskList project={project} workspaceSlug="acme" />,
     );
+    await flushAuthHydration();
     unmountTwo();
 
     act(() => {
@@ -266,5 +301,55 @@ describe("PortalTaskList (F009)", () => {
       channelCalls.filter((name) => name === "portal:project:project-1:tasks")
         .length,
     ).toBe(1);
+  });
+
+  // F023: closes the regression scrutiny-2 found in F012's own fix -- an
+  // unmount that happens BEFORE `getSession()` resolves must never let the
+  // deferred `subscribe()` call run afterwards. Reverting the `cancelled`
+  // guard in `lib/realtime/subscribe-when-authenticated.ts` makes this
+  // fail (a channel gets created after the component is already gone).
+  it("test_AS_024_unmount_before_session_resolves_never_subscribes", async () => {
+    let resolveSession: (value: {
+      data: { session: { access_token: string } | null };
+    }) => void = () => {};
+    currentSupabase.auth.getSession = vi.fn(
+      () =>
+        new Promise<{
+          data: { session: { access_token: string } | null };
+        }>((resolve) => {
+          resolveSession = resolve;
+        }),
+    ) as typeof currentSupabase.auth.getSession;
+
+    const { unmount } = render(
+      <PortalTaskList project={project} workspaceSlug="acme" />,
+    );
+
+    // Unmount happens before `getSession()` ever resolves.
+    unmount();
+
+    resolveSession({ data: { session: { access_token: "late-token" } } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(channelCalls).not.toContain("portal:project:project-1:tasks");
+  });
+
+  // F023: a rejected `getSession()` must not surface as an unhandled
+  // promise rejection and must leave the mount with no live subscription,
+  // not a silently-anonymous one.
+  it("test_AS_024_rejected_getSession_does_not_throw_or_subscribe", async () => {
+    currentSupabase.auth.getSession = vi.fn(() =>
+      Promise.reject(new Error("network down")),
+    ) as typeof currentSupabase.auth.getSession;
+
+    render(<PortalTaskList project={project} workspaceSlug="acme" />);
+
+    await flushAuthHydration();
+
+    expect(channelCalls).not.toContain("portal:project:project-1:tasks");
   });
 });

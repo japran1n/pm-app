@@ -30,6 +30,7 @@ import { clientStatusLabel } from "@/components/portal/status-label";
 import { EmptyState } from "@/components/empty-state";
 import { createClient } from "@/lib/supabase/client";
 import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   reconcilePortalRealtimeTask,
   type PortalRealtimeRow,
@@ -265,13 +266,19 @@ export function PortalTaskList({
 
   useEffect(() => {
     const supabase = createClient();
-    const unsubscribe = subscribeToPortalTaskListRealtime(
-      supabase,
-      project.id,
-      setTasks,
-      buildCategoryLookup(project.statuses),
+    // F023: awaits session hydration before subscribing (see
+    // lib/realtime/subscribe-when-authenticated.ts) -- without it, a
+    // channel created on a fresh page load joins unauthenticated and
+    // every RLS-gated UPDATE this subscription exists to deliver (AS-021,
+    // AS-022) is silently filtered out.
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToPortalTaskListRealtime(
+        client,
+        project.id,
+        setTasks,
+        buildCategoryLookup(project.statuses),
+      ),
     );
-    return unsubscribe;
   }, [project.id, project.statuses]);
 
   const groups = groupTasks(tasks);

@@ -7,6 +7,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToPortalOverviewRealtime,
   type PortalOverviewRealtimeEvent,
@@ -19,6 +20,16 @@ export type { PortalOverviewRealtimeEvent };
  * portal overview for `workspaceId`. Calls `onChange` for every event
  * received while mounted. Cleanup (unsubscribe) happens automatically on
  * unmount or when `workspaceId` changes (AS-024).
+ *
+ * F012 diagnosed a real Realtime auth-hydration race here: on a fresh page
+ * load, `createClient()`'s underlying Realtime socket starts unauthenticated
+ * and only adopts the real session's JWT once `@supabase/ssr`'s async
+ * cookie hydration resolves. A channel created before that finishes joins
+ * unauthenticated and every RLS-gated INSERT/UPDATE is silently filtered
+ * out (confirmed live, tests/e2e/portal-approve.spec.ts, AS-029). F023
+ * hoisted that fix into `subscribeWhenAuthenticated` (see
+ * lib/realtime/subscribe-when-authenticated.ts) so every portal subscriber
+ * gets it, not just this one.
  */
 export function usePortalOverviewRealtime(
   workspaceId: string,
@@ -27,54 +38,10 @@ export function usePortalOverviewRealtime(
   useEffect(() => {
     if (!workspaceId) return;
 
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-
     const supabase = createClient();
-
-    // F012: on a fresh page load, `createClient()`'s underlying Realtime
-    // socket starts with `accessTokenValue === null` (unauthenticated) and
-    // only adopts the real session's JWT once `@supabase/ssr`'s async
-    // cookie hydration completes and fires its own internal
-    // `onAuthStateChange` -> `realtime.setAuth(token)`. If a channel is
-    // created and `.subscribe()`d BEFORE that resolves (as this effect
-    // used to do, synchronously on mount), the join is sent
-    // unauthenticated -- confirmed live against the real linked Supabase
-    // project (tests/e2e/portal-approve.spec.ts, AS-029): the channel
-    // still reports "Subscribed to PostgreSQL", so this fails silently.
-    // An UNAUTHENTICATED join receives every table-wide DELETE (Realtime
-    // does not apply RLS to DELETE payloads at all) but is filtered out of
-    // every RLS-gated INSERT/UPDATE -- exactly the failure mode observed:
-    // the client's own approval UPDATE never arrived on this channel.
-    // Once the real session's `setAuth(token)` DOES eventually fire, a
-    // race inside `@supabase/realtime-js`'s `_performAuth` (multiple
-    // concurrent `setAuth` calls racing on the same `accessTokenValue`
-    // comparison) can drop the token push to an already-joined channel
-    // entirely, so the anon-scoped join never gets upgraded either.
-    // Fix: explicitly await the session and hand its JWT to
-    // `realtime.setAuth()` BEFORE ever creating the channel, so the very
-    // first `phx_join` this effect sends already carries the real,
-    // authenticated `access_token` -- no race, no silent anon fallback.
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      const accessToken = data.session?.access_token;
-      const afterAuth = accessToken
-        ? supabase.realtime.setAuth(accessToken)
-        : Promise.resolve();
-      afterAuth.then(() => {
-        if (cancelled) return;
-        unsubscribe = subscribeToPortalOverviewRealtime(
-          supabase,
-          workspaceId,
-          onChange,
-        );
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToPortalOverviewRealtime(client, workspaceId, onChange),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 }

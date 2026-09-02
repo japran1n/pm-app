@@ -24,22 +24,34 @@ afterEach(() => {
   cleanup();
   unsubscribeSpy.mockClear();
   capturedOnChange = undefined;
+  getSessionMock = vi.fn(() =>
+    Promise.resolve({
+      data: { session: { access_token: "test-access-token" } },
+    }),
+  );
 });
 
-// F012: usePortalOverviewRealtime now awaits `auth.getSession()` and hands
-// its token to `realtime.setAuth()` BEFORE subscribing (fixes AS-029's
-// real-world unauthenticated-join race -- see that hook's own comment).
-// The mocked client needs both, resolving immediately, so this component
-// test's existing synchronous `capturedOnChange` assertions keep working
-// without adding a real async wait to every test below.
+// F012/F023: usePortalOverviewRealtime (via the shared
+// `subscribeWhenAuthenticated` helper) now awaits `auth.getSession()` and
+// hands its token to `realtime.setAuth()` BEFORE subscribing (fixes
+// AS-029's real-world unauthenticated-join race -- see that helper's own
+// comment). The mocked client needs both, resolving immediately by
+// default, so this component test's existing synchronous
+// `capturedOnChange` assertions keep working without adding a real async
+// wait to every test below. `getSessionMock` is reassignable per-test so
+// the AS-024 regression tests below can exercise a pending/rejected
+// session promise.
+let getSessionMock: () => Promise<{
+  data: { session: { access_token: string } | null };
+}> = vi.fn(() =>
+  Promise.resolve({
+    data: { session: { access_token: "test-access-token" } },
+  }),
+);
 vi.mock("@/lib/supabase/client", () => ({
   createClient: vi.fn(() => ({
     auth: {
-      getSession: vi.fn(() =>
-        Promise.resolve({
-          data: { session: { access_token: "test-access-token" } },
-        }),
-      ),
+      getSession: (...args: unknown[]) => getSessionMock(...(args as [])),
     },
     realtime: { setAuth: vi.fn(() => Promise.resolve()) },
   })),
@@ -267,5 +279,66 @@ describe("PortalOverviewLive", () => {
     expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
     expect(subscribeMock).toHaveBeenCalledTimes(2);
     expect(subscribeMock.mock.calls[1]?.[1]).toBe("ws-2");
+  });
+
+  // F023: closes the regression scrutiny-2 found in F012's own fix -- an
+  // unmount that happens BEFORE `getSession()` resolves must never let the
+  // deferred `subscribe()` call run afterwards. Reverting the `cancelled`
+  // guard in `lib/realtime/subscribe-when-authenticated.ts` makes this
+  // fail (subscribeMock gets called after unmount).
+  it("test_AS_024_unmount_before_session_resolves_never_subscribes", async () => {
+    let resolveSession: (value: {
+      data: { session: { access_token: string } | null };
+    }) => void = () => {};
+    getSessionMock = vi.fn(
+      () =>
+        new Promise<{
+          data: { session: { access_token: string } | null };
+        }>((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+
+    const { unmount } = render(
+      createElement(PortalOverviewLive, {
+        workspaceId: "ws-1",
+        workspaceSlug: "acme",
+        initialOverview: baseOverview,
+      }),
+    );
+
+    // Unmount happens before `getSession()` ever resolves.
+    unmount();
+
+    resolveSession({ data: { session: { access_token: "late-token" } } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(subscribeMock).not.toHaveBeenCalled();
+  });
+
+  // F023: a rejected `getSession()` must not surface as an unhandled
+  // promise rejection and must leave the mount with no live subscription.
+  it("test_AS_024_rejected_getSession_does_not_throw_or_subscribe", async () => {
+    getSessionMock = vi.fn(() => Promise.reject(new Error("network down")));
+
+    render(
+      createElement(PortalOverviewLive, {
+        workspaceId: "ws-1",
+        workspaceSlug: "acme",
+        initialOverview: baseOverview,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(subscribeMock).not.toHaveBeenCalled();
   });
 });

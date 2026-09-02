@@ -5,6 +5,13 @@
 // `acquireSharedTopicChannel`, and that a genuine `postgres_changes`
 // payload flowing through the mocked Supabase channel changes the
 // rendered list without a page reload.
+//
+// F023: the effect now routes through `subscribeWhenAuthenticated`
+// (lib/realtime/subscribe-when-authenticated.ts), which awaits
+// `auth.getSession()` + `realtime.setAuth()` before ever calling
+// `.channel()`. The mock client below provides both (resolving
+// immediately by default), and `flushAuthHydration()` drains that real
+// microtask chain after render.
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -51,6 +58,14 @@ function makeFakeSupabase() {
       return channelObject;
     }),
     removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn(() =>
+        Promise.resolve({
+          data: { session: { access_token: "test-access-token" } },
+        }),
+      ),
+    },
+    realtime: { setAuth: vi.fn(() => Promise.resolve()) },
   };
 }
 
@@ -65,6 +80,17 @@ function requestsCallback() {
     throw new Error('no .on() callback captured for table "client_requests"');
   }
   return match.callback;
+}
+
+// Drains the real `getSession().then(...).then(setAuth).then(subscribe)`
+// microtask chain `subscribeWhenAuthenticated` runs before ever touching
+// `.channel()`.
+async function flushAuthHydration() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 afterEach(() => {
@@ -91,8 +117,9 @@ const seedRequest: PortalRequest = {
 };
 
 describe("RequestList (F009)", () => {
-  it("test_AS_023_insert_lands_live", () => {
+  it("test_AS_023_insert_lands_live", async () => {
     render(<RequestList requests={[]} />);
+    await flushAuthHydration();
 
     expect(screen.getByText("No requests yet")).toBeInTheDocument();
 
@@ -118,8 +145,9 @@ describe("RequestList (F009)", () => {
     expect(screen.getByText("New live request")).toBeInTheDocument();
   });
 
-  it("test_AS_023_status_change_lands_live", () => {
+  it("test_AS_023_status_change_lands_live", async () => {
     render(<RequestList requests={[seedRequest]} />);
+    await flushAuthHydration();
 
     expect(screen.getByText("Waiting for review")).toBeInTheDocument();
 
@@ -146,9 +174,10 @@ describe("RequestList (F009)", () => {
     expect(screen.queryByText("Waiting for review")).not.toBeInTheDocument();
   });
 
-  it("test_AS_024_channel_torn_down_on_unmount", () => {
+  it("test_AS_024_channel_torn_down_on_unmount", async () => {
     vi.useFakeTimers();
     const { unmount } = render(<RequestList requests={[seedRequest]} />);
+    await flushAuthHydration();
 
     expect(channelCalls).toContain("portal:client-requests");
 
@@ -158,5 +187,49 @@ describe("RequestList (F009)", () => {
     });
 
     expect(currentSupabase.removeChannel).toHaveBeenCalledTimes(1);
+  });
+
+  // F023: closes the regression scrutiny-2 found in F012's fix on the
+  // sibling overview hook -- an unmount before `getSession()` resolves
+  // must never let the deferred `subscribe()` call run afterwards.
+  it("test_AS_024_unmount_before_session_resolves_never_subscribes", async () => {
+    let resolveSession: (value: {
+      data: { session: { access_token: string } | null };
+    }) => void = () => {};
+    currentSupabase.auth.getSession = vi.fn(
+      () =>
+        new Promise<{
+          data: { session: { access_token: string } | null };
+        }>((resolve) => {
+          resolveSession = resolve;
+        }),
+    ) as typeof currentSupabase.auth.getSession;
+
+    const { unmount } = render(<RequestList requests={[seedRequest]} />);
+
+    unmount();
+
+    resolveSession({ data: { session: { access_token: "late-token" } } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(channelCalls).not.toContain("portal:client-requests");
+  });
+
+  // F023: a rejected `getSession()` must not surface as an unhandled
+  // promise rejection and must leave the mount with no live subscription.
+  it("test_AS_024_rejected_getSession_does_not_throw_or_subscribe", async () => {
+    currentSupabase.auth.getSession = vi.fn(() =>
+      Promise.reject(new Error("network down")),
+    ) as typeof currentSupabase.auth.getSession;
+
+    render(<RequestList requests={[seedRequest]} />);
+
+    await flushAuthHydration();
+
+    expect(channelCalls).not.toContain("portal:client-requests");
   });
 });

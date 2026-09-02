@@ -26,6 +26,7 @@ import type { PortalRequest } from "@/lib/queries/portal";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 
 const STATUS_LABEL: Record<PortalRequest["status"], string> = {
   submitted: "Waiting for review",
@@ -162,11 +163,14 @@ export function RequestList({ requests }: { requests: PortalRequest[] }) {
 
   useEffect(() => {
     const supabase = createClient();
-    const unsubscribe = subscribeToPortalRequestListRealtime(
-      supabase,
-      setLiveRequests,
+    // F023: awaits session hydration before subscribing (see
+    // lib/realtime/subscribe-when-authenticated.ts) -- without it, a
+    // channel created on a fresh page load joins unauthenticated and the
+    // RLS-gated inserts/updates AS-023 depends on are silently filtered
+    // out.
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToPortalRequestListRealtime(client, setLiveRequests),
     );
-    return unsubscribe;
   }, []);
 
   if (liveRequests.length === 0) {
