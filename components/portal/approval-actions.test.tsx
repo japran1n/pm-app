@@ -5,7 +5,7 @@
 // `next/navigation` router so `router.refresh()` calls are observable
 // without a real Next.js app tree.
 
-import { createElement } from "react";
+import { createElement, type ReactNode, type MouseEventHandler } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -110,6 +110,68 @@ describe("PortalApprovalActions (F005)", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
+  it("test_AS_014_ref_is_cleared_after_a_rejected_action_allowing_retry", async () => {
+    const first = deferred<never>();
+    approveMock.mockReturnValueOnce(first.promise);
+
+    render(createElement(PortalApprovalActions, { taskId: "task-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
+
+    first.reject(new Error("network down"));
+
+    // Reverts to the pre-click state — the Approve button is back.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument(),
+    );
+    expect(approveMock).toHaveBeenCalledTimes(1);
+
+    // The in-flight ref must have been cleared on the failure path (not
+    // only on success) — otherwise the button is permanently inert and the
+    // user can never retry without a reload. A fresh click after the
+    // failure must issue a genuinely new call. `disabled` is stripped
+    // defensively before clicking so this exercises the ref guard itself
+    // (`inFlightRef.current`), not React's own `isPending` render timing,
+    // which is not what AS-014 is about.
+    const second = deferred<{ ok: true; data: { taskId: string } }>();
+    approveMock.mockReturnValueOnce(second.promise);
+    const retryButton = screen.getByRole("button", { name: /approve/i });
+    retryButton.removeAttribute("disabled");
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
+    second.resolve({ ok: true, data: { taskId: "task-1" } });
+  });
+
+  it("test_AS_014_ref_is_cleared_after_ok_false_allowing_retry", async () => {
+    const first = deferred<{ ok: false; error: string }>();
+    approveMock.mockReturnValueOnce(first.promise);
+
+    render(createElement(PortalApprovalActions, { taskId: "task-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
+
+    first.resolve({ ok: false, error: "Task not found." });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument(),
+    );
+    expect(approveMock).toHaveBeenCalledTimes(1);
+
+    const second = deferred<{ ok: true; data: { taskId: string } }>();
+    approveMock.mockReturnValueOnce(second.promise);
+    const retryButton = screen.getByRole("button", { name: /approve/i });
+    retryButton.removeAttribute("disabled");
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
+    second.resolve({ ok: true, data: { taskId: "task-1" } });
+  });
+
   it("test_AS_015_second_synchronous_approve_click_issues_no_second_call", async () => {
     const { promise } = deferred<{ ok: true; data: { taskId: string } }>();
     approveMock.mockReturnValue(promise);
@@ -179,6 +241,69 @@ describe("PortalApprovalActions (F005)", () => {
     fireEvent.click(sendButton);
 
     expect(requestChangesMock).not.toHaveBeenCalled();
+  });
+
+  it("test_AS_016_handler_guard_rejects_whitespace_only_message_even_when_enabled", async () => {
+    // The real `Button` (`@/components/ui/button`, Base UI) enforces its
+    // own `disabled` prop entirely inside its click handler's JS closure —
+    // stripping the DOM `disabled`/`data-disabled` attributes does not
+    // bypass it (`useButton`'s `getButtonProps().onClick` reads the
+    // `disabled` argument captured at render time, not the DOM node), so a
+    // click never reaches `handleRequestChanges` while the button element
+    // itself is disabled. That means the *only* thing standing between a
+    // whitespace-only message and a server call, from this test's point of
+    // view, is `handleRequestChanges`'s own `if (!trimmed) return;` guard —
+    // exactly what AS-016 is about, not the UI affordance. To exercise that
+    // guard "with the button enabled" this test remounts the component
+    // against a stub Button that forwards `onClick` unconditionally (still
+    // rendering a `data-disabled` marker so the affordance is inspectable)
+    // so a click always reaches the real handler regardless of the
+    // disabled prop, and only the component's own guard can block it.
+    vi.resetModules();
+    vi.doMock("@/components/ui/button", () => ({
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        ...rest
+      }: {
+        children?: ReactNode;
+        disabled?: boolean;
+        onClick?: MouseEventHandler<HTMLButtonElement>;
+        [key: string]: unknown;
+      }) =>
+        createElement(
+          "button",
+          { ...rest, "data-disabled": disabled ? "" : undefined, onClick },
+          children,
+        ),
+    }));
+
+    const { PortalApprovalActions: UnguardedUiComponent } = await import(
+      "./approval-actions"
+    );
+
+    render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
+      target: { value: "   " },
+    });
+
+    const sendButton = screen.getByRole("button", { name: /^send$/i });
+    // The stub still marks the button as disabled for inspection, but does
+    // not enforce it — so this click genuinely reaches
+    // `handleRequestChanges` with `trimmed === ""`.
+    expect(sendButton).toHaveAttribute("data-disabled", "");
+    fireEvent.click(sendButton);
+
+    expect(requestChangesMock).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/sent — the team will follow up/i),
+    ).not.toBeInTheDocument();
+
+    vi.doUnmock("@/components/ui/button");
+    vi.resetModules();
   });
 
   it("test_AS_016_second_synchronous_send_click_issues_no_second_call", async () => {
