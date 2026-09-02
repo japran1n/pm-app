@@ -170,11 +170,40 @@ export async function requestPortalTaskChanges(
   const caller = await requireClientCaller(resolved.workspaceId);
   if (!caller.ok) return caller;
 
+  // Unlike Approve's fixed trail comment (best-effort, posted *after* the
+  // flag flips, because the approval itself is the payload there), the
+  // client's own message here IS the payload -- "request changes" without
+  // the note is meaningless to the team. So the ordering is deliberately
+  // the opposite of approvePortalTask: post the comment FIRST, and only
+  // flip `pending_client_approval` once it has landed. If addComment
+  // fails, we return before touching the RPC, so the row is still pending
+  // and `assert_portal_task_actionable_by_client`'s `v_pending` check will
+  // let the client retry with the same message instead of being told
+  // "task not found" forever.
+  const commentResult = await addComment(
+    parsed.data.taskId,
+    `Requested changes: ${parsed.data.message}`,
+  );
+
+  if (!commentResult.ok) {
+    logger.error("requestPortalTaskChanges: comment failed", { error: commentResult.error });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
   // Same reasoning as approvePortalTask above: a plain RLS-respecting
   // UPDATE is not reachable for a `client` role, so this routes through
   // `request_portal_task_changes_atomic` (20260906010000), the sibling of
   // `approve_portal_task_atomic` that shares the same caller/visibility/
   // pending re-verification via `assert_portal_task_actionable_by_client`.
+  //
+  // If this RPC call fails after the comment above already landed, the
+  // client's note is not lost (it's already a comment on the task) and the
+  // row is still pending, so a retry is safe -- at worst it re-posts an
+  // identical "Requested changes: ..." comment, which is an acceptable
+  // trade-off against silently discarding the client's writing.
   const supabase = await createClient();
   const { error: updateError } = await supabase.rpc(
     "request_portal_task_changes_atomic",
@@ -183,22 +212,6 @@ export async function requestPortalTaskChanges(
 
   if (updateError) {
     logger.error("requestPortalTaskChanges: update failed", { error: updateError });
-    return {
-      ok: false,
-      error: "Something went wrong. Please try again in a moment.",
-    };
-  }
-
-  // Unlike Approve's fixed trail comment, the client's own message IS the
-  // comment — that's the whole point of "request changes" over a bare
-  // reject: the team gets the actual note, not just a status flip.
-  const commentResult = await addComment(
-    parsed.data.taskId,
-    `Requested changes: ${parsed.data.message}`,
-  );
-
-  if (!commentResult.ok) {
-    logger.error("requestPortalTaskChanges: comment failed", { error: commentResult.error });
     return {
       ok: false,
       error: "Something went wrong. Please try again in a moment.",

@@ -37,6 +37,7 @@ type MockOpts = {
 
 let opts: MockOpts;
 let rpcCalls: { name: string; args: unknown }[];
+let commentCalls: { taskId: string; message: string }[];
 
 function makeAdminClient() {
   return {
@@ -104,11 +105,14 @@ vi.mock("next/cache", () => ({
 }));
 
 vi.mock("@/lib/actions/comments", () => ({
-  addComment: async () => ({
-    ok: opts.addCommentOk ?? true,
-    data: opts.addCommentOk === false ? undefined : { id: "c1" },
-    error: opts.addCommentOk === false ? "comment failed" : undefined,
-  }),
+  addComment: async (taskId: string, message: string) => {
+    commentCalls.push({ taskId, message });
+    return {
+      ok: opts.addCommentOk ?? true,
+      data: opts.addCommentOk === false ? undefined : { id: "c1" },
+      error: opts.addCommentOk === false ? "comment failed" : undefined,
+    };
+  },
 }));
 
 function sharedPendingTask(): TaskRow {
@@ -134,6 +138,7 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
   beforeEach(() => {
     vi.resetModules();
     rpcCalls = [];
+    commentCalls = [];
     opts = defaultOpts();
   });
 
@@ -302,5 +307,64 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
     const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
     const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
     expect(result.ok).toBe(false);
+  });
+
+  // FU-R (scrutiny-3.md MAJOR-3): when the trail comment fails, the task
+  // must stay retryable -- the flag must NOT have been flipped, so a
+  // second attempt with the same message can still succeed instead of
+  // permanently raising "task not found".
+  it("test_AS_016_request_changes_comment_failure_leaves_the_task_pending_and_retryable", async () => {
+    opts.addCommentOk = false;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+
+    expect(result.ok).toBe(false);
+    // The comment was attempted with the client's real message -- it was
+    // not silently discarded before being written.
+    expect(commentCalls).toEqual([
+      { taskId: TASK_ID, message: "Requested changes: please fix this" },
+    ]);
+    // Crucially, the RPC that flips `pending_client_approval` to false was
+    // never called, so the task is left exactly as pending as it was
+    // before the click -- a retry re-enters the same code path instead of
+    // failing the RPC's `v_pending` check with a generic "task not found".
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("test_AS_016_request_changes_posts_the_comment_before_flipping_the_pending_flag", async () => {
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+
+    expect(result.ok).toBe(true);
+    expect(commentCalls).toEqual([
+      { taskId: TASK_ID, message: "Requested changes: please fix this" },
+    ]);
+    expect(rpcCalls).toEqual([
+      {
+        name: "request_portal_task_changes_atomic",
+        args: { p_task_id: TASK_ID },
+      },
+    ]);
+  });
+
+  it("test_AS_016_request_changes_retry_after_a_comment_failure_succeeds_with_the_same_message", async () => {
+    opts.addCommentOk = false;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const first = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(first.ok).toBe(false);
+    expect(rpcCalls).toHaveLength(0);
+
+    // Simulate the transient failure clearing and the client retrying with
+    // the same message -- the task is still pending (never flipped above),
+    // so the RPC's `v_pending` gate still lets this through.
+    opts.addCommentOk = true;
+    const second = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(second.ok).toBe(true);
+    expect(rpcCalls).toEqual([
+      {
+        name: "request_portal_task_changes_atomic",
+        args: { p_task_id: TASK_ID },
+      },
+    ]);
   });
 });
