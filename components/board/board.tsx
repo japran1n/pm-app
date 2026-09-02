@@ -53,6 +53,13 @@ import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { calculatePosition } from "@/lib/board/position";
 import { reconcileTask } from "@/lib/board/reconcile-realtime-task";
+import {
+  createPendingMoves,
+  addPendingMove as addPendingMoveImpl,
+  releasePendingMove as releasePendingMoveImpl,
+  shouldSkipRealtimeUpdate,
+  type PendingMoves,
+} from "@/lib/board/pending-moves";
 import { BoardColumn } from "@/components/board/board-column";
 import { TaskCard, type TaskCardTask } from "@/components/task/task-card";
 import { useBoardRealtime } from "@/components/board/use-board-realtime";
@@ -258,22 +265,18 @@ export function Board({
   // releasePendingMove below, including from inside rollback's callers —
   // a release that only happened on the success path would leave a task
   // permanently deaf to realtime after a single failed drag.
-  const pendingMovesRef = useRef<Map<string, number>>(new Map());
+  // F010/F017: reference-counting bookkeeping extracted into
+  // lib/board/pending-moves.ts as a pure module so it's directly
+  // unit-testable — see that file's doc comment for the "why a count, not
+  // a Set" rationale.
+  const pendingMovesRef = useRef<PendingMoves>(createPendingMoves());
 
   function addPendingMove(taskId: string, count: number) {
-    const map = pendingMovesRef.current;
-    map.set(taskId, (map.get(taskId) ?? 0) + count);
+    addPendingMoveImpl(pendingMovesRef.current, taskId, count);
   }
 
   function releasePendingMove(taskId: string) {
-    const map = pendingMovesRef.current;
-    const current = map.get(taskId);
-    if (current === undefined) return;
-    if (current <= 1) {
-      map.delete(taskId);
-    } else {
-      map.set(taskId, current - 1);
-    }
+    releasePendingMoveImpl(pendingMovesRef.current, taskId);
   }
 
   useBoardRealtime(projectId, (event) => {
@@ -285,11 +288,7 @@ export function Board({
       // event (this same row, now reflecting the committed drop) or the
       // drag's own success path leaves state correct; INSERT/DELETE
       // events, and UPDATE events for any other id, are unaffected.
-      if (
-        event.eventType === "UPDATE" &&
-        event.new &&
-        pendingMovesRef.current.has(event.new.id)
-      ) {
+      if (shouldSkipRealtimeUpdate(pendingMovesRef.current, event)) {
         return current;
       }
       if (event.eventType === "INSERT" && event.new) {
