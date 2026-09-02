@@ -17,31 +17,22 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
+import { redactSecrets } from "./lib/redact-secrets.mjs";
+
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF;
 
 const SCAN_DIRS = ["components", "lib"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
-/**
- * Replaces any occurrence of the given secret values with a placeholder, so
- * a token echoed back by a non-JSON or error API response never reaches
- * this script's own stderr output.
- *
- * @param {string} text
- * @param {Array<string | undefined>} secrets
- * @returns {string}
- */
-export function redactSecrets(text, secrets = []) {
-  if (!text) return text;
-  let redacted = text;
-  for (const value of secrets) {
-    if (value && typeof value === "string" && value.length >= 6) {
-      redacted = redacted.split(value).join("[REDACTED]");
-    }
-  }
-  return redacted;
-}
+// Re-exported so existing imports of `redactSecrets` from this module (this
+// script's own tests) keep working. The implementation now lives in
+// scripts/lib/redact-secrets.mjs, shared with check-migration-drift.mjs, and
+// is env-keyed (any env var whose name looks like a credential) rather than
+// a hand-listed pair of values — which is what previously let
+// SUPABASE_SECRET_KEY leak here while it was correctly redacted in the
+// sibling drift script.
+export { redactSecrets };
 
 /**
  * Pure extraction logic: finds every `table:` value inside a
@@ -194,7 +185,11 @@ export async function checkRealtimePublication({
     publishedTables = await queryPublished();
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
-    const safeMessage = redactSecrets(rawMessage, [accessToken, projectRef]);
+    const safeMessage = redactSecrets(rawMessage, {
+      ...process.env,
+      SUPABASE_ACCESS_TOKEN: accessToken,
+      SUPABASE_PROJECT_REF: projectRef,
+    });
     return {
       code: 1,
       isError: true,

@@ -2,7 +2,9 @@
 // this file hits the live Supabase project — discovery is exercised over
 // fixture source strings, and the comparison logic is exercised in isolation.
 import { describe, expect, it } from "vitest";
-import { execSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   extractSubscribedTables,
@@ -90,30 +92,87 @@ describe("AS-006: discoverSubscribedTables is genuinely source-derived", () => {
     expect(discovered).toEqual([...discovered].sort());
   });
 
-  it("matches an independently-computed count of postgres_changes table bindings in the real tree", () => {
-    // Independent scan: grep every occurrence of `"postgres_changes"` in
-    // components/ and lib/, which is the same signal discoverSubscribedTables
-    // keys off, but computed via a completely separate code path (a shell
-    // grep instead of the script's own regex walker).
-    const grepOutput: string = execSync(
-      `grep -rlo '"postgres_changes"' components lib --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.mjs" || true`,
-      { cwd: process.cwd(), encoding: "utf8" },
-    );
-    const filesWithBindings = grepOutput.split("\n").filter(Boolean);
-    expect(filesWithBindings.length).toBeGreaterThan(0);
+  it("matches an independently-derived set of postgres_changes table names in the real tree", () => {
+    // Independent derivation: walk components/ and lib/ ourselves (via
+    // Node fs, not the script's walkSourceFiles) and find `table: "<name>"`
+    // occurrences that sit within 500 characters after a `postgres_changes`
+    // literal, using a hand-rolled scan (indexOf-based, not the script's
+    // own regex-based extractSubscribedTables/discoverSubscribedTables).
+    // The resulting set is compared directly, by exact equality, against
+    // discoverSubscribedTables()'s actual return value — so a hardcoded
+    // array stand-in (e.g. a fixed 9-element literal baked into the
+    // function body) fails this test unless it happens to exactly equal
+    // what is really in the tree today, and any future drift between the
+    // real source and either scan is caught immediately.
+    function walk(dir: string): string[] {
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        return [];
+      }
+      const files: string[] = [];
+      for (const entry of entries) {
+        if (entry === "node_modules" || entry.startsWith(".")) continue;
+        const full = join(dir, entry);
+        const info = statSync(full);
+        if (info.isDirectory()) {
+          files.push(...walk(full));
+        } else if (/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) {
+          files.push(full);
+        }
+      }
+      return files;
+    }
+
+    const independentlyDerivedTables = new Set<string>();
+    for (const dir of ["components", "lib"]) {
+      for (const file of walk(dir)) {
+        const source = readFileSync(file, "utf8");
+        let searchFrom = 0;
+        let idx: number;
+        while ((idx = source.indexOf("postgres_changes", searchFrom)) !== -1) {
+          const window = source.slice(idx, idx + 500);
+          const tableMatch = window.match(/table\s*:\s*["'`]([A-Za-z0-9_]+)["'`]/);
+          if (tableMatch) independentlyDerivedTables.add(tableMatch[1]);
+          searchFrom = idx + "postgres_changes".length;
+        }
+      }
+    }
+
+    expect(independentlyDerivedTables.size).toBeGreaterThan(0);
 
     const discovered = discoverSubscribedTables();
-    expect(discovered.length).toBeGreaterThan(0);
-    // The distinct-table count found by the real scanner must be no larger
-    // than the number of files containing a binding (sanity bound) and
-    // must include at least the known table set exercised above.
-    expect(discovered.length).toBeGreaterThanOrEqual(9);
+    expect(new Set(discovered)).toEqual(independentlyDerivedTables);
+    expect(discovered).toEqual([...discovered].sort());
   });
 
-  it("a hardcoded stand-in for discoverSubscribedTables would be caught: real discovery differs from an arbitrary fixed array", () => {
+  it("a hardcoded stand-in for discoverSubscribedTables would be caught: real discovery is not an arbitrary fixed array", () => {
     const hardcoded = ["tasks", "comments"];
     const discovered = discoverSubscribedTables();
     expect(discovered).not.toEqual(hardcoded);
+  });
+
+  it("discovers a table that exists nowhere in the current component/lib tree, proving discovery is actually derived from the scanned files rather than a baked-in literal", () => {
+    // This is the test that specifically kills a "replace the function body
+    // with the 9 tables that happen to be correct today" mutant: a
+    // hardcoded literal cannot possibly know about a table name that is
+    // invented fresh in a throwaway fixture directory at test time, no
+    // matter how faithfully it matches the real tree's current contents.
+    const tmpDir = mkdtempSync(join(tmpdir(), "realtime-discovery-test-"));
+    try {
+      const novelTable = "zzz_test_only_dynamic_table_never_hardcoded";
+      writeFileSync(
+        join(tmpDir, "fixture.ts"),
+        `supabase.channel("x").on("postgres_changes", { event: "*", schema: "public", table: "${novelTable}" }, cb).subscribe();`,
+      );
+
+      const discovered = discoverSubscribedTables({ dirs: [tmpDir] });
+
+      expect(discovered).toEqual([novelTable]);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -140,6 +199,38 @@ describe("checkRealtimePublication (end-to-end over injected fakes)", () => {
     expect(result.code).not.toBe(0);
     expect(result.message).not.toContain(secretToken);
     expect(result.message).toContain("[REDACTED]");
+  });
+
+  it("AS-003: redacts a SUPABASE_SECRET_KEY value echoed into a query-failure message, even though it is never passed as accessToken/projectRef", async () => {
+    // Regression test for scrutiny-4 finding (1): the old local redactor
+    // here only knew about [accessToken, projectRef] and let a
+    // SUPABASE_SECRET_KEY value planted in process.env leak straight
+    // through, unlike the drift script's env-keyed redactor. It has since
+    // been unified with scripts/lib/redact-secrets.mjs. This must FAIL
+    // against the pre-fix code (array-based redactor scoped to
+    // accessToken/projectRef only).
+    const leakedSecretKey = "sb_secret_LEAKED_VALUE_123";
+    const originalSecretKey = process.env.SUPABASE_SECRET_KEY;
+    process.env.SUPABASE_SECRET_KEY = leakedSecretKey;
+    try {
+      const result = await checkRealtimePublication({
+        accessToken: "unrelated-access-token",
+        projectRef: "fake-ref",
+        discover: () => ["tasks"],
+        queryPublished: async () => {
+          throw new Error(`db error: password=${leakedSecretKey} rejected`);
+        },
+      });
+      expect(result.code).not.toBe(0);
+      expect(result.message).not.toContain(leakedSecretKey);
+      expect(result.message).toContain("[REDACTED]");
+    } finally {
+      if (originalSecretKey === undefined) {
+        delete process.env.SUPABASE_SECRET_KEY;
+      } else {
+        process.env.SUPABASE_SECRET_KEY = originalSecretKey;
+      }
+    }
   });
 
   it("returns a non-zero code naming a subscribed table absent from the publication", async () => {

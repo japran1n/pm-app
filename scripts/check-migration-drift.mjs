@@ -12,35 +12,16 @@
 
 import { spawnSync } from "node:child_process";
 
+import { redactSecrets } from "./lib/redact-secrets.mjs";
+
 const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF;
 
-/**
- * Replaces any occurrence of the known secret-looking env values with a
- * placeholder, so a credential the Supabase CLI happens to echo into stderr
- * (a connection string, a token) never reaches this script's own output.
- *
- * @param {string} text
- * @param {object} env
- * @returns {string}
- */
-export function redactSecrets(text, env = process.env) {
-  if (!text) return text;
-  const secretKeys = [
-    "SUPABASE_ACCESS_TOKEN",
-    "SUPABASE_SECRET_KEY",
-    "SUPABASE_DB_PASSWORD",
-    "SUPABASE_SERVICE_ROLE_KEY",
-  ];
-  let redacted = text;
-  for (const key of secretKeys) {
-    const value = env?.[key];
-    if (value && typeof value === "string" && value.length >= 6) {
-      redacted = redacted.split(value).join("[REDACTED]");
-    }
-  }
-  return redacted;
-}
+// Re-exported so existing imports of `redactSecrets` from this module (this
+// script's own tests) keep working. The implementation now lives in
+// scripts/lib/redact-secrets.mjs so scripts/check-realtime-publication.mjs
+// can share it rather than maintaining a second, hand-listed copy.
+export { redactSecrets };
 
 /**
  * The minimal set of environment variables the `supabase` CLI needs to run
