@@ -240,8 +240,58 @@ export function Board({
     Array<{ tempId: string; title: string; status: string }>
   >([]);
 
+  // F010 (AS-025, AS-026, AS-027, AS-028): the optimistic-move counterpart
+  // to pendingOptimisticCreatesRef above. handleDragEnd already applies a
+  // drag's new status/position/group-field locally BEFORE its Server
+  // Action(s) resolve — a realtime `tasks` UPDATE for that same row can
+  // land in the meantime carrying the PRE-drop row (the DB hasn't
+  // committed yet) and stomp the just-applied optimistic state, visibly
+  // snapping the card back for a frame (or, worse, racing the eventual
+  // rollback). This ref holds an in-flight COUNT per task id rather than
+  // a plain Set: a single drop can dispatch up to two Server Actions in
+  // parallel (the status/position call, moveAndReorderTask or
+  // reorderTask, PLUS a cross-lane call — editTask/setTaskAssignees/
+  // updateTaskTags — see handleDragEnd's own crossLane branch), and the
+  // guard must stay up until ALL of them have settled, not just the
+  // first. Released in every terminal path of every in-flight call for
+  // that id (success, `{ ok: false }`, and thrown rejection) via
+  // releasePendingMove below, including from inside rollback's callers —
+  // a release that only happened on the success path would leave a task
+  // permanently deaf to realtime after a single failed drag.
+  const pendingMovesRef = useRef<Map<string, number>>(new Map());
+
+  function addPendingMove(taskId: string, count: number) {
+    const map = pendingMovesRef.current;
+    map.set(taskId, (map.get(taskId) ?? 0) + count);
+  }
+
+  function releasePendingMove(taskId: string) {
+    const map = pendingMovesRef.current;
+    const current = map.get(taskId);
+    if (current === undefined) return;
+    if (current <= 1) {
+      map.delete(taskId);
+    } else {
+      map.set(taskId, current - 1);
+    }
+  }
+
   useBoardRealtime(projectId, (event) => {
     setTasks((current) => {
+      // AS-025, AS-028: an UPDATE for a task with a drag Server Action
+      // still in flight is skipped entirely — the optimistic local state
+      // (already applied by handleDragEnd) stays authoritative until that
+      // call settles, at which point either a matching later Realtime
+      // event (this same row, now reflecting the committed drop) or the
+      // drag's own success path leaves state correct; INSERT/DELETE
+      // events, and UPDATE events for any other id, are unaffected.
+      if (
+        event.eventType === "UPDATE" &&
+        event.new &&
+        pendingMovesRef.current.has(event.new.id)
+      ) {
+        return current;
+      }
       if (event.eventType === "INSERT" && event.new) {
         const pending = pendingOptimisticCreatesRef.current;
         const matchIndex = pending.findIndex(
@@ -740,6 +790,16 @@ export function Board({
       toast.error(message);
     }
 
+    // F010 (AS-025, AS-026, AS-027): guard this row against realtime
+    // echoes for exactly as long as the Server Action(s) dispatched below
+    // are in flight. `pendingCallCount` is 1 for an ordinary drag (one
+    // status/position call) or 2 for a cross-lane drag (that call PLUS one
+    // group-field call) — matching the number of `releasePendingMove`
+    // calls made further down, one per `.then`/`.catch` pair, so the id is
+    // only fully released once every call for this drop has settled.
+    const pendingCallCount = crossLane ? 2 : 1;
+    addPendingMove(movedTask.id, pendingCallCount);
+
     // F102 (AS-077, fixing M5-scrutiny.md Finding 2): a drag that changes
     // BOTH status and position must go through the single atomic
     // moveAndReorderTask action, not two independent calls — otherwise a
@@ -759,6 +819,12 @@ export function Board({
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
+        })
+        .finally(() => {
+          // F010 (AS-026, AS-027): released regardless of outcome — a
+          // release wired only into the success branch would leave this
+          // id guarded forever after a failure.
+          releasePendingMove(movedTask.id);
         });
     } else {
       // F046 (AS-070, AS-078, AS-079, AS-080): same-column reorder —
@@ -771,6 +837,9 @@ export function Board({
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
+        })
+        .finally(() => {
+          releasePendingMove(movedTask.id);
         });
     }
 
@@ -791,6 +860,9 @@ export function Board({
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
+        })
+        .finally(() => {
+          releasePendingMove(movedTask.id);
         });
     } else if (crossLane && groupBy === "assignee") {
       void setTaskAssignees(movedTask.id, movedTask.assigneeIds ?? [])
@@ -799,6 +871,9 @@ export function Board({
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
+        })
+        .finally(() => {
+          releasePendingMove(movedTask.id);
         });
     } else if (crossLane && groupBy === "tag") {
       void updateTaskTags(movedTask.id, movedTask.tags ?? [])
@@ -807,6 +882,9 @@ export function Board({
         })
         .catch(() => {
           rollback("Something went wrong moving that task. Please try again.");
+        })
+        .finally(() => {
+          releasePendingMove(movedTask.id);
         });
     }
   }
