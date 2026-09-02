@@ -47,26 +47,43 @@ type OnCall = {
   event: string;
   filter: { event: string; schema: string; table: string };
   callback: (payload: unknown) => void;
+  // Which `.channel(name)` topic this `.on()` binding was registered
+  // against -- lets tests prove a table's binding lives on the specific
+  // per-table channel (F003), not merely that the binding exists somewhere.
+  channelName: string;
 };
 
 let onCalls: OnCall[] = [];
 let channelCalls: string[] = [];
 
 function makeFakeSupabase() {
-  const channelObject = {
-    on: vi.fn(
-      (event: string, filter: OnCall["filter"], callback: (payload: unknown) => void) => {
-        onCalls.push({ event, filter, callback });
-        return channelObject;
-      },
-    ),
-    subscribe: vi.fn(() => channelObject),
-  };
+  // A distinct channel object per `.channel(name)` topic (rather than one
+  // shared object for every name) so `.on()` registrations can be
+  // attributed back to the specific channel they were made on.
+  const channelObjects = new Map<string, ReturnType<typeof makeChannelObject>>();
+
+  function makeChannelObject(name: string) {
+    const obj = {
+      on: vi.fn(
+        (event: string, filter: OnCall["filter"], callback: (payload: unknown) => void) => {
+          onCalls.push({ event, filter, callback, channelName: name });
+          return obj;
+        },
+      ),
+      subscribe: vi.fn(() => obj),
+    };
+    return obj;
+  }
 
   return {
     channel: vi.fn((name: string) => {
       channelCalls.push(name);
-      return channelObject;
+      let obj = channelObjects.get(name);
+      if (!obj) {
+        obj = makeChannelObject(name);
+        channelObjects.set(name, obj);
+      }
+      return obj;
     }),
     removeChannel: vi.fn(),
   };
@@ -125,11 +142,33 @@ function Harness() {
 }
 
 describe("PersonalTodoList realtime wiring (AS-015, AS-016, AS-017, AS-018)", () => {
-  it("mounts the real hook, subscribing to a user-scoped channel", () => {
+  it("mounts the real hook, subscribing to user-scoped channels split per table (F003)", () => {
     render(<Harness />);
 
-    expect(channelCalls).toEqual(["tasks:my-tasks:user-1"]);
-    expect(onCalls.map((c) => c.filter.table).sort()).toEqual(["task_assignees", "tasks"]);
+    // F003 deliberately split the single "tasks:my-tasks:user-1" channel
+    // into two per-table channels so an unpublished table on one binding
+    // cannot silently kill the other's subscription.
+    expect(channelCalls.sort()).toEqual([
+      "tasks:my-tasks:user-1:assignees",
+      "tasks:my-tasks:user-1:tasks",
+    ]);
+
+    // Each channel must carry exactly the binding for its own table -- not
+    // just "some binding for that table exists somewhere" -- so this test
+    // still fails if the split ever regresses back onto one shared channel
+    // (which would put both bindings' `.on()` calls on the same channel
+    // name) or if a table's binding ends up on the wrong channel.
+    const assigneesChannelCall = onCalls.find(
+      (c) =>
+        c.filter.table === "task_assignees" &&
+        c.channelName === "tasks:my-tasks:user-1:assignees",
+    );
+    const tasksChannelCall = onCalls.find(
+      (c) => c.filter.table === "tasks" && c.channelName === "tasks:my-tasks:user-1:tasks",
+    );
+    expect(assigneesChannelCall).toBeDefined();
+    expect(tasksChannelCall).toBeDefined();
+    expect(onCalls).toHaveLength(2);
   });
 
   it("AS-015: a task_assignees INSERT for this user triggers a refresh whose fresh data renders", () => {

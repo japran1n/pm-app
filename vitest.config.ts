@@ -20,7 +20,14 @@ export default defineConfig({
     // server) — see tests/integration/comment-delete-broadcast.test.ts
     // and friends. Node stays the default; DOM tests opt in individually.
     environment: "node",
-    exclude: ["**/node_modules/**", "tests/e2e/**", "extension/**"],
+    // F013: `missions/**` holds prior-mission evidence directories that can
+    // contain Playwright spec files (e.g. missions/*/milestones/*-evidence*/
+    // *.spec.ts) using `test.beforeAll()` from @playwright/test, which
+    // vitest was accidentally collecting and failing on ("Playwright Test
+    // did not expect test.beforeAll() to be called here"). Exclude the
+    // whole missions/ tree -- it is orchestrator/evidence bookkeeping, not
+    // application test surface -- without touching tests/ or components/.
+    exclude: ["**/node_modules/**", "tests/e2e/**", "extension/**", "missions/**"],
     // F278: default 5s timeout produced non-deterministic failures against
     // the real remote Supabase project (two consecutive runs gave 41 and 36
     // failures); 30s was deterministic (575/575 green).
