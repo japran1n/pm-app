@@ -70,11 +70,6 @@ if (process.env.CI && !haveAdminCreds) {
   );
 }
 
-function projectRefFromUrl(url: string): string {
-  const host = new URL(url).hostname;
-  return host.split(".")[0];
-}
-
 test.describe("Client portal: approve a task waiting on the client (F011: AS-029, AS-030)", () => {
   test.skip(!haveAdminCreds, "requires SUPABASE_SECRET_KEY for admin seeding");
 
@@ -157,6 +152,21 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     projectId = proj.id;
     createdProjectIds.push(projectId);
 
+    // `is_project_visible_to()` (migration 20260902010000) closes the
+    // "everyone in the workspace sees workspace-visible projects" branch
+    // for `client`-role members, leaving only an explicit `project_members`
+    // row as the way a client can see a project at all — without this the
+    // client would see nothing under "Your projects" regardless of any
+    // task's own `client_visible` flag.
+    const { error: projMemberErr } = await adminClient
+      .from("project_members")
+      .insert({ project_id: projectId, user_id: clientUserId });
+    if (projMemberErr) {
+      throw new Error(
+        `Failed to seed client project membership: ${projMemberErr.message}`,
+      );
+    }
+
     // `client_visible: true` so RLS (20260902010000/20260902020000)
     // actually surfaces this row to the client session, and
     // `pending_client_approval: true` (migration 20260903050000) so it
@@ -187,6 +197,7 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
       await adminClient.from("tasks").delete().eq("id", tId);
     }
     for (const pId of createdProjectIds) {
+      await adminClient.from("project_members").delete().eq("project_id", pId);
       await adminClient.from("projects").delete().eq("id", pId);
     }
     for (const wsId of createdWorkspaceIds) {
@@ -201,64 +212,41 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     }
   });
 
-  // Same real-magic-link-then-cookie-injection technique
-  // notifications.spec.ts / f272-two-context-notifications.spec.ts already
-  // established, applied to a `client`-role user landing on `/portal/*`
-  // instead of `/w/*` — this codebase has no client-role E2E fixture
-  // helper yet, so this is the one this feature adds (per its own scope
-  // note: "If no client-role E2E fixture exists, this feature creates
-  // one").
+  // F012: the magic-link + hand-rolled-cookie technique this file
+  // originally copied from notifications.spec.ts / f272-two-context-
+  // notifications.spec.ts has rotted — the linked Supabase project's Auth
+  // redirect-URL allowlist no longer includes the Playwright dev server's
+  // origin (http://localhost:3100), so `generateLink`'s `action_link`
+  // redirects to the project's configured Site URL (the deployed Vercel
+  // production URL) instead of `${baseURL}/auth/callback`, and the
+  // `/sign-in?error=auth_failed#...` fragment this helper waited on never
+  // appears. Confirmed the same rot in `notifications.spec.ts` itself by
+  // running it standalone against this same project/dev server: it fails
+  // at the identical `page.waitForURL(/\/sign-in\?error=auth_failed#/)`
+  // line with a navigation to `https://pm-app-beige.vercel.app/#access_token=...`.
+  // That means this is an environmental/project-config issue, not
+  // something specific to a `client`-role user.
+  //
+  // `app/dev-login/route.ts` exists precisely for this: a dev-only route
+  // (`NODE_ENV !== "development"` -> 404, so this can never work outside
+  // the Playwright dev server) that mints a real session server-side via
+  // the same admin `generateLink` + `setSession()` and lets the real SSR
+  // Supabase client (`lib/supabase/server.ts`) write its own cookie in
+  // whatever exact format it expects to read back — sidestepping both the
+  // redirect-allowlist problem (no browser-visible redirect to a
+  // mismatched origin is involved) and the hand-rolled-cookie-format
+  // fragility the old helper had.
   async function loginAsClient(page: Page, baseURL: string) {
-    const { data: linkData, error: linkErr } =
-      await adminClient.auth.admin.generateLink({
-        type: "magiclink",
-        email: clientEmail,
-        options: { redirectTo: `${baseURL}/auth/callback` },
-      });
-    if (linkErr || !linkData?.properties?.action_link) {
-      throw new Error(`Failed to generate magic link: ${linkErr?.message}`);
-    }
-
-    await page.goto(linkData.properties.action_link);
-    await page.waitForURL(/\/sign-in\?error=auth_failed#/, {
-      timeout: 15_000,
-    });
-
-    const fragment = new URL(page.url()).hash.slice(1);
-    const params = new URLSearchParams(fragment);
-    const accessToken = params.get("access_token");
-    const refreshToken = params.get("refresh_token");
-    const expiresIn = params.get("expires_in");
-    const expiresAt = params.get("expires_at");
-    if (!accessToken || !refreshToken) {
-      throw new Error(
-        `Magic link redirect did not carry session tokens: ${page.url()}`,
-      );
-    }
-
-    const projectRef = projectRefFromUrl(SUPABASE_URL!);
-    const session = {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: "bearer",
-      expires_in: expiresIn ? Number(expiresIn) : 3600,
-      expires_at: expiresAt
-        ? Number(expiresAt)
-        : Math.floor(Date.now() / 1000) + 3600,
-      user: { id: clientUserId, email: clientEmail },
-    };
-    const cookieValue =
-      "base64-" + Buffer.from(JSON.stringify(session)).toString("base64url");
-
-    await page.context().addCookies([
-      {
-        name: `sb-${projectRef}-auth-token`,
-        value: cookieValue,
-        url: baseURL,
-      },
-    ]);
-
-    await page.goto(`${baseURL}/portal/${workspaceSlug}`);
+    // `/dev-login` issues its own server-side redirect chain
+    // (dev-login -> /onboarding -> /w/<slug> -> /portal/<slug>, since this
+    // user has no non-client membership, per `app/(workspace)/onboarding`'s
+    // own routing) that Playwright's `page.goto` follows in a single
+    // navigation — there is no separate `/onboarding` URL the browser ever
+    // stops on to wait for, so wait on the actual portal destination
+    // directly rather than an intermediate hop that never becomes visible.
+    await page.goto(
+      `${baseURL}/dev-login?email=${encodeURIComponent(clientEmail)}`,
+    );
     await page.waitForURL(`**/portal/${workspaceSlug}`, { timeout: 15_000 });
   }
 

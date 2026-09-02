@@ -110,11 +110,19 @@ export async function approvePortalTask(
   const caller = await requireClientCaller(resolved.workspaceId);
   if (!caller.ok) return caller;
 
+  // Plain RLS-respecting UPDATE is not reachable here: `tasks_update_
+  // active_members` (20260821194500) is the only UPDATE policy on `tasks`,
+  // and `is_project_workspace_writer()` (20260902010000) explicitly
+  // excludes `role = 'client'` -- a client is read-only on `tasks`
+  // everywhere else in this schema. `approve_portal_task_atomic`
+  // (20260905130000) is the one narrow, SECURITY DEFINER exception: it
+  // re-verifies the caller is an active client member with this task
+  // shared and pending before flipping exactly this one column.
   const supabase = await createClient();
-  const { error: updateError } = await supabase
-    .from("tasks")
-    .update({ pending_client_approval: false })
-    .eq("id", taskId);
+  const { error: updateError } = await supabase.rpc(
+    "approve_portal_task_atomic",
+    { p_task_id: taskId },
+  );
 
   if (updateError) {
     logger.error("approvePortalTask: update failed", { error: updateError });
