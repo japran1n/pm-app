@@ -1,13 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+// F009 (AS-023): the client's "Sent" request inbox, kept live via
+// Realtime on `client_requests` -- a new request they just filed, or a
+// status change made from the team's side (moved to review, accepted,
+// declined), lands without a reload. Seeded entirely from the
+// server-rendered `requests` prop; the subscription only ever patches
+// that seed.
+//
+// No row filter is applied on the channel -- `client_requests`'s RLS
+// policy (`client_requests_select_author_or_team`, see
+// lib/queries/portal.ts) already scopes what Realtime will ever deliver to
+// this session to rows this caller is allowed to see, same reasoning
+// use-my-tasks-realtime.ts documents for `task_assignees`/`tasks`.
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import type {
+  RealtimePostgresChangesPayload,
+  SupabaseClient,
+} from "@supabase/supabase-js";
 
 import { withdrawClientRequest } from "@/lib/actions/client-requests";
 import type { PortalRequest } from "@/lib/queries/portal";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/client";
+import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 
 const STATUS_LABEL: Record<PortalRequest["status"], string> = {
   submitted: "Waiting for review",
@@ -31,14 +49,127 @@ function formatDate(iso: string): string {
   });
 }
 
+// Raw `client_requests` row shape as it arrives over Realtime --
+// snake_case columns, no join to `projects`/`tasks`, so `projectName` and
+// the converted-task fields are not present on the payload itself.
+type RawRequestRow = {
+  id: string;
+  project_id?: string;
+  title?: string;
+  body?: string | null;
+  desired_by?: string | null;
+  status?: PortalRequest["status"];
+  decline_reason?: string | null;
+  converted_task_id?: string | null;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
+function mergeIncomingRequest(
+  raw: RawRequestRow,
+  existing: PortalRequest | undefined,
+): PortalRequest | null {
+  if (typeof raw.id !== "string" || raw.id.length === 0) return null;
+  return {
+    id: raw.id,
+    projectId: raw.project_id ?? existing?.projectId ?? "",
+    // Not carried on the raw row -- kept from whatever this session
+    // already knew about the project (e.g. an earlier request to the same
+    // project), otherwise left blank rather than guessed.
+    projectName: existing?.projectName ?? "",
+    title: raw.title ?? existing?.title ?? "",
+    body: raw.body !== undefined ? raw.body : (existing?.body ?? null),
+    desiredBy:
+      raw.desired_by !== undefined ? raw.desired_by : (existing?.desiredBy ?? null),
+    status: raw.status ?? existing?.status ?? "submitted",
+    declineReason:
+      raw.decline_reason !== undefined
+        ? raw.decline_reason
+        : (existing?.declineReason ?? null),
+    convertedTaskId:
+      raw.converted_task_id !== undefined
+        ? raw.converted_task_id
+        : (existing?.convertedTaskId ?? null),
+    // Not carried on the raw row -- see projectName above.
+    convertedTaskTitle: existing?.convertedTaskTitle ?? null,
+    convertedTaskStatus: existing?.convertedTaskStatus ?? null,
+    createdAt: raw.created_at ?? existing?.createdAt ?? new Date().toISOString(),
+  };
+}
+
+export function subscribeToPortalRequestListRealtime(
+  supabase: SupabaseClient,
+  onChange: (updater: (current: PortalRequest[]) => PortalRequest[]) => void,
+): () => void {
+  const topic = "portal:client-requests";
+
+  return acquireSharedTopicChannel<
+    RealtimePostgresChangesPayload<RawRequestRow>
+  >(
+    supabase,
+    topic,
+    (dispatch) =>
+      supabase
+        .channel(topic)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "client_requests" },
+          (payload: RealtimePostgresChangesPayload<RawRequestRow>) => {
+            dispatch(payload);
+          },
+        )
+        .subscribe(),
+    (event) => {
+      // AS-023: insert and status-change land live. Deletes are not part
+      // of this assertion (requests are withdrawn via the existing
+      // server action + `router.refresh()` path, not a client-visible
+      // Realtime delete), so only INSERT/UPDATE are handled here.
+      if (event.eventType !== "INSERT" && event.eventType !== "UPDATE") return;
+
+      onChange((current) => {
+        const raw = event.new as RawRequestRow;
+        const existing = current.find((request) => request.id === raw.id);
+        const merged = mergeIncomingRequest(raw, existing);
+        if (!merged) return current;
+
+        if (existing) {
+          return current.map((request) =>
+            request.id === merged.id ? merged : request,
+          );
+        }
+        return [merged, ...current];
+      });
+    },
+  );
+}
+
 export function RequestList({ requests }: { requests: PortalRequest[] }) {
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [liveRequests, setLiveRequests] = useState<PortalRequest[]>(requests);
+  // A fresh server-rendered list (e.g. after `router.refresh()` on
+  // withdraw) always wins over whatever this session's subscription has
+  // accumulated so far -- tracked so the reset can happen during render
+  // rather than in a post-commit effect.
+  const [seededRequests, setSeededRequests] = useState(requests);
+  if (requests !== seededRequests) {
+    setSeededRequests(requests);
+    setLiveRequests(requests);
+  }
   // See TeamRequestInbox: an action called from an event handler needs an
   // explicit refresh for its revalidation to reach the screen.
   const router = useRouter();
 
-  if (requests.length === 0) {
+  useEffect(() => {
+    const supabase = createClient();
+    const unsubscribe = subscribeToPortalRequestListRealtime(
+      supabase,
+      setLiveRequests,
+    );
+    return unsubscribe;
+  }, []);
+
+  if (liveRequests.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-8 text-center">
         <p className="text-sm font-medium">No requests yet</p>
@@ -68,7 +199,7 @@ export function RequestList({ requests }: { requests: PortalRequest[] }) {
       <h2 className="text-lg font-medium tracking-tight">Sent</h2>
 
       <ul className="flex flex-col gap-3">
-        {requests.map((request) => (
+        {liveRequests.map((request) => (
           <li
             key={request.id}
             className="flex flex-col gap-3 rounded-lg border border-border p-4"
