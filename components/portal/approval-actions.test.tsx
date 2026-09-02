@@ -6,7 +6,7 @@
 // without a real Next.js app tree.
 
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -117,13 +117,20 @@ describe("PortalApprovalActions (F005)", () => {
     render(createElement(PortalApprovalActions, { taskId: "task-1" }));
 
     const button = screen.getByRole("button", { name: /approve/i });
-    // Two clicks dispatched back to back, synchronously, in the same
-    // tick — before React has committed the transition and flipped
-    // `isPending`. Only an in-flight ref set the instant the first
-    // handler runs can stop the second call; `isPending` alone would
-    // still be `false` for both clicks at this point.
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // Both clicks are dispatched inside a single `act` callback via the raw
+    // DOM `.click()` method (not two separate `fireEvent.click` calls,
+    // which each flush a render in between — by the time the second
+    // `fireEvent` runs, the optimistic "Approved." branch has already
+    // detached this button from the DOM, so a second `fireEvent.click`
+    // reaches no handler and the test would pass even with the ref guard
+    // deleted). Calling `.click()` twice inside one `act` lets React batch
+    // both event-handler invocations before committing the re-render, so
+    // the second click genuinely reaches `handleApprove` while
+    // `inFlightRef.current` is still `true` from the first.
+    act(() => {
+      button.click();
+      button.click();
+    });
 
     await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
     expect(approveMock).toHaveBeenCalledTimes(1);
@@ -186,8 +193,16 @@ describe("PortalApprovalActions (F005)", () => {
     });
 
     const sendButton = screen.getByRole("button", { name: /^send$/i });
-    fireEvent.click(sendButton);
-    fireEvent.click(sendButton);
+    // Same reasoning as the approve double-click above: two separate
+    // `fireEvent.click` calls would let the optimistic "Sent" branch
+    // detach this button between clicks, so the second click would reach
+    // no handler regardless of the ref guard. Both clicks are dispatched
+    // inside one `act` callback so they both reach `handleRequestChanges`
+    // while the button is still mounted.
+    act(() => {
+      sendButton.click();
+      sendButton.click();
+    });
 
     await waitFor(() =>
       expect(screen.getByText(/sent — the team will follow up/i)).toBeInTheDocument(),
