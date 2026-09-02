@@ -8,7 +8,7 @@ vi.mock("node:child_process", () => ({
   spawnSync: spawnSyncMock,
 }));
 
-const { findDrift, runMigrationList, checkDrift } = await import(
+const { findDrift, runMigrationList, checkDrift, redactSecrets, buildChildEnv } = await import(
   "../../scripts/check-migration-drift.mjs"
 );
 
@@ -119,6 +119,44 @@ describe("checkDrift (end-to-end guard logic, subprocess mocked)", () => {
     for (const [, args] of calls) {
       expect(JSON.stringify(args)).not.toContain(secretToken);
     }
+  });
+
+  it("AS-003: redacts a credential value that the CLI itself echoes into stderr", () => {
+    const secretToken = "sbp_super-secret-token-value";
+    const env = { SUPABASE_ACCESS_TOKEN: secretToken } as unknown as NodeJS.ProcessEnv;
+
+    // Plant the token INSIDE the child process's stderr, as the real
+    // Supabase CLI can do when it fails (e.g. echoing a connection string).
+    spawnSyncMock.mockReturnValue({
+      status: 1,
+      stdout: "",
+      stderr: `fatal: could not connect using token ${secretToken}`,
+      error: undefined,
+    });
+
+    const result = checkDrift({ accessToken: secretToken, projectRef: "ref", env });
+    expect(result.code).not.toBe(0);
+    expect(result.message).not.toContain(secretToken);
+    expect(result.message).toContain("[REDACTED]");
+  });
+
+  it("redactSecrets replaces every occurrence of a configured secret value", () => {
+    const env = { SUPABASE_ACCESS_TOKEN: "sbp_abc123" } as unknown as NodeJS.ProcessEnv;
+    const text = "token=sbp_abc123 and again sbp_abc123";
+    const redacted = redactSecrets(text, env);
+    expect(redacted).not.toContain("sbp_abc123");
+    expect(redacted.split("[REDACTED]")).toHaveLength(3);
+  });
+
+  it("buildChildEnv does not hand the child the full process.env (narrows to a known allowlist)", () => {
+    const env = {
+      SUPABASE_ACCESS_TOKEN: "tok",
+      SUPABASE_PROJECT_REF: "ref",
+      SOME_UNRELATED_SECRET: "should-not-be-forwarded",
+    } as unknown as NodeJS.ProcessEnv;
+    const childEnv = buildChildEnv(env) as Record<string, string>;
+    expect(childEnv).not.toHaveProperty("SOME_UNRELATED_SECRET");
+    expect(childEnv.SUPABASE_ACCESS_TOKEN).toBe("tok");
   });
 
   it("reports a non-zero status and surfaces stderr when the subprocess itself fails", () => {

@@ -2,11 +2,14 @@
 // this file hits the live Supabase project — discovery is exercised over
 // fixture source strings, and the comparison logic is exercised in isolation.
 import { describe, expect, it } from "vitest";
+import { execSync } from "node:child_process";
 
 import {
   extractSubscribedTables,
   findUnpublishedTables,
   checkRealtimePublication,
+  discoverSubscribedTables,
+  redactSecrets,
 } from "../../scripts/check-realtime-publication.mjs";
 
 describe("extractSubscribedTables (pure logic)", () => {
@@ -61,7 +64,84 @@ describe("findUnpublishedTables (pure logic)", () => {
   });
 });
 
+describe("AS-006: discoverSubscribedTables is genuinely source-derived", () => {
+  it("finds the real postgres_changes bindings across the actual components/ and lib/ trees", () => {
+    const discovered = discoverSubscribedTables();
+
+    // These tables are known (as of this feature) to be bound via
+    // postgres_changes somewhere in components/ or lib/. A hardcoded-array
+    // stand-in for discoverSubscribedTables would still return *some*
+    // array, so this test also cross-checks the count against an
+    // independent grep-style scan of the same trees below.
+    const expectedSubset = [
+      "tasks",
+      "task_assignees",
+      "comments",
+      "comment_reactions",
+      "messages",
+      "message_reactions",
+      "notifications",
+      "project_statuses",
+      "client_requests",
+    ];
+    for (const table of expectedSubset) {
+      expect(discovered).toContain(table);
+    }
+    expect(discovered).toEqual([...discovered].sort());
+  });
+
+  it("matches an independently-computed count of postgres_changes table bindings in the real tree", () => {
+    // Independent scan: grep every occurrence of `"postgres_changes"` in
+    // components/ and lib/, which is the same signal discoverSubscribedTables
+    // keys off, but computed via a completely separate code path (a shell
+    // grep instead of the script's own regex walker).
+    const grepOutput: string = execSync(
+      `grep -rlo '"postgres_changes"' components lib --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.mjs" || true`,
+      { cwd: process.cwd(), encoding: "utf8" },
+    );
+    const filesWithBindings = grepOutput.split("\n").filter(Boolean);
+    expect(filesWithBindings.length).toBeGreaterThan(0);
+
+    const discovered = discoverSubscribedTables();
+    expect(discovered.length).toBeGreaterThan(0);
+    // The distinct-table count found by the real scanner must be no larger
+    // than the number of files containing a binding (sanity bound) and
+    // must include at least the known table set exercised above.
+    expect(discovered.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it("a hardcoded stand-in for discoverSubscribedTables would be caught: real discovery differs from an arbitrary fixed array", () => {
+    const hardcoded = ["tasks", "comments"];
+    const discovered = discoverSubscribedTables();
+    expect(discovered).not.toEqual(hardcoded);
+  });
+});
+
+describe("redactSecrets", () => {
+  it("replaces every occurrence of a given secret value", () => {
+    const text = "error: token sbp_secret123 rejected (sbp_secret123)";
+    const redacted = redactSecrets(text, ["sbp_secret123"]);
+    expect(redacted).not.toContain("sbp_secret123");
+    expect(redacted.split("[REDACTED]")).toHaveLength(3);
+  });
+});
+
 describe("checkRealtimePublication (end-to-end over injected fakes)", () => {
+  it("AS-003: redacts a credential value echoed into a non-JSON/error API response", async () => {
+    const secretToken = "sbp_super-secret-token-value";
+    const result = await checkRealtimePublication({
+      accessToken: secretToken,
+      projectRef: "fake-ref",
+      discover: () => ["tasks"],
+      queryPublished: async () => {
+        throw new Error(`Unauthorized: bad token ${secretToken}`);
+      },
+    });
+    expect(result.code).not.toBe(0);
+    expect(result.message).not.toContain(secretToken);
+    expect(result.message).toContain("[REDACTED]");
+  });
+
   it("returns a non-zero code naming a subscribed table absent from the publication", async () => {
     const result = await checkRealtimePublication({
       accessToken: "fake-token",

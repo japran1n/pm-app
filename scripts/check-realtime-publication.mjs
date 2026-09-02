@@ -24,6 +24,26 @@ const SCAN_DIRS = ["components", "lib"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
 /**
+ * Replaces any occurrence of the given secret values with a placeholder, so
+ * a token echoed back by a non-JSON or error API response never reaches
+ * this script's own stderr output.
+ *
+ * @param {string} text
+ * @param {Array<string | undefined>} secrets
+ * @returns {string}
+ */
+export function redactSecrets(text, secrets = []) {
+  if (!text) return text;
+  let redacted = text;
+  for (const value of secrets) {
+    if (value && typeof value === "string" && value.length >= 6) {
+      redacted = redacted.split(value).join("[REDACTED]");
+    }
+  }
+  return redacted;
+}
+
+/**
  * Pure extraction logic: finds every `table:` value inside a
  * `"postgres_changes"` binding in the given source text. Testable without
  * touching the filesystem.
@@ -173,10 +193,12 @@ export async function checkRealtimePublication({
   try {
     publishedTables = await queryPublished();
   } catch (error) {
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const safeMessage = redactSecrets(rawMessage, [accessToken, projectRef]);
     return {
       code: 1,
       isError: true,
-      message: `Failed to query the realtime publication from the linked Supabase project. ${error instanceof Error ? error.message : String(error)}`,
+      message: `Failed to query the realtime publication from the linked Supabase project. ${safeMessage}`,
     };
   }
 
