@@ -20,6 +20,7 @@ import {
   GanttChartSquare,
   Inbox,
   MessageCircle,
+  CheckSquare,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -31,6 +32,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
+import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
@@ -71,11 +73,19 @@ import { ProjectNavList, type SidebarProjectItem } from "@/components/nav/projec
 // convenience gate, same caveat as above; the archive page itself
 // independently redirects a guest who navigates there directly (see that
 // page's own `role === "guest"` redirect).
+// F010: an "Approvals" nav item, gated to non-guests the same way
+// Members/Archive already are (a guest has no business chasing client
+// decisions), with a count badge for OPEN (pending) approvals only — a
+// withdrawn/decided row is excluded at the query layer
+// (getOpenApprovalsForWorkspace's own `.eq("state", "pending")`), so
+// "double-counting withdrawn rows" is structurally impossible here, not
+// just avoided by convention.
 type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
+  count?: number;
 };
 
 // UX-10: this used to be one flat 12-14 item list — no distinction between
@@ -96,6 +106,7 @@ function navGroups(
   isGuest: boolean,
   canManageWorkspace: boolean,
   hasClient: boolean,
+  approvalsCount: number,
 ): { label: string | null; items: NavItem[] }[] {
   const work: NavItem[] = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -132,6 +143,16 @@ function navGroups(
             label: "Client requests",
             icon: Inbox,
           },
+          // F010: same "only present when the workspace has a client at
+          // all" gating as Client requests above — an approval queue is
+          // meaningless clutter for a workspace with no client to ever
+          // decide one.
+          {
+            href: `/w/${workspaceSlug}/approvals`,
+            label: "Approvals",
+            icon: CheckSquare,
+            count: approvalsCount,
+          },
         ]
       : []),
   ];
@@ -151,6 +172,7 @@ function navGroups(
   const guestExcluded = new Set([
     "Members",
     "Client requests",
+    "Approvals",
     "Archive",
     "Templates",
     "Trash",
@@ -176,6 +198,7 @@ function SidebarContent({
   initialNotifications,
   initialUnreadCount,
   projects,
+  approvalsCount = 0,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -187,6 +210,7 @@ function SidebarContent({
   initialNotifications: NotificationListItem[];
   initialUnreadCount: number;
   projects: SidebarProjectItem[];
+  approvalsCount?: number;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -194,7 +218,7 @@ function SidebarContent({
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
   const hasClient = useMembership()?.hasClient ?? false;
-  const groups = navGroups(workspaceSlug, isGuest, canManageWorkspace, hasClient);
+  const groups = navGroups(workspaceSlug, isGuest, canManageWorkspace, hasClient, approvalsCount);
 
   return (
     <div className="flex h-full flex-col">
@@ -243,7 +267,7 @@ function SidebarContent({
                 {group.label}
               </p>
             )}
-            {group.items.map(({ href, label, icon: Icon, exact }) => {
+            {group.items.map(({ href, label, icon: Icon, exact, count }) => {
               const isActive = exact
                 ? pathname === href
                 : pathname === href || pathname.startsWith(`${href}/`);
@@ -273,7 +297,16 @@ function SidebarContent({
                   )}
                 >
                   <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  {label}
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {/* F010: same small-numeric-badge shape as the bell's own
+                      unread count (components/notifications/notification-bell.tsx)
+                      — 0/undefined renders nothing, so a settled workspace's
+                      nav item looks exactly like any other plain link. */}
+                  {typeof count === "number" && count > 0 && (
+                    <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px]">
+                      {count}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}
@@ -361,6 +394,7 @@ export function AppSidebar({
   initialNotifications = [],
   initialUnreadCount = 0,
   projects = [],
+  approvalsCount = 0,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -380,6 +414,11 @@ export function AppSidebar({
    * existing caller/test that predates this feature rendering the
    * section's empty state instead of crashing. */
   projects?: SidebarProjectItem[];
+  /** F010: open-approvals count for the "Approvals" nav item's badge —
+   * server-fetched by the layout via `getOpenApprovalsForWorkspace(...).length`.
+   * Default `0` keeps every existing caller/test rendering the item with
+   * no badge instead of crashing. */
+  approvalsCount?: number;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -405,6 +444,7 @@ export function AppSidebar({
           initialNotifications={initialNotifications}
           initialUnreadCount={initialUnreadCount}
           projects={projects}
+          approvalsCount={approvalsCount}
         />
       </aside>
 
@@ -445,6 +485,7 @@ export function AppSidebar({
               initialNotifications={initialNotifications}
               initialUnreadCount={initialUnreadCount}
               projects={projects}
+              approvalsCount={approvalsCount}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>

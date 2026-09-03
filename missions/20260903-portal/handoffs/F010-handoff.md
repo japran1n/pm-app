@@ -1,0 +1,49 @@
+# Handoff: F010 — Team UI — the approvals queue
+
+## Status
+COMPLETE
+
+## Assertions covered
+AS-027: PASS — `getOpenApprovalsForWorkspace` returns open (`state = 'pending'`) requests across several projects of the workspace, oldest-waiting first, excludes settled (withdrawn) ones; covered by `tests/integration/f010-approvals-queue.test.ts::AS_027_queue_returns_open_requests_across_projects_oldest_first_excludes_settled` and `::AS_027_decision_owner_names_resolve_per_project_and_decision_type`, run against a real Supabase project (both pass).
+
+## Files changed
+app/(workspace)/w/[workspaceSlug]/approvals/page.tsx
+app/(workspace)/w/[workspaceSlug]/approvals/loading.tsx
+app/(workspace)/w/[workspaceSlug]/approvals/error.tsx
+components/approvals/approvals-queue.tsx
+components/nav/app-sidebar.tsx
+app/(workspace)/w/[workspaceSlug]/layout.tsx
+lib/queries/approvals.ts
+tests/integration/f010-approvals-queue.test.ts
+
+## Commands run
+`npx tsc --noEmit` (0)
+`npx eslint lib/queries/approvals.ts components/approvals/approvals-queue.tsx components/nav/app-sidebar.tsx "app/(workspace)/w/[workspaceSlug]/approvals/page.tsx" "app/(workspace)/w/[workspaceSlug]/approvals/loading.tsx" "app/(workspace)/w/[workspaceSlug]/approvals/error.tsx" "app/(workspace)/w/[workspaceSlug]/layout.tsx" tests/integration/f010-approvals-queue.test.ts` (0)
+`npx vitest run tests/integration/f010-approvals-queue.test.ts` (0, 2 passed, live Supabase creds from .env)
+`npx vitest run tests/unit/app-sidebar-trash-nav.test.tsx tests/unit/app-sidebar-archive-nav.test.tsx tests/unit/app-sidebar-settings-nav.test.tsx tests/unit/app-sidebar-project-nav-list.test.tsx tests/unit/app-sidebar-calendar-timeline-nav.test.tsx` (0, 18 passed — pre-existing sidebar nav tests still pass after adding the "Approvals" item + badge markup)
+
+## Decisions made
+- Client-role access control: added NO new redirect in the approvals page itself. Grepped `app/(workspace)/w/[workspaceSlug]/layout.tsx:252` — `if (currentRole === "client") redirect(`/portal/${activeWorkspace.slug}`)` — this already runs for EVERY route under `/w/[workspaceSlug]/*` before any child page renders, so a client role never reaches `/w/<slug>/approvals` at all (same "handled once, upstream" pattern the spec's own DoD implies, not duplicated per-page like `/settings`'s guest-only check). Verified this is the actual mechanism by reading the layout, not by claiming precedent from another page's own redirect (which would have been a different, page-local check).
+- "What it blocks" is derived server-side in `lib/queries/approvals.ts` (new `blocks: { label, phaseName } | null` field on `WorkspaceApproval`), resolved via two batched (`.in(...)`) queries — one for subject tasks (title + phase_id), one for `project_phases` names, one for subject docs (title). Never one query per row. `artifact`-subject rows get `blocks: null` (nothing in-app to name); a task/doc row whose subject was independently deleted also resolves to `null` (defensive — no FK enforces `subject_id` referential integrity at the DB layer for this column, per F008's own action-file comment).
+- "Who must decide": added `getDecisionOwnerNames(pairs)` to `lib/queries/approvals.ts` — one batched query across every distinct `(projectId, decisionType)` pair on the page, not `getDecisionOwners(projectId)` called once per row/project (which existed already but is shaped for a single-project caller, e.g. the portal settings grid).
+- Copy link: reused the exact `window.location.origin` + `navigator.clipboard.writeText(...)` + sonner toast pattern from `components/task/task-detail-sheet.tsx`'s own `handleCopyLink` (grepped and read that file directly, lines ~1358-1394). URL shape is `/portal/${workspaceSlug}/p/${projectId}/approvals?approvalId=${id}` — the portal approvals page (F009, `app/(portal)/portal/[workspaceSlug]/p/[projectId]/approvals/page.tsx`) does not currently read or scroll to `approvalId`, so the query param is inert today; landing on that page still shows the named approval in its open-approvals list as long as it's still pending, which satisfies this feature's own DoD wording ("copy link yields a URL that opens that approval in the portal"). Flagged below as out-of-scope follow-up (deep-link scroll/highlight) rather than silently expanding F010 to touch F009's portal component.
+- Explicitly did NOT build a "Remind" button, per the spec's own explicit instruction. No follow-up suggested for a real reminder mechanism inside this mission's scope — email is out of scope for the whole mission (per `description.md`), and there is no other outbound channel wired up (no SMS/Slack MCP registered in `connections/mcp-registry.md`), so Copy link is genuinely the correct terminal answer here, not a placeholder for something achievable within this mission.
+- Sidebar badge: no pre-existing per-nav-item count-badge convention existed in `app-sidebar.tsx` (grepped — only the bell's own popover count exists, `components/notifications/notification-bell.tsx`). Added a new optional `count?: number` field to the shared `NavItem` type and render a small `<Badge variant="secondary">` next to the label only when `count > 0`, styled to match the bell's own small-numeric-badge shape. "Does not double-count withdrawn rows" (DoD) is structurally guaranteed, not just tested: the count is `openApprovals.length` where `openApprovals = getOpenApprovalsForWorkspace(...)`, and that query's own `.eq("state", "pending")` filter (unchanged, F007's original clause) means a withdrawn row is never in the array in the first place.
+- "Approvals" nav item gated to `hasClient` (same flag/gating as the pre-existing "Client requests" item, `components/nav/app-sidebar.tsx` — grepped and confirmed at the line inserted next to) and to non-guests (added "Approvals" to the existing `guestExcluded` Set) — an approval always needs a client decision-owner to exist at all (`project_decision_owners.user_id` must be an active client member, enforced in `lib/actions/approvals.ts`'s `setDecisionOwner`), so a workspace with no client can never have one, and a guest has no legitimate reason to see a client-chasing screen.
+- Layout fetch: added `getOpenApprovalsForWorkspace(activeWorkspace.id)` to the existing `Promise.all([...])` parallel batch in `app/(workspace)/w/[workspaceSlug]/layout.tsx` (not a serial extra round-trip) — matches this file's own "All independent data fetches run in parallel" comment/convention. Non-fatal: `getOpenApprovalsForWorkspace` already fails open to `[]` internally (logs its own error), so a failure here shows an un-badged nav item rather than breaking the whole layout.
+
+## Out-of-scope work needed
+- The portal approvals page (`app/(portal)/portal/[workspaceSlug]/p/[projectId]/approvals/page.tsx`, F009) does not read the `?approvalId=` query param this feature's Copy link now appends. A follow-up could have `ApprovalCard`/that page scroll to and briefly highlight the matching card when the param is present, turning "opens the right page" into "opens the right card." Not built here — F010's own "Files (approximate)" list does not include F009's portal components, and the spec's DoD only requires the URL to open the approval in the portal, which it already does (the card is visible in the open-approvals list as long as it's still pending).
+- No real reminder/notification channel exists for approvals (or for anything else) in this mission — Copy link is explicitly the terminal answer per this feature's own instruction, not a stopgap. If a future mission phase adds email or another outbound channel, a "send reminder" action reusing that channel would be a new feature, not a change to F010.
+
+## Blockers
+(none — Status is COMPLETE)
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Copy-link URL includes a `?approvalId=` query param the portal page does not yet consume (see "Out-of-scope work needed" above) rather than a bare `/portal/<slug>/p/<projectId>/approvals` link with no per-approval addressing at all — chose to future-proof the URL shape now (cheap, additive, no portal-side change required) over leaving it fully unaddressed, since the spec explicitly calls this "the direct portal URL for that approval."
+AUTONOMOUS_DECISION: The summary strip's "past due" figure is computed client-side from each row's `dueAt` against `Date.now()` (in `components/approvals/approvals-queue.tsx`), not server-computed — matches the existing `PortalApproval`/`WorkspaceApproval` shape (which already carries `dueAt` as a plain ISO string with no derived boolean) and avoids adding a second, potentially-stale server-computed field that could disagree with the due-chip logic already used elsewhere in the portal (`components/portal/approval-card.tsx`'s own due-chip).
+
+## Notes for the next worker
+- `lib/queries/approvals.ts` now exports `getDecisionOwnerNames` (new) alongside the pre-existing `getDecisionOwners` — the former is the batched, multi-project shape for team-side aggregate views (like this queue); the latter stays the single-project shape for the portal's own "who approves what" grid and the settings page. Don't merge them — their result shapes and cardinality assumptions differ.
+- `WorkspaceApproval` gained a `blocks: { label: string; phaseName: string | null } | null` field. `ApprovalHistoryEntry`/`PortalApproval` (client-facing types) were deliberately left untouched — "what it blocks" is a team-only column, not something F009's client-facing cards need.
+- No MCP tools were used for this feature — it's pure application code against an already-existing `approval_requests`/`project_phases`/`tasks`/`docs` schema (no schema change, no migration). Verified table/column shapes by reading migration files and existing query functions directly rather than through Supabase MCP introspection, since nothing here touches live RLS policy state.

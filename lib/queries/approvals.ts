@@ -171,9 +171,50 @@ export async function getDecisionOwners(projectId: string): Promise<PortalDecisi
   }));
 }
 
+// F010: "who must decide" column — batched across every distinct
+// (projectId, decisionType) pair present on the queue page in ONE query
+// (never one per row), keyed `${projectId}:${decisionType}` for an O(1)
+// lookup per row. Reads the same `project_decision_owners` table
+// `getDecisionOwners` reads (RLS-scoped identically), just shaped for a
+// multi-project caller instead of one project's settings grid.
+export async function getDecisionOwnerNames(
+  pairs: { projectId: string; decisionType: ApprovalDecisionType }[],
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>();
+  if (pairs.length === 0) return result;
+
+  const projectIds = [...new Set(pairs.map((p) => p.projectId))];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_decision_owners")
+    .select("project_id, decision_type, user_id")
+    .in("project_id", projectIds);
+
+  if (error) {
+    logger.error("getDecisionOwnerNames: failed to load decision owners", { error });
+    return result;
+  }
+  if (!data?.length) return result;
+
+  const userIds = [...new Set(data.map((row) => row.user_id))];
+  const people = await resolvePeople(userIds);
+
+  for (const row of data) {
+    result.set(`${row.project_id}:${row.decision_type}`, people.get(row.user_id)?.name ?? null);
+  }
+  return result;
+}
+
 export type WorkspaceApproval = PortalApproval & {
   projectName: string;
   requestedByName: string | null;
+  // F010: "what it blocks" — derived, never PM-typed. Populated only for
+  // subject_type = 'task' (name + the phase it currently sits in, when
+  // it has one) and 'doc' (title only, docs have no phase). null for
+  // 'artifact' (nothing in-app to name) and for a 'task'/'doc' whose
+  // subject row itself has since been deleted (defensive: the FK is not
+  // enforced at the DB level for this column, see F007's own migration).
+  blocks: { label: string; phaseName: string | null } | null;
 };
 
 // F010's cross-project team queue: every pending approval across every
@@ -206,6 +247,8 @@ export async function getOpenApprovalsForWorkspace(
     .select(`${APPROVAL_COLUMNS}, requested_by`)
     .in("project_id", projectIds)
     .eq("state", "pending")
+    // AS-027: ordered by how long each request has been waiting, oldest
+    // first — the queue's own defining shape, not project or due date.
     .order("requested_at", { ascending: true });
 
   if (error) {
@@ -217,11 +260,98 @@ export async function getOpenApprovalsForWorkspace(
   const requesterIds = [...new Set(data.map((row) => row.requested_by))];
   const people = await resolvePeople(requesterIds);
 
-  return data.map((row) => ({
-    ...mapApprovalRow(row),
-    projectName: projectNames.get(row.project_id) ?? "",
-    requestedByName: people.get(row.requested_by)?.name ?? null,
-  }));
+  // "What it blocks": resolve task titles+phases and doc titles in two
+  // batched queries (never one query per row), scoped to the exact
+  // subject ids present in this page's rows.
+  const taskSubjectIds = [
+    ...new Set(
+      data
+        .filter((row) => row.subject_type === "task" && row.subject_id)
+        .map((row) => row.subject_id as string),
+    ),
+  ];
+  const docSubjectIds = [
+    ...new Set(
+      data
+        .filter((row) => row.subject_type === "doc" && row.subject_id)
+        .map((row) => row.subject_id as string),
+    ),
+  ];
+
+  const taskById = new Map<string, { title: string; phaseId: string | null }>();
+  if (taskSubjectIds.length) {
+    const { data: taskRows, error: taskError } = await supabase
+      .from("tasks")
+      .select("id, title, phase_id")
+      .in("id", taskSubjectIds);
+    if (taskError) {
+      logger.error("getOpenApprovalsForWorkspace: failed to load subject tasks", { error: taskError });
+    } else {
+      for (const row of taskRows ?? []) {
+        taskById.set(row.id, { title: row.title, phaseId: row.phase_id });
+      }
+    }
+  }
+
+  const phaseIds = [
+    ...new Set(
+      [...taskById.values()].map((t) => t.phaseId).filter((id): id is string => !!id),
+    ),
+  ];
+  const phaseNameById = new Map<string, string>();
+  if (phaseIds.length) {
+    const { data: phaseRows, error: phaseError } = await supabase
+      .from("project_phases")
+      .select("id, name")
+      .in("id", phaseIds);
+    if (phaseError) {
+      logger.error("getOpenApprovalsForWorkspace: failed to load subject phases", { error: phaseError });
+    } else {
+      for (const row of phaseRows ?? []) {
+        phaseNameById.set(row.id, row.name);
+      }
+    }
+  }
+
+  const docTitleById = new Map<string, string>();
+  if (docSubjectIds.length) {
+    const { data: docRows, error: docError } = await supabase
+      .from("docs")
+      .select("id, title")
+      .in("id", docSubjectIds);
+    if (docError) {
+      logger.error("getOpenApprovalsForWorkspace: failed to load subject docs", { error: docError });
+    } else {
+      for (const row of docRows ?? []) {
+        docTitleById.set(row.id, row.title);
+      }
+    }
+  }
+
+  return data.map((row) => {
+    let blocks: WorkspaceApproval["blocks"] = null;
+    if (row.subject_type === "task" && row.subject_id) {
+      const task = taskById.get(row.subject_id);
+      if (task) {
+        blocks = {
+          label: task.title,
+          phaseName: task.phaseId ? (phaseNameById.get(task.phaseId) ?? null) : null,
+        };
+      }
+    } else if (row.subject_type === "doc" && row.subject_id) {
+      const title = docTitleById.get(row.subject_id);
+      if (title) {
+        blocks = { label: title, phaseName: null };
+      }
+    }
+
+    return {
+      ...mapApprovalRow(row),
+      projectName: projectNames.get(row.project_id) ?? "",
+      requestedByName: people.get(row.requested_by)?.name ?? null,
+      blocks,
+    };
+  });
 }
 
 // --- Client member picker for F008's "Who approves what" settings UI --

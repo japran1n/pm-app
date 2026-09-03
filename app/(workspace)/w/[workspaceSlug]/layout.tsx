@@ -49,6 +49,10 @@ import { getTourStatus } from "@/lib/actions/onboarding-tour";
 // rule, and per this feature's clarified caching note, one fetch per
 // layout render (not a per-navigation client refetch).
 import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
+// F010 (AS-027): the "Approvals" nav item's badge count — same
+// server-fetched-by-the-layout convention as every other sidebar figure
+// on this page.
+import { getOpenApprovalsForWorkspace } from "@/lib/queries/approvals";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 
 // AS-022: force every request under /w/* through a real server round-trip
@@ -178,6 +182,7 @@ export default async function WorkspaceLayout({
     favoriteProjectIds,
     { count: clientMemberCount },
     { data: projectMemberRows, error: projectMemberRowsError },
+    openApprovals,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -229,6 +234,12 @@ export default async function WorkspaceLayout({
       .select("project_id, project_role, projects!inner(workspace_id)")
       .eq("user_id", user.id)
       .eq("projects.workspace_id", activeWorkspace.id),
+
+    // F010 (AS-027): open-approvals count for the sidebar's "Approvals"
+    // badge. Non-fatal — getOpenApprovalsForWorkspace already fails open
+    // to an empty array internally (logging its own error), so a
+    // failure here shows an un-badged nav item, never a broken layout.
+    getOpenApprovalsForWorkspace(activeWorkspace.id),
   ]);
 
   if (membershipsError) {
@@ -359,6 +370,7 @@ export default async function WorkspaceLayout({
             key: project.key,
             isFavorite: favoriteProjectIds.has(project.id),
           }))}
+          approvalsCount={openApprovals.length}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <AppHeader
