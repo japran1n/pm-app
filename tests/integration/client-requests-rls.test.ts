@@ -305,4 +305,152 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
       .eq("id", requestId);
     expect(still).toHaveLength(1);
   });
+
+  // --------------------------------------------------------------------
+  // F006i defect 2 (M1-scrutiny-2.md NM-3): the SELECT and INSERT author
+  // branches were gated on portal_enabled by F006b (20260913010000), whose
+  // own header comment claims "a direct PostgREST call is closed too, not
+  // only the app's own query" — but the UPDATE and DELETE author policies
+  // were never touched. Called directly, as an attacker holding a request
+  // id would, not through withdrawClientRequest.
+  // --------------------------------------------------------------------
+  describe("F006i: UPDATE/DELETE author policies gated on portal_enabled", () => {
+    let disabledProjectId: string;
+    let disabledRequestId: string;
+
+    beforeAll(async () => {
+      const { data: disabledProject, error: dpErr } = await admin
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: "Portal-disabled project",
+          visibility: "workspace",
+          created_by: ownerId,
+          portal_enabled: true,
+        })
+        .select("id")
+        .single();
+      if (dpErr || !disabledProject) throw new Error(`disabled project: ${dpErr?.message}`);
+      disabledProjectId = disabledProject.id;
+
+      await admin.from("project_members").insert([
+        { project_id: disabledProjectId, user_id: memberId, project_role: "lead", added_by: ownerId },
+        { project_id: disabledProjectId, user_id: clientAId, project_role: "member", added_by: ownerId },
+      ]);
+
+      // File the request while the portal is still on (INSERT itself is
+      // already gated — this is proving a different, later verb).
+      const { data: req, error: reqErr } = await clientA
+        .from("client_requests")
+        .insert({
+          project_id: disabledProjectId,
+          created_by: clientAId,
+          title: "Request filed before the portal was disabled",
+        })
+        .select("id")
+        .single();
+      if (reqErr || !req) throw new Error(`request: ${reqErr?.message}`);
+      disabledRequestId = req.id;
+
+      // Now disable the portal — the request stays 'submitted', so the
+      // author-while-submitted policies would otherwise still admit it.
+      const { error: disableErr } = await admin
+        .from("projects")
+        .update({ portal_enabled: false })
+        .eq("id", disabledProjectId);
+      if (disableErr) throw new Error(`disable portal: ${disableErr.message}`);
+    }, 60_000);
+
+    afterAll(async () => {
+      if (!admin) return;
+      await admin.from("client_requests").delete().eq("project_id", disabledProjectId);
+      await admin.from("project_members").delete().eq("project_id", disabledProjectId);
+      await admin.from("projects").delete().eq("id", disabledProjectId);
+    }, 60_000);
+
+    it("the author cannot UPDATE their own still-submitted request once the project's portal is disabled", async () => {
+      const { data, error } = await clientA
+        .from("client_requests")
+        .update({ title: "Trying to edit after the portal was disabled" })
+        .eq("id", disabledRequestId)
+        .select("id");
+
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+
+      const { data: unchanged } = await admin
+        .from("client_requests")
+        .select("title")
+        .eq("id", disabledRequestId)
+        .single();
+      expect(unchanged?.title).toBe("Request filed before the portal was disabled");
+    });
+
+    it("the author cannot DELETE their own still-submitted request once the project's portal is disabled", async () => {
+      const { data, error } = await clientA
+        .from("client_requests")
+        .delete()
+        .eq("id", disabledRequestId)
+        .select("id");
+
+      expect(error).toBeNull();
+      expect(data).toEqual([]);
+
+      const { data: stillThere } = await admin
+        .from("client_requests")
+        .select("id")
+        .eq("id", disabledRequestId);
+      expect(stillThere).toHaveLength(1);
+    });
+
+    it("positive control: the author CAN still UPDATE/DELETE their own submitted request while the portal is enabled", async () => {
+      const { data: enabledProject, error: epErr } = await admin
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: "Portal-enabled control project",
+          visibility: "workspace",
+          created_by: ownerId,
+          portal_enabled: true,
+        })
+        .select("id")
+        .single();
+      if (epErr || !enabledProject) throw new Error(`enabled project: ${epErr?.message}`);
+
+      await admin.from("project_members").insert([
+        { project_id: enabledProject.id, user_id: clientAId, project_role: "member", added_by: ownerId },
+      ]);
+
+      const { data: req, error: reqErr } = await clientA
+        .from("client_requests")
+        .insert({
+          project_id: enabledProject.id,
+          created_by: clientAId,
+          title: "Control request",
+        })
+        .select("id")
+        .single();
+      if (reqErr || !req) throw new Error(`control request: ${reqErr?.message}`);
+
+      const { data: updated, error: updateError } = await clientA
+        .from("client_requests")
+        .update({ title: "Control request (edited)" })
+        .eq("id", req.id)
+        .select("title")
+        .single();
+      expect(updateError).toBeNull();
+      expect(updated?.title).toBe("Control request (edited)");
+
+      const { data: deleted, error: deleteError } = await clientA
+        .from("client_requests")
+        .delete()
+        .eq("id", req.id)
+        .select("id");
+      expect(deleteError).toBeNull();
+      expect(deleted).toHaveLength(1);
+
+      await admin.from("project_members").delete().eq("project_id", enabledProject.id);
+      await admin.from("projects").delete().eq("id", enabledProject.id);
+    });
+  });
 });

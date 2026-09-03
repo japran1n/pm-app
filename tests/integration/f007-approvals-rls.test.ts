@@ -763,4 +763,104 @@ describe.skipIf(!haveCreds)("approval_requests / project_decision_owners / decid
 
     await admin.from("tasks").delete().eq("id", task!.id);
   });
+
+  // --------------------------------------------------------------------
+  // F006i defect 3 (M1-scrutiny-2.md NM-4): assert_portal_task_actionable_
+  // by_client checked workspace client membership, is_project_visible_to,
+  // client_visible and pending_client_approval — but never
+  // is_project_portal_enabled. F006b's read-side audit never looked at
+  // this write path. `clientId` (clientSession) has a real
+  // project_members row on `disabledProjectId` (portal_enabled = false),
+  // so is_project_visible_to alone would have let this through before the
+  // fix. Both approve_portal_task_atomic and request_portal_task_changes_
+  // atomic delegate to the same helper, so both are proven here.
+  // --------------------------------------------------------------------
+
+  it("F006i: approve_portal_task_atomic is rejected for a client of a portal-disabled project, called directly over RPC", async () => {
+    const { data: task, error: taskError } = await admin
+      .from("tasks")
+      .insert({
+        project_id: disabledProjectId,
+        title: "Pending approval, portal off",
+        status: "todo",
+        author_id: ownerId,
+        client_visible: true,
+        pending_client_approval: true,
+      })
+      .select("id")
+      .single();
+    expect(taskError).toBeNull();
+
+    const { error } = await clientSession.rpc("approve_portal_task_atomic", { p_task_id: task!.id });
+    expect(error).not.toBeNull();
+
+    const { data: after } = await admin
+      .from("tasks")
+      .select("pending_client_approval")
+      .eq("id", task!.id)
+      .single();
+    // The flag must NOT have flipped — this is the exact inconsistency
+    // NM-4 describes when only the follow-on comment insert was blocked.
+    expect(after?.pending_client_approval).toBe(true);
+
+    await admin.from("tasks").delete().eq("id", task!.id);
+  });
+
+  it("F006i: request_portal_task_changes_atomic is rejected for a client of a portal-disabled project, called directly over RPC", async () => {
+    const { data: task, error: taskError } = await admin
+      .from("tasks")
+      .insert({
+        project_id: disabledProjectId,
+        title: "Pending approval, portal off (request changes)",
+        status: "todo",
+        author_id: ownerId,
+        client_visible: true,
+        pending_client_approval: true,
+      })
+      .select("id")
+      .single();
+    expect(taskError).toBeNull();
+
+    const { error } = await clientSession.rpc("request_portal_task_changes_atomic", {
+      p_task_id: task!.id,
+    });
+    expect(error).not.toBeNull();
+
+    const { data: after } = await admin
+      .from("tasks")
+      .select("pending_client_approval")
+      .eq("id", task!.id)
+      .single();
+    expect(after?.pending_client_approval).toBe(true);
+
+    await admin.from("tasks").delete().eq("id", task!.id);
+  });
+
+  it("F006i positive control: approve_portal_task_atomic still works for a client of a PORTAL-ENABLED project", async () => {
+    const { data: task, error: taskError } = await admin
+      .from("tasks")
+      .insert({
+        project_id: enabledProjectId,
+        title: "Pending approval, portal on (F006i control)",
+        status: "todo",
+        author_id: ownerId,
+        client_visible: true,
+        pending_client_approval: true,
+      })
+      .select("id")
+      .single();
+    expect(taskError).toBeNull();
+
+    const { error } = await clientSession.rpc("approve_portal_task_atomic", { p_task_id: task!.id });
+    expect(error).toBeNull();
+
+    const { data: after } = await admin
+      .from("tasks")
+      .select("pending_client_approval")
+      .eq("id", task!.id)
+      .single();
+    expect(after?.pending_client_approval).toBe(false);
+
+    await admin.from("tasks").delete().eq("id", task!.id);
+  });
 });

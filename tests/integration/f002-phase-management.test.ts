@@ -749,6 +749,100 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     // ------------------------------------------------------------------
+    // F006i defect 1 (M1-scrutiny-2.md NM-1): F006d ported the ROLE half
+    // of seedDefaultPhasesImpl's withAuthz gate into the RPC (the test
+    // above) but not the VISIBILITY half (`requireVisibility: true`,
+    // lib/actions/phases.ts:188). `memberEmail` is an active workspace
+    // "member" (passes the role check) with NO explicit `project_members`
+    // row on `privateProjectId` — exactly the caller the Server Action
+    // itself rejects with "You don't have permission to manage this
+    // project's phases." Called directly over the RPC boundary, as the
+    // attacker would.
+    // ------------------------------------------------------------------
+
+    it("F006i: a workspace member with no explicit project_members row on a PRIVATE project is rejected by seed_default_phases over RPC, and nothing is inserted", async () => {
+      // A dedicated, fresh private project — not the shared `privateProjectId`
+      // fixture, which other tests in this file already seed phases onto
+      // directly, so "nothing is inserted" is a genuine before/after check
+      // rather than an assumption about an empty table.
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-nm1-deny`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F006i private nm1-deny Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "private",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      // Only the owner is an explicit project_members row — memberEmail is
+      // an active workspace member but not one, exactly the caller
+      // seedDefaultPhasesImpl's `requireVisibility: true` rejects.
+      const { error: pmErr } = await adminClient.from("project_members").insert({
+        project_id: proj.id,
+        user_id: ownerUserId,
+        project_role: "lead",
+      });
+      if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
+
+      await signInAs(memberEmail, memberPassword);
+      const memberClient = currentTestClient as unknown as SupabaseClient;
+
+      const { error: rpcError } = await memberClient.rpc("seed_default_phases", {
+        p_project_id: proj.id,
+      });
+      expect(rpcError).not.toBeNull();
+      expect(rpcError?.code).toBe("42501");
+
+      const { data: rows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(rows ?? []).toHaveLength(0);
+    });
+
+    it("F006i: an owner who IS an explicit project_members member of a PRIVATE project can still seed_default_phases over RPC (positive control)", async () => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-nm1-allow`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F006i private nm1-allow Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "private",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      const { error: pmErr } = await adminClient.from("project_members").insert({
+        project_id: proj.id,
+        user_id: ownerUserId,
+        project_role: "lead",
+      });
+      if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
+
+      await signInAs(ownerEmail, ownerPassword);
+      const ownerClient = currentTestClient as unknown as SupabaseClient;
+
+      const { error: rpcError } = await ownerClient.rpc("seed_default_phases", {
+        p_project_id: proj.id,
+      });
+      expect(rpcError).toBeNull();
+
+      const { data: rows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(rows ?? []).toHaveLength(10);
+    });
+
+    // ------------------------------------------------------------------
     // Failure test: a viewer and a client are rejected by every phase
     // mutation action (Definition of done).
     // ------------------------------------------------------------------
