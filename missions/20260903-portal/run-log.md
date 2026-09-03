@@ -43,3 +43,5 @@ Orchestrator committed the F003 and F003b handoffs directly (mission state is
 orchestrator territory). Future worker prompts now carry two standing
 instructions: commit the handoff, and never cite precedent without a grep
 that proves it.
+- F004 COMPLETE (a0c344d) — four --status-* token pairs in globals.css (Tailwind-exposed), project_statuses.client_bucket via migration 20260911010000 with category-derived fallback, shared StatusPill with client_description tooltip, bucket + description editing in the columns settings screen. Worker also caught and fixed a seed-colour regression its own migration would have caused against 20260828030000.
+  Orchestrator verification: handoff committed (standing instruction now followed). No status is recognised by name string — the two "Awaiting Client Feedback" hits in status-label.ts are comments explaining exactly that. One hex literal outside globals.css (#64748b in a board component) checked and cleared: it is the repo's pre-existing user-pickable column colour convention (lib/task-colors.ts, lib/board/column-colors.ts), not a token violation.
