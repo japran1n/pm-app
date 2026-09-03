@@ -92,3 +92,36 @@ A full run manufactures its own failures, which is why every worker in this
 mission was told not to run it. Fixing that (a pooled test user, or service-role
 provisioning instead of sign-in) would make every future milestone gate cheap
 and honest. Recorded, not opened — it is not this mission's job.
+
+### M1 scrutiny: FAILED. Six blockers, eleven majors.
+
+Report: missions/20260903-portal/milestones/M1-scrutiny.md
+
+I verified each blocker against the code rather than accepting the report:
+- getPortalProjectOptions / getPortalRequests filter workspace_id + deleted_at
+  with NO portal_enabled — confirmed. Real client leak across projects.
+- admin.from("project_phases").select("id, name") with no client_visible filter
+  — confirmed. Internal phase names reach the Live-now rail.
+- `grep -c "phase_id\|phaseId" lib/actions/tasks.ts` returns 0 — confirmed.
+  AS-013 never worked; the test that "proved" it mocked getTaskDetail to return
+  a field the real function does not produce.
+- task-detail-sheet.tsx:1959 still gates on the type NAME — confirmed. F005b
+  fixed the read side and left the only write UI on the old path.
+- create_channel_atomic sets `search_path = public` without pg_temp — confirmed.
+  F002b regressed the hardening 20260908010000 exists to guarantee.
+
+This is what the gate is for. My own verification after each feature checked the
+specific thing I suspected — weakened assertions, hex literals, name matching —
+and each time it was clean. None of those checks would ever have found a missing
+filter in a query I had not thought to read. Per-feature spot checks and a
+milestone audit are not substitutes for one another.
+
+On AS-003 and AS-031, marked FAIL: those are deliberate sequencing, not defects.
+They read zero until F012/F014 give them something real, which is the mission's
+no-fabricated-data rule working as intended. They come true at M3, and the
+contract is satisfied then. Recorded so the disagreement is explicit rather than
+silently ignored.
+
+Remediation opened: F006b (leaks — highest priority), F006c (phase persistence +
+page seam + AS-009), F006d (authz gaps), F006e (navigation and titles).
+M2 does not start until F006b and F006d are green.
