@@ -140,8 +140,33 @@ export type ProjectTemplateTask = z.infer<typeof projectTemplateTaskSchema>;
 // 20260822190000_rpc_create_project_from_template.sql) to create those
 // columns before seeding tasks into them by name/id instead of always
 // `'todo'`.
+// F006c (missions/20260903-portal, AS-009): a single seeded phase inside
+// a project template's payload. Field names are snake_case, matching
+// `project_phases`' own columns exactly — same "the payload shape maps
+// straight onto the jsonb the RPC consumes" convention
+// `projectTemplateTaskSchema` above already establishes for tasks. Only
+// `name`/`client_description` are captured: a template snapshots a
+// phase's identity and its client-facing explanation, never an
+// in-flight project's current `state`/dates, which `create_project_from_template`
+// (supabase/migrations/20260915010000_create_project_from_template_phases.sql)
+// leaves at their column defaults for every newly-seeded phase.
+export const projectTemplatePhaseSchema = z.object({
+  name: z.string().trim().min(1, "Phase name is required."),
+  client_description: z.string().nullable(),
+});
+export type ProjectTemplatePhase = z.infer<typeof projectTemplatePhaseSchema>;
+
 export const projectTemplatePayloadSchema = z.object({
   tasks: z.array(projectTemplateTaskSchema),
+  // F006c (AS-009): optional/defaulted — not `.optional()` alone — so a
+  // template saved BEFORE this feature, whose stored `payload` jsonb has
+  // no `phases` key at all, still parses successfully and
+  // createProjectFromTemplate still has a plain `[]` to pass through to
+  // the RPC's own `p_phases` default, rather than a special-cased
+  // undefined branch this action would otherwise need. This is the
+  // mechanism behind this feature's own Definition of done: "Templates
+  // without a phases section must keep working."
+  phases: z.array(projectTemplatePhaseSchema).default([]),
 });
 export type ProjectTemplatePayload = z.infer<
   typeof projectTemplatePayloadSchema

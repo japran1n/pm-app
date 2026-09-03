@@ -264,6 +264,16 @@ const editableFields = z.object({
     .number()
     .int("Page order must be a whole number.")
     .nullable(),
+  // F006c (missions/20260903-portal, AS-013): this task's phase
+  // assignment — same shape as `setTaskPhaseSchema.phaseId`
+  // (lib/validation/phases.ts), threaded through editTask too per this
+  // feature's own scope. `null` clears the assignment; a valid phase uuid
+  // sets it. The cross-project check `setTaskPhase` performs (a phase id
+  // for a DIFFERENT project than this task's own must be rejected) is
+  // NOT expressible in a Zod schema — editTask re-checks it itself,
+  // mirroring lib/actions/phases.ts's own `resolveWorkspace` shape, see
+  // this schema's use below.
+  phaseId: z.string().uuid("Invalid phase.").nullable(),
 });
 
 const partialEditableFields = editableFields.partial();

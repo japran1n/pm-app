@@ -117,6 +117,48 @@ function TaskTypeRow({
         </Tooltip>
       )}
 
+      {/* F006c (missions/20260903-portal, AS-014): the write path
+          `system_key` never had — before this, an existing workspace
+          whose page type was named anything other than exactly "page"
+          (e.g. "Sida", the case M1-scrutiny.md's B4/B5 both name) had a
+          permanently empty portal Pages view fixable only by hand-run
+          SQL. Only `page` is exposed here (the only key anything reads
+          today, per SYSTEM_KEY_EXPLANATIONS' own doc comment) as a
+          two-state toggle rather than the full five-value enum the
+          migration's CHECK constraint allows, so the control asks
+          exactly the question this feature's spec does: "is this type
+          the portal's page type." Additive alongside the read-only
+          badge above (F005b, unchanged) rather than replacing it. */}
+      {canManage && (
+        <Select
+          value={taskType.systemKey === "page" ? "page" : "none"}
+          onValueChange={(value) => {
+            const nextSystemKey = value === "page" ? "page" : null;
+            if (nextSystemKey === taskType.systemKey) return;
+            startTransition(async () => {
+              const result = await updateTaskType({
+                taskTypeId: taskType.id,
+                systemKey: nextSystemKey,
+              });
+              if (!result.ok) {
+                toast.error(result.error);
+                return;
+              }
+              onRemoved();
+            });
+          }}
+          disabled={isPending}
+        >
+          <SelectTrigger size="sm" className="w-44" aria-label="Portal role">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No portal role</SelectItem>
+            <SelectItem value="page">Portal&apos;s page type</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+
       <Select
         value={taskType.color}
         onValueChange={(value) => {

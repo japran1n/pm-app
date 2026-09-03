@@ -10,11 +10,30 @@
 // behind mounting the real <Board> and mocking @/components/ui/select with
 // a bare native <select>) — this feature's own Priority Select is the
 // direct model for the Phase Select's optimistic pattern.
+//
+// F006c (missions/20260903-portal, M1-scrutiny.md FU-3): the
+// getTaskDetail mock below is typed against `GetTaskDetailResult`
+// (lib/actions/tasks.ts's own exported return type), not a hand-shaped
+// object — the lesson M1-scrutiny.md's B3 drew from this exact file: a
+// unit test that mocks a server action's return value from an untyped
+// literal can invent a field the real function never returns
+// (`phaseId: "phase-2"` was added here before `getTaskDetail` selected
+// or returned `phase_id` at all — see F006c's own handoff), which proves
+// only that the mock works, never that the real read path does. Typing
+// the literal against the exported type turns a missing/invented field
+// into a compile error instead. The actual "does a real assignment
+// survive a real reload" claim is proven by
+// tests/integration/f002-phase-management.test.ts's
+// test_AS_013_getTaskDetail_returns_the_phase_a_reload_would_show,
+// which calls the REAL getTaskDetail — nothing in this jsdom file ever
+// asserts persistence, only that this component reflects whatever
+// `task.phaseId` its data source (real or mocked) reports.
 
 import { createElement, Fragment, type ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import type { GetTaskDetailResult } from "@/lib/actions/tasks";
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= "test-publishable-key";
@@ -122,27 +141,30 @@ vi.mock("@/lib/actions/tasks", () => ({
   editTask: vi.fn(async () => ({ ok: true, data: {} })),
   moveTaskStatus: vi.fn(async () => ({ ok: true, data: {} })),
   getOpenBlockers: vi.fn(async () => ({ ok: true, data: [] })),
-  getTaskDetail: vi.fn(async (taskId: string) => ({
-    ok: true,
-    data: {
-      task: {
-        id: taskId,
-        title: "Phase task",
-        description: null,
-        status: "todo",
-        priority: null,
-        assigneeId: null,
-        dueDate: null,
-        tags: [],
-        projectId: "project-1",
-        phaseId: null,
+  getTaskDetail: vi.fn(
+    async (taskId: string): Promise<GetTaskDetailResult> => ({
+      ok: true,
+      data: {
+        task: {
+          id: taskId,
+          title: "Phase task",
+          description: null,
+          status: "todo",
+          priority: null,
+          assigneeId: null,
+          dueDate: null,
+          startDate: null,
+          tags: [],
+          projectId: "project-1",
+          phaseId: null,
+        },
+        comments: [],
+        attachments: [],
+        currentUserId: "user-1",
+        currentUserRole: "member",
       },
-      comments: [],
-      attachments: [],
-      currentUserId: "user-1",
-      currentUserRole: "member",
-    },
-  })),
+    }),
+  ),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -234,14 +256,20 @@ describe("TaskDetailSheet phase Select optimistic update (F002, AS-013)", () => 
     expect(toastError).toHaveBeenCalledWith("Something went wrong.");
   });
 
-  it("test_AS_013_assigning_a_task_to_a_phase_survives_being_re-synced_from_a_reload (phaseId prop reflected once confirmed)", async () => {
-    // Simulates the reload half of AS-013: once the caller's own
-    // refetch/realtime path catches up and re-renders with the new
-    // `task.phaseId` from the server, the Select must show it — proving
-    // the assignment is real, DB-backed state, not just this component's
-    // own local optimistic mirror.
+  it("test_AS_013_the_phase_select_reflects_whatever_phaseId_its_data_source_reports", async () => {
+    // This is a UI-reflection test only: it proves the Select renders
+    // whatever `task.phaseId` it's given, not that a reload of a REAL
+    // task actually reports the phase back — that claim (the actual
+    // "reload" half of AS-013) is proven against the real getTaskDetail
+    // by tests/integration/f002-phase-management.test.ts's
+    // test_AS_013_getTaskDetail_returns_the_phase_a_reload_would_show,
+    // per this feature's own "do not repeat that shape here" instruction
+    // and M1-scrutiny.md's FU-3. The mocked return value below is typed
+    // against `GetTaskDetailResult` (see this file's own header comment),
+    // so a field that doesn't exist on the real type is a compile error
+    // here, not a silently-passing green test.
     (getTaskDetail as ReturnType<typeof vi.fn>).mockImplementationOnce(
-      async (taskId: string) => ({
+      async (taskId: string): Promise<GetTaskDetailResult> => ({
         ok: true,
         data: {
           task: {
@@ -252,6 +280,7 @@ describe("TaskDetailSheet phase Select optimistic update (F002, AS-013)", () => 
             priority: null,
             assigneeId: null,
             dueDate: null,
+            startDate: null,
             tags: [],
             projectId: "project-1",
             phaseId: "phase-2",

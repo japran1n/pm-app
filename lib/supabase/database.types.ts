@@ -2107,6 +2107,7 @@ export type Database = {
           p_created_by: string
           p_description: string
           p_name: string
+          p_phases?: Json
           p_tasks: Json
           p_workspace_id: string
         }

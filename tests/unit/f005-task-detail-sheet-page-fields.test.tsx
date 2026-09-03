@@ -156,6 +156,7 @@ describe("TaskDetailSheet Page slug/order fields (F005, AS-014)", () => {
         task: baseTask({
           id: taskId,
           taskTypeName: "Page",
+          taskTypeSystemKey: "page",
           pageSlug: "about-us",
           pageOrder: 3,
         }),
@@ -209,6 +210,7 @@ describe("TaskDetailSheet Page slug/order fields (F005, AS-014)", () => {
         task: baseTask({
           id: taskId,
           taskTypeName: "Page",
+          taskTypeSystemKey: "page",
           pageSlug: "about-us",
           pageOrder: 3,
         }),
@@ -238,6 +240,7 @@ describe("TaskDetailSheet Page slug/order fields (F005, AS-014)", () => {
         task: baseTask({
           id: taskId,
           taskTypeName: "Page",
+          taskTypeSystemKey: "page",
           pageSlug: "about-us",
           pageOrder: 3,
         }),
@@ -265,6 +268,7 @@ describe("TaskDetailSheet Page slug/order fields (F005, AS-014)", () => {
         task: baseTask({
           id: taskId,
           taskTypeName: "Page",
+          taskTypeSystemKey: "page",
           pageSlug: "about-us",
           pageOrder: 3,
         }),

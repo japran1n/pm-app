@@ -448,6 +448,139 @@ describe.skipIf(!haveAdminCreds)(
       expect(clearedRow?.phase_id).toBeNull();
     });
 
+    // ------------------------------------------------------------------
+    // F006c (missions/20260903-portal, AS-013): the READ path. Prior to
+    // this feature, `lib/actions/tasks.ts` had zero occurrences of
+    // `phase_id`/`phaseId` (verified by grep) — `getTaskDetail` never
+    // selected or returned it, so `task.phaseId` in the detail sheet was
+    // always `undefined` no matter what setTaskPhase had written. The
+    // test that should have caught this (tests/unit/
+    // f002-task-detail-sheet-phase-optimistic.test.tsx) mocked
+    // `getTaskDetail`'s return value directly, so it proved nothing about
+    // the real function. This test calls the REAL `getTaskDetail` — no
+    // mock of it anywhere in this file — after a real `setTaskPhase`
+    // write, exactly this feature's own "Primary success test".
+    // ------------------------------------------------------------------
+
+    it("test_AS_013_getTaskDetail_returns_the_phase_a_reload_would_show", async () => {
+      const { createPhase, setTaskPhase } = await import("@/lib/actions/phases");
+      const { getTaskDetail } = await import("@/lib/actions/tasks");
+      await signInAs(ownerEmail, ownerPassword);
+
+      const phase = await createPhase({ projectId, name: "Read-path phase" });
+      expect(phase.ok).toBe(true);
+      if (!phase.ok) return;
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: projectId,
+          title: "F006c read-path task",
+          author_id: ownerUserId,
+          status: "todo",
+        })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
+
+      // Before any assignment, a fresh read reports no phase.
+      const beforeDetail = await getTaskDetail(task.id);
+      expect(beforeDetail.ok).toBe(true);
+      if (!beforeDetail.ok) return;
+      expect(beforeDetail.data.task.phaseId).toBeNull();
+
+      const assigned = await setTaskPhase(task.id, phase.data.id);
+      expect(assigned.ok).toBe(true);
+
+      // The exact scenario the M1 scrutiny review described: "pick a
+      // phase, close the task, reopen it" — reopening is a fresh
+      // getTaskDetail call, simulated here directly rather than through
+      // any mock of it.
+      const afterDetail = await getTaskDetail(task.id);
+      expect(afterDetail.ok).toBe(true);
+      if (!afterDetail.ok) return;
+      expect(afterDetail.data.task.phaseId).toBe(phase.data.id);
+
+      const cleared = await setTaskPhase(task.id, null);
+      expect(cleared.ok).toBe(true);
+
+      const clearedDetail = await getTaskDetail(task.id);
+      expect(clearedDetail.ok).toBe(true);
+      if (!clearedDetail.ok) return;
+      expect(clearedDetail.data.task.phaseId).toBeNull();
+    });
+
+    it("test_AS_013_editTask_can_assign_a_phase_too_and_getTaskDetail_reflects_it", async () => {
+      const { createPhase } = await import("@/lib/actions/phases");
+      const { editTask, getTaskDetail } = await import("@/lib/actions/tasks");
+      await signInAs(ownerEmail, ownerPassword);
+
+      const phase = await createPhase({ projectId, name: "editTask phase" });
+      expect(phase.ok).toBe(true);
+      if (!phase.ok) return;
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: projectId,
+          title: "F006c editTask phase task",
+          author_id: ownerUserId,
+          status: "todo",
+        })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
+
+      const edited = await editTask(task.id, { phaseId: phase.data.id });
+      expect(edited.ok).toBe(true);
+      if (!edited.ok) return;
+      expect(edited.data.phaseId).toBe(phase.data.id);
+
+      const detail = await getTaskDetail(task.id);
+      expect(detail.ok).toBe(true);
+      if (!detail.ok) return;
+      expect(detail.data.task.phaseId).toBe(phase.data.id);
+    });
+
+    it("test_AS_013_editTask_rejects_a_phase_belonging_to_a_different_project", async () => {
+      const { createPhase } = await import("@/lib/actions/phases");
+      const { editTask } = await import("@/lib/actions/tasks");
+      await signInAs(ownerEmail, ownerPassword);
+
+      // A phase that belongs to the PRIVATE project (a different project
+      // than the task below), mirroring setTaskPhase's own cross-project
+      // rejection (lib/actions/phases.ts:646-658) — editTask must refuse
+      // it too, not silently attach a task to another project's phase.
+      const foreignPhase = await createPhase({
+        projectId: privateProjectId,
+        name: "Foreign project phase",
+      });
+      expect(foreignPhase.ok).toBe(true);
+      if (!foreignPhase.ok) return;
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: projectId,
+          title: "F006c cross-project rejection task",
+          author_id: ownerUserId,
+          status: "todo",
+        })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
+
+      const edited = await editTask(task.id, { phaseId: foreignPhase.data.id });
+      expect(edited.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("phase_id")
+        .eq("id", task.id)
+        .single();
+      expect(row?.phase_id).toBeNull();
+    });
+
     it("AS-013: bulkSetTaskPhase moves every selected task to the given phase in one call, and it persists", async () => {
       const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
       await signInAs(ownerEmail, ownerPassword);

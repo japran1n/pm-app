@@ -285,6 +285,146 @@ describe.skipIf(!haveAdminCreds)(
       expect(checklistRows?.[0]?.content).toBe("Init git");
     });
 
+    // ------------------------------------------------------------------
+    // F006c (missions/20260903-portal, AS-009): a project created from a
+    // template receives that template's phases in the SAME transaction
+    // as the project itself. Before this feature,
+    // `create_project_from_template` had no phase handling at all
+    // (M1-scrutiny.md's B... / FU-12) and AS-009 was never assigned to
+    // any M1 feature.
+    // ------------------------------------------------------------------
+
+    it("test_AS_009_creating_a_project_from_a_template_with_phases_seeds_those_phases_in_order", async () => {
+      const { createProjectFromTemplate } = await import(
+        "@/lib/actions/templates"
+      );
+      const templateId = await makeProjectTemplate({
+        name: `F006c Phased Template ${Date.now()}`,
+        payload: {
+          tasks: [],
+          phases: [
+            { name: "Kick-off", client_description: "Getting started." },
+            { name: "Build", client_description: null },
+            { name: "Launch", client_description: "Going live." },
+          ],
+        },
+      });
+
+      currentTestUserId = ownerUserId;
+      const result = await createProjectFromTemplate(
+        templateId,
+        workspaceId,
+        `F006c New Phased Project ${Date.now()}`,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+
+      const { data: phaseRows } = await adminClient
+        .from("project_phases")
+        .select("name, client_description, position, state")
+        .eq("project_id", result.data.id)
+        .order("position", { ascending: true });
+
+      expect(phaseRows).toHaveLength(3);
+      expect(phaseRows?.map((row) => row.name)).toEqual([
+        "Kick-off",
+        "Build",
+        "Launch",
+      ]);
+      expect(phaseRows?.map((row) => row.position)).toEqual([1, 2, 3]);
+      expect(phaseRows?.[0]?.client_description).toBe("Getting started.");
+      expect(phaseRows?.[1]?.client_description).toBeNull();
+      // Freshly-seeded phases start at the column default, never a
+      // snapshot of an in-flight project's progress.
+      expect(phaseRows?.every((row) => row.state === "not_started")).toBe(true);
+    });
+
+    it("test_AS_009_a_template_with_no_phases_section_still_succeeds_and_creates_zero_phases", async () => {
+      // `makeProjectTemplate()`'s own default payload (used by the very
+      // first test in this file) has no `phases` key at all — this is
+      // exactly the "template saved before this feature" shape this
+      // feature's own Definition of done requires to keep working.
+      const { createProjectFromTemplate } = await import(
+        "@/lib/actions/templates"
+      );
+      const templateId = await makeProjectTemplate({
+        name: `F006c Unphased Template ${Date.now()}`,
+      });
+
+      currentTestUserId = ownerUserId;
+      const result = await createProjectFromTemplate(
+        templateId,
+        workspaceId,
+        `F006c New Unphased Project ${Date.now()}`,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+      // The pre-existing task-seeding behaviour (AS-333) is unaffected.
+      expect(result.data.taskCount).toBe(2);
+
+      const { data: phaseRows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", result.data.id);
+      expect(phaseRows ?? []).toHaveLength(0);
+    });
+
+    it("atomicity: a malformed phase rolls back the whole create_project_from_template call, including its tasks — no orphaned project", async () => {
+      // Calls the SQL function directly via the admin client (not through
+      // createProjectFromTemplate's own Zod-validated payload — a phase
+      // name too short to pass `projectTemplatePhaseSchema` would never
+      // even reach the RPC through the app, and this test is specifically
+      // about the RPC's OWN transaction boundary, mirroring
+      // tests/integration/f005b-task-type-system-key.test.ts's own
+      // "side_effect" test's direct-RPC-call pattern). An empty phase
+      // name violates `project_phases_name_not_empty`
+      // (20260909010000_portal_foundations.sql) AFTER the task insert has
+      // already run inside the same function invocation — proving the
+      // task insert is rolled back too, not just the project.
+      const projectName = `F006c RPC Phase Atomicity Project ${Date.now()}`;
+
+      const { error: rpcError } = await adminClient.rpc(
+        "create_project_from_template",
+        {
+          p_workspace_id: workspaceId,
+          p_name: projectName,
+          p_description: null,
+          p_created_by: ownerUserId,
+          p_tasks: [
+            {
+              title: "Task that must not survive",
+              description: null,
+              description_json: null,
+              priority: null,
+              checklistItems: [],
+              estimate_minutes: null,
+              tags: [],
+            },
+          ],
+          p_phases: [{ name: "", client_description: null }],
+        },
+      );
+
+      expect(rpcError).not.toBeNull();
+
+      const { data: orphanProjectRows } = await adminClient
+        .from("projects")
+        .select("id")
+        .eq("workspace_id", workspaceId)
+        .eq("name", projectName);
+      expect(orphanProjectRows ?? []).toHaveLength(0);
+
+      const { data: orphanTaskRows } = await adminClient
+        .from("tasks")
+        .select("id")
+        .eq("title", "Task that must not survive");
+      expect(orphanTaskRows ?? []).toHaveLength(0);
+    });
+
     it("atomicity: a malformed task in the template payload rolls back the whole create — no orphaned project", async () => {
       const { createProjectFromTemplate } = await import(
         "@/lib/actions/templates"

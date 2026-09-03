@@ -400,18 +400,25 @@ export type TaskDetailSheetTask = {
    * type. */
   phaseId?: string | null;
   /** F005 (missions/20260903-portal, AS-014): this task's own workspace
-   * task type NAME (e.g. "Page"), matched case-insensitively against
-   * "page" below to decide whether the Page slug/order fields render at
-   * all. Optional/null both mean "no type set" — same "safe default"
-   * convention as every other optional field on this type; a caller that
-   * hasn't been updated yet (existing tests/fixtures) simply never shows
-   * the two page fields, matching this Definition of done's own "hidden
-   * for non-page tasks" requirement. */
+   * task type NAME (e.g. "Page"). Display/logging only — see
+   * `taskTypeSystemKey` below for what actually gates the Page slug/
+   * order fields. Optional/null both mean "no type set" — same "safe
+   * default" convention as every other optional field on this type. */
   taskTypeName?: string | null;
+  /** F006c (missions/20260903-portal, AS-014): this task's type's stable
+   * `system_key` (supabase/migrations/20260912010000_task_type_system_key.sql),
+   * independent of its human-editable name — THIS, not `taskTypeName`,
+   * is what decides whether the Page slug/order fields render (see that
+   * gate below). A workspace whose page type is named "Sida" or renamed
+   * later still shows/orders these fields correctly, because the type's
+   * ROLE, not its label, is what's checked. Optional/null both mean "no
+   * portal role set" — same "safe default" convention as every other
+   * optional field on this type; a caller that hasn't been updated yet
+   * (existing tests/fixtures) simply never shows the two page fields. */
+  taskTypeSystemKey?: string | null;
   /** F005 (AS-014): the portal Pages view's own slug for this task, or
-   * null/undefined for "not set yet". Editable only when `taskTypeName`
-   * resolves to "page" (case-insensitively) — see the Page slug field
-   * below. */
+   * null/undefined for "not set yet". Editable only when
+   * `taskTypeSystemKey` is "page" — see the Page slug field below. */
   pageSlug?: string | null;
   /** F005 (AS-014): the team's own manual ordering for this task in the
    * portal Pages view — the Pages view sorts by this (nulls last), never
@@ -1945,18 +1952,22 @@ export function TaskDetailSheet({
                 </div>
               </div>
 
-              {/* F005 (missions/20260903-portal, AS-014): Page slug/order
-                  only render for a task whose own task TYPE is "page"
-                  (matched case-insensitively against `taskTypeName` —
-                  there is no seeded/guaranteed task_types row named
-                  "page"; a team creates one via the existing task-types
-                  settings screen, see this feature's handoff Autonomous
-                  decisions). `taskTypeName` undefined/null (a caller that
-                  hasn't been updated, or a task with no type set) hides
-                  this section entirely — this Sheet's own "safe default"
+              {/* F006c (missions/20260903-portal, AS-014): Page slug/
+                  order only render for a task whose own task type
+                  carries `system_key = 'page'` — NOT a name match.
+                  F005's original name-based gate
+                  (`taskTypeName === "page"`) meant a workspace whose page
+                  type was named "Sida" (F005b exists precisely to serve
+                  that workspace) could never see or order these fields,
+                  and the converse: renaming an unrelated type to "Page"
+                  would show them on tasks the Pages view would never
+                  list (M1-scrutiny.md's B4). `taskTypeSystemKey`
+                  undefined/null (a caller that hasn't been updated, or a
+                  task whose type carries no portal role) hides this
+                  section entirely — this Sheet's own "safe default"
                   convention, and the Definition of done's own "hidden for
                   non-page tasks" requirement. */}
-              {task.taskTypeName?.trim().toLowerCase() === "page" && (
+              {task.taskTypeSystemKey === "page" && (
                 <div
                   data-testid="page-fields"
                   className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4"

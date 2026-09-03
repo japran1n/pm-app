@@ -869,6 +869,29 @@ export async function saveProjectAsTemplate(
     checklistByTask.set(row.task_id as string, list);
   }
 
+  // F006c (missions/20260903-portal, AS-009): snapshot this project's own
+  // phases, ordered the same way `project_phases_project_id_position_idx`
+  // (supabase/migrations/20260909010000_portal_foundations.sql) already
+  // sorts them, so createProjectFromTemplate recreates them in the same
+  // order. A project with zero phases (never seeded, or seeding skipped)
+  // simply produces an empty `phases` array — the same "no phases
+  // section" shape a pre-F006c template has, which
+  // `create_project_from_template`'s `p_phases default '[]'::jsonb`
+  // already handles.
+  const { data: phaseRows, error: phaseError } = await admin
+    .from("project_phases")
+    .select("name, client_description")
+    .eq("project_id", parsed.data.projectId)
+    .order("position", { ascending: true });
+
+  if (phaseError) {
+    logger.error("saveProjectAsTemplate: phase read failed", { error: phaseError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
   const payload: ProjectTemplatePayload = {
     tasks: sortedTasks.map((row) => ({
       title: row.title as string,
@@ -878,6 +901,10 @@ export async function saveProjectAsTemplate(
       checklistItems: checklistByTask.get(row.id as string) ?? [],
       estimate_minutes: row.estimate_minutes as number | null,
       tags: (row as unknown as { tags?: string[] }).tags ?? [],
+    })),
+    phases: (phaseRows ?? []).map((row) => ({
+      name: row.name as string,
+      client_description: row.client_description as string | null,
     })),
   };
 
@@ -1051,6 +1078,10 @@ export async function createProjectFromTemplate(
       p_description: (parsed.data.description ?? null) as unknown as string,
       p_created_by: user.id,
       p_tasks: payload.tasks as unknown as Json,
+      // F006c (missions/20260903-portal, AS-009): seeded inside the SAME
+      // RPC invocation as the project + tasks above — see
+      // supabase/migrations/20260915010000_create_project_from_template_phases.sql.
+      p_phases: payload.phases as unknown as Json,
     },
   );
 

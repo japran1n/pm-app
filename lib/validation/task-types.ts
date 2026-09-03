@@ -24,10 +24,21 @@ export const createTaskTypeSchema = z.object({
 });
 export type CreateTaskTypeInput = z.infer<typeof createTaskTypeSchema>;
 
+// F006c (missions/20260903-portal, AS-014): the closed set of stable
+// roles a task type ROW can carry, independent of its human-editable
+// `name` — mirrors `task_types_system_key_check`
+// (supabase/migrations/20260912010000_task_type_system_key.sql) exactly.
+// `null` clears the tag (a type carrying no portal role); only `page` is
+// wired to anything today (getPortalPages), the rest are reserved.
+const systemKeySchema = z
+  .enum(["page", "qa", "component", "content", "seo"])
+  .nullable();
+
 export const updateTaskTypeSchema = z.object({
   taskTypeId: z.string().uuid("Invalid task type."),
   name: nameSchema.optional(),
   color: colorSchema.optional(),
+  systemKey: systemKeySchema.optional(),
 });
 export type UpdateTaskTypeInput = z.infer<typeof updateTaskTypeSchema>;
 

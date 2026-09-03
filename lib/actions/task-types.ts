@@ -113,9 +113,14 @@ export async function updateTaskType(input: unknown): Promise<TaskTypeActionResu
   const auth = await requireTaskTypeAdmin(parsed.data.taskTypeId);
   if (!auth.ok) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
-  const patch: Record<string, string> = {};
+  const patch: { name?: string; color?: string; system_key?: string | null } = {};
   if (parsed.data.name !== undefined) patch.name = parsed.data.name;
   if (parsed.data.color !== undefined) patch.color = parsed.data.color;
+  // F006c (missions/20260903-portal, AS-014): the write path `system_key`
+  // never had — a team can now tag a type as the portal's page type (or
+  // clear that tag) from this same settings screen, instead of only ever
+  // being set by SQL or the create_workspace_with_owner seed.
+  if (parsed.data.systemKey !== undefined) patch.system_key = parsed.data.systemKey;
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -125,7 +130,20 @@ export async function updateTaskType(input: unknown): Promise<TaskTypeActionResu
 
   if (error) {
     if (error.code === "23505") {
-      return { ok: false, error: "A task type with that name already exists." };
+      // F006c: the partial unique index
+      // (task_types_workspace_id_system_key_idx) is what actually
+      // enforces "at most one type per portal role per workspace" — this
+      // turns that raw constraint violation into the same plain-language
+      // message the pre-existing name-uniqueness branch above already
+      // gives, rather than surfacing a Postgres error string to the
+      // team member setting the tag.
+      return parsed.data.systemKey !== undefined
+        ? {
+            ok: false,
+            error:
+              "Another task type is already tagged as the portal's page type. Remove that tag from the other type first.",
+          }
+        : { ok: false, error: "A task type with that name already exists." };
     }
     logger.error("updateTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };

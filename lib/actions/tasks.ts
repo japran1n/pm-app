@@ -838,6 +838,9 @@ export type EditTaskResult =
         // own always-present convention above.
         pageSlug: string | null;
         pageOrder: number | null;
+        // F006c (missions/20260903-portal, AS-013): mirrors pageSlug's
+        // own always-present convention above.
+        phaseId: string | null;
       };
     }
   | { ok: false; error: string };
@@ -1019,6 +1022,30 @@ export async function editTask(
     }
   }
 
+  // F006c (missions/20260903-portal, AS-013): cross-project safety —
+  // mirrors setTaskPhaseImpl's own resolveWorkspace check
+  // (lib/actions/phases.ts:646-658, itself citing
+  // removeColumnWithReassignment's destination-project check in
+  // lib/actions/statuses.ts): a phase id supplied for a DIFFERENT
+  // project than this task's own must be rejected, not silently
+  // accepted. Not expressible in editTaskSchema (Zod has no cross-table
+  // lookup), so it is re-checked here, same "the DB/business rule is
+  // re-verified in the action body, not just the client-side schema"
+  // convention this file already follows for every other constraint.
+  if ("phaseId" in parsed.data.updates && parsed.data.updates.phaseId) {
+    const { data: phaseRow } = await admin
+      .from("project_phases")
+      .select("id, project_id")
+      .eq("id", parsed.data.updates.phaseId)
+      .maybeSingle();
+    if (!phaseRow || phaseRow.project_id !== project.id) {
+      return {
+        ok: false,
+        error: "That phase does not belong to this task's project.",
+      };
+    }
+  }
+
   const updatePayload: {
     title?: string;
     description?: string | null;
@@ -1054,6 +1081,10 @@ export async function editTask(
     // transform, same shape as due_date/start_date above.
     page_slug?: string | null;
     page_order?: number | null;
+    // F006c (missions/20260903-portal, AS-013): the task<->phase
+    // assignment. `null` clears it; a validated (see the cross-project
+    // check above) uuid sets it.
+    phase_id?: string | null;
   } = {};
   if ("title" in parsed.data.updates) {
     updatePayload.title = parsed.data.updates.title;
@@ -1082,6 +1113,9 @@ export async function editTask(
   if ("pageOrder" in parsed.data.updates) {
     updatePayload.page_order = parsed.data.updates.pageOrder;
   }
+  if ("phaseId" in parsed.data.updates) {
+    updatePayload.phase_id = parsed.data.updates.phaseId;
+  }
   if (sanitisedDescriptionJson !== undefined) {
     updatePayload.description_json = sanitisedDescriptionJson as Json;
   }
@@ -1091,7 +1125,7 @@ export async function editTask(
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
     .select(
-      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence, page_slug, page_order",
+      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence, page_slug, page_order, phase_id",
     )
     .single();
 
@@ -1283,6 +1317,9 @@ export async function editTask(
       // startDate's own always-present convention.
       pageSlug: updated.page_slug,
       pageOrder: updated.page_order,
+      // F006c (missions/20260903-portal, AS-013): mirrors pageSlug/
+      // pageOrder's own always-present convention above.
+      phaseId: updated.phase_id,
     },
   };
 }
@@ -2780,11 +2817,20 @@ export async function getTaskDetail(
       // convention as every other field on this select.
       // F005 (missions/20260903-portal, AS-014): `page_slug`/`page_order`
       // (this task's own portal-Pages-view ordering/identity) and
-      // `task_types(name)` (whether this task's TYPE is "page" — the
-      // detail sheet's own gate for showing those two fields at all) —
-      // one extra join, no second round trip, same convention as every
-      // other field on this select.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, task_types(name), projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      // `task_types(name, system_key)` (this task's TYPE, both its
+      // display name AND its stable `system_key` — F006c/AS-014 gates
+      // the detail sheet's page fields on `system_key = 'page'`, NOT the
+      // name, so a workspace whose page type is named "Sida" still shows
+      // and orders them; `name` is kept for display/logging elsewhere)
+      // — one extra join, no second round trip, same convention as
+      // every other field on this select.
+      // F006c (missions/20260903-portal, AS-013): `phase_id` — this
+      // task's own phase assignment. Selected here for the first time;
+      // `setTaskPhase` (lib/actions/phases.ts) has written this column
+      // since F002, but nothing ever read it back until now, which is
+      // exactly why AS-013 never actually held (see this feature's
+      // spec/handoff).
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3251,6 +3297,19 @@ export async function getTaskDetail(
             ? taskRow.task_types[0]
             : taskRow.task_types
           )?.name ?? null,
+        // F006c (missions/20260903-portal, AS-014): this task's type's
+        // stable role, independent of its human-editable name — the
+        // detail sheet gates the page fields on THIS, not taskTypeName
+        // (see that gate's own doc comment in task-detail-sheet.tsx).
+        taskTypeSystemKey:
+          (Array.isArray(taskRow.task_types)
+            ? taskRow.task_types[0]
+            : taskRow.task_types
+          )?.system_key ?? null,
+        // F006c (missions/20260903-portal, AS-013): this task's current
+        // phase assignment — see this function's task select above for
+        // why this was never returned before this feature.
+        phaseId: taskRow.phase_id,
         tags: taskRow.tags ?? [],
         // F146 (AS-258): see this function's task+project select above.
         number: taskRow.number,
