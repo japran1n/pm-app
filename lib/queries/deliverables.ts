@@ -98,6 +98,26 @@ export async function getClientDeliverables(
   return { ok: true, data: (data ?? []).map(mapDeliverable) };
 }
 
+// F016h (missions/20260903-portal, M3 remediation, AS-003): the ONE
+// predicate deciding "is this deliverable past due" for both the sidebar
+// badge (SQL, below) and the Your list view's `classifyBucket`
+// (app/(portal)/.../your-list/page.tsx, which imports this). F016e's
+// comment here claimed the two were already unified while the view kept
+// its own, independently-written condition that routed `delivered` to
+// `"progress"` regardless of due date — disagreeing with this query,
+// which (correctly, per AS-003's own wording, "deliverables that are
+// past their due date", no state carve-out beyond accepted/waived)
+// counts a past-due `delivered` row. `isDeliverablePastDue` is that
+// shared condition, written once; `classifyBucket` in the view calls it
+// instead of re-deriving its own past-due test from `state`/`dueAt`.
+export function isDeliverablePastDue(
+  state: DeliverableState,
+  dueAt: string | null,
+  today: string,
+): boolean {
+  return state !== "accepted" && state !== "waived" && dueAt !== null && dueAt < today;
+}
+
 // F016e (missions/20260903-portal, M3-scrutiny defect 1, AS-003): the
 // count `getPortalBadgeCounts` (lib/queries/portal.ts) folds into
 // `deliverablesPastDue`. AS-003's own wording is "deliverables that are
@@ -110,8 +130,8 @@ export async function getClientDeliverables(
 // now the ONE query behind both surfaces (the same "one question, one
 // query" fix F006f applied to the approvals tile/list, lib/queries/
 // portal.ts:607-629): not yet delivered/accepted/waived, has a due date,
-// and that due date has passed — exactly the predicate `classifyBucket`
-// already applies client-side to the same table's rows.
+// and that due date has passed — exactly `isDeliverablePastDue` above,
+// which the Your list view's `classifyBucket` also calls (F016h).
 //
 // (The risk banner's `getWorstOverdueBlockingDeliverableRisk` below is a
 // different question — "the worst BLOCKING item at risk" is AS-031's own

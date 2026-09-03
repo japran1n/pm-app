@@ -42,7 +42,14 @@ function formatAmount(amount: number, currency: string | null): string {
 // AS-048: the state label a client reads for a quoted change request,
 // independent of the underlying client_requests.status column (which
 // tracks triage, not the quote decision).
-function quoteStateLabel(request: ProjectChangeRequest): string | null {
+//
+// F016h: added the expired branch. `accept_client_request_atomic`'s
+// CR048 (supabase/migrations/20261001010000…:660) refuses an approval
+// once `quote_valid_until < current_date` — before this fix the label
+// stayed "Awaiting your approval" forever for a quote the accept path
+// would already reject, with nothing telling the client why their click
+// fails.
+export function quoteStateLabel(request: ProjectChangeRequest, today: string): string | null {
   if (request.scopeVerdict !== "change_request") return null;
 
   if (request.clientDecision === "approved" && request.decidedAt) {
@@ -50,6 +57,9 @@ function quoteStateLabel(request: ProjectChangeRequest): string | null {
   }
   if (request.clientDecision === "rejected" && request.decidedAt) {
     return `Declined ${formatDate(request.decidedAt)}`;
+  }
+  if (request.quoteValidUntil && request.quoteValidUntil < today) {
+    return "Expired";
   }
   return "Awaiting your approval";
 }
@@ -67,10 +77,12 @@ export function ChangeRequestsTable({
     return <p className="text-sm text-muted-foreground">No change requests yet.</p>;
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <ul className="flex flex-col gap-2" data-testid="change-requests-table">
       {requests.map((request) => {
-        const quoteState = quoteStateLabel(request);
+        const quoteState = quoteStateLabel(request, today);
 
         return (
           <li key={request.id} className="rounded-md border border-border p-3">

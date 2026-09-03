@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { ListChecks } from "lucide-react";
 
-import { getClientDeliverablesForPortal } from "@/lib/queries/deliverables";
+import { getClientDeliverablesForPortal, isDeliverablePastDue } from "@/lib/queries/deliverables";
 import { getPortalProjects } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
@@ -27,17 +27,27 @@ function todayIso(): string {
 // component and its four existing buckets (this feature's own spec: "Same
 // status-distribution component F005 built; do not write a second one"),
 // mapped onto this table's five-value `state` column:
-//   - accepted/waived -> done (settled, nothing left to do)
-//   - delivered       -> progress (sent, awaiting our review)
-//   - not_started/in_progress, not yet due -> waiting (still open, on the
-//     client)
-//   - not_started/in_progress, past due    -> blocked (past due)
+//   - accepted/waived                        -> done (settled)
+//   - not accepted/waived, past due          -> blocked (past due) —
+//     regardless of state, INCLUDING delivered: a delivered-but-unreviewed
+//     item that is past its due date is still an outstanding obligation
+//     by AS-003's own wording ("deliverables that are past their due
+//     date"), and this is exactly `getDeliverablesPastDueCount`'s
+//     (lib/queries/portal.ts's badge) predicate — F016h made the two
+//     surfaces call the one shared `isDeliverablePastDue` instead of each
+//     re-deriving "past due" independently, which is how they used to
+//     disagree on this exact case.
+//   - delivered, not past due                -> progress (sent, awaiting
+//     our review)
+//   - not_started/in_progress, not past due   -> waiting (still open, on
+//     the client)
 // This mapping is also what each outstanding row's own left-rule token
 // (blocked/waiting) is derived from — same classification, one place.
-function classifyBucket(deliverable: PortalDeliverable, today: string): ClientBucket {
+export function classifyBucket(deliverable: PortalDeliverable, today: string): ClientBucket {
   if (deliverable.state === "accepted" || deliverable.state === "waived") return "done";
+  if (isDeliverablePastDue(deliverable.state, deliverable.dueAt, today)) return "blocked";
   if (deliverable.state === "delivered") return "progress";
-  return deliverable.dueAt && deliverable.dueAt < today ? "blocked" : "waiting";
+  return "waiting";
 }
 
 export default async function PortalYourListPage({

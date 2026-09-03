@@ -451,5 +451,118 @@ describe.skipIf(!haveCreds)(
       expect(error).toBeNull();
       expect(typeof data).toBe("number");
     });
+
+    // --- F016h: swept_at is per deliverable-task pair, not per task --------
+    //
+    // Primary success test from F016h's own Definition of done: "a task
+    // swept for one overdue deliverable is still blocked when a second
+    // one goes overdue." F016e/F016f stamped `swept_at` on EVERY overdue
+    // blocking deliverable of the task the sweep acted on, not just the
+    // one `distinct on (t.id)` picked as the cause -- D2 below would have
+    // been stamped by the first sweep even though the sweep cited D1, and
+    // the second sweep would then find nothing to re-block with.
+    it("F016h/AS-030: a task swept for one overdue deliverable is still blocked when a second, independent one goes overdue", async () => {
+      const taskId = await makeTask(todoStatusId);
+      const d1 = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+      const d2 = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-06-01",
+        taskId,
+      });
+
+      // First sweep: `distinct on (t.id)` orders by due_at asc, so it
+      // cites d1 (the earlier due date) and blocks the task.
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
+      const { data: afterFirst } = await admin
+        .from("tasks")
+        .select("status_id")
+        .eq("id", taskId)
+        .single();
+      expect(afterFirst!.status_id).toBe(blockedStatusId);
+
+      const { data: rowsAfterFirst } = await admin
+        .from("client_deliverables")
+        .select("id, swept_at")
+        .in("id", [d1.id, d2.id]);
+      const d1AfterFirst = rowsAfterFirst!.find((r) => r.id === d1.id)!;
+      const d2AfterFirst = rowsAfterFirst!.find((r) => r.id === d2.id)!;
+      // Only the deliverable the sweep actually cited is stamped -- d2
+      // must still be able to independently cause a future block.
+      expect(d1AfterFirst.swept_at).not.toBeNull();
+      expect(d2AfterFirst.swept_at).toBeNull();
+
+      // d1 is accepted, and a human unblocks the task -- exactly the
+      // legitimate sequence AS-030 (round 1) protects.
+      await memberSession.rpc("accept_deliverable_atomic", {
+        p_deliverable_id: d1.id,
+        p_decision: "accepted",
+        p_note: null,
+      });
+      await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+
+      // d2 is still overdue, blocking, and unaccepted -- the next sweep
+      // must re-block the task, citing d2.
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
+      const { data: afterSecond } = await admin
+        .from("tasks")
+        .select("status_id")
+        .eq("id", taskId)
+        .single();
+      expect(afterSecond!.status_id).toBe(blockedStatusId);
+
+      const { data: d2AfterSecond } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d2.id)
+        .single();
+      expect(d2AfterSecond!.swept_at).not.toBeNull();
+    });
+
+    // F016h: swept_at is cleared when a deliverable's due date changes,
+    // so a re-missed extended deadline can block again -- FU's second
+    // failure test.
+    it("F016h/AS-030: extending an already-swept deliverable's due date and missing the new one re-triggers the sweep", async () => {
+      const taskId = await makeTask(todoStatusId);
+      const d1 = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+      const { data: sweptRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(sweptRow!.swept_at).not.toBeNull();
+
+      await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+
+      // Due date extended into the future -- swept_at must clear.
+      await admin.from("client_deliverables").update({ due_at: "2099-01-01" }).eq("id", d1.id);
+      const { data: clearedRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(clearedRow!.swept_at).toBeNull();
+
+      // ...and missed again -- the sweep should re-block.
+      await admin.from("client_deliverables").update({ due_at: "2020-02-01" }).eq("id", d1.id);
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
+      const { data: task } = await admin.from("tasks").select("status_id").eq("id", taskId).single();
+      expect(task!.status_id).toBe(blockedStatusId);
+    });
   },
 );
