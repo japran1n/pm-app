@@ -363,3 +363,5 @@ individual answer was right.
 Opened F011b (blocker) and F009b (the two paths, plus subject_id validated only
 in TypeScript and requestApproval missing its portal gate). AS-021's missing doc
 "Open" control and AS-002's vacuous test follow in F009c.
+- F011b COMPLETE — prevent_approval_request_settled_update rewritten to guard the four decision fields via IS DISTINCT FROM instead of blocking every column on a settled row (migration 20260924010000). The FK's referential SET NULL now passes through during purge while AS-024 still holds. afterAll now throws on cleanup errors instead of swallowing them, plus two new AS-024 tests.
+  The right call: AS-024 says a recorded DECISION cannot be edited. The original trigger enforced something stronger and unstated — that no column of a settled row may ever change — and that stronger rule is what made deletion impossible. Narrowing it to what the contract actually says fixes the bug without weakening the guarantee.
