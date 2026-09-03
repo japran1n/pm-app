@@ -322,3 +322,5 @@ M1's final verification into that gate is a better use of a review than a fourth
 pass over the same files.
 
 If M2's gate surfaces an M1 regression, that judgement was wrong and I will say so.
+- F009 COMPLETE (7bfb494) — ApprovalCard, ApprovalHistory and DecisionOwnersGrid on the approvals page, decideApproval action calling decide_approval_atomic, the AS-002 badge scoped to the client's own decision types, PortalOverviewLive given a projectId prop closing the cross-project realtime leak F006 flagged, and the badge mock migrated to F006j's shared query-filter helper. 136 tests across 9 files.
+  Accepted deviation: the worker kept components/portal/approval-actions.tsx rather than deleting it as the spec said, because the task detail page's separate legacy pending_client_approval toggle still uses it. Correct call — my spec assumed the two flows were the same one. Reasoning documented in the handoff rather than done silently.
