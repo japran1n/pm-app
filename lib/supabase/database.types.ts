@@ -538,6 +538,7 @@ export type Database = {
           desired_by: string | null
           id: string
           kind: string
+          origin_assumption_id: string | null
           project_id: string
           quote_currency: string | null
           quote_note: string | null
@@ -568,6 +569,7 @@ export type Database = {
           desired_by?: string | null
           id?: string
           kind?: string
+          origin_assumption_id?: string | null
           project_id: string
           quote_currency?: string | null
           quote_note?: string | null
@@ -598,6 +600,7 @@ export type Database = {
           desired_by?: string | null
           id?: string
           kind?: string
+          origin_assumption_id?: string | null
           project_id?: string
           quote_currency?: string | null
           quote_note?: string | null
@@ -635,6 +638,13 @@ export type Database = {
             columns: ["converted_task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_origin_assumption_id_fkey"
+            columns: ["origin_assumption_id"]
+            isOneToOne: false
+            referencedRelation: "project_assumptions"
             referencedColumns: ["id"]
           },
           {
@@ -2811,6 +2821,16 @@ export type Database = {
         Returns: {
           attachment_paths: string[]
           id: string
+        }[]
+      }
+      raise_change_request_from_assumption_atomic: {
+        Args: { p_assumption_id: string }
+        Returns: {
+          body: string
+          created_at: string
+          project_id: string
+          request_id: string
+          title: string
         }[]
       }
       reassign_and_delete_project_status: {

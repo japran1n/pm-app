@@ -24,6 +24,7 @@ import {
   acceptClientRequestSchema,
   createClientRequestSchema,
   declineClientRequestSchema,
+  raiseChangeRequestFromAssumptionSchema,
   sendChangeRequestQuoteSchema,
   withdrawClientRequestSchema,
 } from "@/lib/validation/client-requests";
@@ -98,6 +99,64 @@ async function resolveRequestContext(
     body: row.body,
     desiredBy: row.desired_by,
     createdBy: row.created_by,
+  };
+}
+
+// F016b: resolves the workspace/role context for a project_assumptions
+// row, the same "re-check with the admin client" shape
+// resolveRequestContext uses above — this is the independent second
+// line of defence in front of raise_change_request_from_assumption_atomic,
+// which re-derives all of this itself as its own owner.
+async function resolveAssumptionContext(
+  assumptionId: string,
+  userId: string,
+): Promise<
+  | {
+      ok: true;
+      projectId: string;
+      workspaceId: string;
+      role: string;
+      flaggedByClientAt: string | null;
+      state: string;
+    }
+  | { ok: false; error: string }
+> {
+  const admin = createAdminClient();
+
+  const { data: row, error } = await admin
+    .from("project_assumptions")
+    .select("id, project_id, state, flagged_by_client_at, projects!inner(workspace_id)")
+    .eq("id", assumptionId)
+    .maybeSingle();
+
+  if (error || !row) {
+    return { ok: false, error: "Assumption not found." };
+  }
+
+  const project = row.projects as
+    | { workspace_id: string }
+    | { workspace_id: string }[]
+    | null;
+  const workspaceId = Array.isArray(project)
+    ? project[0]?.workspace_id
+    : project?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Assumption not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, workspaceId, userId);
+  if (!membership.ok) {
+    return { ok: false, error: "Assumption not found." };
+  }
+
+  return {
+    ok: true,
+    projectId: row.project_id,
+    workspaceId,
+    role: membership.role,
+    flaggedByClientAt: row.flagged_by_client_at,
+    state: row.state,
   };
 }
 
@@ -377,6 +436,83 @@ export async function sendChangeRequestQuote(
     data: {
       requestId: parsed.data.requestId,
       approvalRequestId: rpcResult?.approval_request_id ?? null,
+    },
+  };
+}
+
+// F016b: raise a change request from an assumption the client has
+// flagged. Creates the client_requests row (kind = 'change',
+// scope_verdict = 'change_request', pre-filled from the assumption's own
+// text/flagged_note, linked back via origin_assumption_id) through
+// raise_change_request_from_assumption_atomic
+// (20261003010000_f016b_raise_change_request_from_assumption.sql) —
+// same team-writer bar as sendChangeRequestQuote/acceptClientRequest
+// above, not a new authorisation surface. Returns just enough of the new
+// row for the caller to open components/client-requests/quote-dialog.tsx
+// on it immediately; the dialog's own "Send quote" still goes through
+// the unmodified sendChangeRequestQuote path above.
+export async function raiseChangeRequestFromAssumption(
+  assumptionId: string,
+): Promise<
+  ClientRequestResult<{
+    requestId: string;
+    projectId: string;
+    title: string;
+    body: string | null;
+    createdAt: string;
+  }>
+> {
+  const parsed = raiseChangeRequestFromAssumptionSchema.safeParse({ assumptionId });
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid assumption." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const context = await resolveAssumptionContext(parsed.data.assumptionId, user.id);
+  if (!context.ok) return context;
+
+  if (!teamCanTriage(context.role)) {
+    return { ok: false, error: "You don't have permission to review requests." };
+  }
+
+  if (!context.flaggedByClientAt || context.state !== "assumed") {
+    return { ok: false, error: "This assumption hasn't been flagged by the client." };
+  }
+
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    "raise_change_request_from_assumption_atomic",
+    { p_assumption_id: parsed.data.assumptionId },
+  );
+
+  if (rpcError) {
+    logger.error(
+      "raiseChangeRequestFromAssumption: raise_change_request_from_assumption_atomic RPC failed",
+      { error: rpcError },
+    );
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  if (!rpcResult?.request_id) {
+    logger.error(
+      "raiseChangeRequestFromAssumption: RPC returned no request_id",
+    );
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  revalidatePath("/w", "layout");
+
+  return {
+    ok: true,
+    data: {
+      requestId: rpcResult.request_id,
+      projectId: rpcResult.project_id,
+      title: rpcResult.title,
+      body: rpcResult.body,
+      createdAt: rpcResult.created_at,
     },
   };
 }

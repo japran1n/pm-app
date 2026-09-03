@@ -89,6 +89,7 @@ export default async function ProjectRecordSettingsPage({
 
       <RecordPanel
         projectId={project.id}
+        workspaceSlug={workspaceSlug}
         initialScopeItems={scopeResult.ok ? scopeResult.data : []}
         initialDecisions={decisionsResult.ok ? decisionsResult.data : []}
         initialAssumptions={assumptionsResult.ok ? assumptionsResult.data : []}

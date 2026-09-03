@@ -47,6 +47,14 @@ export const acceptClientRequestSchema = z.object({
   requestId: z.string().uuid("Invalid request."),
 });
 
+// F016b: raising a change request from a flagged assumption. The team
+// picks the assumption; everything else (title/body pre-fill, kind,
+// scope_verdict, the link back) is decided server-side by
+// raise_change_request_from_assumption_atomic.
+export const raiseChangeRequestFromAssumptionSchema = z.object({
+  assumptionId: z.string().uuid("Invalid assumption."),
+});
+
 export type CreateClientRequestInput = z.infer<typeof createClientRequestSchema>;
 
 // F016: triage + quote. `scopeVerdict` is the one of three buttons the

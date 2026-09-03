@@ -31,6 +31,7 @@ import {
   updateDecision,
   updateScopeItem,
 } from "@/lib/actions/project-records";
+import { raiseChangeRequestFromAssumption } from "@/lib/actions/client-requests";
 import type {
   AssumptionState,
   DecisionType,
@@ -39,6 +40,8 @@ import type {
   ProjectScopeItem,
   ScopeItemSource,
 } from "@/lib/queries/project-records";
+import type { TeamClientRequest } from "@/lib/queries/client-requests";
+import { QuoteDialog } from "@/components/client-requests/quote-dialog";
 import {
   assumptionStateSchema,
   decisionTypeSchema,
@@ -550,15 +553,59 @@ function AssumptionRow({
   assumption,
   onChanged,
   onRemoved,
+  onRaised,
 }: {
   assumption: ProjectAssumption;
   onChanged: (assumption: ProjectAssumption) => void;
   onRemoved: (id: string) => void;
+  onRaised: (request: TeamClientRequest) => void;
 }) {
   const [text, setText] = useState(assumption.text);
   const [state, setState] = useState<AssumptionState>(assumption.state);
   const [clientVisible, setClientVisible] = useState(assumption.clientVisible);
   const [isPending, startTransition] = useTransition();
+  const [isRaising, startRaiseTransition] = useTransition();
+
+  // F016b: turns this flagged assumption into a change request. Only the
+  // client_requests row is created here — pre-filled with the
+  // assumption's own text/flagged_note, kind='change',
+  // scope_verdict='change_request', linked back via
+  // origin_assumption_id — the quote itself is still sent through
+  // F016's own, unmodified QuoteDialog/sendChangeRequestQuote path.
+  function handleRaise() {
+    startRaiseTransition(async () => {
+      const result = await raiseChangeRequestFromAssumption(assumption.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      onRaised({
+        id: result.data.requestId,
+        projectId: result.data.projectId,
+        projectName: "",
+        title: result.data.title,
+        body: result.data.body,
+        desiredBy: null,
+        status: "submitted",
+        declineReason: null,
+        convertedTaskId: null,
+        createdAt: result.data.createdAt,
+        requesterId: "",
+        requesterName: null,
+        requesterEmail: null,
+        scopeVerdict: "change_request",
+        severity: null,
+        quotedHours: null,
+        quotedAmount: null,
+        quoteCurrency: null,
+        quoteNote: null,
+        quoteValidUntil: null,
+        clientDecision: "pending",
+        track: null,
+        trackOverridden: false,
+      });
+    });
+  }
 
   function submit(next: { text: string; state: AssumptionState; clientVisible: boolean }) {
     startTransition(async () => {
@@ -591,9 +638,24 @@ function AssumptionRow({
       data-testid="assumption-row"
     >
       {isFlagged && (
-        <p className="text-xs font-medium text-[color:var(--status-blocked)]">
-          Flagged by the client: &ldquo;{assumption.flaggedNote}&rdquo;
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-[color:var(--status-blocked)]">
+            Flagged by the client: &ldquo;{assumption.flaggedNote}&rdquo;
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isRaising}
+            onClick={handleRaise}
+          >
+            {isRaising ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Raise a change request"
+            )}
+          </Button>
+        </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Textarea
@@ -655,16 +717,19 @@ function AssumptionRow({
 
 function AssumptionsTab({
   projectId,
+  workspaceSlug,
   initialAssumptions,
   canManage,
 }: {
   projectId: string;
+  workspaceSlug: string;
   initialAssumptions: ProjectAssumption[];
   canManage: boolean;
 }) {
   const [assumptions, setAssumptions] = useState(initialAssumptions);
   const [newText, setNewText] = useState("");
   const [isAdding, startAddTransition] = useTransition();
+  const [quoteRequest, setQuoteRequest] = useState<TeamClientRequest | null>(null);
 
   function handleAdd() {
     if (!newText.trim()) {
@@ -699,6 +764,7 @@ function AssumptionsTab({
                 onRemoved={(id) =>
                   setAssumptions((current) => current.filter((a) => a.id !== id))
                 }
+                onRaised={(request) => setQuoteRequest(request)}
               />
             ) : (
               <div key={assumption.id} className="rounded-md border border-border p-3 text-sm">
@@ -726,6 +792,21 @@ function AssumptionsTab({
           </Button>
         </div>
       )}
+
+      {quoteRequest && (
+        <QuoteDialog
+          request={quoteRequest}
+          open={quoteRequest != null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setQuoteRequest(null);
+          }}
+          portalUrl={
+            typeof window !== "undefined"
+              ? `${window.location.origin}/portal/${workspaceSlug}/p/${quoteRequest.projectId}/scope`
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
@@ -736,12 +817,14 @@ function AssumptionsTab({
 
 export function RecordPanel({
   projectId,
+  workspaceSlug,
   initialScopeItems,
   initialDecisions,
   initialAssumptions,
   canManage,
 }: {
   projectId: string;
+  workspaceSlug: string;
   initialScopeItems: ProjectScopeItem[];
   initialDecisions: ProjectDecision[];
   initialAssumptions: ProjectAssumption[];
@@ -767,6 +850,7 @@ export function RecordPanel({
       <TabsContent value="assumptions">
         <AssumptionsTab
           projectId={projectId}
+          workspaceSlug={workspaceSlug}
           initialAssumptions={initialAssumptions}
           canManage={canManage}
         />
