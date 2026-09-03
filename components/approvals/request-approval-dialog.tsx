@@ -167,6 +167,18 @@ export function RequestApprovalDialog({
 
       if (result.ok) {
         toast.success("Approval requested.");
+        // F011 (spec section 2, "Rounds"): round >= 3 on the SAME subject
+        // is a suggestion, never a decision the tool makes for the team —
+        // "the tool does not get to decide that a client is being
+        // unreasonable" is this feature's own explicit instruction, so
+        // this is a second, dismissible toast alongside the success one,
+        // not a blocking dialog and not a changed outcome for the
+        // approval that was just raised.
+        if (result.data.round >= 3) {
+          toast.message(
+            `This is round ${result.data.round} on this subject. If the scope itself has changed rather than the execution, this may be better raised as a change request.`,
+          );
+        }
         setOpen(false);
         onRequested?.(result.data.id);
       } else {

@@ -139,6 +139,12 @@ async function revalidateApprovalSurfaces(projectId: string) {
 export type RequestApprovalActionData = {
   id: string;
   subjectType: "task" | "doc" | "artifact";
+  /** F011 (spec section 2, "Rounds"): the round this newly-created
+   * request landed at. 1 for a subject's first approval; the caller
+   * (RequestApprovalDialog) uses `round >= 3` to *suggest* — never
+   * decide — that this may be a change request rather than more
+   * feedback. */
+  round: number;
 };
 
 export type RequestApprovalResult =
@@ -253,6 +259,43 @@ const requestApprovalImpl = withAuthz(
       artifactUrl = input.artifactUrl!;
     }
 
+    // F011 (spec section 2, "Rounds"): the next approval raised for the
+    // SAME subject continues the same round sequence, so the portal's
+    // history reads as "round 2", "round 3", ... rather than every raise
+    // silently restarting at round 1. Matched on (project, subject_type,
+    // subject_id) for task/doc/phase subjects, or (project, subject_type,
+    // artifact_url) for an artifact (which carries no subject_id) — the
+    // same two shapes the CHECK constraint at 20260916010000 already
+    // treats as this row's identity. Ordered by round desc (not
+    // created_at) so a chain that itself branched (unlikely, but no
+    // invariant forbids two 'pending' rows on the same subject at once)
+    // still continues from the highest round seen, not an arbitrary one.
+    let previousRound = 0;
+    let supersedesId: string | null = null;
+    {
+      let previousQuery = ctx.admin
+        .from("approval_requests")
+        .select("id, round")
+        .eq("project_id", ctx.projectId)
+        .eq("subject_type", input.subjectType)
+        .order("round", { ascending: false })
+        .limit(1);
+
+      previousQuery = subjectId
+        ? previousQuery.eq("subject_id", subjectId)
+        : previousQuery.eq("artifact_url", artifactUrl!);
+
+      const { data: previousRow, error: previousError } = await previousQuery.maybeSingle();
+      if (previousError) {
+        logger.error("requestApproval: previous-round lookup failed", { error: previousError });
+        return { ok: false, error: GENERIC_ERROR };
+      }
+      if (previousRow) {
+        previousRound = previousRow.round;
+        supersedesId = previousRow.id;
+      }
+    }
+
     const { data: inserted, error: insertError } = await ctx.admin
       .from("approval_requests")
       .insert({
@@ -265,8 +308,10 @@ const requestApprovalImpl = withAuthz(
         decision_type: input.decisionType,
         due_at: input.dueAt || null,
         requested_by: ctx.user.id,
+        round: previousRound + 1,
+        supersedes_id: supersedesId,
       })
-      .select("id")
+      .select("id, round")
       .single();
 
     if (insertError || !inserted) {
@@ -312,7 +357,7 @@ const requestApprovalImpl = withAuthz(
 
     await revalidateApprovalSurfaces(ctx.projectId);
 
-    return { ok: true, data: { id: inserted.id, subjectType: input.subjectType } };
+    return { ok: true, data: { id: inserted.id, subjectType: input.subjectType, round: inserted.round } };
   },
 );
 

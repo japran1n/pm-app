@@ -87,7 +87,16 @@ export function ApprovalCard({
   const [isRequestingChanges, setIsRequestingChanges] = useState(false);
   const [message, setMessage] = useState("");
   const [settled, setSettled] = useState<
-    { decision: "approved" | "changes_requested"; decidedAt: string; note: string | null } | null
+    {
+      decision: "approved" | "changes_requested";
+      decidedAt: string;
+      note: string | null;
+      // F011 (AS-025): present once the server round trip confirms a
+      // task was created; absent during the optimistic pre-confirm
+      // render (see handleDecision below) so the "logged as work" line
+      // never appears before it is actually true.
+      resultingTaskId?: string | null;
+    } | null
   >(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
@@ -117,6 +126,11 @@ export function ApprovalCard({
         if (decision === "changes_requested") {
           setMessage("");
           setIsRequestingChanges(false);
+          // F011 (AS-025): fill in what actually happened server-side —
+          // the settled card names the task the decision created.
+          setSettled((current) =>
+            current ? { ...current, resultingTaskId: result.data.resultingTaskId } : current,
+          );
         }
         router.refresh();
       } catch {
@@ -185,21 +199,33 @@ export function ApprovalCard({
       {settled ? (
         <div
           className={cn(
-            "flex items-center gap-2 rounded-lg border p-3 text-sm font-medium",
+            "flex flex-col gap-1 rounded-lg border p-3 text-sm font-medium",
             settled.decision === "approved"
               ? "border-emerald-600/30 bg-emerald-600/5"
               : "border-amber-600/30 bg-amber-600/5",
           )}
         >
-          {settled.decision === "approved" ? (
-            <Check className="size-4 text-emerald-600" aria-hidden="true" />
-          ) : (
-            <MessageSquareWarning className="size-4" aria-hidden="true" />
+          <div className="flex items-center gap-2">
+            {settled.decision === "approved" ? (
+              <Check className="size-4 text-emerald-600" aria-hidden="true" />
+            ) : (
+              <MessageSquareWarning className="size-4" aria-hidden="true" />
+            )}
+            <span>
+              {settled.decision === "approved" ? "Approved" : "Changes requested"} on{" "}
+              {formatDate(settled.decidedAt)}.
+            </span>
+          </div>
+          {/* F011 (AS-025): names the task that was created, without ever
+              linking to it -- a client-created task is not client_visible
+              by default (the RPC's own migration comment), so this is
+              deliberately text, not a Link, regardless of the id being
+              known here. */}
+          {settled.decision === "changes_requested" && settled.resultingTaskId && (
+            <p className="text-xs font-normal text-muted-foreground">
+              We&apos;ve logged this as work for the team.
+            </p>
           )}
-          <span>
-            {settled.decision === "approved" ? "Approved" : "Changes requested"} on{" "}
-            {formatDate(settled.decidedAt)}.
-          </span>
         </div>
       ) : isRequestingChanges ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4">

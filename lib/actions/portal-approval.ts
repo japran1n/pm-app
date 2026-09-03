@@ -257,7 +257,20 @@ const decideApprovalSchema = z
   });
 
 export type DecideApprovalResult =
-  | { ok: true; data: { requestId: string; state: string; decidedAt: string } }
+  | {
+      ok: true;
+      data: {
+        requestId: string;
+        state: string;
+        decidedAt: string;
+        // F011 (AS-025): set when this decision was `changes_requested`
+        // and created a task — never client_visible by default (see the
+        // RPC's own migration comment), so this id exists to let the
+        // portal card SAY the work was created without ever forming a
+        // link to it (approval-card.tsx never renders it as a link).
+        resultingTaskId: string | null;
+      };
+    }
   | { ok: false; error: string };
 
 function friendlyDecideApprovalError(message: string): string {
@@ -314,6 +327,7 @@ export async function decideApproval(
       requestId: row.request_id as string,
       state: row.state as string,
       decidedAt: row.decided_at as string,
+      resultingTaskId: (row.resulting_task_id as string | null) ?? null,
     },
   };
 }

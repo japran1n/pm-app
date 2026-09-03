@@ -91,6 +91,7 @@ export type Database = {
           project_id: string
           requested_at: string
           requested_by: string
+          resulting_task_id: string | null
           round: number
           state: string
           subject_id: string | null
@@ -114,6 +115,7 @@ export type Database = {
           project_id: string
           requested_at?: string
           requested_by: string
+          resulting_task_id?: string | null
           round?: number
           state?: string
           subject_id?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           project_id?: string
           requested_at?: string
           requested_by?: string
+          resulting_task_id?: string | null
           round?: number
           state?: string
           subject_id?: string | null
@@ -158,6 +161,20 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_requests_resulting_task_id_fkey"
+            columns: ["resulting_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_requests_resulting_task_id_fkey"
+            columns: ["resulting_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
           {
@@ -2258,6 +2275,7 @@ export type Database = {
         Returns: {
           decided_at: string
           request_id: string
+          resulting_task_id: string
           state: string
         }[]
       }

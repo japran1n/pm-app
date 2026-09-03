@@ -213,7 +213,12 @@ describe("ApprovalCard (F009)", () => {
   it("test_AS_023_request_changes_settles_with_the_note", async () => {
     decideMock.mockResolvedValue({
       ok: true,
-      data: { requestId: "req-1", state: "changes_requested", decidedAt: "2026-09-01T00:00:00Z" },
+      data: {
+        requestId: "req-1",
+        state: "changes_requested",
+        decidedAt: "2026-09-01T00:00:00Z",
+        resultingTaskId: "task-created-1",
+      },
     });
 
     renderCard();
@@ -228,6 +233,36 @@ describe("ApprovalCard (F009)", () => {
       expect(decideMock).toHaveBeenCalledWith("req-1", "changes_requested", "please fix the header"),
     );
     await waitFor(() => expect(screen.getByText(/changes requested on/i)).toBeInTheDocument());
+  });
+
+  // F011 (AS-025): the settled card names the task the decision created,
+  // without ever forming a link to it (the resulting task is never
+  // client_visible by default -- see decide_approval_atomic's own
+  // migration comment).
+  it("test_AS_025_settled_card_names_the_task_that_was_created_without_linking_to_it", async () => {
+    decideMock.mockResolvedValue({
+      ok: true,
+      data: {
+        requestId: "req-1",
+        state: "changes_requested",
+        decidedAt: "2026-09-01T00:00:00Z",
+        resultingTaskId: "task-created-1",
+      },
+    });
+
+    renderCard();
+
+    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
+      target: { value: "please fix the header" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    const loggedLine = await screen.findByText(/we.ve logged this as work for the team/i);
+    expect(loggedLine).toBeInTheDocument();
+    // Never a link -- a client-created task is not client_visible by
+    // default, so this line is deliberately text, not an <a>.
+    expect(loggedLine.closest("a")).toBeNull();
   });
 
   it("shows an overdue due chip when the due date has passed and the card is still pending", () => {
