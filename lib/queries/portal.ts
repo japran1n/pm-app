@@ -86,6 +86,14 @@ export async function getPortalProjects(
     .select("id, name, description, start_date, end_date")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
+    // F001 (missions/20260903-portal, AS-007): a project's portal is off
+    // by default. RLS still lets a client read the `projects` row itself
+    // (portal_enabled has no bearing on ordinary project visibility), so
+    // this filter is the actual gate for the portal's own project list —
+    // the same "the database hides rows, this file filters what's left
+    // over from a business-logic requirement, not a security boundary"
+    // reasoning as `getProjectPhases`'s client_visible task filter below.
+    .eq("portal_enabled", true)
     .order("name");
 
   if (projectsError) {
@@ -187,6 +195,134 @@ export async function getPortalProjects(
       statuses: ((statuses ?? []) as StatusRow[])
         .filter((s) => s.project_id === project.id)
         .map((s) => ({ id: s.id, name: s.name, category: s.category })),
+    };
+  });
+}
+
+// --- Phases (F001, missions/20260903-portal) --------------------------
+
+export type PortalPhaseState = "not_started" | "active" | "blocked" | "done";
+
+export type PortalPhase = {
+  id: string;
+  name: string;
+  clientDescription: string | null;
+  state: PortalPhaseState;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  actualStart: string | null;
+  actualEnd: string | null;
+  position: number;
+  // AS-011: counts only client-visible tasks, regardless of which role
+  // called this function — see the note above the task query below for
+  // why that filter is applied explicitly here rather than left to RLS.
+  totalClientVisibleTasks: number;
+  doneClientVisibleTasks: number;
+  // Null (never 0) when there is nothing shared in this phase yet — same
+  // "don't claim 0% when the true answer is 'nothing to measure'"
+  // reasoning as `PortalProject.percentComplete` above, except the UI's
+  // clarified spec for phases is explicit: zero tasks renders as 0 and
+  // says so, rather than omitting the figure, so this is 0 rather than
+  // null.
+  progressPercent: number;
+};
+
+// Client-visible phases for one project, with a progress percentage. RLS
+// (project_phases_select_client / project_phases_select_team,
+// 20260909010000) already decides which PHASE rows a given caller gets
+// back — client_visible + the project's portal_enabled for a client,
+// every phase for the team. What RLS canNOT express is AS-011's
+// business rule that the PROGRESS FIGURE itself counts only
+// client-visible tasks even when the caller is a team member previewing
+// these same numbers — so that filter is applied explicitly below, not
+// left to RLS, matching this file's stated exception for business logic
+// that happens to coincide with (rather than duplicate) an access-control
+// boundary.
+export async function getProjectPhases(projectId: string): Promise<PortalPhase[]> {
+  const supabase = await createClient();
+
+  const { data: phases, error: phasesError } = await supabase
+    .from("project_phases")
+    .select(
+      "id, name, client_description, state, planned_start, planned_end, actual_start, actual_end, position",
+    )
+    .eq("project_id", projectId)
+    // AS-012: a phase with client_visible = false is never part of this
+    // function's output, whoever calls it — this is the function's own
+    // contract ("client-visible phases"), applied explicitly rather than
+    // left entirely to RLS so it holds even for a team caller previewing
+    // the portal's numbers.
+    .eq("client_visible", true)
+    .order("position");
+
+  if (phasesError) {
+    logger.error("getProjectPhases: failed to load phases", { error: phasesError });
+    return [];
+  }
+  if (!phases?.length) return [];
+
+  const phaseIds = phases.map((p) => p.id);
+
+  const [{ data: tasks, error: tasksError }, { data: statuses, error: statusesError }] =
+    await Promise.all([
+      supabase
+        .from("tasks")
+        .select("id, phase_id, status_id, status")
+        .in("phase_id", phaseIds)
+        // AS-011/AS-012: only a client-visible task counts toward a
+        // phase's progress figure, whoever is asking.
+        .eq("client_visible", true)
+        .is("deleted_at", null),
+      supabase
+        .from("project_statuses")
+        .select("id, project_id, name, category")
+        .eq("project_id", projectId),
+    ]);
+
+  if (tasksError) {
+    logger.error("getProjectPhases: failed to load tasks", { error: tasksError });
+  }
+  if (statusesError) {
+    logger.error("getProjectPhases: failed to load statuses", { error: statusesError });
+  }
+
+  const categoryByStatusId = new Map<string, StatusCategory>();
+  const categoryByName = new Map<string, StatusCategory>();
+  for (const status of (statuses ?? []) as StatusRow[]) {
+    categoryByStatusId.set(status.id, status.category);
+    categoryByName.set(status.name, status.category);
+  }
+
+  const totalsByPhase = new Map<string, { total: number; done: number }>();
+  for (const task of tasks ?? []) {
+    if (!task.phase_id) continue;
+    const category =
+      (task.status_id ? categoryByStatusId.get(task.status_id) : undefined) ??
+      categoryByName.get(task.status) ??
+      "not_started";
+    const entry = totalsByPhase.get(task.phase_id) ?? { total: 0, done: 0 };
+    entry.total += 1;
+    if (category === "done") entry.done += 1;
+    totalsByPhase.set(task.phase_id, entry);
+  }
+
+  return phases.map((phase) => {
+    const totals = totalsByPhase.get(phase.id) ?? { total: 0, done: 0 };
+    return {
+      id: phase.id,
+      name: phase.name,
+      clientDescription: phase.client_description,
+      state: phase.state as PortalPhaseState,
+      plannedStart: phase.planned_start,
+      plannedEnd: phase.planned_end,
+      actualStart: phase.actual_start,
+      actualEnd: phase.actual_end,
+      position: phase.position,
+      totalClientVisibleTasks: totals.total,
+      doneClientVisibleTasks: totals.done,
+      // Never divide by zero: zero shared tasks in a phase is 0%, stated
+      // as such by the UI, not a fraction that would throw or render NaN.
+      progressPercent: totals.total === 0 ? 0 : Math.round((totals.done / totals.total) * 100),
     };
   });
 }

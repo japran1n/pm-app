@@ -117,6 +117,11 @@ describe.skipIf(!haveCreds)("`client` workspace role — RLS read scope", () => 
           name,
           visibility: "workspace",
           created_by: ownerUserId,
+          // F001 (missions/20260903-portal): a client's read scope now
+          // also requires the project's portal switch — `portal_enabled`
+          // defaults false, and this suite's "client sees the shared
+          // task" assertion below depends on it being on.
+          portal_enabled: true,
         })
         .select("id")
         .single();

@@ -108,6 +108,11 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
         name: "Shared project",
         visibility: "workspace",
         created_by: ownerId,
+        // F001 (missions/20260903-portal): a client's task read scope now
+        // also requires the project's portal switch — this suite's "the
+        // client can then see the resulting task" case below depends on
+        // it being on, since `portal_enabled` defaults false.
+        portal_enabled: true,
       })
       .select("id")
       .single();

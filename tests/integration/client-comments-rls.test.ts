@@ -103,6 +103,11 @@ describe.skipIf(!haveCreds)("comments — client access and internal threads", (
         name: "Shared project",
         visibility: "workspace",
         created_by: ownerId,
+        // F001 (missions/20260903-portal): a client's read scope now also
+        // requires the project's portal to be switched on — without this
+        // every "a client sees ..." assertion below would see nothing,
+        // since `portal_enabled` defaults false.
+        portal_enabled: true,
       })
       .select("id")
       .single();
