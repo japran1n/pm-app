@@ -457,3 +457,33 @@ AS-048's created_by scoping, re-quote duplicating scope items, and the sweep
 re-blocking a manually unblocked task — follow in F016e.
 - F016c COMPLETE — composite FKs client_deliverables(task_id, project_id) -> tasks(id, project_id) and the same for phase_id, backed by new unique(id, project_id) constraints, with PG15 "ON DELETE SET NULL (col)" so project_id is not nulled. Sweep join scoped, both admin reads in resolveHoldsUpContext scoped, defence-in-depth validation in the actions. Existing rows checked for cross-project pairs before applying — none found.
   The worker found something the reviewer did not: phase_id had the identical defect. It fixed both rather than only the one it was pointed at, and it repaired two more filter-discarding mocks while it was in that file.
+
+## Decision rules for the unattended run (2026-09-04)
+
+The user has gone to sleep and asked me to finish autonomously. Recording the
+rules I will apply, so the calls I make overnight can be audited rather than
+guessed at.
+
+**What stops a milestone:** a blocker, or a major that lets a client read or
+write something they should not. Those get remediated before the next milestone
+starts, however many rounds it takes.
+
+**What does not stop a milestone:** cosmetic defects, thin test coverage on a
+read-only surface, a wrong error message, defence-in-depth that has no live
+exploit. Those get opened as specced follow-up features and recorded, not chased.
+Three gates have now taught me that a reviewer will always find more if asked to
+keep looking; the judgement is which findings are worth a worker session tonight.
+
+**Where I will not compromise:** anything a client can reach. This mission's
+entire premise is that a client is a limited participant inside a workspace built
+for colleagues, and every serious defect so far has come from that boundary being
+newer than the code around it.
+
+**If a gate fails three times on the same class**, I will stop patching instances
+and change the structure instead — as F016d is doing now. Two rounds of the same
+finding is bad luck; three is a design problem.
+
+**What I will not do:** mark a milestone passed because the remaining findings
+are inconvenient, report a percentage I have not counted with a command, or leave
+a deferred item unowned. If I run out of useful work before the mission is
+complete, I will say so plainly rather than manufacturing activity.
