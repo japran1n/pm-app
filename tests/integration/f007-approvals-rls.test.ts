@@ -360,7 +360,7 @@ describe.skipIf(!haveCreds)("approval_requests / project_decision_owners / decid
     beforeAll(async () => {
       const { data: task, error: taskError } = await admin
         .from("tasks")
-        .insert({ project_id: disabledProjectId, title: "Shared task, portal off", status: "todo", author_id: ownerId, client_visible: true })
+        .insert({ project_id: disabledProjectId, title: "Shared task, portal off", status: "todo", author_id: ownerId, client_visible: true, pending_client_approval: true })
         .select("id")
         .single();
       if (taskError || !task) throw new Error(`task: ${taskError?.message}`);
@@ -420,6 +420,35 @@ describe.skipIf(!haveCreds)("approval_requests / project_decision_owners / decid
         .eq("project_id", disabledProjectId);
       expect(ownersError).toBeNull();
       expect(owners).toHaveLength(1);
+    });
+
+    // F006l/AS-007/B1: decide_approval_atomic never consults RLS (it's
+    // SECURITY DEFINER), so the read-side invisibility above proved
+    // nothing about this write path. Called directly, as the named
+    // decision owner, on a portal-disabled project.
+    it("AS-007/B1: the named decision owner cannot settle an approval on a portal-disabled project via decide_approval_atomic, called directly", async () => {
+      const { data, error } = await clientSession.rpc("decide_approval_atomic", {
+        p_request_id: disabledProjectRequestId,
+        p_decision: "approved",
+        p_note: null,
+      });
+      expect(data).toBeNull();
+      expect(error).not.toBeNull();
+
+      const { data: stillPending } = await admin
+        .from("approval_requests")
+        .select("state, decided_at")
+        .eq("id", disabledProjectRequestId)
+        .single();
+      expect(stillPending?.state).toBe("pending");
+      expect(stillPending?.decided_at).toBeNull();
+
+      const { data: task } = await admin
+        .from("tasks")
+        .select("pending_client_approval")
+        .eq("id", disabledProjectVisibleTaskId)
+        .single();
+      expect(task?.pending_client_approval).toBe(true);
     });
   });
 

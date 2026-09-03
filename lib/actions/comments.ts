@@ -142,7 +142,7 @@ export async function addComment(
   // convention.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, deleted_at, client_visible, projects(workspace_id, visibility)")
+    .select("id, project_id, deleted_at, client_visible, projects(workspace_id, visibility, portal_enabled)")
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -152,8 +152,8 @@ export async function addComment(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string; visibility: string }
-    | { workspace_id: string; visibility: string }[]
+    | { workspace_id: string; visibility: string; portal_enabled: boolean }
+    | { workspace_id: string; visibility: string; portal_enabled: boolean }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
@@ -188,6 +188,16 @@ export async function addComment(
   if (callerIsClient && !taskRow.client_visible) {
     // Same message a genuinely missing task gets: whether an internal task
     // exists is not a client's business.
+    return { ok: false, error: "Task not found." };
+  }
+
+  // F006l/B3: this insert goes through the admin client (see below), so
+  // the gated `comments_insert_active_members` policy never runs — the
+  // portal_enabled check has to be stated explicitly here, same as the
+  // `client_visible` check immediately above. Without it, a client of a
+  // portal-disabled project holding a `client_visible` task id could still
+  // write a comment onto it (F006l/M1-scrutiny-3 B3).
+  if (callerIsClient && !projectRow?.portal_enabled) {
     return { ok: false, error: "Task not found." };
   }
 

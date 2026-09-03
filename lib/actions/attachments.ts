@@ -133,7 +133,7 @@ export async function getAttachmentSignedUrl(
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
     .select(
-      "id, file_url, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility))",
+      "id, file_url, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, portal_enabled))",
     )
     .eq("id", attachmentId)
     .maybeSingle();
@@ -148,8 +148,8 @@ export async function getAttachmentSignedUrl(
         deleted_at: string | null;
         client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; portal_enabled: boolean }
+          | { workspace_id: string; visibility: string; portal_enabled: boolean }[]
           | null;
       }
     | {
@@ -157,8 +157,8 @@ export async function getAttachmentSignedUrl(
         deleted_at: string | null;
         client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; portal_enabled: boolean }
+          | { workspace_id: string; visibility: string; portal_enabled: boolean }[]
           | null;
       }[]
     | null;
@@ -195,6 +195,16 @@ export async function getAttachmentSignedUrl(
   // found", not "forbidden" — whether an internal attachment exists is not
   // a client's business.
   if (isClient({ role: membership.role }) && !taskRow.client_visible) {
+    return { ok: false, error: "Attachment not found." };
+  }
+
+  // F006l/B4: the signed URL below is minted with `admin.storage`, so the
+  // gated `attachments_objects_select_active_members` storage policy
+  // (which folds in `is_project_portal_enabled` via `is_task_visible_to`)
+  // never runs for this path. Without this explicit check, a client of a
+  // portal-disabled project holding a `client_visible` attachment id could
+  // still mint a working download URL (F006l/M1-scrutiny-3 B4).
+  if (isClient({ role: membership.role }) && !projectRow?.portal_enabled) {
     return { ok: false, error: "Attachment not found." };
   }
 
