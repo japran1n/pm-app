@@ -455,3 +455,5 @@ Opened F016c (blocker) and F016d (the shared gate + the fifteen unpinned
 client_requests columns). The remaining majors — AS-003's badge/view mismatch,
 AS-048's created_by scoping, re-quote duplicating scope items, and the sweep
 re-blocking a manually unblocked task — follow in F016e.
+- F016c COMPLETE — composite FKs client_deliverables(task_id, project_id) -> tasks(id, project_id) and the same for phase_id, backed by new unique(id, project_id) constraints, with PG15 "ON DELETE SET NULL (col)" so project_id is not nulled. Sweep join scoped, both admin reads in resolveHoldsUpContext scoped, defence-in-depth validation in the actions. Existing rows checked for cross-project pairs before applying — none found.
+  The worker found something the reviewer did not: phase_id had the identical defect. It fixed both rather than only the one it was pointed at, and it repaired two more filter-discarding mocks while it was in that file.
