@@ -19,6 +19,8 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolvePeople } from "@/lib/queries/people";
+import { resolveClientBucket, type ClientBucket } from "@/components/portal/status-label";
 
 export type StatusCategory = "not_started" | "in_progress" | "done";
 
@@ -910,5 +912,186 @@ export async function getPortalFiles(
         projectName: projectNames.get(task.project_id) ?? "",
       },
     ];
+  });
+}
+
+// --- Pages (F005, missions/20260903-portal) --------------------------------
+//
+// The portal Pages view: every client-visible task of the workspace's
+// "page" task type on this project, in the team's own manual order
+// (AS-014).
+//
+// `task_types` (20260903040000_task_types.sql) is an entirely
+// workspace-owned taxonomy — there is no seeded "page" row this function
+// can rely on existing. docs/team-app-for-portal-plan.md's own T3 plan
+// ("Seed tipova taskova: page, component, qa, content, seo, admin") was
+// never implemented as an actual migration seed — verified by grepping
+// every migration file under supabase/migrations for a `task_types`
+// INSERT and finding none. Until a future feature adds that seed (T3 is
+// not in this mission's M1-M5 feature list), the "page" type is matched
+// by NAME, case-insensitively, exactly the way a team creates it today
+// via the existing task-types settings screen — see this feature's
+// handoff, Autonomous decisions.
+export type PortalPageStatus = {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  clientBucket: ClientBucket;
+  clientDescription: string | null;
+};
+
+export type PortalPageAssignee = {
+  id: string;
+  name: string | null;
+  avatarUrl: string | null;
+  // The only "role" concept this schema has for a team member is their
+  // WORKSPACE role (owner/admin/member/viewer/guest) — there is no
+  // per-person job title (e.g. "Designer") anywhere in this schema
+  // (grepped profiles' own migration, 20260818200946_create_profiles.sql,
+  // for a title/role column and found none). Rendered muted beneath the
+  // name, per this feature's spec's "avatar + name + role" cell.
+  roleLabel: string | null;
+};
+
+export type PortalPage = {
+  id: string;
+  title: string;
+  slug: string | null;
+  order: number | null;
+  status: PortalPageStatus;
+  assignee: PortalPageAssignee | null;
+  updatedAt: string;
+};
+
+const WORKSPACE_ROLE_LABELS: Record<string, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+  viewer: "Viewer",
+  guest: "Guest",
+  client: "Client",
+};
+
+export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
+  const supabase = await createClient();
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, workspace_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return [];
+
+  // See this function's own top-of-section comment: matched by name (an
+  // ILIKE with no wildcard characters is an exact, case-insensitive
+  // match), not a seeded id — a workspace that has never created a
+  // "Page" task type simply has an empty Pages view (AS-014's own
+  // "lists every client-visible task of type page" is vacuously true).
+  const { data: pageType } = await supabase
+    .from("task_types")
+    .select("id")
+    .eq("workspace_id", project.workspace_id)
+    .ilike("name", "page")
+    .maybeSingle();
+  if (!pageType) return [];
+
+  const { data: tasks, error } = await supabase
+    .from("tasks")
+    .select(
+      "id, title, page_slug, page_order, updated_at, assignee_id, project_statuses(id, name, category, client_bucket, client_description)",
+    )
+    .eq("project_id", projectId)
+    .eq("task_type_id", pageType.id)
+    // AS-014's own contract ("every CLIENT-VISIBLE task of type page") is
+    // a business-logic definition, not only an access-control boundary —
+    // the same explicit, documented exception to this file's own "don't
+    // duplicate RLS filtering" convention that getProjectPhases's
+    // client_visible task filter above already makes, so this function's
+    // output means the same thing regardless of who calls it.
+    .eq("client_visible", true)
+    .is("deleted_at", null)
+    // AS-014: ordered by the team's own page_order, nulls last, then
+    // title — never created_at.
+    .order("page_order", { ascending: true, nullsFirst: false })
+    .order("title", { ascending: true });
+
+  if (error) {
+    logger.error("getPortalPages: failed to load tasks", { error });
+    return [];
+  }
+  if (!tasks?.length) return [];
+
+  const assigneeIds = [
+    ...new Set(
+      tasks
+        .map((task) => task.assignee_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  // One batched resolvePeople call (name/avatar) plus one batched
+  // workspace_members role lookup — never a per-row query. Matches this
+  // feature's own explicit "no N+1" instruction and the convention
+  // lib/queries/templates.ts documents. The admin client is required for
+  // the role lookup specifically: a client caller cannot read
+  // workspace_members rows other than their own
+  // (workspace_members_select_*, 20260902020000), but this is resolving a
+  // DISPLAY value for an already-permitted row (the assignee id came from
+  // a task this same client can already see), not widening which rows are
+  // visible — the identical justification resolvePeople's own doc comment
+  // gives for using the admin client to resolve `profiles`.
+  const [people, roleRows] = await Promise.all([
+    resolvePeople(assigneeIds),
+    assigneeIds.length > 0
+      ? createAdminClient()
+          .from("workspace_members")
+          .select("user_id, role")
+          .eq("workspace_id", project.workspace_id)
+          .in("user_id", assigneeIds)
+      : Promise.resolve({ data: [] as { user_id: string; role: string }[] }),
+  ]);
+
+  const roleByUserId = new Map(
+    (roleRows.data ?? []).map((row) => [row.user_id, row.role]),
+  );
+
+  return tasks.map((task) => {
+    const statusRow = Array.isArray(task.project_statuses)
+      ? task.project_statuses[0]
+      : task.project_statuses;
+
+    const category = (statusRow?.category ?? "not_started") as StatusCategory;
+    const clientBucket = resolveClientBucket(
+      category,
+      statusRow?.client_bucket ?? null,
+    );
+
+    const assignee = task.assignee_id
+      ? {
+          id: task.assignee_id,
+          name: people.get(task.assignee_id)?.name ?? null,
+          avatarUrl: people.get(task.assignee_id)?.avatarUrl ?? null,
+          roleLabel:
+            WORKSPACE_ROLE_LABELS[
+              roleByUserId.get(task.assignee_id) ?? ""
+            ] ?? null,
+        }
+      : null;
+
+    return {
+      id: task.id,
+      title: task.title,
+      slug: task.page_slug,
+      order: task.page_order,
+      status: {
+        id: statusRow?.id ?? "",
+        name: statusRow?.name ?? "",
+        category,
+        clientBucket,
+        clientDescription: statusRow?.client_description ?? null,
+      },
+      assignee,
+      updatedAt: task.updated_at,
+    };
   });
 }

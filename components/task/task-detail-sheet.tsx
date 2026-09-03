@@ -399,6 +399,24 @@ export type TaskDetailSheetTask = {
    * "safe default" convention as every other optional field on this
    * type. */
   phaseId?: string | null;
+  /** F005 (missions/20260903-portal, AS-014): this task's own workspace
+   * task type NAME (e.g. "Page"), matched case-insensitively against
+   * "page" below to decide whether the Page slug/order fields render at
+   * all. Optional/null both mean "no type set" — same "safe default"
+   * convention as every other optional field on this type; a caller that
+   * hasn't been updated yet (existing tests/fixtures) simply never shows
+   * the two page fields, matching this Definition of done's own "hidden
+   * for non-page tasks" requirement. */
+  taskTypeName?: string | null;
+  /** F005 (AS-014): the portal Pages view's own slug for this task, or
+   * null/undefined for "not set yet". Editable only when `taskTypeName`
+   * resolves to "page" (case-insensitively) — see the Page slug field
+   * below. */
+  pageSlug?: string | null;
+  /** F005 (AS-014): the team's own manual ordering for this task in the
+   * portal Pages view — the Pages view sorts by this (nulls last), never
+   * by creation date. Same visibility gate as `pageSlug` above. */
+  pageOrder?: number | null;
 };
 
 export type TaskDetailSheetMember = {
@@ -617,6 +635,17 @@ export function TaskDetailSheet({
   // F236 (AS-453): sibling local state to dueDate above, same "local
   // mirror re-synced on task change" convention.
   const [startDate, setStartDate] = useState(task?.startDate ?? "");
+  // F005 (missions/20260903-portal, AS-014): local mirrors of the Page
+  // slug/order fields, same "re-synced on task change" convention as
+  // title/dueDate/startDate above. Text inputs (not a date picker like
+  // dueDate/startDate), so they commit on blur — mirrors handleTitleBlur's
+  // own shape below, minus that field's dedicated transition/Escape
+  // handling, which nothing here needs (see handlePageSlugBlur's own doc
+  // comment).
+  const [pageSlug, setPageSlug] = useState(task?.pageSlug ?? "");
+  const [pageOrder, setPageOrder] = useState(
+    task?.pageOrder != null ? String(task.pageOrder) : "",
+  );
   // F173 (AS-311): local, optimistic mirror of `task.descriptionJson`,
   // same "local state re-synced on task change" shape as
   // title/description/dueDate above — needed so the Preview's inline
@@ -765,6 +794,9 @@ export function TaskDetailSheet({
     setTitle(task.title);
     setDueDate(task.dueDate ?? "");
     setStartDate(task.startDate ?? "");
+    // F005 (AS-014): same re-sync convention as dueDate/startDate above.
+    setPageSlug(task.pageSlug ?? "");
+    setPageOrder(task.pageOrder != null ? String(task.pageOrder) : "");
     setDescriptionJson(task.descriptionJson);
     // F023: a newly opened task must never show a confirmed value carried
     // over from whatever task was previously open in this same Sheet.
@@ -1202,6 +1234,42 @@ export function TaskDetailSheet({
     const next = value || null;
     if (next === (task.startDate ?? null)) return;
     saveField({ startDate: next }, "Start date updated.");
+  }
+
+  // F005 (missions/20260903-portal, AS-014): unlike dueDate/startDate
+  // (native date pickers, one onChange per real selection) these are
+  // free-typed text/number inputs — saving on every keystroke would be
+  // wrong, so this commits on blur, the same moment title's own edit
+  // commits (handleTitleBlur above). Reuses the shared `saveField`/
+  // `isSavingField` transition (dueDate/startDate/phase's convention),
+  // not title's dedicated transition — nothing here needs a per-field
+  // spinner or Escape-to-cancel, so the simpler of this file's two
+  // existing commit patterns is the one actually reused.
+  function handlePageSlugBlur() {
+    if (!task) return;
+    const trimmed = pageSlug.trim().toLowerCase();
+    const next = trimmed === "" ? null : trimmed;
+    if (next !== trimmed) setPageSlug(next ?? "");
+    if (next === (task.pageSlug ?? null)) return;
+    saveField({ pageSlug: next }, "Page slug updated.");
+  }
+
+  function handlePageOrderBlur() {
+    if (!task) return;
+    const trimmed = pageOrder.trim();
+    if (trimmed === "") {
+      if ((task.pageOrder ?? null) === null) return;
+      saveField({ pageOrder: null }, "Page order updated.");
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed)) {
+      setPageOrder(task.pageOrder != null ? String(task.pageOrder) : "");
+      toast.error("Page order must be a whole number.");
+      return;
+    }
+    if (parsed === (task.pageOrder ?? null)) return;
+    saveField({ pageOrder: parsed }, "Page order updated.");
   }
 
   // F161 (AS-287, AS-288): replaces the old single-value handleAssigneeChange
@@ -1876,6 +1944,60 @@ export function TaskDetailSheet({
                 />
                 </div>
               </div>
+
+              {/* F005 (missions/20260903-portal, AS-014): Page slug/order
+                  only render for a task whose own task TYPE is "page"
+                  (matched case-insensitively against `taskTypeName` —
+                  there is no seeded/guaranteed task_types row named
+                  "page"; a team creates one via the existing task-types
+                  settings screen, see this feature's handoff Autonomous
+                  decisions). `taskTypeName` undefined/null (a caller that
+                  hasn't been updated, or a task with no type set) hides
+                  this section entirely — this Sheet's own "safe default"
+                  convention, and the Definition of done's own "hidden for
+                  non-page tasks" requirement. */}
+              {task.taskTypeName?.trim().toLowerCase() === "page" && (
+                <div
+                  data-testid="page-fields"
+                  className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4"
+                >
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`task-page-slug-${task.id}`}>
+                      Page slug
+                    </Label>
+                    <Input
+                      id={`task-page-slug-${task.id}`}
+                      value={pageSlug}
+                      disabled={isSavingField || !canEdit}
+                      title={editDisabledTitle}
+                      placeholder="e.g. about-us"
+                      className="font-mono text-sm"
+                      onChange={(changeEvent) =>
+                        setPageSlug(changeEvent.target.value)
+                      }
+                      onBlur={handlePageSlugBlur}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`task-page-order-${task.id}`}>
+                      Page order
+                    </Label>
+                    <Input
+                      id={`task-page-order-${task.id}`}
+                      type="number"
+                      inputMode="numeric"
+                      value={pageOrder}
+                      disabled={isSavingField || !canEdit}
+                      title={editDisabledTitle}
+                      placeholder="Unordered"
+                      onChange={(changeEvent) =>
+                        setPageOrder(changeEvent.target.value)
+                      }
+                      onBlur={handlePageOrderBlur}
+                    />
+                  </div>
+                </div>
+              )}
 
               <MobileCollapsibleSection title="Description">
                 <Label htmlFor={`task-description-${task.id}`}>

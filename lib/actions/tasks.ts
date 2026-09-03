@@ -834,6 +834,10 @@ export type EditTaskResult =
         // with no server-side transform, same shape as dueDate.
         startDate: string | null;
         estimateMinutes: number | null;
+        // F005 (missions/20260903-portal, AS-014): mirrors startDate's
+        // own always-present convention above.
+        pageSlug: string | null;
+        pageOrder: number | null;
       };
     }
   | { ok: false; error: string };
@@ -1044,6 +1048,12 @@ export async function editTask(
       interval: number;
       until?: string | null;
     } | null;
+    // F005 (missions/20260903-portal, AS-014): the portal Pages view's
+    // slug/order for a `page`-type task, edited from the task detail
+    // sheet's own inline fields — plain scalars, no server-side
+    // transform, same shape as due_date/start_date above.
+    page_slug?: string | null;
+    page_order?: number | null;
   } = {};
   if ("title" in parsed.data.updates) {
     updatePayload.title = parsed.data.updates.title;
@@ -1066,6 +1076,12 @@ export async function editTask(
   if ("recurrence" in parsed.data.updates) {
     updatePayload.recurrence = parsed.data.updates.recurrence;
   }
+  if ("pageSlug" in parsed.data.updates) {
+    updatePayload.page_slug = parsed.data.updates.pageSlug;
+  }
+  if ("pageOrder" in parsed.data.updates) {
+    updatePayload.page_order = parsed.data.updates.pageOrder;
+  }
   if (sanitisedDescriptionJson !== undefined) {
     updatePayload.description_json = sanitisedDescriptionJson as Json;
   }
@@ -1075,7 +1091,7 @@ export async function editTask(
     .update(updatePayload)
     .eq("id", parsed.data.taskId)
     .select(
-      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence",
+      "id, title, description, description_json, priority, due_date, start_date, estimate_minutes, recurrence, page_slug, page_order",
     )
     .single();
 
@@ -1263,6 +1279,10 @@ export async function editTask(
       dueDate: updated.due_date,
       startDate: updated.start_date,
       estimateMinutes: updated.estimate_minutes,
+      // F005 (missions/20260903-portal, AS-014): mirrors dueDate/
+      // startDate's own always-present convention.
+      pageSlug: updated.page_slug,
+      pageOrder: updated.page_order,
     },
   };
 }
@@ -2758,7 +2778,13 @@ export async function getTaskDetail(
       // TaskDetailSheetTask.statusCategory (isOverdue's category-aware
       // check) gets real data — same "one query, no second round trip"
       // convention as every other field on this select.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      // F005 (missions/20260903-portal, AS-014): `page_slug`/`page_order`
+      // (this task's own portal-Pages-view ordering/identity) and
+      // `task_types(name)` (whether this task's TYPE is "page" — the
+      // detail sheet's own gate for showing those two fields at all) —
+      // one extra join, no second round trip, same convention as every
+      // other field on this select.
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, task_types(name), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3215,6 +3241,16 @@ export async function getTaskDetail(
         pendingClientApproval: taskRow.pending_client_approval ?? false,
         // F236 (AS-453): see this function's task select above.
         startDate: taskRow.start_date,
+        // F005 (missions/20260903-portal, AS-014): see this function's
+        // task select above — feeds the detail sheet's Page slug/order
+        // inline fields directly, no local re-derivation.
+        pageSlug: taskRow.page_slug,
+        pageOrder: taskRow.page_order,
+        taskTypeName:
+          (Array.isArray(taskRow.task_types)
+            ? taskRow.task_types[0]
+            : taskRow.task_types
+          )?.name ?? null,
         tags: taskRow.tags ?? [],
         // F146 (AS-258): see this function's task+project select above.
         number: taskRow.number,

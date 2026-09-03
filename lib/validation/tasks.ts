@@ -236,6 +236,34 @@ const editableFields = z.object({
   // description entirely (an empty Tiptap doc), same "explicit null is a
   // valid input" convention as every other nullable field in this schema.
   descriptionJson: taskDescriptionJsonSchema.nullable(),
+  // F005 (missions/20260903-portal, AS-014): the portal Pages view's own
+  // ordering/identity for a `page`-type task — edited from the task
+  // detail sheet, same "plain scalar, no server-side transform" shape as
+  // dueDate/startDate above. No DB CHECK constrains the slug's shape
+  // (F001's migration comment is explicit that page_slug/page_order carry
+  // no FK/CHECK tying them to `task_type = 'page'` — see that migration),
+  // so this is defense-in-depth only, not mirroring an enforcement
+  // boundary that doesn't exist. Lowercase URL-path segment: letters,
+  // digits, hyphens, forward slashes (a page can sit at a nested path,
+  // e.g. "services/design"). Nullable — clears a previously set slug.
+  pageSlug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .max(200, "Page slug must be 200 characters or fewer.")
+    .regex(
+      /^\/?[a-z0-9]+(?:[-/][a-z0-9]+)*\/?$/,
+      "Use lowercase letters, numbers, hyphens and slashes only.",
+    )
+    .nullable(),
+  // F005 (AS-014): the team's own manual page ordering — the Pages view
+  // sorts by this (nulls last), never by creation date. Nullable — clears
+  // a previously set position back to "unordered" (sorts after every
+  // explicitly ordered page, by title).
+  pageOrder: z
+    .number()
+    .int("Page order must be a whole number.")
+    .nullable(),
 });
 
 const partialEditableFields = editableFields.partial();
