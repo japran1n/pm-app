@@ -149,6 +149,16 @@ export async function getOverdueBlockingDeliverableCount(
 // name (also gated on the phase's own `client_visible`, same predicate
 // `getProjectPhases`/`getPortalLiveNow` already apply) — never an
 // internal task's title leaking through a "holds up" label.
+//
+// F016c (M3-scrutiny.md B1): both admin reads below are scoped to
+// `projectId` — the deliverable's own project, supplied by every caller
+// — on top of the composite FK (20260930020000) that now makes a
+// cross-project `task_id`/`phase_id` unrepresentable at write time. This
+// function no longer merely ASSUMES the invariant this comment used to
+// assert; it enforces it independently, so a row that somehow slipped
+// past the constraint (e.g. a future migration that relaxes it) still
+// cannot leak another workspace's task title or phase name into this
+// project's portal.
 export type DeliverableHoldsUp = {
   /** `null` when there is nothing safe/known to derive (no linked task,
    * a deleted task, or a task with neither a client-visible page/title
@@ -162,6 +172,7 @@ export type DeliverableHoldsUp = {
 const NO_HOLDS_UP: DeliverableHoldsUp = { label: null, kind: "none", value: null };
 
 async function resolveHoldsUpContext(
+  projectId: string,
   taskIds: string[],
 ): Promise<Map<string, DeliverableHoldsUp>> {
   const result = new Map<string, DeliverableHoldsUp>();
@@ -172,6 +183,7 @@ async function resolveHoldsUpContext(
   const { data: tasks, error } = await admin
     .from("tasks")
     .select("id, title, page_slug, client_visible, phase_id, deleted_at")
+    .eq("project_id", projectId)
     .in("id", taskIds);
 
   if (error) {
@@ -192,6 +204,7 @@ async function resolveHoldsUpContext(
       ? await admin
           .from("project_phases")
           .select("id, name")
+          .eq("project_id", projectId)
           .eq("client_visible", true)
           .in("id", phaseIds)
       : { data: [] as { id: string; name: string }[] };
@@ -252,7 +265,7 @@ export async function getClientDeliverablesForPortal(
   const taskIds = [
     ...new Set(base.data.map((d) => d.taskId).filter((id): id is string => Boolean(id))),
   ];
-  const holdsUpByTaskId = await resolveHoldsUpContext(taskIds);
+  const holdsUpByTaskId = await resolveHoldsUpContext(projectId, taskIds);
 
   return {
     ok: true,
@@ -370,7 +383,7 @@ export async function getWorstOverdueBlockingDeliverableRisk(
   if (!worst) return null;
 
   const holdsUpByTaskId = worst.task_id
-    ? await resolveHoldsUpContext([worst.task_id])
+    ? await resolveHoldsUpContext(projectId, [worst.task_id])
     : new Map<string, DeliverableHoldsUp>();
   const holdsUp = (worst.task_id && holdsUpByTaskId.get(worst.task_id)) || NO_HOLDS_UP;
 

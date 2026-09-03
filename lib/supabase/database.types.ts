@@ -493,10 +493,10 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "client_deliverables_phase_id_fkey"
-            columns: ["phase_id"]
+            columns: ["phase_id", "project_id"]
             isOneToOne: false
             referencedRelation: "project_phases"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
           {
             foreignKeyName: "client_deliverables_project_id_fkey"
@@ -507,17 +507,17 @@ export type Database = {
           },
           {
             foreignKeyName: "client_deliverables_task_id_fkey"
-            columns: ["task_id"]
+            columns: ["task_id", "project_id"]
             isOneToOne: false
             referencedRelation: "active_project_tasks"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
           {
             foreignKeyName: "client_deliverables_task_id_fkey"
-            columns: ["task_id"]
+            columns: ["task_id", "project_id"]
             isOneToOne: false
             referencedRelation: "tasks"
-            referencedColumns: ["id"]
+            referencedColumns: ["id", "project_id"]
           },
         ]
       }

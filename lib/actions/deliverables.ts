@@ -88,6 +88,47 @@ function toDeliverableActionData(row: {
 const DELIVERABLE_COLUMNS =
   "id, project_id, phase_id, task_id, title, description, kind, owner_name, due_at, blocking, state, delivered_at, accepted_at, accepted_by, review_note, position";
 
+// F016c (M3-scrutiny.md B1): the database now refuses a cross-project
+// task_id/phase_id via a composite FK (20260930020000), but that check
+// fires as a raw constraint violation on the service-role insert/update
+// below — not a place a caller can be told anything useful. This
+// re-checks the same invariant first, so a stray cross-project id from a
+// directly-called Server Action (the picker only OFFERS same-project
+// options; it does not enforce anything) is caught here, where it can be
+// explained, rather than surfacing as a generic DB error.
+async function validateSameProjectLinks(
+  admin: AdminClient,
+  projectId: string,
+  taskId: string | null | undefined,
+  phaseId: string | null | undefined,
+): Promise<string | null> {
+  if (taskId) {
+    const { data: task } = await admin
+      .from("tasks")
+      .select("id")
+      .eq("id", taskId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (!task) {
+      return "That task doesn't belong to this project.";
+    }
+  }
+
+  if (phaseId) {
+    const { data: phase } = await admin
+      .from("project_phases")
+      .select("id")
+      .eq("id", phaseId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (!phase) {
+      return "That phase doesn't belong to this project.";
+    }
+  }
+
+  return null;
+}
+
 async function revalidateDeliverableSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/deliverables`, "page");
@@ -206,6 +247,16 @@ const createDeliverableImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<DeliverableActionResult> => {
+    const scopeError = await validateSameProjectLinks(
+      ctx.admin,
+      ctx.projectId,
+      input.taskId,
+      input.phaseId,
+    );
+    if (scopeError) {
+      return { ok: false, error: scopeError };
+    }
+
     const deliverables = ctx.admin.from("client_deliverables");
 
     const { data: lastDeliverable } = await deliverables
@@ -282,6 +333,16 @@ const updateDeliverableImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadDeliverableExtra(admin, input.deliverableId),
   },
   async (input, ctx): Promise<DeliverableActionResult> => {
+    const scopeError = await validateSameProjectLinks(
+      ctx.admin,
+      ctx.projectId,
+      input.taskId,
+      input.phaseId,
+    );
+    if (scopeError) {
+      return { ok: false, error: scopeError };
+    }
+
     const { data: updated, error: updateError } = await ctx.admin
       .from("client_deliverables")
       .update({

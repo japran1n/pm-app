@@ -259,10 +259,27 @@ vi.mock("@/lib/supabase/admin", () => ({
         };
       }
       if (table === "tasks") {
+        // F016c (M3-scrutiny.md B1): `resolveHoldsUpContext` now scopes
+        // this read with `.eq("project_id", projectId)` before `.in("id",
+        // taskIds)` -- this mock runs BOTH through `applyFilters` (F-4's
+        // finding was that the old mock discarded the id/project filters
+        // entirely), so a cross-project task row in `holdsUpTaskRows` is
+        // excluded exactly like the real query excludes it.
         return {
-          select: vi.fn(() => ({
-            in: vi.fn(async () => ({ data: holdsUpTaskRows, error: null })),
-          })),
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              in: vi.fn(async (col: string, vals: unknown[]) => {
+                filters.push(inFilter(col, vals as string[]));
+                return { data: applyFilters(holdsUpTaskRows, filters), error: null };
+              }),
+            };
+            return builder;
+          }),
         };
       }
       if (table === "active_timers") {
@@ -291,12 +308,26 @@ vi.mock("@/lib/supabase/admin", () => ({
         };
       }
       if (table === "project_phases") {
+        // F016c: `resolveHoldsUpContext` adds a second `.eq("project_id",
+        // projectId)` ahead of the pre-existing `.eq("client_visible",
+        // true)` -- both, plus the trailing `.in("id", phaseIds)`, now run
+        // through `applyFilters` (any number of chained `.eq()` calls),
+        // same fix as the `tasks` branch above.
         return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              in: vi.fn(async () => ({ data: phaseRows, error: null })),
-            })),
-          })),
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              in: vi.fn(async (col: string, vals: unknown[]) => {
+                filters.push(inFilter(col, vals as string[]));
+                return { data: applyFilters(phaseRows, filters), error: null };
+              }),
+            };
+            return builder;
+          }),
         };
       }
       throw new Error(`unexpected admin table ${table}`);
@@ -601,6 +632,7 @@ describe("getPortalRisks — AS-031", () => {
     holdsUpTaskRows = [
       {
         id: "task-blogg",
+        project_id: PROJECT_ID,
         title: "Write the Blog page",
         page_slug: "blogg",
         client_visible: true,
@@ -627,6 +659,49 @@ describe("getPortalRisks — AS-031", () => {
         id: "deliverable-1",
         message:
           "The Blogg page cannot be built without its copy, and 18 Nov moves with it.",
+      },
+    ]);
+  });
+
+  it("test_AS_054_a_cross_project_task_row_never_names_another_workspace_in_the_holds_up_label", async () => {
+    // F016c (M3-scrutiny.md B1): the composite FK now makes this row
+    // shape unreachable through any real write path, but this test
+    // proves the READ side independently enforces the same invariant --
+    // `resolveHoldsUpContext` must not surface another project's task
+    // title even if a row like this somehow existed (e.g. the mock here
+    // stands in for "the constraint didn't exist yet" or a future
+    // relaxation of it). Falls back to the generic subject, exactly as
+    // if there were no linked task at all.
+    projectRow = { id: PROJECT_ID, workspace_id: WORKSPACE_ID, target_launch_date: "2026-11-18" };
+    holdsUpTaskRows = [
+      {
+        id: "task-other-workspace",
+        project_id: "other-project",
+        title: "Internal task in a different workspace",
+        page_slug: "secret-page",
+        client_visible: true,
+        phase_id: null,
+        deleted_at: null,
+      },
+    ];
+    adminDeliverableRows = [
+      {
+        id: "deliverable-cross-project",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "in_progress",
+        due_at: "2020-01-01",
+        task_id: "task-other-workspace",
+        kind: "copy",
+      },
+    ];
+
+    const risks = await getPortalRisks(PROJECT_ID);
+
+    expect(risks).toEqual([
+      {
+        id: "deliverable-cross-project",
+        message: "This item cannot be built without its copy, and 18 Nov moves with it.",
       },
     ]);
   });
@@ -765,7 +840,7 @@ describe("getPortalLiveNow", () => {
     // A client_visible=true phase -- this is what the real
     // `.eq("client_visible", true)` filter on the project_phases lookup
     // returns for a phase that passes it, so the row is present here.
-    phaseRows = [{ id: "phase-1", name: "Izrada sajta" }];
+    phaseRows = [{ id: "phase-1", name: "Izrada sajta", client_visible: true }];
 
     const entries = await getPortalLiveNow(PROJECT_ID);
 
