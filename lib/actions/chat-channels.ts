@@ -128,15 +128,27 @@ export async function createChannel(input: {
   // channel insert too -- there is no manual compensating delete step, and
   // therefore no window where that rollback step can itself fail and leave
   // an orphaned, memberless channel behind.
+  //
+  // F002b: `p_project_id`/`p_name` now default to null in the RPC's own
+  // signature (supabase/migrations/20260910010000_create_channel_atomic_
+  // nullable_args.sql), so `supabase gen types typescript` emits them as
+  // optional. Keys are only included below when there's an actual value --
+  // same "conditional spread, never assign an explicit null" pattern
+  // lib/notifications/create-notification.ts already uses for
+  // create_notification's own optional/nullable RPC args -- rather than
+  // passing `projectId`/`name` straight through, which the generated Args
+  // type (correctly) doesn't accept as nullable.
+  const name = parsed.data.kind === "channel" ? (parsed.data.name?.trim() ?? null) : null;
+
   const { data: channelId, error: rpcError } = await admin.rpc(
     "create_channel_atomic",
     {
       p_workspace_id: parsed.data.workspaceId,
-      p_project_id: projectId,
       p_kind: parsed.data.kind,
-      p_name: parsed.data.kind === "channel" ? (parsed.data.name?.trim() ?? null) : null,
       p_created_by: user.id,
       p_member_ids: memberIds,
+      ...(projectId ? { p_project_id: projectId } : {}),
+      ...(name ? { p_name: name } : {}),
     },
   );
 

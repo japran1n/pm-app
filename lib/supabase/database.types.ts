@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -466,41 +491,175 @@ export type Database = {
           },
         ]
       }
-      message_attachments: {
+      doc_folders: {
         Row: {
-          id: string
-          message_id: string | null
-          channel_id: string
-          uploaded_by: string
-          file_name: string
-          mime_type: string | null
-          file_size: number | null
-          storage_path: string
           created_at: string
+          created_by: string
+          id: string
+          name: string
+          parent_id: string | null
+          position: number
+          project_id: string | null
+          workspace_id: string
         }
         Insert: {
-          id?: string
-          message_id?: string | null
-          channel_id: string
-          uploaded_by: string
-          file_name: string
-          mime_type?: string | null
-          file_size?: number | null
-          storage_path: string
           created_at?: string
+          created_by: string
+          id?: string
+          name: string
+          parent_id?: string | null
+          position?: number
+          project_id?: string | null
+          workspace_id: string
         }
         Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          name?: string
+          parent_id?: string | null
+          position?: number
+          project_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doc_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "doc_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "doc_folders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "doc_folders_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      docs: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          folder_id: string | null
+          id: string
+          position: number
+          project_id: string | null
+          title: string
+          updated_at: string
+          updated_by: string | null
+          workspace_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          created_by: string
+          folder_id?: string | null
+          id?: string
+          position?: number
+          project_id?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          workspace_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          folder_id?: string | null
+          id?: string
+          position?: number
+          project_id?: string | null
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "docs_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "doc_folders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "docs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "docs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_attachments: {
+        Row: {
+          channel_id: string
+          created_at: string
+          file_name: string
+          file_size: number | null
+          id: string
+          message_id: string | null
+          mime_type: string | null
+          storage_path: string
+          uploaded_by: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          file_name: string
+          file_size?: number | null
           id?: string
           message_id?: string | null
-          channel_id?: string
-          uploaded_by?: string
-          file_name?: string
           mime_type?: string | null
-          file_size?: number | null
-          storage_path?: string
-          created_at?: string
+          storage_path: string
+          uploaded_by: string
         }
-        Relationships: []
+        Update: {
+          channel_id?: string
+          created_at?: string
+          file_name?: string
+          file_size?: number | null
+          id?: string
+          message_id?: string | null
+          mime_type?: string | null
+          storage_path?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_attachments_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_attachments_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       message_reactions: {
         Row: {
@@ -846,9 +1005,66 @@ export type Database = {
           },
         ]
       }
+      project_phases: {
+        Row: {
+          actual_end: string | null
+          actual_start: string | null
+          client_description: string | null
+          client_visible: boolean
+          created_at: string
+          id: string
+          name: string
+          planned_end: string | null
+          planned_start: string | null
+          position: number
+          project_id: string
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          actual_end?: string | null
+          actual_start?: string | null
+          client_description?: string | null
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          planned_end?: string | null
+          planned_start?: string | null
+          position?: number
+          project_id: string
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          actual_end?: string | null
+          actual_start?: string | null
+          client_description?: string | null
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          planned_end?: string | null
+          planned_start?: string | null
+          position?: number
+          project_id?: string
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_phases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_statuses: {
         Row: {
           category: string
+          client_description: string | null
           color: string
           created_at: string
           id: string
@@ -858,6 +1074,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          client_description?: string | null
           color: string
           created_at?: string
           id?: string
@@ -867,6 +1084,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          client_description?: string | null
           color?: string
           created_at?: string
           id?: string
@@ -894,8 +1112,13 @@ export type Database = {
           end_date: string | null
           id: string
           key: string
+          launch_confidence: string | null
+          launch_note: string | null
           name: string
+          portal_enabled: boolean
+          portal_enabled_at: string | null
           start_date: string | null
+          target_launch_date: string | null
           task_counter: number
           updated_at: string
           visibility: string
@@ -910,8 +1133,13 @@ export type Database = {
           end_date?: string | null
           id?: string
           key?: string
+          launch_confidence?: string | null
+          launch_note?: string | null
           name: string
+          portal_enabled?: boolean
+          portal_enabled_at?: string | null
           start_date?: string | null
+          target_launch_date?: string | null
           task_counter?: number
           updated_at?: string
           visibility?: string
@@ -926,8 +1154,13 @@ export type Database = {
           end_date?: string | null
           id?: string
           key?: string
+          launch_confidence?: string | null
+          launch_note?: string | null
           name?: string
+          portal_enabled?: boolean
+          portal_enabled_at?: string | null
           start_date?: string | null
+          target_launch_date?: string | null
           task_counter?: number
           updated_at?: string
           visibility?: string
@@ -1333,8 +1566,11 @@ export type Database = {
           id: string
           last_occurrence_at: string | null
           number: number
+          page_order: number | null
+          page_slug: string | null
           parent_task_id: string | null
           pending_client_approval: boolean
+          phase_id: string | null
           points: number | null
           position: number
           priority: string | null
@@ -1366,8 +1602,11 @@ export type Database = {
           id?: string
           last_occurrence_at?: string | null
           number?: number
+          page_order?: number | null
+          page_slug?: string | null
           parent_task_id?: string | null
           pending_client_approval?: boolean
+          phase_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
@@ -1399,8 +1638,11 @@ export type Database = {
           id?: string
           last_occurrence_at?: string | null
           number?: number
+          page_order?: number | null
+          page_slug?: string | null
           parent_task_id?: string | null
           pending_client_approval?: boolean
+          phase_id?: string | null
           points?: number | null
           position?: number
           priority?: string | null
@@ -1443,6 +1685,13 @@ export type Database = {
             columns: ["parent_task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "project_phases"
             referencedColumns: ["id"]
           },
           {
@@ -1742,12 +1991,47 @@ export type Database = {
       }
     }
     Functions: {
+      accept_client_request_atomic: {
+        Args: { p_request_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
       apply_status_template: {
         Args: { p_project_id: string; p_template_id: string }
         Returns: undefined
       }
+      approve_portal_task_atomic: {
+        Args: { p_task_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
+      assert_portal_task_actionable_by_client: {
+        Args: { p_task_id: string }
+        Returns: {
+          project_id: string
+          task_id: string
+        }[]
+      }
+      bulk_delete_tasks_atomic: {
+        Args: {
+          p_deleted_at: string
+          p_deleted_by: string
+          p_task_ids: string[]
+        }
+        Returns: string[]
+      }
       can_modify_comment: {
         Args: { target_comment_id: string }
+        Returns: boolean
+      }
+      can_read_workspace_docs: {
+        Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      can_write_workspace_docs: {
+        Args: { target_workspace_id: string }
         Returns: boolean
       }
       cascade_delete_task:
@@ -1765,13 +2049,22 @@ export type Database = {
               id: string
             }[]
           }
-      get_chat_channel_summaries: {
-        Args: { p_channel_ids: string[] }
+      change_workspace_slug_atomic: {
+        Args: { p_new_slug: string; p_old_slug: string; p_workspace_id: string }
         Returns: {
-          channel_id: string
-          last_message_at: string | null
-          unread_count: number
+          slug: string
         }[]
+      }
+      create_channel_atomic: {
+        Args: {
+          p_created_by: string
+          p_kind: string
+          p_member_ids: string[]
+          p_name?: string
+          p_project_id?: string
+          p_workspace_id: string
+        }
+        Returns: string
       }
       create_notification: {
         Args: {
@@ -1824,70 +2117,25 @@ export type Database = {
           slug: string
         }[]
       }
-      create_channel_atomic: {
-        Args: {
-          p_created_by: string
-          p_kind: string
-          p_member_ids: string[]
-          p_name: string | null
-          p_project_id: string | null
-          p_workspace_id: string
-        }
-        Returns: string
-      }
-      accept_client_request_atomic: {
-        Args: { p_request_id: string }
-        Returns: {
-          task_id: string
-        }[]
-      }
-      change_workspace_slug_atomic: {
-        Args: {
-          p_new_slug: string
-          p_old_slug: string
-          p_workspace_id: string
-        }
-        Returns: {
-          slug: string
-        }[]
-      }
-      bulk_delete_tasks_atomic: {
-        Args: {
-          p_deleted_at: string
-          p_deleted_by: string
-          p_task_ids: string[]
-        }
-        Returns: string[]
-      }
-      restore_task_atomic: {
-        Args: { p_task_id: string }
-        Returns: {
-          id: string
-          project_id: string
-          status: string
-          position: number
-          status_was_reset: boolean
-        }[]
-      }
-      set_task_assignees_atomic: {
-        Args: {
-          p_assigned_by: string
-          p_desired_user_ids: string[]
-          p_task_id: string
-        }
-        Returns: string
-      }
+      derive_project_key_base: { Args: { p_name: string }; Returns: string }
       duplicate_task_atomic: {
         Args: { p_new_task_id: string; p_source_task_id: string }
         Returns: undefined
       }
-      derive_project_key_base: { Args: { p_name: string }; Returns: string }
       generate_due_recurring_occurrences: { Args: never; Returns: number }
       generate_unique_project_key: {
         Args: { p_name: string; p_workspace_id: string }
         Returns: string
       }
       get_blocked_count: { Args: { p_workspace_id: string }; Returns: number }
+      get_chat_channel_summaries: {
+        Args: { p_channel_ids: string[] }
+        Returns: {
+          channel_id: string
+          last_message_at: string
+          unread_count: number
+        }[]
+      }
       get_completed_count: {
         Args: { p_days?: number; p_timezone?: string; p_workspace_id: string }
         Returns: number
@@ -1907,6 +2155,13 @@ export type Database = {
       get_due_soon_count: {
         Args: { p_days?: number; p_timezone?: string; p_workspace_id: string }
         Returns: number
+      }
+      get_open_task_counts: {
+        Args: { project_ids: string[] }
+        Returns: {
+          open_count: number
+          project_id: string
+        }[]
       }
       get_overdue_count: {
         Args: { p_timezone?: string; p_workspace_id: string }
@@ -1990,6 +2245,10 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_project_portal_enabled: {
+        Args: { target_project_id: string }
+        Returns: boolean
+      }
       is_project_visible_to: {
         Args: { target_project_id: string }
         Returns: boolean
@@ -2062,6 +2321,22 @@ export type Database = {
           reason: string
         }[]
       }
+      request_portal_task_changes_atomic: {
+        Args: { p_task_id: string }
+        Returns: {
+          task_id: string
+        }[]
+      }
+      restore_task_atomic: {
+        Args: { p_task_id: string }
+        Returns: {
+          id: string
+          position: number
+          project_id: string
+          status: string
+          status_was_reset: boolean
+        }[]
+      }
       search_tasks: {
         Args: { p_project_id: string; p_query: string }
         Returns: {
@@ -2080,8 +2355,11 @@ export type Database = {
           id: string
           last_occurrence_at: string | null
           number: number
+          page_order: number | null
+          page_slug: string | null
           parent_task_id: string | null
           pending_client_approval: boolean
+          phase_id: string | null
           points: number | null
           position: number
           priority: string | null
@@ -2104,6 +2382,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      seed_default_phases: {
+        Args: { p_project_id: string }
+        Returns: undefined
+      }
       seed_default_project_statuses: {
         Args: { target_project_id: string }
         Returns: undefined
@@ -2111,6 +2393,14 @@ export type Database = {
       set_saved_view_default: {
         Args: { p_view_id: string }
         Returns: undefined
+      }
+      set_task_assignees_atomic: {
+        Args: {
+          p_assigned_by: string
+          p_desired_user_ids: string[]
+          p_task_id: string
+        }
+        Returns: string
       }
       shares_non_client_workspace_with: {
         Args: { target_user_id: string }
@@ -2220,12 +2510,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2249,11 +2539,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2274,11 +2564,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2299,11 +2589,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2316,11 +2606,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2330,6 +2620,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

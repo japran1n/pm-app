@@ -11,6 +11,7 @@
     "test": "vitest run",
     "seed:demo": "node --env-file=.env scripts/seed-demo.mjs",
     "db:apply": "node --env-file=.env scripts/apply-migration.mjs",
+    "db:gen-types": "node --env-file=.env scripts/gen-types.mjs",
     "migrations:check": "node --env-file=.env scripts/check-migration-drift.mjs",
     "realtime:check": "node --env-file=.env scripts/check-realtime-publication.mjs"
   },

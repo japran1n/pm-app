@@ -36,23 +36,14 @@
 // `auth.uid()`) would make its own internal check fail. Same
 // client-choice rule `writeAudit`'s doc comment documents.
 //
-// Untyped-table note: `lib/supabase/database.types.ts` (the checked-in
-// `supabase gen types` output) predates F001's migration — it has no
-// `project_phases` table and no `tasks.phase_id`/`page_slug`/`page_order`
-// columns. It also predates several OTHER already-applied migrations
-// (e.g. `doc_folders`/`docs`), so this gap is pre-existing, not
-// introduced here — see lib/actions/docs.ts's own doc comment for the
-// same situation on those tables. Regenerating that file is out of this
-// feature's scope (it would touch dozens of unrelated tables this
-// feature doesn't own, a much bigger diff than F002's own). `createAdminClient()`
-// (lib/supabase/admin.ts) IS parametrized with `<Database>`, so any
-// `.from("project_phases")`/`tasks.phase_id` access through it needs the
-// small `untyped()` cast below — the request-scoped `createClient()`
-// (lib/supabase/server.ts) has never carried a `<Database>` generic, so
-// `ctx.supabase` needs no cast at all (see getProjectPhaseOptionsForTeam/
-// getProjectPhasesForTeam, lib/queries/phases.ts, which use it directly).
+// F002b (missions/20260903-portal): `lib/supabase/database.types.ts` has
+// been regenerated and now includes `project_phases` and
+// `tasks.phase_id`/`page_slug`/`page_order` (it was stale when this file
+// was first written under F002 — see that feature's handoff). Every
+// `.from("project_phases")`/`tasks.phase_id` access below goes straight
+// through `ctx.admin`/`admin` (both `SupabaseClient<Database>`) with no
+// cast; the `untyped()` escape hatch F002 added here has been removed.
 
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
@@ -81,11 +72,6 @@ import {
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
-
-// See this file's header "Untyped-table note".
-function untyped(admin: AdminClient): SupabaseClient {
-  return admin as unknown as SupabaseClient;
-}
 
 export type PhaseActionData = {
   id: string;
@@ -204,7 +190,7 @@ const createPhaseImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<PhaseActionResult> => {
-    const phases = untyped(ctx.admin).from("project_phases");
+    const phases = ctx.admin.from("project_phases");
 
     const { data: lastPhase } = await phases
       .select("position")
@@ -220,7 +206,7 @@ const createPhaseImpl = withAuthz(
     // preserve here.
     const newPosition = ((lastPhase as { position: number } | null)?.position ?? 0) + 1;
 
-    const { data: inserted, error: insertError } = await untyped(ctx.admin)
+    const { data: inserted, error: insertError } = await ctx.admin
       .from("project_phases")
       .insert({
         project_id: ctx.projectId,
@@ -287,7 +273,7 @@ async function loadPhaseExtra(
     }
   | { ok: false; error: string }
 > {
-  const { data, error } = await untyped(admin)
+  const { data, error } = await admin
     .from("project_phases")
     .select(
       "id, project_id, name, projects!inner(id, workspace_id, visibility, deleted_at, workspaces(slug))",
@@ -330,7 +316,7 @@ const updatePhaseImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadPhaseExtra(admin, input.phaseId),
   },
   async (input, ctx): Promise<PhaseActionResult> => {
-    const { data: updated, error: updateError } = await untyped(ctx.admin)
+    const { data: updated, error: updateError } = await ctx.admin
       .from("project_phases")
       .update({
         name: input.name,
@@ -408,7 +394,7 @@ const deletePhaseImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadPhaseExtra(admin, input.phaseId),
   },
   async (input, ctx): Promise<DeletePhaseResult> => {
-    const { error: deleteError } = await untyped(ctx.admin)
+    const { error: deleteError } = await ctx.admin
       .from("project_phases")
       .delete()
       .eq("id", input.phaseId);
@@ -461,7 +447,7 @@ const reorderPhaseImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadPhaseExtra(admin, input.phaseId),
   },
   async (input, ctx): Promise<ReorderPhaseResult> => {
-    const { data, error: siblingsError } = await untyped(ctx.admin)
+    const { data, error: siblingsError } = await ctx.admin
       .from("project_phases")
       .select("id, position")
       .eq("project_id", ctx.projectId)
@@ -493,11 +479,11 @@ const reorderPhaseImpl = withAuthz(
     const neighbor = siblings[neighborIndex];
 
     const [{ error: movedError }, { error: neighborError }] = await Promise.all([
-      untyped(ctx.admin)
+      ctx.admin
         .from("project_phases")
         .update({ position: neighbor.position })
         .eq("id", moved.id),
-      untyped(ctx.admin)
+      ctx.admin
         .from("project_phases")
         .update({ position: moved.position })
         .eq("id", neighbor.id),
@@ -641,7 +627,7 @@ const setTaskPhaseImpl = withAuthz(
     requireVisibility: true,
     visibilityError: "Viewers don't have permission to edit tasks.",
     resolveWorkspace: async (input, admin) => {
-      const { data: taskRow, error } = await untyped(admin)
+      const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
           "id, phase_id, deleted_at, projects!inner(id, workspace_id, visibility)",
@@ -662,7 +648,7 @@ const setTaskPhaseImpl = withAuthz(
       // supplied for a DIFFERENT project than this task's own must be
       // rejected, not silently accepted.
       if (input.phaseId) {
-        const { data: phaseRow } = await untyped(admin)
+        const { data: phaseRow } = await admin
           .from("project_phases")
           .select("id, project_id")
           .eq("id", input.phaseId)
@@ -686,7 +672,7 @@ const setTaskPhaseImpl = withAuthz(
       return { ok: true, data: { id: input.taskId, phaseId: ctx.currentPhaseId } };
     }
 
-    const { data: updated, error: updateError } = await untyped(ctx.admin)
+    const { data: updated, error: updateError } = await ctx.admin
       .from("tasks")
       .update({ phase_id: input.phaseId })
       .eq("id", input.taskId)
@@ -751,7 +737,7 @@ export async function bulkSetTaskPhase(
 
   const admin = createAdminClient();
 
-  const { data: taskRows } = await untyped(admin)
+  const { data: taskRows } = await admin
     .from("tasks")
     .select("id, phase_id, deleted_at, projects!inner(id, workspace_id, visibility)")
     .in("id", parsed.data.taskIds)
@@ -788,7 +774,7 @@ export async function bulkSetTaskPhase(
   // this call, not per task.
   let phaseProjectId: string | null | undefined;
   if (parsed.data.phaseId) {
-    const { data: phaseRow } = await untyped(admin)
+    const { data: phaseRow } = await admin
       .from("project_phases")
       .select("project_id")
       .eq("id", parsed.data.phaseId)
@@ -821,7 +807,7 @@ export async function bulkSetTaskPhase(
     return { ok: true, data: { succeededIds: [], failedIds } };
   }
 
-  const { error: updateError } = await untyped(admin)
+  const { error: updateError } = await admin
     .from("tasks")
     .update({ phase_id: parsed.data.phaseId })
     .in("id", allowedIds);
