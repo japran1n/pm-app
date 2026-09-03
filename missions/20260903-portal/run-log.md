@@ -306,3 +306,19 @@ Corrected figure going forward: report both, lead with assertions.
 - F006n COMPLETE (b94b8f3) — all five RPCs given membership/role/visibility checks mirroring their own Server Actions, plus portal_enabled and a client-cannot-accept-own-request gate on accept_client_request_atomic. 19 guard clauses, 5 revokes, 21 direct-RPC tests plus 48 regression tests.
   Orchestrator note: this handoff answered the completeness question the way I have been asking three rounds of workers to answer it. It states the basis for believing the sweep is complete, names exactly what that claim covers, and then explicitly refuses to widen it — "that's a narrower claim than 'the codebase has no more authz gaps of any kind', and I'm repeating it at that same narrower scope, not widening it." It also declines to re-derive 80+ function bodies and says why, rather than claiming a thoroughness it did not perform. That is the standard.
   **M1 blockers all closed.**
+- F006m COMPLETE (bf42ff8) — seed_default_phases now replicates isProjectVisibleToCaller's exact rule (workspace-visible admits any role including guest; private requires explicit project_members unless owner/admin) instead of the stricter SQL helper. Both directions tested: the guest case works, F006i's private-project denial survives. **M1 remediation complete across all three rounds.**
+
+### Not running a fourth M1 scrutiny
+
+Three rounds have run. Round 1 found six blockers, round 2 found one new blocker
+plus a class, round 3 found a class the first two structurally could not see, and
+every blocker from all three is now closed and verified. A fourth full pass would
+re-read code that has been read three times.
+
+The remaining risk is not in M1's code, it is in the seam between M1 and M2 —
+which is exactly what M2's own gate will exercise, with the approvals flow
+running through the phases, statuses and portal_enabled gates M1 built. Folding
+M1's final verification into that gate is a better use of a review than a fourth
+pass over the same files.
+
+If M2's gate surfaces an M1 regression, that judgement was wrong and I will say so.
