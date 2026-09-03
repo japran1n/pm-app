@@ -154,3 +154,30 @@ M2 does not start until F006b and F006d are green.
 - F006c COMPLETE (7f14441) — phase_id wired through getTaskDetail and editTask with cross-project validation (AS-013 now actually persists), page fields gated on taskTypeSystemKey instead of the type name, a real system_key write path plus a widened backfill (page/pages/sida/stranica — Swedish and Serbian, which is the actual audience), and create_project_from_template extended with p_phases in the same transaction (AS-009). Migrations 20260915010000 and 20260915020000 applied. 188 targeted tests pass.
   Orchestrator verification: phase_id/phaseId now appears in lib/actions/tasks.ts where it previously appeared zero times; the name-based gate is gone and taskTypeSystemKey is in its place.
 - F006e COMPLETE (c616961) — Files and Requests restored as clearly-marked temporary sidebar entries (tagged for removal by F016/F023), topbar title derived from the route rather than the nav list, task-detail route announces its real title up to the shell through a context. 121 tests pass. **M1 remediation complete.**
+
+### M1 re-scrutiny: all six blockers closed, one new blocker, four assertions still open
+
+Report: missions/20260903-portal/milestones/M1-scrutiny-2.md
+
+Verified myself: the backfill in 20260915020000 does de-duplicate among
+candidates without excluding workspaces that already hold a system_key='page'
+row — a fresh database with a seeded page type plus an untagged "Sida" type
+hits the unique index and the deploy stops. And create_channel_atomic genuinely
+has no authorisation: I read the original 20260905090000 as well, which has only
+a comment mentioning auth.uid() and never a check. Pre-existing, but this mission
+re-created the function twice, the second time under an "authz gaps" banner.
+
+The four still-failing assertions share one theme worth naming: **a failed read
+renders as a reassuring number.** A dropped connection produces "Nothing waiting
+on you"; a failed statuses read produces "0%" with a correct-looking denominator.
+A blank section makes someone ask a question; a confident wrong number does not.
+That is the worst failure mode a client-facing surface has, and it is why F006f
+exists as its own feature rather than as four separate fixes.
+
+AS-017 is the one that would actually damage a relationship: a Backlog page
+nobody has started is reported to the client as "Waiting on you". We blame the
+client for our own backlog, on two screens that disagree with each other.
+
+Round 2 opened: F006f (honest failures), F006g (status vocabulary, single
+source), F006h (deploy blocker + template visibility), F006i (authz round 2,
+including create_channel_atomic), F006j (test integrity).
