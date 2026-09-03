@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle2, MessageSquare, Plus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, MessageSquare, Plus } from "lucide-react";
 
 import {
   getPortalActivitySummary,
-  getPortalBadgeCounts,
   getPortalLiveNow,
   getPortalOverview,
   getPortalPages,
   getPortalProjects,
   getPortalRisks,
   getPortalTeam,
+  getPortalWaitingOnYou,
   getProjectPhases,
 } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
+import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
 import { PhaseTimeline } from "@/components/portal/phase-timeline";
 import { RiskBanner } from "@/components/portal/risk-banner";
@@ -84,31 +85,48 @@ export default async function PortalOverviewPage({
 
   const today = todayIso();
 
-  const [phases, pages, badges, risks, liveNow, team, overview, activity] = await Promise.all([
-    getProjectPhases(project.id),
-    getPortalPages(project.id),
-    getPortalBadgeCounts(project.id),
-    getPortalRisks(project.id),
-    getPortalLiveNow(project.id),
-    getPortalTeam(project.id),
-    getPortalOverview(workspace.id),
-    // Only meaningful for a client session -- the layout above already
-    // guarantees anyone reaching this page is a client, and `user` is
-    // guaranteed by that same layout's own auth check, so this is safe
-    // to call unconditionally. Same pattern the pre-F003 workspace-root
-    // page already used.
-    user ? getPortalActivitySummary(workspace.id, user.id) : Promise.resolve(null),
-  ]);
+  const [phasesResult, pages, waitingOnYouResult, risks, liveNow, team, overview, activity] =
+    await Promise.all([
+      getProjectPhases(project.id),
+      getPortalPages(project.id),
+      // F006f (missions/20260903-portal, AS-002): the tile below and the
+      // "Waiting on you" list rendered under the phase timeline are fed
+      // by this ONE project-scoped call -- see that function's own
+      // comment for why the sidebar's Approvals badge (a different,
+      // deliberately broader count across every approval_requests
+      // subject type, not just tasks) stays on its own query.
+      getPortalWaitingOnYou(project.id, project.name),
+      getPortalRisks(project.id),
+      getPortalLiveNow(project.id),
+      getPortalTeam(project.id),
+      getPortalOverview(workspace.id),
+      // Only meaningful for a client session -- the layout above already
+      // guarantees anyone reaching this page is a client, and `user` is
+      // guaranteed by that same layout's own auth check, so this is safe
+      // to call unconditionally. Same pattern the pre-F003 workspace-root
+      // page already used.
+      user ? getPortalActivitySummary(workspace.id, user.id) : Promise.resolve(null),
+    ]);
 
   const pagesReadyCount = pages.filter((page) => page.status.clientBucket === "done").length;
   const daysToLaunch = computeDaysToLaunch(project.targetLaunchDate, today);
 
-  // AS-002: the sidebar's own Approvals badge (getPortalBadgeCounts,
-  // rendered by the layout above this page) and this tile are
-  // deliberately the SAME count, from the SAME query -- one signal
-  // shown in two places, never two independently-computed numbers that
-  // could drift.
-  const waitingOnYouCount = badges.approvalsAwaiting;
+  // AS-002: the tile's number and the list rendered beneath it are the
+  // SAME array from the SAME project-scoped query -- one signal, one
+  // place it's computed, never two independently-derived numbers that
+  // could drift. `null` (not 0) on a failed read -- see OverviewTiles'
+  // own prop comment for why 0 would be dishonest here.
+  const waitingOnYouCount = waitingOnYouResult.ok ? waitingOnYouResult.data.length : null;
+  // The Overview page's own "Waiting on you" list is this project's
+  // rows only, never the workspace-wide set `overview.waitingOnYou`
+  // carries (that field stays workspace-wide for the multi-project
+  // chooser page, which has no per-project tile to disagree with) --
+  // and empty on a failed read, paired with `waitingOnYouFailed` below
+  // so the list renders an honest state instead of "nothing waiting".
+  const projectScopedOverview = {
+    waitingOnYou: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
+    deliveredThisWeek: overview.deliveredThisWeek,
+  };
 
   // `activity.since === null` means this is the client's first-ever
   // visit -- a "here's what changed" framing makes no sense with no
@@ -132,12 +150,26 @@ export default async function PortalOverviewPage({
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="flex flex-col gap-8 lg:col-span-2">
-          <PhaseTimeline phases={phases} today={today} />
+          {phasesResult.ok ? (
+            <PhaseTimeline phases={phasesResult.data} today={today} />
+          ) : (
+            // AS-011: a failed `project_statuses`/`tasks` read used to
+            // silently compute 0% for every phase from an empty map --
+            // this renders an honest "we could not load this" instead,
+            // never a percentage the function itself doesn't have.
+            <EmptyState
+              icon={AlertTriangle}
+              title="Couldn't load project phases"
+              description="Something went wrong loading this project's timeline. Try refreshing the page."
+              testId="phase-timeline-error"
+            />
+          )}
 
           <PortalOverviewLive
             workspaceId={workspace.id}
             workspaceSlug={workspace.slug}
-            initialOverview={overview}
+            initialOverview={projectScopedOverview}
+            waitingOnYouFailed={!waitingOnYouResult.ok}
           />
 
           {hasActivity && activity && (

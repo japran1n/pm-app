@@ -43,11 +43,15 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
+import type { PortalBadgeCounts } from "@/lib/queries/portal";
 
-export type PortalBadgeCounts = {
-  approvalsAwaiting: number;
-  deliverablesPastDue: number;
-};
+// F006f (missions/20260903-portal, AS-002): re-exported, not redefined --
+// `lib/queries/portal.ts` is this shape's one source of truth (its
+// `approvalsAwaiting` field is a `PortalQueryResult`, not a plain
+// number, since a failed read is a different value from a real zero). A
+// second, hand-copied definition here could drift from the query's own
+// return type without either side's compiler catching it.
+export type { PortalBadgeCounts };
 
 export type PortalNavItem = {
   key: string;
@@ -84,7 +88,12 @@ export function buildPortalNavItems(
       label: "Approvals",
       href: `${basePath}/approvals`,
       icon: CheckCircle2,
-      badge: badges.approvalsAwaiting,
+      // F006f (missions/20260903-portal, AS-002): a failed read renders
+      // no badge at all (the same "undefined, not 0" honesty this
+      // object's own comment above already documents for a real zero) --
+      // never a `0` a client cannot tell apart from "nothing is waiting
+      // on you".
+      badge: badges.approvalsAwaiting.ok ? badges.approvalsAwaiting.data : undefined,
       badgeTone: "neutral",
     },
     {

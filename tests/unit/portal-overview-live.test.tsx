@@ -99,12 +99,16 @@ const baseOverview: PortalOverview = {
   deliveredThisWeek: [],
 };
 
-async function renderLive(overview: PortalOverview = baseOverview) {
+async function renderLive(
+  overview: PortalOverview = baseOverview,
+  waitingOnYouFailed?: boolean,
+) {
   const result = render(
     createElement(PortalOverviewLive, {
       workspaceId: "ws-1",
       workspaceSlug: "acme",
       initialOverview: overview,
+      waitingOnYouFailed,
     }),
   );
   // F012: the hook's effect now awaits `getSession()` then `setAuth()`
@@ -352,5 +356,45 @@ describe("PortalOverviewLive", () => {
     });
 
     expect(subscribeMock).not.toHaveBeenCalled();
+  });
+});
+
+// F006f (missions/20260903-portal, AS-002): the caller (the per-project
+// Overview page) passes `waitingOnYouFailed` when its own project-scoped
+// read of "what's waiting on you" errored. An empty `waitingOnYou` array
+// is what both a real "nothing waiting" AND a failed read look like from
+// this component's own props -- `waitingOnYouFailed` is what tells them
+// apart, so the list renders an honest state instead of quietly implying
+// zero.
+describe("PortalOverviewLive — F006f (AS-002): honest failure state", () => {
+  it("test_AS_002_renders_an_honest_failure_state_not_nothing_waiting_on_you_when_the_read_failed", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, true);
+
+    expect(
+      screen.queryByText("Nothing waiting on you right now."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("We couldn't load this. Try refreshing the page."),
+    ).toBeInTheDocument();
+  });
+
+  it("still renders the ordinary empty state when nothing failed", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false);
+
+    expect(
+      screen.getByText("Nothing waiting on you right now."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("We couldn't load this. Try refreshing the page."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the failure caveat once the list actually has rows", async () => {
+    await renderLive(baseOverview, true);
+
+    expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
+    expect(
+      screen.queryByText("We couldn't load this. Try refreshing the page."),
+    ).not.toBeInTheDocument();
   });
 });

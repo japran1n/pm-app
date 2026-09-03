@@ -252,6 +252,21 @@ export async function getPortalProjects(
   });
 }
 
+// F006f (missions/20260903-portal, AS-002, AS-011): the shared shape for
+// every portal read that can genuinely fail against a live database —
+// `{ ok: false }` is a DIFFERENT value from "the true answer is zero/
+// empty", which a coalesced fallback (`count ?? 0`, an empty map a
+// percentage gets computed from) could never express. A caller that
+// pattern-matches on `.ok` cannot accidentally render a dropped
+// connection as data; the type system will not let it reach `.data`
+// without checking. Same `{ ok: true/false }` discriminant this codebase
+// already uses for Server Action results (e.g. `ColumnActionResult`,
+// lib/actions/statuses.ts:188-201) — reused here for query reads, not
+// invented fresh.
+export type PortalQueryResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
 // --- Phases (F001, missions/20260903-portal) --------------------------
 
 export type PortalPhaseState = "not_started" | "active" | "blocked" | "done";
@@ -291,7 +306,22 @@ export type PortalPhase = {
 // left to RLS, matching this file's stated exception for business logic
 // that happens to coincide with (rather than duplicate) an access-control
 // boundary.
-export async function getProjectPhases(projectId: string): Promise<PortalPhase[]> {
+//
+// F006f (missions/20260903-portal, AS-011): a failed `tasks` or
+// `project_statuses` read used to be logged and then silently treated
+// as "zero rows" — every task fell to the `"not_started"` category
+// fallback, so every phase reported a correct-looking 0% instead of an
+// unknown one. A fully delivered phase read as not started. This
+// function now fails LOUDLY on either read: it returns `{ ok: false }`
+// rather than computing a percentage from a map it knows is incomplete.
+// A failed `project_phases` read fails the same way, for the same
+// reason. An empty result (a project that genuinely has zero phases, or
+// zero tasks in a phase) is not a failure and still returns `{ ok: true,
+// data: [] }` / a phase with `progressPercent: 0` — the distinction this
+// type exists to make is "we don't know" vs. "we know, and it's zero".
+export async function getProjectPhases(
+  projectId: string,
+): Promise<PortalQueryResult<PortalPhase[]>> {
   const supabase = await createClient();
 
   const { data: phases, error: phasesError } = await supabase
@@ -310,9 +340,9 @@ export async function getProjectPhases(projectId: string): Promise<PortalPhase[]
 
   if (phasesError) {
     logger.error("getProjectPhases: failed to load phases", { error: phasesError });
-    return [];
+    return { ok: false, error: phasesError.message };
   }
-  if (!phases?.length) return [];
+  if (!phases?.length) return { ok: true, data: [] };
 
   const phaseIds = phases.map((p) => p.id);
 
@@ -332,11 +362,17 @@ export async function getProjectPhases(projectId: string): Promise<PortalPhase[]
         .eq("project_id", projectId),
     ]);
 
+  // AS-011: either read failing means the category map below would be
+  // incomplete or wrong — computing a progress figure from it would be
+  // exactly the defect this feature exists to remove, so both are fatal
+  // to this call, not just logged and carried on from.
   if (tasksError) {
     logger.error("getProjectPhases: failed to load tasks", { error: tasksError });
+    return { ok: false, error: tasksError.message };
   }
   if (statusesError) {
     logger.error("getProjectPhases: failed to load statuses", { error: statusesError });
+    return { ok: false, error: statusesError.message };
   }
 
   const categoryByStatusId = new Map<string, StatusCategory>();
@@ -359,7 +395,7 @@ export async function getProjectPhases(projectId: string): Promise<PortalPhase[]
     totalsByPhase.set(task.phase_id, entry);
   }
 
-  return phases.map((phase) => {
+  const data = phases.map((phase) => {
     const totals = totalsByPhase.get(phase.id) ?? { total: 0, done: 0 };
     return {
       id: phase.id,
@@ -378,6 +414,8 @@ export async function getProjectPhases(projectId: string): Promise<PortalPhase[]
       progressPercent: totals.total === 0 ? 0 : Math.round((totals.done / totals.total) * 100),
     };
   });
+
+  return { ok: true, data };
 }
 
 // The caller's role in this workspace, used by the portal layout to decide
@@ -446,6 +484,14 @@ export async function getPortalCurrentUserProfile(
 // sidebar badge and the approvals list it links to can never disagree
 // the way the M1 scrutiny report's AS-002 finding described.
 //
+// F006f (missions/20260903-portal, AS-002): a failed count used to be
+// logged and then coalesced to `count ?? 0` -- a dropped connection told
+// the client "nothing is waiting on you", the exact wrong-confident-
+// number defect this feature exists to remove. `approvalsAwaiting` is
+// now a `PortalQueryResult<number>`: the caller (the sidebar nav item)
+// renders no badge at all on a failed read, never a `0` it cannot tell
+// apart from a real zero.
+//
 // AS-003 (deliverablesPastDue): `project can hold a list of items the
 // client owes` (AS-028) is a wholly new entity F012 introduces in M3 --
 // there is no existing table or column anywhere in this schema that
@@ -453,10 +499,14 @@ export async function getPortalCurrentUserProfile(
 // Zero is the honest, vacuously-true answer (a project with zero
 // deliverables has zero overdue ones), the same reasoning F001's and
 // F005's own handoffs already used for a not-yet-built entity, not a
-// placeholder standing in for a real number.
-export async function getPortalBadgeCounts(
-  projectId: string,
-): Promise<{ approvalsAwaiting: number; deliverablesPastDue: number }> {
+// placeholder standing in for a real number. It never reads a fallible
+// source, so it stays a plain `number`, not a `PortalQueryResult`.
+export type PortalBadgeCounts = {
+  approvalsAwaiting: PortalQueryResult<number>;
+  deliverablesPastDue: number;
+};
+
+export async function getPortalBadgeCounts(projectId: string): Promise<PortalBadgeCounts> {
   const supabase = await createClient();
 
   const { count, error } = await supabase
@@ -467,12 +517,78 @@ export async function getPortalBadgeCounts(
 
   if (error) {
     logger.error("getPortalBadgeCounts: failed to load approvals count", { error });
+    return {
+      approvalsAwaiting: { ok: false, error: error.message },
+      deliverablesPastDue: 0,
+    };
   }
 
   return {
-    approvalsAwaiting: count ?? 0,
+    // A successful head-count query never actually returns a null
+    // count (it returns 0 for no rows) -- this `?? 0` guards the SDK's
+    // nullable type, not a failure; it is only ever reached once `error`
+    // above is known false.
+    approvalsAwaiting: { ok: true, data: count ?? 0 },
     deliverablesPastDue: 0,
   };
+}
+
+// F006f (missions/20260903-portal, AS-002): the Overview page's own
+// "Waiting on you" tile and the task list rendered directly beneath it
+// used to be two independently-computed numbers -- the tile read this
+// project's `approvalsAwaiting` (above), the list read
+// `getPortalOverview(workspace.id)`, EVERY portal-enabled project in the
+// workspace, filtered by a second, different predicate. A client on two
+// projects could see a tile that said "2" sitting directly above a list
+// with five rows from a different project entirely -- the same fact,
+// answered twice, disagreeing. "One question must have one query,
+// project-scoped, used by both" (this feature's own scope): this
+// function is that one query. It reads `tasks.pending_client_approval`,
+// not `approval_requests` directly -- the migration that introduced
+// `approval_requests` documents `pending_client_approval` as "a
+// denormalised indicator [the approval RPCs] keep in sync... the board
+// and the portal overview both still read it"
+// (supabase/migrations/20260916010000_approval_requests.sql:14-16) --
+// so a task-shaped list is the correct read for a widget whose rows
+// link to a task detail page, not a workaround. (`approval_requests`
+// itself is polymorphic -- doc/phase/artifact subjects with no task to
+// link to -- which is exactly why it stays the right source for the
+// dedicated Approvals view, and the wrong source for this task list.)
+export async function getPortalWaitingOnYou(
+  projectId: string,
+  projectName: string,
+): Promise<PortalQueryResult<PortalOverviewTask[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, title, due_date, updated_at, project_id")
+    .eq("project_id", projectId)
+    .eq("pending_client_approval", true)
+    // Belt-and-suspenders, matching this file's own stated convention
+    // (e.g. getProjectPhases's identical filter above): RLS already
+    // scopes a client's own `tasks` read to client_visible rows, this
+    // just keeps the business rule readable at the call site and holds
+    // for a team caller previewing the same widget.
+    .eq("client_visible", true)
+    .is("deleted_at", null)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    logger.error("getPortalWaitingOnYou: failed to load tasks awaiting approval", { error });
+    return { ok: false, error: error.message };
+  }
+
+  const items: PortalOverviewTask[] = (data ?? []).map((task) => ({
+    id: task.id,
+    title: task.title,
+    projectId: task.project_id,
+    projectName,
+    dueDate: task.due_date,
+    updatedAt: task.updated_at,
+  }));
+
+  return { ok: true, data: items };
 }
 
 // --- Risk banner (F006, missions/20260903-portal, AS-031) -----------------

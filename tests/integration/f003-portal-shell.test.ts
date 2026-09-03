@@ -246,7 +246,13 @@ describe.skipIf(!haveCreds)("Portal shell data layer (F003: AS-005, AS-006)", ()
     // table exists (M3) -- see that function's own doc comment.
     const { getPortalBadgeCounts } = await import("@/lib/queries/portal");
     const counts = await getPortalBadgeCounts(enabledProjectId);
-    expect(counts).toEqual({ approvalsAwaiting: 0, deliverablesPastDue: 0 });
+    // F006f (missions/20260903-portal, AS-002): approvalsAwaiting is a
+    // discriminated result now -- `{ ok: true, data: 0 }` is a genuine
+    // zero, distinguishable from `{ ok: false }` on a failed read.
+    expect(counts).toEqual({
+      approvalsAwaiting: { ok: true, data: 0 },
+      deliverablesPastDue: 0,
+    });
   });
 });
 
@@ -407,10 +413,14 @@ describe.skipIf(!haveCreds)("Portal read-surface leaks (F006b: AS-007, AS-012)",
   it("test_AS_007_getProjectPhases_returns_nothing_for_the_disabled_project_even_though_the_phase_is_client_visible", async () => {
     activeSession = clientSession;
     const { getProjectPhases } = await import("@/lib/queries/portal");
-    const phases = await getProjectPhases(disabledProjectId);
+    const result = await getProjectPhases(disabledProjectId);
 
-    expect(phases).toEqual([]);
-    expect(phases.some((p) => p.id === hiddenPhaseId)).toBe(false);
+    // F006f (missions/20260903-portal, AS-011): getProjectPhases now
+    // returns a discriminated result -- a genuinely empty read is `{ ok:
+    // true, data: [] }`, not a bare array, so it's distinguishable from
+    // a failed one.
+    expect(result).toEqual({ ok: true, data: [] });
+    expect(result.ok && result.data.some((p) => p.id === hiddenPhaseId)).toBe(false);
   });
 
   // The Definition of done's own "failure test": rejected by the policy,

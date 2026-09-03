@@ -68,4 +68,25 @@ describe("OverviewTiles", () => {
       "Launch date not set yet",
     );
   });
+
+  // F006f (missions/20260903-portal, AS-002): a failed read is `null`,
+  // never coalesced to 0 -- 0 is a real, different answer ("nothing is
+  // waiting on you") that this tile must not claim when it doesn't
+  // actually know.
+  it("test_AS_002_renders_an_honest_placeholder_never_a_fabricated_zero_when_waiting_on_you_failed_to_load", () => {
+    render(
+      <OverviewTiles
+        waitingOnYouCount={null}
+        pagesReadyCount={4}
+        pagesTotalCount={9}
+        daysToLaunch={15}
+        launchConfidence="at_risk"
+      />,
+    );
+
+    const tile = screen.getByTestId("tile-waiting-on-you");
+    expect(tile).toHaveTextContent("—");
+    expect(tile).toHaveTextContent("We couldn't load this");
+    expect(tile.textContent).not.toContain("0");
+  });
 });

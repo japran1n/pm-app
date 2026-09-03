@@ -21,6 +21,22 @@ type Row = Record<string, unknown>;
 
 let approvalCountResult: { count: number | null; error: unknown };
 
+// --- getPortalWaitingOnYou (F006f, AS-002) ---------------------------------
+//
+// Applies each `.eq()`/`.is()` call's own column/value against the row
+// set (same reasoning as tests/unit/portal-phases-query.test.ts's own
+// header comment) rather than handing back a fixed array regardless of
+// what the real query filtered on.
+let waitingTaskRows: Row[];
+let waitingTasksError: { message: string } | null;
+
+function eqFilter(col: string, val: unknown) {
+  return (row: Row) => row[col] === val;
+}
+function applyFilters(rows: Row[], filters: Array<(row: Row) => boolean>): Row[] {
+  return rows.filter((row) => filters.every((f) => f(row)));
+}
+
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: vi.fn((table: string) => {
@@ -31,6 +47,28 @@ vi.mock("@/lib/supabase/server", () => ({
               eq: vi.fn(async () => approvalCountResult),
             })),
           })),
+        };
+      }
+      if (table === "tasks") {
+        return {
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              is: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              order: vi.fn(async () => {
+                if (waitingTasksError) return { data: null, error: waitingTasksError };
+                return { data: applyFilters(waitingTaskRows, filters), error: null };
+              }),
+            };
+            return builder;
+          }),
         };
       }
       throw new Error(`unexpected table ${table}`);
@@ -112,6 +150,7 @@ import {
   getPortalLiveNow,
   getPortalRisks,
   getPortalTeam,
+  getPortalWaitingOnYou,
 } from "@/lib/queries/portal";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -123,6 +162,8 @@ beforeEach(() => {
   projectMemberRows = [];
   workspaceMemberRoleRows = [];
   phaseRows = [];
+  waitingTaskRows = [];
+  waitingTasksError = null;
 });
 
 describe("getPortalBadgeCounts — AS-002, AS-003", () => {
@@ -131,7 +172,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
-    expect(badges.approvalsAwaiting).toBe(3);
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 3 });
   });
 
   it("test_AS_002_a_project_with_nothing_pending_reports_zero_not_an_error", async () => {
@@ -139,7 +180,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
-    expect(badges.approvalsAwaiting).toBe(0);
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 0 });
   });
 
   it("test_AS_003_deliverables_past_due_is_honestly_zero_until_the_deliverables_table_exists", async () => {
@@ -152,12 +193,117 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
     expect(badges.deliverablesPastDue).toBe(0);
   });
 
-  it("returns zero rather than throwing when the count query errors", async () => {
+  // F006f (missions/20260903-portal, AS-002): this test used to assert
+  // `approvalsAwaiting` came back as `0` on a query error -- the exact
+  // "confident wrong number" defect this feature removes (a dropped
+  // connection is indistinguishable from a real zero, and the sidebar
+  // renders the same badge either way). It now asserts the opposite: a
+  // failed read is reported AS a failure, never coalesced into a count.
+  it("test_AS_002_a_failed_count_query_is_reported_as_a_failure_not_coalesced_to_zero", async () => {
     approvalCountResult = { count: null, error: { message: "boom" } };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
-    expect(badges.approvalsAwaiting).toBe(0);
+    expect(badges.approvalsAwaiting.ok).toBe(false);
+    expect(badges.approvalsAwaiting).not.toEqual({ ok: true, data: 0 });
+  });
+});
+
+describe("getPortalWaitingOnYou — F006f (AS-002): one project-scoped query for the tile and the list", () => {
+  it("test_AS_002_counts_only_this_projects_tasks_pending_client_approval", async () => {
+    waitingTaskRows = [
+      {
+        id: "t1",
+        title: "Approve homepage copy",
+        project_id: PROJECT_ID,
+        due_date: null,
+        updated_at: "2026-08-30T00:00:00Z",
+        pending_client_approval: true,
+        client_visible: true,
+        deleted_at: null,
+      },
+      // A different project's task -- proves the `.eq("project_id",
+      // projectId)` call itself scopes the result, not an accident of
+      // the fixture only ever containing one project's rows.
+      {
+        id: "t-other-project",
+        title: "Approve a different project's task",
+        project_id: "other-project",
+        due_date: null,
+        updated_at: "2026-08-30T00:00:00Z",
+        pending_client_approval: true,
+        client_visible: true,
+        deleted_at: null,
+      },
+    ];
+
+    const result = await getPortalWaitingOnYou(PROJECT_ID, "Website relaunch");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.map((t) => t.id)).toEqual(["t1"]);
+    expect(result.data[0].projectName).toBe("Website relaunch");
+  });
+
+  it("excludes a task that is not pending_client_approval, hidden, or soft-deleted", async () => {
+    waitingTaskRows = [
+      {
+        id: "t-not-pending",
+        title: "Not awaiting approval",
+        project_id: PROJECT_ID,
+        due_date: null,
+        updated_at: "2026-08-30T00:00:00Z",
+        pending_client_approval: false,
+        client_visible: true,
+        deleted_at: null,
+      },
+      {
+        id: "t-hidden",
+        title: "Hidden from the client",
+        project_id: PROJECT_ID,
+        due_date: null,
+        updated_at: "2026-08-30T00:00:00Z",
+        pending_client_approval: true,
+        client_visible: false,
+        deleted_at: null,
+      },
+      {
+        id: "t-deleted",
+        title: "Soft-deleted",
+        project_id: PROJECT_ID,
+        due_date: null,
+        updated_at: "2026-08-30T00:00:00Z",
+        pending_client_approval: true,
+        client_visible: true,
+        deleted_at: "2026-08-01T00:00:00Z",
+      },
+    ];
+
+    const result = await getPortalWaitingOnYou(PROJECT_ID, "Website relaunch");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual([]);
+  });
+
+  it("returns ok: true with an empty list, not a failure, when nothing is waiting", async () => {
+    waitingTaskRows = [];
+
+    const result = await getPortalWaitingOnYou(PROJECT_ID, "Website relaunch");
+
+    expect(result).toEqual({ ok: true, data: [] });
+  });
+
+  // F006f's own defect description: a failed read used to render as
+  // "Nothing waiting on you" -- indistinguishable from this exact
+  // legitimate empty-list case above. `{ ok: false }` is what makes the
+  // two distinguishable to a caller.
+  it("test_AS_002_a_failed_read_is_ok_false_not_an_empty_list", async () => {
+    waitingTasksError = { message: "connection reset" };
+
+    const result = await getPortalWaitingOnYou(PROJECT_ID, "Website relaunch");
+
+    expect(result).toEqual({ ok: false, error: "connection reset" });
   });
 });
 

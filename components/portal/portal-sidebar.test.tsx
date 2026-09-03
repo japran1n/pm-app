@@ -27,7 +27,7 @@ const baseProps = {
   projectId: "proj-1",
   projectName: "Website redesign",
   hasMultipleProjects: false,
-  badges: { approvalsAwaiting: 0, deliverablesPastDue: 0 },
+  badges: { approvalsAwaiting: { ok: true as const, data: 0 }, deliverablesPastDue: 0 },
   currentUser: { id: "u1", name: "Jamie Client", email: "jamie@example.com", avatarUrl: null },
 };
 
@@ -59,7 +59,7 @@ function anchorTags(html: string): string[] {
 describe("PortalSidebar (F003)", () => {
   it("test_AS_001_lists_all_eight_views_in_order", () => {
     const items = buildPortalNavItems("/portal/acme/p/proj-1", {
-      approvalsAwaiting: 0,
+      approvalsAwaiting: { ok: true, data: 0 },
       deliverablesPastDue: 0,
     });
 
@@ -143,7 +143,7 @@ describe("PortalSidebar (F003)", () => {
     const html = renderToStaticMarkup(
       createElement(PortalSidebar, {
         ...baseProps,
-        badges: { approvalsAwaiting: 2, deliverablesPastDue: 3 },
+        badges: { approvalsAwaiting: { ok: true, data: 2 }, deliverablesPastDue: 3 },
       }),
     );
 
@@ -157,6 +157,31 @@ describe("PortalSidebar (F003)", () => {
 
     expect(html).not.toContain(">0<");
   });
+
+  // F006f (missions/20260903-portal, AS-002): a failed `approvalsAwaiting`
+  // read must render the same way as "no badge for this item" -- never a
+  // `0` a client cannot tell apart from a real "nothing pending".
+  it("test_AS_002_renders_no_approvals_badge_at_all_when_the_count_failed_to_load", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(
+      createElement(PortalSidebar, {
+        ...baseProps,
+        badges: {
+          approvalsAwaiting: { ok: false, error: "boom" },
+          deliverablesPastDue: 0,
+        },
+      }),
+    );
+
+    expect(html).not.toContain(">0<");
+
+    const items = buildPortalNavItems("/portal/acme/p/proj-1", {
+      approvalsAwaiting: { ok: false, error: "boom" },
+      deliverablesPastDue: 0,
+    });
+    const approvalsItem = items.find((item) => item.key === "approvals");
+    expect(approvalsItem?.badge).toBeUndefined();
+  });
 });
 
 // F006e (missions/20260903-portal): TEMPORARY -- Files and Requests had
@@ -168,7 +193,7 @@ describe("PortalSidebar (F003)", () => {
 describe("PortalSidebar temporary Files/Requests entries (F006e)", () => {
   it("test_AS_001_the_primary_eight_item_list_does_not_grow_to_include_the_temporary_entries", () => {
     const items = buildPortalNavItems("/portal/acme/p/proj-1", {
-      approvalsAwaiting: 0,
+      approvalsAwaiting: { ok: true, data: 0 },
       deliverablesPastDue: 0,
     });
 

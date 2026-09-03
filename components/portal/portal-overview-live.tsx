@@ -98,10 +98,21 @@ export function PortalOverviewLive({
   workspaceId,
   workspaceSlug,
   initialOverview,
+  waitingOnYouFailed = false,
 }: {
   workspaceId: string;
   workspaceSlug: string;
   initialOverview: PortalOverview;
+  /** F006f (missions/20260903-portal, AS-002): true when the server-side
+   * read this list's initial "Waiting on you" rows came from failed.
+   * `initialOverview.waitingOnYou` is `[]` in that case too (there was
+   * nothing to seed with), which is indistinguishable from a genuine
+   * "nothing waiting" empty state unless this flag says otherwise --
+   * defaults to false so the workspace-chooser page (which always has a
+   * real, successfully-fetched `PortalOverview`) is unaffected. Gated on
+   * the list still being empty: once a live event adds a real row, the
+   * caveat is moot and the list itself is the honest answer again. */
+  waitingOnYouFailed?: boolean;
 }) {
   const [waitingOnYou, setWaitingOnYou] = useState<PortalOverviewTask[]>(
     initialOverview.waitingOnYou,
@@ -155,7 +166,9 @@ export function PortalOverviewLive({
         </div>
         {waitingOnYou.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nothing waiting on you right now.
+            {waitingOnYouFailed
+              ? "We couldn't load this. Try refreshing the page."
+              : "Nothing waiting on you right now."}
           </p>
         ) : (
           <ul className="flex flex-col gap-1">

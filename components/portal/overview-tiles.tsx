@@ -61,7 +61,12 @@ export function OverviewTiles({
   daysToLaunch,
   launchConfidence,
 }: {
-  waitingOnYouCount: number;
+  /** F006f (missions/20260903-portal, AS-002): `null` means the read
+   * this tile depends on failed -- rendered as an honest "-", the same
+   * "don't claim a number you don't have" convention `daysToLaunch`
+   * below already uses, never coalesced to 0 (indistinguishable from a
+   * real "nothing waiting on you"). */
+  waitingOnYouCount: number | null;
   pagesReadyCount: number;
   pagesTotalCount: number;
   /** Whole days from today to the project's target launch date, negative
@@ -78,13 +83,15 @@ export function OverviewTiles({
       <Tile
         testId="tile-waiting-on-you"
         label="Waiting on you"
-        value={String(waitingOnYouCount)}
+        value={waitingOnYouCount === null ? "—" : String(waitingOnYouCount)}
         footnote={
-          waitingOnYouCount === 0
-            ? "Nothing waiting on you"
-            : waitingOnYouCount === 1
-              ? "1 item needs your review"
-              : `${waitingOnYouCount} items need your review`
+          waitingOnYouCount === null
+            ? "We couldn't load this"
+            : waitingOnYouCount === 0
+              ? "Nothing waiting on you"
+              : waitingOnYouCount === 1
+                ? "1 item needs your review"
+                : `${waitingOnYouCount} items need your review`
         }
       />
       <Tile
