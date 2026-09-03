@@ -397,16 +397,262 @@ export async function getPortalCurrentUserProfile(
 
 // F003 (missions/20260903-portal, AS-002, AS-003): the sidebar's two
 // badge counts -- approvals awaiting this client's decision, and the
-// client's own deliverables past their due date. Both features that
-// actually produce this data (F007's `approval_requests`, F012's
-// obligations) land after this one; this stub returns zero for both so
-// the shell renders correctly today (a badge is simply omitted when its
-// count is 0 -- see PortalSidebar) and so F007/F012 only ever need to
-// change THIS function's body, never any of its callers.
+// client's own deliverables past their due date. F003 shipped this as a
+// zero-returning stub ("so F007/F012 only ever need to change THIS
+// function's body, never any of its callers") -- F006 is that first
+// body change.
+//
+// AS-002 (approvalsAwaiting): F007's dedicated `approval_requests` table
+// doesn't exist until M2. `tasks.pending_client_approval` is the exact
+// same real signal this app already treats as "an approval request
+// awaiting this client's decision" everywhere else in the portal today
+// -- `getPortalOverview`'s "waiting on you" list and
+// `PortalOverviewLive`'s realtime predicate both key off it verbatim
+// (see that function's own comment: "the team sets it, so it survives
+// status renames and covers any status"). Counting it here is not a
+// fabricated number; it is the one real table this concept currently
+// has. F009's own clarified spec explicitly anticipates this exact
+// hand-off: "F009 replaces the source with approval_requests without
+// touching this component's shape" -- true of this function's body too,
+// not only PortalOverviewLive's.
+//
+// AS-003 (deliverablesPastDue): `project can hold a list of items the
+// client owes` (AS-028) is a wholly new entity F012 introduces in M3 --
+// there is no existing table or column anywhere in this schema that
+// means "a thing the client owes," so there is nothing to count yet.
+// Zero is the honest, vacuously-true answer (a project with zero
+// deliverables has zero overdue ones), the same reasoning F001's and
+// F005's own handoffs already used for a not-yet-built entity, not a
+// placeholder standing in for a real number.
 export async function getPortalBadgeCounts(
-  _projectId: string,
+  projectId: string,
 ): Promise<{ approvalsAwaiting: number; deliverablesPastDue: number }> {
-  return { approvalsAwaiting: 0, deliverablesPastDue: 0 };
+  const supabase = await createClient();
+
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .eq("client_visible", true)
+    .eq("pending_client_approval", true)
+    .is("deleted_at", null);
+
+  if (error) {
+    logger.error("getPortalBadgeCounts: failed to load approvals count", { error });
+  }
+
+  return {
+    approvalsAwaiting: count ?? 0,
+    deliverablesPastDue: 0,
+  };
+}
+
+// --- Risk banner (F006, missions/20260903-portal, AS-031) -----------------
+
+export type PortalRisk = {
+  id: string;
+  message: string;
+};
+
+// The overview's risk banner needs either "a blocking deliverable past
+// due" (F012's own deliverables table, M3) or "an approval open longer
+// than the project's threshold" (F007/F009, M2) to have anything to
+// show. Neither exists yet at M1 -- this stub returns an empty list so
+// `RiskBanner` (components/portal/risk-banner.tsx) renders nothing
+// today, honestly, rather than a placeholder banner (this feature's own
+// explicit "it must not render a placeholder" instruction). F014 is the
+// feature that gives this a real body; `RiskBanner`'s own props shape
+// does not need to change when that happens -- same extension-point
+// pattern as `getPortalBadgeCounts` above.
+export async function getPortalRisks(_projectId: string): Promise<PortalRisk[]> {
+  return [];
+}
+
+// --- Live now (F006, missions/20260903-portal; P3, docs/client-portal-
+// sixstar-plan.md) ----------------------------------------------------
+//
+// "Who's working on this right now" -- active_timers rows for this
+// project's tasks. Unlike every other query in this file, this one
+// cannot be written against the ordinary RLS-respecting client at all:
+// `active_timers_select_active_members` was hardened in 20260902020000
+// to `is_task_workspace_member(task_id) and not is_task_client(task_id)`
+// -- a client role is explicitly excluded from ever reading an
+// active_timers row, full stop, so there is no client-visible row here
+// to filter down from (unlike `getProjectPhases`/`getPortalPages`, whose
+// admin-client reads are only resolving a DISPLAY value for a row the
+// client already reached through their own RLS-scoped read).
+//
+// Reads through the admin client from the start, scoped to `project_id`
+// -- a project this caller already reached through the caller's own
+// `getPortalProjects` (portal_enabled + membership) gate one query
+// earlier in the same request -- and re-derives, in TypeScript, the one
+// thing RLS would otherwise have enforced: excluding any timer belonging
+// to a client member of this same workspace, so a client never sees
+// their own (or a co-client's) "live now" entry reflected back at them.
+//
+// Never selects `started_at` at all: P3's own privacy boundary ("never
+// show how long the timer has been running") is enforced by this
+// function simply never fetching that column, not by fetching and then
+// hiding it in the UI.
+export type PortalLiveNowEntry = {
+  id: string;
+  userId: string;
+  personName: string | null;
+  avatarUrl: string | null;
+  /** The client-visible task's title, or -- when the task itself is not
+   * client-visible -- its phase's name (F006's own clarified spec:
+   * "a task name only when the task is client-visible, otherwise the
+   * phase name"). A task with neither (not client-visible and no phase)
+   * falls back to a generic, honest label rather than fabricating one. */
+  label: string;
+};
+
+export async function getPortalLiveNow(
+  projectId: string,
+): Promise<PortalLiveNowEntry[]> {
+  const admin = createAdminClient();
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("id, workspace_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return [];
+
+  const { data: timers, error } = await admin
+    .from("active_timers")
+    .select(
+      "id, user_id, tasks!inner(id, title, client_visible, phase_id, project_id, deleted_at)",
+    )
+    .eq("tasks.project_id", projectId)
+    .is("tasks.deleted_at", null);
+
+  if (error) {
+    logger.error("getPortalLiveNow: failed to load active timers", { error });
+    return [];
+  }
+  if (!timers?.length) return [];
+
+  const userIds = [...new Set(timers.map((row) => row.user_id))];
+  const phaseIds = [
+    ...new Set(
+      timers
+        .map((row) => (Array.isArray(row.tasks) ? row.tasks[0] : row.tasks)?.phase_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const [people, roleRows, phaseRows] = await Promise.all([
+    resolvePeople(userIds),
+    admin
+      .from("workspace_members")
+      .select("user_id, role")
+      .eq("workspace_id", project.workspace_id)
+      .in("user_id", userIds),
+    phaseIds.length > 0
+      ? admin.from("project_phases").select("id, name").in("id", phaseIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+
+  const roleByUserId = new Map((roleRows.data ?? []).map((r) => [r.user_id, r.role]));
+  const phaseNameById = new Map((phaseRows.data ?? []).map((p) => [p.id, p.name]));
+
+  return timers
+    // A client should never see their own (or a co-client's) presence
+    // reflected back at them -- "your team" is the agency's, never the
+    // client's own membership.
+    .filter((row) => roleByUserId.get(row.user_id) !== "client")
+    .flatMap((row) => {
+      const task = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+      if (!task) return [];
+
+      const person = people.get(row.user_id);
+      const label = task.client_visible
+        ? task.title
+        : (task.phase_id && phaseNameById.get(task.phase_id)) || "Working on the project";
+
+      return [
+        {
+          id: row.id,
+          userId: row.user_id,
+          personName: person?.name ?? null,
+          avatarUrl: person?.avatarUrl ?? null,
+          label,
+        },
+      ];
+    });
+}
+
+// --- Your team (F006, missions/20260903-portal) ---------------------------
+//
+// `project_members` -- who is on this project, for the overview's "Your
+// team" rail card. Same "RLS gives a client no row to read through"
+// situation `getPortalLiveNow` documents above:
+// `project_members_select_active_members` (hardened 20260902020000)
+// lets a client read only THEIR OWN `project_members` row ("not
+// is_project_client(project_id) or user_id = auth.uid()"), never a
+// teammate's -- so this reads through the admin client from the start,
+// scoped to `project_id` (already permitted to this caller via
+// `getPortalProjects`' own gate), and excludes any member who is
+// themselves a client of this workspace: "your team" means the agency's
+// team, not this client's own membership row or a co-client's.
+export type PortalTeamMember = {
+  id: string;
+  name: string | null;
+  avatarUrl: string | null;
+  roleLabel: string;
+};
+
+export async function getPortalTeam(projectId: string): Promise<PortalTeamMember[]> {
+  const admin = createAdminClient();
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("id, workspace_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (!project) return [];
+
+  const { data: members, error } = await admin
+    .from("project_members")
+    .select("user_id, project_role")
+    .eq("project_id", projectId);
+
+  if (error) {
+    logger.error("getPortalTeam: failed to load project members", { error });
+    return [];
+  }
+  if (!members?.length) return [];
+
+  const userIds = [...new Set(members.map((m) => m.user_id))];
+
+  const [people, roleRows] = await Promise.all([
+    resolvePeople(userIds),
+    admin
+      .from("workspace_members")
+      .select("user_id, role")
+      .eq("workspace_id", project.workspace_id)
+      .in("user_id", userIds),
+  ]);
+
+  const roleByUserId = new Map((roleRows.data ?? []).map((r) => [r.user_id, r.role]));
+
+  return members
+    .filter((member) => roleByUserId.get(member.user_id) !== "client")
+    .map((member) => {
+      const person = people.get(member.user_id);
+      return {
+        id: member.user_id,
+        name: person?.name ?? null,
+        avatarUrl: person?.avatarUrl ?? null,
+        // `project_members.project_role` (`lead` | `member`,
+        // 20260821140520) is the only per-project "role" this schema
+        // has -- rendered as a client-facing label rather than the raw
+        // enum value, the same "translate internal vocabulary" job
+        // status-label.ts does for statuses.
+        roleLabel: member.project_role === "lead" ? "Project lead" : "Team member",
+      };
+    });
 }
 
 // --- Client requests (C5) ---------------------------------------------------

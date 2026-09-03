@@ -15,7 +15,10 @@
 // instead: `getPortalProjects` (whose `.find(id)` result decides
 // notFound() -- AS-007's failure case), `getWorkspaceRoleForCurrentUser`
 // + `canViewClientPortal` (the redirect the outer layout has always
-// applied -- AS-006), and `getPortalBadgeCounts` (F003's own zero stub).
+// applied -- AS-006), and `getPortalBadgeCounts` (F003 shipped this as a
+// zero stub for both counts; F006 (missions/20260903-portal, AS-002)
+// gave `approvalsAwaiting` a real body -- see that test's own updated
+// comment below).
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -231,7 +234,16 @@ describe.skipIf(!haveCreds)("Portal shell data layer (F003: AS-005, AS-006)", ()
     expect(canViewClientPortal({ role: clientRole as never })).toBe(true);
   });
 
-  it("getPortalBadgeCounts returns zero for both counts until F007/F012 wire real data", async () => {
+  it("getPortalBadgeCounts: approvalsAwaiting is real (AS-002), deliverablesPastDue is still an honest zero (AS-003, until F012)", async () => {
+    // F006 (missions/20260903-portal, AS-002) gave `approvalsAwaiting` a
+    // real body (a count of this project's `pending_client_approval`
+    // tasks) -- this fixture project has none, so the real query still
+    // legitimately returns 0 here; unit coverage for the
+    // non-zero/error-recovery cases lives in
+    // tests/unit/portal-overview-queries.test.ts, mocked so it doesn't
+    // need a live task in this state. `deliverablesPastDue` stays a
+    // deliberate zero stub (AS-003) until F012's deliverables table
+    // exists (M3) -- see that function's own doc comment.
     const { getPortalBadgeCounts } = await import("@/lib/queries/portal");
     const counts = await getPortalBadgeCounts(enabledProjectId);
     expect(counts).toEqual({ approvalsAwaiting: 0, deliverablesPastDue: 0 });
