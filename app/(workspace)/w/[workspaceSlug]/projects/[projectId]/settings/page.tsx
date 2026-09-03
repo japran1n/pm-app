@@ -18,6 +18,9 @@ import {
   ProjectMembersList,
   ProjectVisibilityToggle,
 } from "@/components/project/project-members";
+// F002 (missions/20260903-portal): lets this page link to the sibling
+// columns/phases settings routes — see that component's own doc comment.
+import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
 
 // F133: project settings panel — explicit member list (AS-236), an
@@ -151,6 +154,8 @@ export default async function ProjectSettingsPage({
           Members and visibility for {project.name}.
         </p>
       </div>
+
+      <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
 
       {loadError && (
         <div

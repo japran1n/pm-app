@@ -21,6 +21,13 @@ import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { createTask, setTaskAssignees } from "@/lib/actions/tasks";
+// F002 (missions/20260903-portal, AS-013): phase options + write path,
+// same "Server Action called from useEffect, then applied after
+// createTask" two-step shape this dialog already uses for
+// assigneeIds.length > 1 above (setTaskAssignees) — see this feature's
+// handoff for why phaseId isn't threaded through createTask itself.
+import { getProjectPhaseOptions, setTaskPhase } from "@/lib/actions/phases";
+import type { ProjectPhaseOption } from "@/lib/queries/phases";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { Button } from "@/components/ui/button";
@@ -89,6 +96,10 @@ const PRIORITY_LABELS: Record<Priority, string> = {
 // an empty-string item value.
 const NO_PRIORITY_VALUE = "__none__";
 
+// F002 (missions/20260903-portal, AS-013): same reserved-sentinel
+// convention as NO_PRIORITY_VALUE above.
+const NO_PHASE_VALUE = "__no_phase__";
+
 const PRIORITY_SELECT_LABELS: Record<string, string> = {
   [NO_PRIORITY_VALUE]: "No priority",
   ...PRIORITY_LABELS,
@@ -130,6 +141,13 @@ export function NewTaskDialog({
   const [dueDate, setDueDate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // F002 (AS-013): this project's phase options, fetched while the dialog
+  // is open — `null` (not yet resolved) renders as a disabled Select,
+  // same convention task-detail-sheet.tsx's own phase picker uses.
+  const [phaseOptions, setPhaseOptions] = useState<ProjectPhaseOption[] | null>(
+    null,
+  );
+  const [phaseId, setPhaseId] = useState<string>(NO_PHASE_VALUE);
 
   const assigneeLabels: Record<string, string> = {};
   const assigneeAvatarUrls: Record<string, string | null> = {};
@@ -152,6 +170,7 @@ export function NewTaskDialog({
     setPriority(NO_PRIORITY_VALUE);
     setAssigneeIds([]);
     setDueDate("");
+    setPhaseId(NO_PHASE_VALUE);
     setError(null);
   }
 
@@ -185,6 +204,31 @@ export function NewTaskDialog({
     return () =>
       window.removeEventListener(SHORTCUT_EVENTS.newTask, onShortcutNewTask);
   }, [projectId, canCreate]);
+
+  // F002 (AS-013): fetched only while the dialog is actually open — this
+  // component is mounted in up to three places at once per project (board
+  // empty state, board toolbar, list toolbar), so an unconditional
+  // on-mount fetch would triple the request for no benefit. Defaults to
+  // the project's first `active` phase, or its first phase if none is
+  // active, or "No phase" if the project has none yet — this feature's
+  // own clarified default, applied once per open (not re-applied if the
+  // user changes the Select afterwards, since this effect only re-runs
+  // when `open`/`projectId` change).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getProjectPhaseOptions(projectId).then((result) => {
+      if (cancelled) return;
+      const options = result.ok ? result.data.phases : [];
+      setPhaseOptions(options);
+      const defaultPhase =
+        options.find((option) => option.state === "active") ?? options[0];
+      setPhaseId(defaultPhase?.id ?? NO_PHASE_VALUE);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, projectId]);
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -229,6 +273,26 @@ export function NewTaskDialog({
           if (!assigneesResult.ok) {
             toast.error(
               `${result.data.title} created, but assignees couldn't be saved: ${assigneesResult.error}`,
+            );
+            setOpen(false);
+            resetForm();
+            router.refresh();
+            return;
+          }
+        }
+        // F002 (AS-013): same "createTask, then a second write for
+        // anything its own signature doesn't cover" shape as the
+        // multi-assignee call above — createTask has no phaseId
+        // parameter (out of this feature's Files scope to add one), so a
+        // task created with a non-default phase selected is assigned to
+        // it via setTaskPhase right after creation. Only fires when the
+        // resolved default was actually overridden away from "no phase",
+        // never a redundant write for the common "no phase yet" project.
+        if (phaseId !== NO_PHASE_VALUE) {
+          const phaseResult = await setTaskPhase(result.data.id, phaseId);
+          if (!phaseResult.ok) {
+            toast.error(
+              `${result.data.title} created, but its phase couldn't be saved: ${phaseResult.error}`,
             );
             setOpen(false);
             resetForm();
@@ -416,16 +480,53 @@ export function NewTaskDialog({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="task-due-date">Due date (optional)</Label>
-            <Input
-              id="task-due-date"
-              name="dueDate"
-              type="date"
-              disabled={isPending}
-              value={dueDate}
-              onChange={(changeEvent) => setDueDate(changeEvent.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="task-due-date">Due date (optional)</Label>
+              <Input
+                id="task-due-date"
+                name="dueDate"
+                type="date"
+                disabled={isPending}
+                value={dueDate}
+                onChange={(changeEvent) => setDueDate(changeEvent.target.value)}
+              />
+            </div>
+
+            {/* F002 (missions/20260903-portal, AS-013): only rendered
+                once phaseOptions has resolved to a non-empty list — a
+                project with no phases yet shows no phase control at all,
+                rather than a Select whose only real option is "No
+                phase". */}
+            {phaseOptions && phaseOptions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-phase">Phase (optional)</Label>
+                <Select
+                  value={phaseId}
+                  onValueChange={(value) => setPhaseId(value ?? NO_PHASE_VALUE)}
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="task-phase" className="w-full">
+                    <SelectValue>
+                      {(value: string) =>
+                        value === NO_PHASE_VALUE
+                          ? "No phase"
+                          : (phaseOptions.find((option) => option.id === value)
+                              ?.name ?? value)
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
+                    {phaseOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           {error && (

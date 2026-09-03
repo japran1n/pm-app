@@ -17,12 +17,21 @@
 // W5 (docs/docs-system-plan.md) adds "Docs" as a third tab, linking to the
 // project-scoped docs area at `${basePath}/docs` — same "own route, not a
 // client-side content swap" rule as Board/List.
+//
+// F002 (missions/20260903-portal) adds "Settings" as a fourth tab, linking
+// to `${basePath}/settings`. This project detail layout had no route into
+// the settings area at all before this feature (the sibling
+// settings/columns route, F219, was reachable only by typing the URL) —
+// this tab is the first such entry point; ProjectSettingsNav
+// (components/project/project-settings-nav.tsx) is what lets a caller move
+// between the settings/, settings/columns, and settings/phases routes once
+// they're there.
 
 import { useRouter, usePathname } from "next/navigation";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ProjectTab = "board" | "list" | "docs";
+type ProjectTab = "board" | "list" | "docs" | "settings";
 
 export function ProjectTabs({
   workspaceSlug,
@@ -39,7 +48,9 @@ export function ProjectTabs({
   // instance of the same docs system as the workspace-level Docs area
   // (W3/W4) — checked first since `${basePath}/docs` doesn't overlap with
   // `${basePath}/list` or the board route.
-  const activeTab: ProjectTab = pathname?.startsWith(`${basePath}/docs`)
+  const activeTab: ProjectTab = pathname?.startsWith(`${basePath}/settings`)
+    ? "settings"
+    : pathname?.startsWith(`${basePath}/docs`)
     ? "docs"
     : pathname?.startsWith(`${basePath}/list`)
     ? "list"
@@ -56,6 +67,7 @@ export function ProjectTabs({
         <TabsTrigger value="board">Board</TabsTrigger>
         <TabsTrigger value="list">List</TabsTrigger>
         <TabsTrigger value="docs">Docs</TabsTrigger>
+        <TabsTrigger value="settings">Settings</TabsTrigger>
       </TabsList>
     </Tabs>
   );

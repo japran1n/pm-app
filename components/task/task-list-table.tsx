@@ -84,6 +84,10 @@ import { BulkStatusAction } from "@/components/task/bulk-status-action";
 // <BulkActionBar>'s children slot — soft-deletes the selection after a
 // confirmation naming the count.
 import { BulkDeleteAction } from "@/components/task/bulk-delete-action";
+// F002 (missions/20260903-portal, AS-013): the third bulk action rendered
+// into <BulkActionBar>'s children slot — "Move to phase", mirroring
+// BulkStatusAction's own wiring exactly.
+import { BulkPhaseAction } from "@/components/task/bulk-phase-action";
 import { ListTaskTypeSelect } from "@/components/task/list-task-type-select";
 
 export function TaskListTable({
@@ -582,6 +586,18 @@ export function TaskListTable({
         selectedIds={Array.from(selectedIds)}
         onDone={clearSelection}
       />
+      {/* F002 (AS-013): projectId is optional on this component's own
+          props (some non-project-scoped future caller could omit it) —
+          this list view's actual caller (list/page.tsx) always passes
+          it, but the guard keeps this action from rendering with an
+          undefined project if that ever changes. */}
+      {projectId && (
+        <BulkPhaseAction
+          projectId={projectId}
+          selectedIds={Array.from(selectedIds)}
+          onDone={clearSelection}
+        />
+      )}
       <BulkDeleteAction
         selectedTasks={tasks
           .filter((task) => selectedIds.has(task.id))

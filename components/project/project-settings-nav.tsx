@@ -1,0 +1,66 @@
+"use client";
+
+// F002 (missions/20260903-portal): a small in-page nav so the three
+// project-settings routes (members, board columns, phases) can reach one
+// another. This codebase has no existing "settings sub-nav" convention at
+// either the workspace level (app/(workspace)/w/[workspaceSlug]/settings/)
+// or the project level — `settings/columns/page.tsx` (F219) is reachable
+// today only by direct URL. This feature's own spec calls for phases to be
+// reachable "next to the existing settings entries" in
+// `components/project-tabs.tsx`; since that component is the Board/List/
+// Docs tab switcher and has no settings entries to sit next to (verified:
+// no route anywhere links to `.../settings/columns`), this component is
+// what those "settings entries" actually are — ProjectTabs gets one new
+// "Settings" tab (linking to `.../settings`) and every settings route
+// renders this nav so members/columns/phases can navigate to each other.
+// See this feature's handoff for the full rationale.
+//
+// Styling/pattern mirrors app-sidebar.tsx's own Link + aria-current
+// convention (cn() + bg-accent for the active item) — no new nav
+// primitive introduced.
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { cn } from "@/lib/utils";
+
+const ENTRIES = [
+  { slug: "", label: "Members" },
+  { slug: "columns", label: "Board columns" },
+  { slug: "phases", label: "Phases" },
+] as const;
+
+export function ProjectSettingsNav({
+  workspaceSlug,
+  projectId,
+}: {
+  workspaceSlug: string;
+  projectId: string;
+}) {
+  const pathname = usePathname();
+  const basePath = `/w/${workspaceSlug}/projects/${projectId}/settings`;
+
+  return (
+    <nav aria-label="Project settings" className="flex flex-wrap gap-1">
+      {ENTRIES.map((entry) => {
+        const href = entry.slug ? `${basePath}/${entry.slug}` : basePath;
+        const isActive = pathname === href;
+        return (
+          <Link
+            key={entry.slug || "members"}
+            href={href}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              isActive
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+            )}
+          >
+            {entry.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

@@ -138,6 +138,12 @@ import { CommentList, type TaskComment } from "@/components/task/comment-list";
 // a second, near-identical action for descriptions. See this feature's
 // handoff, Decisions made.
 import { getMentionCandidates } from "@/lib/actions/comments";
+// F002 (missions/20260903-portal, AS-013): the phase Select's option
+// source — same "Server Action called directly from a Client Component
+// useEffect" pattern as getMentionCandidates immediately above, and the
+// write path for the Select's own onValueChange.
+import { getProjectPhaseOptions, setTaskPhase } from "@/lib/actions/phases";
+import type { ProjectPhaseOption } from "@/lib/queries/phases";
 import { toPlainJson } from "@/lib/comments/rich-text";
 // F196 (AS-358, AS-361): the Comments/Activity toggle — see
 // components/task/activity-feed.tsx's own doc comment for why a toggle
@@ -387,6 +393,12 @@ export type TaskDetailSheetTask = {
     projectKey?: string;
     number?: number;
   } | null;
+  /** F002 (missions/20260903-portal, AS-013): this task's current phase,
+   * or null/undefined for "no phase assigned". Optional so a caller that
+   * hasn't been updated yet (existing tests/fixtures) still renders, same
+   * "safe default" convention as every other optional field on this
+   * type. */
+  phaseId?: string | null;
 };
 
 export type TaskDetailSheetMember = {
@@ -418,6 +430,11 @@ const PRIORITY_LABELS: Record<
 };
 
 const NO_PRIORITY_VALUE = "__none__";
+
+// F002 (missions/20260903-portal, AS-013): same reserved-sentinel
+// convention as NO_PRIORITY_VALUE above — base-ui's Select doesn't accept
+// an empty-string item value, and "no phase" is a real, selectable state.
+const NO_PHASE_VALUE = "__no_phase__";
 
 function memberLabel(member: TaskDetailSheetMember): string {
   return member.name || member.email || member.userId;
@@ -666,6 +683,27 @@ export function TaskDetailSheet({
   const [confirmedPriority, setConfirmedPriority] = useState<
     TaskDetailSheetTask["priority"] | undefined
   >(undefined);
+  // F002 (missions/20260903-portal, AS-013): the Phase Select's own
+  // optimistic + confirmed mirror, same shape as Priority's above
+  // (undefined baseline meaning "no override yet"; `null` is a real,
+  // distinct override meaning "cleared to No phase").
+  const [optimisticPhaseId, setOptimisticPhaseId] = useOptimistic<
+    string | null | undefined
+  >(undefined);
+  const [confirmedPhaseId, setConfirmedPhaseId] = useState<
+    string | null | undefined
+  >(undefined);
+  // F002 (AS-013): this task's project's phase options, fetched via
+  // getProjectPhaseOptions (lib/actions/phases.ts) the same
+  // "Server Action called from a useEffect" way visibleDescriptionMentionIds
+  // fetches getMentionCandidates below — `null` (not yet resolved) means
+  // "no options loaded yet", rendered as a disabled Select rather than an
+  // empty one.
+  const [phaseOptions, setPhaseOptions] = useState<ProjectPhaseOption[] | null>(
+    null,
+  );
+  const [syncedPhaseOptionsProjectId, setSyncedPhaseOptionsProjectId] =
+    useState<string | null>(null);
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -732,6 +770,8 @@ export function TaskDetailSheet({
     // over from whatever task was previously open in this same Sheet.
     setConfirmedStatus(undefined);
     setConfirmedPriority(undefined);
+    // F002 (AS-013): same reasoning for the phase mirror.
+    setConfirmedPhaseId(undefined);
   } else if (!open && syncedTaskId !== null) {
     // Sheet closed — clear the sync marker so reopening the same task
     // (e.g. after an external update) re-syncs from the latest props.
@@ -923,6 +963,34 @@ export function TaskDetailSheet({
     };
   }, [taskIdForMentions]);
 
+  // F002 (missions/20260903-portal, AS-013): re-sync the phase-options
+  // fetch trigger during render, same "adjust state while rendering,
+  // don't setState-in-an-Effect" convention as syncedDescriptionMentionTaskId
+  // above — `projectId` (not `task.id`) is the actual dependency, since
+  // the option LIST is per-project, not per-task; re-fetching per task
+  // inside the same project would be wasted network calls.
+  if (task?.projectId && task.projectId !== syncedPhaseOptionsProjectId) {
+    setSyncedPhaseOptionsProjectId(task.projectId);
+    setPhaseOptions(null);
+  }
+
+  const projectIdForPhaseOptions = task?.projectId;
+  useEffect(() => {
+    if (!projectIdForPhaseOptions) return;
+    let cancelled = false;
+    getProjectPhaseOptions(projectIdForPhaseOptions).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setPhaseOptions(result.data.phases);
+      } else {
+        setPhaseOptions([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectIdForPhaseOptions]);
+
   const descriptionMentionSuggestions = members
     .filter(
       (member) =>
@@ -1078,6 +1146,38 @@ export function TaskDetailSheet({
         // `{ ok: false }` return; useOptimistic still reverts
         // automatically once this transition settles.
         toast.error(`Failed to set priority to ${nextLabel}`);
+      }
+    });
+  }
+
+  // F002 (missions/20260903-portal, AS-013): mirrors handlePriorityChange's
+  // own shape exactly, one field over.
+  function handlePhaseChange(value: string | null) {
+    if (!task) return;
+    const next = value && value !== NO_PHASE_VALUE ? value : null;
+    const currentPhaseId =
+      confirmedPhaseId !== undefined
+        ? confirmedPhaseId
+        : optimisticPhaseId !== undefined
+          ? optimisticPhaseId
+          : (task.phaseId ?? null);
+    if (next === currentPhaseId) return;
+
+    const nextLabel =
+      phaseOptions?.find((option) => option.id === next)?.name ?? "No phase";
+    setConfirmedPhaseId(undefined);
+    startSaveTransition(async () => {
+      setOptimisticPhaseId(next);
+      try {
+        const result = await setTaskPhase(task.id, next);
+        if (result.ok) {
+          setConfirmedPhaseId(next);
+          toast.success("Phase updated.");
+        } else {
+          toast.error(result.error || `Failed to set phase to ${nextLabel}`);
+        }
+      } catch {
+        toast.error(`Failed to set phase to ${nextLabel}`);
       }
     });
   }
@@ -1474,7 +1574,7 @@ export function TaskDetailSheet({
                   together in a dense grid so a reader can scan the
                   important fields before scrolling past the description or
                   any of the list-heavy sections below. */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-4 rounded-lg border bg-muted/30 p-4 sm:grid-cols-5">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor={`task-status-${task.id}`}>Status</Label>
                   {/* F158 (AS-280, AS-281): status editing ships with this
@@ -1547,6 +1647,51 @@ export function TaskDetailSheet({
                       {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
                         <SelectItem key={value} value={value}>
                           {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {/* F002 (missions/20260903-portal, AS-013): a task can
+                      be assigned to (or cleared from) one of its project's
+                      phases from here — mirrors the Priority Select's own
+                      shape immediately above, one field over. Disabled
+                      until phaseOptions has resolved (see the
+                      getProjectPhaseOptions effect above) so a caller
+                      never sees an empty "no options" flash before the
+                      real list arrives. */}
+                  <Label htmlFor={`task-phase-${task.id}`}>Phase</Label>
+                  <Select
+                    value={
+                      (confirmedPhaseId !== undefined
+                        ? confirmedPhaseId
+                        : optimisticPhaseId !== undefined
+                          ? optimisticPhaseId
+                          : (task.phaseId ?? null)) ?? NO_PHASE_VALUE
+                    }
+                    onValueChange={handlePhaseChange}
+                    disabled={isSavingField || !canEdit || phaseOptions === null}
+                  >
+                    <SelectTrigger
+                      id={`task-phase-${task.id}`}
+                      className="w-full"
+                    >
+                      <SelectValue placeholder="No phase">
+                        {(value: string) =>
+                          value === NO_PHASE_VALUE
+                            ? "No phase"
+                            : (phaseOptions?.find((option) => option.id === value)
+                                ?.name ?? value)
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
+                      {(phaseOptions ?? []).map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
