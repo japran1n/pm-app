@@ -1,14 +1,19 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
 
 import { getPortalTaskDetail } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
-import { PortalConversation } from "@/components/portal/conversation";
-import { PortalApprovalActions } from "@/components/portal/approval-actions";
 
-// C7: one shared task, with the conversation the client is part of.
-export default async function PortalTaskPage({
+// F003b (missions/20260903-portal): task detail moved to
+// `p/[projectId]/t/[taskId]`, inside the project-scoped shell. This file
+// stays at the old `/portal/<slug>/t/<taskId>` location as a redirect
+// only. Unlike files/requests (which span every project, so an old link
+// has to guess), a task's own project is unambiguous — `getPortalTaskDetail`
+// already returns it — so this always resolves straight to the new URL
+// rather than falling back to the chooser. A task that no longer resolves
+// (deleted, or un-shared since the link was saved) 404s here exactly as
+// it did at the old location, rather than being redirected to a page that
+// would just 404 anyway.
+export default async function LegacyPortalTaskRedirect({
   params,
 }: {
   params: Promise<{ workspaceSlug: string; taskId: string }>;
@@ -22,7 +27,7 @@ export default async function PortalTaskPage({
 
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, name, slug")
+    .select("id, slug")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
@@ -32,41 +37,5 @@ export default async function PortalTaskPage({
 
   if (!task) notFound();
 
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-4">
-        <Link
-          href={`/portal/${workspace.slug}/p/${task.projectId}`}
-          className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          {task.projectName}
-        </Link>
-
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {task.title}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {task.status.replace(/_/g, " ")}
-            {task.dueDate ? ` · due ${task.dueDate}` : ""}
-          </p>
-        </div>
-
-        {task.description && (
-          <p className="text-sm text-muted-foreground">{task.description}</p>
-        )}
-      </div>
-
-      {task.pendingClientApproval && (
-        <PortalApprovalActions taskId={task.id} />
-      )}
-
-      <PortalConversation
-        taskId={task.id}
-        comments={task.comments}
-        teamName={workspace.name}
-      />
-    </div>
-  );
+  redirect(`/portal/${workspace.slug}/p/${task.projectId}/t/${taskId}`);
 }

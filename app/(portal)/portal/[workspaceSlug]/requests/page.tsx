@@ -1,16 +1,14 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
-import {
-  getPortalProjectOptions,
-  getPortalRequests,
-} from "@/lib/queries/portal";
+import { getPortalProjects } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
-import { NewRequestForm } from "@/components/portal/new-request-form";
-import { RequestList } from "@/components/portal/request-list";
 
-// C5: the client's own request inbox — file a new one, and follow what
-// happened to the ones already filed.
-export default async function PortalRequestsPage({
+// F003b (missions/20260903-portal): "Your requests" moved to
+// `p/[projectId]/requests`, inside the project-scoped shell. This file
+// stays at the old `/portal/<slug>/requests` location as a redirect only
+// — same reasoning and same one-project/else-chooser rule as the sibling
+// left behind at `/portal/<slug>/files/page.tsx`.
+export default async function LegacyPortalRequestsRedirect({
   params,
 }: {
   params: Promise<{ workspaceSlug: string }>;
@@ -20,31 +18,17 @@ export default async function PortalRequestsPage({
   const supabase = await createClient();
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, name, slug")
+    .select("id, slug")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
   if (!workspace) notFound();
 
-  const [projects, requests] = await Promise.all([
-    getPortalProjectOptions(workspace.id),
-    getPortalRequests(workspace.id),
-  ]);
+  const projects = await getPortalProjects(workspace.id);
 
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Your requests</h1>
-        <p className="text-sm text-muted-foreground">
-          Ask {workspace.name} for something. They will accept it — which puts
-          it on the board where you can follow it — or come back to you with a
-          reason.
-        </p>
-      </div>
+  if (projects.length === 1) {
+    redirect(`/portal/${workspace.slug}/p/${projects[0].id}/requests`);
+  }
 
-      <NewRequestForm projects={projects} />
-
-      <RequestList requests={requests} />
-    </div>
-  );
+  redirect(`/portal/${workspace.slug}`);
 }

@@ -1,15 +1,18 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
-import { getPortalFiles } from "@/lib/queries/portal";
+import { getPortalProjects } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
-import { EmptyState } from "@/components/empty-state";
-import { FileText } from "lucide-react";
-import { PortalFileList } from "@/components/portal/file-list";
 
-// F3 (docs/client-dashboard-features-plan.md): every file shared across
-// every project, one place, instead of a client having to remember which
-// task a given attachment lives under.
-export default async function PortalFilesPage({
+// F003b (missions/20260903-portal): "Files" moved to
+// `p/[projectId]/files`, inside the project-scoped shell. This file stays
+// at the old `/portal/<slug>/files` location purely so a stale bookmark
+// or a client's yesterday-open tab does not 404 -- it resolves the
+// client's own portal-enabled project(s) and forwards them: straight into
+// the one project's files view when there is exactly one (the common
+// case, and the same "skip the chooser" rule `[workspaceSlug]/page.tsx`
+// already applies), or to the project chooser when there are zero or
+// several and picking one for the client would be a guess.
+export default async function LegacyPortalFilesRedirect({
   params,
 }: {
   params: Promise<{ workspaceSlug: string }>;
@@ -19,33 +22,17 @@ export default async function PortalFilesPage({
   const supabase = await createClient();
   const { data: workspace } = await supabase
     .from("workspaces")
-    .select("id, name, slug")
+    .select("id, slug")
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
   if (!workspace) notFound();
 
-  const files = await getPortalFiles(workspace.id);
+  const projects = await getPortalProjects(workspace.id);
 
-  return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Files</h1>
-        <p className="text-sm text-muted-foreground">
-          Everything {workspace.name} has shared with you, across every
-          project.
-        </p>
-      </div>
+  if (projects.length === 1) {
+    redirect(`/portal/${workspace.slug}/p/${projects[0].id}/files`);
+  }
 
-      {files.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="No files yet"
-          description="Files attached to tasks shared with you will show up here."
-        />
-      ) : (
-        <PortalFileList workspaceSlug={workspace.slug} files={files} />
-      )}
-    </div>
-  );
+  redirect(`/portal/${workspace.slug}`);
 }

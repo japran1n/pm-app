@@ -137,12 +137,21 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
       throw new Error(`Failed to seed client member: ${memberErr.message}`);
     }
 
+    // F003b (missions/20260903-portal): `portal_enabled: true` — F001's
+    // migration (20260903-portal) added this column, default false, as
+    // the actual gate `getPortalProjects` filters on. Without it this
+    // fixture's project is invisible to the portal entirely and every
+    // assertion below fails for a reason that has nothing to do with
+    // approvals — a pre-existing gap flagged in F003's own handoff,
+    // fixed here as part of bringing this spec back onto the current
+    // route shape.
     const { data: proj, error: projErr } = await adminClient
       .from("projects")
       .insert({
         workspace_id: workspaceId,
         name: `F011 Portal Project ${uniqueSuffix}`,
         created_by: clientUserId,
+        portal_enabled: true,
       })
       .select("id")
       .single();
@@ -164,6 +173,42 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     if (projMemberErr) {
       throw new Error(
         `Failed to seed client project membership: ${projMemberErr.message}`,
+      );
+    }
+
+    // F003b: a SECOND portal-enabled project, shared with the same
+    // client, with no tasks of its own. Its only purpose is to keep
+    // `getPortalProjects` at length 2 for this fixture, so
+    // `[workspaceSlug]/page.tsx` (F003's project chooser — the only
+    // place "Waiting on you" renders, per AS-018/AS-019) does not take
+    // its own single-project shortcut and redirect straight past itself
+    // into `p/[projectId]` before this test ever gets to look at
+    // "Waiting on you". `loginAsClient` below still lands on
+    // `/portal/<slug>` (unchanged) precisely because of this second
+    // project.
+    const { data: secondProj, error: secondProjErr } = await adminClient
+      .from("projects")
+      .insert({
+        workspace_id: workspaceId,
+        name: `F011 Portal Second Project ${uniqueSuffix}`,
+        created_by: clientUserId,
+        portal_enabled: true,
+      })
+      .select("id")
+      .single();
+    if (secondProjErr || !secondProj) {
+      throw new Error(
+        `Failed to create second test project: ${secondProjErr?.message}`,
+      );
+    }
+    createdProjectIds.push(secondProj.id);
+
+    const { error: secondProjMemberErr } = await adminClient
+      .from("project_members")
+      .insert({ project_id: secondProj.id, user_id: clientUserId });
+    if (secondProjMemberErr) {
+      throw new Error(
+        `Failed to seed client membership on second project: ${secondProjMemberErr.message}`,
       );
     }
 
@@ -247,6 +292,12 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     await page.goto(
       `${baseURL}/dev-login?email=${encodeURIComponent(clientEmail)}`,
     );
+    // F003b: `/portal/<slug>` stays the actual landing URL rather than
+    // redirecting straight into `p/<projectId>` because this fixture now
+    // seeds a SECOND portal-enabled project (see `beforeAll`) — F003's
+    // own single-project shortcut only fires when `getPortalProjects`
+    // returns exactly one row. Landing on the chooser is what this test
+    // needs anyway: it is the only place "Waiting on you" renders.
     await page.waitForURL(`**/portal/${workspaceSlug}`, { timeout: 15_000 });
   }
 
@@ -299,9 +350,18 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
       // Drive the REAL Approve click on the task detail route, in the
       // second tab — this is components/portal/approval-actions.tsx
       // (F005), the only place this button renders.
-      await taskDetailPage.goto(`${baseURL}/portal/${workspaceSlug}/t/${taskId}`);
+      //
+      // F003b (missions/20260903-portal): task detail moved from
+      // `/portal/<slug>/t/<taskId>` to
+      // `/portal/<slug>/p/<projectId>/t/<taskId>`, inside the
+      // project-scoped shell. Navigated to directly (not via the old
+      // URL + its redirect) so this test drives the real route, not the
+      // redirect stub left behind at the old location.
+      await taskDetailPage.goto(
+        `${baseURL}/portal/${workspaceSlug}/p/${projectId}/t/${taskId}`,
+      );
       await taskDetailPage.waitForURL(
-        `**/portal/${workspaceSlug}/t/${taskId}`,
+        `**/portal/${workspaceSlug}/p/${projectId}/t/${taskId}`,
         { timeout: 15_000 },
       );
 

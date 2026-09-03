@@ -136,6 +136,22 @@ const project: PortalProject = {
 };
 
 describe("PortalTaskList (F009)", () => {
+  it("test_AS_004_task_link_points_at_the_relocated_project_scoped_task_detail_route", async () => {
+    render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
+
+    // F003b (missions/20260903-portal): task detail moved from
+    // `/portal/<slug>/t/<taskId>` to `/portal/<slug>/p/<projectId>/t/<taskId>`
+    // so it renders inside the shell. This link must follow the move —
+    // a stale `/t/<taskId>` href would land the client on the redirect
+    // stub, not the task, on every click.
+    const link = screen.getByRole("link", { name: /Draft homepage copy/i });
+    expect(link).toHaveAttribute(
+      "href",
+      `/portal/acme/p/${project.id}/t/task-1`,
+    );
+  });
+
   it("test_AS_021_status_or_title_change_lands_live", async () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
     await flushAuthHydration();

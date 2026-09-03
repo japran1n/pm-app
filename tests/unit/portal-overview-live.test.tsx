@@ -120,6 +120,18 @@ async function renderLive(overview: PortalOverview = baseOverview) {
 }
 
 describe("PortalOverviewLive", () => {
+  it("test_AS_004_waiting_on_you_link_points_at_the_relocated_project_scoped_task_detail_route", async () => {
+    await renderLive();
+
+    // F003b (missions/20260903-portal): task detail moved from
+    // `/portal/<slug>/t/<taskId>` to `/portal/<slug>/p/<projectId>/t/<taskId>`.
+    // This overview widget spans every project (each row carries its own
+    // `projectId`), so the link must use that task's own project, not a
+    // single project id threaded from above.
+    const link = screen.getByRole("link", { name: /Review homepage copy/i });
+    expect(link).toHaveAttribute("href", "/portal/acme/p/p1/t/t1");
+  });
+
   it("test_AS_018_task_leaving_pending_approval_leaves_waiting_on_you", async () => {
     await renderLive();
 

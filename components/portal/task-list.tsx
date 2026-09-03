@@ -314,7 +314,7 @@ export function PortalTaskList({
               return (
                 <li key={task.id}>
                   <Link
-                    href={`/portal/${workspaceSlug}/t/${task.id}`}
+                    href={`/portal/${workspaceSlug}/p/${project.id}/t/${task.id}`}
                     className="hover-surface flex items-center justify-between gap-4 px-4 py-3"
                   >
                     <span className="text-sm">{task.title}</span>

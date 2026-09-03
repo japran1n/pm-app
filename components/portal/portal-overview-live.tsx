@@ -162,7 +162,7 @@ export function PortalOverviewLive({
             {waitingOnYou.map((task) => (
               <li key={task.id}>
                 <Link
-                  href={`/portal/${workspaceSlug}/t/${task.id}`}
+                  href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
                   className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
                 >
                   <span className="min-w-0 truncate">{task.title}</span>
@@ -193,7 +193,7 @@ export function PortalOverviewLive({
             {deliveredThisWeek.map((task) => (
               <li key={task.id}>
                 <Link
-                  href={`/portal/${workspaceSlug}/t/${task.id}`}
+                  href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
                   className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
                 >
                   <span className="min-w-0 truncate">{task.title}</span>
