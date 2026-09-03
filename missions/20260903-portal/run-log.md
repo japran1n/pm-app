@@ -401,3 +401,19 @@ Requiring the doc to be client-visible first would make doc approvals useless.
 - F014 COMPLETE (fa04c53) — mark_deliverable_delivered_atomic (migration 20260928010000), client-authorised upload action, the "what it holds up" derivation, and getPortalRisks finally given a body so F006's dormant risk banner renders. AS-003, AS-029, AS-030 and AS-031 all covered by tests. The overview banner that has been shipping as a no-op since M1 is live.
 - F015 COMPLETE (5ce594a) — team Record panel (scope/decisions/assumptions), "Turn into decision" in the comment menu, the portal Scope view with all four sections, and flag_assumption_atomic which writes flagged_by_client_at and flagged_note but never `state`. 8 integration + 4 unit tests.
   Correctly deferred: the "Raise a change request from this" action on a flagged assumption, because F016's dialog does not exist yet. Folded into F016's prompt rather than left as a loose end.
+- F016 COMPLETE — client_requests triage/quote columns, accept_client_request_atomic hardened with a database gate (SQLSTATE CR047/CR048) so a change request cannot become a task before client approval and an expired quote is refused, send_change_request_quote_atomic for triage, and a trigger syncing the client's decision from F007's own approval_requests rather than a second decision path — inserting the scope item on approval. Portal change-requests table filled in; team quote dialog with the three-question track proposal and a "how the client will see this" preview. **M3 COMPLETE.**
+
+### One loose end, deferred twice, now owned
+
+"Raise a change request from a flagged assumption" was deferred by F015 (F016's
+dialog did not exist yet) and again by F016 (needs a team-write authorisation
+surface its spec did not name). Both refusals were locally correct. Together they
+are exactly how a small piece of connective tissue vanishes from a project: every
+feature declines it for a good reason and nobody owns it.
+
+Opened as F016b rather than mentioned a third time in someone else's prompt. It
+is the process rule "an assumption that turns out wrong is a change request, not
+a surprise" made mechanical — without it the rule stays a sentence in a document,
+which is where it lives today and why it is not followed.
+
+## M3 gate
