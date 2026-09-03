@@ -212,3 +212,5 @@ never re-read.
 This is not inherited. The old policy was adequate for the columns it was
 written for. We added a security-critical column and did not check who could
 write it. Opened as F006k, blocker.
+- F006f COMPLETE — getProjectPhases and getPortalBadgeCounts now return a discriminated PortalQueryResult instead of coalescing a logged error into 0 or []; a new project-scoped getPortalWaitingOnYou gives the tile and the list one source instead of two scopes and two predicates; the overview renders honest "could not load" states per section while the rest of the page works. 70 tests pass.
+  The detail that says most about how this defect survived: one of the unit tests had literally asserted the old behaviour — that a failed count renders as 0. The bug was not merely untested, it was encoded as the expected result. Rewritten here.
