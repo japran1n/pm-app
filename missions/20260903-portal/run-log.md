@@ -125,3 +125,5 @@ silently ignored.
 Remediation opened: F006b (leaks — highest priority), F006c (phase persistence +
 page seam + AS-009), F006d (authz gaps), F006e (navigation and titles).
 M2 does not start until F006b and F006d are green.
+- F006b COMPLETE (719a061) — portal_enabled added to getPortalProjectOptions and getPortalRequests, client_visible added to the Live-now phase lookup, client_requests SELECT and INSERT policies gated via is_project_portal_enabled (migration 20260913010000), the test that locked the phase-name leak in rewritten, two-project reproduction added to f003-portal-shell. 108 tests pass.
+  Orchestrator verification: portal_enabled now appears 10x in lib/queries/portal.ts; the phase lookup carries a client_visible filter with a comment naming the assertion; the migration folds the gate into both policies. Leak closed.
