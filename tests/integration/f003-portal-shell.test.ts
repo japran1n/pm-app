@@ -249,3 +249,199 @@ describe.skipIf(!haveCreds)("Portal shell data layer (F003: AS-005, AS-006)", ()
     expect(counts).toEqual({ approvalsAwaiting: 0, deliverablesPastDue: 0 });
   });
 });
+
+// F006b (missions/20260903-portal, M1 remediation, AS-007 + AS-012): the
+// primary success test the feature's own Definition of done asks for --
+// reusing this exact two-project fixture (the same one the M1 scrutiny
+// report's B1 named) to prove a client of Project A (portal on) sees no
+// trace of Project B (portal off) through ANY portal query: not its name
+// (getPortalProjectOptions), not its requests (getPortalRequests), not
+// its phases (getProjectPhases), and cannot write a new request against
+// it either (client_requests_insert_own, called directly through
+// PostgREST rather than through the UI, per this feature's own Definition
+// of done).
+describe.skipIf(!haveCreds)("Portal read-surface leaks (F006b: AS-007, AS-012)", () => {
+  let admin: SupabaseClient;
+  let clientSession: SupabaseClient;
+
+  let workspaceId: string;
+  let enabledProjectId: string;
+  let disabledProjectId: string;
+  let ownerId: string;
+  let clientId: string;
+  let hiddenPhaseId: string;
+
+  const createdUserIds: string[] = [];
+
+  beforeAll(async () => {
+    admin = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const makeUser = async (label: string) => {
+      const { data, error } = await admin.auth.admin.createUser({
+        email: `f006b-portal-leaks-${label}-${suffix}@example.com`,
+        password: PASSWORD,
+        email_confirm: true,
+      });
+      if (error || !data.user) throw new Error(`${label}: ${error?.message}`);
+      createdUserIds.push(data.user.id);
+      return { id: data.user.id, email: data.user.email! };
+    };
+
+    const owner = await makeUser("owner");
+    const clientUser = await makeUser("client");
+    ownerId = owner.id;
+    clientId = clientUser.id;
+
+    const { data: workspace, error: wsErr } = await admin
+      .from("workspaces")
+      .insert({ name: "F006b portal leaks test", slug: `f006b-portal-leaks-${suffix}` })
+      .select("id")
+      .single();
+    if (wsErr || !workspace) throw new Error(`workspace: ${wsErr?.message}`);
+    workspaceId = workspace.id;
+
+    await admin.from("workspace_members").insert([
+      { workspace_id: workspaceId, user_id: ownerId, role: "owner", status: "active" },
+      { workspace_id: workspaceId, user_id: clientId, role: "client", status: "active" },
+    ]);
+
+    const insertProject = async (name: string, portalEnabled: boolean) => {
+      const { data, error } = await admin
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name,
+          visibility: "workspace",
+          created_by: ownerId,
+          portal_enabled: portalEnabled,
+        })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error(`project ${name}: ${error?.message}`);
+      return data.id as string;
+    };
+
+    enabledProjectId = await insertProject("Client Alpha — portal on", true);
+    disabledProjectId = await insertProject("Client Beta — portal off (secret)", false);
+
+    // Client belongs to BOTH projects, same isolation the F003 fixture
+    // above uses -- any difference in what a query returns is
+    // attributable to `portal_enabled` alone.
+    await admin.from("project_members").insert([
+      { project_id: enabledProjectId, user_id: clientId, project_role: "member", added_by: ownerId },
+      { project_id: disabledProjectId, user_id: clientId, project_role: "member", added_by: ownerId },
+    ]);
+
+    // A client_requests row the client filed against B while reasoning
+    // about the fixture (inserted directly as admin, bypassing RLS,
+    // since the whole point of this fixture is that the client could
+    // never have filed it themselves post-fix) -- proves getPortalRequests
+    // hides an EXISTING row on a disabled project, not only that new ones
+    // can't be created.
+    await admin.from("client_requests").insert({
+      project_id: disabledProjectId,
+      created_by: clientId,
+      title: "A request against the disabled project",
+    });
+
+    // A client_visible phase on the disabled project -- B2's fixture
+    // shape (AS-012 is about a HIDDEN phase leaking; this proves the
+    // stronger AS-007 claim that even a phase that WOULD be visible on
+    // an enabled project is not returned at all once the project's
+    // portal is off).
+    const { data: phase, error: phaseErr } = await admin
+      .from("project_phases")
+      .insert({
+        project_id: disabledProjectId,
+        name: "Rebuild after client rejected v1",
+        client_visible: true,
+      })
+      .select("id")
+      .single();
+    if (phaseErr || !phase) throw new Error(`phase: ${phaseErr?.message}`);
+    hiddenPhaseId = phase.id;
+
+    const signIn = async (email: string) => {
+      const session = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { error } = await session.auth.signInWithPassword({ email, password: PASSWORD });
+      if (error) throw new Error(`sign in ${email}: ${error.message}`);
+      return session;
+    };
+    clientSession = await signIn(clientUser.email);
+  }, 60_000);
+
+  afterAll(async () => {
+    if (!admin) return;
+    await admin.from("projects").delete().in("id", [enabledProjectId, disabledProjectId]);
+    await admin.from("workspaces").delete().eq("id", workspaceId);
+    for (const id of createdUserIds) {
+      await admin.auth.admin.deleteUser(id);
+    }
+  });
+
+  it("test_AS_007_getPortalProjectOptions_never_returns_the_disabled_projects_id_or_name", async () => {
+    activeSession = clientSession;
+    const { getPortalProjectOptions } = await import("@/lib/queries/portal");
+    const options = await getPortalProjectOptions(workspaceId);
+
+    expect(options.some((o) => o.id === disabledProjectId)).toBe(false);
+    expect(options.some((o) => o.name.includes("secret"))).toBe(false);
+    expect(options.some((o) => o.id === enabledProjectId)).toBe(true);
+  });
+
+  it("test_AS_007_getPortalRequests_never_returns_a_row_or_project_name_from_the_disabled_project", async () => {
+    activeSession = clientSession;
+    const { getPortalRequests } = await import("@/lib/queries/portal");
+    const requests = await getPortalRequests(workspaceId);
+
+    expect(requests.some((r) => r.projectId === disabledProjectId)).toBe(false);
+    expect(requests.some((r) => r.projectName.includes("secret"))).toBe(false);
+  });
+
+  it("test_AS_007_getProjectPhases_returns_nothing_for_the_disabled_project_even_though_the_phase_is_client_visible", async () => {
+    activeSession = clientSession;
+    const { getProjectPhases } = await import("@/lib/queries/portal");
+    const phases = await getProjectPhases(disabledProjectId);
+
+    expect(phases).toEqual([]);
+    expect(phases.some((p) => p.id === hiddenPhaseId)).toBe(false);
+  });
+
+  // The Definition of done's own "failure test": rejected by the policy,
+  // proven by calling PostgREST directly (clientSession.from(...).insert)
+  // rather than through the UI/Server Action.
+  it("test_AS_007_a_client_cannot_insert_a_client_request_against_the_disabled_project_via_postgrest", async () => {
+    const { error } = await clientSession.from("client_requests").insert({
+      project_id: disabledProjectId,
+      created_by: clientId,
+      title: "Trying to file against the disabled project",
+    });
+
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+  });
+
+  // Side-effect verification: the same client can still file against the
+  // portal-ENABLED project -- this feature must not have over-tightened
+  // the policy.
+  it("a client can still insert a client_request against the enabled project", async () => {
+    const { data, error } = await clientSession
+      .from("client_requests")
+      .insert({
+        project_id: enabledProjectId,
+        created_by: clientId,
+        title: "A real request against the enabled project",
+      })
+      .select("id")
+      .single();
+
+    expect(error).toBeNull();
+    expect(data?.id).toBeDefined();
+  });
+});

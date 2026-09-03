@@ -85,7 +85,9 @@ vi.mock("@/lib/supabase/admin", () => ({
       if (table === "project_phases") {
         return {
           select: vi.fn(() => ({
-            in: vi.fn(async () => ({ data: phaseRows, error: null })),
+            eq: vi.fn(() => ({
+              in: vi.fn(async () => ({ data: phaseRows, error: null })),
+            })),
           })),
         };
       }
@@ -190,7 +192,7 @@ describe("getPortalLiveNow", () => {
     expect(entries[0]!.personName).toBe("Person user-1");
   });
 
-  it("falls back to the phase name, never the task name, when the task is not client-visible", async () => {
+  it("falls back to the phase name, never the task name, when the task is not client-visible but the phase is", async () => {
     activeTimerRows = [
       {
         id: "timer-2",
@@ -206,6 +208,9 @@ describe("getPortalLiveNow", () => {
       },
     ];
     workspaceMemberRoleRows = [{ user_id: "user-2", role: "member" }];
+    // A client_visible=true phase -- this is what the real
+    // `.eq("client_visible", true)` filter on the project_phases lookup
+    // returns for a phase that passes it, so the row is present here.
     phaseRows = [{ id: "phase-1", name: "Izrada sajta" }];
 
     const entries = await getPortalLiveNow(PROJECT_ID);
@@ -213,6 +218,47 @@ describe("getPortalLiveNow", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.label).toBe("Izrada sajta");
     expect(entries[0]!.label).not.toContain("Internal QA sweep");
+  });
+
+  // F006b (missions/20260903-portal, AS-012): this is the exact fixture
+  // the M1 scrutiny report's B2 named -- a task that is not client-visible
+  // sitting inside a phase that is ALSO not client-visible. The old
+  // fixture here had no `client_visible` field on the phase at all and
+  // asserted the phase's NAME was shown, which is precisely the defect:
+  // `getPortalLiveNow`'s `project_phases` lookup used to have no
+  // `client_visible` filter, so a hidden phase's name reached the
+  // client's overview. The real `.eq("client_visible", true)` filter this
+  // feature adds means Postgres never returns a hidden phase's row at
+  // all -- `phaseRows = []` is what that filtered-out row looks like from
+  // this function's side, which is why the label falls all the way
+  // through to the generic phrase rather than any name.
+  it("test_AS_012_falls_back_to_a_generic_label_never_the_phase_name_when_the_phase_itself_is_not_client_visible", async () => {
+    activeTimerRows = [
+      {
+        id: "timer-2b",
+        user_id: "user-2b",
+        tasks: {
+          id: "task-2b",
+          title: "Internal QA sweep",
+          client_visible: false,
+          phase_id: "phase-hidden",
+          project_id: PROJECT_ID,
+          deleted_at: null,
+        },
+      },
+    ];
+    workspaceMemberRoleRows = [{ user_id: "user-2b", role: "member" }];
+    // The hidden phase's row is absent -- exactly what
+    // `.eq("client_visible", true)` produces for a `client_visible = false`
+    // phase against a real database.
+    phaseRows = [];
+
+    const entries = await getPortalLiveNow(PROJECT_ID);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.label).toBe("Working on the project");
+    expect(entries[0]!.label).not.toContain("Internal QA sweep");
+    expect(entries[0]!.label).not.toContain("Rebuild after client rejected v1");
   });
 
   it("never carries a duration/elapsed-time field on any entry", async () => {

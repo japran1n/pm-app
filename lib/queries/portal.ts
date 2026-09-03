@@ -549,8 +549,21 @@ export async function getPortalLiveNow(
       .select("user_id, role")
       .eq("workspace_id", project.workspace_id)
       .in("user_id", userIds),
+    // F006b (missions/20260903-portal, AS-012): `client_visible` filtered
+    // explicitly, same as `getProjectPhases`'s own identical filter (and
+    // for the same reason -- this reads through the admin client, so
+    // there is no RLS backing this predicate at all). Before this filter,
+    // a `client_visible = false` phase's own NAME reached the client
+    // whenever a timer ran on an internal task inside it -- the phase row
+    // itself was never readable to the client (project_phases_select_
+    // client already required client_visible), only this one DISPLAY
+    // lookup skipped the same check the row-level read enforces.
     phaseIds.length > 0
-      ? admin.from("project_phases").select("id, name").in("id", phaseIds)
+      ? admin
+          .from("project_phases")
+          .select("id, name")
+          .eq("client_visible", true)
+          .in("id", phaseIds)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
@@ -676,6 +689,19 @@ export type PortalRequest = {
 // `client_requests_select_author_or_team` already scopes this to rows the
 // caller authored, so no `created_by` filter is repeated here — same
 // reasoning as the rest of this file.
+//
+// F006b (missions/20260903-portal, AS-007): the `projects` read below
+// filters on `portal_enabled` explicitly, the same load-bearing reason
+// `getPortalProjects` states on its own identical filter — RLS does not
+// gate an ordinary `projects` SELECT by `portal_enabled` (that column has
+// no bearing on ordinary project visibility), so this is the actual gate
+// for this function's `projectNames` map AND, because it narrows the
+// `project_id in (...)` list the `client_requests` query below is scoped
+// to, for the requests themselves too. `client_requests_select_author_or_
+// team` (20260913010000) now folds the same `portal_enabled` check into
+// the author's own branch as a second, database-level gate — this filter
+// stays as belt-and-braces so a caller of this function never has to
+// reason about a portal-disabled project's id reaching either query.
 export async function getPortalRequests(
   workspaceId: string,
 ): Promise<PortalRequest[]> {
@@ -685,7 +711,8 @@ export async function getPortalRequests(
     .from("projects")
     .select("id, name")
     .eq("workspace_id", workspaceId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .eq("portal_enabled", true);
 
   const projectNames = new Map(
     (projects ?? []).map((p) => [p.id as string, p.name as string]),
@@ -733,6 +760,14 @@ export async function getPortalRequests(
 
 export type PortalProjectOption = { id: string; name: string };
 
+// F006b (missions/20260903-portal, AS-007): the new-request form's own
+// project `<select>` — every other project-scoped read in this file that
+// touches `projects` directly needs the same explicit `portal_enabled`
+// filter `getPortalProjects` documents on its own identical line, because
+// RLS never gates an ordinary `projects` SELECT by that column. Without
+// it, a client on a portal-enabled AND a portal-disabled project could
+// file a NEW request against the disabled one from this exact dropdown —
+// this was the write half of the M1 scrutiny report's B1.
 export async function getPortalProjectOptions(
   workspaceId: string,
 ): Promise<PortalProjectOption[]> {
@@ -742,6 +777,7 @@ export async function getPortalProjectOptions(
     .select("id, name")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
+    .eq("portal_enabled", true)
     .order("name");
   return (data ?? []).map((p) => ({ id: p.id, name: p.name }));
 }
