@@ -106,14 +106,17 @@ export async function getProjectScopeItems(
   };
 }
 
-// AS-043 (Scope view's "Change requests" table): every change request the
-// caller may see for this project, oldest-first-missing fields only —
-// F016 fills the pricing columns (estimate/price), so this deliberately
-// selects none of them yet, per this feature's own instruction: "render
-// only what exists rather than empty money columns." RLS
-// (`client_requests_select_author_or_team`, 20260902030000/20260913010000)
-// already scopes a client caller to their own authored requests on a
-// portal-enabled project.
+// AS-043/AS-048 (Scope view's "Change requests" table): every change
+// request on this project the caller may see, oldest-first-missing
+// fields only — F016 fills the pricing columns (estimate/price), so this
+// deliberately selects none of them yet, per this feature's own
+// instruction: "render only what exists rather than empty money
+// columns." RLS (`client_requests_select_author_or_team`,
+// 20260902030000/20260913010000/F016e-20261002010000) scopes a client
+// caller to every request on a portal-enabled project they belong to —
+// project-scoped, not `created_by`-scoped (F016e, missions/20260903-portal,
+// M3-scrutiny defect 2: AS-048's own wording is "the portal shows EACH
+// change request", not "each one this caller filed").
 export type ProjectChangeRequest = {
   id: string;
   projectId: string;

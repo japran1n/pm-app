@@ -333,4 +333,148 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
     });
     expect(error).not.toBeNull();
   });
+
+  // F016e (missions/20260903-portal, M3-scrutiny defect 2, AS-048): the
+  // portal's change-request list used to be scoped by
+  // `created_by = auth.uid()` -- two people from the same client company
+  // each saw only the half of their own project's change requests they
+  // personally filed. `client_requests_select_author_or_team` is now
+  // project-scoped, the same shape as every other client-facing SELECT
+  // policy this mission introduced.
+  it("test_AS_048_two_client_users_of_one_project_each_see_all_of_the_projects_change_requests", async () => {
+    const requestByFirstClient = await makeRequest("Filed by the first client user");
+
+    const { data: secondClientUser, error: secondClientErr } = await admin.auth.admin.createUser({
+      email: `f016-cr-second-client-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`,
+      password: PASSWORD,
+      email_confirm: true,
+    });
+    if (secondClientErr || !secondClientUser.user) {
+      throw new Error(`second client: ${secondClientErr?.message}`);
+    }
+    createdUserIds.push(secondClientUser.user.id);
+
+    await admin.from("workspace_members").insert({
+      workspace_id: workspaceId,
+      user_id: secondClientUser.user.id,
+      role: "client",
+      status: "active",
+    });
+    await admin.from("project_members").insert({
+      project_id: projectId,
+      user_id: secondClientUser.user.id,
+      project_role: "member",
+      added_by: ownerId,
+    });
+
+    const secondClientSession = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: signInErr } = await secondClientSession.auth.signInWithPassword({
+      email: secondClientUser.user.email!,
+      password: PASSWORD,
+    });
+    if (signInErr) throw new Error(`sign in second client: ${signInErr.message}`);
+
+    const { data: requestBySecondClient, error: secondRequestErr } = await secondClientSession
+      .from("client_requests")
+      .insert({ project_id: projectId, created_by: secondClientUser.user.id, title: "Filed by the second client user" })
+      .select("id")
+      .single();
+    if (secondRequestErr || !requestBySecondClient) {
+      throw new Error(`second client request: ${secondRequestErr?.message}`);
+    }
+    createdRequestIds.push(requestBySecondClient.id);
+
+    const { data: seenByFirst, error: firstReadErr } = await clientSession
+      .from("client_requests")
+      .select("id")
+      .eq("project_id", projectId);
+    expect(firstReadErr).toBeNull();
+    const firstIds = (seenByFirst ?? []).map((r) => r.id);
+    expect(firstIds).toContain(requestByFirstClient);
+    expect(firstIds).toContain(requestBySecondClient.id);
+
+    const { data: seenBySecond, error: secondReadErr } = await secondClientSession
+      .from("client_requests")
+      .select("id")
+      .eq("project_id", projectId);
+    expect(secondReadErr).toBeNull();
+    const secondIds = (seenBySecond ?? []).map((r) => r.id);
+    expect(secondIds).toContain(requestByFirstClient);
+    expect(secondIds).toContain(requestBySecondClient.id);
+  });
+
+  // F016e (missions/20260903-portal, M3-scrutiny defect 3): re-quoting
+  // used to leave the FIRST approval live -- approving it silently did
+  // nothing (the sync trigger only ever reads the CURRENT
+  // approval_request_id), and if a client approved both quotes before
+  // anyone noticed, each approval independently inserted a
+  // project_scope_items row for the same request. This proves both
+  // halves of the fix: the prior approval is withdrawn (approving it now
+  // fails outright, rather than silently doing nothing), and even if
+  // both approvals are pushed through, exactly one scope item survives.
+  it("test_re_quoting_withdraws_the_prior_approval_and_produces_exactly_one_live_approval_and_one_scope_item", async () => {
+    const requestId = await makeRequest("Re-quoted change request");
+
+    const { data: firstQuoteRows } = await memberSession.rpc("send_change_request_quote_atomic", {
+      p_request_id: requestId,
+      p_scope_verdict: "change_request",
+      p_quoted_amount: 500,
+      p_quote_valid_until: "2099-01-01",
+    });
+    const firstQuote = Array.isArray(firstQuoteRows) ? firstQuoteRows[0] : firstQuoteRows;
+    const firstApprovalId = firstQuote?.approval_request_id as string;
+    expect(firstApprovalId).toBeTruthy();
+
+    // A second quote, before the client ever decided on the first.
+    const { data: secondQuoteRows } = await memberSession.rpc("send_change_request_quote_atomic", {
+      p_request_id: requestId,
+      p_scope_verdict: "change_request",
+      p_quoted_amount: 800,
+      p_quote_valid_until: "2099-01-01",
+    });
+    const secondQuote = Array.isArray(secondQuoteRows) ? secondQuoteRows[0] : secondQuoteRows;
+    const secondApprovalId = secondQuote?.approval_request_id as string;
+    expect(secondApprovalId).toBeTruthy();
+    expect(secondApprovalId).not.toBe(firstApprovalId);
+
+    // The prior approval is withdrawn, not left pending.
+    const { data: firstApprovalRow } = await admin
+      .from("approval_requests")
+      .select("state")
+      .eq("id", firstApprovalId)
+      .single();
+    expect(firstApprovalRow?.state).toBe("withdrawn");
+
+    // Approving the stale, withdrawn approval now fails outright instead
+    // of silently doing nothing.
+    const { error: staleDecideError } = await clientSession.rpc("decide_approval_atomic", {
+      p_request_id: firstApprovalId,
+      p_decision: "approved",
+    });
+    expect(staleDecideError).not.toBeNull();
+
+    // Approving the live, current approval works and produces exactly
+    // one scope item.
+    const { error: liveDecideError } = await clientSession.rpc("decide_approval_atomic", {
+      p_request_id: secondApprovalId,
+      p_decision: "approved",
+    });
+    expect(liveDecideError).toBeNull();
+
+    const { data: approvals } = await admin
+      .from("approval_requests")
+      .select("id, state")
+      .eq("subject_id", requestId)
+      .eq("subject_type", "artifact");
+    expect((approvals ?? []).filter((a) => a.state === "approved")).toHaveLength(1);
+    expect((approvals ?? []).filter((a) => a.state === "pending")).toHaveLength(0);
+
+    const { data: scopeItems } = await admin
+      .from("project_scope_items")
+      .select("id")
+      .eq("change_request_id", requestId);
+    expect(scopeItems).toHaveLength(1);
+  });
 });

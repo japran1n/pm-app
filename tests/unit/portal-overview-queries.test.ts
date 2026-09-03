@@ -51,11 +51,11 @@ let ownerRowsError: { message: string } | null;
 let waitingTaskRows: Row[];
 let waitingTasksError: { message: string } | null;
 
-// --- getOverdueBlockingDeliverableCount (F012, AS-003) ---------------------
+// --- getDeliverablesPastDueCount (F012/F016e, AS-003) -----------------------
 //
 // Same `applyFilters` shape as the tables above -- a real row set run
 // through the mock's own recorded `.eq()`/`.not()`/`.lt()` calls, so a
-// dropped or wrong-column filter in `getOverdueBlockingDeliverableCount`
+// dropped or wrong-column filter in `getDeliverablesPastDueCount`
 // (lib/queries/deliverables.ts) changes the count a test observes.
 let deliverableRows: Row[];
 let deliverableRowsError: { message: string } | null;
@@ -455,7 +455,13 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
     expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 0 });
   });
 
-  it("test_AS_003_deliverables_past_due_counts_only_overdue_blocking_undelivered_deliverables", async () => {
+  // F016e (missions/20260903-portal, M3-scrutiny defect 1): AS-003's own
+  // wording is "deliverables that are past their due date" -- no
+  // `blocking` qualifier -- and must agree with the Your list view's
+  // "blocked" bucket count, which never filters on `blocking` either
+  // (app/(portal)/.../your-list/page.tsx's `classifyBucket`). `d2`
+  // (overdue, not blocking) is now counted for exactly that reason.
+  it("test_AS_003_deliverables_past_due_counts_every_overdue_undelivered_deliverable_regardless_of_blocking", async () => {
     ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
@@ -465,23 +471,24 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
     deliverableRows = [
       // Overdue, blocking, still not_started -- counted.
       { id: "d1", project_id: PROJECT_ID, blocking: true, state: "not_started", due_at: farPast },
-      // Overdue but not blocking -- not counted.
+      // Overdue and NOT blocking -- still counted; AS-003 has no
+      // blocking qualifier and the Your list view counts this too.
       { id: "d2", project_id: PROJECT_ID, blocking: false, state: "not_started", due_at: farPast },
-      // Overdue and blocking, but already accepted -- not counted.
+      // Overdue, but already accepted -- not counted.
       { id: "d3", project_id: PROJECT_ID, blocking: true, state: "accepted", due_at: farPast },
-      // Overdue and blocking, but waived -- not counted.
+      // Overdue, but waived -- not counted.
       { id: "d4", project_id: PROJECT_ID, blocking: true, state: "waived", due_at: farPast },
-      // Blocking and undelivered, but due in the future -- not counted.
+      // Undelivered, but due in the future -- not counted.
       { id: "d5", project_id: PROJECT_ID, blocking: true, state: "not_started", due_at: farFuture },
-      // Blocking and undelivered, but no due date at all -- not counted.
+      // Undelivered, but no due date at all -- not counted.
       { id: "d6", project_id: PROJECT_ID, blocking: true, state: "in_progress", due_at: null },
-      // A different project's overdue blocking deliverable -- not counted.
+      // A different project's overdue deliverable -- not counted.
       { id: "d7", project_id: "other-project", blocking: true, state: "not_started", due_at: farPast },
     ];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
-    expect(badges.deliverablesPastDue).toBe(1);
+    expect(badges.deliverablesPastDue).toBe(2);
   });
 
   it("test_AS_003_a_failed_deliverables_count_degrades_to_zero_rather_than_failing_the_whole_badge_read", async () => {
@@ -764,8 +771,8 @@ describe("getPortalRisks — AS-031", () => {
     // outstanding for the sidebar badge, but the risk banner's own copy
     // is written for "this is still on the client", which a delivered
     // item no longer is. This test documents the row it DOES still
-    // qualify (not_started/in_progress); `getOverdueBlockingDeliverableCount`
-    // (F012, tested above) is what proves `delivered` still counts
+    // qualify (not_started/in_progress); `getDeliverablesPastDueCount`
+    // (F012/F016e, tested above) is what proves `delivered` still counts
     // against the badge.
     adminDeliverableRows = [
       {

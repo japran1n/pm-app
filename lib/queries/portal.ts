@@ -20,7 +20,7 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  getOverdueBlockingDeliverableCount,
+  getDeliverablesPastDueCount,
   getWorstOverdueBlockingDeliverableRisk,
 } from "@/lib/queries/deliverables";
 import { resolvePeople } from "@/lib/queries/people";
@@ -540,15 +540,18 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
     };
   }
 
-  // F012 (missions/20260903-portal, M3): the real overdue-blocking-
-  // deliverables count. A failed read degrades to 0 here (unlike
+  // F012/F016e (missions/20260903-portal, M3): the real past-due
+  // deliverables count -- no `blocking` qualifier, matching AS-003's own
+  // wording and the Your list view's "blocked" bucket count (see
+  // `getDeliverablesPastDueCount`'s doc comment). A failed read degrades
+  // to 0 here (unlike
   // `approvalsAwaiting` above) because this badge count's own type is a
   // plain `number`, not a `PortalQueryResult` -- the spec for this field
   // is "no placeholder that pretends to be data" for the number itself,
   // not for its failure mode, and a badge silently showing 0 on a
   // logged, transient read failure is the same posture the rest of this
   // file takes for degrade-gracefully counts (see `overdueCount` below).
-  const overdueResult = await getOverdueBlockingDeliverableCount(projectId);
+  const overdueResult = await getDeliverablesPastDueCount(projectId);
   const deliverablesPastDue = overdueResult.ok ? overdueResult.data : 0;
   if (!overdueResult.ok) {
     logger.error("getPortalBadgeCounts: failed to load overdue deliverables count", {
@@ -906,10 +909,15 @@ export type PortalRequest = {
   createdAt: string;
 };
 
-// The signed-in client's own requests. RLS's
-// `client_requests_select_author_or_team` already scopes this to rows the
-// caller authored, so no `created_by` filter is repeated here — same
-// reasoning as the rest of this file.
+// Every client request on this workspace's portal-enabled projects, not
+// just the ones this caller filed. F016e (missions/20260903-portal,
+// M3-scrutiny defect 2, AS-048): `client_requests_select_author_or_team`
+// used to scope a client caller to `created_by = auth.uid()` — two people
+// from the same client company each saw only the half of their own
+// project's requests they personally authored. The policy is now
+// project-scoped, the same shape every other client-facing SELECT policy
+// in this file already uses, so no `created_by` filter is repeated here
+// either.
 //
 // F006b (missions/20260903-portal, AS-007): the `projects` read below
 // filters on `portal_enabled` explicitly, the same load-bearing reason

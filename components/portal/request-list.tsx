@@ -11,7 +11,12 @@
 // policy (`client_requests_select_author_or_team`, see
 // lib/queries/portal.ts) already scopes what Realtime will ever deliver to
 // this session to rows this caller is allowed to see, same reasoning
-// use-my-tasks-realtime.ts documents for `task_assignees`/`tasks`.
+// use-my-tasks-realtime.ts documents for `task_assignees`/`tasks`. F016e
+// (missions/20260903-portal, M3-scrutiny defect 2): that policy is now
+// project-scoped, not `created_by`-scoped, so this list -- like every
+// other portal surface reading `client_requests` -- can receive an
+// update from a request a DIFFERENT client user on the same project
+// filed, not only ones this session's own user authored.
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";

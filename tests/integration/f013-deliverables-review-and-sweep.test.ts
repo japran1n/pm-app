@@ -344,7 +344,7 @@ describe.skipIf(!haveCreds)(
       expect(activity![0].actor_id).toBeNull();
     });
 
-    it("AS-030: running the sweep twice does not write a second activity row (idempotent, and never moves a task back out)", async () => {
+    it("AS-030: running the sweep twice does not write a second activity row (idempotent within a run)", async () => {
       const taskId = await makeTask(todoStatusId);
       await makeDeliverable({
         state: "in_progress",
@@ -362,15 +362,52 @@ describe.skipIf(!haveCreds)(
         .eq("task_id", taskId)
         .eq("kind", "field_changed");
       expect(activity).toHaveLength(1);
+    });
 
-      // A human moves it back out; the sweep must not re-block it merely
-      // because it ran again -- it only ever moves a task INTO the
-      // blocked bucket on rows whose status isn't already that bucket at
-      // sweep time, and this assertion is here to catch a future change
-      // that accidentally adds a "restore" branch.
+    // F016e (missions/20260903-portal, M3-scrutiny defect 4): the
+    // original version of this test moved the task back out of Blocked
+    // and then asserted on its status WITHOUT ever calling the sweep
+    // again -- it could not have caught a sweep that re-blocked on the
+    // next tick, because the sweep never ran a second time after the
+    // human's manual unblock. This version re-runs
+    // `sweep_overdue_blocking_deliverables` (the same overdue, blocking,
+    // still-undelivered deliverable is still sitting there) and asserts
+    // the task is STILL in the human's chosen column -- `swept_at`
+    // (this migration) is what makes that hold.
+    it("AS-030: a human's manual unblock outlasts the next sweep tick, even though the same overdue deliverable is still there", async () => {
+      const taskId = await makeTask(todoStatusId);
+      await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
+      const { data: blocked } = await admin.from("tasks").select("status_id").eq("id", taskId).single();
+      expect(blocked!.status_id).toBe(blockedStatusId);
+
+      // A human moves it back out.
       await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+
+      // The sweep runs again -- same deliverable, still overdue, still
+      // blocking, still not accepted/waived. It must not re-block the
+      // task this time.
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
       const { data: task } = await admin.from("tasks").select("status_id").eq("id", taskId).single();
       expect(task!.status_id).toBe(todoStatusId);
+
+      // And it did not write a second "moved to Blocked" activity row
+      // either -- the sweep genuinely took no action the second time,
+      // not merely "took an action that happened not to change status".
+      const { data: activity } = await admin
+        .from("task_activity")
+        .select("id")
+        .eq("task_id", taskId)
+        .eq("kind", "field_changed");
+      expect(activity).toHaveLength(1);
     });
 
     it("AS-030 negative: an accepted deliverable's overdue-ness no longer blocks its task", async () => {

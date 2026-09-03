@@ -98,12 +98,25 @@ export async function getClientDeliverables(
   return { ok: true, data: (data ?? []).map(mapDeliverable) };
 }
 
-// The count `getPortalBadgeCounts` (lib/queries/portal.ts) folds into
-// `deliverablesPastDue`: blocking deliverables that are overdue and not
-// yet delivered/accepted/waived, on this one project. Shares the shape of
-// `client_deliverables_project_id_blocking_due_idx` (20260926010000) so
-// the filter here matches the index exactly, not merely approximates it.
-export async function getOverdueBlockingDeliverableCount(
+// F016e (missions/20260903-portal, M3-scrutiny defect 1, AS-003): the
+// count `getPortalBadgeCounts` (lib/queries/portal.ts) folds into
+// `deliverablesPastDue`. AS-003's own wording is "deliverables that are
+// past their due date" — no `blocking` qualifier — and the Your list
+// view's "blocked" bucket (app/(portal)/.../your-list/page.tsx's
+// `classifyBucket`) already counts every outstanding, past-due
+// deliverable regardless of `blocking`. This used to additionally filter
+// `.eq("blocking", true)`, so the sidebar badge and the page it links to
+// reported two different numbers for the same project. This function is
+// now the ONE query behind both surfaces (the same "one question, one
+// query" fix F006f applied to the approvals tile/list, lib/queries/
+// portal.ts:607-629): not yet delivered/accepted/waived, has a due date,
+// and that due date has passed — exactly the predicate `classifyBucket`
+// already applies client-side to the same table's rows.
+//
+// (The risk banner's `getWorstOverdueBlockingDeliverableRisk` below is a
+// different question — "the worst BLOCKING item at risk" is AS-031's own
+// wording, not this one — so it keeps its own `blocking` filter.)
+export async function getDeliverablesPastDueCount(
   projectId: string,
 ): Promise<PortalQueryResult<number>> {
   const supabase = await createClient();
@@ -113,13 +126,12 @@ export async function getOverdueBlockingDeliverableCount(
     .from("client_deliverables")
     .select("id", { count: "exact", head: true })
     .eq("project_id", projectId)
-    .eq("blocking", true)
     .not("state", "in", "(accepted,waived)")
     .not("due_at", "is", null)
     .lt("due_at", today);
 
   if (error) {
-    logger.error("getOverdueBlockingDeliverableCount: failed to load count", { error });
+    logger.error("getDeliverablesPastDueCount: failed to load count", { error });
     return { ok: false, error: error.message };
   }
 

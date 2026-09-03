@@ -446,6 +446,7 @@ export type Database = {
           project_id: string
           review_note: string | null
           state: string
+          swept_at: string | null
           task_id: string | null
           title: string
           updated_at: string
@@ -466,6 +467,7 @@ export type Database = {
           project_id: string
           review_note?: string | null
           state?: string
+          swept_at?: string | null
           task_id?: string | null
           title: string
           updated_at?: string
@@ -486,6 +488,7 @@ export type Database = {
           project_id?: string
           review_note?: string | null
           state?: string
+          swept_at?: string | null
           task_id?: string | null
           title?: string
           updated_at?: string
