@@ -34,6 +34,10 @@ const ENTRIES = [
   // edits this weekly, same cadence as phases, not the once-per-project
   // cadence board columns/members get).
   { slug: "deliverables", label: "Deliverables" },
+  // F015 (missions/20260903-portal): scope, decisions and assumptions —
+  // same weekly-edit cadence as deliverables, same reasoning for a
+  // settings sub-nav tab rather than a top-level project tab.
+  { slug: "record", label: "Record" },
 ] as const;
 
 export function ProjectSettingsNav({

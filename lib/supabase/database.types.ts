@@ -2542,6 +2542,13 @@ export type Database = {
         Args: { p_new_task_id: string; p_source_task_id: string }
         Returns: undefined
       }
+      flag_assumption_atomic: {
+        Args: { p_assumption_id: string; p_note: string }
+        Returns: {
+          assumption_id: string
+          flagged_by_client_at: string
+        }[]
+      }
       generate_due_recurring_occurrences: { Args: never; Returns: number }
       generate_unique_project_key: {
         Args: { p_name: string; p_workspace_id: string }

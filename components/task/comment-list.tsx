@@ -43,7 +43,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { formatDistanceToNow, format } from "date-fns";
-import { Loader2, MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { Lightbulb, Loader2, MessageSquare, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { JSONContent } from "@tiptap/react";
 
@@ -54,6 +54,13 @@ import {
   getMentionCandidates,
   restoreComment,
 } from "@/lib/actions/comments";
+// F015 (missions/20260903-portal, AS-044): "Turn into decision" — the one
+// affordance that decides whether the Record panel's decision log gets
+// used at all (this feature's own spec, verbatim). Carries the comment's
+// own text/author/date straight into a new `project_decisions` row; the
+// task's phase is resolved server-side from `taskId`, never trusted from
+// the client.
+import { createDecisionFromComment } from "@/lib/actions/project-records";
 // F261 (AS-508): reuses the exact same attachment upload action F258's
 // drag-drop and F259's picker/progress paths use — no second upload
 // implementation. See handlePastedImages below.
@@ -376,6 +383,13 @@ export function CommentList({
     null,
   );
   const [, startDeleteTransition] = useTransition();
+  // F015 (missions/20260903-portal, AS-044): which comment's "Turn into
+  // decision" call is in flight — disables just that comment's button,
+  // same per-row-not-global pending shape deletingCommentId already uses.
+  const [creatingDecisionCommentId, setCreatingDecisionCommentId] = useState<
+    string | null
+  >(null);
+  const [, startCreateDecisionTransition] = useTransition();
   // F197 (AS-362): the comment currently in inline edit mode, and its
   // in-progress draft. Only one comment can be edited at a time — opening
   // a second edit implicitly discards an unsaved first one, same
@@ -549,6 +563,39 @@ export function CommentList({
         toast.error(result.error);
       }
       setDeletingCommentId(null);
+    });
+  }
+
+  // F015 (missions/20260903-portal, AS-044): "Turn into decision" — carries
+  // this comment's own text, author and date straight into a new
+  // `project_decisions` row, no dialog (see this feature's own spec:
+  // "a dialog per row would guarantee nobody writes them"). The comment's
+  // plain-text projection (same extractPlainText/resolveMentionLabel path
+  // the composer/edit form already use) is what gets carried, not the raw
+  // Tiptap document — `project_decisions.rationale` is a plain text
+  // column.
+  function handleTurnIntoDecision(comment: TaskComment) {
+    const plainText = extractPlainText(
+      comment.bodyJson ?? docFromPlainText(comment.text),
+      resolveMentionLabel,
+    );
+    if (!plainText) return;
+
+    setCreatingDecisionCommentId(comment.id);
+    startCreateDecisionTransition(async () => {
+      const result = await createDecisionFromComment({
+        taskId,
+        commentId: comment.id,
+        commentText: plainText,
+        commentAuthorName: authorLabel(comment.userId, members) || null,
+        commentCreatedAt: comment.createdAt,
+      });
+      setCreatingDecisionCommentId(null);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Added to the decision log.");
     });
   }
 
@@ -796,13 +843,39 @@ export function CommentList({
                     <Pencil className="size-3.5" aria-hidden="true" />
                   </Button>
                 )}
+                {/* F015 (AS-044): "Turn into decision" — a team member
+                    (canPost already excludes viewer/client, same bar the
+                    add-comment composer itself uses) can add this comment
+                    to the project's decision log directly from the
+                    comment menu. */}
+                {canPost && editingCommentId !== comment.id && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={
+                      canEdit(comment) ? "size-6" : "ml-auto size-6"
+                    }
+                    disabled={creatingDecisionCommentId === comment.id}
+                    aria-label="Turn into decision"
+                    title="Turn into decision"
+                    onClick={() => handleTurnIntoDecision(comment)}
+                  >
+                    {creatingDecisionCommentId === comment.id ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Lightbulb className="size-3.5" aria-hidden="true" />
+                    )}
+                  </Button>
+                )}
                 {canDelete(comment) && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     className={
-                      canEdit(comment) && editingCommentId !== comment.id
+                      (canEdit(comment) && editingCommentId !== comment.id) ||
+                      (canPost && editingCommentId !== comment.id)
                         ? "size-6"
                         : "ml-auto size-6"
                     }

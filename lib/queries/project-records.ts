@@ -23,6 +23,12 @@ export type ProjectScopeItem = {
   included: boolean;
   source: ScopeItemSource;
   changeRequestId: string | null;
+  /** The title of the linked `client_requests` row, when `source` is
+   * 'change_request' and the link is still readable to this caller —
+   * AS-043's "shows which one" for an excluded item added by a change
+   * request. Null for a 'proposal'-sourced item, or if the link points
+   * at a row this caller cannot see. */
+  changeRequestTitle: string | null;
   position: number;
 };
 
@@ -66,7 +72,9 @@ export async function getProjectScopeItems(
 
   const { data, error } = await supabase
     .from("project_scope_items")
-    .select("id, project_id, title, description, included, source, change_request_id, position")
+    .select(
+      "id, project_id, title, description, included, source, change_request_id, position, client_requests(title)",
+    )
     .eq("project_id", projectId)
     .order("position");
 
@@ -77,15 +85,73 @@ export async function getProjectScopeItems(
 
   return {
     ok: true,
+    data: (data ?? []).map((row) => {
+      const linkedRequest = row.client_requests as
+        | { title: string }
+        | { title: string }[]
+        | null;
+      const request = Array.isArray(linkedRequest) ? linkedRequest[0] : linkedRequest;
+      return {
+        id: row.id,
+        projectId: row.project_id,
+        title: row.title,
+        description: row.description,
+        included: row.included,
+        source: row.source as ScopeItemSource,
+        changeRequestId: row.change_request_id,
+        changeRequestTitle: request?.title ?? null,
+        position: row.position,
+      };
+    }),
+  };
+}
+
+// AS-043 (Scope view's "Change requests" table): every change request the
+// caller may see for this project, oldest-first-missing fields only —
+// F016 fills the pricing columns (estimate/price), so this deliberately
+// selects none of them yet, per this feature's own instruction: "render
+// only what exists rather than empty money columns." RLS
+// (`client_requests_select_author_or_team`, 20260902030000/20260913010000)
+// already scopes a client caller to their own authored requests on a
+// portal-enabled project.
+export type ProjectChangeRequest = {
+  id: string;
+  projectId: string;
+  title: string;
+  body: string | null;
+  desiredBy: string | null;
+  status: "submitted" | "in_review" | "accepted" | "declined";
+  declineReason: string | null;
+  createdAt: string;
+};
+
+export async function getProjectChangeRequests(
+  projectId: string,
+): Promise<PortalQueryResult<ProjectChangeRequest[]>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("client_requests")
+    .select("id, project_id, title, body, desired_by, status, decline_reason, created_at")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    logger.error("getProjectChangeRequests: failed to load change requests", { error });
+    return { ok: false, error: error.message };
+  }
+
+  return {
+    ok: true,
     data: (data ?? []).map((row) => ({
       id: row.id,
       projectId: row.project_id,
       title: row.title,
-      description: row.description,
-      included: row.included,
-      source: row.source as ScopeItemSource,
-      changeRequestId: row.change_request_id,
-      position: row.position,
+      body: row.body,
+      desiredBy: row.desired_by,
+      status: row.status as ProjectChangeRequest["status"],
+      declineReason: row.decline_reason,
+      createdAt: row.created_at,
     })),
   };
 }
