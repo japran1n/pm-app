@@ -115,4 +115,32 @@ describe("PagesTable", () => {
     render(<PagesTable pages={[]} />);
     expect(screen.getByTestId("pages-table-empty")).toBeInTheDocument();
   });
+
+  // F006g (missions/20260903-portal): a page task with no status at all
+  // (`getPortalPages` passes `id`/`name`: null for that row) used to
+  // still render a coloured pill with an empty label -- proved here
+  // through the real production consumer, not just <StatusPill> in
+  // isolation.
+  it("test_a_page_with_no_status_renders_a_neutral_no_status_pill", () => {
+    const pageWithNoStatus: PortalPage = {
+      id: "task-3",
+      title: "Pricing",
+      slug: "pricing",
+      order: 3,
+      status: {
+        id: null,
+        name: null,
+        category: "not_started",
+        clientBucket: "progress",
+        clientDescription: null,
+      },
+      assignee: null,
+      updatedAt: "2026-09-03T10:00:00.000Z",
+    };
+
+    render(<PagesTable pages={[...PAGES, pageWithNoStatus]} />);
+
+    expect(screen.getByText("Pricing")).toBeInTheDocument();
+    expect(screen.getByText("No status")).toBeInTheDocument();
+  });
 });

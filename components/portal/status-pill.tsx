@@ -21,6 +21,16 @@
 // Tooltip: `client_description`, read straight from the database
 // (AS-016). A status with no description renders the pill with no
 // tooltip at all -- not an empty bubble, and not a crash.
+//
+// F006g (missions/20260903-portal): a task with no status at all
+// (`status_id` null -- `lib/queries/portal.ts`'s `getPortalPages`
+// passes `name: null` for that row) used to still resolve a bucket from
+// the `not_started` category default and render a coloured pill with an
+// empty label. `name === null` now short-circuits to a neutral "No
+// status" pill -- `bg-muted`/`text-muted-foreground`, the same neutral
+// tokens used everywhere else in this app for "nothing set yet", never
+// one of the four validated status tokens -- with no tooltip, since
+// there is no status to describe.
 import {
   Tooltip,
   TooltipContent,
@@ -60,12 +70,28 @@ export function StatusPill({
   description = null,
   className,
 }: {
-  name: string;
+  name: string | null;
   category: StatusCategory;
   clientBucket?: string | null;
   description?: string | null;
   className?: string;
 }) {
+  if (name === null) {
+    return (
+      <span
+        data-testid="status-pill"
+        data-bucket="none"
+        className={cn(
+          "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground",
+          className,
+        )}
+      >
+        <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+        <span className="truncate">No status</span>
+      </span>
+    );
+  }
+
   const bucket = resolveClientBucket(category, clientBucket);
   const classes = BUCKET_CLASSES[bucket];
 

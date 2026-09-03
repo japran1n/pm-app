@@ -60,6 +60,11 @@ const CATEGORY_RANK: Record<StatusCategory, number> = {
 type TaskGroup = {
   statusName: string;
   category: StatusCategory;
+  // F006g (missions/20260903-portal, AS-015): carried so the heading can
+  // resolve via `resolveClientBucket`/`clientStatusLabel` instead of
+  // matching `statusName` -- every task in a group shares the same
+  // status, so the same `clientBucket`.
+  clientBucket: string | null;
   tasks: PortalTask[];
 };
 
@@ -74,6 +79,7 @@ function groupTasks(tasks: PortalTask[]): TaskGroup[] {
       groups.set(task.status, {
         statusName: task.status,
         category: task.category,
+        clientBucket: task.clientBucket,
         tasks: [task],
       });
     }
@@ -120,34 +126,43 @@ type RawTaskRow = {
   [key: string]: unknown;
 };
 
-// Status -> category lookup, built once from the server-rendered project's
-// `statuses` (the project's board columns), independent of which columns
-// currently hold a shared task. Looked up by `status_id` first (stable
-// across a column rename), falling back to the status *name* for the same
-// reason `getPortalProjects` does server-side.
+// Status -> (category, client bucket) lookup, built once from the
+// server-rendered project's `statuses` (the project's board columns),
+// independent of which columns currently hold a shared task. Looked up by
+// `status_id` first (stable across a column rename), falling back to the
+// status *name* for the same reason `getPortalProjects` does server-side.
+//
+// F006g (missions/20260903-portal, AS-015): carries `clientBucket`
+// alongside `category` (not just category alone) so a task's group
+// heading can resolve through `resolveClientBucket` when a Realtime
+// UPDATE arrives, exactly like the server-rendered seed does -- never by
+// matching the incoming status's name.
+type StatusMeta = { category: StatusCategory; clientBucket: string | null };
+
 type CategoryLookup = {
-  byId: Map<string, StatusCategory>;
-  byName: Map<string, StatusCategory>;
+  byId: Map<string, StatusMeta>;
+  byName: Map<string, StatusMeta>;
 };
 
 function buildCategoryLookup(
   statuses: PortalProject["statuses"],
 ): CategoryLookup {
-  const byId = new Map<string, StatusCategory>();
-  const byName = new Map<string, StatusCategory>();
+  const byId = new Map<string, StatusMeta>();
+  const byName = new Map<string, StatusMeta>();
   for (const status of statuses) {
-    byId.set(status.id, status.category);
-    byName.set(status.name, status.category);
+    const meta: StatusMeta = { category: status.category, clientBucket: status.clientBucket };
+    byId.set(status.id, meta);
+    byName.set(status.name, meta);
   }
   return { byId, byName };
 }
 
-function resolveCategory(
+function resolveStatusMeta(
   lookup: CategoryLookup,
   statusId: string | null | undefined,
   statusName: string | undefined,
-  fallback: StatusCategory,
-): StatusCategory {
+  fallback: StatusMeta,
+): StatusMeta {
   if (statusId && lookup.byId.has(statusId)) {
     return lookup.byId.get(statusId)!;
   }
@@ -166,6 +181,17 @@ function mergeIncomingTask(
   const status = raw.status ?? existing?.status ?? "";
   const statusId =
     raw.status !== undefined ? (raw.status_id ?? null) : (existing?.statusId ?? null);
+  // Resolved against this project's status lookup so a task moved into a
+  // different column (e.g. a Done column) is grouped, labelled and
+  // overdue-styled correctly the moment the Realtime UPDATE arrives --
+  // not just after a reload re-seeds it from the server. Only when the
+  // incoming status is genuinely unknown to this project's lookup does it
+  // fall back to the last-known (or "not_started"/no-override, for a
+  // never-seen task) status.
+  const meta = resolveStatusMeta(categoryLookup, statusId, status, {
+    category: existing?.category ?? "not_started",
+    clientBucket: existing?.clientBucket ?? null,
+  });
   return {
     id: raw.id,
     title: raw.title ?? existing?.title ?? "",
@@ -173,19 +199,8 @@ function mergeIncomingTask(
     statusId,
     dueDate:
       raw.due_date !== undefined ? raw.due_date : (existing?.dueDate ?? null),
-    // Resolved against this project's status->category lookup so a task
-    // moved into a different column (e.g. a Done column) is grouped,
-    // labelled and overdue-styled correctly the moment the Realtime UPDATE
-    // arrives -- not just after a reload re-seeds it from the server. Only
-    // when the incoming status is genuinely unknown to this project's
-    // lookup does it fall back to the last-known (or "not_started" for a
-    // never-seen task) category.
-    category: resolveCategory(
-      categoryLookup,
-      statusId,
-      status,
-      existing?.category ?? "not_started",
-    ),
+    category: meta.category,
+    clientBucket: meta.clientBucket,
     project_id: raw.project_id ?? existing?.project_id ?? fallbackProjectId,
     client_visible: raw.client_visible,
     deleted_at: raw.deleted_at,
@@ -298,10 +313,10 @@ export function PortalTaskList({
     <div className="flex flex-col gap-6">
       <h2 className="text-lg font-medium tracking-tight">Shared with you</h2>
 
-      {groups.map(({ statusName, category, tasks: groupTasksList }) => (
+      {groups.map(({ statusName, category, clientBucket, tasks: groupTasksList }) => (
         <section key={statusName} className="flex flex-col gap-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {clientStatusLabel(category, statusName)} ({groupTasksList.length})
+            {clientStatusLabel(category, clientBucket)} ({groupTasksList.length})
           </h3>
 
           <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">

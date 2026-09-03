@@ -32,6 +32,7 @@ import {
 } from "@/lib/actions/statuses";
 import { calculatePosition } from "@/lib/board/position";
 import { COLUMN_CATEGORIES, COLUMN_COLOR_PALETTE, DEFAULT_COLUMN_COLOR } from "@/lib/board/column-colors";
+import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -78,12 +79,19 @@ export type ProjectColumn = {
 // UI's own value for "no override, use the category fallback", never
 // sent to the DB as a literal string (lib/validation/statuses.ts's
 // `clientBucketSchema` turns it back into `null`).
+//
+// F006g (missions/20260903-portal, AS-015): this used to keep its own
+// four-entry copy of the bucket's name ("Waiting on client", "Done") —
+// the third copy of the same map (alongside pages-table.tsx and
+// status-distribution.tsx), and the one that had already drifted from
+// the other two. Built from `CLIENT_BUCKET_LABELS` (status-label.ts)
+// instead, plus this select's own "auto" entry, so a PM choosing an
+// override reads the exact word the client will see.
+const BUCKET_ORDER: ClientBucket[] = ["waiting", "progress", "blocked", "done"];
+
 const CLIENT_BUCKET_OPTIONS: { value: string; label: string }[] = [
   { value: "auto", label: "Auto (from category)" },
-  { value: "waiting", label: "Waiting on client" },
-  { value: "progress", label: "In progress" },
-  { value: "blocked", label: "Blocked" },
-  { value: "done", label: "Done" },
+  ...BUCKET_ORDER.map((bucket) => ({ value: bucket, label: CLIENT_BUCKET_LABELS[bucket] })),
 ];
 
 function ColorSwatch({ color }: { color: string }) {

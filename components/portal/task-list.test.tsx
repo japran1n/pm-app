@@ -120,6 +120,11 @@ const project: PortalProject = {
       statusId: "status-1",
       dueDate: null,
       category: "in_progress",
+      // F006g (missions/20260903-portal, AS-015): the "waiting" heading
+      // below is reached through this explicit override, not through the
+      // word "review" in the status's own name -- `clientStatusLabel` no
+      // longer matches names.
+      clientBucket: "waiting",
     },
   ],
   notStarted: 0,
@@ -130,8 +135,8 @@ const project: PortalProject = {
   nextDue: null,
   overdueCount: 0,
   statuses: [
-    { id: "status-1", name: "In review", category: "in_progress" },
-    { id: "status-2", name: "Done", category: "done" },
+    { id: "status-1", name: "In review", category: "in_progress", clientBucket: "waiting" },
+    { id: "status-2", name: "Done", category: "done", clientBucket: null },
   ],
 };
 
@@ -182,8 +187,10 @@ describe("PortalTaskList (F009)", () => {
     render(<PortalTaskList project={project} workspaceSlug="acme" />);
     await flushAuthHydration();
 
-    // Seeded status "In review" always renders "Waiting on your review"
-    // (name-based override in clientStatusLabel), regardless of category.
+    // Seeded status "In review" carries an explicit `clientBucket:
+    // "waiting"` override (F006g -- `clientStatusLabel` no longer
+    // resolves this by matching the status's name), so it always renders
+    // "Waiting on your review" regardless of category.
     expect(screen.getByText(/Waiting on your review/i)).toBeInTheDocument();
 
     const callback = tasksCallback();

@@ -21,8 +21,28 @@ afterEach(() => {
 });
 
 describe("StatusPill", () => {
-  it("test_AS_015_renders_the_waiting_bucket_token_classes", () => {
+  // F006g (missions/20260903-portal, AS-017): `not_started` with no
+  // override used to render the "waiting" bucket -- a Backlog page
+  // nobody had touched read as "blocked on the client". It renders
+  // "progress" now; the waiting bucket below is reached only through an
+  // explicit override.
+  it("test_AS_017_not_started_with_no_override_renders_the_progress_bucket_not_waiting", () => {
     render(<StatusPill name="Backlog" category="not_started" clientBucket={null} description={null} />);
+    const pill = screen.getByTestId("status-pill");
+    expect(pill).toHaveAttribute("data-bucket", "progress");
+    expect(pill.className).toContain("bg-status-progress-bg");
+    expect(pill.className).toContain("text-status-progress");
+  });
+
+  it("test_AS_015_renders_the_waiting_bucket_token_classes_via_explicit_override", () => {
+    render(
+      <StatusPill
+        name="Awaiting Client Feedback"
+        category="in_progress"
+        clientBucket="waiting"
+        description={null}
+      />,
+    );
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "waiting");
     expect(pill.className).toContain("bg-status-waiting-bg");
@@ -108,5 +128,23 @@ describe("StatusPill", () => {
     // pill, not an empty/broken tooltip.
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByText("Backlog")).toBeInTheDocument();
+  });
+
+  // F006g (missions/20260903-portal): a task with no status at all
+  // (`status_id` null) used to still resolve a bucket off the
+  // `not_started` category default and render a coloured pill with an
+  // empty label. `name === null` now renders a neutral "No status" pill
+  // instead -- no status token colour, no tooltip.
+  it("test_a_null_status_name_renders_a_neutral_no_status_pill_not_an_empty_coloured_one", () => {
+    render(<StatusPill name={null} category="not_started" clientBucket={null} description={null} />);
+    const pill = screen.getByTestId("status-pill");
+    expect(pill).toHaveAttribute("data-bucket", "none");
+    expect(pill.className).not.toContain("bg-status-waiting-bg");
+    expect(pill.className).not.toContain("bg-status-progress-bg");
+    expect(pill.className).not.toContain("bg-status-blocked-bg");
+    expect(pill.className).not.toContain("bg-status-done-bg");
+    expect(pill.className).toContain("bg-muted");
+    expect(screen.getByText("No status")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });

@@ -16,19 +16,24 @@
 // F004), never a literal hex here.
 
 import { cn } from "@/lib/utils";
-import type { ClientBucket } from "@/components/portal/status-label";
+import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
 
 const BUCKET_ORDER: ClientBucket[] = ["waiting", "progress", "blocked", "done"];
 
-// AS-017's own wording ("waiting on the client, in progress, blocked, and
-// ready to launch") is the label set used here — deliberately not
-// StatusPill's generic bucket vocabulary, since this is the distribution
-// key's own copy, matching the prototype verbatim for this view.
-const BUCKET_META: Record<ClientBucket, { label: string; tone: string }> = {
-  waiting: { label: "Waiting on you", tone: "bg-status-waiting" },
-  progress: { label: "In progress", tone: "bg-status-progress" },
-  blocked: { label: "Blocked", tone: "bg-status-blocked" },
-  done: { label: "Ready to launch", tone: "bg-status-done" },
+// F006g (missions/20260903-portal, AS-015, AS-017): the label half of
+// this key used to be its own copy of the bucket -> name map (one of
+// three, alongside pages-table.tsx's filter and status-manager.tsx's
+// override select, the third of which had already drifted) -- now reads
+// `CLIENT_BUCKET_LABELS` (status-label.ts), matching AS-017's own wording
+// ("waiting on the client, in progress, blocked, and ready to launch")
+// verbatim. `tone` (the bar/dot colour) stays local -- it is this
+// component's own presentation concern, not part of what a bucket is
+// called.
+const BUCKET_TONE: Record<ClientBucket, string> = {
+  waiting: "bg-status-waiting",
+  progress: "bg-status-progress",
+  blocked: "bg-status-blocked",
+  done: "bg-status-done",
 };
 
 export function StatusDistribution({
@@ -55,7 +60,7 @@ export function StatusDistribution({
           <div
             key={bucket}
             data-testid={`status-distribution-segment-${bucket}`}
-            className={cn("h-full", BUCKET_META[bucket].tone)}
+            className={cn("h-full", BUCKET_TONE[bucket])}
             style={{ width: `${(counts[bucket] / total) * 100}%` }}
           />
         ))}
@@ -68,9 +73,9 @@ export function StatusDistribution({
           <div key={bucket} className="flex items-center gap-2">
             <span
               aria-hidden="true"
-              className={cn("size-2 shrink-0 rounded-full", BUCKET_META[bucket].tone)}
+              className={cn("size-2 shrink-0 rounded-full", BUCKET_TONE[bucket])}
             />
-            <dt className="text-muted-foreground">{BUCKET_META[bucket].label}</dt>
+            <dt className="text-muted-foreground">{CLIENT_BUCKET_LABELS[bucket]}</dt>
             <dd className="font-medium tabular-nums">{counts[bucket]}</dd>
           </div>
         ))}

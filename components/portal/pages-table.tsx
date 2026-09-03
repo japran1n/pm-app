@@ -32,16 +32,17 @@ import { UserAvatar } from "@/components/user-avatar";
 import { StatusPill } from "@/components/portal/status-pill";
 import { FileQuestion } from "lucide-react";
 import type { PortalPage } from "@/lib/queries/portal";
-import type { ClientBucket } from "@/components/portal/status-label";
+import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
 
 const ALL_STATUSES = "__all__";
 
-const FILTER_LABELS: Record<ClientBucket, string> = {
-  waiting: "Waiting on you",
-  progress: "In progress",
-  blocked: "Blocked",
-  done: "Ready to launch",
-};
+// F006g (missions/20260903-portal, AS-015): the filter's own labels used
+// to be a third, locally-owned copy of the bucket -> name map (alongside
+// status-distribution.tsx's key and status-manager.tsx's override
+// select) -- reads `CLIENT_BUCKET_LABELS` (status-label.ts) instead so
+// there is exactly one file a bucket's client-facing name can be edited
+// in.
+const FILTER_LABELS = CLIENT_BUCKET_LABELS;
 
 const FILTER_ORDER: ClientBucket[] = ["waiting", "progress", "blocked", "done"];
 

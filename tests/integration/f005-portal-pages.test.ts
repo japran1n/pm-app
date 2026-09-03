@@ -74,7 +74,14 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
   let clientId: string;
   let pageTypeId: string;
 
-  let waitingStatusId: string;
+  // F006g (missions/20260903-portal, AS-015, AS-017): `not_started`'s own
+  // category fallback no longer resolves to "waiting" (that was the
+  // defect this feature fixes — a Backlog page nobody had touched read
+  // as "blocked on the client"). `explicitWaitingStatusId` is the
+  // genuine "waiting" fixture now — an explicit `client_bucket`
+  // override, the only status-level way to reach that bucket.
+  let notStartedStatusId: string;
+  let explicitWaitingStatusId: string;
   let progressStatusId: string;
   let blockedStatusId: string;
   let doneStatusId: string;
@@ -82,6 +89,11 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
   let hiddenTaskId: string;
   let nonPageTaskId: string;
   let otherProjectPageTaskId: string;
+  // F006g: captured so the new cross-screen agreement test can find the
+  // same two rows in both `getPortalOverview`'s waitingOnYou list and
+  // `getPortalPages`'s bucket output.
+  let homepageTaskId: string;
+  let unorderedTaskId: string;
 
   const createdUserIds: string[] = [];
   const allProjectIds: string[] = [];
@@ -196,14 +208,23 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
       return data.id as string;
     };
 
-    // Four statuses, one per client bucket — "Needs Client Input" proves
-    // the explicit client_bucket override (category alone has no
-    // "blocked" value), the other three prove the category fallback.
-    waitingStatusId = await insertStatus(
+    // Five statuses. "Backlog" (not_started, no override) proves the
+    // category fallback no longer reads as "waiting" (F006g) — it is
+    // grouped with "In Development" under the same "progress" bucket
+    // instead. "Awaiting Client Feedback" and "Needs Client Input" prove
+    // the explicit `client_bucket` override is the only status-level way
+    // to reach "waiting"/"blocked" (category alone has neither value).
+    notStartedStatusId = await insertStatus(
       "Backlog",
       "not_started",
       null,
       "Planned, not started yet.",
+    );
+    explicitWaitingStatusId = await insertStatus(
+      "Awaiting Client Feedback",
+      "in_progress",
+      "waiting",
+      "We need your decision before we can continue.",
     );
     progressStatusId = await insertStatus(
       "In Development",
@@ -272,10 +293,10 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     // Four client-visible page tasks on Project A, one per bucket, in a
     // deliberately scrambled page_order so AS-014's ordering assertion is
     // real (not accidentally already-sorted by insert order).
-    await insertTask({
+    homepageTaskId = await insertTask({
       projectId: projectAId,
       title: "Homepage",
-      statusId: waitingStatusId,
+      statusId: explicitWaitingStatusId,
       taskTypeId: pageTypeId,
       clientVisible: true,
       pageSlug: "home",
@@ -310,11 +331,12 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
       pageOrder: 3,
     });
     // No page_order at all — must sort AFTER every explicitly ordered
-    // page (nulls last), by title.
-    await insertTask({
+    // page (nulls last), by title. Also this file's "not started, no
+    // override" fixture (F006g) — must NOT resolve to "waiting".
+    unorderedTaskId = await insertTask({
       projectId: projectAId,
       title: "Zzz Unordered Page",
-      statusId: waitingStatusId,
+      statusId: notStartedStatusId,
       taskTypeId: pageTypeId,
       clientVisible: true,
       pageSlug: "unordered",
@@ -325,7 +347,7 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     hiddenTaskId = await insertTask({
       projectId: projectAId,
       title: "Internal draft page",
-      statusId: waitingStatusId,
+      statusId: notStartedStatusId,
       taskTypeId: pageTypeId,
       clientVisible: false,
       pageSlug: "internal-draft",
@@ -334,7 +356,7 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     nonPageTaskId = await insertTask({
       projectId: projectAId,
       title: "Not a page task",
-      statusId: waitingStatusId,
+      statusId: notStartedStatusId,
       taskTypeId: null,
       clientVisible: true,
       pageSlug: null,
@@ -430,6 +452,52 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     expect(bucketByTitle.get("Services")).toBe("progress");
     expect(bucketByTitle.get("Contact")).toBe("blocked");
     expect(bucketByTitle.get("About")).toBe("done");
+  });
+
+  // F006g (missions/20260903-portal, AS-017): the M1 re-scrutiny's own
+  // primary success test — a Backlog page (category `not_started`, no
+  // `client_bucket` override) reads as "not started"/"in progress" work,
+  // never as "waiting on you". Before this fix, `not_started`'s own
+  // category fallback WAS "waiting", which told the client a page nobody
+  // on the team had touched yet was blocked on them.
+  it("test_AS_017_a_not_started_page_with_no_override_is_not_waiting", async () => {
+    activeSession = clientSession;
+    const { getPortalPages } = await import("@/lib/queries/portal");
+    const pages = await getPortalPages(projectAId);
+
+    const unordered = pages.find((p) => p.title === "Zzz Unordered Page");
+    expect(unordered?.status.category).toBe("not_started");
+    expect(unordered?.status.clientBucket).toBe("progress");
+    expect(unordered?.status.clientBucket).not.toBe("waiting");
+  });
+
+  // F006g (missions/20260903-portal, AS-015, AS-017): the bug this
+  // feature exists to make impossible — the Overview's "Waiting on you"
+  // list and the Pages distribution's "Waiting on you" count used to be
+  // two independent definitions (a task-level flag vs. a status's
+  // category) that could disagree on the very same row. Both now route
+  // through the same `resolveClientBucket`, proved here on the same two
+  // rows: "Homepage" (an explicit `client_bucket = 'waiting'` override)
+  // must appear as waiting on both screens, and "Zzz Unordered Page" (the
+  // `not_started`-with-no-override fixture) must appear as waiting on
+  // neither.
+  it("test_AS_015_AS_017_the_overviews_waiting_list_and_the_pages_distributions_waiting_count_agree", async () => {
+    activeSession = clientSession;
+    const { getPortalOverview, getPortalPages } = await import("@/lib/queries/portal");
+
+    const [overview, pages] = await Promise.all([
+      getPortalOverview(workspaceId),
+      getPortalPages(projectAId),
+    ]);
+
+    const waitingOnYouIds = new Set(overview.waitingOnYou.map((t) => t.id));
+    const bucketById = new Map(pages.map((p) => [p.id, p.status.clientBucket]));
+
+    expect(waitingOnYouIds.has(homepageTaskId)).toBe(true);
+    expect(bucketById.get(homepageTaskId)).toBe("waiting");
+
+    expect(waitingOnYouIds.has(unorderedTaskId)).toBe(false);
+    expect(bucketById.get(unorderedTaskId)).not.toBe("waiting");
   });
 
   it("test_AS_016_the_status_tooltip_description_is_read_from_the_database", async () => {

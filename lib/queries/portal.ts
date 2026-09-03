@@ -42,6 +42,12 @@ export type PortalTask = {
   // rendering it in the overdue style would tell the client something false
   // about work that was actually delivered.
   category: StatusCategory;
+  // F006g (missions/20260903-portal, AS-015): the status's own
+  // `client_bucket` override (raw, unresolved -- same shape as
+  // `project_statuses.client_bucket`), carried alongside `category` so
+  // `clientStatusLabel` can resolve this task's group heading through
+  // `resolveClientBucket` instead of matching the status's name.
+  clientBucket: string | null;
 };
 
 export type PortalProject = {
@@ -71,13 +77,14 @@ export type PortalProject = {
   percentComplete: number | null;
   nextDue: PortalTask | null;
   overdueCount: number;
-  // The project's board columns (status name + category), independent of
-  // which columns currently hold a shared task. Carried down so the client
-  // list can resolve the category for a status it receives over Realtime
-  // (e.g. a task moved into a Done column that had zero shared tasks at
-  // render time) without a second round trip -- `tasks.status`/`status_id`
-  // never carry `category` themselves; only `project_statuses` does.
-  statuses: { id: string; name: string; category: StatusCategory }[];
+  // The project's board columns (status name + category + client_bucket),
+  // independent of which columns currently hold a shared task. Carried
+  // down so the client list can resolve the category AND client bucket
+  // for a status it receives over Realtime (e.g. a task moved into a Done
+  // column that had zero shared tasks at render time) without a second
+  // round trip -- `tasks.status`/`status_id` never carry `category` or
+  // `client_bucket` themselves; only `project_statuses` does.
+  statuses: { id: string; name: string; category: StatusCategory; clientBucket: string | null }[];
 };
 
 type StatusRow = {
@@ -86,6 +93,15 @@ type StatusRow = {
   name: string;
   category: StatusCategory;
 };
+
+// F006g (missions/20260903-portal, AS-015, AS-017): a few callers also
+// need the status's own `client_bucket` override (`getPortalProjects` to
+// resolve `PortalTaskList`'s group headings without name-matching;
+// `getPortalOverview` to agree with the Pages distribution's bucket by
+// construction) -- `getProjectPhases` does not, so `StatusRow` itself
+// stays minimal rather than every caller carrying a column it never
+// reads.
+type StatusRowWithBucket = StatusRow & { client_bucket: string | null };
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -131,7 +147,7 @@ export async function getPortalProjects(
         .order("position"),
       supabase
         .from("project_statuses")
-        .select("id, project_id, name, category")
+        .select("id, project_id, name, category, client_bucket")
         .in("project_id", projectIds),
     ]);
 
@@ -144,9 +160,16 @@ export async function getPortalProjects(
 
   const categoryByStatusId = new Map<string, StatusCategory>();
   const categoryByProjectAndName = new Map<string, StatusCategory>();
-  for (const status of (statuses ?? []) as StatusRow[]) {
+  // F006g (missions/20260903-portal, AS-015): carried the same way as
+  // category, so `PortalTaskList`'s group headings can resolve a bucket
+  // (via `resolveClientBucket`) instead of matching the status's name.
+  const clientBucketByStatusId = new Map<string, string | null>();
+  const clientBucketByProjectAndName = new Map<string, string | null>();
+  for (const status of (statuses ?? []) as StatusRowWithBucket[]) {
     categoryByStatusId.set(status.id, status.category);
     categoryByProjectAndName.set(`${status.project_id}:${status.name}`, status.category);
+    clientBucketByStatusId.set(status.id, status.client_bucket ?? null);
+    clientBucketByProjectAndName.set(`${status.project_id}:${status.name}`, status.client_bucket ?? null);
   }
 
   const today = todayIso();
@@ -169,6 +192,10 @@ export async function getPortalProjects(
         (task.status_id ? categoryByStatusId.get(task.status_id) : undefined) ??
         categoryByProjectAndName.get(`${project.id}:${task.status}`) ??
         "not_started";
+      const clientBucket =
+        (task.status_id ? clientBucketByStatusId.get(task.status_id) : undefined) ??
+        clientBucketByProjectAndName.get(`${project.id}:${task.status}`) ??
+        null;
 
       if (category === "done") done += 1;
       else if (category === "in_progress") inProgress += 1;
@@ -181,6 +208,7 @@ export async function getPortalProjects(
         statusId: task.status_id,
         dueDate: task.due_date,
         category,
+        clientBucket,
       };
 
       if (category !== "done" && task.due_date) {
@@ -212,9 +240,14 @@ export async function getPortalProjects(
       percentComplete: total === 0 ? null : Math.round((done / total) * 100),
       nextDue,
       overdueCount,
-      statuses: ((statuses ?? []) as StatusRow[])
+      statuses: ((statuses ?? []) as StatusRowWithBucket[])
         .filter((s) => s.project_id === project.id)
-        .map((s) => ({ id: s.id, name: s.name, category: s.category })),
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          category: s.category,
+          clientBucket: s.client_bucket ?? null,
+        })),
     };
   });
 }
@@ -832,13 +865,15 @@ export async function getPortalTaskDetail(
 
   const { data: statuses } = await supabase
     .from("project_statuses")
-    .select("id, name, category")
+    .select("id, name, category, client_bucket")
     .eq("project_id", task.project_id);
 
-  const category =
-    (statuses ?? []).find((s) => s.id === task.status_id)?.category ??
-    (statuses ?? []).find((s) => s.name === task.status)?.category ??
-    "not_started";
+  const matchedStatus =
+    (statuses ?? []).find((s) => s.id === task.status_id) ??
+    (statuses ?? []).find((s) => s.name === task.status) ??
+    null;
+  const category = matchedStatus?.category ?? "not_started";
+  const clientBucket = matchedStatus?.client_bucket ?? null;
 
   const { data: comments } = await supabase
     .from("comments")
@@ -872,6 +907,7 @@ export async function getPortalTaskDetail(
     statusId: task.status_id,
     dueDate: task.due_date,
     category: category as StatusCategory,
+    clientBucket,
     projectId: project.id,
     projectName: project.name,
     description: task.description,
@@ -937,13 +973,20 @@ export async function getPortalOverview(
       .order("updated_at", { ascending: false }),
     supabase
       .from("project_statuses")
-      .select("id, project_id, name, category")
+      .select("id, project_id, name, category, client_bucket")
       .in("project_id", projectIds),
   ]);
 
   const categoryByStatusId = new Map<string, StatusCategory>();
-  for (const status of (statuses ?? []) as StatusRow[]) {
+  // F006g (missions/20260903-portal, AS-015, AS-017): carried alongside
+  // category so this list's "waiting" predicate can route through the
+  // exact same `resolveClientBucket` the Pages distribution uses --
+  // never a second, independent definition of "waiting" the two screens
+  // could disagree on.
+  const clientBucketByStatusId = new Map<string, string | null>();
+  for (const status of (statuses ?? []) as StatusRowWithBucket[]) {
     categoryByStatusId.set(status.id, status.category);
+    clientBucketByStatusId.set(status.id, status.client_bucket ?? null);
   }
 
   const sevenDaysAgo = new Date();
@@ -953,17 +996,28 @@ export async function getPortalOverview(
   const deliveredThisWeek: PortalOverviewTask[] = [];
 
   for (const task of tasks ?? []) {
-    const category = task.status_id
+    const category = (task.status_id
       ? categoryByStatusId.get(task.status_id)
-      : undefined;
+      : undefined) ?? "not_started";
+    const clientBucket = task.status_id
+      ? (clientBucketByStatusId.get(task.status_id) ?? null)
+      : null;
 
     // "Waiting on you" — F1 (docs/client-dashboard-features-plan.md):
     // this used to be inferred from a regex on the status name
-    // (`/review/i`), which only worked for a team whose status happened to
-    // be named exactly "In Review". `pending_client_approval` is the same
-    // signal made explicit: the team sets it, so it survives status
-    // renames and covers any status, not just one whose name matches.
-    const isAwaitingReview = task.pending_client_approval === true;
+    // (`/review/i`), which only worked for a team whose status happened
+    // to be named exactly "In Review". F006g folded the remaining
+    // per-status source (an explicit `client_bucket = 'waiting'`) in
+    // too, through the same `resolveClientBucket` the Pages view uses --
+    // `not_started`'s own category fallback never resolves to "waiting"
+    // by itself (that was the defect this feature fixes: a Backlog page
+    // nobody had touched read as "blocked on the client"), only an
+    // explicit override or `pending_client_approval` puts a row here.
+    const bucket = resolveClientBucket(
+      category,
+      clientBucket,
+      task.pending_client_approval === true,
+    );
 
     const mapped: PortalOverviewTask = {
       id: task.id,
@@ -974,7 +1028,7 @@ export async function getPortalOverview(
       updatedAt: task.updated_at,
     };
 
-    if (isAwaitingReview && category !== "done") {
+    if (bucket === "waiting") {
       waitingOnYou.push(mapped);
     } else if (category === "done" && new Date(task.updated_at) >= sevenDaysAgo) {
       deliveredThisWeek.push(mapped);
@@ -1214,8 +1268,15 @@ export async function getPortalFiles(
 // type simply has an empty Pages view — an honest "nobody tagged one
 // yet" rather than an accident of naming.
 export type PortalPageStatus = {
-  id: string;
-  name: string;
+  // F006g (missions/20260903-portal): `id`/`name` are `null` for a task
+  // with no `status_id` at all (defensive -- `tasks.status` defaults
+  // `'todo'` and a trigger keeps `status_id` in sync, but nothing in the
+  // schema forbids the row being null). `StatusPill` renders that as a
+  // neutral "No status" pill rather than a coloured pill with an empty
+  // label -- category/clientBucket still carry a value (the
+  // `not_started` fallback) but are not read when `name` is null.
+  id: string | null;
+  name: string | null;
   category: StatusCategory;
   clientBucket: ClientBucket;
   clientDescription: string | null;
@@ -1285,7 +1346,7 @@ export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
   const { data: tasks, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, page_slug, page_order, updated_at, assignee_id, project_statuses(id, name, category, client_bucket, client_description)",
+      "id, title, page_slug, page_order, updated_at, assignee_id, pending_client_approval, project_statuses(id, name, category, client_bucket, client_description)",
     )
     .eq("project_id", projectId)
     .eq("task_type_id", pageType.id)
@@ -1348,9 +1409,16 @@ export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
       : task.project_statuses;
 
     const category = (statusRow?.category ?? "not_started") as StatusCategory;
+    // F006g (AS-015, AS-017): `pending_client_approval` folded in here so
+    // this row's bucket agrees with the Overview's "Waiting on you" list
+    // by construction -- both now resolve "is this row waiting on the
+    // client" through the exact same function and the exact same two
+    // signals, rather than the Overview reading only the flag and this
+    // view reading only the status's own bucket.
     const clientBucket = resolveClientBucket(
       category,
       statusRow?.client_bucket ?? null,
+      task.pending_client_approval === true,
     );
 
     const assignee = task.assignee_id
@@ -1371,8 +1439,8 @@ export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
       slug: task.page_slug,
       order: task.page_order,
       status: {
-        id: statusRow?.id ?? "",
-        name: statusRow?.name ?? "",
+        id: statusRow?.id ?? null,
+        name: statusRow?.name ?? null,
         category,
         clientBucket,
         clientDescription: statusRow?.client_description ?? null,

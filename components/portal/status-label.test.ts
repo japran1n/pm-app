@@ -8,11 +8,16 @@
 // future team-side surface) changes with it.
 import { describe, expect, it } from "vitest";
 
-import { resolveClientBucket } from "@/components/portal/status-label";
+import { clientStatusLabel, resolveClientBucket } from "@/components/portal/status-label";
 
 describe("resolveClientBucket", () => {
-  it("test_AS_015_not_started_category_falls_back_to_waiting_with_no_override", () => {
-    expect(resolveClientBucket("not_started", null)).toBe("waiting");
+  // F006g (missions/20260903-portal, AS-017): `not_started` used to fall
+  // back to "waiting" -- a Backlog page nobody had touched yet was
+  // reported to the client as blocked on THEM. It now groups with
+  // in-progress work instead; only an explicit override or
+  // `pendingClientApproval` can put a row in "waiting".
+  it("test_AS_017_not_started_category_falls_back_to_progress_not_waiting_with_no_override", () => {
+    expect(resolveClientBucket("not_started", null)).toBe("progress");
   });
 
   it("test_AS_015_in_progress_category_falls_back_to_progress_with_no_override", () => {
@@ -48,5 +53,61 @@ describe("resolveClientBucket", () => {
     // Defends against a bad/legacy DB value reaching the UI as a crash or
     // an unstyled fifth bucket -- falls back exactly like null would.
     expect(resolveClientBucket("done", "not-a-real-bucket")).toBe("done");
+  });
+
+  // F006g (missions/20260903-portal, AS-015, AS-017): `pendingClientApproval`
+  // is the per-task signal (`tasks.pending_client_approval`) this feature
+  // folds in so the Overview's "Waiting on you" list and the Pages
+  // distribution's "Waiting on you" count agree by construction -- both
+  // now resolve "is this row waiting" through this one function.
+  it("test_AS_017_pending_client_approval_wins_over_a_progress_bucket_status", () => {
+    expect(resolveClientBucket("in_progress", null, true)).toBe("waiting");
+  });
+
+  it("test_AS_017_pending_client_approval_wins_over_an_explicit_blocked_override", () => {
+    expect(resolveClientBucket("in_progress", "blocked", true)).toBe("waiting");
+  });
+
+  it("test_AS_017_pending_client_approval_is_ignored_on_a_done_status", () => {
+    // A delivered task is never "waiting" -- the same "done" exclusion
+    // the Overview's original `pending_client_approval` check always
+    // applied.
+    expect(resolveClientBucket("done", null, true)).toBe("done");
+  });
+
+  it("test_AS_017_pending_client_approval_false_has_no_effect", () => {
+    expect(resolveClientBucket("not_started", null, false)).toBe("progress");
+  });
+});
+
+// F006g (missions/20260903-portal, AS-015): `clientStatusLabel` used to
+// resolve its "waiting" case with a `/review/i` regex against the raw
+// status name -- in this module, F004's own designated single home for
+// "how does a status read to a client" -- using exactly the name-matching
+// approach F004 was forbidden to use. These tests are this feature's own
+// failure test: a status named "Design review" with no `client_bucket`
+// must NOT be classified as waiting by its name.
+describe("clientStatusLabel", () => {
+  it("test_AS_015_a_status_named_review_with_no_override_is_not_classified_as_waiting_by_its_name", () => {
+    expect(clientStatusLabel("in_progress", null)).not.toBe("Waiting on your review");
+    expect(clientStatusLabel("in_progress", null)).toBe("In progress");
+  });
+
+  it("test_AS_015_a_status_named_review_still_reads_as_waiting_when_explicitly_bucketed_that_way", () => {
+    // The correct way to reach "Waiting on your review" -- an explicit
+    // override, not the word "review" in the name.
+    expect(clientStatusLabel("in_progress", "waiting")).toBe("Waiting on your review");
+  });
+
+  it("test_AS_015_not_started_with_no_override_reads_as_in_progress_not_planned_or_waiting", () => {
+    expect(clientStatusLabel("not_started", null)).toBe("In progress");
+  });
+
+  it("test_AS_015_done_category_reads_as_delivered", () => {
+    expect(clientStatusLabel("done", null)).toBe("Delivered");
+  });
+
+  it("test_AS_015_explicit_blocked_override_reads_as_blocked", () => {
+    expect(clientStatusLabel("in_progress", "blocked")).toBe("Blocked");
   });
 });
