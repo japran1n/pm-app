@@ -188,3 +188,27 @@ including create_channel_atomic), F006j (test integrity).
 - F006g COMPLETE (07dbfdd) — /review/i name matching deleted, not_started now resolves to "progress" instead of "waiting" (no fifth bucket needed), resolveClientBucket extended so pending_client_approval also drives waiting, one exported CLIENT_BUCKET_LABELS imported by all three former copies, null status renders a neutral "No status" pill. Cross-screen test added: the Overview's waiting list and the Pages distribution's waiting count must agree, run live.
   Orchestrator verification: zero /review/i matches remain; the label map has one definition.
   The client-facing consequence: a Backlog page nobody has started is no longer reported to the client as blocked on them.
+- F006i COMPLETE (dc2248c) — seed_default_phases now enforces visibility, client_requests UPDATE/DELETE gated on portal_enabled, assert_portal_task_actionable_by_client gated (fixes both approve and request-changes RPCs), and create_channel_atomic given real authorisation following create_notification's guarded shape. 168 tests, each calling the RPC or policy directly. Write-side sweep in the handoff.
+
+### F006i's sweep found the worst defect of the mission, and it is ours
+
+`projects_update_active_members` (20260818004709_rls_projects.sql:45) lets ANY
+active workspace member UPDATE ANY column of any project in the workspace. No
+role gate. `client` and `viewer` are active workspace members.
+
+I verified it and traced the history: the policy was written when the editable
+fields were name, description and dates, and a later migration
+(20260821140526) added a trigger guarding `visibility` specifically — so the
+shape was understood and defended once, for one column.
+
+Then F001 added `portal_enabled` to that table and nobody extended the trigger.
+
+A client can call PostgREST directly, set portal_enabled = true on any project
+in the workspace, and then read its phases, tasks, pages and requests through
+the exact gate F006b, F006h and F006i were built to enforce. Three features of
+security work, undone by one column added to a table whose write policy was
+never re-read.
+
+This is not inherited. The old policy was adequate for the columns it was
+written for. We added a security-critical column and did not check who could
+write it. Opened as F006k, blocker.
