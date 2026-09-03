@@ -245,3 +245,22 @@ Opened F006l (the class, blocker) and F006m (guest regression from F006i, minor)
 AS-002's remaining half — the badge counts approvals the client cannot decide,
 and its mock discards eq arguments — folded into F009, which implements
 decision-owner filtering anyway.
+- F008 COMPLETE (7d4291e + code in 8dd5377) — one RequestApprovalDialog from three entry points (task sheet beside the existing toggle, project doc header, standalone artifact URL), requestApproval enforcing AS-020 server-side, submission blocked when the project has no decision owner for the type, per-subject snapshots (task fields inline, doc body to storage, artifact URL never fetched), plus withdrawApproval and the "Who approves what" settings UI. 10 integration tests against the live project.
+
+### My mistake, not the worker's: commits interleaved
+
+F008's code files landed in commit 8dd5377, which is one of MY docs commits. Cause:
+I ran `git add -A missions/20260903-portal/ && git commit -m "docs(mission): ..."`
+while a worker had its own files already staged. `git add` was correctly scoped;
+`git commit` was not — it commits the whole index, not only what I just added.
+
+The tree is coherent and nothing was lost (verified: working tree matches history,
+F008's files are present and correct). Only the commit labelling is wrong, and
+rewriting history to fix a message is not worth the risk.
+
+Two changes to my own practice:
+1. Commit mission docs with an explicit pathspec — `git commit -- missions/...` —
+   so another agent's staged work can never ride along.
+2. Back to one worker at a time. I had been running two in parallel since the
+   remediation rounds because the file areas looked disjoint. They were. The
+   index is not.
