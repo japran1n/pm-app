@@ -127,3 +127,27 @@ page seam + AS-009), F006d (authz gaps), F006e (navigation and titles).
 M2 does not start until F006b and F006d are green.
 - F006b COMPLETE (719a061) — portal_enabled added to getPortalProjectOptions and getPortalRequests, client_visible added to the Live-now phase lookup, client_requests SELECT and INSERT policies gated via is_project_portal_enabled (migration 20260913010000), the test that locked the phase-name leak in rewritten, two-project reproduction added to f003-portal-shell. 108 tests pass.
   Orchestrator verification: portal_enabled now appears 10x in lib/queries/portal.ts; the phase lookup carries a client_visible filter with a comment naming the assertion; the migration folds the gate into both policies. Leak closed.
+- F006d COMPLETE (f02c036) — private-project visibility check added to bulkSetTaskPhase mirroring bulkUpdateTasks' partial-success behaviour, seed_default_phases converted to the is_project_workspace_writer allow-list, pg_temp restored on create_channel_atomic (migration 20260914010000, verified live via pg_proc.proconfig). Full SECURITY DEFINER sweep: all 6 functions this mission touched now pin pg_temp. 24/24 phase tests pass.
+  Orchestrator verification: the visibility check is present and substantial; the migration pins pg_temp in three places. Both M1 blockers are now closed.
+
+### Two findings from F006d's sweep, deliberately left out of scope
+
+1. `check_doc_folder_scope` (migration 20260904010000) sets
+   `search_path = public` with no `pg_temp`. Pre-existing, same class as
+   20260908010000. The worker opportunistically fixed it on the live database,
+   then correctly REVERTED that and left the migration file covering only its
+   own scope — an undocumented live-only change is exactly how a database
+   drifts from its migrations. Good judgement.
+
+2. **`pg_proc.proacl` shows `anon=X` (EXECUTE) on every function checked**,
+   including SECURITY DEFINER ones and ones that already `revoke all ... from
+   public`. Cause is a project-wide Supabase default privilege
+   (ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ... TO anon), not any migration
+   in this mission. Most functions check auth.uid() internally, so this is
+   likely harmless in practice — but "likely" is doing real work in that
+   sentence, and nobody has verified it per function.
+
+   Genuinely important, genuinely repo-wide, genuinely not this mission's job.
+   Recorded here rather than opened: taking it now would stall the portal for a
+   database-wide audit, and taking it never is how it gets forgotten. It should
+   be its own piece of work.
