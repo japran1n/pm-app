@@ -158,14 +158,29 @@ describe.skipIf(!haveCreds)("F011 decide_approval_atomic changes_requested creat
 
   afterAll(async () => {
     if (!admin) return;
-    await admin.from("comments").delete().eq("task_id", subjectTaskId);
-    await admin.from("approval_requests").delete().eq("project_id", projectId);
-    await admin.from("project_decision_owners").delete().eq("project_id", projectId);
-    await admin.from("tasks").delete().eq("project_id", projectId);
-    await admin.from("project_members").delete().eq("project_id", projectId);
-    await admin.from("projects").delete().eq("id", projectId);
-    await admin.from("workspace_members").delete().eq("workspace_id", workspaceId);
-    await admin.from("workspaces").delete().eq("id", workspaceId);
+    // F011b: this cleanup must not swallow a real failure the way it did
+    // when it reached the M2 gate — every delete's error is checked and
+    // thrown, not silently ignored. (The original version of this block
+    // deleted `approval_requests` before `tasks`, which incidentally
+    // never exercised the bug: a row already gone can't be blocked from
+    // being updated. F011b's own dedicated purge test below is what
+    // actually forces the bug's path — `tasks` gone while a settled
+    // `approval_requests` row still points at it — this block just must
+    // not hide it if it ever regresses.)
+    const steps: Array<[string, () => PromiseLike<{ error: unknown }>]> = [
+      ["comments", () => admin.from("comments").delete().eq("task_id", subjectTaskId)],
+      ["approval_requests", () => admin.from("approval_requests").delete().eq("project_id", projectId)],
+      ["project_decision_owners", () => admin.from("project_decision_owners").delete().eq("project_id", projectId)],
+      ["tasks", () => admin.from("tasks").delete().eq("project_id", projectId)],
+      ["project_members", () => admin.from("project_members").delete().eq("project_id", projectId)],
+      ["projects", () => admin.from("projects").delete().eq("id", projectId)],
+      ["workspace_members", () => admin.from("workspace_members").delete().eq("workspace_id", workspaceId)],
+      ["workspaces", () => admin.from("workspaces").delete().eq("id", workspaceId)],
+    ];
+    for (const [label, run] of steps) {
+      const { error } = await run();
+      if (error) throw new Error(`afterAll cleanup failed at ${label}: ${JSON.stringify(error)}`);
+    }
     for (const id of createdUserIds) await admin.auth.admin.deleteUser(id);
   }, 60_000);
 
@@ -300,5 +315,110 @@ describe.skipIf(!haveCreds)("F011 decide_approval_atomic changes_requested creat
       .eq("project_id", projectId)
       .ilike("title", "%vanished subject%");
     expect(leakedTasks).toEqual([]);
+  });
+
+  // F011b (AS-024): purge_task's `delete from tasks` turns
+  // `resulting_task_id`'s `on delete set null` into a real UPDATE on the
+  // linking approval_requests row. Before F011b, that UPDATE hit
+  // `prevent_approval_request_settled_update`'s unconditional
+  // `OLD.state <> 'pending'` guard and aborted the whole purge with
+  // 42501, permanently — the primary success case this feature fixes.
+  it("test_AS_024_purge_of_a_linked_resulting_task_succeeds_and_the_settled_decision_survives_unchanged", async () => {
+    const requestId = await insertPendingRequest(subjectTaskId);
+
+    const { data, error } = await clientSession.rpc("decide_approval_atomic", {
+      p_request_id: requestId,
+      p_decision: "changes_requested",
+      p_note: "F011b: purge the resulting task and confirm the decision survives.",
+    });
+    expect(error).toBeNull();
+    const row = Array.isArray(data) ? data[0] : data;
+    const resultingTaskId = row?.resulting_task_id as string;
+    expect(resultingTaskId).toBeTruthy();
+
+    const { data: beforePurge } = await admin
+      .from("approval_requests")
+      .select("state, decided_by, decided_at, decision_note, resulting_task_id")
+      .eq("id", requestId)
+      .single();
+    expect(beforePurge?.state).toBe("changes_requested");
+
+    // Trash the resulting task, then purge it — the exact chain the
+    // defect described: request changes -> task created and linked ->
+    // team trashes it -> purge.
+    const { error: trashError } = await admin
+      .from("tasks")
+      .update({ deleted_at: new Date().toISOString(), deleted_by: ownerId })
+      .eq("id", resultingTaskId);
+    expect(trashError).toBeNull();
+
+    const { data: purgeRows, error: purgeError } = await admin.rpc("purge_task", {
+      p_task_id: resultingTaskId,
+    });
+    expect(purgeError).toBeNull();
+    expect(purgeRows).toHaveLength(1);
+
+    const { data: afterPurgeTask } = await admin
+      .from("tasks")
+      .select("id")
+      .eq("id", resultingTaskId)
+      .maybeSingle();
+    expect(afterPurgeTask).toBeNull();
+
+    // AS-024's actual guarantee: the settled decision's own fields are
+    // untouched by the purge — only resulting_task_id, which carries no
+    // immutability rule of its own (F011's own header comment), is
+    // nulled by the FK's referential action.
+    const { data: afterPurge } = await admin
+      .from("approval_requests")
+      .select("state, decided_by, decided_at, decision_note, resulting_task_id")
+      .eq("id", requestId)
+      .single();
+    expect(afterPurge?.state).toBe(beforePurge?.state);
+    expect(afterPurge?.decided_by).toBe(beforePurge?.decided_by);
+    expect(afterPurge?.decided_at).toBe(beforePurge?.decided_at);
+    expect(afterPurge?.decision_note).toBe(beforePurge?.decision_note);
+    expect(afterPurge?.resulting_task_id).toBeNull();
+  });
+
+  // F011b (AS-024): the guarantee itself must still hold — a direct
+  // write to any of the four decision fields on a settled row is
+  // rejected, regardless of the exemption granted to resulting_task_id.
+  it("test_AS_024_a_direct_update_to_a_settled_decisions_own_fields_is_still_rejected", async () => {
+    const requestId = await insertPendingRequest(subjectTaskId);
+    const { error: decideError } = await clientSession.rpc("decide_approval_atomic", {
+      p_request_id: requestId,
+      p_decision: "changes_requested",
+      p_note: "F011b: this decision must stay immutable.",
+    });
+    expect(decideError).toBeNull();
+
+    const { error: stateUpdateError } = await admin
+      .from("approval_requests")
+      .update({ state: "approved" })
+      .eq("id", requestId);
+    expect(stateUpdateError).not.toBeNull();
+    expect((stateUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: noteUpdateError } = await admin
+      .from("approval_requests")
+      .update({ decision_note: "tampered" })
+      .eq("id", requestId);
+    expect(noteUpdateError).not.toBeNull();
+    expect((noteUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: decidedByUpdateError } = await admin
+      .from("approval_requests")
+      .update({ decided_by: ownerId })
+      .eq("id", requestId);
+    expect(decidedByUpdateError).not.toBeNull();
+    expect((decidedByUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: decidedAtUpdateError } = await admin
+      .from("approval_requests")
+      .update({ decided_at: new Date().toISOString() })
+      .eq("id", requestId);
+    expect(decidedAtUpdateError).not.toBeNull();
+    expect((decidedAtUpdateError as { code?: string } | null)?.code).toBe("42501");
   });
 });
