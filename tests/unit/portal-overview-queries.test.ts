@@ -193,6 +193,14 @@ let activeTimerRows: Row[];
 let projectMemberRows: Row[];
 let workspaceMemberRoleRows: Row[];
 let phaseRows: Row[];
+// F014 (missions/20260903-portal, AS-031): `getWorstOverdueBlockingDeliverableRisk`
+// (lib/queries/deliverables.ts) reads through the admin client too --
+// same real-row-set-through-applyFilters shape as every other admin-mock
+// table above/below, so a dropped filter here changes what the mock
+// returns, not just its shape.
+let adminDeliverableRows: Row[];
+let adminDeliverableRowsError: { message: string } | null;
+let holdsUpTaskRows: Row[];
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: vi.fn(() => ({
@@ -203,6 +211,57 @@ vi.mock("@/lib/supabase/admin", () => ({
             eq: vi.fn(() => ({
               maybeSingle: vi.fn(async () => ({ data: projectRow, error: null })),
             })),
+          })),
+        };
+      }
+      if (table === "client_deliverables") {
+        return {
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              not: vi.fn((col: string, op: string, val: unknown) => {
+                if (op === "is") filters.push(notNullFilter(col));
+                else if (op === "in") filters.push(notInFilter(col, val as string));
+                return builder;
+              }),
+              lt: vi.fn((col: string, val: unknown) => {
+                filters.push(ltFilter(col, val));
+                return builder;
+              }),
+              order: vi.fn((col: string, opts?: { ascending?: boolean }) => {
+                const ascending = opts?.ascending !== false;
+                const sortCol = col as string;
+                const originalRows = adminDeliverableRows;
+                adminDeliverableRows = [...originalRows].sort((a, b) => {
+                  const av = a[sortCol] as string;
+                  const bv = b[sortCol] as string;
+                  if (av === bv) return 0;
+                  return ascending ? (av < bv ? -1 : 1) : av < bv ? 1 : -1;
+                });
+                return builder;
+              }),
+              limit: vi.fn(async () => {
+                if (adminDeliverableRowsError) {
+                  return { data: null, error: adminDeliverableRowsError };
+                }
+                return {
+                  data: applyFilters(adminDeliverableRows, filters).slice(0, 1),
+                  error: null,
+                };
+              }),
+            };
+            return builder;
+          }),
+        };
+      }
+      if (table === "tasks") {
+        return {
+          select: vi.fn(() => ({
+            in: vi.fn(async () => ({ data: holdsUpTaskRows, error: null })),
           })),
         };
       }
@@ -284,6 +343,9 @@ beforeEach(() => {
   ownerRowsError = null;
   approvalRequestRows = [];
   approvalRequestsError = null;
+  adminDeliverableRows = [];
+  adminDeliverableRowsError = null;
+  holdsUpTaskRows = [];
 });
 
 describe("getPortalBadgeCounts — AS-002, AS-003", () => {
@@ -528,10 +590,134 @@ describe("getPortalWaitingOnYou — F006f (AS-002): one project-scoped query for
   });
 });
 
-describe("getPortalRisks — AS-031 (ships now, wired in M3)", () => {
-  it("test_AS_031_returns_an_empty_list_never_a_fabricated_risk", async () => {
+describe("getPortalRisks — AS-031", () => {
+  it("test_AS_031_returns_an_empty_list_when_nothing_qualifies_never_a_fabricated_risk", async () => {
     const risks = await getPortalRisks(PROJECT_ID);
     expect(risks).toEqual([]);
+  });
+
+  it("test_AS_031_names_the_worst_overdue_blocking_deliverable_and_what_it_moves", async () => {
+    projectRow = { id: PROJECT_ID, workspace_id: WORKSPACE_ID, target_launch_date: "2026-11-18" };
+    holdsUpTaskRows = [
+      {
+        id: "task-blogg",
+        title: "Write the Blog page",
+        page_slug: "blogg",
+        client_visible: true,
+        phase_id: null,
+        deleted_at: null,
+      },
+    ];
+    adminDeliverableRows = [
+      {
+        id: "deliverable-1",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "in_progress",
+        due_at: "2020-01-01",
+        task_id: "task-blogg",
+        kind: "copy",
+      },
+    ];
+
+    const risks = await getPortalRisks(PROJECT_ID);
+
+    expect(risks).toEqual([
+      {
+        id: "deliverable-1",
+        message:
+          "The Blogg page cannot be built without its copy, and 18 Nov moves with it.",
+      },
+    ]);
+  });
+
+  it("test_AS_031_falls_back_to_a_generic_subject_when_there_is_no_linked_task", async () => {
+    adminDeliverableRows = [
+      {
+        id: "deliverable-2",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "not_started",
+        due_at: "2020-01-01",
+        task_id: null,
+        kind: "access",
+      },
+    ];
+
+    const risks = await getPortalRisks(PROJECT_ID);
+
+    expect(risks).toEqual([
+      {
+        id: "deliverable-2",
+        message: "This item cannot be built without access to it, and the launch date moves with it.",
+      },
+    ]);
+  });
+
+  it("test_AS_031_picks_the_earliest_due_i_e_worst_deliverable_when_more_than_one_qualifies", async () => {
+    adminDeliverableRows = [
+      {
+        id: "less-overdue",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "in_progress",
+        due_at: "2020-06-01",
+        task_id: null,
+        kind: "copy",
+      },
+      {
+        id: "most-overdue",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "in_progress",
+        due_at: "2020-01-01",
+        task_id: null,
+        kind: "copy",
+      },
+    ];
+
+    const risks = await getPortalRisks(PROJECT_ID);
+
+    expect(risks).toHaveLength(1);
+    expect(risks[0].id).toBe("most-overdue");
+  });
+
+  it("test_AS_031_never_surfaces_a_delivered_deliverable_that_only_needs_review_not_a_new_upload", async () => {
+    // AS-030's counterpart on the risk banner: a client who already sent
+    // the file is not shown a "you're the risk" sentence -- the RPC
+    // filter (`not in (accepted, waived)`) still counts `delivered` as
+    // outstanding for the sidebar badge, but the risk banner's own copy
+    // is written for "this is still on the client", which a delivered
+    // item no longer is. This test documents the row it DOES still
+    // qualify (not_started/in_progress); `getOverdueBlockingDeliverableCount`
+    // (F012, tested above) is what proves `delivered` still counts
+    // against the badge.
+    adminDeliverableRows = [
+      {
+        id: "delivered-not-accepted",
+        project_id: PROJECT_ID,
+        blocking: true,
+        state: "delivered",
+        due_at: "2020-01-01",
+        task_id: null,
+        kind: "copy",
+      },
+    ];
+
+    const risks = await getPortalRisks(PROJECT_ID);
+
+    // `state = 'delivered'` still satisfies `not in (accepted, waived)`,
+    // so it still qualifies here -- the risk banner and the badge share
+    // the exact same filter (this feature's own design choice, see
+    // getWorstOverdueBlockingDeliverableRisk's doc comment), and a
+    // delivered-but-unreviewed item genuinely is still a risk to the
+    // launch date until the team reviews it.
+    expect(risks).toEqual([
+      {
+        id: "delivered-not-accepted",
+        message: "This item cannot be built without its copy, and the launch date moves with it.",
+      },
+    ]);
   });
 });
 

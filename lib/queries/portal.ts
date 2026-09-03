@@ -19,7 +19,10 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getOverdueBlockingDeliverableCount } from "@/lib/queries/deliverables";
+import {
+  getOverdueBlockingDeliverableCount,
+  getWorstOverdueBlockingDeliverableRisk,
+} from "@/lib/queries/deliverables";
 import { resolvePeople } from "@/lib/queries/people";
 import { resolveClientBucket, type ClientBucket } from "@/components/portal/status-label";
 
@@ -666,18 +669,24 @@ export type PortalRisk = {
   message: string;
 };
 
-// The overview's risk banner needs either "a blocking deliverable past
-// due" (F012's own deliverables table, M3) or "an approval open longer
-// than the project's threshold" (F007/F009, M2) to have anything to
-// show. Neither exists yet at M1 -- this stub returns an empty list so
-// `RiskBanner` (components/portal/risk-banner.tsx) renders nothing
-// today, honestly, rather than a placeholder banner (this feature's own
-// explicit "it must not render a placeholder" instruction). F014 is the
-// feature that gives this a real body; `RiskBanner`'s own props shape
-// does not need to change when that happens -- same extension-point
-// pattern as `getPortalBadgeCounts` above.
-export async function getPortalRisks(_projectId: string): Promise<PortalRisk[]> {
-  return [];
+// F014 (missions/20260903-portal, AS-031): "a blocking deliverable past
+// due" is the one risk source this function surfaces today. "An approval
+// open longer than the project's threshold" (F007/F009, M2) is still not
+// built -- this function's own return type stays a plain array precisely
+// so a second risk source can be appended here later without changing
+// `RiskBanner`'s (components/portal/risk-banner.tsx) props shape at all,
+// the same extension-point pattern `getPortalBadgeCounts` above already
+// uses. Zero or one entries today: `getWorstOverdueBlockingDeliverableRisk`
+// (lib/queries/deliverables.ts) only ever names the SINGLE worst overdue
+// blocking deliverable, per this feature's own spec ("naming the worst
+// one and what it moves") -- never a whole list of every overdue item,
+// which would read as noise rather than the one place the portal is
+// allowed to be uncomfortable. `null` renders nothing at all (no empty
+// banner shell), matching this file's own "must not render a
+// placeholder" instruction, unchanged from before this feature.
+export async function getPortalRisks(projectId: string): Promise<PortalRisk[]> {
+  const risk = await getWorstOverdueBlockingDeliverableRisk(projectId);
+  return risk ? [risk] : [];
 }
 
 // --- Live now (F006, missions/20260903-portal; P3, docs/client-portal-

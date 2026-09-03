@@ -2720,6 +2720,13 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      mark_deliverable_delivered_atomic: {
+        Args: { p_deliverable_id: string }
+        Returns: {
+          deliverable_id: string
+          state: string
+        }[]
+      }
       notify_overdue_task_assignees: { Args: never; Returns: number }
       purge_comment: {
         Args: { p_comment_id: string }
