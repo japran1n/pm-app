@@ -32,6 +32,8 @@ Request changes / open-artifact link.
   clicks Approve and watches the card vanish cannot tell success from a
   crash.
 
+**Also fix here:** `PortalOverviewLive` is workspace-wide while the shell is project-scoped (F006 finding), so its strip can surface another project's rows. Scope it to the current project as part of this rewire.
+
 Reuse and then delete `components/portal/approval-actions.tsx`, whose
 task-boolean path this supersedes. Its test file
 (`approval-actions.test.tsx`) must be carried over, not dropped.

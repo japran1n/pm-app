@@ -59,3 +59,36 @@ would have both sessions hitting the same Supabase project and manufacturing
 the very rate-limit failures we are trying to attribute.
 - F005 COMPLETE (54c1e80) — getPortalPages (batched resolvePeople, page_order nulls-last), status-distribution, pages-table with client-side filter, page-travel-strip, pageSlug/pageOrder editing in the task sheet. 20 new tests + 59 pre-existing pass.
   Finding promoted to F005b: the query matches the page task type with `.ilike("name", "page")`. The worker documented the tradeoff honestly — task_types has no seeded rows to match on — but the result is that a workspace naming the type "Sida" or "Stranica" gets an EMPTY Pages view with no error, and a rename silently empties a client's view. Same string-matching failure mode F004 was forbidden to use for statuses. Fixing with a system_key column before M2.
+- F005b COMPLETE (aee35c0) — task_types.system_key (migration 20260912010000, applied live, backfilled, seeded inside create_workspace_with_owner), getPortalPages now matches on the key, "Portal" badge in the task-type manager.
+  Orchestrator verification: zero `ilike("name"` remaining in lib/queries/portal.ts; handoff committed.
+- F006 COMPLETE — overview with risk banner slot, four tiles, phase timeline SVG, waiting strip, activity list, right rail (live-now, hours placeholder, team). getPortalBadgeCounts given a real body. 118 tests pass. **M1 COMPLETE.**
+  Two flagged items, both handled rather than left: AS-002's badge reads pending_client_approval until F009 switches it to approval_requests, and AS-003 is an honest documented zero until F012 — correct, since inventing either number would violate the mission's no-fabricated-data rule.
+  PortalOverviewLive remains workspace-wide while the shell is now project-scoped, so its strip can show another project's rows. Real defect, but F009 rewires that exact component — folded into F009's spec instead of spending a worker session on it now.
+
+## M1 gate
+
+Full suite, run with no worker active: **2908 passed / 38 failed / 137 skipped** across 426 files.
+
+Attribution of the 38:
+- 55 "Request rate limit reached" errors from Supabase Auth. Every failure in
+  f002-phase-management (4), f228, f226, rls-saved-views, rls-project-favorites,
+  f224, f222, comment-format-realtime and workspace-members-list traces to a
+  rate-limited sign-in in setup, not to an assertion about behaviour. This is
+  direct evidence for the claim F001 made and I recorded as unverified — now
+  substantiated.
+- perf-budget (2): getProjectBoardTasks p95 at 968ms and 1149ms against a 500ms
+  budget. My first suspicion was ours: F001 added `portal_enabled` to the tasks
+  client-visibility predicate, and an extra subquery on the hottest query in the
+  app would show up exactly here. Re-ran the file in isolation: **2 passed**. It
+  is contention from 426 concurrent files, not an RLS regression.
+- f231-my-tasks (4): 42501 insufficient_privilege cascading from a rate-limited
+  setup step. Pre-existing feature, not touched by M1.
+
+**Verdict: no M1 regression detected by the suite.**
+
+Finding worth its own work later, outside this mission: the suite cannot be
+trusted as a gate while it signs in per test against a shared Supabase project.
+A full run manufactures its own failures, which is why every worker in this
+mission was told not to run it. Fixing that (a pooled test user, or service-role
+provisioning instead of sign-in) would make every future milestone gate cheap
+and honest. Recorded, not opened — it is not this mission's job.
