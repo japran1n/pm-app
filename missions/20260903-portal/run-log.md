@@ -395,3 +395,5 @@ lets a client open the body snapshot of a doc they could not otherwise read.
 That is the feature working — the team deliberately asked this client to approve
 that document, and the snapshot is the scoped disclosure that request implies.
 Requiring the doc to be client-visible first would make doc approvals useless.
+- F012 COMPLETE — client_deliverables, project_scope_items, project_decisions and project_assumptions (migration 20260926010000), RLS copied from the current client gate including portal_enabled, no client write path on any of the four. Read-side queries in lib/queries/{deliverables,project-records}.ts. 23 tests: the three-per-table leak set (select, count, RPC predicate) plus client_visible absence and write-path denial. project_risks and flag_assumption_atomic correctly left out per spec.
+  AS-003 stops being a deferred zero here: getPortalBadgeCounts now carries the real overdue-blocking-deliverables count instead of F009's placeholder, and the stale "table doesn't exist yet" fixture was updated rather than left to rot.
