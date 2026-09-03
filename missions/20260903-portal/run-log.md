@@ -490,3 +490,49 @@ complete, I will say so plainly rather than manufacturing activity.
 - F016d COMPLETE — public.client_gate() extracted (migration 20261001010000) and six client-callable RPCs routed through it with per-call flags: flag_assumption_atomic (closing AS-046's missing client_visible check), mark_deliverable_delivered_atomic, decide_approval_atomic, assert_portal_task_actionable_by_client, accept_client_request_atomic, send_change_request_quote_atomic. Plus a BEFORE UPDATE trigger on F006k's pattern pinning F016's twelve triage/decision columns against author writes, with a transaction-local bypass for the two legitimate SECURITY DEFINER writers. 109 tests.
   This is the first fix in the mission aimed at a class rather than an instance. Five times the same gate was applied in some places and forgotten in another; there is now one predicate to forget, and forgetting it means not calling a function that every sibling RPC calls — visible in review rather than invisible.
 - F016e COMPLETE — one unified deliverables-past-due query serving both the badge and the view (AS-003), change requests scoped by project in RLS rather than by created_by so two people from one client company see the same picture (AS-048), re-quoting withdraws the prior approval with a partial unique index making the scope-item insert idempotent, and the sweep records swept_at so a human's decision to unblock outlasts the next cron tick. The test named for that case now actually re-runs the sweep. Migration 20261002010000.
+
+### M3 re-scrutiny: three blockers. One of them is a call I got wrong in M1.
+
+Report: missions/20260903-portal/milestones/M3-scrutiny-2.md
+
+The cross-workspace blocker is genuinely closed, and verified properly this time:
+the reviewer read pg_get_constraintdef and pg_constraint.confdelsetcols on the
+APPLIED catalog and executed cross-project writes inside rolled-back transactions
+rather than reading the migration text. The PG15 ON DELETE SET NULL (col)
+construct does exactly what F016c believed.
+
+**Blocker 1 — the class moved from UPDATE to INSERT.** F016d's guard trigger is
+BEFORE UPDATE only, and client_requests_insert_own pins none of the thirteen
+triage columns. A client can POST a request with client_decision='approved',
+defeating AS-047's gate outright, and can set approval_request_id to hijack the
+sync trigger into writing their own text into project_scope_items. Sixth
+occurrence of the same class, in the one shape nobody had checked.
+
+**Blocker 2 — the default ACL, which I deferred in M1 and should not have.**
+`revoke all ... from public` does not remove Supabase's default per-role grants.
+pg_default_acl here is {postgres=X, anon=X, authenticated=X, service_role=X}, so
+sweep_overdue_blocking_deliverables — SECURITY DEFINER, zero authz — is callable
+by anyone with the publishable key, and purge_task, which has no internal check
+at all, hard-deletes any trashed task in any workspace.
+
+F006d found this in M1. I read it, judged it "likely harmless because most
+functions check auth.uid() internally", noted that "likely is doing real work in
+that sentence", and deferred it. The judgement was wrong in the way that matters:
+I reasoned about the population and never checked the exceptions. Two functions
+in that population have no check at all and one of them is destructive.
+
+Round 1 of this milestone's own review also asserted the sweep was "granted to
+postgres, service_role only" — wrong, and it agreed with my earlier conclusion,
+which is exactly when a wrong belief is hardest to dislodge.
+
+**Blocker 3 — F016e over-corrected.** swept_at is never reset and is stamped on
+every overdue deliverable of a task rather than the one acted on, so a task that
+should be re-blocked for a second deliverable never is. It also silently reverted
+send_change_request_quote_atomic off client_gate one migration after F016d put it
+there, and dropped F016c's project join predicate while leaving F016c's comment
+claiming it.
+
+Opened F016g (the ACL blocker — running first, because an anon-reachable
+destructive function is the worst thing on this list), then F016f (the INSERT
+hole and the two silent reverts), then F016h (sweep semantics and the two
+assertions whose render paths have no tests).
