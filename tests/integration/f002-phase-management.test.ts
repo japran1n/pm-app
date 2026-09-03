@@ -87,6 +87,13 @@ describe.skipIf(!haveAdminCreds)(
     let clientEmail: string; // workspace "client" — denied by every predicate this feature uses
     const clientPassword = "Test-password-1!";
 
+    // F006d: a workspace "member" who is NOT an explicit member of a
+    // private project — the fixture bulkSetTaskPhase's private-project
+    // gate needs, mirroring bulk-update-tasks.test.ts's AS-341 fixture.
+    let memberEmail: string;
+    const memberPassword = "Test-password-1!";
+    let privateProjectId: string;
+
     async function signInAs(email: string, password: string) {
       const signInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error } = await signInClient.auth.signInWithPassword({ email, password });
@@ -148,10 +155,14 @@ describe.skipIf(!haveAdminCreds)(
       const clientUser = await createUser("client");
       clientEmail = clientUser.email;
 
+      const member = await createUser("member");
+      memberEmail = member.email;
+
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
         { workspace_id: workspaceId, user_id: viewer.id, role: "viewer", status: "active" },
         { workspace_id: workspaceId, user_id: clientUser.id, role: "client", status: "active" },
+        { workspace_id: workspaceId, user_id: member.id, role: "member", status: "active" },
       ]);
       if (memberInsertErr) throw new Error(`Failed to seed members: ${memberInsertErr.message}`);
 
@@ -169,6 +180,33 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       projectId = proj.id;
       createdProjectIds.push(projectId);
+
+      // F006d: a private project `memberEmail` is an active workspace
+      // member of but has NO explicit `project_members` row for — the
+      // scenario bulkSetTaskPhase's restored private-project gate must
+      // reject (mirrors bulk-update-tasks.test.ts's AS-341 fixture).
+      const { data: privateProj, error: privateProjErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F002 Private Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "private",
+        })
+        .select("id")
+        .single();
+      if (privateProjErr || !privateProj) {
+        throw new Error(`Failed to create private project: ${privateProjErr?.message}`);
+      }
+      privateProjectId = privateProj.id;
+      createdProjectIds.push(privateProjectId);
+
+      const { error: pmErr } = await adminClient.from("project_members").insert({
+        project_id: privateProjectId,
+        user_id: ownerUserId,
+        project_role: "lead",
+      });
+      if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
     });
 
     beforeEach(() => {
@@ -444,6 +482,137 @@ describe.skipIf(!haveAdminCreds)(
           tasks.map((t) => t.id),
         );
       expect((rows ?? []).every((r) => r.phase_id === phase.data.id)).toBe(true);
+    });
+
+    // ------------------------------------------------------------------
+    // F006d primary success test: bulkSetTaskPhase's private-project
+    // visibility gate (M1 scrutiny M1 / FU-5) — a workspace member who
+    // is not an explicit member of a private project cannot set a phase
+    // on that project's tasks through this action, called directly.
+    // Mirrors bulkUpdateTasks' AS-341 test in
+    // tests/integration/bulk-update-tasks.test.ts.
+    // ------------------------------------------------------------------
+
+    it("F006d: bulkSetTaskPhase rejects a task in a private project the caller isn't an explicit member of", async () => {
+      const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
+
+      // The phase must be created by the owner (an explicit private-project
+      // member) so the phase itself exists in the private project.
+      await signInAs(ownerEmail, ownerPassword);
+      const phase = await createPhase({ projectId: privateProjectId, name: "Private phase" });
+      expect(phase.ok).toBe(true);
+      if (!phase.ok) return;
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: privateProjectId,
+          title: "F006d private-project task",
+          author_id: ownerUserId,
+          status: "todo",
+        })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
+
+      // memberEmail is an active workspace member (passes canEditTask) but
+      // has no project_members row for privateProjectId.
+      await signInAs(memberEmail, memberPassword);
+      const result = await bulkSetTaskPhase([task.id], phase.data.id);
+
+      // Same partial-success shape as bulkUpdateTasks: the call itself
+      // succeeds, the forbidden task is reported in failedIds, not thrown.
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.succeededIds).toHaveLength(0);
+      expect(result.data.failedIds).toHaveLength(1);
+      expect(result.data.failedIds[0]?.id).toBe(task.id);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("phase_id")
+        .eq("id", task.id)
+        .single();
+      expect(row?.phase_id).toBeNull();
+    });
+
+    it("F006d: bulkSetTaskPhase still succeeds for a private-project task the caller IS an explicit member of", async () => {
+      const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
+      await signInAs(ownerEmail, ownerPassword);
+
+      const phase = await createPhase({ projectId: privateProjectId, name: "Private phase, permitted" });
+      expect(phase.ok).toBe(true);
+      if (!phase.ok) return;
+
+      const { data: task, error: taskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: privateProjectId,
+          title: "F006d private-project task, owner-permitted",
+          author_id: ownerUserId,
+          status: "todo",
+        })
+        .select("id")
+        .single();
+      if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
+
+      // ownerEmail IS an explicit project_members row for privateProjectId
+      // (seeded in beforeAll), so the private-project gate must not reject.
+      const result = await bulkSetTaskPhase([task.id], phase.data.id);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.failedIds).toHaveLength(0);
+      expect(result.data.succeededIds).toEqual([task.id]);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("phase_id")
+        .eq("id", task.id)
+        .single();
+      expect(row?.phase_id).toBe(phase.data.id);
+    });
+
+    // ------------------------------------------------------------------
+    // F006d failure test: seed_default_phases is called directly over
+    // the RPC boundary (not through the withAuthz-gated Server Action),
+    // exactly the path M1 scrutiny's M2 finding describes — a viewer
+    // must be rejected by the RPC's OWN internal role check, not merely
+    // by the Server Action wrapper.
+    // ------------------------------------------------------------------
+
+    it("F006d: a viewer calling seed_default_phases directly over RPC is rejected with 42501, and nothing is inserted", async () => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-viewer-rpc`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F006d viewer-rpc-denied Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "workspace",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      const viewerClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+      const { error: signInErr } = await viewerClient.auth.signInWithPassword({
+        email: viewerEmail,
+        password: viewerPassword,
+      });
+      if (signInErr) throw new Error(`Failed to sign in viewer: ${signInErr.message}`);
+
+      const { error: rpcError } = await viewerClient.rpc("seed_default_phases", {
+        p_project_id: proj.id,
+      });
+      expect(rpcError).not.toBeNull();
+      expect(rpcError?.code).toBe("42501");
+
+      const { data: rows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(rows ?? []).toHaveLength(0);
     });
 
     // ------------------------------------------------------------------

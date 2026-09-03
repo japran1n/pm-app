@@ -745,16 +745,22 @@ export async function bulkSetTaskPhase(
 
   type TaskRow = {
     id: string;
-    projects: { id: string; workspace_id: string } | { id: string; workspace_id: string }[];
+    projects:
+      | { id: string; workspace_id: string; visibility: ProjectVisibility }
+      | { id: string; workspace_id: string; visibility: ProjectVisibility }[];
   };
   const rows = (taskRows ?? []) as TaskRow[];
 
-  type Context = { workspaceId: string; projectId: string };
+  type Context = { workspaceId: string; projectId: string; visibility: ProjectVisibility };
   const contexts = new Map<string, Context>();
   for (const row of rows) {
     const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
     if (!project?.workspace_id) continue;
-    contexts.set(row.id, { workspaceId: project.workspace_id, projectId: project.id });
+    contexts.set(row.id, {
+      workspaceId: project.workspace_id,
+      projectId: project.id,
+      visibility: project.visibility ?? "workspace",
+    });
   }
 
   const failedIds: { id: string; reason: string }[] = [];
@@ -782,6 +788,29 @@ export async function bulkSetTaskPhase(
     phaseProjectId = (phaseRow as { project_id: string } | null)?.project_id ?? null;
   }
 
+  // Private-project visibility (mirrors bulkUpdateTasks'
+  // lib/actions/tasks.ts:3994-4012 rule, re-applied here): only needed
+  // for tasks whose project is actually private — one extra query
+  // covering every such project in this call, not one per task. Without
+  // this, a workspace member who is a member of the workspace but NOT of
+  // a private project's `project_members` could write `phase_id` on that
+  // project's tasks through this admin-client bulk path even though
+  // `setTaskPhase` (via `requireVisibility`) rejects the identical call.
+  const privateProjectIds = new Set(
+    [...contexts.values()].filter((c) => c.visibility === "private").map((c) => c.projectId),
+  );
+  const explicitMemberProjectIds = new Set<string>();
+  if (privateProjectIds.size > 0) {
+    const { data: memberRows } = await admin
+      .from("project_members")
+      .select("project_id")
+      .in("project_id", [...privateProjectIds])
+      .eq("user_id", user.id);
+    for (const row of memberRows ?? []) {
+      explicitMemberProjectIds.add(row.project_id as string);
+    }
+  }
+
   const allowedIds: string[] = [];
   for (const [id, context] of contexts) {
     const role = roleByWorkspace.get(context.workspaceId);
@@ -791,6 +820,15 @@ export async function bulkSetTaskPhase(
     }
     if (!canEditTask({ role })) {
       failedIds.push({ id, reason: "You don't have permission to edit this task." });
+      continue;
+    }
+    if (
+      context.visibility === "private" &&
+      role !== "owner" &&
+      role !== "admin" &&
+      !explicitMemberProjectIds.has(context.projectId)
+    ) {
+      failedIds.push({ id, reason: "You don't have access to this task's project." });
       continue;
     }
     if (
