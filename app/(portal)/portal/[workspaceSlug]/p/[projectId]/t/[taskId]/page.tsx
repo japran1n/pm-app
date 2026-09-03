@@ -6,6 +6,7 @@ import { getPortalTaskDetail } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { PortalConversation } from "@/components/portal/conversation";
 import { PortalApprovalActions } from "@/components/portal/approval-actions";
+import { PortalTaskTitleAnnouncer } from "@/components/portal/portal-task-title-announcer";
 
 // C7: one shared task, with the conversation the client is part of.
 //
@@ -47,6 +48,11 @@ export default async function PortalTaskPage({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* F006e (missions/20260903-portal, AS-004): announces this task's
+          title up to the shell's topbar, which otherwise has no way to
+          know it -- see `portal-title-context.tsx`. Renders nothing. */}
+      <PortalTaskTitleAnnouncer title={task.title} />
+
       <div className="flex flex-col gap-4">
         <Link
           href={`/portal/${workspace.slug}/p/${task.projectId}`}

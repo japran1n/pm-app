@@ -28,8 +28,10 @@ import {
   Clock,
   FileText,
   Globe,
+  Inbox,
   LayoutDashboard,
   ListChecks,
+  Paperclip,
   ScrollText,
   TrendingUp,
   type LucideIcon,
@@ -101,6 +103,25 @@ export function buildPortalNavItems(
   ];
 }
 
+// TEMPORARY (F006e, missions/20260903-portal M1 remediation): Files and
+// Requests have no other entry point. F003 deleted `portal-nav.tsx`
+// (the only link to them); F003b then relocated both routes under this
+// project shell without adding a replacement, so until this feature they
+// were unreachable UI -- and Requests is the client's only *write* path
+// in the whole portal. F003b's own spec says they belong inside "Your
+// site" (F023) and "Scope & decisions" (F016) once those views exist;
+// both are still stubs today. This function -- and the secondary section
+// `PortalSidebar` renders it into below -- exist ONLY to bridge that gap.
+// DELETE this function and its call sites the moment F016 and F023 land
+// with a real entry point for these two views; do not carry them forward
+// as permanent nav items.
+export function buildPortalSecondaryNavItems(basePath: string): PortalNavItem[] {
+  return [
+    { key: "files", label: "Files", href: `${basePath}/files`, icon: Paperclip },
+    { key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox },
+  ];
+}
+
 function isItemActive(pathname: string, item: PortalNavItem): boolean {
   return item.exact
     ? pathname === item.href
@@ -123,10 +144,16 @@ function NavRow({
   item,
   active,
   onNavigate,
+  // TEMPORARY (F006e): "secondary" renders smaller and dimmer than the
+  // eight primary views, per this feature's own "visually secondary"
+  // instruction -- delete this prop along with `buildPortalSecondaryNavItems`
+  // once F016/F023 give Files and Requests a permanent home.
+  variant = "primary",
 }: {
   item: PortalNavItem;
   active: boolean;
   onNavigate?: () => void;
+  variant?: "primary" | "secondary";
 }) {
   const Icon = item.icon;
   return (
@@ -136,13 +163,21 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(
-        "flex w-full shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+        "flex w-full shrink-0 items-center rounded-md transition-colors",
+        variant === "secondary"
+          ? "gap-2 px-3 py-1.5 text-tag"
+          : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
-          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          : variant === "secondary"
+            ? "text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <Icon
+        className={variant === "secondary" ? "size-3.5 shrink-0" : "size-4 shrink-0"}
+        aria-hidden="true"
+      />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       <NavBadge item={item} />
     </Link>
@@ -173,6 +208,8 @@ export function PortalSidebar({
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
   const items = buildPortalNavItems(basePath, badges);
+  // TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s own comment.
+  const secondaryItems = buildPortalSecondaryNavItems(basePath);
 
   const brand = (
     <Link href={`/portal/${workspaceSlug}`} className="flex items-center gap-2.5">
@@ -231,6 +268,20 @@ export function PortalSidebar({
           {items.map((item) => (
             <NavRow key={item.key} item={item} active={isItemActive(pathname, item)} />
           ))}
+
+          {/* TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s
+              own comment for why these two rows exist and when to
+              remove them. */}
+          <div className="mt-2 flex flex-col gap-0.5 border-t border-sidebar-border pt-2">
+            {secondaryItems.map((item) => (
+              <NavRow
+                key={item.key}
+                item={item}
+                active={isItemActive(pathname, item)}
+                variant="secondary"
+              />
+            ))}
+          </div>
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-sidebar-border p-3">
@@ -259,6 +310,18 @@ export function PortalSidebar({
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2">
           {items.map((item) => (
             <NavRow key={item.key} item={item} active={isItemActive(pathname, item)} />
+          ))}
+          {/* TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s
+              own comment for why these two rows exist and when to
+              remove them. Same horizontal strip, no separate row on
+              mobile (there is no vertical space to spare for one). */}
+          {secondaryItems.map((item) => (
+            <NavRow
+              key={item.key}
+              item={item}
+              active={isItemActive(pathname, item)}
+              variant="secondary"
+            />
           ))}
         </nav>
       </div>

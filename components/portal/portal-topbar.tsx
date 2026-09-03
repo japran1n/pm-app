@@ -1,17 +1,37 @@
 "use client";
 
 // F003 (missions/20260903-portal, AS-004, AS-005): the sticky topbar over
-// the view container -- a mono uppercase breadcrumb eyebrow, the current
-// view's title, and the two launch chips. Client Component for the same
-// single reason as `portal-sidebar.tsx`: the "view title" is derived from
-// `usePathname()` against the same nav item list the sidebar builds, so
-// the two never name a view differently. Everything else here (project
-// name, launch date/confidence) is server-fetched and passed down as
-// plain props -- this component makes no query of its own.
+// the view container -- a mono uppercase project-name eyebrow (NOT a
+// multi-segment breadcrumb -- the portal is one project deep, so a
+// single line naming the current project is the whole trail; checked
+// under F006e's own "check the breadcrumb for the same failure"
+// instruction and confirmed route-independent: it renders `projectName`
+// unconditionally, the same on every one of the eleven routes under this
+// shell, so it was never at risk of the title bug below), the current
+// view's title, and the two launch chips. Everything but the title is
+// server-fetched and passed down as plain props -- this component makes
+// no query of its own.
+//
+// F006e (missions/20260903-portal, AS-004): the view title used to be
+// looked up in `buildPortalNavItems`'s eight-item list -- so any route
+// NOT in that list (files, requests, task detail) fell through to
+// `items[0]` and always printed "Overview". Fixed by decoupling title
+// resolution from the sidebar's nav-item list entirely: the title now
+// comes from matching the pathname's first segment after `basePath`
+// against a dedicated route-title map (covering every route under this
+// shell, sidebar-visible or not) with a humanized fallback, so a route
+// neither list has ever heard of still gets a
+// reasonable title instead of "Overview" -- "titled correctly by
+// construction rather than by someone remembering to update a second
+// list", per this feature's own spec. Task detail is the one route with
+// no static title (a task's own title isn't in any list); its real title
+// arrives via `usePortalTitleOverride()`, announced by
+// `PortalTaskTitleAnnouncer` from the page that fetches it (see
+// `portal-title-context.tsx`).
 import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
-import { buildPortalNavItems, type PortalBadgeCounts } from "@/components/portal/portal-sidebar";
+import { usePortalTitleOverride } from "@/components/portal/portal-title-context";
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
 
 const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
@@ -19,6 +39,56 @@ const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   at_risk: "At risk",
   slipped: "Slipped",
 };
+
+// The eight primary views' own titles, kept here (not read from
+// `buildPortalNavItems`) so this map covers every route under the shell,
+// not only the ones the sidebar happens to display -- see this file's
+// own header comment for why that distinction is the whole fix.
+const STATIC_ROUTE_TITLES: Record<string, string> = {
+  "": "Overview",
+  approvals: "Approvals",
+  "your-list": "Your list",
+  pages: "Pages",
+  hours: "Hours",
+  results: "Results",
+  scope: "Scope & decisions",
+  site: "Your site",
+  // TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems` in
+  // `portal-sidebar.tsx`. Remove alongside that function.
+  files: "Files",
+  requests: "Requests",
+};
+
+// A path segment humanizes into a Title Case guess ("deliverables" ->
+// "Deliverables", "site-map" -> "Site Map") when it isn't in
+// `STATIC_ROUTE_TITLES` above -- the DoD's own failure test: a route
+// added later without touching any list still gets a real title instead
+// of silently mislabeling itself "Overview".
+function humanizeSegment(segment: string): string {
+  return segment
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/** Exported for its own unit test: resolves the static (route-only)
+ * title for any pathname under `basePath`. Does NOT know about the task
+ * detail route's real title (that's a runtime override, not a static
+ * route table) -- callers needing that combine this with
+ * `usePortalTitleOverride()`, as `PortalTopbar` does below. */
+export function resolvePortalStaticTitle(pathname: string, basePath: string): string {
+  if (pathname === basePath) return STATIC_ROUTE_TITLES[""];
+
+  const rest = pathname.startsWith(`${basePath}/`)
+    ? pathname.slice(basePath.length + 1)
+    : pathname;
+  const [firstSegment] = rest.split("/");
+
+  if (firstSegment === "t") return "Task";
+
+  return STATIC_ROUTE_TITLES[firstSegment] ?? humanizeSegment(firstSegment);
+}
 
 function formatLaunchDate(iso: string | null): string {
   if (!iso) return "—";
@@ -40,37 +110,25 @@ export function PortalTopbar({
   workspaceSlug,
   projectId,
   projectName,
-  badges,
   targetLaunchDate,
   launchConfidence,
 }: {
   workspaceSlug: string;
   projectId: string;
   projectName: string;
-  badges: PortalBadgeCounts;
   targetLaunchDate: string | null;
   launchConfidence: PortalLaunchConfidence | null;
 }) {
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
-  const items = buildPortalNavItems(basePath, badges);
-  // Exact match first (this is how "Overview" itself, whose own href IS
-  // `basePath`, gets picked); the prefix fallback deliberately excludes
-  // `exact` items, since Overview's href is a literal PREFIX of every
-  // other item's href (`${basePath}/approvals`, etc) and would otherwise
-  // always win the prefix search first, mislabeling every other view as
-  // "Overview" -- the exact same footgun `isItemActive`
-  // (`portal-sidebar.tsx`) avoids for the same reason.
-  const active =
-    items.find((item) => pathname === item.href) ??
-    items.find((item) => !item.exact && pathname.startsWith(`${item.href}/`)) ??
-    items[0];
+  const titleOverride = usePortalTitleOverride();
+  const title = titleOverride ?? resolvePortalStaticTitle(pathname, basePath);
 
   return (
     <header className="sticky top-0 z-10 flex flex-col gap-1 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
       <span className="text-tag text-muted-foreground">{projectName}</span>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-h4 font-semibold tracking-tight">{active.label}</h1>
+        <h1 className="text-h4 font-semibold tracking-tight">{title}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
           <Badge variant="outline">

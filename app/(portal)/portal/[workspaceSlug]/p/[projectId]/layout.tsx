@@ -8,6 +8,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { PortalTopbar } from "@/components/portal/portal-topbar";
+import { PortalTitleProvider } from "@/components/portal/portal-title-context";
 
 // F003 (missions/20260903-portal, AS-001, AS-004, AS-005, AS-006): the
 // prototype's own shell -- fixed-width sticky sidebar (brand, project
@@ -71,35 +72,44 @@ export default async function PortalProjectLayout({
   if (!project) notFound();
 
   return (
-    <div className="flex min-h-svh flex-col md:flex-row">
-      <PortalSidebar
-        workspaceSlug={workspace.slug}
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        workspaceLogoUrl={workspace.logo_url}
-        projectId={project.id}
-        projectName={project.name}
-        hasMultipleProjects={projects.length > 1}
-        badges={badges}
-        currentUser={{
-          id: user.id,
-          name: profile?.displayName ?? null,
-          email: user.email ?? null,
-          avatarUrl: profile?.avatarUrl ?? null,
-        }}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <PortalTopbar
+    // F006e (missions/20260903-portal, AS-004): `PortalTitleProvider`
+    // lets the task-detail page (nested several levels down inside
+    // `children`) announce its own task's title up to `PortalTopbar`
+    // without either component needing to know about the other's data --
+    // same "leaf announces itself upward" shape `BreadcrumbProvider`
+    // already uses one level up in the app
+    // (`app/(workspace)/w/[workspaceSlug]/layout.tsx`), for the same
+    // reason. See `components/portal/portal-title-context.tsx`.
+    <PortalTitleProvider>
+      <div className="flex min-h-svh flex-col md:flex-row">
+        <PortalSidebar
           workspaceSlug={workspace.slug}
+          workspaceId={workspace.id}
+          workspaceName={workspace.name}
+          workspaceLogoUrl={workspace.logo_url}
           projectId={project.id}
           projectName={project.name}
+          hasMultipleProjects={projects.length > 1}
           badges={badges}
-          targetLaunchDate={project.targetLaunchDate}
-          launchConfidence={project.launchConfidence}
+          currentUser={{
+            id: user.id,
+            name: profile?.displayName ?? null,
+            email: user.email ?? null,
+            avatarUrl: profile?.avatarUrl ?? null,
+          }}
         />
-        <main className="flex-1 px-6 py-8">{children}</main>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <PortalTopbar
+            workspaceSlug={workspace.slug}
+            projectId={project.id}
+            projectName={project.name}
+            targetLaunchDate={project.targetLaunchDate}
+            launchConfidence={project.launchConfidence}
+          />
+          <main className="flex-1 px-6 py-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </PortalTitleProvider>
   );
 }

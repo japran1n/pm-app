@@ -13,7 +13,11 @@ vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
 
-import { PortalSidebar, buildPortalNavItems } from "@/components/portal/portal-sidebar";
+import {
+  PortalSidebar,
+  buildPortalNavItems,
+  buildPortalSecondaryNavItems,
+} from "@/components/portal/portal-sidebar";
 
 const baseProps = {
   workspaceSlug: "acme",
@@ -152,5 +156,62 @@ describe("PortalSidebar (F003)", () => {
     const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
 
     expect(html).not.toContain(">0<");
+  });
+});
+
+// F006e (missions/20260903-portal): TEMPORARY -- Files and Requests had
+// no entry point anywhere in the portal (M6 in the M1 scrutiny report).
+// These tests assert the stopgap sidebar rows exist and are removed from
+// `buildPortalNavItems`'s own eight-item contract (so
+// `test_AS_001_lists_all_eight_views_in_order` above keeps asserting
+// exactly what AS-001's text says, unchanged).
+describe("PortalSidebar temporary Files/Requests entries (F006e)", () => {
+  it("test_AS_001_the_primary_eight_item_list_does_not_grow_to_include_the_temporary_entries", () => {
+    const items = buildPortalNavItems("/portal/acme/p/proj-1", {
+      approvalsAwaiting: 0,
+      deliverablesPastDue: 0,
+    });
+
+    expect(items).toHaveLength(8);
+    expect(items.map((item) => item.label)).not.toContain("Files");
+    expect(items.map((item) => item.label)).not.toContain("Requests");
+  });
+
+  it("test_AS_004_files_and_requests_are_reachable_by_a_distinct_url_from_the_sidebar", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    const anchors = anchorTags(html);
+
+    expect(
+      anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/files"')),
+    ).toBe(true);
+    expect(
+      anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/requests"')),
+    ).toBe(true);
+    expect(html).toContain("Files");
+    expect(html).toContain("Requests");
+  });
+
+  it("test_AS_004_the_temporary_entries_mark_themselves_current_on_their_own_route", () => {
+    mockPathname = "/portal/acme/p/proj-1/files";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    const anchors = anchorTags(html);
+
+    const filesCurrent = anchors.filter(
+      (tag) =>
+        tag.includes('href="/portal/acme/p/proj-1/files"') &&
+        tag.includes('aria-current="page"'),
+    );
+    expect(filesCurrent).toHaveLength(2); // desktop + mobile renditions
+  });
+
+  it("builds exactly the two temporary items, in a stable order, at the given base path", () => {
+    const items = buildPortalSecondaryNavItems("/portal/acme/p/proj-1");
+
+    expect(items.map((item) => item.label)).toEqual(["Files", "Requests"]);
+    expect(items.map((item) => item.href)).toEqual([
+      "/portal/acme/p/proj-1/files",
+      "/portal/acme/p/proj-1/requests",
+    ]);
   });
 });
