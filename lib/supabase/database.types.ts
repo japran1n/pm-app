@@ -2403,6 +2403,14 @@ export type Database = {
         Args: { target_project_id: string }
         Returns: boolean
       }
+      is_project_decision_owner: {
+        Args: {
+          p_decision_type: string
+          p_project_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       is_project_lead_or_workspace_admin: {
         Args: { target_project_id: string }
         Returns: boolean

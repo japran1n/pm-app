@@ -90,6 +90,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 type ProjectExtra = {
   projectId: string;
   workspaceId: string;
+  portalEnabled: boolean;
 };
 
 async function loadProjectExtra(
@@ -101,7 +102,7 @@ async function loadProjectExtra(
 > {
   const { data, error } = await admin
     .from("projects")
-    .select("id, workspace_id, visibility, deleted_at")
+    .select("id, workspace_id, visibility, deleted_at, portal_enabled")
     .eq("id", projectId)
     .maybeSingle();
 
@@ -114,7 +115,11 @@ async function loadProjectExtra(
     workspaceId: data.workspace_id,
     projectId: data.id,
     visibility: data.visibility === "private" ? "private" : "workspace",
-    extra: { projectId: data.id, workspaceId: data.workspace_id },
+    extra: {
+      projectId: data.id,
+      workspaceId: data.workspace_id,
+      portalEnabled: data.portal_enabled === true,
+    },
   };
 }
 
@@ -194,6 +199,20 @@ const requestApprovalImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<RequestApprovalResult> => {
+    // F009b (M2 remediation, F-2): a portal-disabled project's client can
+    // never reach the Approvals view (`approval_requests_select_client`
+    // requires `is_project_portal_enabled`, 20260916010000) or the
+    // portal at all, so raising an approval here would be exactly the
+    // "sent into a void" outcome this action already refuses for a
+    // missing decision owner, immediately below. Same generic-ish,
+    // specific error style as that check.
+    if (!ctx.portalEnabled) {
+      return {
+        ok: false,
+        error: "This project's client portal isn't turned on yet. Enable it in project settings before requesting a client approval.",
+      };
+    }
+
     // Decision-owner gate: "an approval sent into a void is the failure
     // this prevents" — re-checked here, not left to the dialog alone.
     const { data: ownerRow, error: ownerError } = await ctx.admin
