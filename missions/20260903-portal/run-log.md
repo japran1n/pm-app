@@ -181,3 +181,5 @@ client for our own backlog, on two screens that disagree with each other.
 Round 2 opened: F006f (honest failures), F006g (status vocabulary, single
 source), F006h (deploy blocker + template visibility), F006i (authz round 2,
 including create_channel_atomic), F006j (test integrity).
+- F007 COMPLETE (9d842ac) — approval_requests + project_decision_owners + decide_approval_atomic (pg_temp pinned), immutability trigger for AS-024, RLS gating client reads by membership + portal_enabled + the subject task's own client_visible, DB-level INSERT check for AS-020. lib/queries/approvals.ts added; getPortalBadgeCounts now counts real rows. 26 integration tests pass.
+  Worth noting: the worker found and closed an authorisation gap of its own accord — the team UPDATE policy would have let any project writer self-approve directly, bypassing the RPC's AS-022 ownership check. It narrowed the WITH CHECK to forbid setting decision fields outside the RPC. That is the first time in this mission a worker found a hole in its own design before a reviewer did.
