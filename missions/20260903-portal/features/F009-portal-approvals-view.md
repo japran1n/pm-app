@@ -52,6 +52,8 @@ rather than showing an empty cell.
 
 ### 4. Badges and overview
 
+**Also fix here (third-scrutiny finding):** the badge at `lib/queries/portal.ts:512-516` counts every pending approval on the project with no `project_decision_owners` filter, so a client who owns `brand` decisions sees a badge counting `commercial` requests they get a 42501 on. And its mock in `tests/unit/portal-overview-queries.test.ts:39-44` discards every `eq` argument — migrate it to the query-filter helper F006j extracted.
+
 - `getPortalBadgeCounts` now returns the real awaiting count (F007) —
   the sidebar badge (AS-002) goes live here.
 - The overview's waiting strip switches from

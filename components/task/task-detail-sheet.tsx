@@ -164,6 +164,12 @@ import {
 import { Watchers } from "@/components/task/watchers";
 import { ClientVisibilityToggle } from "@/components/task/client-visibility-toggle";
 import { PendingApprovalToggle } from "@/components/task/pending-approval-toggle";
+// F008 (missions/20260903-portal, AS-019): the richer "raise a real
+// approval request" path, shown beside PendingApprovalToggle rather than
+// replacing it — that toggle stays the quick "waiting on client" flag,
+// this dialog is the one that actually creates an approval_requests row
+// with a decision type, a due date and a message.
+import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 // F179 (AS-317, AS-318, AS-319): the recurrence picker + remove control —
 // same "smallest-possible-client-boundary, caller passes current value
 // down, component calls its own Server Action" convention as TagsEditor/
@@ -1595,6 +1601,23 @@ export function TaskDetailSheet({
                   taskId={task.id}
                   pendingClientApproval={task.pendingClientApproval ?? false}
                   disabled={!canEdit}
+                />
+              )}
+              {/* F008 (AS-019, AS-020): only offered once the task is
+                  actually client-visible — mirrors PendingApprovalToggle's
+                  own gate immediately above. The server action re-checks
+                  this independently (AS-020's real enforcement point), so
+                  this gate is a UX nicety, not the security boundary. */}
+              {workspaceHasClient && task.clientVisible && task.projectId && canEdit && (
+                <RequestApprovalDialog
+                  projectId={task.projectId}
+                  subject={{
+                    subjectType: "task",
+                    subjectId: task.id,
+                    defaultTitle: task.title,
+                    defaultMessage: task.description,
+                    defaultDecisionType: task.taskTypeSystemKey === "page" ? "brand" : "content",
+                  }}
                 />
               )}
               <Watchers

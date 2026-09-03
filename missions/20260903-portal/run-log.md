@@ -217,3 +217,31 @@ write it. Opened as F006k, blocker.
 - F006k COMPLETE — BEFORE UPDATE trigger (migration 20260919010000) matching the existing visibility trigger's shape: portal_enabled/portal_enabled_at gated to owner+admin, the three launch fields gated to the writer bar, AS-029's any-member name/description/date edits untouched. 14 tests calling PostgREST directly as client and as viewer, including a multi-column smuggling attempt and coexistence with the visibility trigger. 116 regression tests pass.
   The sweep the spec demanded came back clean for every other column this mission added to a pre-existing table (tasks.phase_id/page_slug/page_order, project_statuses.client_description/client_bucket, task_types.system_key) — all already correctly gated. So the hole was specific to projects, and specific to the fact that portal_enabled changes who can see the project rather than what it says.
 - F006j COMPLETE — the bulkSetTaskPhase test now signs in as a non-owner member holding the explicit project_members row instead of the owner who short-circuited the check, and the worker PROVED it by breaking lib/actions/phases.ts twice, watching the tests fail, and reverting. Items 2 and 3 were already fixed by F006f and F006c, confirmed by grep rather than redone. Query-filter mock helpers extracted and adopted in two portal query test files. **Round 2 remediation complete.**
+
+### M1 third scrutiny: one blocker, and it names a class rather than a bug
+
+Report: missions/20260903-portal/milestones/M1-scrutiny-3.md
+
+AS-011, AS-015 and AS-017 confirmed genuinely fixed, tests confirmed capable of
+failing. None of the five regression shapes I asked it to hunt had landed.
+
+The finding that matters: **the RLS matrix is clean, and every remaining gap is
+in code that never reaches RLS.** F006b swept reads, F006i swept writes, F006k
+gated the column — three sweeps, each asking "is the policy right?", each
+correctly answering yes, and none of them able to see the paths that consult no
+policy at all: SECURITY DEFINER functions and Server Actions on the admin client.
+
+Verified myself: decide_approval_atomic has zero portal/visibility/client_visible
+checks in its body; get_open_task_counts has zero occurrences of auth.uid,
+is_active_workspace_member or revoke; getAttachmentSignedUrl mints through
+admin.storage.
+
+get_open_task_counts is the one that should have been caught long before this
+mission — SECURITY DEFINER, granted to authenticated, no authorisation of any
+kind, and it predates all of this work. We only found it because the third sweep
+finally asked a different question than the first two.
+
+Opened F006l (the class, blocker) and F006m (guest regression from F006i, minor).
+AS-002's remaining half — the badge counts approvals the client cannot decide,
+and its mock discards eq arguments — folded into F009, which implements
+decision-owner filtering anyway.

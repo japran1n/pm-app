@@ -22,6 +22,15 @@ import {
 // columns/phases settings routes — see that component's own doc comment.
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
 import { Separator } from "@/components/ui/separator";
+// F008 (missions/20260903-portal, section 4): "Who approves what" — and,
+// per this feature's own "Files (approximate)" list naming "project
+// settings route" (no separate "project approvals area" route exists or
+// is planned by this milestone), the standalone artifact-approval entry
+// point lives here too rather than a new page.
+import { getDecisionOwners, getProjectClientMembers } from "@/lib/queries/approvals";
+import { DecisionOwnersSection } from "@/components/approvals/decision-owners";
+import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
+import { canWrite } from "@/lib/auth/permissions";
 
 // F133: project settings panel — explicit member list (AS-236), an
 // add-member picker scoped to existing workspace members, a remove
@@ -121,18 +130,25 @@ export default async function ProjectSettingsPage({
     projectRole,
   });
   const canToggleVisibility = canChangeProjectVisibility({ role: workspaceRole });
+  // F008: setDecisionOwner/requestApproval (lib/actions/approvals.ts) both
+  // gate on withAuthz's default `canWrite` — this mirrors that exact
+  // predicate for the UI, not a new one, per AS-230's "one permission
+  // helper backs both" convention.
+  const canManageDecisionOwners = canWrite({ role: workspaceRole });
 
   let members: Awaited<ReturnType<typeof getProjectMembers>> = [];
   let addable: Awaited<ReturnType<typeof getAddableWorkspaceMembers>> = [];
   let lossPreview: Awaited<ReturnType<typeof getVisibilityLossPreview>> = [];
+  let decisionOwners: Awaited<ReturnType<typeof getDecisionOwners>> = [];
+  let clientMembers: Awaited<ReturnType<typeof getProjectClientMembers>> = [];
   let loadError = false;
 
   try {
-    // Perf (W9): none of these three depend on each other's result --
+    // Perf (W9): none of these depend on each other's result --
     // `addable`/`lossPreview` are conditionally fetched (per
     // canManage/canToggleVisibility, both already known), but whenever
     // fetched they run alongside `members` instead of after it.
-    [members, addable, lossPreview] = await Promise.all([
+    [members, addable, lossPreview, decisionOwners, clientMembers] = await Promise.all([
       getProjectMembers(project.id),
       canManage
         ? getAddableWorkspaceMembers(workspace.id, project.id)
@@ -140,6 +156,8 @@ export default async function ProjectSettingsPage({
       canToggleVisibility
         ? getVisibilityLossPreview(workspace.id, project.id)
         : Promise.resolve(lossPreview),
+      getDecisionOwners(project.id),
+      getProjectClientMembers(workspace.id),
     ]);
   } catch (error) {
     logger.error("ProjectSettingsPage: failed to load member data", { error: error });
@@ -219,6 +237,44 @@ export default async function ProjectSettingsPage({
               <AddProjectMemberForm projectId={project.id} addable={addable} />
             </section>
           )}
+
+          <Separator />
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-sm font-semibold">Who approves what</h2>
+                <p className="text-sm text-muted-foreground">
+                  Which client decides content, brand, technical, and
+                  commercial approvals for this project. A request raised
+                  for a decision type with no owner set here is blocked
+                  before it can be sent.
+                </p>
+              </div>
+              {/* F008 section 1: the standalone entry point for an
+                  external artifact URL — this feature's own "Files
+                  (approximate)" list names "project settings route" and no
+                  separate approvals-area route, so it lives here. */}
+              <RequestApprovalDialog
+                projectId={project.id}
+                subject={{ subjectType: "artifact" }}
+                trigger={
+                  <button
+                    type="button"
+                    className="text-sm underline underline-offset-2 hover:text-foreground"
+                  >
+                    Request approval for a link
+                  </button>
+                }
+              />
+            </div>
+            <DecisionOwnersSection
+              projectId={project.id}
+              owners={decisionOwners}
+              clientMembers={clientMembers}
+              canManage={canManageDecisionOwners}
+            />
+          </section>
         </>
       )}
     </div>

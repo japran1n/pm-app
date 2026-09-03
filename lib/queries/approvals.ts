@@ -202,6 +202,51 @@ export async function getOpenApprovalsForWorkspace(
   }));
 }
 
+// --- Client member picker for F008's "Who approves what" settings UI --
+//
+// "a client member of the project" (spec's own words) resolves, per this
+// migration's own is_project_client() shape, to any ACTIVE workspace
+// member with role = 'client' — clients are workspace-scoped, not
+// project_members-scoped (is_project_client only joins projects ->
+// workspace_members, confirmed by 20260908010000_pin_pg_temp_on_client
+// _visibility_predicates.sql). Reads through the ordinary RLS-respecting
+// client: workspace_members_select_fellow_members (20260902020000) already
+// lets a non-client caller see every row, client rows included.
+export type ProjectClientMember = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+};
+
+export async function getProjectClientMembers(
+  workspaceId: string,
+): Promise<ProjectClientMember[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .select("user_id")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active")
+    .eq("role", "client");
+
+  if (error) {
+    logger.error("getProjectClientMembers: failed to load client members", { error });
+    return [];
+  }
+  if (!data?.length) return [];
+
+  const userIds = [...new Set(data.map((row) => row.user_id))];
+  const people = await resolvePeople(userIds);
+
+  return userIds.map((userId) => ({
+    userId,
+    name: people.get(userId)?.name ?? null,
+    email: people.get(userId)?.email ?? null,
+    avatarUrl: people.get(userId)?.avatarUrl ?? null,
+  }));
+}
+
 // --- Task-subject visibility check for F008's "raise an approval" -----
 //
 // AS-020: creating an approval request against a task that is not

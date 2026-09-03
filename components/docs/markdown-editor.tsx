@@ -21,11 +21,13 @@
 //
 // Both a named export (`MarkdownEditor`, the shape this feature's spec
 // requires: `{ docId, initialTitle, initialContent }`) and a default export
-// are provided — `workspaceSlug`/`projectId` are accepted as optional/unused
-// props so a project-scoped consumer (W5, built in parallel against this
-// same file) can pass them without a type error; this component itself
-// never needs them since the breadcrumb/scope is resolved by the Server
-// Component page, not here.
+// are provided — `workspaceSlug` is accepted as an optional/unused prop so
+// a project-scoped consumer (W5, built in parallel against this same file)
+// can pass it without a type error (breadcrumb/scope is resolved by the
+// Server Component page, not here). `projectId` WAS unused at first but is
+// now read directly by this component (F008, AS-019): it gates whether the
+// header's "Request client approval" trigger renders at all, since only a
+// project-scoped doc has a project to attach an approval_requests row to.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -47,6 +49,12 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { updateDoc } from "@/lib/actions/docs";
+// F008 (missions/20260903-portal, AS-019): the doc header's "Request
+// client approval" entry point. Only meaningful for a PROJECT-scoped doc —
+// approval_requests.project_id is required, and a workspace-level doc
+// (projectId undefined here) has no project to attach the approval to —
+// so it's rendered only when this component actually receives one.
+import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -57,7 +65,10 @@ export type MarkdownEditorProps = {
   /** Unused here (breadcrumb/scope is resolved by the page) — accepted so
    * a project-scoped page can pass it without a type error. */
   workspaceSlug?: string;
-  /** Unused here — see above. */
+  /** F008 (AS-019): when set, this doc belongs to a project and the
+   * header's "Request client approval" trigger is rendered — a
+   * workspace-level doc (undefined here) has no project to attach an
+   * approval to, so the trigger is simply omitted rather than disabled. */
   projectId?: string;
 };
 
@@ -65,6 +76,7 @@ export function MarkdownEditor({
   docId,
   initialTitle,
   initialContent,
+  projectId,
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -153,6 +165,12 @@ export function MarkdownEditor({
           {status === "saved" && "Saved"}
           {status === "error" && "Failed to save"}
         </span>
+        {projectId && (
+          <RequestApprovalDialog
+            projectId={projectId}
+            subject={{ subjectType: "doc", subjectId: docId, defaultTitle: title }}
+          />
+        )}
       </div>
 
       <Toolbar editor={editor} />
