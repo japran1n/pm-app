@@ -75,6 +75,100 @@ export type Database = {
           },
         ]
       }
+      approval_requests: {
+        Row: {
+          artifact_snapshot_path: string | null
+          artifact_url: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          decision_type: string
+          description: string | null
+          due_at: string | null
+          id: string
+          phase_id: string | null
+          project_id: string
+          requested_at: string
+          requested_by: string
+          round: number
+          state: string
+          subject_id: string | null
+          subject_type: string
+          supersedes_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          artifact_snapshot_path?: string | null
+          artifact_url?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          decision_type: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          phase_id?: string | null
+          project_id: string
+          requested_at?: string
+          requested_by: string
+          round?: number
+          state?: string
+          subject_id?: string | null
+          subject_type: string
+          supersedes_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          artifact_snapshot_path?: string | null
+          artifact_url?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          decision_type?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          phase_id?: string | null
+          project_id?: string
+          requested_at?: string
+          requested_by?: string
+          round?: number
+          state?: string
+          subject_id?: string | null
+          subject_type?: string
+          supersedes_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "approval_requests_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "project_phases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "approval_requests_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attachments: {
         Row: {
           created_at: string
@@ -943,6 +1037,41 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      project_decision_owners: {
+        Row: {
+          created_at: string
+          decision_type: string
+          id: string
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          decision_type: string
+          id?: string
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          decision_type?: string
+          id?: string
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_decision_owners_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_favorites: {
         Row: {
@@ -2122,6 +2251,14 @@ export type Database = {
         Returns: {
           id: string
           slug: string
+        }[]
+      }
+      decide_approval_atomic: {
+        Args: { p_decision: string; p_note?: string; p_request_id: string }
+        Returns: {
+          decided_at: string
+          request_id: string
+          state: string
         }[]
       }
       derive_project_key_base: { Args: { p_name: string }; Returns: string }

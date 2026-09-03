@@ -399,22 +399,19 @@ export async function getPortalCurrentUserProfile(
 // badge counts -- approvals awaiting this client's decision, and the
 // client's own deliverables past their due date. F003 shipped this as a
 // zero-returning stub ("so F007/F012 only ever need to change THIS
-// function's body, never any of its callers") -- F006 is that first
+// function's body, never any of its callers") -- F007 is that first
 // body change.
 //
 // AS-002 (approvalsAwaiting): F007's dedicated `approval_requests` table
-// doesn't exist until M2. `tasks.pending_client_approval` is the exact
-// same real signal this app already treats as "an approval request
-// awaiting this client's decision" everywhere else in the portal today
-// -- `getPortalOverview`'s "waiting on you" list and
-// `PortalOverviewLive`'s realtime predicate both key off it verbatim
-// (see that function's own comment: "the team sets it, so it survives
-// status renames and covers any status"). Counting it here is not a
-// fabricated number; it is the one real table this concept currently
-// has. F009's own clarified spec explicitly anticipates this exact
-// hand-off: "F009 replaces the source with approval_requests without
-// touching this component's shape" -- true of this function's body too,
-// not only PortalOverviewLive's.
+// now exists. This counts `state = 'pending'` rows through the ordinary
+// RLS-respecting client, exactly like every other query in this file --
+// `approval_requests_select_client` (this feature's migration) already
+// scopes the result to a portal-enabled project the caller is a client
+// of, folding in the task-subject `client_visible` check where it
+// applies, so no filter is repeated here. This is the same table
+// `getOpenApprovalsForClient` (lib/queries/approvals.ts) reads, so the
+// sidebar badge and the approvals list it links to can never disagree
+// the way the M1 scrutiny report's AS-002 finding described.
 //
 // AS-003 (deliverablesPastDue): `project can hold a list of items the
 // client owes` (AS-028) is a wholly new entity F012 introduces in M3 --
@@ -430,12 +427,10 @@ export async function getPortalBadgeCounts(
   const supabase = await createClient();
 
   const { count, error } = await supabase
-    .from("tasks")
+    .from("approval_requests")
     .select("id", { count: "exact", head: true })
     .eq("project_id", projectId)
-    .eq("client_visible", true)
-    .eq("pending_client_approval", true)
-    .is("deleted_at", null);
+    .eq("state", "pending");
 
   if (error) {
     logger.error("getPortalBadgeCounts: failed to load approvals count", { error });

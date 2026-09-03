@@ -13,21 +13,22 @@ vi.mock("server-only", () => ({}));
 type Row = Record<string, unknown>;
 
 // --- getPortalBadgeCounts (AS-002, AS-003) ---------------------------------
+//
+// F007 (missions/20260903-portal, M2): `getPortalBadgeCounts` now counts
+// `approval_requests` rows in state 'pending' (the first-class table this
+// feature introduced), not `tasks.pending_client_approval` — the mock
+// below follows that same table/chain shape.
 
-let taskCountResult: { count: number | null; error: unknown };
+let approvalCountResult: { count: number | null; error: unknown };
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     from: vi.fn((table: string) => {
-      if (table === "tasks") {
+      if (table === "approval_requests") {
         return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(() => ({
-                eq: vi.fn(() => ({
-                  is: vi.fn(async () => taskCountResult),
-                })),
-              })),
+              eq: vi.fn(async () => approvalCountResult),
             })),
           })),
         };
@@ -125,8 +126,8 @@ beforeEach(() => {
 });
 
 describe("getPortalBadgeCounts — AS-002, AS-003", () => {
-  it("test_AS_002_counts_tasks_currently_pending_client_approval_as_approvals_awaiting", async () => {
-    taskCountResult = { count: 3, error: null };
+  it("test_AS_002_counts_pending_approval_requests_as_approvals_awaiting", async () => {
+    approvalCountResult = { count: 3, error: null };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -134,7 +135,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_002_a_project_with_nothing_pending_reports_zero_not_an_error", async () => {
-    taskCountResult = { count: 0, error: null };
+    approvalCountResult = { count: 0, error: null };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -142,7 +143,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_003_deliverables_past_due_is_honestly_zero_until_the_deliverables_table_exists", async () => {
-    taskCountResult = { count: 5, error: null };
+    approvalCountResult = { count: 5, error: null };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -152,7 +153,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("returns zero rather than throwing when the count query errors", async () => {
-    taskCountResult = { count: null, error: { message: "boom" } };
+    approvalCountResult = { count: null, error: { message: "boom" } };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
