@@ -223,3 +223,97 @@ export async function requestPortalTaskChanges(
 
   return { ok: true, data: { taskId: parsed.data.taskId } };
 }
+
+// --- F009 (missions/20260903-portal, AS-021/AS-022/AS-023/AS-026) -------
+//
+// The client's decision on a first-class `approval_requests` row (raised
+// by F008's dialog, distinct from the task-boolean flow above). The RPC
+// (`decide_approval_atomic`, 20260916010000, hardened by 20260920010000)
+// is the actual control -- AS-022 -- re-checking `auth.uid()` against
+// `project_decision_owners` itself, independent of anything this action
+// or its caller's UI does. This action's own job is: validate shape,
+// call the RPC through the ordinary RLS-respecting session client (never
+// the admin client -- the RPC needs `auth.uid()` to be the real signed-in
+// caller, exactly like `approvePortalTask` above), and translate its
+// (already caller-safe, no-schema-leaking) error text into this file's
+// `{ ok: false, error }` shape.
+const decideApprovalSchema = z
+  .object({
+    requestId: z.string().uuid("Invalid approval request."),
+    decision: z.enum(["approved", "changes_requested"]),
+    note: z.string().trim().max(4000, "Note must be 4000 characters or fewer.").nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    // Mirrors the RPC's own `p_decision = 'changes_requested'` guard
+    // (20260916010000) -- checked here too so the client gets this exact
+    // message from the form itself, never a round trip just to learn it.
+    if (value.decision === "changes_requested" && !value.note?.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["note"],
+        message: "Describe what needs to change.",
+      });
+    }
+  });
+
+export type DecideApprovalResult =
+  | { ok: true; data: { requestId: string; state: string; decidedAt: string } }
+  | { ok: false; error: string };
+
+function friendlyDecideApprovalError(message: string): string {
+  // The RPC's own exception text (20260916010000/20260920010000) is
+  // already written to be caller-safe -- no column/table names, no
+  // internals -- so it is shown directly, minus its `decide_approval_
+  // atomic: ` function-name prefix, rather than collapsed to one generic
+  // string that would hide "you are not the decision owner" and "this
+  // request has already been decided" behind the same unhelpful text.
+  const withoutPrefix = message.replace(/^decide_approval_atomic:\s*/, "");
+  return withoutPrefix || "Something went wrong. Please try again in a moment.";
+}
+
+export async function decideApproval(
+  requestId: string,
+  decision: "approved" | "changes_requested",
+  note?: string | null,
+): Promise<DecideApprovalResult> {
+  const parsed = decideApprovalSchema.safeParse({ requestId, decision, note: note ?? null });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid request.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("decide_approval_atomic", {
+    p_request_id: parsed.data.requestId,
+    p_decision: parsed.data.decision,
+    p_note: parsed.data.note ?? null,
+  });
+
+  if (error) {
+    logger.error("decideApproval: rpc failed", { error });
+    return { ok: false, error: friendlyDecideApprovalError(error.message) };
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    logger.error("decideApproval: rpc returned no row", { requestId: parsed.data.requestId });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  revalidatePath("/portal", "layout");
+  revalidatePath("/w", "layout");
+
+  return {
+    ok: true,
+    data: {
+      requestId: row.request_id as string,
+      state: row.state as string,
+      decidedAt: row.decided_at as string,
+    },
+  };
+}

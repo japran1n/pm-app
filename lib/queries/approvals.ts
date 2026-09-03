@@ -33,11 +33,12 @@ export type PortalApproval = {
   dueAt: string | null;
   decidedAt: string | null;
   decisionNote: string | null;
+  decidedBy: string | null;
   round: number;
 };
 
 const APPROVAL_COLUMNS =
-  "id, project_id, title, description, decision_type, subject_type, subject_id, artifact_url, state, requested_at, due_at, decided_at, decision_note, round";
+  "id, project_id, title, description, decision_type, subject_type, subject_id, artifact_url, state, requested_at, due_at, decided_at, decision_note, decided_by, round";
 
 function mapApprovalRow(row: {
   id: string;
@@ -53,6 +54,7 @@ function mapApprovalRow(row: {
   due_at: string | null;
   decided_at: string | null;
   decision_note: string | null;
+  decided_by: string | null;
   round: number;
 }): PortalApproval {
   return {
@@ -69,6 +71,7 @@ function mapApprovalRow(row: {
     dueAt: row.due_at,
     decidedAt: row.decided_at,
     decisionNote: row.decision_note,
+    decidedBy: row.decided_by,
     round: row.round,
   };
 }
@@ -96,9 +99,18 @@ export async function getOpenApprovalsForClient(
   return (data ?? []).map(mapApprovalRow);
 }
 
-// The decision history table (approved / changes_requested / withdrawn),
-// most recently decided first.
-export async function getApprovalHistory(projectId: string): Promise<PortalApproval[]> {
+// AS-026: the decision history table (approved / changes_requested /
+// withdrawn), most recently decided first, WITH who decided -- a bare
+// `decided_by` uuid answers "I never approved that" no better than a
+// blank cell, so this resolves the display name the same way
+// `getOpenApprovalsForWorkspace` resolves `requestedByName` above.
+export type ApprovalHistoryEntry = PortalApproval & {
+  decidedByName: string | null;
+};
+
+export async function getApprovalHistory(
+  projectId: string,
+): Promise<ApprovalHistoryEntry[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("approval_requests")
@@ -111,7 +123,17 @@ export async function getApprovalHistory(projectId: string): Promise<PortalAppro
     logger.error("getApprovalHistory: failed to load approval history", { error });
     return [];
   }
-  return (data ?? []).map(mapApprovalRow);
+  if (!data?.length) return [];
+
+  const deciderIds = [
+    ...new Set(data.map((row) => row.decided_by).filter((id): id is string => !!id)),
+  ];
+  const people = deciderIds.length ? await resolvePeople(deciderIds) : new Map();
+
+  return data.map((row) => ({
+    ...mapApprovalRow(row),
+    decidedByName: row.decided_by ? (people.get(row.decided_by)?.name ?? null) : null,
+  }));
 }
 
 export type PortalDecisionOwner = {

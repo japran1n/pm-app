@@ -102,6 +102,7 @@ const baseOverview: PortalOverview = {
 async function renderLive(
   overview: PortalOverview = baseOverview,
   waitingOnYouFailed?: boolean,
+  projectId?: string | null,
 ) {
   const result = render(
     createElement(PortalOverviewLive, {
@@ -109,6 +110,7 @@ async function renderLive(
       workspaceSlug: "acme",
       initialOverview: overview,
       waitingOnYouFailed,
+      projectId,
     }),
   );
   // F012: the hook's effect now awaits `getSession()` then `setAuth()`
@@ -255,6 +257,69 @@ describe("PortalOverviewLive", () => {
     expect(
       screen.queryByText("Review homepage copy"),
     ).not.toBeInTheDocument();
+  });
+
+  // F009 (missions/20260903-portal): the amendment this feature carries --
+  // "PortalOverviewLive is workspace-wide today while the shell is
+  // project-scoped, so its strip can surface another project's rows."
+  // The subscription itself stays workspace-wide (RLS does the real
+  // scoping, same as every other row this component admits), but a live
+  // event for a DIFFERENT project's task must never enter this list once
+  // `projectId` is set -- proving the leak this amendment names is closed
+  // for the per-project shell, not just for the still-workspace-wide
+  // chooser page (which passes no `projectId` and keeps its pre-existing
+  // behaviour, covered by AS-019 above).
+  it("test_F009_project_scoped_mount_ignores_a_different_projects_pending_approval_event", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false, "p1");
+
+    act(() => {
+      capturedOnChange?.({
+        eventType: "INSERT",
+        schema: "public",
+        table: "tasks",
+        new: {
+          id: "t-other-project",
+          title: "A different project's approval",
+          project_id: "p-different",
+          due_date: null,
+          updated_at: "2026-09-01T00:00:00Z",
+          pending_client_approval: true,
+          client_visible: true,
+          deleted_at: null,
+        },
+        old: {},
+      });
+    });
+
+    expect(screen.queryByText("A different project's approval")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Nothing waiting on you right now."),
+    ).toBeInTheDocument();
+  });
+
+  it("test_F009_project_scoped_mount_still_admits_this_projects_pending_approval_event", async () => {
+    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false, "p1");
+
+    act(() => {
+      capturedOnChange?.({
+        eventType: "INSERT",
+        schema: "public",
+        table: "tasks",
+        new: {
+          id: "t-same-project",
+          title: "This project's approval",
+          project_id: "p1",
+          due_date: null,
+          updated_at: "2026-09-01T00:00:00Z",
+          pending_client_approval: true,
+          client_visible: true,
+          deleted_at: null,
+        },
+        old: {},
+      });
+    });
+
+    expect(screen.getByText("This project's approval")).toBeInTheDocument();
   });
 
   it("test_AS_024_subscription_is_torn_down_on_unmount", async () => {

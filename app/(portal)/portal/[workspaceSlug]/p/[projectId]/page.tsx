@@ -123,9 +123,19 @@ export default async function PortalOverviewPage({
   // chooser page, which has no per-project tile to disagree with) --
   // and empty on a failed read, paired with `waitingOnYouFailed` below
   // so the list renders an honest state instead of "nothing waiting".
+  // F009 (missions/20260903-portal): `overview.deliveredThisWeek` is
+  // `getPortalOverview(workspace.id)`'s workspace-wide list -- every
+  // portal-enabled project's delivered rows, not just this one. Filtering
+  // it down to `project.id` here closes the exact leak this feature's own
+  // amendment named ("PortalOverviewLive ... is workspace-wide today ...
+  // its strip can surface another project's rows"): the initial render is
+  // scoped the same way `projectId` below scopes every live Realtime
+  // event this component admits after mount.
   const projectScopedOverview = {
     waitingOnYou: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
-    deliveredThisWeek: overview.deliveredThisWeek,
+    deliveredThisWeek: overview.deliveredThisWeek.filter(
+      (task) => task.projectId === project.id,
+    ),
   };
 
   // `activity.since === null` means this is the client's first-ever
@@ -170,6 +180,7 @@ export default async function PortalOverviewPage({
             workspaceSlug={workspace.slug}
             initialOverview={projectScopedOverview}
             waitingOnYouFailed={!waitingOnYouResult.ok}
+            projectId={project.id}
           />
 
           {hasActivity && activity && (

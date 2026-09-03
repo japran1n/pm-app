@@ -7,7 +7,7 @@
 // which rows get excluded, what an honest "not built yet" stub returns).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { applyFilters, eqFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
+import { applyFilters, eqFilter, inFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
 
 vi.mock("server-only", () => ({}));
 
@@ -18,7 +18,19 @@ vi.mock("server-only", () => ({}));
 // feature introduced), not `tasks.pending_client_approval` — the mock
 // below follows that same table/chain shape.
 
-let approvalCountResult: { count: number | null; error: unknown };
+// F009 (missions/20260903-portal, AS-002, third-scrutiny finding): the
+// old mock's `.eq()` calls discarded every argument and unconditionally
+// returned a fixed `{ count, error }` -- it could not tell the
+// `project_decision_owners` filter (`.in("decision_type", ...)`) apart
+// from no filter at all. `approvalRequestRows` is now a real row set run
+// through `applyFilters`/`eqFilter`/`inFilter` (tests/unit/helpers/
+// query-filter-mock.ts, F006j) so a dropped or wrong-column filter here
+// changes the count a test observes, not just the chain's shape.
+let approvalRequestRows: Row[];
+let approvalRequestsError: { message: string } | null;
+let currentUserId: string | null;
+let ownerRows: Row[];
+let ownerRowsError: { message: string } | null;
 
 // --- getPortalWaitingOnYou (F006f, AS-002) ---------------------------------
 //
@@ -33,12 +45,48 @@ let waitingTasksError: { message: string } | null;
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: { user: currentUserId ? { id: currentUserId } : null },
+      })),
+    },
     from: vi.fn((table: string) => {
       if (table === "approval_requests") {
         return {
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              // The real query's terminal call after `.eq(...).eq(...)` is
+              // `.in("decision_type", decisionTypes)` -- this is what
+              // actually proves the owner-scoped decision types were
+              // threaded through, not just discarded.
+              in: vi.fn(async (col: string, vals: unknown[]) => {
+                filters.push(inFilter(col, vals));
+                if (approvalRequestsError) {
+                  return { count: null, error: approvalRequestsError };
+                }
+                return {
+                  count: applyFilters(approvalRequestRows, filters).length,
+                  error: null,
+                };
+              }),
+            };
+            return builder;
+          }),
+        };
+      }
+      if (table === "project_decision_owners") {
+        return {
           select: vi.fn(() => ({
             eq: vi.fn(() => ({
-              eq: vi.fn(async () => approvalCountResult),
+              eq: vi.fn(async () => ({
+                data: ownerRowsError ? null : ownerRows,
+                error: ownerRowsError,
+              })),
             })),
           })),
         };
@@ -150,6 +198,9 @@ import {
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
 
+const CLIENT_USER_ID = "33333333-3333-4333-8333-333333333333";
+const OTHER_CLIENT_USER_ID = "44444444-4444-4444-8444-444444444444";
+
 beforeEach(() => {
   projectRow = { id: PROJECT_ID, workspace_id: WORKSPACE_ID };
   activeTimerRows = [];
@@ -158,11 +209,21 @@ beforeEach(() => {
   phaseRows = [];
   waitingTaskRows = [];
   waitingTasksError = null;
+  currentUserId = CLIENT_USER_ID;
+  ownerRows = [];
+  ownerRowsError = null;
+  approvalRequestRows = [];
+  approvalRequestsError = null;
 });
 
 describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   it("test_AS_002_counts_pending_approval_requests_as_approvals_awaiting", async () => {
-    approvalCountResult = { count: 3, error: null };
+    ownerRows = [{ decision_type: "brand" }];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+      { id: "a2", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+      { id: "a3", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+    ];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -170,7 +231,57 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_002_a_project_with_nothing_pending_reports_zero_not_an_error", async () => {
-    approvalCountResult = { count: 0, error: null };
+    ownerRows = [{ decision_type: "brand" }];
+    approvalRequestRows = [];
+
+    const badges = await getPortalBadgeCounts(PROJECT_ID);
+
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 0 });
+  });
+
+  // Third-scrutiny finding: a client who only owns `brand` decisions must
+  // not have `commercial` (or any other decision type they cannot act on)
+  // counted into their own badge -- that number used to include every
+  // pending row on the project regardless of who owns which decision
+  // type, so a client would see a badge promising N decisions when they
+  // could only ever act on a subset of them (and would get a 42501 from
+  // decide_approval_atomic on the rest).
+  it("test_AS_002_only_counts_decision_types_this_client_owns", async () => {
+    ownerRows = [{ decision_type: "brand" }];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+      { id: "a2", project_id: PROJECT_ID, state: "pending", decision_type: "commercial" },
+      { id: "a3", project_id: PROJECT_ID, state: "pending", decision_type: "commercial" },
+    ];
+
+    const badges = await getPortalBadgeCounts(PROJECT_ID);
+
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 1 });
+  });
+
+  // A client who owns no decision type at all on this project has
+  // nothing they could ever decide -- an honest 0, not the raw pending
+  // count, and no need for the second `approval_requests` round trip.
+  it("test_AS_002_a_client_who_owns_no_decision_type_sees_zero", async () => {
+    ownerRows = [];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+    ];
+
+    const badges = await getPortalBadgeCounts(PROJECT_ID);
+
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 0 });
+  });
+
+  // A different client (not the one signed in) owning `brand` must not
+  // leak into this caller's own count -- proves the owner lookup is
+  // scoped by `user_id`, not just `project_id`/`decision_type`.
+  it("test_AS_002_another_clients_owned_decision_type_is_not_counted", async () => {
+    currentUserId = OTHER_CLIENT_USER_ID;
+    ownerRows = [];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+    ];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -178,7 +289,10 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_003_deliverables_past_due_is_honestly_zero_until_the_deliverables_table_exists", async () => {
-    approvalCountResult = { count: 5, error: null };
+    ownerRows = [{ decision_type: "brand" }];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+    ];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
@@ -194,12 +308,21 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   // renders the same badge either way). It now asserts the opposite: a
   // failed read is reported AS a failure, never coalesced into a count.
   it("test_AS_002_a_failed_count_query_is_reported_as_a_failure_not_coalesced_to_zero", async () => {
-    approvalCountResult = { count: null, error: { message: "boom" } };
+    ownerRows = [{ decision_type: "brand" }];
+    approvalRequestsError = { message: "boom" };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
     expect(badges.approvalsAwaiting.ok).toBe(false);
     expect(badges.approvalsAwaiting).not.toEqual({ ok: true, data: 0 });
+  });
+
+  it("test_AS_002_a_failed_decision_owners_read_is_reported_as_a_failure", async () => {
+    ownerRowsError = { message: "connection reset" };
+
+    const badges = await getPortalBadgeCounts(PROJECT_ID);
+
+    expect(badges.approvalsAwaiting.ok).toBe(false);
   });
 });
 

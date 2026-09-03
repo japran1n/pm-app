@@ -506,14 +506,65 @@ export type PortalBadgeCounts = {
   deliverablesPastDue: number;
 };
 
+// F009 (missions/20260903-portal, AS-002, third-scrutiny finding): this
+// used to count every `state = 'pending'` row on the project, full stop --
+// with no `project_decision_owners` filter, a client who owns only
+// `brand` decisions saw a badge that also counted `commercial` requests
+// they would get a `42501` on from `decide_approval_atomic` the moment
+// they tried to act on one. AS-002's own text is "awaiting THIS CLIENT's
+// decision" -- so this now first resolves which decision types the
+// calling client actually owns on this project (their own
+// `project_decision_owners` rows), and only counts pending requests of
+// those types. A client who owns no decision type on this project sees
+// 0, honestly (there is nothing they can decide), not the full pending
+// count.
 export async function getPortalBadgeCounts(projectId: string): Promise<PortalBadgeCounts> {
   const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    // No session -- the layout that calls this already redirects an
+    // unauthenticated caller before this ever runs (see that layout's
+    // own defensive re-check), so this is unreachable in practice. An
+    // honest failure, never a fabricated zero, if it ever is reached.
+    return {
+      approvalsAwaiting: { ok: false, error: "Not signed in." },
+      deliverablesPastDue: 0,
+    };
+  }
+
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("project_decision_owners")
+    .select("decision_type")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id);
+
+  if (ownerError) {
+    logger.error("getPortalBadgeCounts: failed to load decision owners", { error: ownerError });
+    return {
+      approvalsAwaiting: { ok: false, error: ownerError.message },
+      deliverablesPastDue: 0,
+    };
+  }
+
+  const decisionTypes = [...new Set((ownerRows ?? []).map((row) => row.decision_type))];
+
+  // Owns nothing on this project -- there is nothing pending this client
+  // could ever decide, so the honest count is 0 without a second round
+  // trip.
+  if (decisionTypes.length === 0) {
+    return { approvalsAwaiting: { ok: true, data: 0 }, deliverablesPastDue: 0 };
+  }
 
   const { count, error } = await supabase
     .from("approval_requests")
     .select("id", { count: "exact", head: true })
     .eq("project_id", projectId)
-    .eq("state", "pending");
+    .eq("state", "pending")
+    .in("decision_type", decisionTypes);
 
   if (error) {
     logger.error("getPortalBadgeCounts: failed to load approvals count", { error });

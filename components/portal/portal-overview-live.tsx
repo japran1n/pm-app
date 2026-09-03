@@ -88,9 +88,26 @@ function toOverviewTask(
   };
 }
 
-function waitingOnYouPredicate(row: PortalOverviewRealtimeRow): boolean {
+function waitingOnYouPredicate(
+  row: PortalOverviewRealtimeRow,
+  projectId: string | null,
+): boolean {
   // AS-018, AS-019 -- see this file's header comment for why this doesn't
   // also check the task's status category.
+  //
+  // F009 (missions/20260903-portal): the subscription itself
+  // (subscribe-portal-overview-realtime.ts) binds on `tasks` with no row
+  // filter -- workspace-wide, because RLS is what actually scopes what
+  // reaches this client, the same shape used for the multi-project
+  // chooser page. When this component is mounted PROJECT-scoped (the
+  // per-project shell, `projectId` set), a task belonging to a different
+  // project in the same workspace must not be admitted into this list
+  // just because it happens to pass the pending_client_approval check --
+  // exactly the leak this feature's own amendment named ("its strip can
+  // surface another project's rows"). `reconcile-portal-realtime-task.ts`
+  // already anticipated this exact parameter (see that file's own header
+  // comment, "or 'belongs to this project' for the project page (F009)").
+  if (projectId !== null && row.project_id !== projectId) return false;
   return row.pending_client_approval === true;
 }
 
@@ -99,6 +116,7 @@ export function PortalOverviewLive({
   workspaceSlug,
   initialOverview,
   waitingOnYouFailed = false,
+  projectId = null,
 }: {
   workspaceId: string;
   workspaceSlug: string;
@@ -113,6 +131,13 @@ export function PortalOverviewLive({
    * the list still being empty: once a live event adds a real row, the
    * caveat is moot and the list itself is the honest answer again. */
   waitingOnYouFailed?: boolean;
+  /** F009 (missions/20260903-portal): when set, scopes both the initial
+   * "Waiting on you" seed (the caller's own responsibility -- see
+   * p/[projectId]/page.tsx) and every live Realtime event admitted into
+   * that list to this one project. `null` (the default) keeps this
+   * component's pre-existing workspace-wide behaviour for the multi-
+   * project chooser page, which has no single project to scope to. */
+  projectId?: string | null;
 }) {
   const [waitingOnYou, setWaitingOnYou] = useState<PortalOverviewTask[]>(
     initialOverview.waitingOnYou,
@@ -147,7 +172,7 @@ export function PortalOverviewLive({
       const next = reconcilePortalRealtimeTask(
         currentAsRows,
         event,
-        waitingOnYouPredicate,
+        (row) => waitingOnYouPredicate(row, projectId),
       );
 
       return next.map((row) => toOverviewTask(row, projectNameById));
