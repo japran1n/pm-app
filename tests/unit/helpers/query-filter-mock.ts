@@ -33,6 +33,28 @@ export function inFilter(col: string, vals: readonly unknown[]): RowFilter {
   return (row) => vals.includes(row[col]);
 }
 
+// F012's `.not(col, "is", null)` / `.not(col, "in", "(a,b)")` /
+// `.lt(col, val)` shapes (lib/queries/deliverables.ts's
+// `getOverdueBlockingDeliverableCount`) — added alongside `eqFilter`/
+// `inFilter` rather than reimplemented per test file, same reasoning
+// this file's own header comment gives for those two.
+export function notInFilter(col: string, csvParenList: string): RowFilter {
+  const vals = csvParenList.replace(/^\(|\)$/g, "").split(",");
+  return (row) => !vals.includes(String(row[col]));
+}
+
+export function notNullFilter(col: string): RowFilter {
+  return (row) => row[col] !== null && row[col] !== undefined;
+}
+
+export function ltFilter(col: string, val: unknown): RowFilter {
+  return (row) => {
+    const rowVal = row[col];
+    if (rowVal === null || rowVal === undefined) return false;
+    return String(rowVal) < String(val);
+  };
+}
+
 export function applyFilters(rows: Row[], filters: RowFilter[]): Row[] {
   return rows.filter((row) => filters.every((f) => f(row)));
 }

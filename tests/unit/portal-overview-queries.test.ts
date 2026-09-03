@@ -7,7 +7,15 @@
 // which rows get excluded, what an honest "not built yet" stub returns).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { applyFilters, eqFilter, inFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
+import {
+  applyFilters,
+  eqFilter,
+  inFilter,
+  ltFilter,
+  notInFilter,
+  notNullFilter,
+  type Row,
+} from "@/tests/unit/helpers/query-filter-mock";
 
 vi.mock("server-only", () => ({}));
 
@@ -42,6 +50,15 @@ let ownerRowsError: { message: string } | null;
 // being reimplemented here.
 let waitingTaskRows: Row[];
 let waitingTasksError: { message: string } | null;
+
+// --- getOverdueBlockingDeliverableCount (F012, AS-003) ---------------------
+//
+// Same `applyFilters` shape as the tables above -- a real row set run
+// through the mock's own recorded `.eq()`/`.not()`/`.lt()` calls, so a
+// dropped or wrong-column filter in `getOverdueBlockingDeliverableCount`
+// (lib/queries/deliverables.ts) changes the count a test observes.
+let deliverableRows: Row[];
+let deliverableRowsError: { message: string } | null;
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
@@ -134,6 +151,30 @@ vi.mock("@/lib/supabase/server", () => ({
               order: vi.fn(async () => {
                 if (waitingTasksError) return { data: null, error: waitingTasksError };
                 return { data: applyFilters(waitingTaskRows, filters), error: null };
+              }),
+            };
+            return builder;
+          }),
+        };
+      }
+      if (table === "client_deliverables") {
+        return {
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              not: vi.fn((col: string, op: string, val: unknown) => {
+                if (op === "is") filters.push(notNullFilter(col));
+                else if (op === "in") filters.push(notInFilter(col, val as string));
+                return builder;
+              }),
+              lt: vi.fn(async (col: string, val: unknown) => {
+                if (deliverableRowsError) return { count: null, error: deliverableRowsError };
+                filters.push(ltFilter(col, val));
+                return { count: applyFilters(deliverableRows, filters).length, error: null };
               }),
             };
             return builder;
@@ -236,6 +277,8 @@ beforeEach(() => {
   phaseRows = [];
   waitingTaskRows = [];
   waitingTasksError = null;
+  deliverableRows = [];
+  deliverableRowsError = null;
   currentUserId = CLIENT_USER_ID;
   ownerRows = [];
   ownerRowsError = null;
@@ -319,17 +362,47 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
     expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 0 });
   });
 
-  it("test_AS_003_deliverables_past_due_is_honestly_zero_until_the_deliverables_table_exists", async () => {
+  it("test_AS_003_deliverables_past_due_counts_only_overdue_blocking_undelivered_deliverables", async () => {
     ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
     ];
+    const farPast = "2000-01-01";
+    const farFuture = "2999-01-01";
+    deliverableRows = [
+      // Overdue, blocking, still not_started -- counted.
+      { id: "d1", project_id: PROJECT_ID, blocking: true, state: "not_started", due_at: farPast },
+      // Overdue but not blocking -- not counted.
+      { id: "d2", project_id: PROJECT_ID, blocking: false, state: "not_started", due_at: farPast },
+      // Overdue and blocking, but already accepted -- not counted.
+      { id: "d3", project_id: PROJECT_ID, blocking: true, state: "accepted", due_at: farPast },
+      // Overdue and blocking, but waived -- not counted.
+      { id: "d4", project_id: PROJECT_ID, blocking: true, state: "waived", due_at: farPast },
+      // Blocking and undelivered, but due in the future -- not counted.
+      { id: "d5", project_id: PROJECT_ID, blocking: true, state: "not_started", due_at: farFuture },
+      // Blocking and undelivered, but no due date at all -- not counted.
+      { id: "d6", project_id: PROJECT_ID, blocking: true, state: "in_progress", due_at: null },
+      // A different project's overdue blocking deliverable -- not counted.
+      { id: "d7", project_id: "other-project", blocking: true, state: "not_started", due_at: farPast },
+    ];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
 
-    // Not fabricated -- there is no deliverables entity in this schema
-    // yet (F012, M3), so zero deliverables can be past due.
+    expect(badges.deliverablesPastDue).toBe(1);
+  });
+
+  it("test_AS_003_a_failed_deliverables_count_degrades_to_zero_rather_than_failing_the_whole_badge_read", async () => {
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
+    approvalRequestRows = [
+      { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
+    ];
+    deliverableRowsError = { message: "boom" };
+
+    const badges = await getPortalBadgeCounts(PROJECT_ID);
+
     expect(badges.deliverablesPastDue).toBe(0);
+    // The rest of the badge read is unaffected by the deliverables failure.
+    expect(badges.approvalsAwaiting).toEqual({ ok: true, data: 1 });
   });
 
   // F006f (missions/20260903-portal, AS-002): this test used to assert

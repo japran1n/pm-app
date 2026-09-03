@@ -19,6 +19,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getOverdueBlockingDeliverableCount } from "@/lib/queries/deliverables";
 import { resolvePeople } from "@/lib/queries/people";
 import { resolveClientBucket, type ClientBucket } from "@/components/portal/status-label";
 
@@ -536,6 +537,22 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
     };
   }
 
+  // F012 (missions/20260903-portal, M3): the real overdue-blocking-
+  // deliverables count. A failed read degrades to 0 here (unlike
+  // `approvalsAwaiting` above) because this badge count's own type is a
+  // plain `number`, not a `PortalQueryResult` -- the spec for this field
+  // is "no placeholder that pretends to be data" for the number itself,
+  // not for its failure mode, and a badge silently showing 0 on a
+  // logged, transient read failure is the same posture the rest of this
+  // file takes for degrade-gracefully counts (see `overdueCount` below).
+  const overdueResult = await getOverdueBlockingDeliverableCount(projectId);
+  const deliverablesPastDue = overdueResult.ok ? overdueResult.data : 0;
+  if (!overdueResult.ok) {
+    logger.error("getPortalBadgeCounts: failed to load overdue deliverables count", {
+      error: overdueResult.error,
+    });
+  }
+
   const { data: ownerRows, error: ownerError } = await supabase
     .from("project_decision_owners")
     .select("decision_type")
@@ -546,7 +563,7 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
     logger.error("getPortalBadgeCounts: failed to load decision owners", { error: ownerError });
     return {
       approvalsAwaiting: { ok: false, error: ownerError.message },
-      deliverablesPastDue: 0,
+      deliverablesPastDue,
     };
   }
 
@@ -556,7 +573,7 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
   // could ever decide, so the honest count is 0 without a second round
   // trip.
   if (decisionTypes.length === 0) {
-    return { approvalsAwaiting: { ok: true, data: 0 }, deliverablesPastDue: 0 };
+    return { approvalsAwaiting: { ok: true, data: 0 }, deliverablesPastDue };
   }
 
   const { count, error } = await supabase
@@ -570,7 +587,7 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
     logger.error("getPortalBadgeCounts: failed to load approvals count", { error });
     return {
       approvalsAwaiting: { ok: false, error: error.message },
-      deliverablesPastDue: 0,
+      deliverablesPastDue,
     };
   }
 
@@ -580,7 +597,7 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
     // nullable type, not a failure; it is only ever reached once `error`
     // above is known false.
     approvalsAwaiting: { ok: true, data: count ?? 0 },
-    deliverablesPastDue: 0,
+    deliverablesPastDue,
   };
 }
 
