@@ -303,3 +303,6 @@ against the plan while the contract lags is how a project convinces itself it is
 further along than it is.
 
 Corrected figure going forward: report both, lead with assertions.
+- F006n COMPLETE (b94b8f3) — all five RPCs given membership/role/visibility checks mirroring their own Server Actions, plus portal_enabled and a client-cannot-accept-own-request gate on accept_client_request_atomic. 19 guard clauses, 5 revokes, 21 direct-RPC tests plus 48 regression tests.
+  Orchestrator note: this handoff answered the completeness question the way I have been asking three rounds of workers to answer it. It states the basis for believing the sweep is complete, names exactly what that claim covers, and then explicitly refuses to widen it — "that's a narrower claim than 'the codebase has no more authz gaps of any kind', and I'm repeating it at that same narrower scope, not widening it." It also declines to re-derive 80+ function bodies and says why, rather than claiming a thoroughness it did not perform. That is the standard.
+  **M1 blockers all closed.**
