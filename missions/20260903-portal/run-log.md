@@ -151,3 +151,5 @@ M2 does not start until F006b and F006d are green.
    Recorded here rather than opened: taking it now would stall the portal for a
    database-wide audit, and taking it never is how it gets forgotten. It should
    be its own piece of work.
+- F006c COMPLETE (7f14441) — phase_id wired through getTaskDetail and editTask with cross-project validation (AS-013 now actually persists), page fields gated on taskTypeSystemKey instead of the type name, a real system_key write path plus a widened backfill (page/pages/sida/stranica — Swedish and Serbian, which is the actual audience), and create_project_from_template extended with p_phases in the same transaction (AS-009). Migrations 20260915010000 and 20260915020000 applied. 188 targeted tests pass.
+  Orchestrator verification: phase_id/phaseId now appears in lib/actions/tasks.ts where it previously appeared zero times; the name-based gate is gone and taskTypeSystemKey is in its place.
