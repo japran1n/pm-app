@@ -329,3 +329,37 @@ If M2's gate surfaces an M1 regression, that judgement was wrong and I will say 
 - F011 COMPLETE — decide_approval_atomic extended (migration 20260923010000) so a changes_requested decision atomically creates a client_visible=false task carrying the note, links it through the new resulting_task_id, and posts the note as a comment on the subject task; round tracking in requestApproval; a round>=3 suggestion in the dialog; a non-linking "logged as work" line on the portal card. Tests cover the primary success AND the forced-failure atomicity case. **M2 COMPLETE.**
 
 ## M2 gate
+
+### M2 gate: FAILED. One blocker, four majors. One of them is my error.
+
+Report: missions/20260903-portal/milestones/M2-scrutiny.md
+
+The core is sound and the review says so: decide_approval_atomic read as a whole
+is correct, F006l's portal gate and F007's owner check both sit above F011's new
+branch so both fire on every path, and there is no EXCEPTION block anywhere in
+the function — so F011's atomicity holds by construction rather than by test.
+
+**Blocker, verified:** F011's `resulting_task_id uuid references tasks (id) on
+delete set null` is written only on rows it simultaneously settles. A referential
+SET NULL is a real UPDATE and fires row triggers, so the immutability trigger
+aborts the parent delete. Client requests changes -> task created -> team trashes
+it -> purge_task fails permanently. The migration header asserts this cannot
+happen; true for direct writes, false for the path it created. F011's own test
+afterAll hits it and swallows it.
+
+**The second finding is mine.** F009's worker kept approval-actions.tsx instead of
+deleting it as its spec said, explained that the task page's legacy toggle still
+uses it, and I accepted that and wrote it into this log as a correct call. It was
+correct about why the file exists. Neither of us checked what that path calls:
+approve_portal_task_atomic, which has ZERO project_decision_owners lookups.
+Verified. So a client who owns no decision type is refused on the Approvals view
+and succeeds on the task page.
+
+The worker answered the question it was asked. I did not ask the next one — "and
+does that other path enforce the same rule?" — because the reasoning I was given
+was locally sound. That is exactly how the M1 defects survived too: every
+individual answer was right.
+
+Opened F011b (blocker) and F009b (the two paths, plus subject_id validated only
+in TypeScript and requestApproval missing its portal gate). AS-021's missing doc
+"Open" control and AS-002's vacuous test follow in F009c.
