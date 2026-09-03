@@ -542,3 +542,38 @@ assertions whose render paths have no tests).
   The part that justifies the caution I asked for: two functions broke quietly and were caught only by running the suites, not by reading — is_project_client is used INSIDE RLS policy bodies, and is_valid_timezone inside a CHECK constraint. Neither appears as a .rpc() call site, so a grep-only audit would have shipped a database where inserts fail at runtime. This is the class of fix that breaks things silently, and it did.
 - F016f COMPLETE — the triage-column guard extended to BEFORE INSERT OR UPDATE, closing the AS-047 INSERT bypass; send_change_request_quote_atomic restored to client_gate with a unit test that asserts the function body calls it, so a third silent revert fails a test rather than passing review; the sweep's project join predicate restored so code and comment agree; the stale RLS test updated to F016e's intended behaviour with a real negative case added rather than just relaxed.
 - F016h COMPLETE (24650a1) — swept_at made per deliverable-task pair with a trigger clearing it on acceptance, waiver or a due-date change, so a task swept for one obligation is still blockable by the next; isDeliverablePastDue extracted so the badge and the view share one classifier; the missing "Expired" branch added to quoteStateLabel. 22 new tests, and the worker verified every one fails against the exact mutation named in the review before reverting it to passing. **M3 remediation complete.**
+
+### M3 third gate: one blocker, three majors. Much closer, and both findings are instructive.
+
+Report: missions/20260903-portal/milestones/M3-scrutiny-3.md
+
+**F016g did not break anything** — and the reviewer earned that conclusion:
+it checked every non-.rpc() invocation path against the applied catalog (column
+defaults, generated columns, CHECK constraints, index predicates, view bodies,
+RLS USING/WITH CHECK, other functions' bodies, PostgREST computed columns,
+dynamic SQL, pg_cron) and confirmed no dynamic SQL exists anywhere, so nothing
+is invisible to a static scan.
+
+**But its forward-looking half is a no-op.** `alter default privileges ... revoke
+execute on functions from public` removes nothing, because Postgres merges the
+stored default ACL with the built-in EXECUTE TO PUBLIC. Proven, not inferred:
+F016h's own new function is anon-executable today, and a throwaway function in a
+rolled-back transaction reproduces it. Exposure today is nil because that
+function returns `trigger` — but every function M4 adds is anon-callable unless
+its migration remembers, and M4 adds functions that read billable hours. Blocks
+starting M4, not M3's assertions.
+
+**Seventh instance of the class.** client_requests.origin_assumption_id, added by
+F016b, is client-writable at INSERT, missing from F016f's guard list, and
+dereferenced with no project predicate — the exact shape F016f closed one
+migration earlier.
+
+The pattern is now clear enough to name precisely. F016d fixed the RPCs
+structurally and no RPC has regressed since. F016f extended the guard to INSERT
+and that held. What neither did was make the guard's COLUMN LIST self-maintaining
+— it is still a hand-written enumeration, so any migration adding a column opts
+out of protection silently, and F016b did exactly that within a day. So F016j
+inverts it to an allow-list, and F016i replaces "someone must remember to revoke"
+with a catalog-derived test that fails in CI.
+
+All three round-2 blockers confirmed closed. Nothing reverted again.
