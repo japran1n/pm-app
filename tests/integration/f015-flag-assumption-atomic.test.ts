@@ -277,6 +277,64 @@ describe.skipIf(!haveCreds)("flag_assumption_atomic (AS-046)", () => {
     await admin.from("project_assumptions").delete().eq("id", data.id);
   });
 
+  it("test_AS_046_rejects_a_client_flagging_a_client_visible_false_assumption", async () => {
+    const { data, error: insertErr } = await admin
+      .from("project_assumptions")
+      .insert({
+        project_id: enabledProjectId,
+        text: "Internal-only assumption, never shared with the client.",
+        state: "assumed",
+        client_visible: false,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !data) throw new Error(`assumption: ${insertErr?.message}`);
+
+    const { error } = await clientSession.rpc("flag_assumption_atomic", {
+      p_assumption_id: data.id,
+      p_note: "Trying to flag a row the client cannot even see.",
+    });
+    expect(error).not.toBeNull();
+
+    const { data: unchanged } = await admin
+      .from("project_assumptions")
+      .select("flagged_by_client_at")
+      .eq("id", data.id)
+      .single();
+    expect(unchanged?.flagged_by_client_at).toBeNull();
+
+    await admin.from("project_assumptions").delete().eq("id", data.id);
+  });
+
+  it("test_AS_046_client_can_still_flag_a_client_visible_true_assumption", async () => {
+    const { data, error: insertErr } = await admin
+      .from("project_assumptions")
+      .insert({
+        project_id: enabledProjectId,
+        text: "Ordinary, shared assumption.",
+        state: "assumed",
+        client_visible: true,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !data) throw new Error(`assumption: ${insertErr?.message}`);
+
+    const { error } = await clientSession.rpc("flag_assumption_atomic", {
+      p_assumption_id: data.id,
+      p_note: "This one the client can see and flag.",
+    });
+    expect(error).toBeNull();
+
+    const { data: updated } = await admin
+      .from("project_assumptions")
+      .select("flagged_by_client_at")
+      .eq("id", data.id)
+      .single();
+    expect(updated?.flagged_by_client_at).toBeTruthy();
+
+    await admin.from("project_assumptions").delete().eq("id", data.id);
+  });
+
   it("does not change state even when re-flagged twice", async () => {
     await clientSession.rpc("flag_assumption_atomic", {
       p_assumption_id: assumptionId,

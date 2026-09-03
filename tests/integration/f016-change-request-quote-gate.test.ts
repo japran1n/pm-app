@@ -168,6 +168,48 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
     return data.id as string;
   }
 
+  it("test_AS_046_client_cannot_write_quoted_amount_client_decision_or_decided_by_on_their_own_submitted_request", async () => {
+    const requestId = await makeRequest("Client tries to write their own quote");
+
+    const { error } = await clientSession
+      .from("client_requests")
+      .update({
+        quoted_amount: 1,
+        client_decision: "approved",
+        decided_by: clientId,
+      })
+      .eq("id", requestId);
+
+    expect(error).not.toBeNull();
+
+    const { data: unchanged } = await admin
+      .from("client_requests")
+      .select("quoted_amount, client_decision, decided_by")
+      .eq("id", requestId)
+      .single();
+    expect(unchanged?.quoted_amount).toBeNull();
+    expect(unchanged?.client_decision).toBe("pending");
+    expect(unchanged?.decided_by).toBeNull();
+  });
+
+  it("test_AS_046_client_can_still_edit_title_and_body_of_their_own_submitted_request", async () => {
+    const requestId = await makeRequest("Client edits their own ungated fields");
+
+    const { error } = await clientSession
+      .from("client_requests")
+      .update({ title: "Client edits their own ungated fields (updated)" })
+      .eq("id", requestId);
+
+    expect(error).toBeNull();
+
+    const { data: updated } = await admin
+      .from("client_requests")
+      .select("title")
+      .eq("id", requestId)
+      .single();
+    expect(updated?.title).toBe("Client edits their own ungated fields (updated)");
+  });
+
   it("cannot be accepted while client_decision = 'pending'; after the client approves through the approval RPC, it can, and a scope item appears", async () => {
     const requestId = await makeRequest("Add a members-only section");
 

@@ -2516,6 +2516,16 @@ export type Database = {
           slug: string
         }[]
       }
+      client_gate: {
+        Args: {
+          p_client_visible?: boolean
+          p_project_id: string
+          p_require_client_role?: boolean
+          p_require_portal_enabled?: boolean
+          p_require_project_visible?: boolean
+        }
+        Returns: boolean
+      }
       create_channel_atomic: {
         Args: {
           p_created_by: string
