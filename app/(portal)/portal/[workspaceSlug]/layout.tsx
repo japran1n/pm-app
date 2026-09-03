@@ -1,14 +1,8 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
 
-import { signOut } from "@/lib/actions/auth";
 import { canViewClientPortal } from "@/lib/auth/permissions";
-import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { PortalNav } from "@/components/portal/portal-nav";
 
 // C3 (docs/client-portal-plan.md): the client portal's own shell.
 //
@@ -26,6 +20,23 @@ import { PortalNav } from "@/components/portal/portal-nav";
 // is redirected here from the app, and a team member is redirected out of
 // here into the app, so the portal never becomes a second, weaker view of
 // the same data for staff.
+//
+// F003 (missions/20260903-portal): this used to also render the portal's
+// visible chrome (brand header, `PortalNav`, theme toggle, sign-out) for
+// every route under `/portal/<slug>`. That header is gone -- the
+// prototype's shell is project-scoped (a sidebar naming the CURRENT
+// project, per AS-001/AS-005), and this layout has no `projectId` to
+// scope it with: only a route nested under `p/[projectId]/...` does. The
+// real shell now lives in
+// `app/(portal)/portal/[workspaceSlug]/p/[projectId]/layout.tsx`; this
+// layout goes back to being exactly what its own comment above always
+// said it was -- a guard, not chrome. `[workspaceSlug]/page.tsx` (the
+// project chooser, shown when a client has zero or several portal-enabled
+// projects) renders its own minimal header for the same reason.
+//
+// Every guard below is unchanged from before this feature: unauthenticated
+// -> /sign-in, unknown workspace -> notFound, non-client role -> redirect
+// to /w/<slug>. None of it was touched.
 export const dynamic = "force-dynamic";
 
 export default async function PortalLayout({
@@ -72,48 +83,5 @@ export default async function PortalLayout({
     redirect(`/w/${workspace.slug}`);
   }
 
-  return (
-    <div className="flex min-h-svh flex-col">
-      <header className="border-b border-border">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-6 py-4">
-          {/* F5 (docs, "brendiranje portala"): reuses the same
-              WorkspaceLogo the team app's own switcher already renders —
-              a client sees the SAME logo the team uploaded, never a
-              second upload path or a separate "portal branding" setting
-              to keep in sync. */}
-          <Link
-            href={`/portal/${workspace.slug}`}
-            className="flex items-center gap-2.5"
-          >
-            <WorkspaceLogo
-              workspaceId={workspace.id}
-              name={workspace.name}
-              logoUrl={workspace.logo_url}
-              size="sm"
-            />
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold tracking-tight">
-                {workspace.name}
-              </span>
-              <span className="text-xs text-muted-foreground">Client portal</span>
-            </span>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <PortalNav workspaceSlug={workspace.slug} />
-            <ThemeToggle />
-            <form action={signOut}>
-              <Button type="submit" variant="ghost" size="sm">
-                Sign out
-              </Button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">
-        {children}
-      </main>
-    </div>
-  );
+  return <div className="min-h-svh bg-background">{children}</div>;
 }

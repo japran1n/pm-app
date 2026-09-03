@@ -106,6 +106,12 @@ const project: PortalProject = {
   description: null,
   startDate: null,
   endDate: null,
+  // F003 (missions/20260903-portal): PortalProject grew these three
+  // fields for the portal topbar's launch chips (AS-005); null is a
+  // real, common state (not yet set by the team), not a fixture gap.
+  targetLaunchDate: null,
+  launchConfidence: null,
+  launchNote: null,
   tasks: [
     {
       id: "task-1",

@@ -1,0 +1,105 @@
+import { notFound, redirect } from "next/navigation";
+
+import {
+  getPortalBadgeCounts,
+  getPortalCurrentUserProfile,
+  getPortalProjects,
+} from "@/lib/queries/portal";
+import { createClient } from "@/lib/supabase/server";
+import { PortalSidebar } from "@/components/portal/portal-sidebar";
+import { PortalTopbar } from "@/components/portal/portal-topbar";
+
+// F003 (missions/20260903-portal, AS-001, AS-004, AS-005, AS-006): the
+// prototype's own shell -- fixed-width sticky sidebar (brand, project
+// card, the eight views, a footer) plus a sticky topbar over the view
+// container. Every one of the eight views (`overview` at this segment's
+// own index, `approvals`, `your-list`, `pages`, `hours`, `results`,
+// `scope`, `site`) renders inside this layout.
+//
+// This is the ONE place a `projectId` route param exists in the portal's
+// route tree, which is why the shell lives here rather than in the
+// workspace-level `[workspaceSlug]/layout.tsx` above it (that layout has
+// no project to scope a sidebar to -- see its own comment). This layout
+// adds NO auth/role guard of its own: `[workspaceSlug]/layout.tsx`
+// already ran first (unauthenticated -> /sign-in, unknown workspace ->
+// notFound, non-client role -> redirect to /w/<slug>, AS-006) and wraps
+// every route under it, this one included.
+//
+// Project resolution reuses `getPortalProjects` -- the exact same
+// RLS-plus-`portal_enabled` filtered list the pre-existing
+// `p/[projectId]/page.tsx` (now this segment's overview) already used to
+// resolve a project by id. A project that doesn't exist, isn't shared
+// with this client, or has `portal_enabled = false` is indistinguishable
+// here (RLS/the filter simply never returned the row), so all three end
+// at the same notFound() -- this is the AS-007 404 the failure test
+// checks for, inherited from that existing pattern rather than
+// reimplemented.
+export default async function PortalProjectLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: Promise<{ workspaceSlug: string; projectId: string }>;
+}) {
+  const { workspaceSlug, projectId } = await params;
+
+  const supabase = await createClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id, name, slug, logo_url")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  if (!workspace) notFound();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // The outer layout already guarantees a signed-in user (redirects to
+  // /sign-in otherwise); this defensively re-checks rather than
+  // fabricating a placeholder identity for the sidebar footer.
+  if (!user) redirect("/sign-in");
+
+  const [projects, badges, profile] = await Promise.all([
+    getPortalProjects(workspace.id),
+    getPortalBadgeCounts(projectId),
+    getPortalCurrentUserProfile(user.id),
+  ]);
+
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) notFound();
+
+  return (
+    <div className="flex min-h-svh flex-col md:flex-row">
+      <PortalSidebar
+        workspaceSlug={workspace.slug}
+        workspaceId={workspace.id}
+        workspaceName={workspace.name}
+        workspaceLogoUrl={workspace.logo_url}
+        projectId={project.id}
+        projectName={project.name}
+        hasMultipleProjects={projects.length > 1}
+        badges={badges}
+        currentUser={{
+          id: user.id,
+          name: profile?.displayName ?? null,
+          email: user.email ?? null,
+          avatarUrl: profile?.avatarUrl ?? null,
+        }}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <PortalTopbar
+          workspaceSlug={workspace.slug}
+          projectId={project.id}
+          projectName={project.name}
+          badges={badges}
+          targetLaunchDate={project.targetLaunchDate}
+          launchConfidence={project.launchConfidence}
+        />
+        <main className="flex-1 px-6 py-8">{children}</main>
+      </div>
+    </div>
+  );
+}

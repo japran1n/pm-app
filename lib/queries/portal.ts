@@ -22,6 +22,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 export type StatusCategory = "not_started" | "in_progress" | "done";
 
+// F001 (missions/20260903-portal, `projects.launch_confidence` check
+// constraint) — the three values a PM can set; `null` means "not set
+// yet", rendered as an honest placeholder by the portal shell (F003)
+// rather than a fake default.
+export type PortalLaunchConfidence = "on_track" | "at_risk" | "slipped";
+
 export type PortalTask = {
   id: string;
   title: string;
@@ -42,6 +48,13 @@ export type PortalProject = {
   description: string | null;
   startDate: string | null;
   endDate: string | null;
+  // F003 (missions/20260903-portal, AS-005): the portal topbar's launch
+  // chips. `null` on any of these three is a real, common state (a PM
+  // hasn't set them yet) -- rendered as "-" by the shell, never a fake
+  // date or a default confidence.
+  targetLaunchDate: string | null;
+  launchConfidence: PortalLaunchConfidence | null;
+  launchNote: string | null;
   tasks: PortalTask[];
   // Counts by the *category* of the task's board column, not by the column
   // name: a team can rename or add columns freely (F218 project_statuses),
@@ -83,7 +96,9 @@ export async function getPortalProjects(
 
   const { data: projects, error: projectsError } = await supabase
     .from("projects")
-    .select("id, name, description, start_date, end_date")
+    .select(
+      "id, name, description, start_date, end_date, target_launch_date, launch_confidence, launch_note",
+    )
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
     // F001 (missions/20260903-portal, AS-007): a project's portal is off
@@ -184,6 +199,9 @@ export async function getPortalProjects(
       description: project.description,
       startDate: project.start_date,
       endDate: project.end_date,
+      targetLaunchDate: project.target_launch_date,
+      launchConfidence: project.launch_confidence as PortalLaunchConfidence | null,
+      launchNote: project.launch_note,
       tasks: mapped,
       notStarted,
       inProgress,
@@ -349,6 +367,44 @@ export async function getWorkspaceRoleForCurrentUser(
     return null;
   }
   return data?.role ?? null;
+}
+
+// The signed-in client's own display name/avatar, for the portal
+// sidebar's footer identity row (F003, missions/20260903-portal). Reads
+// through the ordinary RLS-respecting client (`profiles_select_self_or_
+// shared_workspace`, 20260902020000) allows `id = auth.uid()`
+// unconditionally, so a client can always read their own row even though
+// they cannot read the team's.
+export async function getPortalCurrentUserProfile(
+  userId: string,
+): Promise<{ displayName: string | null; avatarUrl: string | null } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("display_name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    logger.error("getPortalCurrentUserProfile failed", { error });
+    return null;
+  }
+  if (!data) return null;
+  return { displayName: data.display_name, avatarUrl: data.avatar_url };
+}
+
+// F003 (missions/20260903-portal, AS-002, AS-003): the sidebar's two
+// badge counts -- approvals awaiting this client's decision, and the
+// client's own deliverables past their due date. Both features that
+// actually produce this data (F007's `approval_requests`, F012's
+// obligations) land after this one; this stub returns zero for both so
+// the shell renders correctly today (a badge is simply omitted when its
+// count is 0 -- see PortalSidebar) and so F007/F012 only ever need to
+// change THIS function's body, never any of its callers.
+export async function getPortalBadgeCounts(
+  _projectId: string,
+): Promise<{ approvalsAwaiting: number; deliverablesPastDue: number }> {
+  return { approvalsAwaiting: 0, deliverablesPastDue: 0 };
 }
 
 // --- Client requests (C5) ---------------------------------------------------
