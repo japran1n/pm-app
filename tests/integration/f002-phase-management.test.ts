@@ -104,6 +104,16 @@ describe.skipIf(!haveAdminCreds)(
     let explicitMemberEmail: string;
     const explicitMemberPassword = "Test-password-1!";
 
+    // F006m: a workspace "guest" with NO explicit `project_members` row
+    // on the shared `projectId` fixture (`visibility: "workspace"`) — the
+    // caller isProjectVisibleToCaller (lib/actions/project-visibility.ts:
+    // 16-31) and seedDefaultPhasesImpl's own `requireVisibility: true`
+    // gate both admit on a workspace-visible project, but the SQL
+    // `is_project_visible_to` predicate excludes 'guest' from its
+    // workspace-visibility branch entirely.
+    let guestEmail: string;
+    const guestPassword = "Test-password-1!";
+
     async function signInAs(email: string, password: string) {
       const signInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error } = await signInClient.auth.signInWithPassword({ email, password });
@@ -171,12 +181,16 @@ describe.skipIf(!haveAdminCreds)(
       const explicitMember = await createUser("explicit-member");
       explicitMemberEmail = explicitMember.email;
 
+      const guest = await createUser("guest");
+      guestEmail = guest.email;
+
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
         { workspace_id: workspaceId, user_id: viewer.id, role: "viewer", status: "active" },
         { workspace_id: workspaceId, user_id: clientUser.id, role: "client", status: "active" },
         { workspace_id: workspaceId, user_id: member.id, role: "member", status: "active" },
         { workspace_id: workspaceId, user_id: explicitMember.id, role: "member", status: "active" },
+        { workspace_id: workspaceId, user_id: guest.id, role: "guest", status: "active" },
       ]);
       if (memberInsertErr) throw new Error(`Failed to seed members: ${memberInsertErr.message}`);
 
@@ -883,6 +897,104 @@ describe.skipIf(!haveAdminCreds)(
         .select("id")
         .eq("project_id", proj.id);
       expect(rows ?? []).toHaveLength(10);
+    });
+
+    // ------------------------------------------------------------------
+    // F006m (M1 scrutiny round 3, minor): F006i's fix for the private-
+    // project hole (above) used `is_project_visible_to`, whose SQL rule
+    // excludes role 'guest' from the workspace-visibility branch. But
+    // seedDefaultPhasesImpl's own gate — `isProjectVisibleToCaller`
+    // (lib/actions/project-visibility.ts:16-31) via `requireVisibility:
+    // true` (lib/actions/phases.ts:188) — admits ANY role, guest
+    // included, on a `visibility: "workspace"` project. A guest with no
+    // `project_members` row can already create phases one at a time
+    // (`project_phases_insert_team` uses `is_project_workspace_writer`,
+    // which admits guest) on the shared workspace-visible `projectId`
+    // fixture, so the ten-at-once RPC must agree.
+    // ------------------------------------------------------------------
+
+    it("F006m: a guest with no explicit project_members row on a WORKSPACE-visible project can seed_default_phases over RPC, matching the Server Action's own gate", async () => {
+      await signInAs(guestEmail, guestPassword);
+      const guestClient = currentTestClient as unknown as SupabaseClient;
+
+      // Primary success test's counterpart: the guest can create a phase
+      // individually on this same workspace-visible project via the
+      // ordinary, fully-gated action.
+      const { createPhase } = await import("@/lib/actions/phases");
+      const individualResult = await createPhase({ projectId, name: "F006m guest individual phase" });
+      expect(individualResult.ok).toBe(true);
+      if (individualResult.ok) {
+        await adminClient.from("project_phases").delete().eq("id", individualResult.data.id);
+      }
+
+      // Dedicated fresh workspace-visible project so "ten rows inserted"
+      // is a genuine before/after check, not shared fixture state.
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-guest-seed`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F006m guest workspace-visible Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "workspace",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      const { error: rpcError } = await guestClient.rpc("seed_default_phases", {
+        p_project_id: proj.id,
+      });
+      expect(rpcError).toBeNull();
+
+      const { data: rows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(rows ?? []).toHaveLength(10);
+    });
+
+    it("F006m: a guest with no explicit project_members row on a PRIVATE project is still rejected by seed_default_phases over RPC (F006i's fix survives), and nothing is inserted", async () => {
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-guest-private-deny`;
+      const { data: proj, error: projErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F006m guest private-deny Project ${uniqueSuffix}`,
+          created_by: ownerUserId,
+          visibility: "private",
+        })
+        .select("id")
+        .single();
+      if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
+      createdProjectIds.push(proj.id);
+
+      // Only the owner is an explicit project_members row — guestEmail is
+      // an active workspace member but not one, and the project is
+      // private, so neither the workspace-visibility branch nor the
+      // explicit-membership branch admits them.
+      const { error: pmErr } = await adminClient.from("project_members").insert({
+        project_id: proj.id,
+        user_id: ownerUserId,
+        project_role: "lead",
+      });
+      if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
+
+      await signInAs(guestEmail, guestPassword);
+      const guestClient = currentTestClient as unknown as SupabaseClient;
+
+      const { error: rpcError } = await guestClient.rpc("seed_default_phases", {
+        p_project_id: proj.id,
+      });
+      expect(rpcError).not.toBeNull();
+      expect(rpcError?.code).toBe("42501");
+
+      const { data: rows } = await adminClient
+        .from("project_phases")
+        .select("id")
+        .eq("project_id", proj.id);
+      expect(rows ?? []).toHaveLength(0);
     });
 
     // ------------------------------------------------------------------
