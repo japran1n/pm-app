@@ -368,3 +368,30 @@ in TypeScript and requestApproval missing its portal gate). AS-021's missing doc
 - F009b COMPLETE (982d24e) — extracted a shared is_project_decision_owner predicate used by BOTH decide_approval_atomic and the assert_portal_task_actionable_by_client helper that approve_portal_task_atomic and request_portal_task_changes_atomic already share, so the two surfaces cannot drift again. Database-level subject_id/project validation added inside the RPC; requestApproval gated on portal_enabled. 12 tests covering four caller types against every path, plus 106 side-effect tests.
   Structurally the right answer: it removed the requirement that two functions agree, rather than making them agree today. That is the difference between fixing this instance and fixing the shape.
 - F009c COMPLETE (96d9991) — getApprovalDocSnapshotUrl mints an RLS-scoped signed URL mirroring getAttachmentSignedUrl, and the doc-subject card now has a real Open control, so the stored snapshot finally has a reader. The AS-002 mock migrated to the shared query-filter helper, and the worker demonstrated the test now fails when .eq("user_id", user.id) is removed, then reverted. **M2 remediation complete.**
+
+### M2 gate: PASSES on the second pass. M3 started.
+
+Report: missions/20260903-portal/milestones/M2-scrutiny-2.md
+
+The blocker is gone and AS-024 holds — the narrowed trigger fires for service_role
+too, proven by four separate per-column updates through the admin client. The
+second approval path is genuinely closed: the reviewer diffed the new shared
+helper against the version it replaced and found the checks byte-identical plus
+the owner call, which was the specific way a rewrite could have silently dropped
+the portal gate. The signed URL is clean — authorisation happens in the RLS
+client's own select, and both attacks I named return null before storage is
+reached.
+
+Two things banked rather than fixed, opened as F009d:
+- The narrowing left service_role able to rewrite four unguarded columns on a
+  settled row. Nothing does today. But a deny-list goes stale the moment someone
+  adds a column, and that is the shape this mission has been caught by four
+  times — so it becomes an allow-list.
+- A correct refusal reads as "Something went wrong" when a project has no
+  decision owners configured. Right outcome, useless message.
+
+One consequence recorded as intended, not a defect: a doc-subject approval now
+lets a client open the body snapshot of a doc they could not otherwise read.
+That is the feature working — the team deliberately asked this client to approve
+that document, and the snapshot is the scoped disclosure that request implies.
+Requiring the doc to be client-visible first would make doc approvals useless.
