@@ -536,3 +536,5 @@ Opened F016g (the ACL blocker — running first, because an anon-reachable
 destructive function is the worst thing on this list), then F016f (the INSERT
 hole and the two silent reverts), then F016h (sweep semantics and the two
 assertions whose render paths have no tests).
+- F016b COMPLETE (bd46b0e) — raise_change_request_from_assumption_atomic matching accept_client_request_atomic's existing team-writer gate rather than inventing an authorisation surface, a button on flagged assumptions opening F016's unmodified QuoteDialog pre-filled, and the sync trigger extended to invalidate the originating assumption when the quote is approved. 5 tests. The item deferred twice now exists.
+  It also surfaced a stale failing test (client-requests-rls, out of date against F016e's intentional RLS widening). Folded into F016f rather than left as known-failing noise.
