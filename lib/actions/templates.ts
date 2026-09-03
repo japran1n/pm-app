@@ -880,7 +880,7 @@ export async function saveProjectAsTemplate(
   // already handles.
   const { data: phaseRows, error: phaseError } = await admin
     .from("project_phases")
-    .select("name, client_description")
+    .select("name, client_description, client_visible")
     .eq("project_id", parsed.data.projectId)
     .order("position", { ascending: true });
 
@@ -905,6 +905,11 @@ export async function saveProjectAsTemplate(
     phases: (phaseRows ?? []).map((row) => ({
       name: row.name as string,
       client_description: row.client_description as string | null,
+      // F006h (AS-012/AS-009): carry the source phase's client visibility
+      // through the template — see projectTemplatePhaseSchema's comment
+      // in lib/validation/templates.ts for why this is captured alongside
+      // name/client_description rather than left to default.
+      client_visible: row.client_visible as boolean,
     })),
   };
 

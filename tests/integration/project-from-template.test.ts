@@ -648,5 +648,152 @@ describe.skipIf(!haveAdminCreds)(
       ]);
       expect(taskRows?.[0]?.priority).toBe("urgent");
     });
+
+    // -----------------------------------------------------------------
+    // F006h (missions/20260903-portal, M1-scrutiny-2.md NM-2 / FU-18 —
+    // AS-009, AS-012): a phase's `client_visible` flag must survive the
+    // save-as-template -> create-from-template round trip. Before this
+    // fix, `saveProjectAsTemplate` never selected `client_visible` at
+    // all, so `create_project_from_template` always left it at the
+    // `project_phases` column default of `true` — a phase deliberately
+    // hidden from the client in the source project came back VISIBLE in
+    // every project made from that template. This is this feature's own
+    // "Failure test": a template saved from a project with a hidden
+    // phase must produce a project whose phase is still hidden.
+    // -----------------------------------------------------------------
+
+    it("test_AS_012_a_hidden_phases_client_visible_flag_survives_save_as_template_and_create_from_template", async () => {
+      const { saveProjectAsTemplate, createProjectFromTemplate } =
+        await import("@/lib/actions/templates");
+
+      const { data: sourceProject, error: sourceProjectError } =
+        await adminClient
+          .from("projects")
+          .insert({
+            workspace_id: workspaceId,
+            name: `F006h Phase Visibility Source Project ${Date.now()}`,
+            created_by: ownerUserId,
+          })
+          .select("id")
+          .single();
+      if (sourceProjectError || !sourceProject) {
+        throw new Error(
+          `Failed to seed source project: ${sourceProjectError?.message}`,
+        );
+      }
+      createdProjectIds.push(sourceProject.id);
+
+      const { error: phaseInsertError } = await adminClient
+        .from("project_phases")
+        .insert([
+          {
+            project_id: sourceProject.id,
+            name: "Client-visible phase",
+            client_description: "Shown to the client.",
+            client_visible: true,
+            position: 1,
+          },
+          {
+            project_id: sourceProject.id,
+            name: "Internal-only phase",
+            client_description: "Never shown to the client.",
+            client_visible: false,
+            position: 2,
+          },
+        ]);
+      if (phaseInsertError) {
+        throw new Error(
+          `Failed to seed source phases: ${phaseInsertError.message}`,
+        );
+      }
+
+      currentTestUserId = ownerUserId;
+      const saveResult = await saveProjectAsTemplate(
+        sourceProject.id,
+        `F006h Phase Visibility Template ${Date.now()}`,
+      );
+
+      expect(saveResult.ok).toBe(true);
+      if (!saveResult.ok) return;
+      createdTemplateIds.push(saveResult.data.id);
+
+      // The saved payload itself carries client_visible for each phase —
+      // proves the save action, not just the eventual round trip.
+      const { data: templateRow } = await adminClient
+        .from("task_templates")
+        .select("payload")
+        .eq("id", saveResult.data.id)
+        .single();
+      const savedPhases = (
+        templateRow?.payload as { phases?: { name: string; client_visible: boolean }[] }
+      )?.phases;
+      expect(savedPhases).toHaveLength(2);
+      expect(
+        savedPhases?.find((p) => p.name === "Client-visible phase")
+          ?.client_visible,
+      ).toBe(true);
+      expect(
+        savedPhases?.find((p) => p.name === "Internal-only phase")
+          ?.client_visible,
+      ).toBe(false);
+
+      const createResult = await createProjectFromTemplate(
+        saveResult.data.id,
+        workspaceId,
+        `F006h Phase Visibility Round Trip Project ${Date.now()}`,
+      );
+      expect(createResult.ok).toBe(true);
+      if (!createResult.ok) return;
+      createdProjectIds.push(createResult.data.id);
+
+      const { data: phaseRows } = await adminClient
+        .from("project_phases")
+        .select("name, client_visible")
+        .eq("project_id", createResult.data.id)
+        .order("position", { ascending: true });
+
+      expect(phaseRows).toHaveLength(2);
+      expect(phaseRows?.find((p) => p.name === "Client-visible phase")?.client_visible).toBe(true);
+      // The failure test: the hidden phase must still be hidden in the
+      // newly-created project, not silently reset to the column default.
+      expect(phaseRows?.find((p) => p.name === "Internal-only phase")?.client_visible).toBe(false);
+    });
+
+    it("test_AS_009_a_template_phase_with_no_client_visible_key_still_defaults_to_visible_true", async () => {
+      // A template saved BEFORE this fix has payload.phases elements with
+      // no `client_visible` key at all — projectTemplatePhaseSchema's
+      // `.default(true)` must let it parse, and the RPC's own
+      // `coalesce(..., true)` must produce the same `true` the column
+      // default already produced, so pre-existing templates are
+      // unaffected.
+      const { createProjectFromTemplate } = await import(
+        "@/lib/actions/templates"
+      );
+      const templateId = await makeProjectTemplate({
+        name: `F006h Pre-fix Template ${Date.now()}`,
+        payload: {
+          tasks: [],
+          phases: [{ name: "Legacy phase", client_description: null }],
+        },
+      });
+
+      currentTestUserId = ownerUserId;
+      const result = await createProjectFromTemplate(
+        templateId,
+        workspaceId,
+        `F006h Pre-fix Round Trip Project ${Date.now()}`,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+
+      const { data: phaseRows } = await adminClient
+        .from("project_phases")
+        .select("name, client_visible")
+        .eq("project_id", result.data.id);
+      expect(phaseRows).toHaveLength(1);
+      expect(phaseRows?.[0]?.client_visible).toBe(true);
+    });
   },
 );

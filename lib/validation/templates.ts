@@ -144,15 +144,35 @@ export type ProjectTemplateTask = z.infer<typeof projectTemplateTaskSchema>;
 // a project template's payload. Field names are snake_case, matching
 // `project_phases`' own columns exactly — same "the payload shape maps
 // straight onto the jsonb the RPC consumes" convention
-// `projectTemplateTaskSchema` above already establishes for tasks. Only
-// `name`/`client_description` are captured: a template snapshots a
-// phase's identity and its client-facing explanation, never an
-// in-flight project's current `state`/dates, which `create_project_from_template`
-// (supabase/migrations/20260915010000_create_project_from_template_phases.sql)
+// `projectTemplateTaskSchema` above already establishes for tasks.
+// `name`/`client_description`/`client_visible` are captured: a template
+// snapshots a phase's identity, its client-facing explanation, AND
+// whether it is visible to the client at all — visibility is a privacy
+// decision made about the phase, not a snapshot of an in-flight
+// project's current progress, so it belongs in the template alongside
+// name/client_description, unlike `state`/dates which
+// `create_project_from_template`
+// (supabase/migrations/20260915010000_create_project_from_template_phases.sql,
+// amended by
+// supabase/migrations/20260917020000_create_project_from_template_phase_visibility.sql)
 // leaves at their column defaults for every newly-seeded phase.
+//
+// F006h (missions/20260903-portal, M1-scrutiny-2.md NM-2/FU-18): before
+// this field existed, `saveProjectAsTemplate` never selected
+// `client_visible` at all, so `create_project_from_template` always left
+// it at the `project_phases` column default of `true` — a phase
+// deliberately hidden from the client in the source project came back
+// VISIBLE in every project created from that template. `.default(true)`
+// (not `.optional()` alone) means a template saved before this fix,
+// whose stored payload has no `client_visible` key on a phase at all,
+// still parses — and defaults to the same `true` that
+// `create_project_from_template` already defaulted it to, so pre-existing
+// templates keep behaving exactly as they did before (never a
+// behavioural change for data that predates this fix).
 export const projectTemplatePhaseSchema = z.object({
   name: z.string().trim().min(1, "Phase name is required."),
   client_description: z.string().nullable(),
+  client_visible: z.boolean().default(true),
 });
 export type ProjectTemplatePhase = z.infer<typeof projectTemplatePhaseSchema>;
 
