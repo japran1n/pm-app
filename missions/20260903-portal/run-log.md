@@ -264,3 +264,27 @@ Two changes to my own practice:
 2. Back to one worker at a time. I had been running two in parallel since the
    remediation rounds because the file areas looked disjoint. They were. The
    index is not.
+- F006l COMPLETE (e9368db) — the four RLS-bypassing paths gated (migrations 20260920010000 and 20260920020000, comments.ts, attachments.ts), with the comment-before-RPC ordering in requestPortalTaskChanges preserved as instructed. Class sweep documented in the handoff.
+
+### F006l's sweep found five more, and they are worse
+
+bulk_delete_tasks_atomic, duplicate_task_atomic, restore_task_atomic,
+set_task_assignees_atomic, accept_client_request_atomic — all SECURITY DEFINER,
+all granted to `authenticated`, all with ZERO authorisation checks. Verified
+each individually: no auth.uid, no membership check, no visibility check, no
+raise exception. A caller needs only a task id.
+
+All five predate the portal. Before it, "any authenticated user" meant "a
+colleague" — the functions were written inside a trust boundary where every
+account belonged to the agency, which is why nobody noticed. The portal
+dissolves that boundary by design: it puts external clients into the workspace
+as authenticated users.
+
+So this is ours to fix, not to file. We are the ones moving outsiders inside the
+perimeter these functions assume. Shipping the portal on top of them would hand
+every client the ability to delete their agency's tasks.
+
+Opened F006n as a blocker. This is the third time the same question — "what can
+a client actually reach?" — has produced a new class of answer: first RLS reads,
+then RLS writes, then paths that never reach RLS, now pre-existing RPCs whose
+threat model the portal itself invalidates.
