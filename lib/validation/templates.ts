@@ -176,8 +176,40 @@ export const projectTemplatePhaseSchema = z.object({
 });
 export type ProjectTemplatePhase = z.infer<typeof projectTemplatePhaseSchema>;
 
+// F013 (missions/20260903-portal, AS-028): a single seeded client
+// deliverable inside a project template's payload. No `due_at` (an
+// absolute date makes no sense inside a reusable template, per the RPC's
+// own comment) — `due_offset_days` is nullable, and when set the seeded
+// deliverable's `due_at` becomes `current_date + due_offset_days` at
+// creation time, resolved entirely inside `create_project_from_template`
+// (supabase/migrations/
+// 20260927020000_f013_project_template_deliverables.sql). `state`/
+// `delivered_at`/`accepted_at`/`accepted_by`/`review_note` are never
+// part of this payload — same "a template captures identity and
+// client-facing content, never a snapshot of in-flight progress" rule
+// `projectTemplatePhaseSchema` already documents for phases.
+export const projectTemplateDeliverableSchema = z.object({
+  title: z.string().trim().min(1, "Deliverable title is required."),
+  description: z.string().nullable(),
+  kind: z.enum(["copy", "image", "access", "decision", "data", "other"]),
+  owner_name: z.string().trim().min(1, "Owner name is required."),
+  blocking: z.boolean().default(false),
+  due_offset_days: z.number().int().nullable().default(null),
+});
+export type ProjectTemplateDeliverable = z.infer<
+  typeof projectTemplateDeliverableSchema
+>;
+
 export const projectTemplatePayloadSchema = z.object({
   tasks: z.array(projectTemplateTaskSchema),
+  // F013 (AS-028): optional/defaulted — not `.optional()` alone — so a
+  // template saved BEFORE this feature, whose stored `payload` jsonb has
+  // no `deliverables` key at all, still parses successfully and
+  // createProjectFromTemplate still has a plain `[]` to pass through to
+  // the RPC's own `p_deliverables` default. This is the mechanism behind
+  // this feature's own Definition of done: "creating a project from an
+  // existing template that has no deliverables[] section still works."
+  deliverables: z.array(projectTemplateDeliverableSchema).default([]),
   // F006c (AS-009): optional/defaulted — not `.optional()` alone — so a
   // template saved BEFORE this feature, whose stored `payload` jsonb has
   // no `phases` key at all, still parses successfully and

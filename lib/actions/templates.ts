@@ -31,6 +31,7 @@ import {
   projectTemplatePayloadSchema,
   type TaskTemplatePayload,
   type ProjectTemplatePayload,
+  type ProjectTemplateDeliverable,
 } from "@/lib/validation/templates";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
@@ -892,6 +893,30 @@ export async function saveProjectAsTemplate(
     };
   }
 
+  // F013 (missions/20260903-portal, AS-028): snapshot this project's own
+  // `client_deliverables`, same "ordered the same way the source table's
+  // own index already sorts them" convention the phase read above uses.
+  // `due_at` is converted to a relative `due_offset_days` (days from
+  // today, at save time) rather than carried as an absolute date — see
+  // `projectTemplateDeliverableSchema`'s own doc comment for why an
+  // absolute date has no meaning inside a reusable template.
+  const { data: deliverableRows, error: deliverableError } = await admin
+    .from("client_deliverables")
+    .select("title, description, kind, owner_name, due_at, blocking")
+    .eq("project_id", parsed.data.projectId)
+    .order("position", { ascending: true });
+
+  if (deliverableError) {
+    logger.error("saveProjectAsTemplate: deliverable read failed", { error: deliverableError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+
   const payload: ProjectTemplatePayload = {
     tasks: sortedTasks.map((row) => ({
       title: row.title as string,
@@ -911,6 +936,23 @@ export async function saveProjectAsTemplate(
       // name/client_description rather than left to default.
       client_visible: row.client_visible as boolean,
     })),
+    deliverables: (deliverableRows ?? []).map((row) => {
+      let dueOffsetDays: number | null = null;
+      if (row.due_at) {
+        const dueDate = new Date(`${row.due_at}T00:00:00Z`);
+        dueOffsetDays = Math.round(
+          (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+      return {
+        title: row.title as string,
+        description: row.description as string | null,
+        kind: row.kind as ProjectTemplateDeliverable["kind"],
+        owner_name: row.owner_name as string,
+        blocking: row.blocking as boolean,
+        due_offset_days: dueOffsetDays,
+      };
+    }),
   };
 
   const { data: inserted, error: insertError } = await admin
@@ -1087,6 +1129,10 @@ export async function createProjectFromTemplate(
       // RPC invocation as the project + tasks above — see
       // supabase/migrations/20260915010000_create_project_from_template_phases.sql.
       p_phases: payload.phases as unknown as Json,
+      // F013 (missions/20260903-portal, AS-028): seeded inside the SAME
+      // RPC invocation as the project + tasks + phases above — see
+      // supabase/migrations/20260927020000_f013_project_template_deliverables.sql.
+      p_deliverables: payload.deliverables as unknown as Json,
     },
   );
 

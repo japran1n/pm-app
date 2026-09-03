@@ -28,6 +28,12 @@ const ENTRIES = [
   { slug: "", label: "Members" },
   { slug: "columns", label: "Board columns" },
   { slug: "phases", label: "Phases" },
+  // F013 (missions/20260903-portal): "What we need from the client" — a
+  // tab beside the phases settings, per that feature's own spec, reached
+  // through this same sub-nav rather than a top-level project tab (a PM
+  // edits this weekly, same cadence as phases, not the once-per-project
+  // cadence board columns/members get).
+  { slug: "deliverables", label: "Deliverables" },
 ] as const;
 
 export function ProjectSettingsNav({

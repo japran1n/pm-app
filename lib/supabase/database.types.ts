@@ -2399,6 +2399,13 @@ export type Database = {
           task_id: string
         }[]
       }
+      accept_deliverable_atomic: {
+        Args: { p_decision: string; p_deliverable_id: string; p_note?: string }
+        Returns: {
+          deliverable_id: string
+          state: string
+        }[]
+      }
       apply_status_template: {
         Args: { p_project_id: string; p_template_id: string }
         Returns: undefined
@@ -2501,6 +2508,7 @@ export type Database = {
       create_project_from_template: {
         Args: {
           p_created_by: string
+          p_deliverables?: Json
           p_description: string
           p_name: string
           p_phases?: Json
@@ -2852,6 +2860,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      sweep_overdue_blocking_deliverables: { Args: never; Returns: number }
       tiptap_doc_from_text: { Args: { p_text: string }; Returns: Json }
       tiptap_text_from_doc: { Args: { p_doc: Json }; Returns: string }
       transfer_workspace_ownership: {

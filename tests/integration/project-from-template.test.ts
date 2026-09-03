@@ -795,5 +795,112 @@ describe.skipIf(!haveAdminCreds)(
       expect(phaseRows).toHaveLength(1);
       expect(phaseRows?.[0]?.client_visible).toBe(true);
     });
+
+    // F013 (missions/20260903-portal, AS-028): the `deliverables[]`
+    // payload section added on top of F184's own template shape. Same
+    // "round trip through the real createProjectFromTemplate action and
+    // RPC" style as this file's own phase-visibility tests above, not a
+    // reimplementation of them.
+    it("AS-028: a template's deliverables[] section seeds client_deliverables into the new project, with due_offset_days resolved relative to today", async () => {
+      const { createProjectFromTemplate } = await import(
+        "@/lib/actions/templates"
+      );
+      const templateId = await makeProjectTemplate({
+        payload: {
+          tasks: [],
+          phases: [],
+          deliverables: [
+            {
+              title: "Brand logo files",
+              description: "Vector + PNG, transparent background.",
+              kind: "image",
+              owner_name: "Client marketing lead",
+              blocking: true,
+              due_offset_days: 3,
+            },
+            {
+              title: "Sitemap sign-off",
+              description: null,
+              kind: "decision",
+              owner_name: "Client lead",
+              blocking: false,
+              due_offset_days: null,
+            },
+          ],
+        },
+      });
+
+      currentTestUserId = ownerUserId;
+      const result = await createProjectFromTemplate(
+        templateId,
+        workspaceId,
+        `F013 Deliverables Round Trip Project ${Date.now()}`,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+
+      const { data: deliverableRows } = await adminClient
+        .from("client_deliverables")
+        .select("title, kind, owner_name, blocking, due_at, state, position")
+        .eq("project_id", result.data.id)
+        .order("position", { ascending: true });
+
+      expect(deliverableRows).toHaveLength(2);
+      const logo = deliverableRows?.find((d) => d.title === "Brand logo files");
+      expect(logo?.kind).toBe("image");
+      expect(logo?.blocking).toBe(true);
+      expect(logo?.state).toBe("not_started");
+      expect(logo?.due_at).not.toBeNull();
+
+      const sitemap = deliverableRows?.find((d) => d.title === "Sitemap sign-off");
+      expect(sitemap?.blocking).toBe(false);
+      expect(sitemap?.due_at).toBeNull();
+    });
+
+    it("AS-028 side-effect: a template saved before this feature (no deliverables key at all) still creates a project, with zero deliverables seeded", async () => {
+      const { createProjectFromTemplate } = await import(
+        "@/lib/actions/templates"
+      );
+      const templateId = await makeProjectTemplate({
+        payload: {
+          tasks: [
+            {
+              title: "Pre-existing task",
+              description: null,
+              description_json: null,
+              priority: null,
+              checklistItems: [],
+              estimate_minutes: null,
+              tags: [],
+            },
+          ],
+          // No `deliverables` key — the exact stored shape of a template
+          // saved before F013.
+        },
+      });
+
+      currentTestUserId = ownerUserId;
+      const result = await createProjectFromTemplate(
+        templateId,
+        workspaceId,
+        `F013 Legacy Template Round Trip Project ${Date.now()}`,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+
+      const { data: taskRows } = await adminClient
+        .from("tasks")
+        .select("id")
+        .eq("project_id", result.data.id);
+      expect(taskRows).toHaveLength(1);
+
+      const { data: deliverableRows } = await adminClient
+        .from("client_deliverables")
+        .select("id")
+        .eq("project_id", result.data.id);
+      expect(deliverableRows).toHaveLength(0);
+    });
   },
 );
