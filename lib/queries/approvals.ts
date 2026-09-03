@@ -28,6 +28,12 @@ export type PortalApproval = {
   subjectType: ApprovalSubjectType;
   subjectId: string | null;
   artifactUrl: string | null;
+  /** F009c: the Storage path of a doc subject's immutable body snapshot
+   * (lib/actions/approvals.ts's uploadDocSnapshot), null for every other
+   * subject type. Never a URL itself — the client mints a fresh signed
+   * URL on click via getApprovalDocSnapshotUrl, same convention as every
+   * other private-bucket read in this codebase. */
+  artifactSnapshotPath: string | null;
   state: ApprovalState;
   requestedAt: string;
   dueAt: string | null;
@@ -38,7 +44,7 @@ export type PortalApproval = {
 };
 
 const APPROVAL_COLUMNS =
-  "id, project_id, title, description, decision_type, subject_type, subject_id, artifact_url, state, requested_at, due_at, decided_at, decision_note, decided_by, round";
+  "id, project_id, title, description, decision_type, subject_type, subject_id, artifact_url, artifact_snapshot_path, state, requested_at, due_at, decided_at, decision_note, decided_by, round";
 
 function mapApprovalRow(row: {
   id: string;
@@ -49,6 +55,7 @@ function mapApprovalRow(row: {
   subject_type: string;
   subject_id: string | null;
   artifact_url: string | null;
+  artifact_snapshot_path: string | null;
   state: string;
   requested_at: string;
   due_at: string | null;
@@ -66,6 +73,7 @@ function mapApprovalRow(row: {
     subjectType: row.subject_type as ApprovalSubjectType,
     subjectId: row.subject_id,
     artifactUrl: row.artifact_url,
+    artifactSnapshotPath: row.artifact_snapshot_path,
     state: row.state as ApprovalState,
     requestedAt: row.requested_at,
     dueAt: row.due_at,

@@ -54,6 +54,7 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
@@ -162,15 +163,12 @@ export type RequestApprovalResult =
 // task id, and this namespace can never collide with a real task's UUID
 // (not a valid uuid string), so it cannot be reached by either of the
 // existing storage.objects policies (which key off the first path
-// segment). That is also this call's limitation, spelled out for the next
-// worker: only the admin/service-role client (used here) can read this
-// object back today — no storage.objects SELECT policy grants a client or
-// a team member's own session read access to this path. F009 (Portal:
-// Approvals view) needs to either add one (scoped through
-// approval_requests' own existing SELECT policies, the same join shape
-// task-attachments' original policy used) or read it via a server-side
-// signed-URL action using the admin client, gated by the same
-// authorization approval_requests_select_client/_team already encode.
+// segment) — no storage.objects SELECT policy grants a client or a team
+// member's own session read access to this path. F009c
+// (getApprovalDocSnapshotUrl, below) closes that gap: it re-checks
+// `approval_requests_select_client`/`_team` via the ordinary
+// RLS-respecting client, then mints a short-lived signed URL through the
+// admin client — never a direct client-session Storage read.
 async function uploadDocSnapshot(
   admin: AdminClient,
   requestId: string,
@@ -588,6 +586,68 @@ const setDecisionOwnerImpl = withAuthz(
     return { ok: true, data: { decisionType: input.decisionType, userId: input.userId } };
   },
 );
+
+// ---------------------------------------------------------------------
+// getApprovalDocSnapshotUrl
+// ---------------------------------------------------------------------
+// F009c (M2 remediation): joins uploadDocSnapshot's write (above) to an
+// actual reader. Same convention as lib/actions/attachments.ts's
+// getAttachmentSignedUrl / components/portal/file-list.tsx's click-to-
+// open: the bucket is private, so no URL is ever persisted client-side —
+// a click requests a fresh 1-hour signed URL and opens it.
+//
+// Authorization is the ordinary RLS-respecting server client selecting
+// the `approval_requests` row itself: `approval_requests_select_client`
+// / `approval_requests_select_team` (20260916010000_approval_requests.sql)
+// are the actual boundary for "can this caller see this approval at
+// all" — identical to every other read in lib/queries/approvals.ts. Only
+// once that read succeeds does this action reach for the admin client,
+// and only to mint the signed URL (the doc-snapshot object itself has no
+// storage.objects SELECT policy for any role, per uploadDocSnapshot's own
+// comment) — never to re-decide visibility.
+const SNAPSHOT_SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour, matches attachments.ts
+
+export type GetApprovalDocSnapshotUrlResult =
+  | { ok: true; signedUrl: string }
+  | { ok: false; error: string };
+
+export async function getApprovalDocSnapshotUrl(
+  approvalId: string,
+): Promise<GetApprovalDocSnapshotUrlResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { data: approvalRow, error: approvalError } = await supabase
+    .from("approval_requests")
+    .select("id, subject_type, artifact_snapshot_path")
+    .eq("id", approvalId)
+    .maybeSingle();
+
+  if (approvalError || !approvalRow) {
+    return { ok: false, error: "Approval request not found." };
+  }
+  if (approvalRow.subject_type !== "doc" || !approvalRow.artifact_snapshot_path) {
+    return { ok: false, error: "This approval has no document to open." };
+  }
+
+  const admin = createAdminClient();
+  const { data: signedUrlData, error: signedUrlError } = await admin.storage
+    .from(SNAPSHOT_BUCKET)
+    .createSignedUrl(approvalRow.artifact_snapshot_path, SNAPSHOT_SIGNED_URL_TTL_SECONDS);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    logger.error("getApprovalDocSnapshotUrl: signed URL generation failed", { error: signedUrlError });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  return { ok: true, signedUrl: signedUrlData.signedUrl };
+}
 
 export async function setDecisionOwner(
   projectId: string,

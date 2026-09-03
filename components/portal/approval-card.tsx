@@ -28,6 +28,7 @@ import { Check, ExternalLink, Loader2, MessageSquareWarning } from "lucide-react
 import { toast } from "sonner";
 
 import { decideApproval } from "@/lib/actions/portal-approval";
+import { getApprovalDocSnapshotUrl } from "@/lib/actions/approvals";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { PortalApproval } from "@/lib/queries/approvals";
@@ -100,6 +101,23 @@ export function ApprovalCard({
   >(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  // F009c: opening a doc-subject approval's snapshot is a separate async
+  // round trip (a fresh signed URL, same convention as
+  // components/portal/file-list.tsx) from the decide transition above --
+  // its own pending state so clicking "Open" never disables Approve.
+  const [isOpeningDoc, startOpenDocTransition] = useTransition();
+
+  const handleOpenDocSnapshot = () => {
+    startOpenDocTransition(async () => {
+      const result = await getApprovalDocSnapshotUrl(approval.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      window.open(result.signedUrl, "_blank", "noopener,noreferrer");
+    });
+  };
 
   // Same synchronous in-flight guard as approval-actions.tsx -- `isPending`
   // alone lags a same-tick second click.
@@ -194,6 +212,26 @@ export function ApprovalCard({
           {isExternal ? <ExternalLink className="size-3.5" aria-hidden="true" /> : null}
           Open
         </Link>
+      )}
+
+      {/* F009c: a doc-subject approval has no static href -- its snapshot
+          lives in a private bucket with no public/anon-readable policy,
+          so opening it requires a fresh signed URL per click (same
+          convention as components/portal/file-list.tsx). */}
+      {!href && approval.subjectType === "doc" && approval.artifactSnapshotPath && (
+        <button
+          type="button"
+          onClick={handleOpenDocSnapshot}
+          disabled={isOpeningDoc}
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline disabled:opacity-60"
+        >
+          {isOpeningDoc ? (
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          ) : (
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          )}
+          Open
+        </button>
       )}
 
       {settled ? (

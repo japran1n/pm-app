@@ -14,12 +14,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-const { toastErrorMock, toastSuccessMock, decideMock, refreshMock } = vi.hoisted(() => ({
-  toastErrorMock: vi.fn(),
-  toastSuccessMock: vi.fn(),
-  decideMock: vi.fn(),
-  refreshMock: vi.fn(),
-}));
+const { toastErrorMock, toastSuccessMock, decideMock, refreshMock, getSnapshotUrlMock } =
+  vi.hoisted(() => ({
+    toastErrorMock: vi.fn(),
+    toastSuccessMock: vi.fn(),
+    decideMock: vi.fn(),
+    refreshMock: vi.fn(),
+    getSnapshotUrlMock: vi.fn(),
+  }));
 
 vi.mock("sonner", () => ({
   toast: { error: toastErrorMock, success: toastSuccessMock },
@@ -33,6 +35,10 @@ vi.mock("@/lib/actions/portal-approval", () => ({
   decideApproval: decideMock,
 }));
 
+vi.mock("@/lib/actions/approvals", () => ({
+  getApprovalDocSnapshotUrl: getSnapshotUrlMock,
+}));
+
 import { ApprovalCard } from "./approval-card";
 import type { PortalApproval } from "@/lib/queries/approvals";
 
@@ -42,6 +48,7 @@ afterEach(() => {
   toastSuccessMock.mockReset();
   decideMock.mockReset();
   refreshMock.mockReset();
+  getSnapshotUrlMock.mockReset();
 });
 
 function deferred<T>() {
@@ -63,6 +70,7 @@ const APPROVAL: PortalApproval = {
   subjectType: "artifact",
   subjectId: null,
   artifactUrl: "https://figma.com/file/abc",
+  artifactSnapshotPath: null,
   state: "pending",
   requestedAt: "2026-08-01T00:00:00Z",
   dueAt: "2026-09-01",
@@ -271,5 +279,69 @@ describe("ApprovalCard (F009)", () => {
     const chip = screen.getByTestId("approval-due-chip");
     expect(chip).toHaveAttribute("data-overdue", "true");
     expect(chip).toHaveTextContent(/overdue/i);
+  });
+
+  // F009c (AS-021): a doc-subject approval has no artifact_url and no
+  // task subject to link into -- before this fix it rendered no "Open"
+  // control at all. It must now open the stored snapshot via a freshly
+  // minted signed URL, same click-to-open shape as
+  // components/portal/file-list.tsx.
+  describe("doc-subject snapshot open control (F009c, AS-021)", () => {
+    const DOC_APPROVAL: PortalApproval = {
+      ...APPROVAL,
+      subjectType: "doc",
+      subjectId: "doc-1",
+      artifactUrl: null,
+      artifactSnapshotPath: "approval-requests/req-1/doc-snapshot.md",
+    };
+
+    it("test_AS_021_doc_approval_renders_an_open_control", () => {
+      renderCard({ approval: DOC_APPROVAL });
+
+      expect(screen.getByRole("button", { name: /open/i })).toBeInTheDocument();
+    });
+
+    it("test_AS_021_opening_a_doc_approval_mints_a_signed_url_and_opens_it", async () => {
+      getSnapshotUrlMock.mockResolvedValue({
+        ok: true,
+        signedUrl: "https://storage.example.com/signed/doc-snapshot.md",
+      });
+      const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+      renderCard({ approval: DOC_APPROVAL });
+      fireEvent.click(screen.getByRole("button", { name: /open/i }));
+
+      await waitFor(() => expect(getSnapshotUrlMock).toHaveBeenCalledWith("req-1"));
+      await waitFor(() =>
+        expect(openSpy).toHaveBeenCalledWith(
+          "https://storage.example.com/signed/doc-snapshot.md",
+          "_blank",
+          "noopener,noreferrer",
+        ),
+      );
+
+      openSpy.mockRestore();
+    });
+
+    it("test_AS_021_doc_approval_open_failure_toasts_and_does_not_open_a_window", async () => {
+      getSnapshotUrlMock.mockResolvedValue({ ok: false, error: "Approval request not found." });
+      const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+      renderCard({ approval: DOC_APPROVAL });
+      fireEvent.click(screen.getByRole("button", { name: /open/i }));
+
+      await waitFor(() =>
+        expect(toastErrorMock).toHaveBeenCalledWith("Approval request not found."),
+      );
+      expect(openSpy).not.toHaveBeenCalled();
+
+      openSpy.mockRestore();
+    });
+
+    it("test_AS_021_doc_approval_with_no_snapshot_path_renders_no_open_control", () => {
+      renderCard({ approval: { ...DOC_APPROVAL, artifactSnapshotPath: null } });
+
+      expect(screen.queryByRole("button", { name: /open/i })).not.toBeInTheDocument();
+    });
   });
 });

@@ -80,15 +80,42 @@ vi.mock("@/lib/supabase/server", () => ({
         };
       }
       if (table === "project_decision_owners") {
+        // F009c (AS-002, same shape as M1's round-3 finding): the old
+        // mock's two `.eq()` calls discarded both arguments and
+        // unconditionally handed back `ownerRows` regardless of what
+        // `project_id`/`user_id` the real query filtered on -- deleting
+        // `.eq("user_id", user.id)` from the source could not turn this
+        // test red. `ownerRows` is now a real row set (with its own
+        // `project_id`/`user_id`/`decision_type` columns) run through
+        // `applyFilters`/`eqFilter` (query-filter-mock.ts, F006j), so a
+        // dropped or wrong-column filter changes what the mock returns.
         return {
-          select: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              eq: vi.fn(async () => ({
-                data: ownerRowsError ? null : ownerRows,
-                error: ownerRowsError,
-              })),
-            })),
-          })),
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return builder;
+              }),
+              // Real supabase-js query builders are themselves
+              // thenable -- the source code awaits the chain directly
+              // after its second `.eq()` with no further terminal call
+              // (`.select("decision_type").eq(...).eq(...)`), so this
+              // mock must be awaitable the same way rather than needing
+              // an extra `.then()`/`.select()` call the real code never
+              // makes.
+              then: (
+                resolve: (value: { data: Row[] | null; error: unknown }) => void,
+              ) => {
+                if (ownerRowsError) {
+                  resolve({ data: null, error: ownerRowsError });
+                  return;
+                }
+                resolve({ data: applyFilters(ownerRows, filters), error: null });
+              },
+            };
+            return builder;
+          }),
         };
       }
       if (table === "tasks") {
@@ -218,7 +245,7 @@ beforeEach(() => {
 
 describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   it("test_AS_002_counts_pending_approval_requests_as_approvals_awaiting", async () => {
-    ownerRows = [{ decision_type: "brand" }];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
       { id: "a2", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
@@ -231,7 +258,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_002_a_project_with_nothing_pending_reports_zero_not_an_error", async () => {
-    ownerRows = [{ decision_type: "brand" }];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [];
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
@@ -247,7 +274,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   // could only ever act on a subset of them (and would get a 42501 from
   // decide_approval_atomic on the rest).
   it("test_AS_002_only_counts_decision_types_this_client_owns", async () => {
-    ownerRows = [{ decision_type: "brand" }];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
       { id: "a2", project_id: PROJECT_ID, state: "pending", decision_type: "commercial" },
@@ -275,10 +302,14 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
 
   // A different client (not the one signed in) owning `brand` must not
   // leak into this caller's own count -- proves the owner lookup is
-  // scoped by `user_id`, not just `project_id`/`decision_type`.
+  // scoped by `user_id`, not just `project_id`/`decision_type`. Unlike
+  // the old version of this test, `ownerRows` genuinely contains a
+  // `brand` row for CLIENT_USER_ID; it is the mock's own `.eq("user_id",
+  // ...)` filtering (query-filter-mock.ts) that must exclude it for the
+  // signed-in OTHER_CLIENT_USER_ID, not a hand-set empty fixture.
   it("test_AS_002_another_clients_owned_decision_type_is_not_counted", async () => {
     currentUserId = OTHER_CLIENT_USER_ID;
-    ownerRows = [];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
     ];
@@ -289,7 +320,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   });
 
   it("test_AS_003_deliverables_past_due_is_honestly_zero_until_the_deliverables_table_exists", async () => {
-    ownerRows = [{ decision_type: "brand" }];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestRows = [
       { id: "a1", project_id: PROJECT_ID, state: "pending", decision_type: "brand" },
     ];
@@ -308,7 +339,7 @@ describe("getPortalBadgeCounts — AS-002, AS-003", () => {
   // renders the same badge either way). It now asserts the opposite: a
   // failed read is reported AS a failure, never coalesced into a count.
   it("test_AS_002_a_failed_count_query_is_reported_as_a_failure_not_coalesced_to_zero", async () => {
-    ownerRows = [{ decision_type: "brand" }];
+    ownerRows = [{ project_id: PROJECT_ID, user_id: CLIENT_USER_ID, decision_type: "brand" }];
     approvalRequestsError = { message: "boom" };
 
     const badges = await getPortalBadgeCounts(PROJECT_ID);
