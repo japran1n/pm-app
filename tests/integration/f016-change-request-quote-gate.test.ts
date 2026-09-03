@@ -210,6 +210,80 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
     expect(updated?.title).toBe("Client edits their own ungated fields (updated)");
   });
 
+  // F016f (M3-scrutiny-2, B2): F016d's column guard was BEFORE UPDATE
+  // only — a client could POST a request that arrives already carrying
+  // client_decision='approved' or a foreign approval_request_id and
+  // defeat AS-047 outright, without ever touching the guarded UPDATE
+  // path. The trigger now fires on INSERT too.
+
+  it("test_AS_047_a_client_cannot_insert_a_request_already_carrying_client_decision_approved", async () => {
+    const { error } = await clientSession.from("client_requests").insert({
+      project_id: projectId,
+      created_by: clientId,
+      title: "Pre-approved by me",
+      status: "submitted",
+      client_decision: "approved",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("test_AS_047_a_client_cannot_insert_a_request_already_carrying_a_quoted_amount_or_scope_verdict", async () => {
+    const { error } = await clientSession.from("client_requests").insert({
+      project_id: projectId,
+      created_by: clientId,
+      title: "Pre-quoted by me",
+      status: "submitted",
+      scope_verdict: "in_scope",
+      quoted_amount: 500,
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("test_AS_047_a_client_cannot_insert_a_request_pointing_approval_request_id_at_an_existing_approval", async () => {
+    // A pending commercial approval already exists on this project from
+    // an earlier quote (created via the RPC in other tests in this
+    // file's project) — but even a fabricated, non-existent id must be
+    // rejected identically: the guard fires on the column being non-null
+    // at all, not on whether the row it points to exists.
+    const { error } = await clientSession.from("client_requests").insert({
+      project_id: projectId,
+      created_by: clientId,
+      title: "Hijack the sync trigger",
+      status: "submitted",
+      approval_request_id: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(error).not.toBeNull();
+  });
+
+  it("test_AS_047_a_client_can_still_file_an_ordinary_request_with_every_guarded_column_left_at_its_default", async () => {
+    const { data, error } = await clientSession
+      .from("client_requests")
+      .insert({
+        project_id: projectId,
+        created_by: clientId,
+        title: "An ordinary request",
+        body: "Nothing pre-filled.",
+      })
+      .select("id, status, client_decision, scope_verdict, quoted_amount, approval_request_id")
+      .single();
+
+    expect(error).toBeNull();
+    expect(data?.status).toBe("submitted");
+    expect(data?.client_decision).toBe("pending");
+    expect(data?.scope_verdict).toBeNull();
+    expect(data?.quoted_amount).toBeNull();
+    expect(data?.approval_request_id).toBeNull();
+    if (data?.id) createdRequestIds.push(data.id);
+
+    // And the team can still triage and quote it — the guard does not
+    // block the legitimate write path.
+    const { error: quoteError } = await memberSession.rpc("send_change_request_quote_atomic", {
+      p_request_id: data!.id,
+      p_scope_verdict: "in_scope",
+    });
+    expect(quoteError).toBeNull();
+  });
+
   it("cannot be accepted while client_decision = 'pending'; after the client approves through the approval RPC, it can, and a scope item appears", async () => {
     const requestId = await makeRequest("Add a members-only section");
 

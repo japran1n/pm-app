@@ -48,6 +48,7 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
   let admin: SupabaseClient;
   let clientA: SupabaseClient;
   let clientB: SupabaseClient;
+  let clientC: SupabaseClient;
   let member: SupabaseClient;
 
   let workspaceId: string;
@@ -56,6 +57,7 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
   let memberId: string;
   let clientAId: string;
   let clientBId: string;
+  let clientCId: string;
   let requestId: string;
   const createdUserIds: string[] = [];
 
@@ -81,10 +83,12 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
     const memberUser = await makeUser("member");
     const clientAUser = await makeUser("clienta");
     const clientBUser = await makeUser("clientb");
+    const clientCUser = await makeUser("clientc");
     ownerId = owner.id;
     memberId = memberUser.id;
     clientAId = clientAUser.id;
     clientBId = clientBUser.id;
+    clientCId = clientCUser.id;
 
     const { data: workspace, error: wsErr } = await admin
       .from("workspaces")
@@ -99,6 +103,11 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
       { workspace_id: workspaceId, user_id: memberId, role: "member", status: "active" },
       { workspace_id: workspaceId, user_id: clientAId, role: "client", status: "active" },
       { workspace_id: workspaceId, user_id: clientBId, role: "client", status: "active" },
+      // clientC is a client in the same workspace but deliberately never
+      // added to this project's project_members below — the negative case
+      // that "another client on the SAME project" (clientB, now a positive
+      // case per F016e's AS-048 widening) no longer covers.
+      { workspace_id: workspaceId, user_id: clientCId, role: "client", status: "active" },
     ]);
 
     const { data: project, error: projectErr } = await admin
@@ -119,9 +128,11 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
     if (projectErr || !project) throw new Error(`project: ${projectErr?.message}`);
     projectId = project.id;
 
-    // BOTH clients are on the same project — the case that makes "a client
-    // sees only their own requests" a real assertion rather than a
-    // side-effect of project scoping.
+    // BOTH clientA and clientB are on the same project — since F016e
+    // (AS-048), a client-facing SELECT is scoped by project visibility,
+    // not row ownership, so both are expected to see the same requests.
+    // clientC is deliberately NOT added here — it stays the negative case:
+    // a client with no membership on this project sees nothing.
     await admin.from("project_members").insert([
       { project_id: projectId, user_id: memberId, project_role: "lead", added_by: ownerId },
       { project_id: projectId, user_id: clientAId, project_role: "member", added_by: ownerId },
@@ -139,6 +150,7 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
 
     clientA = await signIn(clientAUser.email);
     clientB = await signIn(clientBUser.email);
+    clientC = await signIn(clientCUser.email);
     member = await signIn(memberUser.email);
   }, 60_000);
 
@@ -190,8 +202,23 @@ describe.skipIf(!haveCreds)("client_requests — RLS", () => {
     expect(error?.code).toBe(RLS_DENIED);
   });
 
-  it("a client cannot read another client's request on the same project", async () => {
+  // F016e (AS-048): the portal shows EACH change request on a project to
+  // every client on that project, not only the ones a given client
+  // authored — matches every other client-facing SELECT policy this
+  // milestone introduced (client_deliverables, project_scope_items,
+  // project_decisions, project_assumptions), all scoped by project
+  // membership/visibility, never by row ownership.
+  it("a client on the same project CAN read another client's request", async () => {
     const { data, error } = await clientB
+      .from("client_requests")
+      .select("id")
+      .eq("id", requestId);
+    expect(error).toBeNull();
+    expect(data).toHaveLength(1);
+  });
+
+  it("a client who is not a member of the project cannot read a request on it", async () => {
+    const { data, error } = await clientC
       .from("client_requests")
       .select("id")
       .eq("id", requestId);
