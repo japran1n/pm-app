@@ -57,3 +57,5 @@ log. Risk downgraded, not closed. A clean full-suite run still happens at the
 M1 gate, when no worker is active — running one concurrently with a worker
 would have both sessions hitting the same Supabase project and manufacturing
 the very rate-limit failures we are trying to attribute.
+- F005 COMPLETE (54c1e80) — getPortalPages (batched resolvePeople, page_order nulls-last), status-distribution, pages-table with client-side filter, page-travel-strip, pageSlug/pageOrder editing in the task sheet. 20 new tests + 59 pre-existing pass.
+  Finding promoted to F005b: the query matches the page task type with `.ilike("name", "page")`. The worker documented the tradeoff honestly — task_types has no seeded rows to match on — but the result is that a workspace naming the type "Sida" or "Stranica" gets an EMPTY Pages view with no error, and a rename silently empties a client's view. Same string-matching failure mode F004 was forbidden to use for statuses. Fixing with a system_key column before M2.
