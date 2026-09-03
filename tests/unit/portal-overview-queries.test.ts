@@ -7,10 +7,9 @@
 // which rows get excluded, what an honest "not built yet" stub returns).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { applyFilters, eqFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
 
 vi.mock("server-only", () => ({}));
-
-type Row = Record<string, unknown>;
 
 // --- getPortalBadgeCounts (AS-002, AS-003) ---------------------------------
 //
@@ -26,16 +25,11 @@ let approvalCountResult: { count: number | null; error: unknown };
 // Applies each `.eq()`/`.is()` call's own column/value against the row
 // set (same reasoning as tests/unit/portal-phases-query.test.ts's own
 // header comment) rather than handing back a fixed array regardless of
-// what the real query filtered on.
+// what the real query filtered on. `eqFilter`/`applyFilters` come from
+// the shared tests/unit/helpers/query-filter-mock.ts (F006j) rather than
+// being reimplemented here.
 let waitingTaskRows: Row[];
 let waitingTasksError: { message: string } | null;
-
-function eqFilter(col: string, val: unknown) {
-  return (row: Row) => row[col] === val;
-}
-function applyFilters(rows: Row[], filters: Array<(row: Row) => boolean>): Row[] {
-  return rows.filter((row) => filters.every((f) => f(row)));
-}
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({

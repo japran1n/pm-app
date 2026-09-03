@@ -20,12 +20,18 @@
 // injecting an `error` per table, to cover this feature's own "fails
 // loudly" requirement — getProjectPhases must return `{ ok: false }`,
 // never compute a percentage from a partial or empty read.
+//
+// F006j (missions/20260903-portal, test integrity): `eqFilter`/
+// `inFilter`/`applyFilters` moved to the shared
+// tests/unit/helpers/query-filter-mock.ts, adopted here and by
+// tests/unit/portal-overview-queries.test.ts — see that file's own
+// header comment for why a filter-honouring mock is the whole point.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { applyFilters, eqFilter, inFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
 
 vi.mock("server-only", () => ({}));
 
-type Row = Record<string, unknown>;
 type MockError = { message: string } | null;
 
 let phaseRows: Row[];
@@ -34,16 +40,6 @@ let statusRows: Row[];
 let phasesError: MockError;
 let tasksError: MockError;
 let statusesError: MockError;
-
-function eqFilter(col: string, val: unknown) {
-  return (row: Row) => row[col] === val;
-}
-function inFilter(col: string, vals: readonly unknown[]) {
-  return (row: Row) => vals.includes(row[col]);
-}
-function applyFilters(rows: Row[], filters: Array<(row: Row) => boolean>): Row[] {
-  return rows.filter((row) => filters.every((f) => f(row)));
-}
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({

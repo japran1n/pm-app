@@ -94,6 +94,16 @@ describe.skipIf(!haveAdminCreds)(
     const memberPassword = "Test-password-1!";
     let privateProjectId: string;
 
+    // F006j: a workspace "member" (not owner/admin, so the role
+    // short-circuit at phases.ts:827 does NOT apply) who DOES have an
+    // explicit `project_members` row on the private project below — the
+    // actor bulkSetTaskPhase's "still succeeds" test needs to actually
+    // exercise `explicitMemberProjectIds` finding a hit, instead of the
+    // owner, whose role alone bypasses the private-project check before
+    // that lookup is ever consulted.
+    let explicitMemberEmail: string;
+    const explicitMemberPassword = "Test-password-1!";
+
     async function signInAs(email: string, password: string) {
       const signInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error } = await signInClient.auth.signInWithPassword({ email, password });
@@ -158,11 +168,15 @@ describe.skipIf(!haveAdminCreds)(
       const member = await createUser("member");
       memberEmail = member.email;
 
+      const explicitMember = await createUser("explicit-member");
+      explicitMemberEmail = explicitMember.email;
+
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
         { workspace_id: workspaceId, user_id: viewer.id, role: "viewer", status: "active" },
         { workspace_id: workspaceId, user_id: clientUser.id, role: "client", status: "active" },
         { workspace_id: workspaceId, user_id: member.id, role: "member", status: "active" },
+        { workspace_id: workspaceId, user_id: explicitMember.id, role: "member", status: "active" },
       ]);
       if (memberInsertErr) throw new Error(`Failed to seed members: ${memberInsertErr.message}`);
 
@@ -201,10 +215,21 @@ describe.skipIf(!haveAdminCreds)(
       privateProjectId = privateProj.id;
       createdProjectIds.push(privateProjectId);
 
+      // F006j: `explicitMember` (workspace role "member", so
+      // phases.ts:827's `role !== "owner" && role !== "admin"` short
+      // circuit does NOT apply to them) is the ONLY user this fixture
+      // gives an explicit `project_members` row for. An owner's own role
+      // already bypasses the private-project check regardless of
+      // `project_members` (isProjectVisibleToCaller,
+      // lib/actions/project-visibility.ts:26, and the identical
+      // short-circuit in lib/actions/phases.ts:827-828) — an owner row
+      // here would be dead fixture data that no assertion below actually
+      // depends on, exactly the defect M1-scrutiny-2's NM-6a/F006j
+      // describe.
       const { error: pmErr } = await adminClient.from("project_members").insert({
         project_id: privateProjectId,
-        user_id: ownerUserId,
-        project_role: "lead",
+        user_id: explicitMember.id,
+        project_role: "member",
       });
       if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
     });
@@ -669,7 +694,22 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.phase_id).toBeNull();
     });
 
-    it("F006d: bulkSetTaskPhase still succeeds for a private-project task the caller IS an explicit member of", async () => {
+    // F006j: rewritten. This test used to sign in as `ownerEmail` for the
+    // `bulkSetTaskPhase` call itself, not just the setup — but an owner's
+    // role bypasses the private-project check on its own
+    // (`role !== "owner" && role !== "admin"` at phases.ts:827 is false
+    // for an owner regardless of `explicitMemberProjectIds`), so the
+    // fixture's `project_members` row was never actually consulted and
+    // this test could not tell the private-project gate's "explicit
+    // member" branch from no gate at all. It now signs in as
+    // `explicitMemberEmail` — workspace role "member" (not owner/admin),
+    // so the short circuit does NOT apply — for the actual
+    // `bulkSetTaskPhase` call, exercising the real hit path: the
+    // fixture's `project_members` row for `explicitMemberEmail` on
+    // `privateProjectId` must be found for this call to succeed. Verified
+    // this rewrite can fail: see the F006j handoff for the before/after
+    // run against a deliberately broken `project_members` lookup.
+    it("F006d/F006j: bulkSetTaskPhase still succeeds for a private-project task a non-owner caller IS an explicit member of", async () => {
       const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
       await signInAs(ownerEmail, ownerPassword);
 
@@ -681,7 +721,7 @@ describe.skipIf(!haveAdminCreds)(
         .from("tasks")
         .insert({
           project_id: privateProjectId,
-          title: "F006d private-project task, owner-permitted",
+          title: "F006j private-project task, explicit-member-permitted",
           author_id: ownerUserId,
           status: "todo",
         })
@@ -689,8 +729,11 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       if (taskErr || !task) throw new Error(`Failed to seed task: ${taskErr?.message}`);
 
-      // ownerEmail IS an explicit project_members row for privateProjectId
-      // (seeded in beforeAll), so the private-project gate must not reject.
+      // explicitMemberEmail is a plain workspace "member" (not owner or
+      // admin) WITH an explicit project_members row for privateProjectId
+      // (seeded in beforeAll) — the private-project gate must consult
+      // explicitMemberProjectIds, find this row, and not reject.
+      await signInAs(explicitMemberEmail, explicitMemberPassword);
       const result = await bulkSetTaskPhase([task.id], phase.data.id);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
