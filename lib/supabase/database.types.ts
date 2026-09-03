@@ -1064,6 +1064,7 @@ export type Database = {
       project_statuses: {
         Row: {
           category: string
+          client_bucket: string | null
           client_description: string | null
           color: string
           created_at: string
@@ -1074,6 +1075,7 @@ export type Database = {
         }
         Insert: {
           category: string
+          client_bucket?: string | null
           client_description?: string | null
           color: string
           created_at?: string
@@ -1084,6 +1086,7 @@ export type Database = {
         }
         Update: {
           category?: string
+          client_bucket?: string | null
           client_description?: string | null
           color?: string
           created_at?: string

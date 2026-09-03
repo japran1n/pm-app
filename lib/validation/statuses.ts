@@ -28,6 +28,37 @@ const columnCategorySchema = z
   .string()
   .refine(isColumnCategory, "Choose a valid category.");
 
+// F004 (missions/20260903-portal, AS-016): the client-facing explanation
+// behind a status pill's tooltip. Empty input clears it back to null
+// (rather than persisting an empty string) so `StatusPill` correctly
+// treats "never written" and "cleared" the same way — no tooltip.
+const clientDescriptionSchema = z
+  .string()
+  .max(500, "Client description must be 500 characters or fewer.")
+  .transform((value) => {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  });
+
+// F004 (AS-015): one of the four client-facing buckets a status can be
+// explicitly pinned to, or "auto" to clear the override and fall back to
+// a category-derived bucket
+// (components/portal/status-label.ts's `resolveClientBucket`). The four
+// literal values match `project_statuses_client_bucket_check`
+// (supabase/migrations/20260911010000_status_client_bucket.sql) and
+// `ClientBucket` in components/portal/status-label.ts — the same
+// "matches the DB constraint" convention `columnCategorySchema` above
+// already uses for the three category values.
+const CLIENT_BUCKET_VALUES = ["waiting", "progress", "blocked", "done"] as const;
+const clientBucketSchema = z
+  .string()
+  .transform((value) => (value === "auto" ? null : value))
+  .refine(
+    (value): value is (typeof CLIENT_BUCKET_VALUES)[number] | null =>
+      value === null || (CLIENT_BUCKET_VALUES as readonly string[]).includes(value),
+    "Choose a valid client status bucket.",
+  );
+
 export const addColumnSchema = z.object({
   projectId: z.string().uuid("Invalid project."),
   name: columnNameSchema,
@@ -37,11 +68,21 @@ export const addColumnSchema = z.object({
 
 export type AddColumnInput = z.infer<typeof addColumnSchema>;
 
+// `clientDescription`/`clientBucket` are optional (not defaulted) rather
+// than required alongside name/color/category: an omitted key means
+// "this caller isn't touching that field", which
+// lib/actions/statuses.ts's `updateColumn` reads as "leave the column's
+// current value alone" — distinct from an explicit empty string / "auto",
+// which clears it. This keeps every pre-F004 caller of `updateColumn`
+// (this repo has several integration tests that call it directly with
+// only name/color/category) behaviourally unchanged.
 export const updateColumnSchema = z.object({
   columnId: z.string().uuid("Invalid column."),
   name: columnNameSchema,
   color: columnColorSchema,
   category: columnCategorySchema,
+  clientDescription: clientDescriptionSchema.optional(),
+  clientBucket: clientBucketSchema.optional(),
 });
 
 export type UpdateColumnInput = z.infer<typeof updateColumnSchema>;

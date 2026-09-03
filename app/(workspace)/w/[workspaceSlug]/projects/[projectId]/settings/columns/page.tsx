@@ -91,9 +91,12 @@ export default async function ProjectColumnsSettingsPage({
     // AS-404/AS-411 read path: the project's actual columns, in board
     // order. Performance budget (Clarified implementation #8): one query,
     // no per-column follow-up call.
+    // F004 (missions/20260903-portal, AS-015, AS-016): also carries
+    // `client_description`/`client_bucket` so this same read powers the
+    // new client-description field + bucket select, with no second query.
     supabase
       .from("project_statuses")
-      .select("id, name, color, category, position")
+      .select("id, name, color, category, position, client_description, client_bucket")
       .eq("project_id", project.id)
       .order("position", { ascending: true }),
   ]);
@@ -109,6 +112,8 @@ export default async function ProjectColumnsSettingsPage({
     color: row.color,
     category: row.category as ProjectColumn["category"],
     position: row.position,
+    clientDescription: row.client_description,
+    clientBucket: row.client_bucket,
   }));
 
   return (

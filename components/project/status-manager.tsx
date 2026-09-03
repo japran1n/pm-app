@@ -34,6 +34,7 @@ import { calculatePosition } from "@/lib/board/position";
 import { COLUMN_CATEGORIES, COLUMN_COLOR_PALETTE, DEFAULT_COLUMN_COLOR } from "@/lib/board/column-colors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -64,7 +65,26 @@ export type ProjectColumn = {
   color: string;
   category: "not_started" | "in_progress" | "done";
   position: number;
+  // F004 (missions/20260903-portal, AS-015, AS-016): the client-facing
+  // explanation (StatusPill's tooltip) and the explicit bucket override
+  // (StatusPill's tint) — both null until a PM sets them here.
+  clientDescription: string | null;
+  clientBucket: string | null;
 };
+
+// F004: matches `project_statuses_client_bucket_check`
+// (supabase/migrations/20260911010000_status_client_bucket.sql) and
+// components/portal/status-label.ts's `ClientBucket` — "auto" is this
+// UI's own value for "no override, use the category fallback", never
+// sent to the DB as a literal string (lib/validation/statuses.ts's
+// `clientBucketSchema` turns it back into `null`).
+const CLIENT_BUCKET_OPTIONS: { value: string; label: string }[] = [
+  { value: "auto", label: "Auto (from category)" },
+  { value: "waiting", label: "Waiting on client" },
+  { value: "progress", label: "In progress" },
+  { value: "blocked", label: "Blocked" },
+  { value: "done", label: "Done" },
+];
 
 function ColorSwatch({ color }: { color: string }) {
   return (
@@ -96,6 +116,14 @@ function ColumnRow({
   const [name, setName] = useState(column.name);
   const [color, setColor] = useState(column.color);
   const [category, setCategory] = useState(column.category);
+  // F004 (AS-016): text field state; "" in the UI means "no description",
+  // same as the DB's null — `clientDescriptionSchema` normalises "" back
+  // to null on the server, so this component never needs to juggle a
+  // separate null/"" distinction locally.
+  const [clientDescription, setClientDescription] = useState(column.clientDescription ?? "");
+  // F004 (AS-015): "auto" is this UI's own stand-in for "no override" —
+  // see CLIENT_BUCKET_OPTIONS's comment.
+  const [clientBucket, setClientBucket] = useState(column.clientBucket ?? "auto");
   const [isPending, startTransition] = useTransition();
   // F220 (AS-406): removing a column requires an explicit destination
   // column for its tasks — the confirmation dialog cannot be confirmed
@@ -104,11 +132,19 @@ function ColumnRow({
     otherColumns[0]?.id ?? "",
   );
 
-  function submitUpdate(nextName: string, nextColor: string, nextCategory: typeof category) {
-    const previous = { name, color, category };
+  function submitUpdate(
+    nextName: string,
+    nextColor: string,
+    nextCategory: typeof category,
+    nextClientDescription: string,
+    nextClientBucket: string,
+  ) {
+    const previous = { name, color, category, clientDescription, clientBucket };
     setName(nextName);
     setColor(nextColor);
     setCategory(nextCategory);
+    setClientDescription(nextClientDescription);
+    setClientBucket(nextClientBucket);
 
     startTransition(async () => {
       const result = await updateColumn({
@@ -116,12 +152,16 @@ function ColumnRow({
         name: nextName,
         color: nextColor,
         category: nextCategory,
+        clientDescription: nextClientDescription,
+        clientBucket: nextClientBucket,
       });
 
       if (!result.ok) {
         setName(previous.name);
         setColor(previous.color);
         setCategory(previous.category);
+        setClientDescription(previous.clientDescription);
+        setClientBucket(previous.clientBucket);
         toast.error(result.error);
         return;
       }
@@ -132,6 +172,8 @@ function ColumnRow({
         color: result.data.color,
         category: result.data.category as ProjectColumn["category"],
         position: result.data.position,
+        clientDescription: result.data.clientDescription,
+        clientBucket: result.data.clientBucket,
       });
     });
   }
@@ -161,7 +203,7 @@ function ColumnRow({
         onChange={(event) => setName(event.target.value)}
         onBlur={() => {
           if (name.trim() && name !== column.name) {
-            submitUpdate(name, color, category);
+            submitUpdate(name, color, category, clientDescription, clientBucket);
           } else {
             setName(column.name);
           }
@@ -173,7 +215,9 @@ function ColumnRow({
 
       <Select
         value={color}
-        onValueChange={(value) => value && submitUpdate(name, value, category)}
+        onValueChange={(value) =>
+          value && submitUpdate(name, value, category, clientDescription, clientBucket)
+        }
         disabled={isPending}
       >
         <SelectTrigger className="w-32" aria-label="Column colour">
@@ -194,7 +238,14 @@ function ColumnRow({
       <Select
         value={category}
         onValueChange={(value) =>
-          value && submitUpdate(name, color, value as ProjectColumn["category"])
+          value &&
+          submitUpdate(
+            name,
+            color,
+            value as ProjectColumn["category"],
+            clientDescription,
+            clientBucket,
+          )
         }
         disabled={isPending}
       >
@@ -209,6 +260,45 @@ function ColumnRow({
           ))}
         </SelectContent>
       </Select>
+
+      {/* F004 (AS-015): explicit client-bucket override — see
+          CLIENT_BUCKET_OPTIONS's comment for "auto". */}
+      <Select
+        value={clientBucket}
+        onValueChange={(value) =>
+          value && submitUpdate(name, color, category, clientDescription, value)
+        }
+        disabled={isPending}
+      >
+        <SelectTrigger className="w-44" aria-label="Client-facing status bucket">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {CLIENT_BUCKET_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* F004 (AS-016): the client-facing explanation behind this
+          status's pill tooltip — a full-width row so the field has room
+          to be a real sentence, not squeezed into the inline row above. */}
+      <Textarea
+        value={clientDescription}
+        onChange={(event) => setClientDescription(event.target.value)}
+        onBlur={() => {
+          if (clientDescription !== (column.clientDescription ?? "")) {
+            submitUpdate(name, color, category, clientDescription, clientBucket);
+          }
+        }}
+        disabled={isPending}
+        placeholder="Client-facing description (shown as a tooltip on the status pill)"
+        aria-label="Client-facing status description"
+        rows={2}
+        className="w-full basis-full"
+      />
 
       <div className="ml-auto flex items-center gap-1">
         <Button
@@ -364,6 +454,8 @@ export function StatusManager({
             color: result.data.color,
             category: result.data.category as ProjectColumn["category"],
             position: result.data.position,
+            clientDescription: result.data.clientDescription,
+            clientBucket: result.data.clientBucket,
           },
         ].sort((a, b) => a.position - b.position),
       );

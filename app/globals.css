@@ -12,6 +12,17 @@
   --font-heading: var(--font-sans);
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  /* F004 (missions/20260903-portal): the four status buckets, exposed to
+     Tailwind so components write `bg-status-waiting`/`text-status-done`/
+     `bg-status-blocked-bg` etc. instead of `var(--status-*)` inline. */
+  --color-status-waiting: var(--status-waiting);
+  --color-status-waiting-bg: var(--status-waiting-bg);
+  --color-status-progress: var(--status-progress);
+  --color-status-progress-bg: var(--status-progress-bg);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-blocked-bg: var(--status-blocked-bg);
+  --color-status-done: var(--status-done);
+  --color-status-done-bg: var(--status-done-bg);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -82,6 +93,25 @@
   --accent-foreground: var(--gg-dark-900);
   --brand: var(--gg-brand-500);
   --brand-foreground: var(--gg-light-100);
+  /* F004 (missions/20260903-portal): the four client-facing status
+     buckets (waiting / in progress / blocked / done) a project status
+     maps to (components/portal/status-label.ts's `resolveClientBucket`).
+     Not in the Figma "💠 Colors" page -- these four hex values were
+     independently validated for contrast and colour-vision separation on
+     both the portal ground and the team board's ground. Do not re-pick
+     them per component; add new semantics here, once. */
+  --status-waiting: #b57a00;
+  --status-progress: #3670e1;
+  --status-blocked: #b8332a;
+  --status-done: #12784f;
+  /* Pill-fill surfaces, following how --muted/--accent are declared: a
+     translucent tint of the status colour over whatever surface the pill
+     sits on (portal card, team board column), so the same token pair
+     reads correctly on every ground without a second per-surface value. */
+  --status-waiting-bg: color-mix(in srgb, var(--status-waiting) 16%, transparent);
+  --status-progress-bg: color-mix(in srgb, var(--status-progress) 16%, transparent);
+  --status-blocked-bg: color-mix(in srgb, var(--status-blocked) 16%, transparent);
+  --status-done-bg: color-mix(in srgb, var(--status-done) 16%, transparent);
   --destructive: oklch(
     0.577 0.245 27.325
   ); /* not in the Figma palette; kept from the shadcn base */
@@ -125,6 +155,17 @@
   --accent-foreground: var(--gg-light-100);
   --brand: var(--gg-brand-500);
   --brand-foreground: var(--gg-light-100);
+  /* F004: dark-theme half of the same validated four (see :root's
+     comment above) -- lighter/more saturated so each still clears
+     contrast against the near-black ground. */
+  --status-waiting: #dbb03e;
+  --status-progress: #7aa5f3;
+  --status-blocked: #dd5560;
+  --status-done: #2f9e73;
+  --status-waiting-bg: color-mix(in srgb, var(--status-waiting) 18%, transparent);
+  --status-progress-bg: color-mix(in srgb, var(--status-progress) 18%, transparent);
+  --status-blocked-bg: color-mix(in srgb, var(--status-blocked) 18%, transparent);
+  --status-done-bg: color-mix(in srgb, var(--status-done) 18%, transparent);
   --destructive: oklch(0.704 0.191 22.216);
   --border: rgb(255 255 255 / 0.1);
   --input: rgb(255 255 255 / 0.15);

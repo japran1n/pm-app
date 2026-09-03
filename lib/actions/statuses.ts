@@ -95,6 +95,12 @@ type ColumnContext = {
   color: string;
   category: string;
   position: number;
+  // F004: the client-facing explanation (AS-016) and bucket override
+  // (AS-015) — carried through every action's context load so a write
+  // that doesn't touch these two fields (e.g. `reorderColumn`) can still
+  // return them unchanged rather than dropping them from its response.
+  clientDescription: string | null;
+  clientBucket: string | null;
 };
 
 async function loadColumnContext(
@@ -103,7 +109,7 @@ async function loadColumnContext(
 ): Promise<ColumnContext | null> {
   const { data, error } = await admin
     .from("project_statuses")
-    .select("id, project_id, name, color, category, position")
+    .select("id, project_id, name, color, category, position, client_description, client_bucket")
     .eq("id", columnId)
     .maybeSingle();
 
@@ -118,6 +124,8 @@ async function loadColumnContext(
     color: data.color,
     category: data.category,
     position: data.position,
+    clientDescription: data.client_description,
+    clientBucket: data.client_bucket,
   };
 }
 
@@ -180,7 +188,15 @@ async function revalidateProjectSettings(workspaceSlug: string, projectId: strin
 export type ColumnActionResult =
   | {
       ok: true;
-      data: { id: string; name: string; color: string; category: string; position: number };
+      data: {
+        id: string;
+        name: string;
+        color: string;
+        category: string;
+        position: number;
+        clientDescription: string | null;
+        clientBucket: string | null;
+      };
     }
   | { ok: false; error: string };
 
@@ -263,6 +279,12 @@ export async function addColumn(input: {
       color: inserted.color,
       category: inserted.category,
       position: inserted.position,
+      // F004: a newly created column always starts with no client
+      // description and no bucket override (both DB-default null) — set
+      // explicitly here rather than re-selecting them, since there is
+      // nothing else they could be immediately after insert.
+      clientDescription: null,
+      clientBucket: null,
     },
   };
 }
@@ -278,6 +300,10 @@ export async function updateColumn(input: {
   name: string;
   color: string;
   category: string;
+  // F004: optional — see updateColumnSchema's comment. Every pre-F004
+  // caller keeps working unchanged by simply not passing these two.
+  clientDescription?: string;
+  clientBucket?: string;
 }): Promise<ColumnActionResult> {
   const parsed = updateColumnSchema.safeParse(input);
   if (!parsed.success) {
@@ -308,20 +334,50 @@ export async function updateColumn(input: {
     return { ok: false, error: PERMISSION_DENIED_ERROR };
   }
 
+  // F004 (AS-015, AS-016): `clientDescriptionSchema`/`clientBucketSchema`
+  // already normalised "" -> null and "auto" -> null, so writing the
+  // parsed value directly is not a second place that re-derives the
+  // fallback — `resolveClientBucket` (components/portal/status-label.ts)
+  // is the only place a null `client_bucket` gets turned into an actual
+  // bucket, and only at read time. A field left `undefined` (an
+  // pre-F004 caller that never sends it) is omitted from the update
+  // entirely, leaving the column's current value untouched, rather than
+  // being coerced to null and silently clearing it.
+  const updatePayload: {
+    name: string;
+    color: string;
+    category: string;
+    client_description?: string | null;
+    client_bucket?: string | null;
+  } = {
+    name: parsed.data.name,
+    color: parsed.data.color,
+    category: parsed.data.category,
+  };
+  if (parsed.data.clientDescription !== undefined) {
+    updatePayload.client_description = parsed.data.clientDescription;
+  }
+  if (parsed.data.clientBucket !== undefined) {
+    updatePayload.client_bucket = parsed.data.clientBucket;
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from("project_statuses")
-    .update({
-      name: parsed.data.name,
-      color: parsed.data.color,
-      category: parsed.data.category,
-    })
+    .update(updatePayload)
     .eq("id", column.id)
-    .select("id, name, color, category, position")
+    .select("id, name, color, category, position, client_description, client_bucket")
     .single();
 
   if (updateError || !updated) {
     if (updateError?.code === "23505") {
       return { ok: false, error: "A column with this name already exists." };
+    }
+    if (updateError?.code === "23514") {
+      // project_statuses_client_bucket_check
+      // (20260911010000_status_client_bucket.sql) — the Zod schema
+      // already rejects an invalid bucket, so this is a defence-in-depth
+      // backstop, not the primary path a real caller hits.
+      return { ok: false, error: "Choose a valid client status bucket." };
     }
     logger.error("updateColumn: update failed", { error: updateError });
     return { ok: false, error: GENERIC_ERROR };
@@ -349,6 +405,8 @@ export async function updateColumn(input: {
       color: updated.color,
       category: updated.category,
       position: updated.position,
+      clientDescription: updated.client_description,
+      clientBucket: updated.client_bucket,
     },
   };
 }
@@ -400,6 +458,8 @@ export async function reorderColumn(
         color: column.color,
         category: column.category,
         position: column.position,
+        clientDescription: column.clientDescription,
+        clientBucket: column.clientBucket,
       },
     };
   }
@@ -408,7 +468,7 @@ export async function reorderColumn(
     .from("project_statuses")
     .update({ position: parsed.data.position })
     .eq("id", column.id)
-    .select("id, name, color, category, position")
+    .select("id, name, color, category, position, client_description, client_bucket")
     .single();
 
   if (updateError || !updated) {
@@ -426,6 +486,8 @@ export async function reorderColumn(
       color: updated.color,
       category: updated.category,
       position: updated.position,
+      clientDescription: updated.client_description,
+      clientBucket: updated.client_bucket,
     },
   };
 }
