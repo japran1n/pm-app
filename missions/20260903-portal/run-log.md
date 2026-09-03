@@ -45,3 +45,15 @@ instructions: commit the handoff, and never cite precedent without a grep
 that proves it.
 - F004 COMPLETE (a0c344d) — four --status-* token pairs in globals.css (Tailwind-exposed), project_statuses.client_bucket via migration 20260911010000 with category-derived fallback, shared StatusPill with client_description tooltip, bucket + description editing in the columns settings screen. Worker also caught and fixed a seed-colour regression its own migration would have caused against 20260828030000.
   Orchestrator verification: handoff committed (standing instruction now followed). No status is recognised by name string — the two "Awaiting Client Feedback" hits in status-label.ts are comments explaining exactly that. One hex literal outside globals.css (#64748b in a board component) checked and cleared: it is the repo's pre-existing user-pickable column colour convention (lib/task-colors.ts, lib/board/column-colors.ts), not a token violation.
+
+### F001's "pre-existing failures" claim — partially substantiated
+
+Checked /tmp/npm_test.log, a full-suite run from Sep 2 (before this mission
+opened). It already shows failures across unrelated integration files:
+f229-saved-views-ui (7), f221-board-custom-columns (4), trash-view (1),
+workspace-time-by-person (1), plus 429s. So the "these were already failing"
+shape of the claim holds; the exact count of 64 is not confirmable from that
+log. Risk downgraded, not closed. A clean full-suite run still happens at the
+M1 gate, when no worker is active — running one concurrently with a worker
+would have both sessions hitting the same Supabase project and manufacturing
+the very rate-limit failures we are trying to attribute.
