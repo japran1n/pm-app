@@ -417,3 +417,41 @@ a surprise" made mechanical — without it the rule stays a sentence in a docume
 which is where it lives today and why it is not followed.
 
 ## M3 gate
+
+### M3 gate: FAILED. One blocker, five majors. The class has now recurred five times.
+
+Report: missions/20260903-portal/milestones/M3-scrutiny.md
+
+The security core is genuinely good and the reviewer said so: all four tables copy
+the client gate faithfully, none has a client write policy, AS-045's client_visible
+lives in the policy so counts are safe by construction, mark_deliverable_delivered_atomic
+takes no state parameter at all, and accept_client_request_atomic survived its second
+modification with F006n's auth firing above every new branch.
+
+**Blocker, verified:** client_deliverables.task_id has no same-project constraint,
+and the actions write it service-role without checking. The sweep then joins tasks
+on id alone while resolving the Blocked status from the deliverable's project — so
+cron writes a foreign project's task, hourly. And resolveHoldsUpContext reads task
+titles by id through the admin client, so another workspace's task title can render
+as a "holds up" label in this client's portal. Its own doc comment says that cannot
+happen.
+
+**And flag_assumption_atomic checks three of the four client gates.** Not portal,
+not visibility, not client-ness — those are all there. It misses client_visible,
+the one the table's own SELECT policy applies.
+
+That is the fifth occurrence: F006b reads, F006i writes, F006k a new column, F006l
+paths bypassing RLS, F009b a second approval path, now this. Every instance was
+fixed correctly and the class kept generating new ones, because the gate is a
+checklist a human must remember at each new call site. Patching the sixth instance
+would be the same mistake as patching the fifth.
+
+So F016d's real deliverable is a single shared predicate every client-callable RPC
+calls, so that there is exactly one place left where this can be got wrong and
+writing a new client RPC without it becomes visibly odd rather than invisibly
+normal.
+
+Opened F016c (blocker) and F016d (the shared gate + the fifteen unpinned
+client_requests columns). The remaining majors — AS-003's badge/view mismatch,
+AS-048's created_by scoping, re-quote duplicating scope items, and the sweep
+re-blocking a manually unblocked task — follow in F016e.
