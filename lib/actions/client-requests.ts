@@ -24,6 +24,7 @@ import {
   acceptClientRequestSchema,
   createClientRequestSchema,
   declineClientRequestSchema,
+  sendChangeRequestQuoteSchema,
   withdrawClientRequestSchema,
 } from "@/lib/validation/client-requests";
 
@@ -303,5 +304,79 @@ export async function acceptClientRequest(
   return {
     ok: true,
     data: { requestId: parsed.data.requestId, taskId: rpcResult.task_id },
+  };
+}
+
+// F016: triage + quote. Sets scope_verdict (the one of three buttons the
+// team picks), and — only for scope_verdict = 'change_request' — the
+// quote fields, then raises the client's approval through F007's own
+// mechanism (approval_requests, decision_type = 'commercial'). All of
+// this happens inside send_change_request_quote_atomic
+// (20260930010000_f016_change_requests_quote_gate.sql); this action's own
+// membership/role re-check mirrors accept_client_request_atomic's own
+// error message so a caller sees the same "you don't have permission"
+// wording everywhere in this file, even though the RPC re-derives it
+// independently either way.
+export async function sendChangeRequestQuote(
+  input: unknown,
+  portalUrl?: string,
+): Promise<ClientRequestResult<{ requestId: string; approvalRequestId: string | null }>> {
+  const parsed = sendChangeRequestQuoteSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Check the quote and try again.",
+    };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) return { ok: false, error: "You must be signed in." };
+
+  const context = await resolveRequestContext(parsed.data.requestId, user.id);
+  if (!context.ok) return context;
+
+  if (!teamCanTriage(context.role)) {
+    return { ok: false, error: "You don't have permission to review requests." };
+  }
+
+  if (context.status === "accepted") {
+    return { ok: false, error: "This request has already been accepted." };
+  }
+
+  const { data: rpcRows, error: rpcError } = await supabase.rpc(
+    "send_change_request_quote_atomic",
+    {
+      p_request_id: parsed.data.requestId,
+      p_scope_verdict: parsed.data.scopeVerdict,
+      p_severity: parsed.data.severity ?? null,
+      p_quoted_hours: parsed.data.quotedHours ?? null,
+      p_quoted_amount: parsed.data.quotedAmount ?? null,
+      p_quote_currency: parsed.data.quoteCurrency ?? null,
+      p_quote_note: parsed.data.quoteNote ?? null,
+      p_quote_valid_until: parsed.data.quoteValidUntil ?? null,
+      p_track: parsed.data.track ?? null,
+      p_track_overridden: parsed.data.trackOverridden ?? false,
+      p_track_override_reason: parsed.data.trackOverrideReason ?? null,
+      p_portal_url: portalUrl ?? null,
+    },
+  );
+
+  if (rpcError) {
+    logger.error("sendChangeRequestQuote: send_change_request_quote_atomic RPC failed", {
+      error: rpcError,
+    });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  const rpcResult = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+
+  revalidatePath("/w", "layout");
+  revalidatePath("/portal", "layout");
+  return {
+    ok: true,
+    data: {
+      requestId: parsed.data.requestId,
+      approvalRequestId: rpcResult?.approval_request_id ?? null,
+    },
   };
 }

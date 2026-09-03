@@ -26,6 +26,17 @@ export type TeamClientRequest = {
   requesterId: string;
   requesterName: string | null;
   requesterEmail: string | null;
+  // F016: triage/quote fields.
+  scopeVerdict: "in_scope" | "change_request" | "warranty" | null;
+  severity: "blocker" | "major" | "minor" | null;
+  quotedHours: number | null;
+  quotedAmount: number | null;
+  quoteCurrency: string | null;
+  quoteNote: string | null;
+  quoteValidUntil: string | null;
+  clientDecision: "pending" | "approved" | "rejected";
+  track: "design_change" | "dev_change" | "content_seo" | null;
+  trackOverridden: boolean;
 };
 
 export async function getWorkspaceClientRequests(
@@ -47,7 +58,7 @@ export async function getWorkspaceClientRequests(
   const { data, error } = await supabase
     .from("client_requests")
     .select(
-      "id, project_id, title, body, desired_by, status, decline_reason, converted_task_id, created_at, created_by",
+      "id, project_id, title, body, desired_by, status, decline_reason, converted_task_id, created_at, created_by, scope_verdict, severity, quoted_hours, quoted_amount, quote_currency, quote_note, quote_valid_until, client_decision, track, track_overridden",
     )
     .in("project_id", [...projectNames.keys()])
     // Untriaged first, then newest — the inbox exists to answer "what is
@@ -93,6 +104,16 @@ export async function getWorkspaceClientRequests(
         requesterId: row.created_by,
         requesterName: person?.name ?? null,
         requesterEmail: person?.email ?? null,
+        scopeVerdict: row.scope_verdict as TeamClientRequest["scopeVerdict"],
+        severity: row.severity as TeamClientRequest["severity"],
+        quotedHours: row.quoted_hours,
+        quotedAmount: row.quoted_amount,
+        quoteCurrency: row.quote_currency,
+        quoteNote: row.quote_note,
+        quoteValidUntil: row.quote_valid_until,
+        clientDecision: row.client_decision as TeamClientRequest["clientDecision"],
+        track: row.track as TeamClientRequest["track"],
+        trackOverridden: row.track_overridden,
       };
     })
     .sort(

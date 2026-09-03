@@ -523,51 +523,103 @@ export type Database = {
       }
       client_requests: {
         Row: {
+          approval_request_id: string | null
           body: string | null
+          client_decision: string
           converted_task_id: string | null
           created_at: string
           created_by: string
+          decided_at: string | null
+          decided_by: string | null
           decline_reason: string | null
           desired_by: string | null
           id: string
+          kind: string
           project_id: string
+          quote_currency: string | null
+          quote_note: string | null
+          quote_valid_until: string | null
+          quoted_amount: number | null
+          quoted_hours: number | null
           reviewed_at: string | null
           reviewed_by: string | null
+          scope_verdict: string | null
+          severity: string | null
           status: string
           title: string
+          track: string | null
+          track_overridden: boolean
+          track_override_reason: string | null
           updated_at: string
         }
         Insert: {
+          approval_request_id?: string | null
           body?: string | null
+          client_decision?: string
           converted_task_id?: string | null
           created_at?: string
           created_by: string
+          decided_at?: string | null
+          decided_by?: string | null
           decline_reason?: string | null
           desired_by?: string | null
           id?: string
+          kind?: string
           project_id: string
+          quote_currency?: string | null
+          quote_note?: string | null
+          quote_valid_until?: string | null
+          quoted_amount?: number | null
+          quoted_hours?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          scope_verdict?: string | null
+          severity?: string | null
           status?: string
           title: string
+          track?: string | null
+          track_overridden?: boolean
+          track_override_reason?: string | null
           updated_at?: string
         }
         Update: {
+          approval_request_id?: string | null
           body?: string | null
+          client_decision?: string
           converted_task_id?: string | null
           created_at?: string
           created_by?: string
+          decided_at?: string | null
+          decided_by?: string | null
           decline_reason?: string | null
           desired_by?: string | null
           id?: string
+          kind?: string
           project_id?: string
+          quote_currency?: string | null
+          quote_note?: string | null
+          quote_valid_until?: string | null
+          quoted_amount?: number | null
+          quoted_hours?: number | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          scope_verdict?: string | null
+          severity?: string | null
           status?: string
           title?: string
+          track?: string | null
+          track_overridden?: boolean
+          track_override_reason?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "client_requests_approval_request_id_fkey"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "client_requests_converted_task_id_fkey"
             columns: ["converted_task_id"]
@@ -2831,6 +2883,27 @@ export type Database = {
       seed_default_project_statuses: {
         Args: { target_project_id: string }
         Returns: undefined
+      }
+      send_change_request_quote_atomic: {
+        Args: {
+          p_portal_url?: string
+          p_quote_currency?: string
+          p_quote_note?: string
+          p_quote_valid_until?: string
+          p_quoted_amount?: number
+          p_quoted_hours?: number
+          p_request_id: string
+          p_scope_verdict: string
+          p_severity?: string
+          p_track?: string
+          p_track_overridden?: boolean
+          p_track_override_reason?: string
+        }
+        Returns: {
+          approval_request_id: string
+          request_id: string
+          scope_verdict: string
+        }[]
       }
       set_saved_view_default: {
         Args: { p_view_id: string }

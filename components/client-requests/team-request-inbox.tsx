@@ -13,6 +13,8 @@ import {
 import type { TeamClientRequest } from "@/lib/queries/client-requests";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { QuoteDialog } from "@/components/client-requests/quote-dialog";
 
 const STATUS_LABEL: Record<TeamClientRequest["status"], string> = {
   submitted: "New",
@@ -43,6 +45,7 @@ export function TeamRequestInbox({
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [quoteRequest, setQuoteRequest] = useState<TeamClientRequest | null>(null);
   const [isPending, startTransition] = useTransition();
   // The actions revalidate the route, but a revalidation triggered from an
   // event handler (rather than from a form action) does not re-render the
@@ -104,6 +107,13 @@ export function TeamRequestInbox({
         const busy = isPending && busyId === request.id;
         const undecided =
           request.status === "submitted" || request.status === "in_review";
+        // AS-047: a change request cannot be accepted until the client has
+        // approved its quote. The database gate is the real enforcement
+        // (accept_client_request_atomic); this only keeps the button from
+        // inviting a click that the RPC would reject anyway.
+        const isGatedChangeRequest =
+          request.scopeVerdict === "change_request" && request.clientDecision !== "approved";
+        const canAccept = undecided && !isGatedChangeRequest;
 
         return (
           <li
@@ -131,6 +141,25 @@ export function TeamRequestInbox({
               <p className="text-sm text-muted-foreground">{request.body}</p>
             )}
 
+            {request.scopeVerdict === "change_request" && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant="secondary">Change request</Badge>
+                {request.quotedAmount != null && (
+                  <span className="text-muted-foreground">
+                    {request.quotedAmount} {request.quoteCurrency ?? ""}
+                    {request.quotedHours != null ? ` · ${request.quotedHours}h` : ""}
+                  </span>
+                )}
+                <Badge variant={request.clientDecision === "approved" ? "default" : "outline"}>
+                  {request.clientDecision === "approved"
+                    ? "Client approved"
+                    : request.clientDecision === "rejected"
+                      ? "Client declined the quote"
+                      : "Awaiting client approval"}
+                </Badge>
+              </div>
+            )}
+
             {request.status === "declined" && request.declineReason && (
               <p className="rounded-md border border-border bg-muted/40 p-3 text-sm">
                 Declined: {request.declineReason}
@@ -151,8 +180,22 @@ export function TeamRequestInbox({
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => handleAccept(request)}
+                  variant="outline"
+                  onClick={() => setQuoteRequest(request)}
                   disabled={busy}
+                >
+                  Triage / quote
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => handleAccept(request)}
+                  disabled={busy || !canAccept}
+                  title={
+                    isGatedChangeRequest
+                      ? "This change request needs client approval of its quote before it can become a task."
+                      : undefined
+                  }
                 >
                   {busy ? (
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -222,6 +265,24 @@ export function TeamRequestInbox({
           </li>
         );
       })}
+
+      {quoteRequest && (
+        <QuoteDialog
+          request={quoteRequest}
+          open={quoteRequest != null}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setQuoteRequest(null);
+              router.refresh();
+            }
+          }}
+          portalUrl={
+            typeof window !== "undefined"
+              ? `${window.location.origin}/portal/${workspaceSlug}/p/${quoteRequest.projectId}/scope`
+              : undefined
+          }
+        />
+      )}
     </ul>
   );
 }

@@ -48,3 +48,48 @@ export const acceptClientRequestSchema = z.object({
 });
 
 export type CreateClientRequestInput = z.infer<typeof createClientRequestSchema>;
+
+// F016: triage + quote. `scopeVerdict` is the one of three buttons the
+// team picks; a `change_request` verdict requires an amount and a
+// validity date (the DB function enforces the same rule independently).
+export const sendChangeRequestQuoteSchema = z
+  .object({
+    requestId: z.string().uuid("Invalid request."),
+    scopeVerdict: z.enum(["in_scope", "change_request", "warranty"]),
+    severity: z.enum(["blocker", "major", "minor"]).nullable().optional(),
+    quotedHours: z.coerce.number().positive().nullable().optional(),
+    quotedAmount: z.coerce.number().nonnegative().nullable().optional(),
+    quoteCurrency: z.string().trim().max(10).nullable().optional(),
+    quoteNote: z.string().trim().max(2000).nullable().optional(),
+    quoteValidUntil: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date.")
+      .nullable()
+      .optional(),
+    track: z.enum(["design_change", "dev_change", "content_seo"]).nullable().optional(),
+    trackOverridden: z.boolean().optional(),
+    trackOverrideReason: z.string().trim().max(500).nullable().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.scopeVerdict === "change_request") {
+      if (val.quotedAmount == null) {
+        ctx.addIssue({ code: "custom", message: "Give the client a price.", path: ["quotedAmount"] });
+      }
+      if (!val.quoteValidUntil) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Give the quote a validity date.",
+          path: ["quoteValidUntil"],
+        });
+      }
+    }
+    if (val.trackOverridden && !val.trackOverrideReason) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Say why you're overriding the proposed track.",
+        path: ["trackOverrideReason"],
+      });
+    }
+  });
+
+export type SendChangeRequestQuoteInput = z.infer<typeof sendChangeRequestQuoteSchema>;

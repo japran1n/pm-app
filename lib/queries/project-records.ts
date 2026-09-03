@@ -123,6 +123,17 @@ export type ProjectChangeRequest = {
   status: "submitted" | "in_review" | "accepted" | "declined";
   declineReason: string | null;
   createdAt: string;
+  // F016: triage/quote/decision fields. All null until the team has
+  // triaged the request; scopeVerdict !== 'change_request' means no quote
+  // is needed at all.
+  scopeVerdict: "in_scope" | "change_request" | "warranty" | null;
+  quotedHours: number | null;
+  quotedAmount: number | null;
+  quoteCurrency: string | null;
+  quoteValidUntil: string | null;
+  clientDecision: "pending" | "approved" | "rejected";
+  decidedAt: string | null;
+  approvalRequestId: string | null;
 };
 
 export async function getProjectChangeRequests(
@@ -132,7 +143,9 @@ export async function getProjectChangeRequests(
 
   const { data, error } = await supabase
     .from("client_requests")
-    .select("id, project_id, title, body, desired_by, status, decline_reason, created_at")
+    .select(
+      "id, project_id, title, body, desired_by, status, decline_reason, created_at, scope_verdict, quoted_hours, quoted_amount, quote_currency, quote_valid_until, client_decision, decided_at, approval_request_id",
+    )
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
@@ -152,6 +165,14 @@ export async function getProjectChangeRequests(
       status: row.status as ProjectChangeRequest["status"],
       declineReason: row.decline_reason,
       createdAt: row.created_at,
+      scopeVerdict: row.scope_verdict as ProjectChangeRequest["scopeVerdict"],
+      quotedHours: row.quoted_hours,
+      quotedAmount: row.quoted_amount,
+      quoteCurrency: row.quote_currency,
+      quoteValidUntil: row.quote_valid_until,
+      clientDecision: row.client_decision as ProjectChangeRequest["clientDecision"],
+      decidedAt: row.decided_at,
+      approvalRequestId: row.approval_request_id,
     })),
   };
 }

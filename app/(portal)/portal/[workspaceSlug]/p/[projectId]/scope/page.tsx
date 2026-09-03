@@ -73,7 +73,11 @@ export default async function PortalScopePage({
 
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Change requests</h2>
-        <ChangeRequestsTable requests={changeRequestsResult.data} />
+        <ChangeRequestsTable
+          requests={changeRequestsResult.data}
+          workspaceSlug={workspaceSlug}
+          projectId={projectId}
+        />
       </div>
 
       <Separator />
