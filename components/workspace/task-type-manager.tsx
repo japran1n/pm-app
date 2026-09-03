@@ -22,6 +22,7 @@ import {
 import { calculatePosition } from "@/lib/board/position";
 import { COLUMN_COLOR_PALETTE, DEFAULT_COLUMN_COLOR } from "@/lib/board/column-colors";
 import type { TaskType } from "@/lib/queries/task-types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+// F005b (missions/20260903-portal): what each stable `system_key`
+// (20260912010000_task_type_system_key.sql) means to a team member
+// reading this settings screen. Only `page` is wired to anything today
+// (`getPortalPages`) — the other four values the migration's check
+// constraint allows are reserved for future features, so they fall back
+// to a generic explanation rather than a dedicated one per key.
+const SYSTEM_KEY_EXPLANATIONS: Record<string, string> = {
+  page: "The portal's Pages view lists every task of this type. Renaming it here is safe — the portal follows this type by its role, not its name.",
+};
+const DEFAULT_SYSTEM_KEY_EXPLANATION =
+  "The portal uses this type automatically. Renaming it here is safe — the portal follows this type by its role, not its name.";
 
 function ColorSwatch({ color }: { color: string }) {
   return (
@@ -88,6 +102,20 @@ function TaskTypeRow({
         className="h-8 w-40"
         aria-label="Task type name"
       />
+
+      {taskType.systemKey && (
+        <Tooltip>
+          <TooltipTrigger
+            type="button"
+            className="rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Badge variant="outline">Portal</Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            {SYSTEM_KEY_EXPLANATIONS[taskType.systemKey] ?? DEFAULT_SYSTEM_KEY_EXPLANATION}
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       <Select
         value={taskType.color}

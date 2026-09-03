@@ -6,11 +6,17 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 
+// F005b (missions/20260903-portal): `systemKey` is the stable identifier
+// a type ROW can optionally carry (currently only `page`, matched by
+// `getPortalPages`) independent of its human-editable `name` — surfaced
+// here so the settings screen can show which types the portal depends
+// on without a second query.
 export type TaskType = {
   id: string;
   name: string;
   color: string;
   position: number;
+  systemKey: string | null;
 };
 
 export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
@@ -18,7 +24,7 @@ export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
 
   const { data, error } = await supabase
     .from("task_types")
-    .select("id, name, color, position")
+    .select("id, name, color, position, system_key")
     .eq("workspace_id", workspaceId)
     .order("position");
 
@@ -27,5 +33,11 @@ export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
     return [];
   }
 
-  return data ?? [];
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    position: row.position,
+    systemKey: row.system_key,
+  }));
 }

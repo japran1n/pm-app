@@ -163,12 +163,12 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
       })),
     );
 
-    // A single "Page" task type for the workspace — matched by name
-    // (case-insensitively) by getPortalPages, see that function's own
-    // doc comment for why there is no seeded row to reference by id.
+    // A single "Page" task type for the workspace — matched by its
+    // stable `system_key` (F005b, 20260912010000_task_type_system_key.sql)
+    // by getPortalPages, not by name.
     const { data: pageType, error: pageTypeError } = await admin
       .from("task_types")
-      .insert({ workspace_id: workspaceId, name: "Page", color: "#3670e1" })
+      .insert({ workspace_id: workspaceId, name: "Page", color: "#3670e1", system_key: "page" })
       .select("id")
       .single();
     if (pageTypeError || !pageType) throw new Error(`task type: ${pageTypeError?.message}`);

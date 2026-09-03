@@ -1488,6 +1488,7 @@ export type Database = {
           id: string
           name: string
           position: number
+          system_key: string | null
           workspace_id: string
         }
         Insert: {
@@ -1496,6 +1497,7 @@ export type Database = {
           id?: string
           name: string
           position?: number
+          system_key?: string | null
           workspace_id: string
         }
         Update: {
@@ -1504,6 +1506,7 @@ export type Database = {
           id?: string
           name?: string
           position?: number
+          system_key?: string | null
           workspace_id?: string
         }
         Relationships: [

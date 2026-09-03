@@ -921,17 +921,21 @@ export async function getPortalFiles(
 // "page" task type on this project, in the team's own manual order
 // (AS-014).
 //
-// `task_types` (20260903040000_task_types.sql) is an entirely
-// workspace-owned taxonomy — there is no seeded "page" row this function
-// can rely on existing. docs/team-app-for-portal-plan.md's own T3 plan
-// ("Seed tipova taskova: page, component, qa, content, seo, admin") was
-// never implemented as an actual migration seed — verified by grepping
-// every migration file under supabase/migrations for a `task_types`
-// INSERT and finding none. Until a future feature adds that seed (T3 is
-// not in this mission's M1-M5 feature list), the "page" type is matched
-// by NAME, case-insensitively, exactly the way a team creates it today
-// via the existing task-types settings screen — see this feature's
-// handoff, Autonomous decisions.
+// F005b (missions/20260903-portal): the "page" type is matched by the
+// stable `task_types.system_key` column
+// (20260912010000_task_type_system_key.sql), not by name. `task_types`
+// (20260903040000_task_types.sql) is an entirely workspace-owned
+// taxonomy, so F005's original implementation matched the type row by
+// its human-editable NAME, case-insensitively — but that meant a
+// workspace naming the type "Sida" or "Stranica" got a silently empty
+// Pages view, and renaming the type later silently emptied a client's
+// view. `create_workspace_with_owner`
+// (20260817234323_workspace_create_rpc.sql, amended by
+// 20260912010000) now seeds a `system_key = 'page'` row on every new
+// workspace, and the migration backfills `system_key = 'page'` onto any
+// existing row already named "page". A workspace with no keyed page
+// type simply has an empty Pages view — an honest "nobody tagged one
+// yet" rather than an accident of naming.
 export type PortalPageStatus = {
   id: string;
   name: string;
@@ -982,16 +986,22 @@ export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
     .maybeSingle();
   if (!project) return [];
 
-  // See this function's own top-of-section comment: matched by name (an
-  // ILIKE with no wildcard characters is an exact, case-insensitive
-  // match), not a seeded id — a workspace that has never created a
-  // "Page" task type simply has an empty Pages view (AS-014's own
-  // "lists every client-visible task of type page" is vacuously true).
+  // F005b (missions/20260903-portal): matched by the stable
+  // `system_key` column (20260912010000_task_type_system_key.sql), not
+  // by a case-insensitive match on the type's own name. F005's original
+  // version meant a workspace that named its type "Sida" or "Stranica"
+  // got a silently empty Pages view, and renaming the type later
+  // silently emptied a client's view — the same string-matching failure
+  // mode F004 was forbidden to use for statuses. A workspace with no
+  // `system_key = 'page'` row simply has an empty Pages view (AS-014's
+  // own "lists every client-visible task of type page" is vacuously
+  // true), which is now an honest "nobody tagged a page type yet" rather
+  // than an accident of naming.
   const { data: pageType } = await supabase
     .from("task_types")
     .select("id")
     .eq("workspace_id", project.workspace_id)
-    .ilike("name", "page")
+    .eq("system_key", "page")
     .maybeSingle();
   if (!pageType) return [];
 
