@@ -288,3 +288,18 @@ Opened F006n as a blocker. This is the third time the same question — "what ca
 a client actually reach?" — has produced a new class of answer: first RLS reads,
 then RLS writes, then paths that never reach RLS, now pre-existing RPCs whose
 threat model the portal itself invalidates.
+
+### Correcting my own progress reporting
+
+I audited what this mission's commits actually claim, scoped to 389d887..HEAD:
+24 of the contract's 55 assertions. Of those, the third scrutiny still has
+AS-007 FAILING (F006l fixed four paths, F006n has five more) and AS-002 FAILING
+(the badge counts approvals the client cannot decide, folded into F009).
+
+So roughly 22 assertions are genuinely green, not the 30-32 I have been
+reporting. The feature count (24 of 40) is the more flattering number and I have
+been leaning on it. Assertions are the contract; features are the plan. Reporting
+against the plan while the contract lags is how a project convinces itself it is
+further along than it is.
+
+Corrected figure going forward: report both, lead with assertions.
