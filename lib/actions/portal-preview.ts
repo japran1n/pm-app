@@ -26,15 +26,30 @@
 import { z } from "zod";
 import { cookies } from "next/headers";
 
-import { createClient } from "@/lib/supabase/server";
+import { createRealSessionClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
-import { writeAudit } from "@/lib/activity/audit";
 import { mintImpersonationSession } from "@/lib/auth/mint-impersonation-session";
+import { logger } from "@/lib/observability/logger";
+import type { Json } from "@/lib/supabase/database.types";
 
 export const PORTAL_PREVIEW_ACCESS_COOKIE = "portal_preview_access_token";
 export const PORTAL_PREVIEW_REFRESH_COOKIE = "portal_preview_refresh_token";
 export const PORTAL_PREVIEW_LABEL_COOKIE = "portal_preview_client_label";
+// F024b (AS-053): the previewed client's own `workspace_members.id`,
+// stored so the portal layout's per-entry audit write (AS-053's "every
+// entry into the client-preview view") can target the same row this
+// action's own start-of-preview entry does, without an extra DB
+// round-trip on every portal navigation just to re-derive it.
+export const PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE = "portal_preview_client_member_id";
+
+// F024b (AS-053, "the cookies carry no maxAge"): 30 minutes -- enough to
+// actually look at what the client sees, short enough that an admin who
+// forgets to exit preview doesn't hold a live client session indefinitely.
+// The only way to extend it is `exitClientPreview` + starting a fresh
+// preview (which writes a new `portal.preview_started` audit row), per
+// this feature's own spec section 3 ("re-entry writes a new audit row").
+const PREVIEW_SESSION_MAX_AGE_SECONDS = 30 * 60;
 
 // Cookies scoped to `/portal` only -- see file header. Not `secure: true`
 // unconditionally because local/dev often runs over plain http; production
@@ -46,6 +61,7 @@ function previewCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     path: "/portal",
+    maxAge: PREVIEW_SESSION_MAX_AGE_SECONDS,
   };
 }
 
@@ -79,7 +95,12 @@ export async function startClientPreview(
   const { workspaceId, workspaceSlug, clientUserId, projectId, taskId } =
     parsed.data;
 
-  const supabase = await createClient();
+  // F024b: explicitly the previewer's own real session -- this action is
+  // only ever invoked from a `/w/*` page (no preview cookies present yet
+  // at the point a preview is being STARTED), but `createRealSessionClient`
+  // is used here regardless of that, so this stays correct even if that
+  // assumption ever stops holding.
+  const supabase = await createRealSessionClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -124,24 +145,41 @@ export async function startClientPreview(
     return { ok: false, error: "Could not resolve the client's account." };
   }
 
-  // AS-053: written from the previewer's OWN real session (never the
-  // impersonated one -- write_audit_log_entry pins actor_id to
-  // auth.uid(), and the client's session has no membership row on this
-  // table's RPC-side check for a client role to write audit entries
-  // through anyway). Written before the session mint below so an entry
-  // exists for every attempt that got this far, even if minting fails.
-  await writeAudit(supabase, {
-    workspaceId,
-    action: "portal.preview_started",
-    targetType: "workspace_member",
-    targetId: clientMember.id,
-    metadata: {
+  // F024b (AS-053, "fail closed"): written from the previewer's OWN real
+  // session (never the impersonated one -- write_audit_log_entry pins
+  // actor_id to auth.uid(), and the client's session has no membership
+  // row on this table's RPC-side check for a client role to write audit
+  // entries through anyway). Written before the session mint below so an
+  // entry exists for every attempt that got this far, even if minting
+  // fails. Unlike every other caller of `writeAudit()` (which is
+  // deliberately non-fatal, see that file's own header), a failed write
+  // HERE is fatal and aborts the mint: AS-053 is a security assertion --
+  // "every entry into the client-preview view is written to the audit
+  // log" -- not a nicety, so a preview session must never exist without
+  // the row that records who started it and why. This is why the RPC is
+  // called directly rather than through the shared `writeAudit()` helper.
+  const { error: auditError } = await supabase.rpc("write_audit_log_entry", {
+    p_workspace_id: workspaceId,
+    p_action: "portal.preview_started",
+    p_target_type: "workspace_member",
+    p_target_id: clientMember.id,
+    p_metadata: {
       clientUserId,
       clientEmail,
       projectId: projectId ?? null,
       taskId: taskId ?? null,
-    },
+    } as Json,
   });
+
+  if (auditError) {
+    logger.error("startClientPreview: audit write failed, refusing to start preview", {
+      error: auditError,
+    });
+    return {
+      ok: false,
+      error: "Could not start the client preview session.",
+    };
+  }
 
   const session = await mintImpersonationSession(clientEmail);
   if (!session) {
@@ -160,6 +198,7 @@ export async function startClientPreview(
     options,
   );
   cookieStore.set(PORTAL_PREVIEW_LABEL_COOKIE, clientEmail, options);
+  cookieStore.set(PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE, clientMember.id, options);
 
   const redirectTo =
     taskId && projectId
@@ -187,6 +226,7 @@ export async function exitClientPreview(
   cookieStore.set(PORTAL_PREVIEW_ACCESS_COOKIE, "", expired);
   cookieStore.set(PORTAL_PREVIEW_REFRESH_COOKIE, "", expired);
   cookieStore.set(PORTAL_PREVIEW_LABEL_COOKIE, "", expired);
+  cookieStore.set(PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE, "", expired);
 
   return { ok: true, redirectTo: `/w/${workspaceSlug}/preview-as-client` };
 }

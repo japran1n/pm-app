@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { flagAssumptionSchema } from "@/lib/validation/project-records";
+import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
@@ -26,6 +27,11 @@ export async function flagAssumption(input: {
   assumptionId: string;
   note: string;
 }): Promise<FlagAssumptionResult> {
+  // F024b (AS-052): default-deny -- flagging an assumption as the client
+  // is a client decision this record must not attribute to a previewer.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = flagAssumptionSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };

@@ -28,6 +28,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isClient } from "@/lib/auth/permissions";
 import { addComment } from "@/lib/actions/comments";
+import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 
 type PortalApprovalResult =
   | { ok: true; data: { taskId: string } }
@@ -124,6 +125,12 @@ async function requireClientCaller(workspaceId: string) {
 export async function approvePortalTask(
   taskId: string,
 ): Promise<PortalApprovalResult> {
+  // F024b (AS-052): default-deny -- a previewing admin's session is a
+  // real client session, so without this the RPC below would happily
+  // record the admin's approval as the client's own decision.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = z.string().uuid().safeParse(taskId);
   if (!parsed.success) {
     return { ok: false, error: "Invalid task." };
@@ -175,6 +182,10 @@ export async function requestPortalTaskChanges(
   taskId: string,
   message: string,
 ): Promise<PortalApprovalResult> {
+  // F024b (AS-052): see approvePortalTask's identical guard above.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = z
     .object({
       taskId: z.string().uuid("Invalid task."),
@@ -314,6 +325,13 @@ export async function decideApproval(
   decision: "approved" | "changes_requested",
   note?: string | null,
 ): Promise<DecideApprovalResult> {
+  // F024b (AS-052): this action had NO application-level authorisation at
+  // all before this fix -- `decide_approval_atomic`'s own `auth.uid()`
+  // decision-owner check was the only gate, and a preview session's
+  // `auth.uid()` IS the client, so it passed. This is the required guard.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = decideApprovalSchema.safeParse({ requestId, decision, note: note ?? null });
   if (!parsed.success) {
     return {

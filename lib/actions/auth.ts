@@ -3,9 +3,17 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+
+import { createClient, isPortalPreview } from "@/lib/supabase/server";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 import { logger } from "@/lib/observability/logger";
+import {
+  PORTAL_PREVIEW_ACCESS_COOKIE,
+  PORTAL_PREVIEW_REFRESH_COOKIE,
+  PORTAL_PREVIEW_LABEL_COOKIE,
+  PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
+} from "@/lib/actions/portal-preview";
 
 export type SignInResult =
   | { ok: true }
@@ -71,7 +79,34 @@ export async function signInWithMagicLink(
 // back-navigation, since Next.js Server Components re-fetch on every
 // request rather than serving from a client-side bfcache) is redirected to
 // /sign-in instead of rendering cached workspace data.
-export async function signOut(): Promise<never> {
+// F024b (missions/20260903-portal, AS-052 remediation): `workspaceSlug` is
+// optional and only meaningful under a client preview session -- see the
+// preview branch below. Every existing team-app caller
+// (components/nav/app-sidebar.tsx's own SignOutButton) keeps calling
+// `signOut()` with no arguments, unaffected.
+export async function signOut(workspaceSlug?: string): Promise<never> {
+  // Under a client preview session, `createClient()` (lib/supabase/server.ts)
+  // returns the IMPERSONATED client -- calling `supabase.auth.signOut()`
+  // in that state would revoke the real client's own Supabase session
+  // server-side (logging the actual customer out as a side effect of an
+  // admin previewing), while leaving the preview cookies in place and
+  // never touching the previewer's own `/`-scoped session at all. None of
+  // that is "signing the previewer out" in any sense, so it must not
+  // happen: exit the preview instead (clear only the path-scoped preview
+  // cookies) and send the previewer back to their own admin surface,
+  // fully signed in as themselves throughout.
+  if (await isPortalPreview()) {
+    const cookieStore = await cookies();
+    const expired = { path: "/portal" as const, maxAge: 0 };
+    cookieStore.set(PORTAL_PREVIEW_ACCESS_COOKIE, "", expired);
+    cookieStore.set(PORTAL_PREVIEW_REFRESH_COOKIE, "", expired);
+    cookieStore.set(PORTAL_PREVIEW_LABEL_COOKIE, "", expired);
+    cookieStore.set(PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE, "", expired);
+    redirect(
+      workspaceSlug ? `/w/${workspaceSlug}/preview-as-client` : `/sign-in`,
+    );
+  }
+
   const supabase = await createClient();
 
   const { error } = await supabase.auth.signOut();

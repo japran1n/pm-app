@@ -48,6 +48,7 @@ import {
 } from "@/lib/validation/attachments";
 import { deliverPortalDeliverableSchema } from "@/lib/validation/portal-deliverables";
 import type { DeliverableState } from "@/lib/queries/deliverables";
+import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 
 const ATTACHMENTS_BUCKET = "task-attachments";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
@@ -62,6 +63,13 @@ export type DeliverPortalDeliverableResult =
 export async function deliverPortalDeliverable(
   formData: FormData,
 ): Promise<DeliverPortalDeliverableResult> {
+  // F024b (AS-052): default-deny -- the storage upload and the
+  // mark_deliverable_delivered_atomic RPC below both go through the
+  // admin/session clients regardless of caller, so this guard is the
+  // only thing stopping a previewing admin from delivering as the client.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const deliverableIdRaw = formData.get("deliverableId");
   const file = formData.get("file");
 

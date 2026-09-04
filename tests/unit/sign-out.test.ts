@@ -22,6 +22,10 @@ vi.mock("@/lib/supabase/server", () => ({
       signOut: signOutSpy,
     },
   }),
+  // F024b: signOut() checks this first to decide whether it's exiting a
+  // client preview instead of really signing out -- false for every test
+  // in this file, which covers the ordinary (non-preview) path.
+  isPortalPreview: async () => false,
 }));
 
 describe("signOut (AS-022: session is fully cleared on sign-out)", () => {

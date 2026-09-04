@@ -3,12 +3,14 @@ import { cookies } from "next/headers";
 
 import { canViewClientPortal } from "@/lib/auth/permissions";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createRealSessionClient } from "@/lib/supabase/server";
 import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
   PORTAL_PREVIEW_LABEL_COOKIE,
+  PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
 } from "@/lib/actions/portal-preview";
 import { ClientPreviewBanner } from "@/components/portal/client-preview-banner";
+import { writeAudit } from "@/lib/activity/audit";
 
 // C3 (docs/client-portal-plan.md): the client portal's own shell.
 //
@@ -103,6 +105,39 @@ export default async function PortalLayout({
     cookieStore.get(PORTAL_PREVIEW_ACCESS_COOKIE)?.value,
   );
   const previewLabel = cookieStore.get(PORTAL_PREVIEW_LABEL_COOKIE)?.value;
+
+  // F024b (AS-053, "every entry into the client-preview view is written
+  // to the audit log"): `startClientPreview` only wrote one row when the
+  // preview session was minted -- since the cookies persist for the rest
+  // of the (now TTL-bounded, see portal-preview.ts) browser session, an
+  // admin who leaves and returns to `/portal/*` any number of times wrote
+  // no further rows. This records each subsequent entry too, distinctly
+  // named (`portal.preview_entered`) from the start event. Written
+  // through `createRealSessionClient()` -- NOT the `supabase` client
+  // above, which under preview is the impersonated client and would pin
+  // `write_audit_log_entry`'s `auth.uid()` actor to the CLIENT, defeating
+  // the entire point of an audit trail meant to record the previewer.
+  // Best-effort (the existing, non-fatal `writeAudit()` convention):
+  // unlike the fail-closed start-of-preview write in
+  // `startClientPreview`, refusing to RENDER the page because a re-entry
+  // audit row failed to write would be a worse outcome than logging the
+  // gap and letting an already-live, already-audited preview session
+  // continue.
+  if (isPreview) {
+    const clientMemberId = cookieStore.get(
+      PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
+    )?.value;
+    if (clientMemberId) {
+      const realSupabase = await createRealSessionClient();
+      await writeAudit(realSupabase, {
+        workspaceId: workspace.id,
+        action: "portal.preview_entered",
+        targetType: "workspace_member",
+        targetId: clientMemberId,
+        metadata: { path: `/portal/${workspaceSlug}` },
+      });
+    }
+  }
 
   return (
     <div className="min-h-svh bg-background">

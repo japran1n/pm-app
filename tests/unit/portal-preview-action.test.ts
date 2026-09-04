@@ -23,10 +23,13 @@ type Opts = {
   clientMemberRole: string | null; // target's role, null = not found
   clientEmail: string | null;
   mintResult: { accessToken: string; refreshToken: string } | null;
+  // F024b (AS-053 "fail closed"): when set, the audit RPC itself fails.
+  auditRpcError?: { message: string } | null;
 };
 
 let opts: Opts;
 let auditCalls: unknown[];
+let mintCallCount: number;
 let cookieSets: { name: string; value: string; options: unknown }[];
 
 // The admin client is called twice against workspace_members with the
@@ -98,13 +101,21 @@ function makeRlsClient() {
     },
     rpc: async (name: string, args: unknown) => {
       auditCalls.push({ name, args });
-      return { data: { id: "audit-row-1" }, error: null };
+      return {
+        data: opts.auditRpcError ? null : { id: "audit-row-1" },
+        error: opts.auditRpcError ?? null,
+      };
     },
   };
 }
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => makeRlsClient(),
+  // F024b: startClientPreview now goes through createRealSessionClient()
+  // explicitly rather than createClient() -- see that file's own comment
+  // for why. Same underlying mock; this action never runs under preview
+  // cookies anyway (only reachable from a /w/* page).
+  createRealSessionClient: async () => makeRlsClient(),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -112,7 +123,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/auth/mint-impersonation-session", () => ({
-  mintImpersonationSession: async () => opts.mintResult,
+  mintImpersonationSession: async () => {
+    mintCallCount += 1;
+    return opts.mintResult;
+  },
 }));
 
 vi.mock("next/headers", () => ({
@@ -149,6 +163,7 @@ describe("startClientPreview / exitClientPreview (F024)", () => {
     membershipCallCount = 0;
     auditCalls = [];
     cookieSets = [];
+    mintCallCount = 0;
     opts = defaultOpts();
   });
 
@@ -271,7 +286,7 @@ describe("startClientPreview / exitClientPreview (F024)", () => {
   it("test_AS_052_the_minted_session_tokens_are_stored_in_portal_scoped_cookies_only", async () => {
     const { startClientPreview } = await import("@/lib/actions/portal-preview");
     await startClientPreview(validInput());
-    expect(cookieSets).toHaveLength(3);
+    expect(cookieSets).toHaveLength(4);
     for (const set of cookieSets) {
       expect((set.options as { path: string }).path).toBe("/portal");
     }
@@ -301,16 +316,43 @@ describe("startClientPreview / exitClientPreview (F024)", () => {
     });
   });
 
-  it("test_AS_052_exit_preview_clears_all_three_preview_cookies_scoped_to_portal", async () => {
+  it("test_AS_052_exit_preview_clears_all_preview_cookies_scoped_to_portal", async () => {
     const { exitClientPreview } = await import("@/lib/actions/portal-preview");
     const result = await exitClientPreview("acme");
     expect(result.redirectTo).toBe("/w/acme/preview-as-client");
-    expect(cookieSets).toHaveLength(3);
+    expect(cookieSets).toHaveLength(4);
     for (const set of cookieSets) {
       expect((set.options as { path: string; maxAge: number }).path).toBe(
         "/portal",
       );
       expect((set.options as { path: string; maxAge: number }).maxAge).toBe(0);
     }
+  });
+
+  // --- F024b: preview cookies carry a TTL, and a failed audit write
+  // aborts the mint (AS-053 "fail closed") ---
+
+  it("test_AS_053_preview_cookies_carry_a_server_side_maxAge", async () => {
+    const { startClientPreview } = await import("@/lib/actions/portal-preview");
+    await startClientPreview(validInput());
+    expect(cookieSets.length).toBeGreaterThan(0);
+    for (const set of cookieSets) {
+      const maxAge = (set.options as { maxAge?: number }).maxAge;
+      expect(typeof maxAge).toBe("number");
+      expect(maxAge).toBeGreaterThan(0);
+    }
+  });
+
+  it("test_AS_053_a_failed_audit_write_refuses_to_start_the_preview_fail_closed", async () => {
+    opts.auditRpcError = { message: "db unavailable" };
+    const { startClientPreview } = await import("@/lib/actions/portal-preview");
+    const result = await startClientPreview(validInput());
+    expect(result.ok).toBe(false);
+    // The whole point of "fail closed": no session is minted and no
+    // preview cookie is ever set when the audit row could not be written,
+    // unlike writeAudit()'s general (correct, elsewhere) non-fatal
+    // convention.
+    expect(mintCallCount).toBe(0);
+    expect(cookieSets).toHaveLength(0);
   });
 });

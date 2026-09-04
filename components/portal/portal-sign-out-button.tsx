@@ -18,12 +18,17 @@ import { LogOut, Loader2 } from "lucide-react";
 import { signOut } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 
-export function SignOutButton() {
+// F024b (missions/20260903-portal, AS-052 remediation): `workspaceSlug` is
+// threaded through so `signOut()` can send a previewing admin back to
+// their own `/w/<slug>/preview-as-client` surface rather than `/sign-in`
+// -- see that action's own comment for why sign-out under preview must
+// never touch the client's real session.
+export function SignOutButton({ workspaceSlug }: { workspaceSlug: string }) {
   const [isPending, startTransition] = useTransition();
 
   function handleClick() {
     startTransition(async () => {
-      await signOut();
+      await signOut(workspaceSlug);
     });
   }
 

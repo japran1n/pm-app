@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, isClient } from "@/lib/auth/permissions";
+import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import {
   acceptClientRequestSchema,
   createClientRequestSchema,
@@ -174,6 +175,14 @@ export async function createClientRequest(
   _prevState: ClientRequestResult | null,
   formData: FormData,
 ): Promise<ClientRequestResult> {
+  // F024b (AS-052): named explicit guard, even though Layer A
+  // (lib/supabase/server.ts) already refuses the `.insert()` below
+  // unconditionally under a preview session -- this one gives the caller
+  // the real, self-explanatory reason instead of the generic insert-
+  // failure message Layer A's refusal would otherwise surface as.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = createClientRequestSchema.safeParse({
     projectId: formData.get("projectId"),
     title: formData.get("title"),
@@ -218,6 +227,10 @@ export async function createClientRequest(
 export async function withdrawClientRequest(
   requestId: string,
 ): Promise<ClientRequestResult> {
+  // F024b (AS-052): same reasoning as createClientRequest's guard above.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = withdrawClientRequestSchema.safeParse({ requestId });
   if (!parsed.success) return { ok: false, error: "Invalid request." };
 

@@ -102,7 +102,7 @@ export default async function PortalOverviewPage({
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <SignOutButton />
+            <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>
       </header>

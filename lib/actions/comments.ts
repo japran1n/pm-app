@@ -32,6 +32,7 @@ import {
 import { canWrite, isClient, type WorkspaceRole } from "@/lib/auth/permissions";
 import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 
 export type AddCommentResult =
   | {
@@ -91,6 +92,17 @@ export async function addComment(
   // caller, whose comments are never internal.
   internal?: boolean,
 ): Promise<AddCommentResult> {
+  // F024b (missions/20260903-portal, AS-052): default-deny -- addComment
+  // serves both team (`/w/*`) and portal (`/portal/*`) callers, and the
+  // preview cookies this checks are only ever sent on a `/portal/*`
+  // request (path-scoped, see lib/supabase/server.ts), so this guard is a
+  // no-op for every team caller and only refuses a previewing admin
+  // posting (and being attributed) as the client -- including the trail
+  // comments approvePortalTask/requestPortalTaskChanges post through this
+  // same function.
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
   const parsed = addCommentSchema.safeParse({ taskId, text });
 
   if (!parsed.success) {

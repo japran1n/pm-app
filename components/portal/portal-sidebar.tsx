@@ -294,7 +294,7 @@ export function PortalSidebar({
           {identity}
           <div className="flex items-center justify-between gap-2">
             <ThemeToggle />
-            <SignOutButton />
+            <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>
       </aside>
@@ -309,7 +309,7 @@ export function PortalSidebar({
           {brand}
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <SignOutButton />
+            <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>
         <div className="px-3 pb-2">{projectCard}</div>

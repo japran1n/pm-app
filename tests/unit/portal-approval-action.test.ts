@@ -33,6 +33,9 @@ type MockOpts = {
   membership: { ok: true; role: string } | { ok: false };
   rpcError?: { message: string } | null;
   addCommentOk?: boolean;
+  // F024b (AS-052): when true, `assertNotPreview()` refuses every
+  // RPC-backed portal write action before it does anything else.
+  isPreview?: boolean;
 };
 
 let opts: MockOpts;
@@ -94,6 +97,11 @@ function makeRlsClient() {
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => makeRlsClient(),
+  // F024b (AS-052): the real module derives this from the preview
+  // cookies; the mock lets each test toggle it directly.
+  isPortalPreview: async () => opts.isPreview ?? false,
+  PORTAL_PREVIEW_ACTION_BLOCKED_MESSAGE:
+    "You're previewing as a client. Actions are disabled in preview.",
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -405,6 +413,86 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
       {
         name: "request_portal_task_changes_atomic",
         args: { p_task_id: TASK_ID },
+      },
+    ]);
+  });
+
+  // --- F024b (AS-052): a preview session must not be able to act ---
+
+  it("test_AS_052_approve_task_is_refused_under_a_preview_session", async () => {
+    opts.isPreview = true;
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe(
+        "You're previewing as a client. Actions are disabled in preview.",
+      );
+    }
+    // No RPC call means no row was ever written or updated.
+    expect(rpcCalls).toHaveLength(0);
+    expect(commentCalls).toHaveLength(0);
+  });
+
+  it("test_AS_052_approve_task_still_works_for_the_real_client_not_previewing", async () => {
+    opts.isPreview = false;
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(true);
+    expect(rpcCalls).toEqual([
+      { name: "approve_portal_task_atomic", args: { p_task_id: TASK_ID } },
+    ]);
+  });
+
+  it("test_AS_052_request_changes_is_refused_under_a_preview_session", async () => {
+    opts.isPreview = true;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe(
+        "You're previewing as a client. Actions are disabled in preview.",
+      );
+    }
+    expect(rpcCalls).toHaveLength(0);
+    expect(commentCalls).toHaveLength(0);
+  });
+});
+
+describe("decideApproval (F024b, AS-052)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    rpcCalls = [];
+    commentCalls = [];
+    opts = defaultOpts();
+  });
+
+  it("test_AS_052_decide_approval_is_refused_under_a_preview_session", async () => {
+    opts.isPreview = true;
+    const { decideApproval } = await import("@/lib/actions/portal-approval");
+    const result = await decideApproval(TASK_ID, "approved", null);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe(
+        "You're previewing as a client. Actions are disabled in preview.",
+      );
+    }
+    // decideApproval has NO application-level authorisation other than
+    // this guard -- `decide_approval_atomic`'s own auth.uid() check is
+    // satisfied by a preview session, so a missed guard here would be a
+    // blocker, not a nicety. Proving the RPC was never reached is the
+    // whole point of this test.
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("test_AS_052_decide_approval_reaches_the_rpc_when_not_previewing", async () => {
+    opts.isPreview = false;
+    const { decideApproval } = await import("@/lib/actions/portal-approval");
+    await decideApproval(TASK_ID, "approved", null);
+    expect(rpcCalls).toEqual([
+      {
+        name: "decide_approval_atomic",
+        args: { p_request_id: TASK_ID, p_decision: "approved", p_note: null },
       },
     ]);
   });
