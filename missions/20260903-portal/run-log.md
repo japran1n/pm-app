@@ -723,3 +723,32 @@ codebase punishes, and it has now punished it three times.
   All three column guards in this codebase — client_requests, projects, approval_requests — are now allow-lists derived from the live schema. **All planned features and all remediation are complete.**
 
 ## Final gate
+
+### Final gate, first finding: the F025c bug on the INSERT branch
+
+projects_assign_key is a BEFORE INSERT trigger that populates projects.key, `key`
+is in none of the allow-list's four tiers, and its schema default is ''. Postgres
+fires same-timing row triggers in name order and projects_assign_key sorts before
+the guard, so the guard sees a populated key, compares it to '', and raises.
+Any project creation through an authenticated session fails.
+
+Two masks kept it invisible, and both are worth recording:
+
+- The product creates projects with the service-role client, which the guard's
+  first branch exempts. The shipped path never touches it.
+- The only INSERT test asserts `expect(error).not.toBeNull()`, so it passes
+  whether the error is the one it names or this one — and the suite's own fixture
+  project is created with the admin client, so nothing ever performs a clean
+  authenticated INSERT.
+
+That second mask is the eighth vacuous test in this mission, and a new species of
+it: not a test that cannot fail, but one that cannot tell which failure it caught.
+
+The review also cleared the other two guards properly rather than by inspection —
+it enumerated every non-plain writer of approval_requests and client_requests,
+found each either pending-scoped, allow-listed or bypass-wrapped, and established
+that accept_client_request_atomic is safe structurally (its acceptor set and the
+author set are disjoint by role) rather than incidentally. That is the standard of
+answer I have been asking for all mission.
+
+Opened F025d.
