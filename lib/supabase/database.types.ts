@@ -878,6 +878,21 @@ export type Database = {
           },
         ]
       }
+      f016i_gated_function_oids: {
+        Row: {
+          gated_at: string
+          oid: unknown
+        }
+        Insert: {
+          gated_at?: string
+          oid: unknown
+        }
+        Update: {
+          gated_at?: string
+          oid?: unknown
+        }
+        Relationships: []
+      }
       message_attachments: {
         Row: {
           channel_id: string
