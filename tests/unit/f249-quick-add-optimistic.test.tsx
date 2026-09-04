@@ -43,6 +43,16 @@ vi.mock("@/components/board/use-board-realtime", () => ({
   },
 }));
 
+// F093 follow-up: board.tsx also mounts useBoardColumnsRealtime (a
+// SEPARATE Realtime subscription, on the `project_columns` table) --
+// missing this mock is exactly what let this file open a real WebSocket
+// (this test only mocked useBoardRealtime above, not this one) even
+// though it "controls" the board's own task Realtime. No behavior under
+// test here depends on column change events, so this is a plain no-op.
+vi.mock("@/components/board/use-board-columns-realtime", () => ({
+  useBoardColumnsRealtime: () => {},
+}));
+
 const toastError = vi.fn();
 vi.mock("sonner", () => ({
   toast: { error: (...args: unknown[]) => toastError(...args) },

@@ -54,6 +54,28 @@ vi.mock("@/lib/actions/tasks", () => ({
 
 import { useTaskDetailSheet } from "@/components/task/use-task-detail-sheet";
 
+
+// Realtime: mock the Supabase browser client so mounting the real <Board>
+// (imported dynamically below, see F247's own Escape-layer test) never
+// opens a real WebSocket. Same "channel().on().subscribe()" fake shape as
+// tests/unit/f022-board-realtime-guard-call-site.test.tsx.
+function makeFakeSupabaseRealtimeClient() {
+  const channelObject = {
+    on: vi.fn(() => channelObject),
+    subscribe: vi.fn(() => channelObject),
+  };
+  return {
+    channel: vi.fn(() => channelObject),
+    removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: null } })),
+    },
+  };
+}
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => makeFakeSupabaseRealtimeClient(),
+}));
+
 beforeEach(() => {
   currentSearch = new URLSearchParams("groupBy=status");
   Object.defineProperty(window, "history", {
