@@ -902,3 +902,23 @@ Opened F025f.
   A clean result with its basis stated, which is what I asked for. Both halves of the silent-drop class — functions and constraints — are now swept by command rather than by recall.
 
 ## MISSION COMPLETE
+
+### Confirming full suite, after F025f and F025g
+
+**3265 passed / 84 failed / 315 skipped** across 481 files, against 3231/98 on the
+previous run. 127 rate-limit errors.
+
+Both real regressions are gone: no 42501-versus-P0001 mismatches, and the template
+round-trip passes, so a hidden phase now stays hidden through save-as-template and
+create-from-template. perf-budget passed this time rather than needing an isolated
+re-run.
+
+Exactly ONE non-rate-limit assertion failure remains — "expected null not to be
+null" in comment-format-realtime, a Realtime subscription test whose own setup
+shows "Failed to sign in test user: Request rate limit reached". The other file in
+that pair, workspace-not-found-scope, is an older mission's assertion (AS-144) and
+shows the same sign-in failure.
+
+So: **zero failures attributable to this mission's code.** Every remaining one
+traces to Supabase Auth rate limiting under a 481-file concurrent run, which is
+the finding recorded at the M1 gate and still the highest-value thing left undone.
