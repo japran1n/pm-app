@@ -110,6 +110,11 @@ function PhaseRow({
   const [plannedStart, setPlannedStart] = useState(phase.plannedStart ?? "");
   const [plannedEnd, setPlannedEnd] = useState(phase.plannedEnd ?? "");
   const [clientVisible, setClientVisible] = useState(phase.clientVisible);
+  // F109 (docs/client-portal-visual-plan.md Part 4.1): the client-facing
+  // reason a blocked phase is blocked. Kept in local state the same way
+  // every other field here is, so its own optimistic-update/rollback
+  // pattern matches the rest of this row.
+  const [blockedReason, setBlockedReason] = useState(phase.blockedReason ?? "");
   const [isPending, startTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
 
@@ -120,6 +125,7 @@ function PhaseRow({
     plannedStart: string;
     plannedEnd: string;
     clientVisible: boolean;
+    blockedReason: string;
   }) {
     // F020 (AS-040's own process rule, section 6): moving THIS phase to
     // "done" while the project has no frozen baseline is a warning, not
@@ -138,13 +144,14 @@ function PhaseRow({
       );
     }
 
-    const previous = { name, clientDescription, state, plannedStart, plannedEnd, clientVisible };
+    const previous = { name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason };
     setName(next.name);
     setClientDescription(next.clientDescription);
     setState(next.state);
     setPlannedStart(next.plannedStart);
     setPlannedEnd(next.plannedEnd);
     setClientVisible(next.clientVisible);
+    setBlockedReason(next.blockedReason);
 
     startTransition(async () => {
       const result = await updatePhase({
@@ -155,6 +162,10 @@ function PhaseRow({
         plannedStart: next.plannedStart || null,
         plannedEnd: next.plannedEnd || null,
         clientVisible: next.clientVisible,
+        // F109: cleared for a non-blocked state -- see updatePhaseImpl's
+        // own comment (lib/actions/phases.ts) for why the server also
+        // enforces this rather than trusting this client-side value.
+        blockedReason: next.state === "blocked" ? next.blockedReason.trim() || null : null,
       });
 
       if (!result.ok) {
@@ -164,6 +175,7 @@ function PhaseRow({
         setPlannedStart(previous.plannedStart);
         setPlannedEnd(previous.plannedEnd);
         setClientVisible(previous.clientVisible);
+        setBlockedReason(previous.blockedReason);
         toast.error(result.error);
         return;
       }
@@ -177,6 +189,7 @@ function PhaseRow({
         plannedEnd: result.data.plannedEnd,
         clientVisible: result.data.clientVisible,
         position: result.data.position,
+        blockedReason: result.data.blockedReason,
       });
     });
   }
@@ -208,6 +221,7 @@ function PhaseRow({
             ...restoreResult.data,
             actualStart: result.data.restore.actualStart,
             actualEnd: result.data.restore.actualEnd,
+            blockedReason: restoreResult.data.blockedReason,
             taskCount: 0,
           });
         },
@@ -223,7 +237,7 @@ function PhaseRow({
           onChange={(event) => setName(event.target.value)}
           onBlur={() => {
             if (name.trim() && name !== phase.name) {
-              submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible });
+              submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason });
             } else if (!name.trim()) {
               setName(phase.name);
             }
@@ -235,17 +249,30 @@ function PhaseRow({
 
         <Select
           value={state}
-          onValueChange={(value) =>
-            value &&
+          onValueChange={(value) => {
+            if (!value) return;
+            const nextState = value as PhaseListPhase["state"];
+            // F109: setting a phase to `blocked` without a reason is made
+            // difficult, not impossible. Rather than submit an update
+            // that the server will reject (updatePhaseSchema's own
+            // `.refine`) and bounce the select back to its previous
+            // value, this branch updates only the LOCAL state so the
+            // reason field below appears -- the actual save happens once
+            // that field is filled in and blurred (see its own onBlur).
+            if (nextState === "blocked" && !blockedReason.trim()) {
+              setState(nextState);
+              return;
+            }
             submit({
               name,
               clientDescription,
-              state: value as PhaseListPhase["state"],
+              state: nextState,
               plannedStart,
               plannedEnd,
               clientVisible,
-            })
-          }
+              blockedReason,
+            });
+          }}
           disabled={isPending}
         >
           <SelectTrigger className="w-36" aria-label="Phase state">
@@ -265,7 +292,7 @@ function PhaseRow({
           value={plannedStart}
           onChange={(event) => setPlannedStart(event.target.value)}
           onBlur={() =>
-            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible })
+            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
           }
           disabled={isPending}
           className="w-40"
@@ -276,7 +303,7 @@ function PhaseRow({
           value={plannedEnd}
           onChange={(event) => setPlannedEnd(event.target.value)}
           onBlur={() =>
-            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible })
+            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
           }
           disabled={isPending}
           className="w-40"
@@ -345,7 +372,7 @@ function PhaseRow({
         value={clientDescription}
         onChange={(event) => setClientDescription(event.target.value)}
         onBlur={() =>
-          submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible })
+          submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
         }
         disabled={isPending}
         placeholder="Client-facing description (optional)"
@@ -353,11 +380,33 @@ function PhaseRow({
         className="min-h-16"
       />
 
+      {/* F109 (docs/client-portal-visual-plan.md Part 4.1): only shown
+          while this row's local `state` is `blocked` -- the select above
+          sets `state` to `blocked` locally as soon as it's chosen, before
+          this field has anything in it, so the field appears immediately
+          rather than requiring a second click. Required at the server
+          (updatePhaseSchema's `.refine`); this placeholder and the
+          asterisk are the client-side nudge, not the enforcement. */}
+      {state === "blocked" && (
+        <Textarea
+          value={blockedReason}
+          onChange={(event) => setBlockedReason(event.target.value)}
+          onBlur={() =>
+            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible, blockedReason })
+          }
+          disabled={isPending}
+          placeholder="Why is this phase blocked? Shown to the client in place of a generic note. *"
+          aria-label={`${phase.name} blocked reason`}
+          aria-required="true"
+          className="min-h-16 border-status-blocked/50"
+        />
+      )}
+
       <div className="flex items-center gap-2">
         <Switch
           checked={clientVisible}
           onCheckedChange={(checked) =>
-            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible: checked })
+            submit({ name, clientDescription, state, plannedStart, plannedEnd, clientVisible: checked, blockedReason })
           }
           disabled={isPending}
           aria-label={`Show ${phase.name} in the client portal`}
@@ -441,6 +490,7 @@ export function PhaseList({
             clientVisible: result.data.clientVisible,
             position: result.data.position,
             taskCount: 0,
+            blockedReason: result.data.blockedReason,
           },
         ].sort((a, b) => a.position - b.position),
       );

@@ -84,6 +84,9 @@ export type PhaseActionData = {
   plannedEnd: string | null;
   clientVisible: boolean;
   position: number;
+  // F109: null on every phase created before this column existed, and on
+  // any non-blocked phase that never had one recorded.
+  blockedReason: string | null;
 };
 
 export type PhaseActionResult =
@@ -100,6 +103,7 @@ function toPhaseActionData(row: {
   planned_end: string | null;
   client_visible: boolean;
   position: number;
+  blocked_reason: string | null;
 }): PhaseActionData {
   return {
     id: row.id,
@@ -111,6 +115,7 @@ function toPhaseActionData(row: {
     plannedEnd: row.planned_end,
     clientVisible: row.client_visible,
     position: row.position,
+    blockedReason: row.blocked_reason,
   };
 }
 
@@ -218,7 +223,7 @@ const createPhaseImpl = withAuthz(
         position: newPosition,
       })
       .select(
-        "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position",
+        "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position, blocked_reason",
       )
       .single();
 
@@ -326,10 +331,16 @@ const updatePhaseImpl = withAuthz(
         planned_start: input.plannedStart,
         planned_end: input.plannedEnd,
         client_visible: input.clientVisible,
+        // F109: cleared to null whenever a non-blocked state is saved --
+        // the form only ever sends the current text field's value, and a
+        // stale reason surviving under a now-active/-done phase would be
+        // exactly the "not derived, not honest" defect this feature
+        // exists to fix on the read side.
+        blocked_reason: input.state === "blocked" ? input.blockedReason : null,
       })
       .eq("id", input.phaseId)
       .select(
-        "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position",
+        "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position, blocked_reason",
       )
       .single();
 
@@ -364,6 +375,7 @@ export async function updatePhase(input: {
   plannedStart: string | null;
   plannedEnd: string | null;
   clientVisible: boolean;
+  blockedReason: string | null;
 }): Promise<PhaseActionResult> {
   return updatePhaseImpl(input);
 }
@@ -392,7 +404,7 @@ export type DeletePhaseResult =
   | { ok: false; error: string };
 
 const PHASE_COLUMNS =
-  "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position";
+  "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position, blocked_reason";
 
 // F090 item 5: `actual_start`/`actual_end` are real columns on
 // `project_phases` (see lib/queries/phases.ts's TeamProjectPhase) that
@@ -485,6 +497,10 @@ const restorePhaseSchema = z.object({
   position: z.number(),
   actualStart: z.string().nullable(),
   actualEnd: z.string().nullable(),
+  // F109: captured the same way actualStart/actualEnd are (F090 item 5's
+  // comment above) so Undo round-trips a blocked phase's reason instead
+  // of silently dropping it.
+  blockedReason: z.string().nullable(),
 });
 
 const restorePhaseImpl = withAuthz(
@@ -512,6 +528,7 @@ const restorePhaseImpl = withAuthz(
         position: input.position,
         actual_start: input.actualStart,
         actual_end: input.actualEnd,
+        blocked_reason: input.blockedReason,
       })
       .select(PHASE_COLUMNS)
       .single();

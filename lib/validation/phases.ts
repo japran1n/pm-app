@@ -53,15 +53,43 @@ export const createPhaseSchema = z.object({
 
 export type CreatePhaseInput = z.infer<typeof createPhaseSchema>;
 
-export const updatePhaseSchema = z.object({
-  phaseId: z.string().uuid("Invalid phase."),
-  name: phaseNameSchema,
-  clientDescription: phaseClientDescriptionSchema,
-  state: phaseStateSchema,
-  plannedStart: phaseDateSchema,
-  plannedEnd: phaseDateSchema,
-  clientVisible: z.boolean(),
-});
+// F109 (docs/client-portal-visual-plan.md Part 4.1): matches
+// `project_phases_blocked_reason_length_check`
+// (20261031010000_f109_phase_blocked_reason.sql). Nullable/optional
+// column, but see the `.refine` below: the STATE this feature cares
+// about (`blocked`) is enforced here, not by a DB CHECK -- see that
+// migration's own comment for why the hard requirement lives at this
+// layer instead.
+const phaseBlockedReasonSchema = z
+  .string()
+  .trim()
+  .max(500, "Reason must be 500 characters or fewer.")
+  .nullable();
+
+export const updatePhaseSchema = z
+  .object({
+    phaseId: z.string().uuid("Invalid phase."),
+    name: phaseNameSchema,
+    clientDescription: phaseClientDescriptionSchema,
+    state: phaseStateSchema,
+    plannedStart: phaseDateSchema,
+    plannedEnd: phaseDateSchema,
+    clientVisible: z.boolean(),
+    blockedReason: phaseBlockedReasonSchema,
+  })
+  // F109: setting a phase to `blocked` without a reason is made
+  // DIFFICULT here (both the client-side form and this server-side
+  // re-validation reject it), not IMPOSSIBLE at the database -- a
+  // free-text field a PM must remember to fill is exactly the case the
+  // plan's own Part 4.1 flags, so this is the layer that makes leaving
+  // it empty a rejected action rather than a silent placeholder. Every
+  // OTHER state's `blockedReason` is untouched by this rule -- a phase
+  // that was blocked and is now moving to `active` is not forced to
+  // clear (or keep) its old reason text.
+  .refine((value) => value.state !== "blocked" || !!value.blockedReason?.trim(), {
+    message: "A blocked phase needs a reason so the client knows what's holding it up.",
+    path: ["blockedReason"],
+  });
 
 export type UpdatePhaseInput = z.infer<typeof updatePhaseSchema>;
 

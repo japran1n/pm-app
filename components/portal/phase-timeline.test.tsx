@@ -39,6 +39,7 @@ function makePhase(overrides: Partial<PortalPhase> & { id: string; name: string 
     doneClientVisibleTasks: 0,
     progressPercent: 0,
     inFlightTaskTitle: null,
+    blockedReason: null,
     ...overrides,
   };
 }
@@ -357,6 +358,87 @@ describe("PhaseTimeline", () => {
     expect(screen.queryByTestId("phase-timeline-blocked-note")).not.toBeInTheDocument();
   });
 
+  // F109 (docs/client-portal-visual-plan.md Part 4.1): a real, recorded
+  // `blockedReason` replaces the derived "Not yet started" note --
+  // strictly more informative, and shown even when the phase already
+  // has an `actualStart` (a phase can stall after real work began, not
+  // only before it).
+  it("test_F109_a_recorded_blocked_reason_renders_in_place_of_the_derived_not_yet_started_note", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "QA & accessibility",
+            state: "blocked",
+            plannedStart: "2026-09-14",
+            plannedEnd: "2026-09-22",
+            actualStart: "2026-09-14",
+            blockedReason: "Waiting on the client's final brand assets before testing can start.",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    const blockedNote = screen.getByTestId("phase-timeline-blocked-note");
+    expect(blockedNote).toHaveTextContent(
+      "Waiting on the client's final brand assets before testing can start.",
+    );
+    expect(blockedNote).not.toHaveTextContent(/not yet started/i);
+
+    const row = screen.getByRole("button", { name: /QA & accessibility/ });
+    expect(row.getAttribute("aria-label")).toMatch(/waiting on the client/i);
+  });
+
+  it("test_F109_a_recorded_blocked_reason_also_renders_on_the_mobile_card_layout", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "QA & accessibility",
+            state: "blocked",
+            plannedStart: "2026-09-14",
+            plannedEnd: "2026-09-22",
+            actualStart: null,
+            blockedReason: "Waiting on the client's final brand assets before testing can start.",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    const mobileNote = screen.getByTestId("phase-timeline-mobile-blocked-note");
+    expect(mobileNote).toHaveTextContent(
+      "Waiting on the client's final brand assets before testing can start.",
+    );
+    expect(mobileNote).not.toHaveTextContent(/not yet started/i);
+  });
+
+  // The never-invent-a-reason guarantee: a blocked phase with neither a
+  // recorded reason NOR the "never started" signal (it has an
+  // actualStart) renders no qualifier line at all -- never an empty red
+  // line, never fabricated text.
+  it("test_F109_no_reason_and_already_started_renders_no_qualifier_line_at_all", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Build",
+            state: "blocked",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            actualStart: "2026-06-02",
+            blockedReason: null,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    expect(screen.queryByTestId("phase-timeline-blocked-note")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-timeline-mobile-blocked-note")).not.toBeInTheDocument();
+  });
+
   it("test_AS_010_an_active_phase_shows_the_one_client_visible_task_currently_in_flight", () => {
     render(
       <PhaseTimeline
@@ -660,6 +742,7 @@ describe("PhaseTimeline", () => {
           doneClientVisibleTasks: 0,
           progressPercent: 0,
           inFlightTaskTitle: null,
+          blockedReason: null,
         },
       ],
       "2026-06-05",

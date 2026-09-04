@@ -40,6 +40,11 @@ export type TeamProjectPhase = {
   // round trip that loads the phase list, so the settings page's delete
   // confirmation never needs a second query.
   taskCount: number;
+  // F109 (docs/client-portal-visual-plan.md Part 4.1): why a `blocked`
+  // phase is blocked, edited in components/project/phase-list.tsx and
+  // read by the portal (lib/queries/portal.ts's PortalPhase). Null when
+  // never recorded, or when the phase isn't (or is no longer) blocked.
+  blockedReason: string | null;
 };
 
 export async function getProjectPhasesForTeam(
@@ -50,7 +55,7 @@ export async function getProjectPhasesForTeam(
   const { data: phases, error: phasesError } = await supabase
     .from("project_phases")
     .select(
-      "id, project_id, name, client_description, state, planned_start, planned_end, actual_start, actual_end, client_visible, position",
+      "id, project_id, name, client_description, state, planned_start, planned_end, actual_start, actual_end, client_visible, position, blocked_reason",
     )
     .eq("project_id", projectId)
     .order("position", { ascending: true });
@@ -100,6 +105,7 @@ export async function getProjectPhasesForTeam(
     clientVisible: phase.client_visible,
     position: phase.position,
     taskCount: countByPhase.get(phase.id) ?? 0,
+    blockedReason: phase.blocked_reason,
   }));
 }
 

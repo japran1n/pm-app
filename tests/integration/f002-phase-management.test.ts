@@ -318,6 +318,7 @@ describe.skipIf(!haveAdminCreds)(
         plannedStart: "2026-02-01",
         plannedEnd: "2026-02-28",
         clientVisible: false,
+        blockedReason: null,
       });
       expect(updated.ok).toBe(true);
       if (!updated.ok) return;
@@ -334,6 +335,66 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.state).toBe("active");
       expect(row?.client_visible).toBe(false);
       expect(row?.planned_start).toBe("2026-02-01");
+    });
+
+    it("test_F109_blocking_a_phase_with_no_reason_is_rejected_and_leaves_the_row_unchanged", async () => {
+      const { createPhase, updatePhase } = await import("@/lib/actions/phases");
+      await signInAs(ownerEmail, ownerPassword);
+
+      const created = await createPhase({ projectId, name: "Needs a reason to block" });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const result = await updatePhase({
+        phaseId: created.data.id,
+        name: created.data.name,
+        clientDescription: null,
+        state: "blocked",
+        plannedStart: null,
+        plannedEnd: null,
+        clientVisible: true,
+        blockedReason: null,
+      });
+      expect(result.ok).toBe(false);
+
+      const { data: row } = await adminClient
+        .from("project_phases")
+        .select("state, blocked_reason")
+        .eq("id", created.data.id)
+        .single();
+      expect(row?.state).toBe("not_started");
+      expect(row?.blocked_reason).toBeNull();
+    });
+
+    it("test_F109_blocking_a_phase_with_a_reason_persists_it_and_the_portal_can_read_it_back", async () => {
+      const { createPhase, updatePhase } = await import("@/lib/actions/phases");
+      await signInAs(ownerEmail, ownerPassword);
+
+      const created = await createPhase({ projectId, name: "Blocked with a reason" });
+      expect(created.ok).toBe(true);
+      if (!created.ok) return;
+
+      const result = await updatePhase({
+        phaseId: created.data.id,
+        name: created.data.name,
+        clientDescription: null,
+        state: "blocked",
+        plannedStart: null,
+        plannedEnd: null,
+        clientVisible: true,
+        blockedReason: "Waiting on the client to approve final copy.",
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.blockedReason).toBe("Waiting on the client to approve final copy.");
+
+      const { data: row } = await adminClient
+        .from("project_phases")
+        .select("state, blocked_reason")
+        .eq("id", created.data.id)
+        .single();
+      expect(row?.state).toBe("blocked");
+      expect(row?.blocked_reason).toBe("Waiting on the client to approve final copy.");
     });
 
     it("AS-008: an owner can reorder two phases, and the swapped positions persist", async () => {
@@ -1040,6 +1101,7 @@ describe.skipIf(!haveAdminCreds)(
           plannedStart: null,
           plannedEnd: null,
           clientVisible: false,
+          blockedReason: null,
         });
         expect(result.ok).toBe(false);
 

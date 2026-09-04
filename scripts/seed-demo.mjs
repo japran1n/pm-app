@@ -501,7 +501,7 @@ const WEBSITE_PHASES = [
   { name: "Site structure", client_description: "Agreeing every page and every URL before anything is designed.", state: "done", plannedStart: -12, plannedEnd: -7, actualStart: -11, actualEnd: -6 },
   { name: "Visual direction & design", client_description: "Choosing the look, then designing every page against it.", state: "active", plannedStart: -7, plannedEnd: 8, actualStart: -6, actualEnd: null },
   { name: "Build", client_description: "Turning the approved designs into the live Next.js site.", state: "active", plannedStart: 0, plannedEnd: 20, actualStart: 2, actualEnd: null },
-  { name: "QA & accessibility", client_description: "Cross-browser, cross-device, and WCAG AA testing before launch.", state: "blocked", plannedStart: 14, plannedEnd: 22, actualStart: null, actualEnd: null },
+  { name: "QA & accessibility", client_description: "Cross-browser, cross-device, and WCAG AA testing before launch.", state: "blocked", plannedStart: 14, plannedEnd: 22, actualStart: null, actualEnd: null, blockedReason: "Waiting on the client's final brand assets (logo files, favicon) before cross-browser testing can start." },
   { name: "Launch", client_description: "DNS cutover and go-live.", state: "not_started", plannedStart: 27, plannedEnd: 30, actualStart: null, actualEnd: null },
 ];
 
@@ -906,6 +906,7 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
         planned_end: daysFromNow(p.plannedEnd),
         actual_start: p.actualStart !== null ? daysFromNow(p.actualStart) : null,
         actual_end: p.actualEnd !== null ? daysFromNow(p.actualEnd) : null,
+        blocked_reason: p.blockedReason ?? null,
       })),
     )
     .select("id, name");
@@ -1726,6 +1727,7 @@ async function seedProjectPortalTables({
         planned_end: daysFromNow(p.plannedEnd),
         actual_start: p.actualStart !== null ? daysFromNow(p.actualStart) : null,
         actual_end: p.actualEnd !== null ? daysFromNow(p.actualEnd) : null,
+        blocked_reason: p.blockedReason ?? null,
       })),
     )
     .select("id, name");

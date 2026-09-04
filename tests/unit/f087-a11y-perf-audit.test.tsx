@@ -59,6 +59,7 @@ function makePhase(overrides: Partial<PortalPhase> = {}): PortalPhase {
     doneClientVisibleTasks: 1,
     progressPercent: 25,
     inFlightTaskTitle: null,
+    blockedReason: null,
     ...overrides,
   };
 }

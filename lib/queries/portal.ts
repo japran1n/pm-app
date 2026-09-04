@@ -306,6 +306,12 @@ export type PortalPhase = {
   // furthest left/top on the board) wins -- an arbitrary but stable and
   // deterministic pick, not invented data.
   inFlightTaskTitle: string | null;
+  // F109 (docs/client-portal-visual-plan.md Part 4.1): the free-text
+  // reason a `blocked` phase is blocked (project_phases.blocked_reason,
+  // edited in components/project/phase-list.tsx). Null when nothing has
+  // been recorded, or the phase isn't blocked -- components/portal/
+  // phase-timeline.tsx never invents one for either case.
+  blockedReason: string | null;
 };
 
 // Client-visible phases for one project, with a progress percentage. RLS
@@ -340,7 +346,7 @@ export async function getProjectPhases(
   const { data: phases, error: phasesError } = await supabase
     .from("project_phases")
     .select(
-      "id, name, client_description, state, planned_start, planned_end, actual_start, actual_end, position",
+      "id, name, client_description, state, planned_start, planned_end, actual_start, actual_end, position, blocked_reason",
     )
     .eq("project_id", projectId)
     // AS-012: a phase with client_visible = false is never part of this
@@ -437,6 +443,7 @@ export async function getProjectPhases(
       // as such by the UI, not a fraction that would throw or render NaN.
       progressPercent: totals.total === 0 ? 0 : Math.round((totals.done / totals.total) * 100),
       inFlightTaskTitle: inFlightByPhase.get(phase.id)?.title ?? null,
+      blockedReason: phase.blocked_reason,
     };
   });
 

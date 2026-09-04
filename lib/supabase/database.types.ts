@@ -39,6 +39,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _realtime_capability_probe: {
+        Row: {
+          created_at: string
+          id: string
+          tag: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          tag: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          tag?: string
+        }
+        Relationships: []
+      }
       active_timers: {
         Row: {
           id: string
@@ -1741,6 +1759,7 @@ export type Database = {
         Row: {
           actual_end: string | null
           actual_start: string | null
+          blocked_reason: string | null
           client_description: string | null
           client_visible: boolean
           created_at: string
@@ -1756,6 +1775,7 @@ export type Database = {
         Insert: {
           actual_end?: string | null
           actual_start?: string | null
+          blocked_reason?: string | null
           client_description?: string | null
           client_visible?: boolean
           created_at?: string
@@ -1771,6 +1791,7 @@ export type Database = {
         Update: {
           actual_end?: string | null
           actual_start?: string | null
+          blocked_reason?: string | null
           client_description?: string | null
           client_visible?: boolean
           created_at?: string

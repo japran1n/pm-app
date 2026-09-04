@@ -189,8 +189,21 @@ function formatQualifierLine(
   if (phase.state === "active" && phase.inFlightTaskTitle) {
     return { kind: "inflight", text: `Now: ${phase.inFlightTaskTitle}` };
   }
-  if (blockedNeverStarted(phase)) {
-    return { kind: "blocked-note", text: "Not yet started" };
+  // F109 (docs/client-portal-visual-plan.md Part 4.1): a real, recorded
+  // reason always wins over the derived "Not yet started" note -- it is
+  // strictly more informative, and applies whether or not the phase has
+  // an `actualStart` (a blocked phase can be blocked before OR after it
+  // was actually under way). Falls back to the same derived note as
+  // before when no reason has been recorded, and to nothing at all when
+  // the phase is blocked, has an actual start, and no reason -- this
+  // function still never invents one.
+  if (phase.state === "blocked") {
+    if (phase.blockedReason) {
+      return { kind: "blocked-note", text: phase.blockedReason };
+    }
+    if (blockedNeverStarted(phase)) {
+      return { kind: "blocked-note", text: "Not yet started" };
+    }
   }
   return null;
 }
