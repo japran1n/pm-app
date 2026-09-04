@@ -23,6 +23,12 @@ import { logger } from "@/lib/observability/logger";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  setDocClientVisibilitySchema,
+  setDocKindSchema,
+  type SetDocClientVisibilityInput,
+  type SetDocKindInput,
+} from "@/lib/validation/project-site";
 
 function revalidateDocs() {
   try {
@@ -300,4 +306,85 @@ export async function moveDoc(
   revalidateDocs();
 
   return {};
+}
+
+// ---------------------------------------------------------------------
+// F022 (missions/20260903-portal, AS-051): the doc header's client-share
+// toggle and kind selector, same "any active workspace member may edit"
+// RLS-as-enforcement-boundary posture as every other action in this file
+// — `docs_update_active_members` (20260905030000, unchanged by this
+// feature) already excludes `viewer`/`client` roles and non-visible
+// projects; this action adds no extra authorization layer on top of it,
+// matching updateDoc's own convention exactly.
+// ---------------------------------------------------------------------
+
+export type SetDocClientVisibilityResult =
+  | { ok: true; data: { docId: string; clientVisible: boolean } }
+  | { ok: false; error: string };
+
+export async function setDocClientVisibility(
+  docId: string,
+  visible: boolean,
+): Promise<SetDocClientVisibilityResult> {
+  const parsed = setDocClientVisibilitySchema.safeParse({
+    docId,
+    visible,
+  } satisfies SetDocClientVisibilityInput);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid document." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { error } = await supabase
+    .from("docs")
+    .update({ client_visible: parsed.data.visible, updated_by: user.id })
+    .eq("id", parsed.data.docId);
+
+  if (error) {
+    logger.error("setDocClientVisibility: update failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { ok: true, data: { docId: parsed.data.docId, clientVisible: parsed.data.visible } };
+}
+
+export type SetDocKindResult =
+  | { ok: true; data: { docId: string; kind: SetDocKindInput["kind"] } }
+  | { ok: false; error: string };
+
+export async function setDocKind(
+  docId: string,
+  kind: SetDocKindInput["kind"],
+): Promise<SetDocKindResult> {
+  const parsed = setDocKindSchema.safeParse({ docId, kind } satisfies SetDocKindInput);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid document." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { error } = await supabase
+    .from("docs")
+    .update({ doc_kind: parsed.data.kind, updated_by: user.id })
+    .eq("id", parsed.data.docId);
+
+  if (error) {
+    logger.error("setDocKind: update failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { ok: true, data: { docId: parsed.data.docId, kind: parsed.data.kind } };
 }

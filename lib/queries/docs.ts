@@ -27,6 +27,8 @@ export type DocFolder = {
   createdAt: string;
 };
 
+export type DocKind = "note" | "training" | "process" | "handover";
+
 export type Doc = {
   id: string;
   workspaceId: string;
@@ -39,6 +41,10 @@ export type Doc = {
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  // F022 (missions/20260903-portal, AS-051): whether this doc is shared
+  // to the client portal's guides list, and what kind of guide it is.
+  clientVisible: boolean;
+  docKind: DocKind;
 };
 
 function mapFolderRow(row: {
@@ -75,6 +81,8 @@ function mapDocRow(row: {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  client_visible: boolean;
+  doc_kind: string;
 }): Doc {
   return {
     id: row.id,
@@ -88,6 +96,8 @@ function mapDocRow(row: {
     updatedBy: row.updated_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    clientVisible: row.client_visible,
+    docKind: row.doc_kind as DocKind,
   };
 }
 
@@ -106,7 +116,7 @@ function docFoldersBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>)
 
 function docsBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
   return supabase.from("docs").select(
-    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at",
+    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind",
   );
 }
 
@@ -223,7 +233,7 @@ export async function getDocById(docId: string): Promise<Doc | null> {
   const { data, error } = await supabase
     .from("docs")
     .select(
-      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at",
+      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind",
     )
     .eq("id", docId)
     .maybeSingle();

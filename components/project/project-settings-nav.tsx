@@ -49,6 +49,10 @@ const ENTRIES = [
   // sub-nav placement as budget/record, set up once per phase then
   // measured against periodically, not a daily surface.
   { slug: "measurement", label: "Measurement" },
+  // F022 (missions/20260903-portal): links and accounts (AS-049,
+  // AS-050) — the site inventory a PM fills in once early and revisits
+  // at handover, same settings sub-nav placement as record/budget.
+  { slug: "site", label: "Site" },
 ] as const;
 
 export function ProjectSettingsNav({

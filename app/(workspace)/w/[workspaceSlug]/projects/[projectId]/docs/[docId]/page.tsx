@@ -70,6 +70,8 @@ export default async function ProjectDocEditorPage({
         initialContent={doc.content}
         workspaceSlug={workspaceSlug}
         projectId={project.id}
+        initialClientVisible={doc.clientVisible}
+        initialDocKind={doc.docKind}
       />
     </div>
   );

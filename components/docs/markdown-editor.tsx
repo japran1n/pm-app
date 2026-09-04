@@ -29,7 +29,7 @@
 // header's "Request client approval" trigger renders at all, since only a
 // project-scoped doc has a project to attach an approval_requests row to.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -48,7 +48,17 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { updateDoc } from "@/lib/actions/docs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { updateDoc, setDocKind } from "@/lib/actions/docs";
+import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
+import { docKindSchema, type SetDocKindInput } from "@/lib/validation/project-site";
+import { toast } from "sonner";
 // F008 (missions/20260903-portal, AS-019): the doc header's "Request
 // client approval" entry point. Only meaningful for a PROJECT-scoped doc —
 // approval_requests.project_id is required, and a workspace-level doc
@@ -57,6 +67,13 @@ import { updateDoc } from "@/lib/actions/docs";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
+
+const DOC_KIND_LABELS: Record<SetDocKindInput["kind"], string> = {
+  note: "Note",
+  training: "Training",
+  process: "Process",
+  handover: "Handover",
+};
 
 export type MarkdownEditorProps = {
   docId: string;
@@ -70,6 +87,13 @@ export type MarkdownEditorProps = {
    * workspace-level doc (undefined here) has no project to attach an
    * approval to, so the trigger is simply omitted rather than disabled. */
   projectId?: string;
+  /** F022 (AS-051): whether this doc is currently shared to the client
+   * portal's guides list, and what kind of guide it is. Undefined for a
+   * caller that hasn't been updated to pass them (defaults keep the
+   * header rendering exactly as before: hidden toggle, no kind select) —
+   * both project doc pages below always pass real values. */
+  initialClientVisible?: boolean;
+  initialDocKind?: SetDocKindInput["kind"];
 };
 
 export function MarkdownEditor({
@@ -77,9 +101,29 @@ export function MarkdownEditor({
   initialTitle,
   initialContent,
   projectId,
+  initialClientVisible,
+  initialDocKind,
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [docKind, setDocKindState] = useState<SetDocKindInput["kind"]>(
+    initialDocKind ?? "note",
+  );
+  const [isKindPending, startKindTransition] = useTransition();
+
+  function handleKindChange(value: string | null) {
+    const parsed = docKindSchema.safeParse(value);
+    if (!parsed.success) return;
+    const previous = docKind;
+    setDocKindState(parsed.data);
+    startKindTransition(async () => {
+      const result = await setDocKind(docId, parsed.data);
+      if (!result.ok) {
+        setDocKindState(previous);
+        toast.error(result.error);
+      }
+    });
+  }
 
   // Debounced auto-save (plan: 800ms after the user stops typing, no manual
   // Save button). A plain setTimeout ref is used rather than pulling in a
@@ -166,10 +210,28 @@ export function MarkdownEditor({
           {status === "error" && "Failed to save"}
         </span>
         {projectId && (
-          <RequestApprovalDialog
-            projectId={projectId}
-            subject={{ subjectType: "doc", subjectId: docId, defaultTitle: title }}
-          />
+          <>
+            <Select value={docKind} onValueChange={handleKindChange} disabled={isKindPending}>
+              <SelectTrigger className="w-32 shrink-0" aria-label="Document kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {docKindSchema.options.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {DOC_KIND_LABELS[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <DocClientVisibilityToggle
+              docId={docId}
+              clientVisible={initialClientVisible ?? false}
+            />
+            <RequestApprovalDialog
+              projectId={projectId}
+              subject={{ subjectType: "doc", subjectId: docId, defaultTitle: title }}
+            />
+          </>
         )}
       </div>
 

@@ -816,9 +816,11 @@ export type Database = {
       }
       docs: {
         Row: {
+          client_visible: boolean
           content: string
           created_at: string
           created_by: string
+          doc_kind: string
           folder_id: string | null
           id: string
           position: number
@@ -829,9 +831,11 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          client_visible?: boolean
           content?: string
           created_at?: string
           created_by: string
+          doc_kind?: string
           folder_id?: string | null
           id?: string
           position?: number
@@ -842,9 +846,11 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          client_visible?: boolean
           content?: string
           created_at?: string
           created_by?: string
+          doc_kind?: string
           folder_id?: string | null
           id?: string
           position?: number
@@ -1275,6 +1281,56 @@ export type Database = {
         }
         Relationships: []
       }
+      project_accounts: {
+        Row: {
+          client_visible: boolean
+          created_at: string
+          id: string
+          note: string | null
+          owner: string
+          position: number
+          project_id: string
+          renewal_date: string | null
+          service: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          note?: string | null
+          owner: string
+          position?: number
+          project_id: string
+          renewal_date?: string | null
+          service: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          note?: string | null
+          owner?: string
+          position?: number
+          project_id?: string
+          renewal_date?: string | null
+          service?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_accounts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_assumptions: {
         Row: {
           client_visible: boolean
@@ -1533,6 +1589,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_improvements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_links: {
+        Row: {
+          client_visible: boolean
+          created_at: string
+          id: string
+          kind: string
+          label: string
+          position: number
+          project_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          kind: string
+          label: string
+          position?: number
+          project_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          kind?: string
+          label?: string
+          position?: number
+          project_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_links_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -3028,6 +3128,7 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
+      looks_like_credential: { Args: { value: string }; Returns: boolean }
       mark_deliverable_delivered_atomic: {
         Args: { p_deliverable_id: string }
         Returns: {
