@@ -115,6 +115,12 @@ describe.skipIf(!haveAdminCreds)(
     let commentId: string;
     // F098: see the comment at this channel's creation site below.
     let reactionChannel: ReturnType<SupabaseClient["channel"]> | null = null;
+    // F101 probe: unfiltered sibling of `reactionChannel`, added only to
+    // answer whether this stack delivers postgres_changes at all when no
+    // `filter` is present. See the F101 handoff for what each outcome
+    // proves. Not part of the product's subscription shape -- remove once
+    // the question is answered.
+    let probeChannel: ReturnType<SupabaseClient["channel"]> | null = null;
 
     const ANON_KEY =
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? SECRET_KEY!;
@@ -331,6 +337,14 @@ describe.skipIf(!haveAdminCreds)(
       async () => {
         const { toggleReaction } = await import("@/lib/actions/comment-reactions");
 
+        // F101 probe bookkeeping: hoisted above the promise executor so
+        // the post-promise log line and cleanup below can read the
+        // probe's final state.
+        let probeReceived = false;
+        let probeSubscribed = false;
+        let mainSubscribed = false;
+        let measurementT0 = Date.now();
+
         const received = await new Promise<
           { comment_id: string; user_id: string; emoji: string } | null
         >((resolve, reject) => {
@@ -414,12 +428,59 @@ describe.skipIf(!haveAdminCreds)(
           // handoff for what to do with each possible outcome.
           const HARD_TIMEOUT_MS = 45000;
           const t0 = Date.now();
+          measurementT0 = t0;
           const timeout = setTimeout(() => {
             process.stderr.write(
               `[AS-369] postgres_changes event NOT received within the generous ${HARD_TIMEOUT_MS}ms measurement ceiling (SUBSCRIBED->timeout elapsed ${Date.now() - t0}ms) -- resolving null, this is a genuine non-delivery, not scheduling noise\n`,
             );
             resolve(null);
           }, HARD_TIMEOUT_MS);
+
+          // F101 probe: does NOT resolve/reject the outer promise and
+          // carries no assertion of its own -- it exists purely to log,
+          // for this one measurement run, whether an unfiltered
+          // subscription to the same table/event receives the same
+          // INSERT that the filtered `reactionChannel` below is waiting
+          // for. `probeReceived`/`probeSubscribed` (hoisted above this
+          // promise, alongside `mainSubscribed`) let the toggle wait
+          // for both channels so a slow probe subscribe can't make the
+          // probe miss the write by a race.
+          const maybeToggle = () => {
+            if (probeSubscribed && mainSubscribed) {
+              void toggleReaction(commentId, "👍");
+            }
+          };
+          probeChannel = subscriberClient
+            .channel(`comment_reactions:probe-unfiltered:${taskId}`)
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                schema: "public",
+                table: "comment_reactions",
+              },
+              (payload: { new: { comment_id: string } }) => {
+                if (payload.new.comment_id !== commentId) return;
+                if (probeReceived) return;
+                probeReceived = true;
+                const elapsed = Date.now() - t0;
+                process.stderr.write(
+                  `[AS-369][F101-probe] UNFILTERED postgres_changes event received ${elapsed}ms after SUBSCRIBED\n`,
+                );
+              },
+            )
+            .subscribe((status, err) => {
+              if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                process.stderr.write(
+                  `[AS-369][F101-probe] unfiltered probe channel failed to subscribe: ${status} ${err?.message ?? ""}\n`,
+                );
+                return;
+              }
+              if (status === "SUBSCRIBED") {
+                probeSubscribed = true;
+                maybeToggle();
+              }
+            });
 
           // F098: captured (rather than left as an inline, unreferenced
           // chain like the pre-F098 version of this test) so it can be
@@ -465,13 +526,30 @@ describe.skipIf(!haveAdminCreds)(
                 return;
               }
               if (status === "SUBSCRIBED") {
-                // Only toggle once the subscriber is confirmed live, so
+                // Only toggle once both the filtered channel under test
+                // AND the F101 unfiltered probe are confirmed live, so
                 // this test can't pass by accident on a race where the
-                // event beats the subscription.
-                void toggleReaction(commentId, "👍");
+                // event beats either subscription, and the probe's
+                // answer is comparable to the filtered channel's.
+                mainSubscribed = true;
+                maybeToggle();
               }
             });
         });
+
+        // F101 probe: log whether the unfiltered channel ever received the
+        // event, independent of whatever the filtered channel above did.
+        // This is the second of the two log lines the F101 experiment is
+        // gated on. Not an assertion -- see the F101 handoff.
+        if (!probeReceived) {
+          process.stderr.write(
+            `[AS-369][F101-probe] UNFILTERED postgres_changes event NOT received by the time the filtered channel settled (elapsed ${Date.now() - measurementT0}ms)\n`,
+          );
+        }
+        if (probeChannel) {
+          await subscriberClient.removeChannel(probeChannel);
+          probeChannel = null;
+        }
 
         // F098: close this channel as soon as this `it` is done with it,
         // rather than leaving it bound (and receiving every future
