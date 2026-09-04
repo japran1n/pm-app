@@ -163,11 +163,22 @@ describe.skipIf(!haveCreds)("get_open_task_counts RPC (F006l: AS-007/B2)", () =>
   });
 
   it("AS-007/B2: an unauthenticated caller gets no rows at all", async () => {
+    // `revoke all ... from public; grant execute ... to authenticated`
+    // (20260920010000_f006l_bypass_paths.sql /
+    // 20260920020000_f006l_open_task_counts_client_branch_fix.sql) means
+    // `anon` never reaches the function body's own `v_user_id is null`
+    // no-op guard at all -- Postgres denies the call at the grant layer
+    // with 42501 before the function runs. That is a stricter outcome
+    // than "runs and returns no rows", not a weaker one, and matches the
+    // same SQLSTATE 42501 permission-denied convention every other
+    // revoke-from-public RPC/predicate in this suite asserts for an
+    // anonymous caller (e.g. f025e-guard-hardening.test.ts).
     const { data, error } = await anonSession.rpc("get_open_task_counts", {
       project_ids: [disabledProjectId],
     });
-    expect(error).toBeNull();
-    expect(data).toEqual([]);
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("42501");
+    expect(data).toBeNull();
   });
 
   it("AS-007/B2: a client of a portal-disabled project gets no row for it, called directly", async () => {

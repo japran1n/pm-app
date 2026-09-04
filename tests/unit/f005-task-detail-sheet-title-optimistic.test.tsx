@@ -133,8 +133,20 @@ describe("TaskDetailSheet title optimistic save (F005, AS-009, AS-010, AS-011)",
 
     resolveEditTask?.({ ok: true, data: { title: "Updated title" } });
 
-    await waitFor(() =>
-      expect(screen.queryByTestId("title-saving-indicator")).not.toBeInTheDocument(),
+    // Default `waitFor` budget (1000ms) is tight enough that it has been
+    // observed to flake ONLY inside the full CI suite run (never in
+    // isolation, and never on a dev machine) — `vitest.config.ts` runs the
+    // full suite with `maxWorkers: 4`, and under that contention a
+    // legitimate (already-resolved) React state flush can occasionally
+    // take longer than 1000ms to actually commit and be observed by
+    // `waitFor`'s polling. Widened budget only, same shape as F320's fix
+    // to tests/integration/reaction-realtime-delivery.test.ts — the
+    // assertion itself (indicator must disappear, toast must fire) is
+    // unchanged.
+    await waitFor(
+      () =>
+        expect(screen.queryByTestId("title-saving-indicator")).not.toBeInTheDocument(),
+      { timeout: 5000 },
     );
     expect(toastSuccess).toHaveBeenCalledWith("Title updated.");
   });

@@ -32,6 +32,28 @@ afterEach(() => {
 beforeEach(() => {
   __resetEscapeLayersForTests();
   document.body.innerHTML = "";
+  // The component's own dismiss handler (components/onboarding/tour.tsx)
+  // writes a REAL `window.localStorage` entry
+  // (`pm-app-tour-dismissed`) as a same-browser safety net, independent
+  // of the mocked `dismissTour` server action -- this is real jsdom
+  // `localStorage`, not mocked, and jsdom does not reset it between
+  // tests in the same file on its own. Without clearing it here, the
+  // earlier "dismissing calls the persistence action..." test's real
+  // dismiss leaves the flag set, so every later test in this file mounts
+  // against an already-"locally dismissed" tour and never sees "Welcome
+  // to pm-app" at all -- not a rendering bug, a missing test-isolation
+  // reset. (Whether this actually manifests depends on the jsdom/Node
+  // localStorage wiring in a given run, which is why it was intermittent
+  // rather than a hard, always-reproducing failure on every machine.)
+  try {
+    window.localStorage?.clear();
+  } catch {
+    // jsdom's localStorage isn't available in every environment this
+    // suite runs in (observed locally) — the component's own
+    // `readLocallyDismissed` already treats that the same way (falls
+    // back to `false`), so a missing/inaccessible localStorage here is a
+    // no-op, not a test failure.
+  }
 });
 
 async function importTour() {

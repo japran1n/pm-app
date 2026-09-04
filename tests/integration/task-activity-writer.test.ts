@@ -319,7 +319,18 @@ describe.skipIf(!haveAdminCreds)(
         memberUserId,
         "UTC",
       );
-      expect(result.generated).toBe(true);
+      // The failure-mode branch carries its own `reason` string (see
+      // generateNextOccurrence's early-return comments) — surfaced here so
+      // a CI-only failure (this test passes reliably against the real
+      // linked project locally; not reproducible without the exact
+      // ephemeral local Supabase stack CI runs against) shows WHICH
+      // early-return path was actually taken instead of just "false".
+      expect(
+        result.generated,
+        `generateNextOccurrence did not generate: ${
+          result.generated ? "" : result.reason
+        }`,
+      ).toBe(true);
       if (!result.generated) return;
 
       const { data: entries } = await adminClient
