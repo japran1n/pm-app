@@ -662,3 +662,5 @@ names.
 
 Opened F020b (invert the projects guard — the structural fix, not the patch), F021b
 (hours period scoping) and F021c (pre-baseline snapshots plus three majors).
+- F021c COMPLETE (960dcec) — deriveMetricMeasurementStatus now compares measuredAt to baselineAt, with the fix's test verified to fail when the comparison is removed and then reverted; the sweep's project_id UPDATE moved inside its per-row exception block with a RAISE WARNING for leadless projects rather than silence; results/page.tsx renders a failed metrics read as an error state instead of "nothing measured yet".
+  The worker also caught and corrected an accidental commit of a concurrent worker's staged files — the same mistake I made myself earlier in this mission, found and fixed by the agent that made it rather than by a later review.
