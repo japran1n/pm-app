@@ -22,13 +22,39 @@
 // below.
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { createElement } from "react";
 
 import { CalendarDayGrid } from "@/components/calendar/calendar-day-grid";
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
+
+
+// Realtime: mock the Supabase browser client so mounting this component
+// never opens a real WebSocket. jsdom's undici-based WebSocket polyfill
+// throws "TypeError: The \"event\" argument must be an instance of Event"
+// against a live connection (see vitest.config.ts's own comment on why
+// jsdom is opt-in per file), which escapes as an unhandled exception
+// outside any test and fails the process even though every test passes.
+// Same "channel().on().subscribe()" fake shape as
+// tests/unit/f022-board-realtime-guard-call-site.test.tsx.
+function makeFakeSupabaseRealtimeClient() {
+  const channelObject = {
+    on: vi.fn(() => channelObject),
+    subscribe: vi.fn(() => channelObject),
+  };
+  return {
+    channel: vi.fn(() => channelObject),
+    removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: null } })),
+    },
+  };
+}
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => makeFakeSupabaseRealtimeClient(),
+}));
 
 afterEach(cleanup);
 
