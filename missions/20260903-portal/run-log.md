@@ -824,3 +824,5 @@ start rather than on entry, with no cookie TTL.
 Opened F024b. The fix is a default-deny assertNotPreview() seam every portal action
 routes through — default-deny because this mission has eight instances of the
 opposite arrangement and every one of them eventually fired.
+- F025d COMPLETE — the projects.key INSERT collision fixed by scoping app.projects_field_guard_bypass PER COLUMN rather than as a blanket row bypass, the f020b vacuous test made to assert the specific rejection, a clean authenticated-member project INSERT test added, and every BEFORE INSERT/UPDATE trigger on the three guarded tables audited with no further instance found.
+  The per-column scoping was not my instruction — the worker's own test caught that a naive blanket bypass would let a client's baseline_frozen_at write through, and it narrowed the mechanism in response. That is the fix being made safer by the test rather than merely being confirmed by it.
