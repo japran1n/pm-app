@@ -21,6 +21,22 @@
 // visually collides with a dated phase's real-positioned bar in another
 // row; there is nothing to reconcile between the two coordinate schemes.
 //
+// F104 (docs/client-portal-visual-plan.md Part 1): rebuild pass. The
+// x-range now ends shortly past the last phase's own end date (extended
+// only far enough to also include "today" -- see rangeEnd below) instead
+// of an arbitrary rounded boundary, which used to leave roughly a third
+// of the plot empty. The legend is gone -- every row already states its
+// own state as a coloured word, so a repeated dot legend taught nothing
+// (no-colour-alone is satisfied at the row level instead). The bar now
+// draws progress (done fraction filled, remainder in the same hue at low
+// opacity with a small surface gap) instead of a single solid block that
+// could not distinguish "3 of 5 done" from "1 of 4 done". An in-flight
+// active phase gets its own second row line instead of an appended,
+// truncating "now: ..." suffix. A phase that is both active and behind
+// its own elapsed-time share gets a small expected-progress tick on the
+// bar, explained in the tooltip -- a derived visual cue, never a status
+// the data doesn't otherwise support.
+//
 // Colour: `state` maps onto the F004 status tokens (`--status-*`,
 // app/globals.css) -- `active` -> progress, `blocked` -> blocked,
 // `done` -> done. `not_started` has no status-token counterpart (the
@@ -28,8 +44,8 @@
 // vocabulary that happens to share three of four names with phase
 // STATE) and is rendered muted instead, per this feature's own explicit
 // "not-started phases are muted" instruction. Every bar's state is also
-// stated in the row's own text label and the legend below -- colour is
-// never the only signal (plan.md's Design constraint #4).
+// stated in the row's own text label -- colour is never the only signal
+// (plan.md's Design constraint #4).
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -40,17 +56,22 @@ const PX_PER_DAY = 6;
 const MIN_CHART_DAYS = 21;
 const MIN_BAR_WIDTH_PX = 24;
 const FALLBACK_SLOT_WIDTH_PX = 96;
-// docs/portal-timeline-review-and-demo-readiness.md 2.6: seven rows used
-// to push this section past a laptop fold, in the one part of the page
-// whose entire purpose is a glance at the whole project. Rows are two
-// text lines (name + state/date/count line) at text-sm/text-xs, which
-// read comfortably down to 36px; kept above the 24px WCAG 2.5.8 minimum
-// target size with room to spare.
-const ROW_HEIGHT_PX = 36;
-const BAR_HEIGHT_PX = 12;
+// F104: rows brought down and the bar brought up so the bar -- the
+// loudest visual channel on the page -- dominates the row instead of a
+// thin 12px stripe inside a 56px row. Two text lines (name + state line)
+// at text-sm/text-xs still read comfortably at this height and stay
+// above the 24px WCAG 2.5.8 minimum target size.
+const ROW_HEIGHT_PX = 40;
+const BAR_HEIGHT_PX = 20;
 const HEADER_HEIGHT_PX = 24;
-
-const STATE_ORDER: PortalPhaseState[] = ["not_started", "active", "blocked", "done"];
+// F104 1.5: gap between a bar's "done" fill and its lower-opacity
+// remainder, per the dataviz skill's spacer rule for adjacent same-hue
+// fills.
+const PROGRESS_GAP_PX = 2;
+// F104 1.1: pixels of breathing room kept past the last phase's end (or
+// today, if that is later) instead of rounding out to an arbitrary week
+// boundary.
+const RANGE_END_PAD_PX = 24;
 
 const STATE_LABEL: Record<PortalPhaseState, string> = {
   not_started: "Not started",
@@ -64,13 +85,6 @@ const STATE_FILL_CLASS: Record<PortalPhaseState, string> = {
   active: "fill-status-progress",
   blocked: "fill-status-blocked",
   done: "fill-status-done",
-};
-
-const STATE_DOT_CLASS: Record<PortalPhaseState, string> = {
-  not_started: "bg-muted-foreground/50",
-  active: "bg-status-progress",
-  blocked: "bg-status-blocked",
-  done: "bg-status-done",
 };
 
 const STATE_TEXT_CLASS: Record<PortalPhaseState, string> = {
@@ -95,13 +109,9 @@ function formatWeekLabel(date: Date): string {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-// A phase's secondary line: state, its date range, and (only when there
-// is something client-visible to count) a count of done-vs-total tasks --
-// never a bare percentage, which hides the denominator and, worse, reads
-// as self-contradictory on a finished phase with nothing tracked
-// ("Done · 0%"). Used for the row's own text, its aria-label and its
-// hover tooltip so all three always agree (docs/portal-timeline-review-
-// and-demo-readiness.md 1.2, 2.1).
+// A phase's progress count -- never a bare percentage, which hides the
+// denominator and, worse, reads as self-contradictory on a finished
+// phase with nothing tracked ("Done · 0%").
 function formatPhaseProgress(phase: PortalPhase): string | null {
   if (phase.totalClientVisibleTasks === 0) return null;
   return `${phase.doneClientVisibleTasks} of ${phase.totalClientVisibleTasks} done`;
@@ -114,37 +124,47 @@ function formatPhaseDateRange(phase: PortalPhase): string | null {
   return `${formatWeekLabel(start)} – ${formatWeekLabel(end)}`;
 }
 
-/** The row's secondary line: "Active · 28 Aug – 11 Sep · 4 of 7 done", or
- * just "Done" alone when there is nothing client-visible to count. */
-function formatPhaseSecondaryLine(phase: PortalPhase): string {
+/** Whether a blocked phase should say "not yet started": the data has no
+ * blocker-reason field, and this component does not invent one, but
+ * `actualStart` DOES say whether the stoppage is a real, live one or a
+ * phase scheduled entirely in the future. */
+function blockedNeverStarted(phase: PortalPhase): boolean {
+  return phase.state === "blocked" && !phase.actualStart;
+}
+
+/** F104 1.3: the row's secondary line, kept to STATE + DATES + COUNT --
+ * three facts, not four, and no longer a single middot run-on string in
+ * one grey weight. The state/date/count line and the in-flight line are
+ * composed separately by the caller so each can carry its own type
+ * weight; this function stays the single source of truth for what goes
+ * in each, so the row label, its `aria-label` and its tooltip can never
+ * disagree (docs/portal-timeline-review-and-demo-readiness.md 1.2/2.1). */
+function formatPhaseFactsLine(phase: PortalPhase): string {
   const parts = [STATE_LABEL[phase.state]];
   const dateRange = formatPhaseDateRange(phase);
   if (dateRange) parts.push(dateRange);
   const progress = formatPhaseProgress(phase);
   if (progress) parts.push(progress);
-
-  // docs/portal-timeline-review-and-demo-readiness.md 1.3/2.5: neither
-  // `project_phases` nor its linked deliverables/approvals carry a
-  // "why blocked" reason today, and this component does not invent one.
-  // What the data DOES carry is `actualStart` -- so a blocked phase that
-  // has never actually started is labelled as such, rather than reading
-  // as the strongest colour on the page attached to an unexplained
-  // alarm. A blocked phase that HAD started keeps the bare "Blocked"
-  // label; that case is a real, currently-live stoppage.
-  if (phase.state === "blocked" && !phase.actualStart) {
-    parts.push("not yet started");
-  }
-
-  // docs/portal-timeline-review-and-demo-readiness.md 2.7: the one thing
-  // client-visibly in flight inside an active phase, straight from the
-  // lowest-position in_progress task -- the single most valuable line on
-  // this page, per that doc. Kept on this same line rather than a new
-  // row so every row stays one uniform height (2.6).
-  if (phase.state === "active" && phase.inFlightTaskTitle) {
-    parts.push(`now: ${phase.inFlightTaskTitle}`);
-  }
-
+  if (blockedNeverStarted(phase)) parts.push("not yet started");
   return parts.join(" · ");
+}
+
+function formatInFlightLine(phase: PortalPhase): string | null {
+  if (phase.state === "active" && phase.inFlightTaskTitle) {
+    return `Now: ${phase.inFlightTaskTitle}`;
+  }
+  return null;
+}
+
+/** The full plain-text summary of a row -- facts line plus, when present,
+ * the in-flight line -- used everywhere the two need to combine into one
+ * string (aria-label, tooltip body, and the row-label test hook). Kept as
+ * one function so aria-label / tooltip / visible text can never drift
+ * apart from each other. */
+function formatPhaseSecondaryLine(phase: PortalPhase): string {
+  const facts = formatPhaseFactsLine(phase);
+  const inFlight = formatInFlightLine(phase);
+  return inFlight ? `${facts} · ${inFlight}` : facts;
 }
 
 export type PhaseTimelineRow = {
@@ -208,8 +228,13 @@ export function computePhaseTimelineLayout(
   if (today < rangeStart) rangeStart = today;
   if (today > rangeEnd) rangeEnd = today;
 
-  const totalDays = Math.max(diffDays(rangeStart, rangeEnd), MIN_CHART_DAYS);
-  const chartWidthPx = totalDays * PX_PER_DAY;
+  // F104 1.1: the range ends shortly past the last phase's (or today's)
+  // end -- a small fixed pixel pad, not a rounded-up week boundary --
+  // rather than the previous MIN_CHART_DAYS floor stretching the axis
+  // far past the last bar on short projects.
+  const totalDaysRaw = diffDays(rangeStart, rangeEnd);
+  const totalDays = Math.max(totalDaysRaw, Math.ceil(MIN_CHART_DAYS * 0.6));
+  const chartWidthPx = Math.max(totalDays * PX_PER_DAY + RANGE_END_PAD_PX, 1);
 
   const datelessPhases = phases.filter((p) => !(p.plannedStart && p.plannedEnd));
   const datelessSlotWidth =
@@ -252,6 +277,47 @@ export function computePhaseTimelineLayout(
   const todayXPx = diffDays(rangeStart, today) * PX_PER_DAY;
 
   return { rows, chartWidthPx, weekMarks, todayXPx };
+}
+
+/**
+ * F104 1.5: for an active, dated phase that contains today, the fraction
+ * of its own elapsed calendar time versus its own done-task fraction.
+ * Returns null for every phase this comparison doesn't apply to (not
+ * active, not dated, today outside its range, or nothing client-visible
+ * to compare against) -- this is a derived cue drawn ONLY where the
+ * underlying data supports it, never an invented status.
+ */
+function computeExpectedProgress(
+  phase: PortalPhase,
+  todayIso: string,
+): { elapsedShare: number; doneShare: number } | null {
+  if (phase.state !== "active") return null;
+  if (!phase.plannedStart || !phase.plannedEnd) return null;
+  if (phase.totalClientVisibleTasks === 0) return null;
+
+  const start = parseDateOnly(phase.plannedStart);
+  const end = parseDateOnly(phase.plannedEnd);
+  const today = parseDateOnly(todayIso);
+  if (!start || !end || !today) return null;
+
+  const totalSpan = diffDays(start, end);
+  if (totalSpan <= 0) return null;
+  if (today < start || today > end) return null;
+
+  const elapsed = diffDays(start, today);
+  const elapsedShare = Math.min(Math.max(elapsed / totalSpan, 0), 1);
+  const doneShare = phase.doneClientVisibleTasks / phase.totalClientVisibleTasks;
+
+  return { elapsedShare, doneShare };
+}
+
+/** True only when a phase is both eligible for the comparison AND
+ * actually behind -- elapsed time share meaningfully ahead of done
+ * share. A small margin avoids flagging phases that are merely on pace. */
+function isBehindExpectedProgress(phase: PortalPhase, todayIso: string): boolean {
+  const expected = computeExpectedProgress(phase, todayIso);
+  if (!expected) return false;
+  return expected.elapsedShare - expected.doneShare > 0.05;
 }
 
 function buildTimelineSummary(phases: PortalPhase[]): string {
@@ -313,39 +379,65 @@ export function PhaseTimeline({
           className="flex w-56 shrink-0 flex-col sm:w-72"
           style={{ paddingTop: HEADER_HEIGHT_PX }}
         >
-          {phases.map((phase) => (
-            <div
-              key={phase.id}
-              style={{ height: ROW_HEIGHT_PX }}
-              className="flex flex-col justify-center gap-0.5 border-b border-border/50 pr-2"
-            >
-              {/* Widened rather than truncated: phase names are short
-                  and finite (docs/portal-timeline-review-and-demo-
-                  readiness.md 2.4) -- `truncate` here used to cut
-                  "Visual direction & design" mid-word, and a row you
-                  cannot identify is worse than a wider one. The row
-                  height itself is unchanged (out of scope).
-
-                  No `{phase.position}.` prefix: `position` is the
-                  ordering column (docs 2.5), and the row's own place in
-                  this already-ordered list carries that sequence for
-                  free. The raw value (1000, 2000, ...) is our internal
-                  numbering scheme, not a client-facing ordinal, and
-                  `getProjectPhases` still `.order("position")`s the
-                  query -- only the presentation of the number is
-                  dropped, not the ordering it drives. */}
-              <span className="truncate text-sm font-medium text-foreground">
-                {phase.name}
-              </span>
-              <span
-                data-testid="phase-timeline-row-label"
-                className={cn("truncate text-xs", STATE_TEXT_CLASS[phase.state])}
-                title={formatPhaseSecondaryLine(phase)}
+          {phases.map((phase) => {
+            const factsLine = formatPhaseFactsLine(phase);
+            const inFlightLine = formatInFlightLine(phase);
+            return (
+              <div
+                key={phase.id}
+                style={{ height: ROW_HEIGHT_PX }}
+                className="flex flex-col justify-center gap-0.5 border-b border-border/50 pr-2"
               >
-                {formatPhaseSecondaryLine(phase)}
-              </span>
-            </div>
-          ))}
+                {/* Widened rather than truncated: phase names are short
+                    and finite (docs/portal-timeline-review-and-demo-
+                    readiness.md 2.4) -- `truncate` here used to cut
+                    "Visual direction & design" mid-word, and a row you
+                    cannot identify is worse than a wider one.
+
+                    No `{phase.position}.` prefix: `position` is the
+                    ordering column, and the row's own place in this
+                    already-ordered list carries that sequence for free. */}
+                <span className="truncate text-sm font-medium text-foreground">
+                  {phase.name}
+                </span>
+                {/* F104 1.3: state/dates/count kept together as one line
+                    but no longer sharing a single grey weight -- the
+                    state word carries its own status colour+weight, the
+                    dates and count are visually quieter. Combined here
+                    into one `data-testid="phase-timeline-row-label"`
+                    node (existing test contract) whose full text still
+                    equals `formatPhaseSecondaryLine`. */}
+                <span
+                  data-testid="phase-timeline-row-label"
+                  className="truncate text-xs"
+                  title={formatPhaseSecondaryLine(phase)}
+                >
+                  <span className={cn("font-semibold", STATE_TEXT_CLASS[phase.state])}>
+                    {STATE_LABEL[phase.state]}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {factsLine.slice(STATE_LABEL[phase.state].length)}
+                  </span>
+                  {inFlightLine && (
+                    <span className="text-muted-foreground"> · {inFlightLine}</span>
+                  )}
+                </span>
+                {/* F104 1.2/2.7: in-flight work gets its OWN line under
+                    active phases instead of being appended to the facts
+                    line and truncated -- this is the line a client reads
+                    first. */}
+                {inFlightLine && (
+                  <span
+                    data-testid="phase-timeline-inflight"
+                    className="truncate text-xs font-medium text-foreground"
+                    title={inFlightLine}
+                  >
+                    {inFlightLine}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Bar area: this is the ONLY part of the chart that scrolls --
@@ -363,12 +455,14 @@ export function PhaseTimeline({
           >
             {layout.weekMarks.map((mark) => (
               <g key={mark.xPx}>
+                {/* Recessive grid: a thin, low-contrast rule, never
+                    competing with the bars for attention. */}
                 <line
                   x1={mark.xPx}
                   x2={mark.xPx}
                   y1={HEADER_HEIGHT_PX}
                   y2={chartHeightPx}
-                  className="stroke-border"
+                  className="stroke-border/60"
                   strokeWidth={1}
                 />
                 {mark.label && (
@@ -407,42 +501,105 @@ export function PhaseTimeline({
             {layout.rows.map((row, index) => {
               const y =
                 HEADER_HEIGHT_PX + index * ROW_HEIGHT_PX + (ROW_HEIGHT_PX - BAR_HEIGHT_PX) / 2;
+              const phase = row.phase;
+              const progress = formatPhaseProgress(phase);
+              const doneShare =
+                progress && phase.totalClientVisibleTasks > 0
+                  ? phase.doneClientVisibleTasks / phase.totalClientVisibleTasks
+                  : null;
+
+              // F104 1.4: progress drawn INSIDE the bar -- filled portion
+              // for done, remainder in the same hue at low opacity, with
+              // a small surface gap between the two segments -- rather
+              // than one solid block that can't distinguish "3 of 5"
+              // from "1 of 4". Phases with nothing client-visible to
+              // count (progress === null) keep a single solid bar, since
+              // there is no fraction to draw.
+              const doneWidthPx =
+                doneShare !== null
+                  ? Math.max(row.widthPx * doneShare - PROGRESS_GAP_PX / 2, 0)
+                  : row.widthPx;
+              const remainderXPx = doneWidthPx + PROGRESS_GAP_PX;
+              const remainderWidthPx = Math.max(row.widthPx - remainderXPx, 0);
+
+              const expected = computeExpectedProgress(phase, today);
+              const behind = isBehindExpectedProgress(phase, today);
+              const expectedTickXPx =
+                expected !== null ? row.xPx + row.widthPx * expected.elapsedShare : null;
+
+              const ariaLabelParts = [`${phase.name}: ${formatPhaseSecondaryLine(phase)}`];
+              if (behind) {
+                ariaLabelParts.push("behind its expected pace for today");
+              }
 
               return (
                 <g
-                  key={row.phase.id}
+                  key={phase.id}
                   data-testid="phase-timeline-row"
-                  data-phase-id={row.phase.id}
-                  data-state={row.phase.state}
+                  data-phase-id={phase.id}
+                  data-state={phase.state}
                   data-fallback={row.fallback}
+                  data-behind={behind}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${row.phase.name}: ${formatPhaseSecondaryLine(row.phase)}`}
-                  onMouseEnter={() => setHoveredPhaseId(row.phase.id)}
+                  aria-label={ariaLabelParts.join(" -- ")}
+                  onMouseEnter={() => setHoveredPhaseId(phase.id)}
                   onMouseLeave={() => setHoveredPhaseId(null)}
-                  onFocus={() => setHoveredPhaseId(row.phase.id)}
+                  onFocus={() => setHoveredPhaseId(phase.id)}
                   onBlur={() => setHoveredPhaseId(null)}
                   className="cursor-pointer outline-none"
                 >
-                  {/* docs/portal-timeline-review-and-demo-readiness.md
-                      2.3: one solid bar in the state's own saturated
-                      colour -- the SAME colour the legend dot below uses
-                      -- rather than a pale track plus a saturated
-                      progress-fill. These bars are the client's read of
-                      the whole project; they should not be the
-                      quietest thing on the page, and a partial-width
-                      fill inside the bar would silently re-introduce the
-                      percentage encoding that 1.2/2.1 removed from the
-                      text. Completion is already stated as a count on
-                      the row's own text line. */}
-                  <rect
-                    x={row.xPx}
-                    y={y}
-                    width={row.widthPx}
-                    height={BAR_HEIGHT_PX}
-                    rx={3}
-                    className={STATE_FILL_CLASS[row.phase.state]}
-                  />
+                  {doneShare !== null ? (
+                    <>
+                      <rect
+                        data-testid="phase-timeline-bar-done"
+                        x={row.xPx}
+                        y={y}
+                        width={doneWidthPx}
+                        height={BAR_HEIGHT_PX}
+                        rx={3}
+                        className={STATE_FILL_CLASS[phase.state]}
+                      />
+                      <rect
+                        data-testid="phase-timeline-bar-remainder"
+                        x={row.xPx + remainderXPx}
+                        y={y}
+                        width={remainderWidthPx}
+                        height={BAR_HEIGHT_PX}
+                        rx={3}
+                        className={STATE_FILL_CLASS[phase.state]}
+                        opacity={0.25}
+                      />
+                    </>
+                  ) : (
+                    <rect
+                      data-testid="phase-timeline-bar-done"
+                      x={row.xPx}
+                      y={y}
+                      width={row.widthPx}
+                      height={BAR_HEIGHT_PX}
+                      rx={3}
+                      className={STATE_FILL_CLASS[phase.state]}
+                    />
+                  )}
+
+                  {/* F104 1.5: expected-progress tick -- where the phase
+                      SHOULD be if done share matched elapsed share.
+                      Drawn only when the phase is active, dated, has
+                      client-visible tasks, and today falls inside its
+                      range; explained in the hover tooltip rather than
+                      asserting a status on the row label. */}
+                  {expectedTickXPx !== null && (
+                    <line
+                      data-testid="phase-timeline-expected-tick"
+                      x1={expectedTickXPx}
+                      x2={expectedTickXPx}
+                      y1={y - 3}
+                      y2={y + BAR_HEIGHT_PX + 3}
+                      className={behind ? "stroke-status-blocked" : "stroke-foreground/50"}
+                      strokeWidth={2}
+                    />
+                  )}
                 </g>
               );
             })}
@@ -455,25 +612,30 @@ export function PhaseTimeline({
                 together with the bars it annotates. */}
             {hoveredRow && (
               <foreignObject
-                x={Math.min(hoveredRow.xPx, Math.max(layout.chartWidthPx - 200, 0))}
+                x={Math.min(hoveredRow.xPx, Math.max(layout.chartWidthPx - 220, 0))}
                 y={
                   HEADER_HEIGHT_PX +
                   layout.rows.findIndex((r) => r.phase.id === hoveredRow.phase.id) *
                     ROW_HEIGHT_PX +
                   ROW_HEIGHT_PX
                 }
-                width={200}
-                height={80}
+                width={220}
+                height={100}
               >
                 <div
                   role="tooltip"
                   data-testid="phase-timeline-tooltip"
-                  className="w-fit max-w-48 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                  className="w-fit max-w-52 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
                 >
                   <p className="font-medium">{hoveredRow.phase.name}</p>
                   <p className="text-muted-foreground">
                     {formatPhaseSecondaryLine(hoveredRow.phase)}
                   </p>
+                  {isBehindExpectedProgress(hoveredRow.phase, today) && (
+                    <p className="mt-1 text-status-blocked">
+                      Behind its expected pace for today.
+                    </p>
+                  )}
                   {hoveredRow.phase.clientDescription && (
                     <p className="mt-1 text-muted-foreground">
                       {hoveredRow.phase.clientDescription}
@@ -484,18 +646,6 @@ export function PhaseTimeline({
             )}
           </svg>
         </div>
-      </div>
-
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        {STATE_ORDER.map((state) => (
-          <span key={state} className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className={cn("size-2 rounded-full", STATE_DOT_CLASS[state])}
-            />
-            {STATE_LABEL[state]}
-          </span>
-        ))}
       </div>
     </div>
   );

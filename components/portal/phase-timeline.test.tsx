@@ -10,7 +10,7 @@
 //     never zero width) is exercised directly on
 //     `computePhaseTimelineLayout`, which is easier to assert precisely
 //     than through rendered pixel positions.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -97,16 +97,27 @@ describe("PhaseTimeline", () => {
     expect(screen.queryByTestId("phase-timeline")).not.toBeInTheDocument();
   });
 
-  it("renders the legend naming all four phase states", () => {
+  it("test_F104_no_legend_state_stays_on_the_row_itself", () => {
+    // F104 1.6: the legend is gone -- every row already prints its own
+    // state as a coloured word, so a legend below the chart repeated the
+    // same four labels for nothing. State identity now lives ONLY on the
+    // per-row label (still satisfying no-colour-alone), never in a
+    // separate list of dots.
     render(
       <PhaseTimeline
-        phases={[makePhase({ id: "p1", name: "Analiza", state: "active" })]}
+        phases={[
+          makePhase({ id: "p1", name: "Analiza", state: "active" }),
+          makePhase({ id: "p2", name: "Build", state: "not_started" }),
+        ]}
         today={TODAY}
       />,
     );
-    for (const label of ["Not started", "Active", "Blocked", "Done"]) {
-      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
-    }
+    // "Active" and "Not started" each appear exactly once -- on their
+    // own row's label -- not a second time in a legend below the chart.
+    expect(screen.getAllByText("Active")).toHaveLength(1);
+    expect(screen.getAllByText("Not started")).toHaveLength(1);
+    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Done")).not.toBeInTheDocument();
   });
 
   it("shows a tooltip with the phase name, progress and its note on hover, one shared tooltip element", () => {
@@ -172,7 +183,9 @@ describe("PhaseTimeline", () => {
     // Never a bare percentage: a client reading "Done · 100%" and "Done
     // · 4 of 4 done" both mean the phase finished, but only the count
     // exposes the denominator.
-    expect(screen.getByText(/Done · .*4 of 4 done/)).toBeInTheDocument();
+    expect(screen.getByTestId("phase-timeline-row-label").textContent).toMatch(
+      /Done · .*4 of 4 done/,
+    );
     expect(screen.queryByText(/100%/)).not.toBeInTheDocument();
 
     const row = screen.getByRole("button", { name: /Dogovor i priprema/ });
@@ -373,6 +386,190 @@ describe("PhaseTimeline", () => {
     const rowLabel = screen.getByTestId("phase-timeline-row-label");
     expect(rowLabel).toHaveTextContent("Active");
     expect(rowLabel.textContent).not.toMatch(/now:/i);
+  });
+
+  it("test_F104_in_flight_task_gets_its_own_line_and_is_not_truncated_into_the_facts_line", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-08-28",
+            plannedEnd: "2026-09-11",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 3,
+            inFlightTaskTitle: "Homepage hero design and content review pass",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    // F104 1.2/1.3: the in-flight title lives on its own dedicated line,
+    // separate from the state/dates/count line, so it is never appended
+    // and truncated together with three other facts.
+    const inFlightLine = screen.getByTestId("phase-timeline-inflight");
+    expect(inFlightLine).toHaveTextContent("Homepage hero design and content review pass");
+
+    const factsLine = screen.getByTestId("phase-timeline-row-label");
+    expect(factsLine).toHaveTextContent("3 of 5 done");
+  });
+
+  it("test_F104_bar_draws_a_progress_fill_that_differs_between_phases_with_different_fractions", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 3,
+          }),
+          makePhase({
+            id: "p2",
+            name: "Build",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            totalClientVisibleTasks: 4,
+            doneClientVisibleTasks: 1,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const doneBars = screen.getAllByTestId("phase-timeline-bar-done");
+    const remainderBars = screen.getAllByTestId("phase-timeline-bar-remainder");
+    expect(doneBars).toHaveLength(2);
+    expect(remainderBars).toHaveLength(2);
+
+    // "3 of 5" (60%) and "1 of 4" (25%) must NOT render as identical
+    // solid blocks -- this is the exact defect F104 fixes.
+    const width0 = Number(doneBars[0]!.getAttribute("width"));
+    const width1 = Number(doneBars[1]!.getAttribute("width"));
+    expect(width0).not.toBeCloseTo(width1, 0);
+    // The higher fraction gets the wider done-fill.
+    expect(width0).toBeGreaterThan(width1);
+
+    // The remainder segment renders at low opacity, distinct from the
+    // done segment, so the two are visually distinguishable without
+    // relying on colour alone.
+    for (const bar of remainderBars) {
+      expect(Number(bar.getAttribute("opacity"))).toBeLessThan(1);
+    }
+  });
+
+  it("test_F104_a_phase_with_no_client_visible_tasks_renders_one_solid_bar_not_a_zero_width_split", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Kick-off & setup",
+            state: "done",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-05",
+            totalClientVisibleTasks: 0,
+            doneClientVisibleTasks: 0,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    expect(screen.getAllByTestId("phase-timeline-bar-done")).toHaveLength(1);
+    expect(screen.queryByTestId("phase-timeline-bar-remainder")).not.toBeInTheDocument();
+  });
+
+  it("test_F104_an_active_phase_behind_its_elapsed_time_share_gets_an_expected_progress_tick_explained_on_hover", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            // A 20-day phase, today (2026-06-15) 14 days in (~70%
+            // elapsed) but only 1 of 5 (20%) done -- clearly behind.
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-21",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 1,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /Visual direction & design/ });
+    expect(row).toHaveAttribute("data-behind", "true");
+    expect(within(row).getByTestId("phase-timeline-expected-tick")).toBeInTheDocument();
+    expect(row.getAttribute("aria-label")).toMatch(/behind/i);
+
+    fireEvent.mouseEnter(row);
+    expect(screen.getByTestId("phase-timeline-tooltip")).toHaveTextContent(/behind/i);
+  });
+
+  it("test_F104_an_active_phase_on_pace_is_not_flagged_as_behind", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Build",
+            state: "active",
+            // 14 days elapsed of 20 (~70%), 4 of 5 (80%) done -- ahead
+            // of pace, not behind.
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-21",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 4,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /Build/ });
+    expect(row).toHaveAttribute("data-behind", "false");
+    expect(row.getAttribute("aria-label")).not.toMatch(/behind/i);
+  });
+
+  it("test_F104_range_ends_shortly_past_the_last_phase_not_at_an_arbitrary_far_boundary", () => {
+    // A short, single 10-day phase used to be padded out to a
+    // MIN_CHART_DAYS-wide axis regardless of how little content there
+    // was to show, leaving roughly a third of the plot empty.
+    const layout = computePhaseTimelineLayout(
+      [
+        {
+          id: "p1",
+          name: "Short phase",
+          clientDescription: null,
+          state: "active",
+          plannedStart: "2026-06-01",
+          plannedEnd: "2026-06-11",
+          actualStart: null,
+          actualEnd: null,
+          position: 1,
+          totalClientVisibleTasks: 0,
+          doneClientVisibleTasks: 0,
+          progressPercent: 0,
+          inFlightTaskTitle: null,
+        },
+      ],
+      "2026-06-05",
+    );
+
+    const lastRow = layout.rows[0]!;
+    const barEndPx = lastRow.xPx + lastRow.widthPx;
+    // The chart should not run dramatically further than the last bar's
+    // own end -- a small fixed pad, not hundreds of extra pixels of
+    // dead space.
+    expect(layout.chartWidthPx - barEndPx).toBeLessThan(80);
   });
 });
 
