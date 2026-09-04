@@ -287,43 +287,44 @@ describe.skipIf(!haveAdminCreds)(
         const received = await new Promise<
           { comment_id: string; user_id: string; emoji: string } | null
         >((resolve, reject) => {
-          // F320 (scrutiny pass 5, AS-369): bumped from 8000ms to 18000ms.
-          // Confirmed by re-running this file both in isolation and
-          // inside the full suite that this test's own logic is already
-          // race-free (the toggle only fires after `SUBSCRIBED` is
-          // confirmed, so it cannot lose a race against the event it's
-          // waiting for) — the observed in-suite-only failure is a
-          // timing-BUDGET issue, not a correctness race: under the full
-          // suite's parallel load (many concurrent test files opening
-          // their own Realtime WebSocket connections + concurrent DB
-          // writes), the round trip from `toggleReaction`'s INSERT to
-          // this subscriber's `postgres_changes` callback firing can
-          // occasionally exceed 8s even though delivery genuinely
-          // succeeds, just slower.
-          //
-          // F326 (this fix, honest-CI hardening pass): the 18000ms budget
-          // still wasn't enough on the GitHub Actions runner running the
-          // full suite against `supabase start`'s Docker-based local
-          // Realtime container with `vitest.config.ts`'s `maxWorkers: 4`
-          // — a materially weaker host (2 vCPU standard runner, Realtime
-          // + Postgres + every other Supabase service container all
-          // contending for the same CPU, on top of 4 concurrent vitest
-          // workers each holding their own websocket connections) than
-          // any machine this file had previously been timed on. This is
-          // not a logic bug (same reasoning as F320 above still applies
-          // unchanged) — it's the same real-transport round trip taking
-          // longer under heavier contention, so the fix is again to widen
-          // the budget rather than weaken what's asserted. If this still
-          // isn't enough headroom on a given runner, that is itself a
-          // signal worth surfacing (Realtime delivery latency under load),
-          // not a reason to swallow it silently.
-          const timeout = setTimeout(() => resolve(null), 27000);
+          // F072 (honest-CI mechanism fix, AS-369): the real cause of the
+          // repeated timeout growth (8000ms -> 18000ms -> 27000ms across
+          // F320/F326) was never transport latency -- it was that this
+          // `it` block was the ONLY postgres_changes subscription to
+          // comment_reactions anywhere in the codebase (production or
+          // tests) that omitted `filter: task_id=eq.<taskId>`. Production's
+          // subscribeToReactionsRealtime (lib/tasks/subscribe-comments-
+          // realtime.ts) always filters on task_id, and this file's own
+          // sibling test below ("the_subscription_is_scoped...") does too
+          // -- and that sibling test passes reliably in CI at a much
+          // smaller 13000ms budget. Without the filter, Realtime cannot
+          // push the match down to Postgres before delivery, so this
+          // subscriber's connection has to run a per-row RLS re-check for
+          // *every* comment_reactions write from *every* concurrent
+          // integration test file in the full suite (toggle-reaction.
+          // test.ts, comment-reactions-schema.test.ts, task-detail-
+          // comment-read-path.test.ts, f323-sibling-action-project-
+          // visibility.test.ts all write to this table too) before it
+          // ever reaches this test's own INSERT -- an unrealistic, self-
+          // inflicted cost no production code path pays. Adding the same
+          // filter the passing sibling test and production already use
+          // fixes the mechanism directly; the budget is restored to a
+          // sane value now that the test matches real usage.
+          // Same budget as this file's filtered sibling test below, which
+          // uses the identical filtered-subscription shape and passes
+          // reliably in CI at 13000ms.
+          const timeout = setTimeout(() => resolve(null), 13000);
 
           subscriberClient
             .channel(`comment_reactions:${taskId}`)
             .on(
               "postgres_changes",
-              { event: "INSERT", schema: "public", table: "comment_reactions" },
+              {
+                event: "INSERT",
+                schema: "public",
+                table: "comment_reactions",
+                filter: `task_id=eq.${taskId}`,
+              },
               (payload: { new: { comment_id: string; user_id: string; emoji: string } }) => {
                 if (payload.new.comment_id !== commentId) return;
                 clearTimeout(timeout);
@@ -360,7 +361,7 @@ describe.skipIf(!haveAdminCreds)(
           .maybeSingle();
         expect(row).not.toBeNull();
       },
-      32000,
+      18000,
     );
 
     it(
