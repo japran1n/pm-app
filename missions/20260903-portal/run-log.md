@@ -614,3 +614,5 @@ M4 and M5 add tables of their own. That question goes into their gates.
 
 Keeping M4 running rather than rolling back — the fix is one migration and touches
 nothing M4 builds on, which the reviewer verified before recommending it.
+- F017 COMPLETE — project_budgets with a btree_gist exclusion constraint rejecting overlapping periods, time_entries.work_category, and the two separate RPCs the spec insisted on: project_hours_team with full entry detail, and project_hours_client which structurally never selects any tasks column, so AS-037 holds by construction rather than by filtering. 13 new integration tests.
+  It also found a real gap in F016i's guard, exposed by its own CREATE EXTENSION btree_gist: the event trigger does not fire for extension-installed functions, and postgres lacks privilege to revoke on supabase_admin-owned objects. Documented in the migration and allow-listed in the catalog test with justification rather than silently excluded. F016i's test caught it — which is what that test exists for.
