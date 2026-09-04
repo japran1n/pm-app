@@ -17,8 +17,21 @@ const initialState: ClientRequestResult | null = null;
 
 export function NewRequestForm({
   projects,
+  fixedProjectId,
 }: {
   projects: PortalProjectOption[];
+  /** F079 (missions/20260903-portal audit, defect 2): set by the
+   * project-scoped `p/[projectId]/requests` page, whose shell already
+   * says "you are inside one project" -- a `<select>` offering every
+   * OTHER portal-enabled project on this workspace would let a client
+   * file a request against a project the page they are looking at has
+   * nothing to do with. When set, the project picker is replaced with a
+   * fixed hidden field and a plain label naming the project, matching
+   * this page's own project-scoped convention (see p/[projectId]/
+   * page.tsx's `deliveredThisWeek` filter). Omitted by the (currently
+   * unused, kept for a possible future workspace-wide caller) case where
+   * every portal-enabled project should still be choosable. */
+  fixedProjectId?: { id: string; name: string };
 }) {
   const [state, formAction, isPending] = useActionState(
     createClientRequest,
@@ -34,7 +47,7 @@ export function NewRequestForm({
   // start over.
   const formKey = state?.ok ? state.data.requestId : "new";
 
-  if (projects.length === 0) {
+  if (!fixedProjectId && projects.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
         You will be able to file requests once a project has been shared with
@@ -51,25 +64,29 @@ export function NewRequestForm({
     >
       <h2 className="font-medium">New request</h2>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="request-project">Project</Label>
-        {/* A plain select rather than the app's Select primitive: this form
-            posts as a real HTML form via useActionState, so the value has
-            to be in the FormData without a hidden-input bridge. */}
-        <select
-          id="request-project"
-          name="projectId"
-          required
-          disabled={isPending}
-          className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
-        >
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {fixedProjectId ? (
+        <input type="hidden" name="projectId" value={fixedProjectId.id} />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="request-project">Project</Label>
+          {/* A plain select rather than the app's Select primitive: this form
+              posts as a real HTML form via useActionState, so the value has
+              to be in the FormData without a hidden-input bridge. */}
+          <select
+            id="request-project"
+            name="projectId"
+            required
+            disabled={isPending}
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+          >
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="request-title">What do you need?</Label>

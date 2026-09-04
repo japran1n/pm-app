@@ -2,6 +2,7 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolvePeople } from "@/lib/queries/people";
+import type { PortalQueryResult } from "@/lib/queries/portal";
 
 // Data-fetching for F007's `approval_requests` / `project_decision_owners`
 // (missions/20260903-portal, M2 — Approvals).
@@ -89,9 +90,18 @@ function mapApprovalRow(row: {
 // portal-enabled project the caller is a client of, and — for a
 // task-subject request — one whose subject task is itself
 // client_visible, so nothing is re-filtered here.
+// F079 (missions/20260903-portal audit, defect 1): a failed read used to
+// return `[]`, indistinguishable from "genuinely nothing waiting" —
+// a database blip rendered the reassuring "Nothing waiting on you" empty
+// state and a real overdue approval could go unnoticed. Returns
+// `PortalQueryResult` (lib/queries/portal.ts's own `{ ok }` discriminant,
+// reused rather than re-invented) so the caller can render an honest
+// "couldn't load" state instead, same convention `getProjectPhases` /
+// `getProjectMetricsWithLatestSnapshot` already use for this exact class
+// of defect.
 export async function getOpenApprovalsForClient(
   projectId: string,
-): Promise<PortalApproval[]> {
+): Promise<PortalQueryResult<PortalApproval[]>> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("approval_requests")
@@ -102,9 +112,9 @@ export async function getOpenApprovalsForClient(
 
   if (error) {
     logger.error("getOpenApprovalsForClient: failed to load approval requests", { error });
-    return [];
+    return { ok: false, error: error.message };
   }
-  return (data ?? []).map(mapApprovalRow);
+  return { ok: true, data: (data ?? []).map(mapApprovalRow) };
 }
 
 // AS-026: the decision history table (approved / changes_requested /
@@ -118,7 +128,7 @@ export type ApprovalHistoryEntry = PortalApproval & {
 
 export async function getApprovalHistory(
   projectId: string,
-): Promise<ApprovalHistoryEntry[]> {
+): Promise<PortalQueryResult<ApprovalHistoryEntry[]>> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("approval_requests")
@@ -129,19 +139,22 @@ export async function getApprovalHistory(
 
   if (error) {
     logger.error("getApprovalHistory: failed to load approval history", { error });
-    return [];
+    return { ok: false, error: error.message };
   }
-  if (!data?.length) return [];
+  if (!data?.length) return { ok: true, data: [] };
 
   const deciderIds = [
     ...new Set(data.map((row) => row.decided_by).filter((id): id is string => !!id)),
   ];
   const people = deciderIds.length ? await resolvePeople(deciderIds) : new Map();
 
-  return data.map((row) => ({
-    ...mapApprovalRow(row),
-    decidedByName: row.decided_by ? (people.get(row.decided_by)?.name ?? null) : null,
-  }));
+  return {
+    ok: true,
+    data: data.map((row) => ({
+      ...mapApprovalRow(row),
+      decidedByName: row.decided_by ? (people.get(row.decided_by)?.name ?? null) : null,
+    })),
+  };
 }
 
 export type PortalDecisionOwner = {
@@ -155,7 +168,9 @@ export type PortalDecisionOwner = {
 // scopes the rows; resolvePeople resolves the display name/avatar for an
 // id the caller already reached through that scoped read, matching every
 // other person-resolution call in this codebase.
-export async function getDecisionOwners(projectId: string): Promise<PortalDecisionOwner[]> {
+export async function getDecisionOwners(
+  projectId: string,
+): Promise<PortalQueryResult<PortalDecisionOwner[]>> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("project_decision_owners")
@@ -164,19 +179,22 @@ export async function getDecisionOwners(projectId: string): Promise<PortalDecisi
 
   if (error) {
     logger.error("getDecisionOwners: failed to load decision owners", { error });
-    return [];
+    return { ok: false, error: error.message };
   }
-  if (!data?.length) return [];
+  if (!data?.length) return { ok: true, data: [] };
 
   const userIds = [...new Set(data.map((row) => row.user_id))];
   const people = await resolvePeople(userIds);
 
-  return data.map((row) => ({
-    decisionType: row.decision_type as ApprovalDecisionType,
-    userId: row.user_id,
-    name: people.get(row.user_id)?.name ?? null,
-    avatarUrl: people.get(row.user_id)?.avatarUrl ?? null,
-  }));
+  return {
+    ok: true,
+    data: data.map((row) => ({
+      decisionType: row.decision_type as ApprovalDecisionType,
+      userId: row.user_id,
+      name: people.get(row.user_id)?.name ?? null,
+      avatarUrl: people.get(row.user_id)?.avatarUrl ?? null,
+    })),
+  };
 }
 
 // F010: "who must decide" column — batched across every distinct

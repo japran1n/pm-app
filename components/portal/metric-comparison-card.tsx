@@ -71,10 +71,26 @@ function formatValue(value: number, unit: string | null): string {
   return unit ? `${rounded}${unit}` : rounded;
 }
 
+// F079 (missions/20260903-portal audit, defect 3): `baseline_at` /
+// `measured_at` are genuine `date` columns
+// (20261013010000_f020_metrics_snapshots_improvements_baseline_freeze
+// .sql). The synthetic `T00:00:00Z` was already appended so the Date
+// parses as UTC midnight rather than the browser's local midnight, but
+// `toLocaleDateString` was never told to RENDER in UTC either — without
+// `timeZone: "UTC"` here it still formats that same instant in the
+// browser's own timezone, which is exactly this defect's bug for a
+// caller west of UTC. Matches deliverable-row.tsx's own `formatDate`,
+// which pairs the same synthetic timestamp with the same `timeZone`
+// option.
 function formatDate(dateIso: string): string {
   const date = new Date(`${dateIso}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return dateIso;
-  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 const STATUS_LABEL: Record<MetricMeasurementStatus, string> = {

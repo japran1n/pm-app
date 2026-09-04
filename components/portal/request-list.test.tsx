@@ -145,6 +145,67 @@ describe("RequestList (F009)", () => {
     expect(screen.getByText("New live request")).toBeInTheDocument();
   });
 
+  // F079 (missions/20260903-portal audit, defect 2): the Realtime channel
+  // itself has no server-side row filter (see RequestList's own
+  // `projectId` prop comment) — a live insert for a DIFFERENT project of
+  // the same workspace must never reach the rendered list once this page
+  // is project-scoped, even though the initial `requests` prop already
+  // was.
+  it("test_projectId_scoping_a_live_insert_for_a_different_project_is_dropped", async () => {
+    render(<RequestList requests={[]} projectId="project-1" />);
+    await flushAuthHydration();
+
+    expect(screen.getByText("No requests yet")).toBeInTheDocument();
+
+    const callback = requestsCallback();
+    act(() => {
+      callback({
+        eventType: "INSERT",
+        new: {
+          id: "req-other-project",
+          project_id: "project-2",
+          title: "A different project's request",
+          body: null,
+          desired_by: null,
+          status: "submitted",
+          decline_reason: null,
+          converted_task_id: null,
+          created_at: "2026-09-02T00:00:00.000Z",
+        },
+        old: {},
+      });
+    });
+
+    expect(screen.queryByText("A different project's request")).not.toBeInTheDocument();
+    expect(screen.getByText("No requests yet")).toBeInTheDocument();
+  });
+
+  it("test_projectId_scoping_a_live_insert_for_the_current_project_still_lands", async () => {
+    render(<RequestList requests={[]} projectId="project-1" />);
+    await flushAuthHydration();
+
+    const callback = requestsCallback();
+    act(() => {
+      callback({
+        eventType: "INSERT",
+        new: {
+          id: "req-same-project",
+          project_id: "project-1",
+          title: "Same project request",
+          body: null,
+          desired_by: null,
+          status: "submitted",
+          decline_reason: null,
+          converted_task_id: null,
+          created_at: "2026-09-02T00:00:00.000Z",
+        },
+        old: {},
+      });
+    });
+
+    expect(screen.getByText("Same project request")).toBeInTheDocument();
+  });
+
   it("test_AS_023_status_change_lands_live", async () => {
     render(<RequestList requests={[seedRequest]} />);
     await flushAuthHydration();

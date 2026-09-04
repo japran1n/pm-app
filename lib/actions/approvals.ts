@@ -513,8 +513,9 @@ const getDecisionOwnersImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (_input, ctx): Promise<GetDecisionOwnersResult> => {
-    const owners = await getDecisionOwners(ctx.projectId!);
-    return { ok: true, data: { owners } };
+    const result = await getDecisionOwners(ctx.projectId!);
+    if (!result.ok) return { ok: false, error: result.error };
+    return { ok: true, data: { owners: result.data } };
   },
 );
 

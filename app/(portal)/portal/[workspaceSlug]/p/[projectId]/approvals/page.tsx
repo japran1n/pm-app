@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import {
   getApprovalHistory,
@@ -50,11 +50,24 @@ export default async function PortalApprovalsPage({
 
   if (!project) notFound();
 
-  const [openApprovals, history, owners] = await Promise.all([
+  const [openApprovalsResult, historyResult, ownersResult] = await Promise.all([
     getOpenApprovalsForClient(project.id),
     getApprovalHistory(project.id),
     getDecisionOwners(project.id),
   ]);
+
+  // F079 (missions/20260903-portal audit, defect 1): each of the three
+  // reads above now reports a failed load as `{ ok: false }` instead of
+  // silently coalescing to `[]` (see getOpenApprovalsForClient's own
+  // header comment) -- a client who reads "nothing waiting on you" after
+  // a database blip stops looking, and an overdue approval slips. Each
+  // section fails on its own (an "Independently failable" contract, same
+  // as this mission's own assertion-quality rule): a broken decision-
+  // owners read never hides open approvals that DID load, and vice
+  // versa. Same "Couldn't load" EmptyState convention results/page.tsx
+  // uses for `getProjectMetricsWithLatestSnapshot`'s identical failure
+  // shape.
+  const owners = ownersResult.ok ? ownersResult.data : [];
 
   // AS-022: which decision types THIS signed-in client owns, so each
   // card's Approve/Request changes buttons render enabled only for the
@@ -67,7 +80,14 @@ export default async function PortalApprovalsPage({
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold">Open approvals</h2>
-        {openApprovals.length === 0 ? (
+        {!openApprovalsResult.ok ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load open approvals"
+            description="Something went wrong loading this project's approvals. Try refreshing the page."
+            testId="open-approvals-error"
+          />
+        ) : openApprovalsResult.data.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
             title="Nothing waiting on you"
@@ -76,7 +96,7 @@ export default async function PortalApprovalsPage({
           />
         ) : (
           <div className="flex flex-col gap-4">
-            {openApprovals.map((approval) => {
+            {openApprovalsResult.data.map((approval) => {
               const owner = ownerByType.get(approval.decisionType);
               return (
                 <ApprovalCard
@@ -95,12 +115,30 @@ export default async function PortalApprovalsPage({
 
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold">Decision history</h2>
-        <ApprovalHistory entries={history} />
+        {!historyResult.ok ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load decision history"
+            description="Something went wrong loading this project's decision history. Try refreshing the page."
+            testId="approval-history-error"
+          />
+        ) : (
+          <ApprovalHistory entries={historyResult.data} />
+        )}
       </div>
 
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold">Who approves what</h2>
-        <DecisionOwnersGrid owners={owners} />
+        {!ownersResult.ok ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load decision owners"
+            description="Something went wrong loading who approves what for this project. Try refreshing the page."
+            testId="decision-owners-error"
+          />
+        ) : (
+          <DecisionOwnersGrid owners={ownersResult.data} />
+        )}
       </div>
     </div>
   );

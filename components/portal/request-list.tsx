@@ -149,7 +149,24 @@ export function subscribeToPortalRequestListRealtime(
   );
 }
 
-export function RequestList({ requests }: { requests: PortalRequest[] }) {
+export function RequestList({
+  requests,
+  projectId,
+}: {
+  requests: PortalRequest[];
+  /** F079 (missions/20260903-portal audit, defect 2): when set, scopes
+   * both the seeded list AND every live Realtime insert/update to this
+   * one project -- the channel itself
+   * (`subscribeToPortalRequestListRealtime`) has no server-side row
+   * filter (its own comment explains why: RLS already gates what a
+   * caller's session can receive at all), so without this the list could
+   * still admit a live row from a DIFFERENT project of the same
+   * workspace even after the initial server-rendered list was scoped to
+   * one project. Omitted (undefined) on the workspace-wide caller, if
+   * one is ever added back, which keeps every project's rows exactly as
+   * today. */
+  projectId?: string;
+}) {
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [liveRequests, setLiveRequests] = useState<PortalRequest[]>(requests);
@@ -174,9 +191,14 @@ export function RequestList({ requests }: { requests: PortalRequest[] }) {
     // RLS-gated inserts/updates AS-023 depends on are silently filtered
     // out.
     return subscribeWhenAuthenticated(supabase, (client) =>
-      subscribeToPortalRequestListRealtime(client, setLiveRequests),
+      subscribeToPortalRequestListRealtime(client, (updater) =>
+        setLiveRequests((current) => {
+          const next = updater(current);
+          return projectId ? next.filter((r) => r.projectId === projectId) : next;
+        }),
+      ),
     );
-  }, []);
+  }, [projectId]);
 
   if (liveRequests.length === 0) {
     return (

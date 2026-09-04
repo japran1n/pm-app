@@ -128,6 +128,33 @@ describe("MetricComparisonCard", () => {
     expect(screen.getByTestId("metric-target-tick")).toBeInTheDocument();
   });
 
+  // F079 (missions/20260903-portal audit, defect 3): `baselineAt` /
+  // `measuredAt` are date-only `date` columns. Rendered without pinning
+  // to UTC, a client west of UTC (this test simulates New York) saw the
+  // day BEFORE the real date -- "31 Dec 2025" instead of "1 Jan 2026" for
+  // a baseline frozen 2026-01-01.
+  describe("as-of dates — F079 defect 3 (UTC pin)", () => {
+    const originalTz = process.env.TZ;
+
+    afterEach(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it("test_as_of_dates_show_the_real_date_for_a_client_west_of_utc", () => {
+      process.env.TZ = "America/New_York";
+      const metric = makeMetric({ id: "m1", baselineAt: "2026-01-01" });
+      const snapshot = makeSnapshot({ id: "s1", metricId: "m1", measuredAt: "2026-02-01" });
+      const status = deriveMetricMeasurementStatus(metric, snapshot);
+
+      render(<MetricComparisonCard metric={metric} latestSnapshot={snapshot} status={status} />);
+
+      expect(screen.getByText("as of 1 Jan 2026")).toBeInTheDocument();
+      expect(screen.getByText("as of 1 Feb 2026")).toBeInTheDocument();
+      expect(screen.queryByText(/31 Dec 2025/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/31 Jan 2026/)).not.toBeInTheDocument();
+    });
+  });
+
   it("F021c: a snapshot measured before the baseline was set also renders not_measured, never improved", () => {
     const metric = makeMetric({ id: "m-pre-baseline", direction: "lower", baselineValue: 4200, baselineAt: "2026-03-01" });
     const snapshot = makeSnapshot({ id: "s-1", metricId: "m-pre-baseline", value: 2000, measuredAt: "2026-01-15" });

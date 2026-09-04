@@ -47,10 +47,24 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// F079 (missions/20260903-portal audit, defect 3): `due_at` is a
+// `timestamptz` column (20260916010000_approval_requests.sql), but the
+// app-level convention this feature's own validation
+// (lib/validation/approvals.ts's `dueAtSchema`) enforces is date-only —
+// a plain `YYYY-MM-DD` string written straight into the column, with no
+// time component, which Postgres stores as UTC midnight. Rendered
+// without pinning to UTC, a client west of UTC (e.g. New York) sees an
+// approval due "10 Sep" that is really due the 11th — the same class of
+// defect deliverable-row.tsx's own `formatDate` documents on itself for
+// its (genuinely `date`-typed) `dueAt` column, and fixed the same way
+// here: an explicit `T00:00:00Z` if the value doesn't already carry a
+// time component, pinned to `timeZone: "UTC"`.
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
+  return new Date(isoWithTime).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
+    timeZone: "UTC",
   });
 }
 

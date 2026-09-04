@@ -1,9 +1,6 @@
 import { notFound } from "next/navigation";
 
-import {
-  getPortalProjectOptions,
-  getPortalRequests,
-} from "@/lib/queries/portal";
+import { getPortalProjects, getPortalRequests } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { NewRequestForm } from "@/components/portal/new-request-form";
 import { RequestList } from "@/components/portal/request-list";
@@ -12,16 +9,26 @@ import { RequestList } from "@/components/portal/request-list";
 // happened to the ones already filed.
 //
 // F003b (missions/20260903-portal): relocated here, under the
-// project-scoped shell, for the same reason and with the same
-// "queries stay workspace-wide, unchanged" guarantee as
-// `p/[projectId]/files/page.tsx` — see that file's comment. The old URL
-// now redirects here.
+// project-scoped shell.
+//
+// F079 (missions/20260903-portal audit, defect 2): this page used to call
+// `getPortalRequests`/`getPortalProjectOptions` workspace-wide — a client
+// on two projects saw the OTHER project's request history and could file
+// a new request against it from a page whose URL and shell both say "you
+// are inside one project". `getPortalRequests` itself stays workspace-wide
+// (lib/queries/portal.ts is owned by a concurrent worker this feature must
+// not touch) so the fix filters its result down to this route's own
+// `projectId` here, the same "read stays wide, THIS caller narrows it"
+// shape `p/[projectId]/page.tsx` already uses for `overview.
+// deliveredThisWeek` (see that file's own comment). The project picker in
+// `NewRequestForm` is dropped in favour of a fixed hidden field for the
+// same reason — see that component's own `fixedProjectId` comment.
 export default async function PortalRequestsPage({
   params,
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
 }) {
-  const { workspaceSlug } = await params;
+  const { workspaceSlug, projectId } = await params;
 
   const supabase = await createClient();
   const { data: workspace } = await supabase
@@ -32,10 +39,15 @@ export default async function PortalRequestsPage({
 
   if (!workspace) notFound();
 
-  const [projects, requests] = await Promise.all([
-    getPortalProjectOptions(workspace.id),
+  const [projects, allRequests] = await Promise.all([
+    getPortalProjects(workspace.id),
     getPortalRequests(workspace.id),
   ]);
+
+  const project = projects.find((p) => p.id === projectId);
+  if (!project) notFound();
+
+  const requests = allRequests.filter((request) => request.projectId === projectId);
 
   return (
     <div className="flex flex-col gap-8">
@@ -48,9 +60,12 @@ export default async function PortalRequestsPage({
         </p>
       </div>
 
-      <NewRequestForm projects={projects} />
+      <NewRequestForm
+        projects={[]}
+        fixedProjectId={{ id: project.id, name: project.name }}
+      />
 
-      <RequestList requests={requests} />
+      <RequestList requests={requests} projectId={project.id} />
     </div>
   );
 }

@@ -281,6 +281,28 @@ describe("ApprovalCard (F009)", () => {
     expect(chip).toHaveTextContent(/overdue/i);
   });
 
+  // F079 (missions/20260903-portal audit, defect 3): `dueAt` is a
+  // date-only value (see approval-card.tsx's own `formatDate` comment).
+  // Rendered without pinning to UTC, a client west of UTC (this test
+  // simulates New York, UTC-4/-5) sees the day BEFORE the real due date
+  // -- "31 Aug" instead of "1 Sep" for a request due 2026-09-01.
+  describe("due chip date — F079 defect 3 (UTC pin)", () => {
+    const originalTz = process.env.TZ;
+
+    afterEach(() => {
+      process.env.TZ = originalTz;
+    });
+
+    it("test_due_chip_shows_the_real_due_date_for_a_client_west_of_utc", () => {
+      process.env.TZ = "America/New_York";
+      renderCard({ approval: { ...APPROVAL, dueAt: "2099-09-01" } });
+
+      const chip = screen.getByTestId("approval-due-chip");
+      expect(chip).toHaveTextContent("1 Sep");
+      expect(chip).not.toHaveTextContent("31 Aug");
+    });
+  });
+
   // F009c (AS-021): a doc-subject approval has no artifact_url and no
   // task subject to link into -- before this fix it rendered no "Open"
   // control at all. It must now open the stored snapshot via a freshly

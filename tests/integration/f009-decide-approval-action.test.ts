@@ -280,9 +280,11 @@ describe.skipIf(!haveCreds)("F009 decideApproval (AS-022, AS-023)", () => {
     await signInAs(clientEmail);
 
     const { getOpenApprovalsForClient } = await import("@/lib/queries/approvals");
-    const open = await getOpenApprovalsForClient(projectId);
+    const openResult = await getOpenApprovalsForClient(projectId);
+    expect(openResult.ok).toBe(true);
+    if (!openResult.ok) return;
 
-    const row = open.find((approval) => approval.id === requestId);
+    const row = openResult.data.find((approval) => approval.id === requestId);
     expect(row).toBeTruthy();
     expect(row?.title).toBe("Homepage copy");
     expect(row?.decisionType).toBe("content");
@@ -298,9 +300,11 @@ describe.skipIf(!haveCreds)("F009 decideApproval (AS-022, AS-023)", () => {
     expect(decision.ok).toBe(true);
 
     const { getApprovalHistory } = await import("@/lib/queries/approvals");
-    const history = await getApprovalHistory(projectId);
+    const historyResult = await getApprovalHistory(projectId);
+    expect(historyResult.ok).toBe(true);
+    if (!historyResult.ok) return;
 
-    const entry = history.find((row) => row.id === requestId);
+    const entry = historyResult.data.find((row) => row.id === requestId);
     expect(entry).toBeTruthy();
     expect(entry?.state).toBe("approved");
     expect(entry?.decidedByName).toBeTruthy();

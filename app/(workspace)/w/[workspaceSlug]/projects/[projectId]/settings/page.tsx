@@ -27,7 +27,11 @@ import { Separator } from "@/components/ui/separator";
 // settings route" (no separate "project approvals area" route exists or
 // is planned by this milestone), the standalone artifact-approval entry
 // point lives here too rather than a new page.
-import { getDecisionOwners, getProjectClientMembers } from "@/lib/queries/approvals";
+import {
+  getDecisionOwners,
+  getProjectClientMembers,
+  type PortalDecisionOwner,
+} from "@/lib/queries/approvals";
 import { DecisionOwnersSection } from "@/components/approvals/decision-owners";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 import { canWrite } from "@/lib/auth/permissions";
@@ -139,7 +143,7 @@ export default async function ProjectSettingsPage({
   let members: Awaited<ReturnType<typeof getProjectMembers>> = [];
   let addable: Awaited<ReturnType<typeof getAddableWorkspaceMembers>> = [];
   let lossPreview: Awaited<ReturnType<typeof getVisibilityLossPreview>> = [];
-  let decisionOwners: Awaited<ReturnType<typeof getDecisionOwners>> = [];
+  let decisionOwners: PortalDecisionOwner[] = [];
   let clientMembers: Awaited<ReturnType<typeof getProjectClientMembers>> = [];
   let loadError = false;
 
@@ -148,7 +152,8 @@ export default async function ProjectSettingsPage({
     // `addable`/`lossPreview` are conditionally fetched (per
     // canManage/canToggleVisibility, both already known), but whenever
     // fetched they run alongside `members` instead of after it.
-    [members, addable, lossPreview, decisionOwners, clientMembers] = await Promise.all([
+    let decisionOwnersResult: Awaited<ReturnType<typeof getDecisionOwners>>;
+    [members, addable, lossPreview, decisionOwnersResult, clientMembers] = await Promise.all([
       getProjectMembers(project.id),
       canManage
         ? getAddableWorkspaceMembers(workspace.id, project.id)
@@ -159,6 +164,17 @@ export default async function ProjectSettingsPage({
       getDecisionOwners(project.id),
       getProjectClientMembers(workspace.id),
     ]);
+    // F079 (missions/20260903-portal audit, defect 1): `getDecisionOwners`
+    // now reports a failed read as `{ ok: false }` rather than silently
+    // coalescing it to `[]` (see that function's own header comment) --
+    // folded into this page's existing `loadError` state, the same
+    // "couldn't load" fallback every other read on this page already
+    // shares on a thrown error, rather than a fourth, differently-shaped
+    // failure state just for this one field.
+    if (!decisionOwnersResult.ok) {
+      throw new Error(decisionOwnersResult.error);
+    }
+    decisionOwners = decisionOwnersResult.data;
   } catch (error) {
     logger.error("ProjectSettingsPage: failed to load member data", { error: error });
     loadError = true;
