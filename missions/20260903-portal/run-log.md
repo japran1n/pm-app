@@ -719,3 +719,7 @@ it — three scrutiny rounds ran over that period. It surfaced from a side-effec
 run in an unrelated feature. The lesson is not about F018; it is that re-creating a
 database object from memory rather than from its current definition is a move this
 codebase punishes, and it has now punished it three times.
+- F009d COMPLETE — the approvals immutability trigger inverted from a four-column deny-list to a two-column allow-list (updated_at, resulting_task_id), grep-verified against every UPDATE call site, with NO service_role exemption since that was the hole; and the "no decision owner" refusal split out of the shared not-found oracle so the legacy Approve control now says "No one is assigned to decide this yet." matching the Approvals view's wording, instead of "Something went wrong."
+  All three column guards in this codebase — client_requests, projects, approval_requests — are now allow-lists derived from the live schema. **All planned features and all remediation are complete.**
+
+## Final gate
