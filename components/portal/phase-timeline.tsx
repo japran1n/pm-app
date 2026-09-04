@@ -40,8 +40,14 @@ const PX_PER_DAY = 6;
 const MIN_CHART_DAYS = 21;
 const MIN_BAR_WIDTH_PX = 24;
 const FALLBACK_SLOT_WIDTH_PX = 96;
-const ROW_HEIGHT_PX = 44;
-const BAR_HEIGHT_PX = 16;
+// docs/portal-timeline-review-and-demo-readiness.md 2.6: seven rows used
+// to push this section past a laptop fold, in the one part of the page
+// whose entire purpose is a glance at the whole project. Rows are two
+// text lines (name + state/date/count line) at text-sm/text-xs, which
+// read comfortably down to 36px; kept above the 24px WCAG 2.5.8 minimum
+// target size with room to spare.
+const ROW_HEIGHT_PX = 36;
+const BAR_HEIGHT_PX = 12;
 const HEADER_HEIGHT_PX = 24;
 
 const STATE_ORDER: PortalPhaseState[] = ["not_started", "active", "blocked", "done"];
@@ -51,13 +57,6 @@ const STATE_LABEL: Record<PortalPhaseState, string> = {
   active: "Active",
   blocked: "Blocked",
   done: "Done",
-};
-
-const STATE_TRACK_CLASS: Record<PortalPhaseState, string> = {
-  not_started: "fill-muted",
-  active: "fill-status-progress-bg",
-  blocked: "fill-status-blocked-bg",
-  done: "fill-status-done-bg",
 };
 
 const STATE_FILL_CLASS: Record<PortalPhaseState, string> = {
@@ -123,6 +122,28 @@ function formatPhaseSecondaryLine(phase: PortalPhase): string {
   if (dateRange) parts.push(dateRange);
   const progress = formatPhaseProgress(phase);
   if (progress) parts.push(progress);
+
+  // docs/portal-timeline-review-and-demo-readiness.md 1.3/2.5: neither
+  // `project_phases` nor its linked deliverables/approvals carry a
+  // "why blocked" reason today, and this component does not invent one.
+  // What the data DOES carry is `actualStart` -- so a blocked phase that
+  // has never actually started is labelled as such, rather than reading
+  // as the strongest colour on the page attached to an unexplained
+  // alarm. A blocked phase that HAD started keeps the bare "Blocked"
+  // label; that case is a real, currently-live stoppage.
+  if (phase.state === "blocked" && !phase.actualStart) {
+    parts.push("not yet started");
+  }
+
+  // docs/portal-timeline-review-and-demo-readiness.md 2.7: the one thing
+  // client-visibly in flight inside an active phase, straight from the
+  // lowest-position in_progress task -- the single most valuable line on
+  // this page, per that doc. Kept on this same line rather than a new
+  // row so every row stays one uniform height (2.6).
+  if (phase.state === "active" && phase.inFlightTaskTitle) {
+    parts.push(`now: ${phase.inFlightTaskTitle}`);
+  }
+
   return parts.join(" · ");
 }
 
@@ -303,9 +324,18 @@ export function PhaseTimeline({
                   readiness.md 2.4) -- `truncate` here used to cut
                   "Visual direction & design" mid-word, and a row you
                   cannot identify is worse than a wider one. The row
-                  height itself is unchanged (out of scope). */}
+                  height itself is unchanged (out of scope).
+
+                  No `{phase.position}.` prefix: `position` is the
+                  ordering column (docs 2.5), and the row's own place in
+                  this already-ordered list carries that sequence for
+                  free. The raw value (1000, 2000, ...) is our internal
+                  numbering scheme, not a client-facing ordinal, and
+                  `getProjectPhases` still `.order("position")`s the
+                  query -- only the presentation of the number is
+                  dropped, not the ordering it drives. */}
               <span className="truncate text-sm font-medium text-foreground">
-                {phase.position}. {phase.name}
+                {phase.name}
               </span>
               <span
                 data-testid="phase-timeline-row-label"
@@ -377,10 +407,6 @@ export function PhaseTimeline({
             {layout.rows.map((row, index) => {
               const y =
                 HEADER_HEIGHT_PX + index * ROW_HEIGHT_PX + (ROW_HEIGHT_PX - BAR_HEIGHT_PX) / 2;
-              const fillWidth = Math.max(
-                (row.widthPx * row.phase.progressPercent) / 100,
-                row.phase.progressPercent > 0 ? 2 : 0,
-              );
 
               return (
                 <g
@@ -398,18 +424,21 @@ export function PhaseTimeline({
                   onBlur={() => setHoveredPhaseId(null)}
                   className="cursor-pointer outline-none"
                 >
+                  {/* docs/portal-timeline-review-and-demo-readiness.md
+                      2.3: one solid bar in the state's own saturated
+                      colour -- the SAME colour the legend dot below uses
+                      -- rather than a pale track plus a saturated
+                      progress-fill. These bars are the client's read of
+                      the whole project; they should not be the
+                      quietest thing on the page, and a partial-width
+                      fill inside the bar would silently re-introduce the
+                      percentage encoding that 1.2/2.1 removed from the
+                      text. Completion is already stated as a count on
+                      the row's own text line. */}
                   <rect
                     x={row.xPx}
                     y={y}
                     width={row.widthPx}
-                    height={BAR_HEIGHT_PX}
-                    rx={3}
-                    className={STATE_TRACK_CLASS[row.phase.state]}
-                  />
-                  <rect
-                    x={row.xPx}
-                    y={y}
-                    width={fillWidth}
                     height={BAR_HEIGHT_PX}
                     rx={3}
                     className={STATE_FILL_CLASS[row.phase.state]}

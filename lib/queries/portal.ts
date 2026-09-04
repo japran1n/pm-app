@@ -297,6 +297,15 @@ export type PortalPhase = {
   // says so, rather than omitting the figure, so this is 0 rather than
   // null.
   progressPercent: number;
+  // docs/portal-timeline-review-and-demo-readiness.md 2.7: the title of
+  // the client-visible task currently `in_progress` in this phase, so an
+  // `active` row can say what is actually being worked on rather than
+  // just "Active". Null when the phase has no in-progress client-visible
+  // task (including every non-active phase). When several tasks are
+  // in_progress at once, the one with the lowest `position` (the task
+  // furthest left/top on the board) wins -- an arbitrary but stable and
+  // deterministic pick, not invented data.
+  inFlightTaskTitle: string | null;
 };
 
 // Client-visible phases for one project, with a progress percentage. RLS
@@ -354,7 +363,7 @@ export async function getProjectPhases(
     await Promise.all([
       supabase
         .from("tasks")
-        .select("id, phase_id, status_id, status")
+        .select("id, phase_id, status_id, status, title, position")
         .in("phase_id", phaseIds)
         // AS-011/AS-012: only a client-visible task counts toward a
         // phase's progress figure, whoever is asking.
@@ -387,6 +396,10 @@ export async function getProjectPhases(
   }
 
   const totalsByPhase = new Map<string, { total: number; done: number }>();
+  // docs/portal-timeline-review-and-demo-readiness.md 2.7: the
+  // lowest-`position` in-progress task per phase, so the "Now:" line has
+  // one deterministic answer rather than an arbitrary array-order pick.
+  const inFlightByPhase = new Map<string, { title: string; position: number }>();
   for (const task of tasks ?? []) {
     if (!task.phase_id) continue;
     const category =
@@ -397,6 +410,13 @@ export async function getProjectPhases(
     entry.total += 1;
     if (category === "done") entry.done += 1;
     totalsByPhase.set(task.phase_id, entry);
+
+    if (category === "in_progress" && task.title) {
+      const current = inFlightByPhase.get(task.phase_id);
+      if (!current || task.position < current.position) {
+        inFlightByPhase.set(task.phase_id, { title: task.title, position: task.position });
+      }
+    }
   }
 
   const data = phases.map((phase) => {
@@ -416,6 +436,7 @@ export async function getProjectPhases(
       // Never divide by zero: zero shared tasks in a phase is 0%, stated
       // as such by the UI, not a fraction that would throw or render NaN.
       progressPercent: totals.total === 0 ? 0 : Math.round((totals.done / totals.total) * 100),
+      inFlightTaskTitle: inFlightByPhase.get(phase.id)?.title ?? null,
     };
   });
 

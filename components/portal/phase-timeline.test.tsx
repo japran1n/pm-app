@@ -38,6 +38,7 @@ function makePhase(overrides: Partial<PortalPhase> & { id: string; name: string 
     totalClientVisibleTasks: 0,
     doneClientVisibleTasks: 0,
     progressPercent: 0,
+    inFlightTaskTitle: null,
     ...overrides,
   };
 }
@@ -238,7 +239,7 @@ describe("PhaseTimeline", () => {
     expect(screen.getByText(/11 Sep/)).toBeInTheDocument();
   });
 
-  it("gives the timeline an accessible role=img summary of where the project is", () => {
+  it("gives the timeline an accessible role=group summary of where the project is", () => {
     render(
       <PhaseTimeline
         phases={[
@@ -249,9 +250,129 @@ describe("PhaseTimeline", () => {
       />,
     );
     const chart = screen.getByTestId("phase-timeline");
-    expect(chart).toHaveAttribute("role", "img");
+    // role="group" rather than role="img": the timeline is a set of
+    // individually focusable/hoverable rows (each with its own
+    // role="button"), not a single opaque graphic -- role="img" would
+    // hide those interactive rows from assistive tech.
+    expect(chart).toHaveAttribute("role", "group");
     expect(chart.getAttribute("aria-label")).toContain("2 phases");
     expect(chart.getAttribute("aria-label")).toContain("Struktura");
+  });
+
+  it("does not prefix a phase's row label with its internal position number", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({ id: "p1", name: "Kick-off & setup", position: 1000, state: "done" }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    // docs/portal-timeline-review-and-demo-readiness.md 2.5: "1000." is
+    // our internal ordering value, not a client-facing label -- row
+    // order already carries the sequence.
+    expect(screen.getByText("Kick-off & setup")).toBeInTheDocument();
+    expect(screen.queryByText(/1000\./)).not.toBeInTheDocument();
+  });
+
+  it("test_AS_010_a_blocked_phase_that_has_not_actually_started_says_so_instead_of_reading_as_an_unexplained_alarm", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "QA & accessibility",
+            state: "blocked",
+            plannedStart: "2026-09-14",
+            plannedEnd: "2026-09-22",
+            actualStart: null,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    // No blocker-reason field exists on PortalPhase/project_phases, so
+    // this component does not invent one. What it DOES say, from data it
+    // already has (`actualStart`), is that the phase never actually
+    // began -- so "Blocked" does not read as a live, unexplained
+    // emergency for a phase scheduled entirely in the future.
+    const rowLabel = screen.getByTestId("phase-timeline-row-label");
+    expect(rowLabel).toHaveTextContent("Blocked");
+    expect(rowLabel).toHaveTextContent(/not yet started/i);
+
+    const row = screen.getByRole("button", { name: /QA & accessibility/ });
+    expect(row.getAttribute("aria-label")).toMatch(/not yet started/i);
+  });
+
+  it("a blocked phase that HAS actually started does not claim it never started", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Build",
+            state: "blocked",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            actualStart: "2026-06-02",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    const rowLabel = screen.getByTestId("phase-timeline-row-label");
+    expect(rowLabel).toHaveTextContent("Blocked");
+    expect(rowLabel.textContent).not.toMatch(/not yet started/i);
+  });
+
+  it("test_AS_010_an_active_phase_shows_the_one_client_visible_task_currently_in_flight", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-08-28",
+            plannedEnd: "2026-09-11",
+            inFlightTaskTitle: "Homepage hero design",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    // docs/portal-timeline-review-and-demo-readiness.md 2.7: the single
+    // most valuable line on the page -- what is currently in flight
+    // inside an active phase.
+    const rowLabel = screen.getByTestId("phase-timeline-row-label");
+    expect(rowLabel).toHaveTextContent("Homepage hero design");
+
+    const row = screen.getByRole("button", { name: /Visual direction & design/ });
+    expect(row.getAttribute("aria-label")).toContain("Homepage hero design");
+
+    fireEvent.mouseEnter(row);
+    expect(screen.getByTestId("phase-timeline-tooltip")).toHaveTextContent(
+      "Homepage hero design",
+    );
+  });
+
+  it("an active phase with nothing in progress omits the in-flight line rather than inventing one", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Build",
+            state: "active",
+            inFlightTaskTitle: null,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+    const rowLabel = screen.getByTestId("phase-timeline-row-label");
+    expect(rowLabel).toHaveTextContent("Active");
+    expect(rowLabel.textContent).not.toMatch(/now:/i);
   });
 });
 
@@ -309,5 +430,31 @@ describe("computePhaseTimelineLayout — dateless fallback", () => {
     expect(layout.todayXPx).not.toBeNull();
     expect(layout.todayXPx!).toBeGreaterThanOrEqual(0);
     expect(layout.todayXPx!).toBeLessThanOrEqual(layout.chartWidthPx);
+  });
+
+  it("keeps 'today' out of the week-tick sequence -- it's a separate marker, not an axis tick", () => {
+    // docs/portal-timeline-review-and-demo-readiness.md 2.2: injecting
+    // "Today" into the tick labels breaks the otherwise-even fortnightly
+    // rhythm. `todayXPx` is the dashed-rule position; `weekMarks` must
+    // never contain a label derived from `today` -- only real week
+    // boundaries from `rangeStart`, evenly spaced.
+    const phases: PortalPhase[] = [
+      makePhase({
+        id: "p1",
+        name: "Phase",
+        plannedStart: "2026-08-14",
+        plannedEnd: "2026-09-25",
+      }),
+    ];
+
+    const layout = computePhaseTimelineLayout(phases, TODAY);
+
+    const labels = layout.weekMarks.map((mark) => mark.label).filter(Boolean);
+    expect(labels.every((label) => label !== "Today")).toBe(true);
+
+    const spacings = layout.weekMarks.map((mark) => mark.xPx);
+    for (let i = 1; i < spacings.length; i++) {
+      expect(spacings[i]! - spacings[i - 1]!).toBe(spacings[1]! - spacings[0]!);
+    }
   });
 });
