@@ -111,10 +111,44 @@ describe("PortalApprovalActions (F005)", () => {
   });
 
   it("test_AS_014_ref_is_cleared_after_a_rejected_action_allowing_retry", async () => {
+    // Same rationale as `test_AS_016_ref_is_cleared_after_a_rejected_action_allowing_retry`
+    // (below, ~line 236): the real Base UI `Button` enforces `disabled`
+    // inside its own click closure, so stripping the DOM `disabled`
+    // attribute (as a prior version of this test did) does not make a
+    // second click reach the handler while React's `isPending` is still
+    // settling from the first transition — that's a race against React's
+    // scheduling, not what AS-014 is about. The stub Button below always
+    // forwards `onClick`, so the second click deterministically reaches
+    // `handleApprove`, and only `inFlightRef.current` can still be
+    // blocking it — which is exactly what this assertion is about.
+    vi.resetModules();
+    vi.doMock("@/components/ui/button", () => ({
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        ...rest
+      }: {
+        children?: ReactNode;
+        disabled?: boolean;
+        onClick?: MouseEventHandler<HTMLButtonElement>;
+        [key: string]: unknown;
+      }) =>
+        createElement(
+          "button",
+          { ...rest, "data-disabled": disabled ? "" : undefined, onClick },
+          children,
+        ),
+    }));
+
+    const { PortalApprovalActions: UnguardedUiComponent } = await import(
+      "./approval-actions"
+    );
+
     const first = deferred<never>();
     approveMock.mockReturnValueOnce(first.promise);
 
-    render(createElement(PortalApprovalActions, { taskId: "task-1" }));
+    render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
 
     fireEvent.click(screen.getByRole("button", { name: /approve/i }));
     await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
@@ -130,19 +164,17 @@ describe("PortalApprovalActions (F005)", () => {
     // The in-flight ref must have been cleared on the failure path (not
     // only on success) — otherwise the button is permanently inert and the
     // user can never retry without a reload. A fresh click after the
-    // failure must issue a genuinely new call. `disabled` is stripped
-    // defensively before clicking so this exercises the ref guard itself
-    // (`inFlightRef.current`), not React's own `isPending` render timing,
-    // which is not what AS-014 is about.
+    // failure must issue a genuinely new call.
     const second = deferred<{ ok: true; data: { taskId: string } }>();
     approveMock.mockReturnValueOnce(second.promise);
-    const retryButton = screen.getByRole("button", { name: /approve/i });
-    retryButton.removeAttribute("disabled");
-    fireEvent.click(retryButton);
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
 
     await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
     second.resolve({ ok: true, data: { taskId: "task-1" } });
+
+    vi.doUnmock("@/components/ui/button");
+    vi.resetModules();
   });
 
   it("test_AS_014_ref_is_cleared_after_ok_false_allowing_retry", async () => {

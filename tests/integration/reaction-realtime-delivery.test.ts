@@ -359,7 +359,25 @@ describe.skipIf(!haveAdminCreds)(
           // Same budget as this file's filtered sibling test below, which
           // uses the identical filtered-subscription shape and passes
           // reliably in CI at 13000ms.
-          const timeout = setTimeout(() => resolve(null), 13000);
+          // TEMP-DIAGNOSTIC (F074, AS-369, remove once mechanism is known):
+          // three prior rounds each guessed at why this test's internal
+          // budget is exceeded in CI (transport latency, missing filter,
+          // cold-connection handshake) and each guess was falsified by the
+          // next CI run. Rather than propose a fourth guess, this instruments
+          // every step with a timestamp on stderr so the next CI log can
+          // distinguish "never reached SUBSCRIBED" vs "SUBSCRIBED but no
+          // event" vs "event arrived after the budget".
+          const t0 = Date.now();
+          const mark = (label: string) =>
+            process.stderr.write(
+              `[F074-DIAG AS-369] +${Date.now() - t0}ms ${label}\n`,
+            );
+          mark("promise executor entered, about to call .channel().subscribe()");
+
+          const timeout = setTimeout(() => {
+            mark("13000ms budget fired -- resolving null");
+            resolve(null);
+          }, 13000);
 
           subscriberClient
             .channel(`comment_reactions:${taskId}`)
@@ -372,12 +390,16 @@ describe.skipIf(!haveAdminCreds)(
                 filter: `task_id=eq.${taskId}`,
               },
               (payload: { new: { comment_id: string; user_id: string; emoji: string } }) => {
+                mark(
+                  `postgres_changes event received (comment_id=${payload.new.comment_id}, expected=${commentId})`,
+                );
                 if (payload.new.comment_id !== commentId) return;
                 clearTimeout(timeout);
                 resolve(payload.new);
               },
             )
             .subscribe((status, err) => {
+              mark(`.subscribe() status callback: ${status}${err ? ` err=${err.message}` : ""}`);
               if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 clearTimeout(timeout);
                 reject(err ?? new Error(`subscribe failed: ${status}`));
@@ -387,7 +409,14 @@ describe.skipIf(!haveAdminCreds)(
                 // Only toggle once the subscriber is confirmed live, so
                 // this test can't pass by accident on a race where the
                 // event beats the subscription.
-                void toggleReaction(commentId, "👍");
+                mark("SUBSCRIBED -- calling toggleReaction()");
+                void toggleReaction(commentId, "👍").then(
+                  () => mark("toggleReaction() resolved"),
+                  (err: unknown) =>
+                    mark(
+                      `toggleReaction() rejected: ${err instanceof Error ? err.message : String(err)}`,
+                    ),
+                );
               }
             });
         });
