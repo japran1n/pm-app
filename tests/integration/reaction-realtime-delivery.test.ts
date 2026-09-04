@@ -113,6 +113,8 @@ describe.skipIf(!haveAdminCreds)(
     let taskId: string;
     let reactorUserId: string;
     let commentId: string;
+    // F098: see the comment at this channel's creation site below.
+    let reactionChannel: ReturnType<SupabaseClient["channel"]> | null = null;
 
     const ANON_KEY =
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? SECRET_KEY!;
@@ -419,7 +421,24 @@ describe.skipIf(!haveAdminCreds)(
             resolve(null);
           }, HARD_TIMEOUT_MS);
 
-          subscriberClient
+          // F098: captured (rather than left as an inline, unreferenced
+          // chain like the pre-F098 version of this test) so it can be
+          // explicitly removed once this `it` is done -- see the
+          // `finally` block below. Every other channel opened by this
+          // file (the beforeAll warmup, and both channels in the second
+          // `it`) is already explicitly torn down as soon as it's no
+          // longer needed; this one was the sole exception, left bound
+          // and receiving every comment_reactions write for this task
+          // (including the second `it`'s own toggle and both tests'
+          // cleanup deletes) for the rest of this file's run, until
+          // `afterAll`'s `removeAllChannels()`. That is unlikely to be
+          // the whole story behind AS-369's CI-only delay (see the F098
+          // handoff), but it is a genuine, provable leak against the
+          // pattern this file otherwise follows, and reducing how many
+          // stale bindings stay live against the shared CI Realtime
+          // container for longer than necessary is a legitimate,
+          // assertion-preserving cleanup regardless.
+          reactionChannel = subscriberClient
             .channel(`comment_reactions:${taskId}`)
             .on(
               "postgres_changes",
@@ -453,6 +472,17 @@ describe.skipIf(!haveAdminCreds)(
               }
             });
         });
+
+        // F098: close this channel as soon as this `it` is done with it,
+        // rather than leaving it bound (and receiving every future
+        // comment_reactions write for this task) for the rest of the
+        // file's run -- see the comment where `reactionChannel` is
+        // assigned above. Done before the assertions below so it happens
+        // even if one of them throws.
+        if (reactionChannel) {
+          await subscriberClient.removeChannel(reactionChannel);
+          reactionChannel = null;
+        }
 
         expect(received).not.toBeNull();
         expect(received?.comment_id).toBe(commentId);

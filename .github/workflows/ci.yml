@@ -77,62 +77,24 @@ jobs:
       - name: Start local Supabase stack
         run: supabase start
 
-      # F097 (AS-369, 45459ms measurement, CI run 33895505689): `supabase
-      # start` boots the Realtime container and replays every migration
-      # under supabase/migrations against the fresh database, in that
-      # order, before this job's next step runs -- so any migration that
-      # changes a table's shape *after* it already joined the
-      # `supabase_realtime` publication (comment_reactions: added to the
-      # publication in 20260823010000_create_comment_reactions.sql, then
-      # given a new `task_id` column and switched to REPLICA IDENTITY
-      # FULL by 20260823080000_fix_comment_reactions_soft_delete_and_
-      # scoping.sql, seven migration-timestamps later) is a table whose
-      # on-disk shape changed underneath Realtime's logical-replication
-      # connection after Realtime had already started decoding it.
-      # `comments` never has a schema-altering migration run against it
-      # after 20260818050000_realtime_comments_publication.sql adds it to
-      # the publication -- its shape is final at the moment Realtime
-      # first sees it -- and comment-format-realtime.test.ts (which
-      # subscribes to `comments`) is the one of the four
-      # REALTIME_LIVE_DELIVERY_TESTS files that has never shown this
-      # delay. reaction-realtime-delivery.test.ts (`comment_reactions`,
-      # the table with the late schema change) is the one that measured
-      # 13348ms in the F074 round and 45459ms in this one -- large,
-      # consistent-with-a-stale-cache delays rather than random jitter.
-      # Restarting the realtime container here, after every migration has
-      # already run, forces it to open a fresh logical-replication
-      # connection against the database's *final* schema instead of
-      # whatever it decoded mid-migration-replay, which is the direct fix
-      # if a stale relation/schema cache is the mechanism. This could not
-      # be verified locally -- there is no Docker in this environment, so
-      # this repo's local dev stack was never available to reproduce
-      # `supabase start` against -- so the evidence for this being the
-      # actual mechanism (as opposed to something else Realtime-internal)
-      # is the elapsed-time number the *next* CI run logs for AS-369, not
-      # a local repro. See the F097 handoff for what each possible
-      # outcome of that number means.
-      - name: Restart Realtime (pick up post-migration table schema)
-        run: |
-          container="$(docker ps --filter "name=realtime" --format '{{.Names}}' | head -n1)"
-          if [ -z "$container" ]; then
-            echo "No running container matched name filter 'realtime' -- supabase CLI container naming may have changed; see F097 handoff." >&2
-            docker ps --format '{{.Names}}' >&2
-            exit 1
-          fi
-          echo "Restarting $container"
-          docker restart "$container"
-          # One-time reconnect after a container restart, not a retry
-          # loop or a guess at Realtime's internal timing -- bounded and
-          # justified by needing the container's HTTP/WS listener back up
-          # before the next step can dial it.
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:54321/realtime/v1/api/tenants -o /dev/null 2>/dev/null || \
-               curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/realtime/v1/ | grep -qv '^000$'; then
-              break
-            fi
-            sleep 1
-          done
-
+      # F098 (AS-369): the F097 "restart Realtime after migrations" step
+      # that used to run here is removed. It was added on the hypothesis
+      # that comment_reactions' post-publication schema change (task_id
+      # column + REPLICA IDENTITY FULL added after the table joined
+      # supabase_realtime) left Realtime holding a stale relation/schema
+      # cache, and that restarting the container after all migrations
+      # replayed would force it to reconnect against the final schema and
+      # collapse the delivery delay to seconds. The next CI run measured
+      # 45364ms post-restart against 45459ms pre-restart (run 33895505689
+      # vs the run right after this fix landed) -- no meaningful change,
+      # so the stale-schema-cache hypothesis is refuted by the data this
+      # step itself produced. See missions/20260903-portal/handoffs/
+      # F098-handoff.md for the investigation that replaced it: delivery
+      # against the real hosted project is sub-second and does not track
+      # an artificially small measurement ceiling, so the client-side
+      # test construction is not at fault either -- the remaining
+      # explanation is CI-local `supabase start` Realtime-container
+      # contention, which a container restart does not relieve.
       - name: Export local Supabase env vars
         # `supabase status -o env --override-name` maps the CLI's local
         # connection info onto the exact env var names the app and test
