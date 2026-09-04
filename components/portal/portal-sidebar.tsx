@@ -31,7 +31,6 @@ import {
   Inbox,
   LayoutDashboard,
   ListChecks,
-  Paperclip,
   ScrollText,
   TrendingUp,
   type LucideIcon,
@@ -112,23 +111,21 @@ export function buildPortalNavItems(
   ];
 }
 
-// TEMPORARY (F006e, missions/20260903-portal M1 remediation): Files and
-// Requests have no other entry point. F003 deleted `portal-nav.tsx`
-// (the only link to them); F003b then relocated both routes under this
-// project shell without adding a replacement, so until this feature they
-// were unreachable UI -- and Requests is the client's only *write* path
-// in the whole portal. F003b's own spec says they belong inside "Your
-// site" (F023) and "Scope & decisions" (F016) once those views exist;
-// both are still stubs today. This function -- and the secondary section
-// `PortalSidebar` renders it into below -- exist ONLY to bridge that gap.
-// DELETE this function and its call sites the moment F016 and F023 land
-// with a real entry point for these two views; do not carry them forward
-// as permanent nav items.
+// TEMPORARY (F006e, missions/20260903-portal M1 remediation): Requests
+// has no other entry point besides this row and (as of F023) the "Your
+// site" view's own "More" section. F003 deleted `portal-nav.tsx` (the
+// only link to it); F003b then relocated the route under this project
+// shell without adding a replacement, so until F006e it was unreachable
+// UI -- and Requests is the client's only *write* path in the whole
+// portal. F003b's own spec says Requests belongs inside "Scope &
+// decisions" (F016) once that view exists; it is still a stub today.
+// Files had the identical problem and identical fix, but F023 (this
+// mission's M5) gives it a permanent home inside "Your site" per F003b's
+// own spec, so its row here was removed -- DELETE this function and its
+// remaining call site the moment F016 lands with a real entry point for
+// Requests; do not carry it forward as a permanent nav item.
 export function buildPortalSecondaryNavItems(basePath: string): PortalNavItem[] {
-  return [
-    { key: "files", label: "Files", href: `${basePath}/files`, icon: Paperclip },
-    { key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox },
-  ];
+  return [{ key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox }];
 }
 
 function isItemActive(pathname: string, item: PortalNavItem): boolean {

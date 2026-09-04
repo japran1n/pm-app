@@ -1,10 +1,148 @@
-import { Globe } from "lucide-react";
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { AlertTriangle, Paperclip, Inbox } from "lucide-react";
 
-import { PortalComingSoon } from "@/components/portal/portal-coming-soon";
+import { getPortalProjects } from "@/lib/queries/portal";
+import { getProjectLinks, getProjectAccounts } from "@/lib/queries/project-site";
+import { getAllDocs } from "@/lib/queries/docs";
+import { createClient } from "@/lib/supabase/server";
+import { EmptyState } from "@/components/empty-state";
+import { LaunchDayCard } from "@/components/portal/launch-day-card";
+import { ProjectLinksList } from "@/components/portal/project-links-list";
+import { ProjectAccountsTable } from "@/components/portal/project-accounts-table";
+import { ProjectGuidesList } from "@/components/portal/project-guides-list";
 
-// F022+ (missions/20260903-portal, M5, site & guides) implements this
-// view. F003's own scope is the shell + route stubs only — see
-// PortalComingSoon.
-export default function PortalSitePage() {
-  return <PortalComingSoon icon={Globe} section="Your site" />;
+// F023 (missions/20260903-portal, AS-049, AS-050, AS-051): replaces
+// F003's `PortalComingSoon` stub. Reads `getProjectLinks`/
+// `getProjectAccounts` (both exported from lib/queries/project-site.ts
+// by F022 specifically for this feature to call) plus `getAllDocs`
+// (lib/queries/docs.ts, filtered client-side to `doc_kind === 'training'`)
+// -- all three through the ordinary RLS-respecting server client, same
+// "one visibility path, not two" convention every other portal page in
+// this mission documents on itself (see results/page.tsx, hours/page.tsx):
+// RLS already restricts a client caller to `client_visible = true` rows
+// of a portal-enabled project it belongs to, so a link/account/doc with
+// `client_visible = false` is never in the payload this page receives at
+// all, not merely hidden by a client-side filter.
+//
+// Also the entry point for Files (relocated here per F003b's own note
+// that Files belongs inside "Your site") and for Requests, per this
+// feature's own spec section 1.
+export default async function PortalSitePage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string; projectId: string }>;
+}) {
+  const { workspaceSlug, projectId } = await params;
+
+  const supabase = await createClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id, slug")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  if (!workspace) notFound();
+
+  const projects = await getPortalProjects(workspace.id);
+  const project = projects.find((p) => p.id === projectId);
+
+  if (!project) notFound();
+
+  // The launch card's own warranty fields -- read directly rather than
+  // through getPortalProjects (whose own PortalProject shape has no other
+  // caller that needs them), same pattern results/page.tsx already uses
+  // for baseline_frozen_at. RLS already scopes this SELECT the same as
+  // every other read on this page.
+  const { data: projectRow } = await supabase
+    .from("projects")
+    .select("warranty_until, warranty_terms")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  const [linksResult, accountsResult, guidesRaw] = await Promise.all([
+    getProjectLinks(projectId),
+    getProjectAccounts(projectId),
+    getAllDocs(workspace.id, projectId).catch(() => null),
+  ]);
+
+  // A failed links/accounts read renders an honest "couldn't load" state,
+  // never falling through the same empty-list branch as "genuinely
+  // nothing shared yet" -- the same failure-as-reassuring-fact defect
+  // results/page.tsx's own header comment describes and fixes for this
+  // view's neighbour.
+  if (!linksResult.ok || !accountsResult.ok || guidesRaw === null) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title="Couldn't load your site"
+        description="Something went wrong loading this project's links, accounts, or guides. Try refreshing the page."
+        testId="site-view-error"
+      />
+    );
+  }
+
+  const links = linksResult.data;
+  const accounts = accountsResult.data;
+  const guides = guidesRaw.filter((doc) => doc.docKind === "training");
+
+  const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
+
+  return (
+    <div className="flex flex-col gap-8">
+      <LaunchDayCard
+        targetLaunchDate={project.targetLaunchDate}
+        launchConfidence={project.launchConfidence}
+        launchNote={project.launchNote}
+        warrantyUntil={projectRow?.warranty_until ?? null}
+        warrantyTerms={projectRow?.warranty_terms ?? null}
+      />
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Links</h2>
+        <ProjectLinksList links={links} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
+        <ProjectAccountsTable accounts={accounts} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">Guides</h2>
+        <ProjectGuidesList guides={guides} />
+      </section>
+
+      {/* F023's own spec: Files (relocated by F003b) and Requests both
+          "were deliberately left out of the sidebar's eight views" and
+          belong here. `Files` was a TEMPORARY secondary sidebar entry
+          (F006e) tagged for removal the moment this feature lands (see
+          components/portal/portal-sidebar.tsx's own comment) -- its one
+          entry point now lives here instead. Requests already has a
+          permanent home in "Scope & decisions" (F016) and stays in the
+          sidebar; this is a second, convenient entry point, not its only
+          one. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">More</h2>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`${basePath}/files`}
+            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            data-testid="site-view-files-link"
+          >
+            <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
+            Files
+          </Link>
+          <Link
+            href={`${basePath}/requests`}
+            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            data-testid="site-view-requests-link"
+          >
+            <Inbox className="size-4 text-muted-foreground" aria-hidden="true" />
+            Requests
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
 }

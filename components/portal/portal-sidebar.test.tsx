@@ -186,12 +186,15 @@ describe("PortalSidebar (F003)", () => {
 
 // F006e (missions/20260903-portal): TEMPORARY -- Files and Requests had
 // no entry point anywhere in the portal (M6 in the M1 scrutiny report).
-// These tests assert the stopgap sidebar rows exist and are removed from
-// `buildPortalNavItems`'s own eight-item contract (so
+// F023 gave Files a permanent home inside "Your site" (per F003b's own
+// spec) and removed its row here; Requests still awaits F016's "Scope &
+// decisions" view, so its temporary row stays. These tests now assert
+// the reduced, one-item stopgap and that `buildPortalNavItems`'s own
+// eight-item contract is still untouched (so
 // `test_AS_001_lists_all_eight_views_in_order` above keeps asserting
 // exactly what AS-001's text says, unchanged).
-describe("PortalSidebar temporary Files/Requests entries (F006e)", () => {
-  it("test_AS_001_the_primary_eight_item_list_does_not_grow_to_include_the_temporary_entries", () => {
+describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () => {
+  it("test_AS_001_the_primary_eight_item_list_does_not_grow_to_include_the_temporary_entry", () => {
     const items = buildPortalNavItems("/portal/acme/p/proj-1", {
       approvalsAwaiting: { ok: true, data: 0 },
       deliverablesPastDue: 0,
@@ -202,41 +205,44 @@ describe("PortalSidebar temporary Files/Requests entries (F006e)", () => {
     expect(items.map((item) => item.label)).not.toContain("Requests");
   });
 
-  it("test_AS_004_files_and_requests_are_reachable_by_a_distinct_url_from_the_sidebar", () => {
+  it("the sidebar no longer renders a Files row (F023 relocated it into Your site)", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
     const anchors = anchorTags(html);
 
     expect(
       anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/files"')),
-    ).toBe(true);
-    expect(
-      anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/requests"')),
-    ).toBe(true);
-    expect(html).toContain("Files");
-    expect(html).toContain("Requests");
+    ).toBe(false);
   });
 
-  it("test_AS_004_the_temporary_entries_mark_themselves_current_on_their_own_route", () => {
-    mockPathname = "/portal/acme/p/proj-1/files";
+  it("test_AS_004_requests_is_reachable_by_a_distinct_url_from_the_sidebar", () => {
+    mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
     const anchors = anchorTags(html);
 
-    const filesCurrent = anchors.filter(
-      (tag) =>
-        tag.includes('href="/portal/acme/p/proj-1/files"') &&
-        tag.includes('aria-current="page"'),
-    );
-    expect(filesCurrent).toHaveLength(2); // desktop + mobile renditions
+    expect(
+      anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/requests"')),
+    ).toBe(true);
+    expect(html).toContain("Requests");
   });
 
-  it("builds exactly the two temporary items, in a stable order, at the given base path", () => {
+  it("test_AS_004_the_temporary_entry_marks_itself_current_on_its_own_route", () => {
+    mockPathname = "/portal/acme/p/proj-1/requests";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    const anchors = anchorTags(html);
+
+    const requestsCurrent = anchors.filter(
+      (tag) =>
+        tag.includes('href="/portal/acme/p/proj-1/requests"') &&
+        tag.includes('aria-current="page"'),
+    );
+    expect(requestsCurrent).toHaveLength(2); // desktop + mobile renditions
+  });
+
+  it("builds exactly the one remaining temporary item, at the given base path", () => {
     const items = buildPortalSecondaryNavItems("/portal/acme/p/proj-1");
 
-    expect(items.map((item) => item.label)).toEqual(["Files", "Requests"]);
-    expect(items.map((item) => item.href)).toEqual([
-      "/portal/acme/p/proj-1/files",
-      "/portal/acme/p/proj-1/requests",
-    ]);
+    expect(items.map((item) => item.label)).toEqual(["Requests"]);
+    expect(items.map((item) => item.href)).toEqual(["/portal/acme/p/proj-1/requests"]);
   });
 });
