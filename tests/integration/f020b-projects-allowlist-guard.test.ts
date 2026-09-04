@@ -409,91 +409,163 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
   // --- Manual verification / self-maintaining test -----------------------
 
   describe.skipIf(!haveManagementApi)("self-maintaining allow-list", () => {
+    // This probe owns its fixture end to end, over the SAME connection
+    // (the Management API, i.e. the real hosted project) that runs the
+    // probe itself -- it does NOT reuse `projectId`/`ownerId` from the
+    // outer `beforeAll`.
+    //
+    // Root cause of the previous, persistent `PROBE_ROW_NOT_MATCHED`: in
+    // CI (see .github/workflows/*.yml, "Start local Supabase stack" /
+    // "Export local Supabase env vars"), `NEXT_PUBLIC_SUPABASE_URL` /
+    // `SUPABASE_SECRET_KEY` -- what the outer `beforeAll` uses via
+    // `admin`/PostgREST to create `workspaceId`/`projectId`/`ownerId` --
+    // point at an EPHEMERAL LOCAL Docker Postgres stack started fresh for
+    // that CI run. `SUPABASE_PROJECT_REF` / `SUPABASE_ACCESS_TOKEN` --
+    // what `rawSql` uses via the Management API -- are repository secrets
+    // that point at the REAL HOSTED project (a permanently different
+    // database; the workflow's own top-of-file comment documents this
+    // split explicitly for the other five Management-API catalog suites).
+    // F088's owner-actor fix was real and necessary (proven by direct
+    // reproduction against the hosted project in that handoff) but could
+    // not fix this: the probe was asking the hosted project's `projects`
+    // table to `UPDATE ... WHERE id = '<uuid>'` for a UUID that was only
+    // ever inserted into the LOCAL stack's `projects` table. Zero rows
+    // ever matched in CI because the row was never in that database at
+    // all -- not because it was removed or invalidated by any race. Any
+    // number of `waitFor`-style retries against that same mismatched
+    // target would still find nothing, forever.
+    //
+    // The fix: build a workspace + a real `auth.users` row (owner) +
+    // project entirely inside this test, through `rawSql` (Management
+    // API / hosted project) -- the exact same channel the probe's own
+    // UPDATE runs through -- so the row the probe queries for is
+    // guaranteed to exist in the same database the probe is querying.
+    // Cleanup runs in `finally` so it fires even if the probe's own
+    // assertions fail, and does not depend on the file's outer
+    // `afterAll` (which only tears down the separate, local-stack
+    // fixture).
     it("a column added to projects after this migration is protected by default, with no edit to the guard function", async () => {
-      const sql = `
-        do $probe$
-        declare
-          v_row_count int;
-        begin
-          alter table public.projects
-            add column if not exists f020b_probe_never_committed text;
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      let probeWorkspaceId: string | null = null;
+      let probeProjectId: string | null = null;
+      let probeOwnerId: string | null = null;
 
-          -- Uses the workspace OWNER, not the client fixture user, on
-          -- purpose (root-caused via direct hosted-project reproduction,
-          -- see F088's handoff for the full mechanism). For UPDATE,
-          -- Postgres RLS requires a row to pass BOTH the table's SELECT
-          -- policy and the UPDATE policy's own USING clause before it is
-          -- even considered for the write -- not the UPDATE policy alone.
-          -- projects' SELECT policy (is_project_visible_to_row) carves
-          -- 'client' (and 'guest') out of the general
-          -- "workspace-visibility project" rule entirely
-          -- (wm.role not in ('guest', 'client')), so a client actor's
-          -- row visibility for UPDATE depends not only on an active
-          -- workspace_members row (what projects_update_active_members'
-          -- own USING clause checks) but *additionally* on a matching
-          -- project_members row existing and being visible at the
-          -- moment of that UPDATE -- a second table, a second fixture
-          -- insert, and a second thing that has to be true. That extra
-          -- dependency is exactly what CI's PROBE_ROW_NOT_MATCHED
-          -- outcome traced back to; it doesn't reproduce with an actor
-          -- whose visibility needs only one fact to hold. An owner's
-          -- visibility comes from wm.role in ('owner', 'admin') alone
-          -- (see is_project_visible_to_row), with no project_members
-          -- dependency at all, so it removes the fragile axis instead of
-          -- merely making it less likely to be hit. This also makes the
-          -- probe a *stronger* assertion than before: it now proves the
-          -- allow-list guard rejects a never-listed column for an actor
-          -- who would otherwise pass every other tier's role check, not
-          -- just for a role the guard's other branches already restrict.
-          set local request.jwt.claims to '{"sub":"${ownerId}","role":"authenticated"}';
-          set local role authenticated;
-
-          begin
-            update public.projects
-               set f020b_probe_never_committed = 'author-supplied value'
-             where id = '${projectId}';
-            get diagnostics v_row_count = row_count;
-            if v_row_count = 0 then
-              -- Distinguish "the guard let this through" from "the UPDATE
-              -- never reached the guard at all" -- e.g. RLS silently
-              -- filtered the row so 0 rows matched, which produces the
-              -- exact same observable "no exception raised" outcome as a
-              -- real guard hole. Both must not be reported as
-              -- GUARD_DID_NOT_FIRE, which claims the guard specifically
-              -- failed to reject a value it saw.
-              raise exception 'PROBE_ROW_NOT_MATCHED: the UPDATE affected 0 rows -- the probe proves nothing about the guard, since it was never invoked on this row';
-            end if;
-            raise exception 'GUARD_DID_NOT_FIRE';
-          exception
-            when sqlstate '42501' then
-              null; -- expected: the allow-list guard rejected the new column
-          end;
-
-          reset role;
-          raise exception 'ROLLBACK_PROBE_TRANSACTION';
-        end;
-        $probe$;
-      `;
-
-      let threw: unknown = null;
       try {
-        await rawSql(sql);
-      } catch (err) {
-        threw = err;
+        const [owner] = (await rawSql(`
+          insert into auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, aud, role)
+          values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'f020b-probe-owner-${suffix}@example.com', crypt('${PASSWORD}', gen_salt('bf')), now(), now(), now(), '{"provider":"email","providers":["email"]}', '{}', 'authenticated', 'authenticated')
+          returning id;
+        `)) as Array<{ id: string }>;
+        probeOwnerId = owner.id;
+
+        const [workspace] = (await rawSql(`
+          insert into public.workspaces (name, slug)
+          values ('F020b probe workspace', 'f020b-probe-${suffix}')
+          returning id;
+        `)) as Array<{ id: string }>;
+        probeWorkspaceId = workspace.id;
+
+        await rawSql(`
+          insert into public.workspace_members (workspace_id, user_id, role, status)
+          values ('${probeWorkspaceId}', '${probeOwnerId}', 'owner', 'active');
+        `);
+
+        const [project] = (await rawSql(`
+          insert into public.projects (workspace_id, name, visibility, created_by, portal_enabled)
+          values ('${probeWorkspaceId}', 'F020b probe project', 'workspace', '${probeOwnerId}', false)
+          returning id;
+        `)) as Array<{ id: string }>;
+        probeProjectId = project.id;
+
+        const sql = `
+          do $probe$
+          declare
+            v_row_count int;
+          begin
+            alter table public.projects
+              add column if not exists f020b_probe_never_committed text;
+
+            -- Uses the workspace OWNER, not a client-role actor, on
+            -- purpose (root-caused via direct hosted-project reproduction,
+            -- see F088's handoff for the full mechanism). For UPDATE,
+            -- Postgres RLS requires a row to pass BOTH the table's SELECT
+            -- policy and the UPDATE policy's own USING clause before it is
+            -- even considered for the write -- not the UPDATE policy alone.
+            -- An owner's visibility comes from wm.role in ('owner',
+            -- 'admin') alone (see is_project_visible_to_row), with no
+            -- project_members dependency at all, so this probe's only
+            -- live dependency for row-matching is the single
+            -- workspace_members row created immediately above, in the
+            -- same database this DO block itself runs against.
+            set local request.jwt.claims to '{"sub":"${probeOwnerId}","role":"authenticated"}';
+            set local role authenticated;
+
+            begin
+              update public.projects
+                 set f020b_probe_never_committed = 'author-supplied value'
+               where id = '${probeProjectId}';
+              get diagnostics v_row_count = row_count;
+              if v_row_count = 0 then
+                -- Distinguish "the guard let this through" from "the UPDATE
+                -- never reached the guard at all" -- e.g. RLS silently
+                -- filtered the row so 0 rows matched, which produces the
+                -- exact same observable "no exception raised" outcome as a
+                -- real guard hole. Both must not be reported as
+                -- GUARD_DID_NOT_FIRE, which claims the guard specifically
+                -- failed to reject a value it saw.
+                raise exception 'PROBE_ROW_NOT_MATCHED: the UPDATE affected 0 rows -- the probe proves nothing about the guard, since it was never invoked on this row';
+              end if;
+              raise exception 'GUARD_DID_NOT_FIRE';
+            exception
+              when sqlstate '42501' then
+                null; -- expected: the allow-list guard rejected the new column
+            end;
+
+            reset role;
+            raise exception 'ROLLBACK_PROBE_TRANSACTION';
+          end;
+          $probe$;
+        `;
+
+        let threw: unknown = null;
+        try {
+          await rawSql(sql);
+        } catch (err) {
+          threw = err;
+        }
+
+        expect(threw).not.toBeNull();
+        const message = String(threw);
+        expect(message).not.toMatch(/PROBE_ROW_NOT_MATCHED/);
+        expect(message).not.toMatch(/GUARD_DID_NOT_FIRE/);
+        expect(message).toMatch(/ROLLBACK_PROBE_TRANSACTION/);
+
+        const columns = (await rawSql(
+          `select column_name from information_schema.columns
+            where table_schema = 'public' and table_name = 'projects'
+              and column_name = 'f020b_probe_never_committed';`,
+        )) as unknown[];
+        expect(columns).toEqual([]);
+      } finally {
+        // Guaranteed even on assertion failure -- this suite mutates the
+        // real hosted project, so no probe fixture may survive the run.
+        if (probeProjectId) {
+          await rawSql(`delete from public.projects where id = '${probeProjectId}';`).catch(
+            () => {},
+          );
+        }
+        if (probeWorkspaceId) {
+          await rawSql(
+            `delete from public.workspace_members where workspace_id = '${probeWorkspaceId}';`,
+          ).catch(() => {});
+          await rawSql(`delete from public.workspaces where id = '${probeWorkspaceId}';`).catch(
+            () => {},
+          );
+        }
+        if (probeOwnerId) {
+          await rawSql(`delete from auth.users where id = '${probeOwnerId}';`).catch(() => {});
+        }
       }
-
-      expect(threw).not.toBeNull();
-      const message = String(threw);
-      expect(message).not.toMatch(/PROBE_ROW_NOT_MATCHED/);
-      expect(message).not.toMatch(/GUARD_DID_NOT_FIRE/);
-      expect(message).toMatch(/ROLLBACK_PROBE_TRANSACTION/);
-
-      const columns = (await rawSql(
-        `select column_name from information_schema.columns
-          where table_schema = 'public' and table_name = 'projects'
-            and column_name = 'f020b_probe_never_committed';`,
-      )) as unknown[];
-      expect(columns).toEqual([]);
     }, 30_000);
   });
 });

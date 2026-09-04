@@ -178,10 +178,44 @@ describe("PortalApprovalActions (F005)", () => {
   });
 
   it("test_AS_014_ref_is_cleared_after_ok_false_allowing_retry", async () => {
+    // Same rationale as `test_AS_014_ref_is_cleared_after_a_rejected_action_allowing_retry`
+    // and `test_AS_016_ref_is_cleared_after_ok_false_allowing_retry`: the
+    // real Base UI `Button` enforces `disabled` inside its own click
+    // closure, so stripping the DOM `disabled` attribute does not make a
+    // second click reach the handler while React's `isPending` is still
+    // settling from the first transition -- that's a race against React's
+    // scheduling, not what AS-014 is about. The stub Button below always
+    // forwards `onClick`, so the second click deterministically reaches
+    // `handleApprove`, and only `inFlightRef.current` can still be
+    // blocking it -- which is exactly what this assertion is about.
+    vi.resetModules();
+    vi.doMock("@/components/ui/button", () => ({
+      Button: ({
+        children,
+        disabled,
+        onClick,
+        ...rest
+      }: {
+        children?: ReactNode;
+        disabled?: boolean;
+        onClick?: MouseEventHandler<HTMLButtonElement>;
+        [key: string]: unknown;
+      }) =>
+        createElement(
+          "button",
+          { ...rest, "data-disabled": disabled ? "" : undefined, onClick },
+          children,
+        ),
+    }));
+
+    const { PortalApprovalActions: UnguardedUiComponent } = await import(
+      "./approval-actions"
+    );
+
     const first = deferred<{ ok: false; error: string }>();
     approveMock.mockReturnValueOnce(first.promise);
 
-    render(createElement(PortalApprovalActions, { taskId: "task-1" }));
+    render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
 
     fireEvent.click(screen.getByRole("button", { name: /approve/i }));
     await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
@@ -195,18 +229,14 @@ describe("PortalApprovalActions (F005)", () => {
 
     const second = deferred<{ ok: true; data: { taskId: string } }>();
     approveMock.mockReturnValueOnce(second.promise);
-    const retryButton = screen.getByRole("button", { name: /approve/i });
-    retryButton.removeAttribute("disabled");
-    fireEvent.click(retryButton);
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
 
-    // F073: the whole suite's default `waitFor` budget is now 5000ms (see
-    // tests/setup/testing-library.ts) precisely because of the flake this
-    // comment used to describe -- per-call overrides here were whack-a-mole
-    // (fixing this call just moved the failure to the next-slowest
-    // `waitFor` in this same file). No override needed any more.
     await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
     second.resolve({ ok: true, data: { taskId: "task-1" } });
+
+    vi.doUnmock("@/components/ui/button");
+    vi.resetModules();
   });
 
   it("test_AS_015_second_synchronous_approve_click_issues_no_second_call", async () => {
