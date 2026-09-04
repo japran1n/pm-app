@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+// F018 (missions/20260903-portal): matches `time_entries_work_category_check`
+// (supabase/migrations/20261010010000_f017_project_budgets_work_category_hours_rpcs.sql).
+// Nullable everywhere it's used below -- an entry with no category picked
+// stays "uncategorised" rather than being forced to guess (F017's own
+// migration comment, restated here since this is the schema's other
+// source of truth for the same closed set).
+export const workCategorySchema = z.enum([
+  "design",
+  "development",
+  "content_seo",
+  "pm",
+  "qa",
+]);
+
+export type WorkCategory = z.infer<typeof workCategorySchema>;
+
 // Validates logTimeEntry input (F110: AS-161, AS-162, AS-163). Mirrors the
 // file-layout convention established by lib/validation/tasks.ts and
 // lib/validation/comments.ts.
@@ -38,6 +54,11 @@ export const logTimeEntrySchema = z.object({
     .trim()
     .max(10000, "Note must be 10000 characters or fewer.")
     .optional(),
+  // F018: optional/nullable, same "omitted vs explicit null" shape as
+  // `note` below -- an omitted category defaults to the column's own
+  // `null` default (uncategorised), an explicit null clears it, a valid
+  // enum value sets it.
+  workCategory: workCategorySchema.nullable().optional(),
 });
 
 export type LogTimeEntryInput = z.infer<typeof logTimeEntrySchema>;
@@ -74,6 +95,10 @@ const editableTimeEntryFields = z.object({
     .trim()
     .max(10000, "Note must be 10000 characters or fewer.")
     .nullable(),
+  // F018: same nullable shape as `note` above -- present + null clears
+  // an existing category back to uncategorised, present + a valid value
+  // sets it, omitted leaves the existing value untouched.
+  workCategory: workCategorySchema.nullable(),
 });
 
 const partialEditableTimeEntryFields = editableTimeEntryFields.partial();
@@ -82,6 +107,18 @@ export const editTimeEntrySchema = z.object({
   entryId: z.string().uuid("Invalid time entry."),
   updates: partialEditableTimeEntryFields,
 });
+
+// F018: the team-hours-view-only category setter (setTimeEntryCategory).
+// Deliberately its own schema/action, not a call into editTimeEntrySchema
+// -- see lib/actions/time-entries.ts's doc comment on why this one field
+// is writable by any project team writer, not just the entry's own
+// author (AS-169 stays author-only for every other field).
+export const setTimeEntryCategorySchema = z.object({
+  entryId: z.string().uuid("Invalid time entry."),
+  workCategory: workCategorySchema.nullable(),
+});
+
+export type SetTimeEntryCategoryInput = z.infer<typeof setTimeEntryCategorySchema>;
 
 export type EditTimeEntryInput = z.infer<typeof editTimeEntrySchema>;
 export type EditTimeEntryUpdates = z.infer<

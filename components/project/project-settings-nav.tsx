@@ -38,6 +38,12 @@ const ENTRIES = [
   // same weekly-edit cadence as deliverables, same reasoning for a
   // settings sub-nav tab rather than a top-level project tab.
   { slug: "record", label: "Record" },
+  // F018 (missions/20260903-portal): sold-hours budget setup (AS-033) —
+  // same settings sub-nav placement as deliverables/record, reached from
+  // here rather than a top-level project tab (a PM sets this up once per
+  // period, not a daily surface, but it's still a project setting, not
+  // buried further than deliverables/phases are).
+  { slug: "budget", label: "Budget" },
 ] as const;
 
 export function ProjectSettingsNav({

@@ -2177,6 +2177,7 @@ export function TaskDetailSheet({
               <MobileCollapsibleSection title="Time tracking">
                 <TimeTracking
                   taskId={task.id}
+                  taskTags={task.tags}
                   timeEntries={timeEntries}
                   members={members}
                   estimateMinutes={task.estimateMinutes}

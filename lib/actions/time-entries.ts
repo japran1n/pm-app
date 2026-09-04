@@ -6,7 +6,9 @@ import {
   logTimeEntrySchema,
   editTimeEntrySchema,
   deleteTimeEntrySchema,
+  setTimeEntryCategorySchema,
   type EditTimeEntryUpdates,
+  type WorkCategory,
 } from "@/lib/validation/time-entries";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -28,6 +30,7 @@ export type LogTimeEntryResult =
         entryDate: string;
         note: string | null;
         createdAt: string;
+        workCategory: WorkCategory | null;
       };
     }
   | { ok: false; error: string };
@@ -64,6 +67,7 @@ export async function logTimeEntry(
   billable: boolean,
   entryDate: string,
   note?: string,
+  workCategory?: WorkCategory | null,
 ): Promise<LogTimeEntryResult> {
   const parsed = logTimeEntrySchema.safeParse({
     taskId,
@@ -71,6 +75,7 @@ export async function logTimeEntry(
     billable,
     entryDate,
     note,
+    workCategory,
   });
 
   if (!parsed.success) {
@@ -179,8 +184,11 @@ export async function logTimeEntry(
       billable: parsed.data.billable,
       entry_date: parsed.data.entryDate,
       note: parsed.data.note ?? null,
+      work_category: parsed.data.workCategory ?? null,
     })
-    .select("id, task_id, user_id, minutes, billable, entry_date, note, created_at")
+    .select(
+      "id, task_id, user_id, minutes, billable, entry_date, note, created_at, work_category",
+    )
     .single();
 
   if (insertError || !inserted) {
@@ -202,6 +210,7 @@ export async function logTimeEntry(
       entryDate: inserted.entry_date,
       note: inserted.note,
       createdAt: inserted.created_at,
+      workCategory: inserted.work_category as WorkCategory | null,
     },
   };
 }
@@ -431,6 +440,7 @@ export type EditTimeEntryResult =
         userId: string;
         minutes: number;
         billable: boolean;
+        workCategory?: WorkCategory | null;
         entryDate: string;
         note: string | null;
       };
@@ -576,6 +586,7 @@ export async function editTimeEntry(
     billable?: boolean;
     entry_date?: string;
     note?: string | null;
+    work_category?: WorkCategory | null;
   } = {};
   if ("minutes" in parsed.data.updates) {
     updatePayload.minutes = parsed.data.updates.minutes;
@@ -589,12 +600,15 @@ export async function editTimeEntry(
   if ("note" in parsed.data.updates) {
     updatePayload.note = parsed.data.updates.note;
   }
+  if ("workCategory" in parsed.data.updates) {
+    updatePayload.work_category = parsed.data.updates.workCategory;
+  }
 
   const { data: updated, error: updateError } = await admin
     .from("time_entries")
     .update(updatePayload)
     .eq("id", parsed.data.entryId)
-    .select("id, task_id, user_id, minutes, billable, entry_date, note")
+    .select("id, task_id, user_id, minutes, billable, entry_date, note, work_category")
     .single();
 
   if (updateError || !updated) {
@@ -615,7 +629,143 @@ export async function editTimeEntry(
       billable: updated.billable,
       entryDate: updated.entry_date,
       note: updated.note,
+      workCategory: updated.work_category as WorkCategory | null,
     },
+  };
+}
+
+export type SetTimeEntryCategoryResult =
+  | { ok: true; data: { id: string; workCategory: WorkCategory | null } }
+  | { ok: false; error: string };
+
+// setTimeEntryCategory (F018): the ONE field of a time entry any project
+// team writer may set, not just the entry's own author. editTimeEntry
+// stays author-only for every other field (AS-169's own rule, unchanged);
+// this is a deliberately separate, narrower action so a PM cleaning up
+// old uncategorised entries from the team hours view (this feature's own
+// "editable in place from the team hours view" requirement) never needs
+// author-equivalent rights over someone else's minutes/billable/note/date.
+// Gate: same "team, not client" shape as project_hours_team's own RPC
+// check (is_project_visible_to + NOT is_project_client) — expressed here
+// via canWrite(role), which already excludes viewer and client
+// (lib/auth/permissions.ts), plus isProjectVisibleToCaller so a private
+// project's existence is never disclosed to a caller who can't see it.
+export async function setTimeEntryCategory(
+  entryId: string,
+  workCategory: WorkCategory | null,
+): Promise<SetTimeEntryCategoryResult> {
+  const parsed = setTimeEntryCategorySchema.safeParse({ entryId, workCategory });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Enter a valid category.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in to edit a time entry." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: entryRow, error: entryError } = await admin
+    .from("time_entries")
+    .select(
+      "id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+    )
+    .eq("id", parsed.data.entryId)
+    .maybeSingle();
+
+  if (entryError || !entryRow) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const task = entryRow.tasks as
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }
+    | {
+        project_id: string;
+        deleted_at: string | null;
+        projects:
+          | { workspace_id: string; visibility: string }
+          | { workspace_id: string; visibility: string }[]
+          | null;
+      }[]
+    | null;
+  const taskRow = Array.isArray(task) ? task[0] : task;
+
+  if (!taskRow || taskRow.deleted_at) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const project = taskRow.projects;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Time entry not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok || !canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this time entry.",
+    };
+  }
+
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: taskRow.project_id,
+        visibility: (projectRow?.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
+    return {
+      ok: false,
+      error: "You don't have permission to edit this time entry.",
+    };
+  }
+
+  // "Team, not client" — a client caller is already excluded by canWrite
+  // above (canWrite's own predicate names 'client' explicitly, see that
+  // module's header), so no separate is_project_client check is needed
+  // here beyond that.
+  const { data: updated, error: updateError } = await admin
+    .from("time_entries")
+    .update({ work_category: parsed.data.workCategory })
+    .eq("id", parsed.data.entryId)
+    .select("id, work_category")
+    .single();
+
+  if (updateError || !updated) {
+    logger.error("setTimeEntryCategory: update failed", { error: updateError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: { id: updated.id, workCategory: updated.work_category as WorkCategory | null },
   };
 }
 

@@ -1093,6 +1093,7 @@ export type Database = {
           id: string
           kind: string
           payload: Json
+          project_id: string | null
           read_at: string | null
           task_id: string | null
           user_id: string
@@ -1105,6 +1106,7 @@ export type Database = {
           id?: string
           kind: string
           payload?: Json
+          project_id?: string | null
           read_at?: string | null
           task_id?: string | null
           user_id: string
@@ -1117,6 +1119,7 @@ export type Database = {
           id?: string
           kind?: string
           payload?: Json
+          project_id?: string | null
           read_at?: string | null
           task_id?: string | null
           user_id?: string
@@ -1128,6 +1131,13 @@ export type Database = {
             columns: ["comment_id"]
             isOneToOne: false
             referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -2636,6 +2646,7 @@ export type Database = {
           id: string
           kind: string
           payload: Json
+          project_id: string | null
           read_at: string | null
           task_id: string | null
           user_id: string
@@ -3067,6 +3078,7 @@ export type Database = {
         }[]
       }
       sweep_overdue_blocking_deliverables: { Args: never; Returns: number }
+      sweep_project_budget_thresholds: { Args: never; Returns: number }
       tiptap_doc_from_text: { Args: { p_text: string }; Returns: Json }
       tiptap_text_from_doc: { Args: { p_doc: Json }; Returns: string }
       transfer_workspace_ownership: {

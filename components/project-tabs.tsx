@@ -26,12 +26,18 @@
 // (components/project/project-settings-nav.tsx) is what lets a caller move
 // between the settings/, settings/columns, and settings/phases routes once
 // they're there.
+//
+// F018 (missions/20260903-portal) adds "Hours" as a fifth tab, linking to
+// `${basePath}/hours` — the team hours view (AS-038), its own top-level
+// route per this feature's own spec (not a settings sub-page: a PM reads
+// this weekly/daily, closer to Board/List's own cadence than to the
+// once-per-period Budget settings tab).
 
 import { useRouter, usePathname } from "next/navigation";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ProjectTab = "board" | "list" | "docs" | "settings";
+type ProjectTab = "board" | "list" | "docs" | "hours" | "settings";
 
 export function ProjectTabs({
   workspaceSlug,
@@ -50,6 +56,8 @@ export function ProjectTabs({
   // `${basePath}/list` or the board route.
   const activeTab: ProjectTab = pathname?.startsWith(`${basePath}/settings`)
     ? "settings"
+    : pathname?.startsWith(`${basePath}/hours`)
+    ? "hours"
     : pathname?.startsWith(`${basePath}/docs`)
     ? "docs"
     : pathname?.startsWith(`${basePath}/list`)
@@ -67,6 +75,7 @@ export function ProjectTabs({
         <TabsTrigger value="board">Board</TabsTrigger>
         <TabsTrigger value="list">List</TabsTrigger>
         <TabsTrigger value="docs">Docs</TabsTrigger>
+        <TabsTrigger value="hours">Hours</TabsTrigger>
         <TabsTrigger value="settings">Settings</TabsTrigger>
       </TabsList>
     </Tabs>

@@ -63,7 +63,15 @@ import {
   startTimer,
   stopTimer,
 } from "@/lib/actions/time-entries";
+import { workCategorySchema, type WorkCategory } from "@/lib/validation/time-entries";
 import { formatDuration } from "@/lib/time/format-duration";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 // F167 (AS-300, AS-301, AS-302): the single ratio/flag source shared with
 // TaskCard's over-estimate badge — see that file's doc comment for the
 // null-means-no-estimate contract.
@@ -83,7 +91,41 @@ export type TimeEntry = {
   billable: boolean;
   entryDate: string;
   note: string | null;
+  /** F018 (missions/20260903-portal): nullable -- "uncategorised" is
+   * honest for an entry logged before this feature shipped, or one whose
+   * author hasn't picked a category. Editable in place (this file's own
+   * category select), never forced. */
+  workCategory?: WorkCategory | null;
 };
+
+const CATEGORY_LABELS: Record<WorkCategory, string> = {
+  design: "Design",
+  development: "Development",
+  content_seo: "Content / SEO",
+  pm: "PM",
+  qa: "QA",
+};
+
+const CATEGORY_VALUES = workCategorySchema.options;
+const UNCATEGORISED_VALUE = "__uncategorised__";
+
+// F018: defaults the category select from the task's tags -- this schema
+// has no dedicated task "type" column (checked: `create table if not
+// exists tasks`, 20260818013434_create_tasks.sql, has title/description/
+// status/priority/tags but no type), so a tag matching one of
+// time_entries.work_category's own values is the closest real signal
+// this codebase has for "what kind of work is this task". No match (or
+// no tags) leaves the category unset -- an honest "pick one" default,
+// not a guess. AUTONOMOUS_DECISION, see this feature's handoff.
+export function defaultCategoryFromTags(tags: string[] | undefined): WorkCategory | null {
+  if (!tags) return null;
+  for (const tag of tags) {
+    const normalized = tag.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const match = CATEGORY_VALUES.find((value) => value === normalized);
+    if (match) return match;
+  }
+  return null;
+}
 
 export type TimeTrackingMember = {
   userId: string;
@@ -149,6 +191,7 @@ function sortedNewestFirst(entries: TimeEntry[]): TimeEntry[] {
 
 export function TimeTracking({
   taskId,
+  taskTags,
   timeEntries,
   members,
   estimateMinutes = null,
@@ -158,6 +201,12 @@ export function TimeTracking({
   onActiveTimerChange,
 }: {
   taskId: string;
+  /** F018: this task's own tags, used only to default the manual
+   * log-time form's category select (see defaultCategoryFromTags above).
+   * Optional/undefined (caller hasn't fetched it yet) leaves the
+   * category select unset, same "safe default" convention as
+   * estimateMinutes/activeTimer below. */
+  taskTags?: string[];
   /** This task's time entries. Defaults handled by caller — an empty array
    * is a valid state (no time logged yet). */
   timeEntries: TimeEntry[];
@@ -199,6 +248,9 @@ export function TimeTracking({
   const [billableDraft, setBillableDraft] = useState(true);
   const [dateDraft, setDateDraft] = useState(todayDateString());
   const [noteDraft, setNoteDraft] = useState("");
+  const [categoryDraft, setCategoryDraft] = useState<WorkCategory | null>(() =>
+    defaultCategoryFromTags(taskTags),
+  );
 
   const [isStartingOrStopping, startTimerTransition] = useTransition();
   const [isLogging, startLogTransition] = useTransition();
@@ -209,6 +261,7 @@ export function TimeTracking({
   const [editBillable, setEditBillable] = useState(true);
   const [editDate, setEditDate] = useState("");
   const [editNote, setEditNote] = useState("");
+  const [editCategory, setEditCategory] = useState<WorkCategory | null>(null);
   const [isSavingEdit, startEditTransition] = useTransition();
 
   const [now, setNow] = useState(() => Date.now());
@@ -223,6 +276,7 @@ export function TimeTracking({
     setMinutesDraft("");
     setDateDraft(todayDateString());
     setNoteDraft("");
+    setCategoryDraft(defaultCategoryFromTags(taskTags));
     setEditingEntryId(null);
   }
 
@@ -282,6 +336,7 @@ export function TimeTracking({
               billable: result.data.billable,
               entryDate: result.data.entryDate,
               note: result.data.note,
+              workCategory: null,
             },
           ]);
         }
@@ -304,6 +359,7 @@ export function TimeTracking({
         billableDraft,
         dateDraft,
         noteDraft.trim() || undefined,
+        categoryDraft,
       );
       if (result.ok) {
         setLocalEntries((previous) => [
@@ -316,12 +372,14 @@ export function TimeTracking({
             billable: result.data.billable,
             entryDate: result.data.entryDate,
             note: result.data.note,
+            workCategory: result.data.workCategory,
           },
         ]);
         setMinutesDraft("");
         setBillableDraft(true);
         setDateDraft(todayDateString());
         setNoteDraft("");
+        setCategoryDraft(defaultCategoryFromTags(taskTags));
         toast.success("Time logged.");
       } else {
         toast.error(result.error);
@@ -355,6 +413,7 @@ export function TimeTracking({
     setEditBillable(entry.billable);
     setEditDate(entry.entryDate);
     setEditNote(entry.note ?? "");
+    setEditCategory(entry.workCategory ?? null);
   }
 
   function cancelEdit() {
@@ -371,6 +430,7 @@ export function TimeTracking({
         billable: editBillable,
         entryDate: editDate,
         note: editNote.trim() || null,
+        workCategory: editCategory,
       });
       if (result.ok) {
         setLocalEntries((previous) =>
@@ -384,6 +444,7 @@ export function TimeTracking({
                   billable: result.data.billable,
                   entryDate: result.data.entryDate,
                   note: result.data.note,
+                  workCategory: result.data.workCategory ?? editCategory,
                 }
               : entry,
           ),
@@ -590,6 +651,30 @@ export function TimeTracking({
               Billable
             </Label>
           </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor={`time-category-${taskId}`} className="text-xs">
+              Category
+            </Label>
+            <Select
+              value={categoryDraft ?? UNCATEGORISED_VALUE}
+              disabled={isLogging || !canTrackTime}
+              onValueChange={(value) =>
+                setCategoryDraft(value === UNCATEGORISED_VALUE ? null : (value as WorkCategory))
+              }
+            >
+              <SelectTrigger id={`time-category-${taskId}`} className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNCATEGORISED_VALUE}>Uncategorised</SelectItem>
+                {CATEGORY_VALUES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {CATEGORY_LABELS[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor={`time-note-${taskId}`} className="text-xs">
@@ -667,6 +752,25 @@ export function TimeTracking({
                     />
                     <Label className="text-xs">Billable</Label>
                   </div>
+                  <Select
+                    value={editCategory ?? UNCATEGORISED_VALUE}
+                    disabled={isSavingEdit}
+                    onValueChange={(value) =>
+                      setEditCategory(value === UNCATEGORISED_VALUE ? null : (value as WorkCategory))
+                    }
+                  >
+                    <SelectTrigger className="w-40" aria-label="Category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNCATEGORISED_VALUE}>Uncategorised</SelectItem>
+                      {CATEGORY_VALUES.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {CATEGORY_LABELS[value]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Input
                   aria-label="Note"
@@ -712,6 +816,9 @@ export function TimeTracking({
                   </span>
                   <Badge variant="secondary" className="text-xs">
                     {entry.billable ? "Billable" : "Non-billable"}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {entry.workCategory ? CATEGORY_LABELS[entry.workCategory] : "Uncategorised"}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
                     {formatEntryDate(entry.entryDate)}
