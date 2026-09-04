@@ -246,36 +246,40 @@ export async function searchWorkspaceTasks(
     }
   }
 
-  const resultsPerProject = await Promise.all(
-    projects.map(async (project) => {
-      const { data, error } = await supabase.rpc("search_tasks", {
-        p_project_id: project.id,
-        p_query: trimmed,
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      return (data ?? []).map((task: SearchTasksRow) => ({
-        id: task.id,
-        title: task.title,
-        status: task.status,
-        ...resolveStatus(task.status_id, task.status),
-        priority: task.priority,
-        projectId: task.project_id,
-        projectName: projectNameById.get(task.project_id) ?? project.name,
-        projectKey: projectKeyById.get(task.project_id) ?? project.key,
-        number: task.number,
-        titleMatches: task.title
-          .toLowerCase()
-          .includes(trimmed.toLowerCase()),
-      }));
-    }),
+  // F087 (perf audit item 6): one `search_tasks_multi` RPC for the whole
+  // workspace instead of one `search_tasks` RPC per project — see that
+  // function's migration (20261027010000_f087_search_tasks_multi_project.sql)
+  // for why this is safe to batch (identical ranking/soft-delete/RLS
+  // posture to the single-project function, just one `= any(...)`
+  // predicate instead of N separate calls).
+  const { data: multiData, error: multiError } = await supabase.rpc(
+    "search_tasks_multi",
+    {
+      p_project_ids: projects.map((project) => project.id),
+      p_query: trimmed,
+    },
   );
 
-  const fullTextResults = resultsPerProject
-    .flat()
+  if (multiError) {
+    throw multiError;
+  }
+
+  const rankedResults: Array<SearchTaskResult & { titleMatches: boolean }> = (
+    multiData ?? []
+  ).map((task: SearchTasksRow) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    ...resolveStatus(task.status_id, task.status),
+    priority: task.priority,
+    projectId: task.project_id,
+    projectName: projectNameById.get(task.project_id) ?? task.project_id,
+    projectKey: projectKeyById.get(task.project_id) ?? null,
+    number: task.number,
+    titleMatches: task.title.toLowerCase().includes(trimmed.toLowerCase()),
+  }));
+
+  const fullTextResults: SearchTaskResult[] = rankedResults
     .sort((a, b) => Number(b.titleMatches) - Number(a.titleMatches))
     .map(({ titleMatches, ...rest }) => {
       void titleMatches;

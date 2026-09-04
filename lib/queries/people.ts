@@ -87,38 +87,61 @@ export async function resolvePeople(
     (profileRows ?? []).map((row) => [row.id, row]),
   );
 
-  await Promise.all(
-    ids.map(async (id) => {
-      const profileRow = profileById.get(id);
-      let email: string | null = null;
-      let metadataName: string | null = null;
-
-      if (!profileRow?.display_name) {
-        try {
-          const { data, error } = await admin.auth.admin.getUserById(id);
-          if (error) {
-            logger.error("resolvePeople: getUserById failed for", { userId: id, error });
-          } else if (data?.user) {
-            email = data.user.email ?? null;
-            metadataName =
-              (data.user.user_metadata?.full_name as string | undefined) ??
-              null;
-          }
-        } catch (lookupError) {
-          logger.error("resolvePeople: getUserById threw for", { userId: id, error: lookupError });
-        }
-      }
-
-      summaries.set(id, {
-        name:
-          profileRow?.display_name ??
-          metadataName ??
-          (email ? emailLocalPart(email) : null),
-        email,
-        avatarUrl: profileRow?.avatar_url ?? null,
-      });
-    }),
+  // F087 (perf audit item 7): the GoTrue Admin API has no bulk "get
+  // users by ids" endpoint (`auth.admin.listUsers()` only supports
+  // page/perPage, not an id filter), so ids missing a `display_name`
+  // used to fall back to one `auth.admin.getUserById` HTTP call EACH,
+  // inside a `Promise.all` -- N admin API round-trips for N un-named
+  // users. `get_users_by_ids` (20261027020000_f087_batch_get_users_by_ids
+  // .sql) is a single SECURITY DEFINER RPC that reads `auth.users`
+  // directly for the whole id list in one round-trip; only the ids that
+  // still need it (no `display_name` yet) are sent, keyed into a map
+  // before the loop below reads it, same "batched lookup" shape the
+  // `profiles` query above already uses.
+  const idsNeedingAuthLookup = ids.filter(
+    (id) => !profileById.get(id)?.display_name,
   );
+
+  const authUserById = new Map<
+    string,
+    { email: string | null; metadataName: string | null }
+  >();
+
+  if (idsNeedingAuthLookup.length > 0) {
+    const { data: authRows, error: authError } = await admin.rpc(
+      "get_users_by_ids",
+      { p_ids: idsNeedingAuthLookup },
+    );
+
+    if (authError) {
+      logger.error("resolvePeople: get_users_by_ids failed", { error: authError });
+    } else {
+      for (const row of authRows ?? []) {
+        authUserById.set(row.id, {
+          email: row.email ?? null,
+          metadataName:
+            ((row.raw_user_meta_data as Record<string, unknown> | null)
+              ?.full_name as string | undefined) ?? null,
+        });
+      }
+    }
+  }
+
+  for (const id of ids) {
+    const profileRow = profileById.get(id);
+    const authUser = authUserById.get(id);
+    const email = authUser?.email ?? null;
+    const metadataName = authUser?.metadataName ?? null;
+
+    summaries.set(id, {
+      name:
+        profileRow?.display_name ??
+        metadataName ??
+        (email ? emailLocalPart(email) : null),
+      email,
+      avatarUrl: profileRow?.avatar_url ?? null,
+    });
+  }
 
   return summaries;
 }

@@ -2,20 +2,19 @@
 // with the status/priority color coding used elsewhere in the app (board
 // columns, priority badges)."
 //
-// Recharts' <ResponsiveContainer> only measures/renders its children once
-// mounted in a real browser-like DOM (ResizeObserver) — in a Node test
-// environment (this project's vitest.config.ts uses `environment: "node"`,
-// no jsdom), renderToStaticMarkup produces an empty shell, so a full DOM
-// render can't observe the <Cell> fill colors. Instead, this test calls
+// Both charts are hand-rolled markup (no chart library — F087 removed the
+// only Recharts usage in the repo from PriorityBarChart; StatusPieChart
+// never used one) whose bars/segments carry the fill colour on a plain
+// `data-color` attribute rather than an SVG `fill` prop. This test calls
 // PriorityBarChart/StatusPieChart directly as functions (valid for a React
 // function component — it returns the React element tree without needing
-// a renderer) and walks that tree to find each <Cell>, asserting its
-// `fill` prop against lib/task-colors.ts's PRIORITY_COLORS / STATUS_COLORS
-// — the single shared color-coding source also used by the priority badge
-// (components/task/task-card.tsx) and the board column header dot
-// (components/board/board-column.tsx). This proves the data-to-color
-// wiring inside the components themselves, independent of how Recharts
-// chooses to render at runtime.
+// a renderer) and walks that tree to find each bar/segment element,
+// asserting its `data-color` prop against lib/task-colors.ts's
+// PRIORITY_COLORS / STATUS_COLORS — the single shared color-coding source
+// also used by the priority badge (components/task/task-card.tsx) and the
+// board column header dot (components/board/board-column.tsx). This
+// proves the data-to-color wiring inside the components themselves,
+// independent of how they choose to render at runtime.
 
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
@@ -42,14 +41,13 @@ import type {
 } from "@/lib/queries/dashboard";
 
 // Walks a React element tree structurally (via .props.children only —
-// never invoking a function component, since Recharts' internal
-// components (CartesianGrid, Bar, Pie, etc.) call hooks that require a
-// real render pass and blow up when called directly). Our own
-// PriorityBarChart/StatusPieChart declare their <Cell> children directly
-// as plain JSX elements passed down as props.children (built from the
-// `data` array via .map — see components/dashboard/*.tsx), so they're
-// already present in the tree without needing anything to be rendered:
-// this only needs to find them, not render Recharts itself.
+// never invoking a function component, since some nested elements would
+// need a real render pass to be safe to call directly). Our own
+// PriorityBarChart/StatusPieChart declare their bar/segment children
+// directly as plain JSX elements passed down as props.children (built
+// from the `data` array via .map — see components/dashboard/*.tsx), so
+// they're already present in the tree without needing anything to be
+// rendered: this only needs to find them, not render anything.
 type PropsElement = ReactElement<Record<string, unknown>>;
 
 function collectCells(node: ReactNode, out: PropsElement[] = []): PropsElement[] {
@@ -96,7 +94,7 @@ describe("Dashboard chart colors (F073: AS-135)", () => {
       PriorityBarChart({ data: PRIORITY_DATA }) as unknown as ReactNode,
     );
     const byPriority = new Map(
-      cells.map((cell) => [cell.props["data-priority"] as string, cell.props.fill]),
+      cells.map((cell) => [cell.props["data-priority"] as string, cell.props["data-color"]]),
     );
 
     expect(byPriority.size).toBe(PRIORITY_DATA.length);

@@ -284,7 +284,7 @@ export function HoursBurndownChart({
       </div>
 
       <div
-        role="img"
+        role="group"
         aria-label={buildChartSummary(points, soldMinutes)}
         data-testid="hours-burndown-chart"
         className="overflow-x-auto"

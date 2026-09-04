@@ -11,13 +11,18 @@
 // dragging.
 //
 // Keyboard alternative (this feature's own Draft-scope line): @dnd-kit's
-// `KeyboardSensor` already makes any `useDraggable` region keyboard-
-// operable (arrow keys move the DOM transform by its default coordinate
-// getter's step) with no extra code here -- the SAME sensor pair
+// `KeyboardSensor` makes any `useDraggable` region keyboard-operable
+// (arrow keys move the DOM transform by its default coordinate getter's
+// step) via its `onKeyDown` activator -- the SAME sensor pair
 // components/calendar/calendar-day-grid.tsx (F234) and
-// components/board/board.tsx already register, reused verbatim rather
-// than reimplemented, satisfies "keyboard alternative for adjusting
-// dates on a focused bar" without inventing a second interaction model.
+// components/board/board.tsx already register. The whole-bar move
+// region gets this for free by spreading `moveListeners` wholesale. The
+// two resize handles are nested inside that move region and only spread
+// `resize*Attributes` (tabIndex/role) plus a hand-rolled `onPointerDown`
+// that stops propagation to avoid double-activating both draggables from
+// one pointer press -- `onKeyDown` has to be wired the same deliberate
+// way (stopPropagation, then delegate to `resize*Listeners.onKeyDown`)
+// or the handle is keyboard-focusable but keyboard-inert.
 //
 // Rendering during a drag: this wrapper never mutates `layout` itself
 // (that stays this render's own authoritative position, driven by
@@ -137,18 +142,23 @@ export function TimelineBarDraggable({
             <div
               ref={setResizeStartNodeRef}
               data-testid="timeline-bar-resize-start"
+              aria-label={`Resize ${label} start date`}
               className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 group-hover:opacity-40 group-hover:bg-black"
               // stopPropagation: the resize handle is nested inside the
               // whole-bar move region above -- without stopping the
-              // pointerdown here it would bubble up and activate BOTH the
-              // move draggable and this resize draggable from a single
-              // pointer press, dnd-kit registers whichever sensor sees the
-              // event first with no defined winner. Scoping the handle's
-              // own drag to itself only is the standard "nested draggable
-              // handle" pattern.
+              // pointerdown/keydown here it would bubble up and activate
+              // BOTH the move draggable and this resize draggable from a
+              // single pointer press or key press, dnd-kit registers
+              // whichever sensor sees the event first with no defined
+              // winner. Scoping the handle's own drag to itself only is
+              // the standard "nested draggable handle" pattern.
               onPointerDown={(event) => {
                 event.stopPropagation();
                 resizeStartListeners?.onPointerDown?.(event);
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                resizeStartListeners?.onKeyDown?.(event);
               }}
               {...resizeStartAttributes}
             />
@@ -160,10 +170,15 @@ export function TimelineBarDraggable({
             <div
               ref={setResizeEndNodeRef}
               data-testid="timeline-bar-resize-end"
+              aria-label={`Resize ${label} end date`}
               className="absolute right-0 top-0 h-full w-2 cursor-ew-resize opacity-0 group-hover:opacity-40 group-hover:bg-black"
               onPointerDown={(event) => {
                 event.stopPropagation();
                 resizeEndListeners?.onPointerDown?.(event);
+              }}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                resizeEndListeners?.onKeyDown?.(event);
               }}
               {...resizeEndAttributes}
             />

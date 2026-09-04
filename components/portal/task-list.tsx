@@ -15,7 +15,7 @@
 // here is exactly the drift F007 exists to prevent.
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Inbox } from "lucide-react";
+import { Inbox, TriangleAlert } from "lucide-react";
 import type {
   RealtimePostgresChangesPayload,
   SupabaseClient,
@@ -350,10 +350,12 @@ export function PortalTaskList({
                       <span
                         className={
                           overdue
-                            ? "shrink-0 text-xs font-medium text-destructive"
-                            : "shrink-0 text-xs text-muted-foreground"
+                            ? "inline-flex shrink-0 items-center gap-1 text-xs font-medium text-destructive"
+                            : "inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
                         }
                       >
+                        {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
+                        <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
                         {formatDate(task.dueDate)}
                       </span>
                     )}

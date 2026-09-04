@@ -3196,6 +3196,14 @@ export type Database = {
           name: string
         }[]
       }
+      get_users_by_ids: {
+        Args: { p_ids: string[] }
+        Returns: {
+          email: string
+          id: string
+          raw_user_meta_data: Json
+        }[]
+      }
       get_workspace_time_by_person: {
         Args: {
           p_end_date: string
@@ -3370,6 +3378,51 @@ export type Database = {
       }
       search_tasks: {
         Args: { p_project_id: string; p_query: string }
+        Returns: {
+          assignee_id: string | null
+          author_id: string
+          client_visible: boolean
+          created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
+          deleted_via_task_id: string | null
+          description: string | null
+          description_json: Json | null
+          description_text: string | null
+          due_date: string | null
+          estimate_minutes: number | null
+          id: string
+          last_occurrence_at: string | null
+          number: number
+          page_order: number | null
+          page_slug: string | null
+          parent_task_id: string | null
+          pending_client_approval: boolean
+          phase_id: string | null
+          points: number | null
+          position: number
+          priority: string | null
+          project_id: string
+          recurrence: Json | null
+          recurrence_parent_id: string | null
+          search_vector: unknown
+          start_date: string | null
+          status: string
+          status_id: string | null
+          tags: string[]
+          task_type_id: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tasks"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      search_tasks_multi: {
+        Args: { p_project_ids: string[]; p_query: string }
         Returns: {
           assignee_id: string | null
           author_id: string

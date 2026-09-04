@@ -277,7 +277,7 @@ export function PhaseTimeline({
 
   return (
     <div
-      role="img"
+      role="group"
       aria-label={buildTimelineSummary(phases)}
       data-testid="phase-timeline"
       className="flex flex-col gap-4 rounded-lg border border-border p-5"
