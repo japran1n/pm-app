@@ -833,3 +833,32 @@ opposite arrangement and every one of them eventually fired.
   **All planned features, all remediation, and every blocker are complete.**
 
 ## Final verification
+
+### FINAL VERIFICATION: mission complete, nothing blocks it
+
+Report: missions/20260903-portal/milestones/FINAL-verification.md
+
+The reviewer probed all four routes I named and found no way through. The
+structural wrapper covers `from()` writes and, importantly, does so correctly —
+blockedPreviewWrite returns a thenable proxy, so `.insert(x).select().single()`
+and `.delete().eq(...)` both resolve to the refusal rather than throwing
+mid-chain. It does NOT cover .rpc(), storage, or the admin client, and the
+implementation says so in its own comments with the correct reason: portal reads
+call read-only RPCs through the same client. Those paths are instead covered by
+assertNotPreview() as the first statement of each of the eight actions, and an
+exhaustive sweep of portal component imports found no ninth path and no route
+handler at a path the preview cookies reach.
+
+Sign-out under preview never calls auth.signOut() at all — it expires the four
+cookies and returns the admin to the picker. The mint-time audit is genuinely
+fail-closed: it calls the RPC directly, bypassing writeAudit's swallow, and
+returns before any cookie is set, so no cookie can exist without a row. On TTL
+expiry all four cookies lapse together and the request degrades to the admin's
+own session, which then fails canViewClientPortal — no half-authenticated portal.
+
+Recorded, non-blocking: deleteComment and editComment take the actor from the
+session and mutate through the admin client, so under preview they would
+attribute to the client. Neither is imported by any portal component — reaching
+them requires hand-crafting a Server Action ID — and the actor already holds
+those rights on /w/*, so it is misattribution of a permitted act rather than
+escalation. Worth closing eventually; not worth blocking on.
