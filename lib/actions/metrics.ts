@@ -47,6 +47,9 @@ import {
   MAX_ATTACHMENT_SIZE_BYTES,
 } from "@/lib/validation/attachments";
 import { uploadImprovementImageSchema } from "@/lib/validation/metrics";
+import { requireActiveMembership } from "@/lib/auth/require-membership";
+import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import { isClient } from "@/lib/auth/permissions";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type {
   MetricDirection,
@@ -1059,4 +1062,120 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
   await revalidateMeasurementSettings(extra.extra.workspaceSlug, extra.projectId);
 
   return { ok: true, data: toImprovementData(updated) };
+}
+
+// ---------------------------------------------------------------------
+// getImprovementImageSignedUrl — F021 (AS-042): the portal Results view's
+// before/after images read through this, never a persisted URL, for the
+// same reason getAttachmentSignedUrl documents on itself: the bucket is
+// private and signed URLs expire (SIGNED_URL_TTL_SECONDS, 1h). Mirrors
+// getAttachmentSignedUrl's own three-check shape (active membership,
+// portal-enabled for a client caller, project-visible-to-caller) rather
+// than relying solely on the Storage RLS policy this migration
+// (20261013010000) already applies to `improvements/{project_id}/...`
+// objects — same "second line, not the only line" convention every
+// signed-url action in this codebase follows (see that function's own
+// header, and portal-deliverables.ts's identical comment).
+//
+// Unlike getAttachmentSignedUrl there is no separate `client_visible`
+// column to check on the OBJECT itself for a client caller — F020's own
+// migration made `project_improvements.client_visible` the single flag
+// (no independent one on metric_snapshots/images), so this function
+// checks that flag directly rather than a task's.
+// ---------------------------------------------------------------------
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+export type GetImprovementImageSignedUrlResult =
+  | { ok: true; signedUrl: string }
+  | { ok: false; error: string };
+
+export async function getImprovementImageSignedUrl(
+  improvementId: string,
+  side: "before" | "after",
+): Promise<GetImprovementImageSignedUrlResult> {
+  const parsed = uploadImprovementImageSchema.pick({ improvementId: true }).safeParse({
+    improvementId,
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid improvement." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: improvementRow, error: improvementError } = await admin
+    .from("project_improvements")
+    .select(
+      "id, project_id, before_path, after_path, client_visible, projects(workspace_id, visibility, portal_enabled, deleted_at)",
+    )
+    .eq("id", parsed.data.improvementId)
+    .maybeSingle();
+
+  if (improvementError || !improvementRow) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  const project = improvementRow.projects as
+    | { workspace_id: string; visibility: string; portal_enabled: boolean; deleted_at: string | null }
+    | { workspace_id: string; visibility: string; portal_enabled: boolean; deleted_at: string | null }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!projectRow || projectRow.deleted_at || !workspaceId) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  const objectPath = side === "before" ? improvementRow.before_path : improvementRow.after_path;
+  if (!objectPath) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+  if (!membership.ok) {
+    return { ok: false, error: "You don't have permission to view this image." };
+  }
+
+  if (isClient({ role: membership.role }) && !improvementRow.client_visible) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  if (isClient({ role: membership.role }) && !projectRow.portal_enabled) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  if (
+    !(await isProjectVisibleToCaller(
+      admin,
+      {
+        projectId: improvementRow.project_id,
+        visibility: (projectRow.visibility as "workspace" | "private") ?? "workspace",
+      },
+      user.id,
+      membership.role,
+    ))
+  ) {
+    return { ok: false, error: "Image not found." };
+  }
+
+  const { data: signedUrlData, error: signedUrlError } = await admin.storage
+    .from(IMPROVEMENTS_BUCKET)
+    .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    logger.error("getImprovementImageSignedUrl: signed URL generation failed", {
+      error: signedUrlError,
+    });
+    return { ok: false, error: GENERIC_ERROR };
+  }
+
+  return { ok: true, signedUrl: signedUrlData.signedUrl };
 }

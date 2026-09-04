@@ -1,10 +1,147 @@
-import { TrendingUp } from "lucide-react";
+import { notFound } from "next/navigation";
+import { BarChart3 } from "lucide-react";
 
-import { PortalComingSoon } from "@/components/portal/portal-coming-soon";
+import { getPortalProjects } from "@/lib/queries/portal";
+import {
+  getProjectImprovements,
+  getProjectMetricsWithLatestSnapshot,
+  deriveMetricMeasurementStatus,
+} from "@/lib/queries/metrics";
+import { getImprovementImageSignedUrl } from "@/lib/actions/metrics";
+import { createClient } from "@/lib/supabase/server";
+import { EmptyState } from "@/components/empty-state";
+import { MetricComparisonCard } from "@/components/portal/metric-comparison-card";
+import { ResultsImprovements, type ResolvedImprovement } from "@/components/portal/results-improvements";
 
-// F017+ (missions/20260903-portal, M4, before/after results) implements
-// this view. F003's own scope is the shell + route stubs only — see
-// PortalComingSoon.
-export default function PortalResultsPage() {
-  return <PortalComingSoon icon={TrendingUp} section="Results" />;
+// F021 (missions/20260903-portal, AS-041, AS-042): replaces F003's
+// `PortalComingSoon` stub. Reads `getProjectMetricsWithLatestSnapshot` /
+// `deriveMetricMeasurementStatus` / `getProjectImprovements` (all exported
+// from lib/queries/metrics.ts specifically for this feature to call
+// directly, per F020's own "out-of-scope work needed" note on itself) --
+// the ordinary RLS-respecting server client, so a client caller only ever
+// sees `client_visible = true` rows of a portal-enabled project it belongs
+// to, same "one visibility path, not two" convention every other portal
+// page in this mission already documents on itself (see hours/page.tsx,
+// p/page.tsx).
+//
+// The three honesty rules this feature's own spec is explicit about:
+//  1. `direction` (F020) decides whether "Now" is an improvement, not a
+//     smaller-is-always-better assumption -- `deriveMetricMeasurementStatus`
+//     is the ONE place that decision is made (see its own header comment)
+//     and this page never re-derives it.
+//  2. A metric with no snapshot renders "not measured yet", never a zero
+//     bar and never an em dash standing in for a real value.
+//  3. The Improvements list stands on its own text -- images are additive.
+function formatDate(dateIso: string): string {
+  const date = new Date(`${dateIso}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return dateIso;
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
+
+export default async function PortalResultsPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string; projectId: string }>;
+}) {
+  const { workspaceSlug, projectId } = await params;
+
+  const supabase = await createClient();
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id, slug")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  if (!workspace) notFound();
+
+  const projects = await getPortalProjects(workspace.id);
+  const project = projects.find((p) => p.id === projectId);
+
+  if (!project) notFound();
+
+  // The header's own "when the baseline was frozen" line -- read directly
+  // rather than through getPortalProjects (whose own PortalProject shape
+  // has no reason to carry a field none of its other callers need). RLS
+  // already scopes this SELECT the same as every other read on this page.
+  const { data: projectRow } = await supabase
+    .from("projects")
+    .select("baseline_frozen_at")
+    .eq("id", projectId)
+    .maybeSingle();
+  const baselineFrozenAt = projectRow?.baseline_frozen_at ?? null;
+
+  const [metricsResult, improvementsResult] = await Promise.all([
+    getProjectMetricsWithLatestSnapshot(projectId),
+    getProjectImprovements(projectId),
+  ]);
+
+  const metrics = metricsResult.ok ? metricsResult.data : [];
+  const improvements = improvementsResult.ok ? improvementsResult.data : [];
+
+  if (metrics.length === 0 && improvements.length === 0) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="No results yet."
+        description="Once the team records a baseline and starts tracking metrics, before/after results will show up here."
+        testId="results-view-empty"
+      />
+    );
+  }
+
+  // Resolve every before/after image to a fresh signed URL up front --
+  // signed URLs expire, so this page must never persist or reuse one
+  // (getImprovementImageSignedUrl's own header comment). A single failed
+  // signing (e.g. a since-deleted object) degrades to "no image for that
+  // side" rather than failing the whole page, matching this section's own
+  // "must not require images to be worth reading" instruction.
+  const resolvedImprovements: ResolvedImprovement[] = await Promise.all(
+    improvements.map(async (item) => {
+      const [beforeImageUrl, afterImageUrl] = await Promise.all([
+        item.beforePath
+          ? getImprovementImageSignedUrl(item.id, "before").then((r) => (r.ok ? r.signedUrl : null))
+          : Promise.resolve(null),
+        item.afterPath
+          ? getImprovementImageSignedUrl(item.id, "after").then((r) => (r.ok ? r.signedUrl : null))
+          : Promise.resolve(null),
+      ]);
+      return {
+        id: item.id,
+        area: item.area,
+        explanation: item.explanation,
+        beforeImageUrl,
+        afterImageUrl,
+      };
+    }),
+  );
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="rounded-lg border border-border bg-muted/40 p-4">
+        <p className="text-sm text-muted-foreground" data-testid="results-header-note">
+          {baselineFrozenAt
+            ? `Baseline frozen on ${formatDate(baselineFrozenAt)}. Every "Now" measurement below is taken the same way as the baseline, so the two numbers are directly comparable.`
+            : "This project's baseline has not been frozen yet — measurements below may still change as the baseline method is finalised."}
+        </p>
+      </div>
+
+      {metrics.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <h2 className="text-sm font-semibold text-foreground">Metrics</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="metric-comparison-cards">
+            {metrics.map((metric) => (
+              <MetricComparisonCard
+                key={metric.id}
+                metric={metric}
+                latestSnapshot={metric.latestSnapshot}
+                status={deriveMetricMeasurementStatus(metric, metric.latestSnapshot)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ResultsImprovements improvements={resolvedImprovements} />
+    </div>
+  );
 }
