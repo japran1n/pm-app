@@ -15,8 +15,8 @@ AS-017: PASS — `PagePipeline` renders every bucket's count in pipeline order (
 AS-085 (labels prop): PASS — pre-existing `status-distribution.test.tsx` (`test_AS_085_a_caller_can_supply_its_own_label_set`) still passes unchanged; Your-list's segmented strip (item 3) already reuses this exact mechanism from F014/F085.
 
 ## Files changed
-components/portal/page-pipeline.tsx (new; round 2: reworked flow + wrap fix)
-components/portal/page-pipeline.test.tsx (new; round 2: rewritten for the new flow/marker shape)
+components/portal/page-pipeline.tsx (new; round 2: reworked flow + wrap fix; round 3: blocked marker moved outside the scroll container)
+components/portal/page-pipeline.test.tsx (new; round 2: rewritten for the new flow/marker shape; round 3: added scroll-container-isolation test)
 components/portal/budget-bar.tsx (new)
 components/portal/budget-bar.test.tsx (new)
 components/portal/page-travel-strip.tsx (deleted — superseded)
@@ -28,7 +28,7 @@ app/(portal)/portal/[workspaceSlug]/p/[projectId]/pages/page.tsx (StatusDistribu
 app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (BudgetBar added as its own full-width block)
 
 ## Commands run
-`npx vitest run components/portal/page-pipeline.test.tsx components/portal/pages-table.test.tsx components/portal/status-pill.test.tsx components/portal/status-distribution.test.tsx components/portal/budget-bar.test.tsx components/portal/overview-tiles.test.tsx` (round 2, 0, 39 passed)
+`npx vitest run components/portal/page-pipeline.test.tsx components/portal/pages-table.test.tsx components/portal/status-pill.test.tsx components/portal/status-distribution.test.tsx components/portal/budget-bar.test.tsx components/portal/overview-tiles.test.tsx tests/unit/server-client-boundary-imports.test.ts` (round 3, 0, 41 passed)
 `npx vitest run tests/unit/server-client-boundary-imports.test.ts` (0, 1 passed)
 `npx tsc --noEmit` (1 pre-existing error in `lib/actions/phases.ts`, unrelated — see Notes)
 `npm run build` (fails at the TypeScript step on `lib/actions/phases.ts`, `components/project/phase-list.tsx`, `tests/integration/f002-phase-management.test.ts` — all pre-existing, unrelated to this feature; see Notes)
@@ -102,6 +102,73 @@ re-resolved via `/portal/acme-studio`):
 - The filter trigger's `<span data-slot="select-value">` renders
   `All statuses` literally in the initial server-rendered HTML — no
   `__all__` anywhere in the response body.
+
+## Round 3 — coordinator review: blocked marker cut off at scroll position
+
+Round 2 moved `Blocked` out of the arrow chain but left it INSIDE the same
+`overflow-x-auto` scroll container as the flow, in a single flex row. The
+coordinator measured this live at 808px: `clientW 504` vs `scrollW 572`, and
+at the scroller's default (unscrolled) position the blocked marker's right
+edge (`asideRight: 852`) sat past the 808px viewport — a client would see
+"Stuck at…" and a sliver of the count, with no visible affordance (no
+scrollbar styling, no fade, no arrow) signalling there was more to scroll to.
+The one number a client most needs to act on was the one hidden.
+
+**Decision: moved the blocked marker OUTSIDE the scroller entirely, into its
+own always-visible row beneath the flow**, rather than adding a scroll
+affordance to the existing layout. Reasoning:
+- This is truer to round 2's own decision, not a bolt-on fix. Round 2
+  already established "Blocked is not a step in the sequence" (no arrow
+  points into or out of it). A thing that is not part of the flow has no
+  principled reason to live inside the flow's OWN scroll container either —
+  keeping it there was itself an inconsistency the coordinator's measurement
+  just exposed at a concrete pixel value.
+- A scroll affordance (a fade edge, a scrollbar, a "more →" hint) would have
+  fixed the SYMPTOM (things get cut off) while leaving the cause (blocked
+  travels with a scroller it conceptually has no business inside) in place.
+  It would also have added a second scroll experience next to the Overview's
+  phase timeline's existing horizontal scroller, more surface for the exact
+  "wide content must scroll inside its own container, never the page" class
+  of defect this mission has already hit twice (the tile-grid orphan; the
+  phase-timeline sideways-scroll bug both prior reviews reference).
+- Moving it out is also strictly simpler: no measurement, no fade mask, no
+  scrollbar styling to theme for light/dark — a `border-t` divider and a
+  `flex` row that never scrolls.
+
+Implementation: the `<ol>` (the arrow-connected 3-step flow) is now the ONLY
+element inside `.overflow-x-auto` — unchanged from round 2 otherwise, so it
+still degrades to a horizontal scroll (never a wrapped, orphaned arrow) at
+the narrowest widths, per round 2's own fix. The blocked marker sits in a
+sibling `flex` row below it, separated by a `border-t border-border`
+(divider, not an arrow — same semantic as round 2's divider), always
+rendered regardless of the flow's scroll position or the viewport width.
+
+**Verification**
+- Unit test added: `test_F108_blocked_marker_is_never_inside_the_flows_scroll_container`
+  (`page-pipeline.test.tsx`) — asserts the blocked marker is absent from
+  `.overflow-x-auto`'s subtree and present elsewhere in the document.
+- Live markup (re-curled after the fix, `/portal/acme-studio/p/<projectId>/pages`
+  as `nina`): `.overflow-x-auto` now wraps ONLY the `<ol aria-label="How your
+  pages travel, by count">` flow list; `data-testid="page-pipeline-blocked-aside"`
+  is structurally a sibling of that scroller, not a descendant — confirmed by
+  reading the raw HTML response (no browser/DOM measurement tool available in
+  this sandbox).
+- **375px was not measured directly** (no browser in this sandbox to resize
+  a viewport and read computed layout/`getBoundingClientRect` the way the
+  coordinator's 808px numbers were produced). Structurally, since the
+  blocked marker is now outside the scroller and the scroller's own overflow
+  behaviour is unchanged from round 2 (already verified safe from a sideways
+  PAGE scroll — `pageSideways: false` at 808px per the coordinator's own
+  round-2 confirmation, and the container is `min-w-0`-safe the same way
+  `phase-timeline.tsx`'s own fix required), the blocked row itself has no
+  horizontal scroll mechanism of its own and cannot be cut off by one — but
+  I could not confirm this with a real 375px render. **Please measure the
+  same way as before**: `asideRight` (or the blocked marker's
+  `getBoundingClientRect().right`) against a 375px viewport width, and
+  `document.body.scrollWidth` vs `clientWidth` to confirm no page-level
+  sideways scroll was introduced by the blocked row's own `flex` layout
+  (it has no `overflow-x-auto` of its own, so it should simply wrap or
+  shrink, but a real measurement is the only way to be sure at that width).
 
 ## Out-of-scope work needed
 - No live-server visual verification was possible in this session's sandbox — see Blockers/Notes below for what to check once a dev server is reachable.

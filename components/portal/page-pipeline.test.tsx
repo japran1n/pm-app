@@ -86,6 +86,31 @@ describe("PagePipeline", () => {
     expect(scroller).not.toBeNull();
   });
 
+  // F108 round 3 (coordinator review): placing the blocked marker
+  // inside the flow's own scroll container meant a client could land on
+  // a scroll position that cut the blocked count off-screen with no
+  // affordance signalling there was more to scroll to — the one number
+  // a client most needs to act on, hidden. Blocked now lives outside
+  // that scroller entirely, in its own always-visible row.
+  it("test_F108_blocked_marker_is_never_inside_the_flows_scroll_container", () => {
+    const { container } = render(
+      <PagePipeline counts={{ waiting: 1, progress: 1, blocked: 3, done: 1 }} />,
+    );
+
+    const scroller = container.querySelector(".overflow-x-auto");
+    expect(scroller).not.toBeNull();
+    // The scroller contains only the arrow-connected flow list...
+    expect(scroller!.querySelector('[aria-label="How your pages travel, by count"]')).not.toBeNull();
+    // ...never the blocked marker, at any scroll position.
+    expect(scroller!.querySelector('[data-testid="page-pipeline-blocked-aside"]')).toBeNull();
+
+    // The blocked marker is present elsewhere in the document, outside
+    // the scroller, unconditionally visible.
+    const blockedAside = screen.getByTestId("page-pipeline-blocked-aside");
+    expect(scroller!.contains(blockedAside)).toBe(false);
+    expect(blockedAside).toHaveTextContent("3");
+  });
+
   it("test_AS_014_an_all_zero_pipeline_renders_an_honest_empty_state", () => {
     render(<PagePipeline counts={{ waiting: 0, progress: 0, blocked: 0, done: 0 }} />);
 

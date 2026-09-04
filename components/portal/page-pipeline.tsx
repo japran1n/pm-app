@@ -51,6 +51,23 @@
 //    every arrow always connects two steps on the same row; a narrow
 //    viewport scrolls the strip horizontally instead of wrapping a
 //    trailing arrow into empty space.
+//
+// F108 round 3 (coordinator review): fixing #2 by putting the blocked
+// marker INSIDE that same scroll container created a new problem — at
+// 808px the scroller's default position cut the blocked marker off
+// (`asideRight` past the viewport edge), with nothing signalling there
+// was more to scroll to. The one number a client most needs to act on
+// was the one hidden off-screen.
+//
+// Fix: the blocked marker moves OUTSIDE the scroller entirely, in its
+// own row beneath it, always visible regardless of scroll position or
+// viewport width. This is truer to round 2's own decision, not just a
+// layout patch — `Blocked` was already established as "not a step in
+// the sequence"; a thing that is not part of the flow has no reason to
+// live inside the flow's OWN scroll container either. Only the
+// three-step arrow chain scrolls now (and only needs to, on the
+// narrowest viewports); the blocked count is unconditionally on
+// screen.
 import { AlertTriangle, CheckCircle2, Clock3, UserRound } from "lucide-react";
 import type { ComponentType } from "react";
 
@@ -153,18 +170,20 @@ export function PagePipeline({
           No pages yet.
         </p>
       ) : (
-        // `overflow-x-auto` + `flex-nowrap`: the strip scrolls inside its
-        // own container rather than wrapping — a wrapped arrow chain
-        // would either dangle into empty space (the tile-grid orphan
-        // this same review already flagged once) or need a second,
-        // fragile "suppress the arrow at a wrap boundary" layout, when a
-        // three-step, always-one-row strip already fits comfortably at
-        // any realistic viewport and degrades to a scroll, never a
-        // sideways page, at the narrowest ones.
-        <div className="overflow-x-auto">
-          <div className="flex w-max flex-nowrap items-stretch gap-4 pb-1">
+        <div className="flex flex-col gap-3">
+          {/* `overflow-x-auto` + `flex-nowrap`: the FLOW scrolls inside
+              its own container rather than wrapping — a wrapped arrow
+              chain would either dangle into empty space (the tile-grid
+              orphan this same review already flagged once) or need a
+              second, fragile "suppress the arrow at a wrap boundary"
+              layout, when a three-step, always-one-row strip already
+              fits comfortably at any realistic viewport and degrades to
+              a scroll, never a sideways page, at the narrowest ones.
+              Blocked is deliberately NOT inside this scroller — see this
+              file's own round-3 header comment for why. */}
+          <div className="overflow-x-auto">
             <ol
-              className="flex flex-nowrap items-stretch gap-x-1"
+              className="flex w-max flex-nowrap items-stretch gap-x-1"
               aria-label="How your pages travel, by count"
             >
               {FLOW_ORDER.map((bucket, index) => (
@@ -178,17 +197,19 @@ export function PagePipeline({
                 </li>
               ))}
             </ol>
+          </div>
 
-            {/* "Blocked" is a state, not a position in the sequence — it
-                can strike a page at any step, so it is never connected
-                by an arrow (an arrow means "leads to"). A plain vertical
-                divider sets it apart from the flow instead. */}
-            <div aria-hidden="true" className="w-px shrink-0 self-stretch bg-border" />
-            <div
-              className="flex shrink-0 flex-col justify-center gap-1"
-              data-testid="page-pipeline-blocked-aside"
-            >
-              <span className="text-xs text-muted-foreground">Stuck at any step</span>
+          {/* "Blocked" is a state, not a position in the sequence — it
+              can strike a page at any step, so it is never connected by
+              an arrow (an arrow means "leads to") AND never inside the
+              flow's own scroll container (round 3: a thing that isn't
+              part of the flow has no reason to scroll with it, or to
+              risk sitting off-screen at the flow's default scroll
+              position). Its own row, unconditionally visible, set apart
+              by a plain top divider rather than an arrow. */}
+          <div className="flex items-center gap-3 border-t border-border pt-3">
+            <span className="shrink-0 text-xs text-muted-foreground">Stuck at any step</span>
+            <div data-testid="page-pipeline-blocked-aside">
               <PipelineStep bucket="blocked" count={counts.blocked} />
             </div>
           </div>
