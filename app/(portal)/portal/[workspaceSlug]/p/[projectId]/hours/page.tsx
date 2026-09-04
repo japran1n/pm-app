@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Clock } from "lucide-react";
 
 import { getPortalProjects } from "@/lib/queries/portal";
-import { getProjectHoursClient } from "@/lib/queries/hours";
+import { getProjectHoursClient, getProjectCurrentBudgetPeriod } from "@/lib/queries/hours";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { HoursTiles } from "@/components/portal/hours-tiles";
@@ -26,19 +26,24 @@ import { HoursByCategory } from "@/components/portal/hours-by-category";
 // layout already 404s for an unshared/portal-disabled project, this is
 // what makes the route independently correct even reached directly.
 //
-// AUTONOMOUS DECISION: no clarification file exists for this feature (no
-// `missions/20260903-portal/clarifications/F019-clarification.md`).
-// `project_hours_client` takes an explicit `[p_from, p_to]` window and
-// has no other client-visible way to learn a budget's own period_start/
-// period_end (project_budgets carries no client SELECT policy at all --
-// see lib/queries/hours.ts's own header). This queries a wide,
-// deliberately generous window (project creation onward, through today)
-// so the RPC's own "most recent overlapping budget" lookup naturally
-// resolves to whatever budget has already started; the chart's own
-// "period" is then the observed week range within that data, disclosed
-// in the chart's own caption rather than presented as the budget's
-// official date range. See components/portal/hours-burndown-chart.tsx's
-// own header for the full reasoning.
+// F021b (missions/20260903-portal, M4 remediation -- blocker): this used
+// to query a WIDE_FROM = "2000-01-01" .. today window, letting
+// `project_hours_client` aggregate weekly/by-category totals across
+// EVERY budget period a project has ever had while `sold_minutes` came
+// from a single budget chosen by overlap -- a project with a closed
+// 2025 budget (40h used) and a current 2026 budget (5h of 40h used)
+// reported Used 45h, Remaining 0h, "+5h Over". Every tile was wrong, in
+// the direction that starts a false conversation about an overrun.
+//
+// Fixed: `getProjectCurrentBudgetPeriod` (lib/queries/hours.ts,
+// 20261015020000_f021b_hours_period_scoping.sql) picks exactly ONE
+// period -- the one covering today, or the most recently ended one if
+// none is current -- and `getProjectHoursClient` is queried with THAT
+// period's own [period_start, period_end], so Used/Remaining/Planned
+// and the weekly series all describe the same window as sold_minutes.
+// A project with no budget at all still falls back to the wide range
+// below (sold_minutes stays null either way, so F019's honest empty
+// treatment is unchanged when there is also no time logged).
 const WIDE_FROM = "2000-01-01";
 
 function todayIso(): string {
@@ -67,7 +72,12 @@ export default async function PortalHoursPage({
   if (!project) notFound();
 
   const today = todayIso();
-  const summary = await getProjectHoursClient(project.id, WIDE_FROM, today);
+  const currentPeriod = await getProjectCurrentBudgetPeriod(project.id);
+  const summary = await getProjectHoursClient(
+    project.id,
+    currentPeriod?.periodStart ?? WIDE_FROM,
+    currentPeriod?.periodEnd ?? today,
+  );
 
   if (summary.weekly.length === 0 && summary.soldMinutes === null) {
     return (
@@ -100,8 +110,30 @@ export default async function PortalHoursPage({
   const months = Array.from(monthTotals.entries()).sort(([a], [b]) => (a < b ? -1 : 1));
   const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" });
 
+  const periodFormatter = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const formatPeriodDate = (dateIso: string) => {
+    const [y, m, d] = dateIso.split("-").map(Number);
+    return periodFormatter.format(new Date(Date.UTC(y!, (m ?? 1) - 1, d ?? 1)));
+  };
+
   return (
     <div className="flex flex-col gap-8">
+      {currentPeriod && (
+        <p className="text-xs text-muted-foreground" data-testid="hours-period-scope">
+          Showing the current billing period: {formatPeriodDate(currentPeriod.periodStart)}
+          {" – "}
+          {formatPeriodDate(currentPeriod.periodEnd)}.
+          {currentPeriod.hasOtherPeriods
+            ? " Earlier periods are not included in these figures."
+            : ""}
+        </p>
+      )}
+
       <HoursTiles
         usedMinutes={usedMinutes}
         soldMinutes={summary.soldMinutes}

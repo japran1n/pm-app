@@ -97,6 +97,45 @@ const EMPTY_CLIENT_HOURS_SUMMARY: ClientHoursSummary = {
   soldMinutes: null,
 };
 
+export type CurrentBudgetPeriod = {
+  periodStart: string;
+  periodEnd: string;
+  hasOtherPeriods: boolean;
+};
+
+// getProjectCurrentBudgetPeriod: F021b (missions/20260903-portal, M4 --
+// blocker). Picks exactly ONE budget period -- see the migration
+// (20261015020000_f021b_hours_period_scoping.sql) for why "the one
+// covering today, or the most recently ended one" is the single period
+// this view ever describes. Returns null when the project has no
+// budget at all (F019's honest empty treatment then applies unchanged).
+export async function getProjectCurrentBudgetPeriod(
+  projectId: string,
+): Promise<CurrentBudgetPeriod | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("project_current_budget_period", {
+    p_project_id: projectId,
+  });
+
+  if (error) {
+    logger.error("getProjectCurrentBudgetPeriod: rpc failed", { error });
+    return null;
+  }
+
+  const row = (data ?? [])[0] as
+    | { period_start: string; period_end: string; has_other_periods: boolean }
+    | undefined;
+
+  if (!row || !row.period_start || !row.period_end) return null;
+
+  return {
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    hasOtherPeriods: row.has_other_periods,
+  };
+}
+
 // getProjectHoursClient: the portal's hours read. No person, no note, no
 // task title -- see this feature's migration header for why that is
 // structural (the RPC never selects a task column) rather than a filter.

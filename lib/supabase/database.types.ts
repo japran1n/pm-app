@@ -1906,6 +1906,8 @@ export type Database = {
           task_counter: number
           updated_at: string
           visibility: string
+          warranty_terms: string | null
+          warranty_until: string | null
           workspace_id: string
         }
         Insert: {
@@ -1928,6 +1930,8 @@ export type Database = {
           task_counter?: number
           updated_at?: string
           visibility?: string
+          warranty_terms?: string | null
+          warranty_until?: string | null
           workspace_id: string
         }
         Update: {
@@ -1950,6 +1954,8 @@ export type Database = {
           task_counter?: number
           updated_at?: string
           visibility?: string
+          warranty_terms?: string | null
+          warranty_until?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -3137,6 +3143,14 @@ export type Database = {
         }[]
       }
       notify_overdue_task_assignees: { Args: never; Returns: number }
+      project_current_budget_period: {
+        Args: { p_project_id: string }
+        Returns: {
+          has_other_periods: boolean
+          period_end: string
+          period_start: string
+        }[]
+      }
       project_hours_client: {
         Args: { p_from: string; p_project_id: string; p_to: string }
         Returns: Json
