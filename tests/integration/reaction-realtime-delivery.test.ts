@@ -249,30 +249,29 @@ describe.skipIf(!haveAdminCreds)(
         );
       }
 
-      // F073 (AS-369 mechanism fix): `subscriberClient` has never opened a
-      // WebSocket yet at this point -- its first `.channel(...).subscribe()`
-      // call anywhere in this file is what actually establishes the
-      // Realtime connection (supabase-js connects lazily). Instrumenting the
-      // first `it` below (recording ms from `.subscribe()` call to the
-      // `SUBSCRIBED` callback, separately from ms from `SUBSCRIBED` to the
-      // event arriving) showed the 13364ms CI overrun was spent almost
-      // entirely on THIS one-time connection handshake, not on delivery
-      // after SUBSCRIBED -- against the real project this handshake alone
-      // measured ~1.1s, and CI's Realtime container is `supabase start`ed
-      // cold in the same job, competing for the runner's 2 vCPUs against
-      // `maxWorkers: 4`, so it can plausibly take several seconds there.
-      // The scoping test below reuses this same already-open socket for its
-      // own channel (a channel *join*, not a new connection) and never pays
-      // this cost, which is exactly why it passes reliably at the same
-      // budget while the first test intermittently didn't: the two tests
-      // were never actually measuring the same thing. Paying the one-time
-      // connection cost here, inside `beforeAll` (30s `hookTimeout`, not the
-      // 13-18s per-test delivery budget), makes both tests' budgets
-      // apples-to-apples measurements of join+delivery only -- the honest
-      // fix, since the failure was a slow *handshake*, not slow or missing
-      // *delivery* (confirmed above: the CI log shows the promise resolving
-      // to `null`, i.e. the timeout fired, not a connection error -- and the
-      // instrumented handshake timing pinpoints where that 13s went).
+      // `subscriberClient` has never opened a WebSocket yet at this point --
+      // its first `.channel(...).subscribe()` call anywhere in this file is
+      // what actually establishes the Realtime connection (supabase-js
+      // connects lazily). Doing that here, inside `beforeAll` (30s
+      // `hookTimeout`, not the per-test delivery budget), keeps the socket
+      // warm before either `it` below starts timing itself.
+      //
+      // F074 (AS-369, superseded F073): F073 assumed this warmup's own
+      // handshake cost was the thing blowing the per-test budget. It
+      // wasn't. Instrumenting the first `it` below end-to-end (CI run
+      // 33857487411) with a timestamp on every step measured, with this
+      // warmup already in place: `.subscribe()` call -> `SUBSCRIBED` in
+      // 7ms, `toggleReaction()` INSERT resolved in 151ms, then the
+      // `postgres_changes` event for that INSERT didn't arrive until
+      // +13348ms -- 13.2s after SUBSCRIBED, 348ms past the old 13000ms
+      // budget. So the handshake this warmup pays for is fast and was
+      // never the bottleneck; the real cost is WAL -> client delivery
+      // latency on CI's `supabase start` Realtime container, which shares
+      // the runner's 2 vCPUs with the rest of the Supabase Docker stack and
+      // `maxWorkers: 4` vitest workers. The warmup is kept anyway since it's
+      // free and keeps both tests' budgets measuring join+delivery only,
+      // not connection setup -- see the per-test budget comment below for
+      // the actual fix.
       await new Promise<void>((resolve, reject) => {
         const warmupChannel = subscriberClient.channel("f202-warmup");
         const timeout = setTimeout(() => {
@@ -352,32 +351,48 @@ describe.skipIf(!haveAdminCreds)(
           // comment-read-path.test.ts, f323-sibling-action-project-
           // visibility.test.ts all write to this table too) before it
           // ever reaches this test's own INSERT -- an unrealistic, self-
-          // inflicted cost no production code path pays. Adding the same
-          // filter the passing sibling test and production already use
-          // fixes the mechanism directly; the budget is restored to a
-          // sane value now that the test matches real usage.
-          // Same budget as this file's filtered sibling test below, which
-          // uses the identical filtered-subscription shape and passes
-          // reliably in CI at 13000ms.
-          // TEMP-DIAGNOSTIC (F074, AS-369, remove once mechanism is known):
-          // three prior rounds each guessed at why this test's internal
-          // budget is exceeded in CI (transport latency, missing filter,
-          // cold-connection handshake) and each guess was falsified by the
-          // next CI run. Rather than propose a fourth guess, this instruments
-          // every step with a timestamp on stderr so the next CI log can
-          // distinguish "never reached SUBSCRIBED" vs "SUBSCRIBED but no
-          // event" vs "event arrived after the budget".
+          // inflicted cost no production code path pays. This fix is kept:
+          // it's a genuine correctness improvement (matches production's
+          // subscription shape) even though, per F074 below, it wasn't
+          // the whole story on the remaining budget.
+          //
+          // F074 (AS-369, this test's budget, measured not guessed): three
+          // prior rounds (transport latency, this missing filter, a cold
+          // connection handshake) each guessed at why the internal budget
+          // was still exceeded in CI, and each guess before this one was
+          // falsified by the next CI run. Rather than propose a fourth
+          // guess, F074 instrumented every step of this promise with a
+          // stderr timestamp. CI run 33857487411 measured, with the F073
+          // connection warmup already in `beforeAll`:
+          //   +0ms      promise executor entered
+          //   +7ms      .subscribe() -> SUBSCRIBED
+          //   +7ms      SUBSCRIBED -- calling toggleReaction()
+          //   +151ms    toggleReaction() resolved (the INSERT is committed)
+          //   +13010ms  old 13000ms budget fires -- resolves null
+          //   +13348ms  postgres_changes event arrives, correct comment_id
+          //   +13622ms  .subscribe() status callback: CLOSED
+          // The handshake is instant and the write is fast; the event is
+          // delivered correctly, 13.2s after SUBSCRIBED -- 348ms past the
+          // old budget. This is pure WAL -> client delivery latency on
+          // CI's `supabase start` Realtime container, which shares the
+          // runner's 2 vCPUs with the rest of the Supabase Docker stack and
+          // `maxWorkers: 4` vitest workers, not a lost event or a broken
+          // subscription. The budget below (20000ms) gives ~6.6s of
+          // headroom over that one measured 13341ms SUBSCRIBED->event gap
+          // (~50% margin) to absorb run-to-run CI scheduling variance; this
+          // is justified by the one measurement available above, not
+          // reproduced locally (no Docker in this environment), so it is
+          // not proof the margin is sufficient in every CI run -- only that
+          // it is no longer a guess. If this still times out, the next
+          // measurement (see the on-timeout log below) will show whether
+          // the gap has grown further rather than just reporting `null`.
           const t0 = Date.now();
-          const mark = (label: string) =>
-            process.stderr.write(
-              `[F074-DIAG AS-369] +${Date.now() - t0}ms ${label}\n`,
-            );
-          mark("promise executor entered, about to call .channel().subscribe()");
-
           const timeout = setTimeout(() => {
-            mark("13000ms budget fired -- resolving null");
+            process.stderr.write(
+              `[AS-369] postgres_changes event not received within 20000ms budget (SUBSCRIBED->timeout elapsed ${Date.now() - t0}ms) -- resolving null\n`,
+            );
             resolve(null);
-          }, 13000);
+          }, 20000);
 
           subscriberClient
             .channel(`comment_reactions:${taskId}`)
@@ -390,16 +405,12 @@ describe.skipIf(!haveAdminCreds)(
                 filter: `task_id=eq.${taskId}`,
               },
               (payload: { new: { comment_id: string; user_id: string; emoji: string } }) => {
-                mark(
-                  `postgres_changes event received (comment_id=${payload.new.comment_id}, expected=${commentId})`,
-                );
                 if (payload.new.comment_id !== commentId) return;
                 clearTimeout(timeout);
                 resolve(payload.new);
               },
             )
             .subscribe((status, err) => {
-              mark(`.subscribe() status callback: ${status}${err ? ` err=${err.message}` : ""}`);
               if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
                 clearTimeout(timeout);
                 reject(err ?? new Error(`subscribe failed: ${status}`));
@@ -409,14 +420,7 @@ describe.skipIf(!haveAdminCreds)(
                 // Only toggle once the subscriber is confirmed live, so
                 // this test can't pass by accident on a race where the
                 // event beats the subscription.
-                mark("SUBSCRIBED -- calling toggleReaction()");
-                void toggleReaction(commentId, "👍").then(
-                  () => mark("toggleReaction() resolved"),
-                  (err: unknown) =>
-                    mark(
-                      `toggleReaction() rejected: ${err instanceof Error ? err.message : String(err)}`,
-                    ),
-                );
+                void toggleReaction(commentId, "👍");
               }
             });
         });
@@ -436,7 +440,9 @@ describe.skipIf(!haveAdminCreds)(
           .maybeSingle();
         expect(row).not.toBeNull();
       },
-      18000,
+      // Outer vitest per-test timeout: the internal 20000ms budget above
+      // plus ~5s slack for the row-existence query that runs after it.
+      25000,
     );
 
     it(
