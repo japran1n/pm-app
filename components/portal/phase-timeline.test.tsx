@@ -112,12 +112,18 @@ describe("PhaseTimeline", () => {
         today={TODAY}
       />,
     );
-    // "Active" and "Not started" each appear exactly once -- on their
-    // own row's label -- not a second time in a legend below the chart.
-    expect(screen.getAllByText("Active")).toHaveLength(1);
-    expect(screen.getAllByText("Not started")).toHaveLength(1);
-    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
-    expect(screen.queryByText("Done")).not.toBeInTheDocument();
+    // "Active" and "Not started" each appear exactly once PER LAYOUT --
+    // on their own row's label -- not a second time in a legend below
+    // the chart. Scoped to the desktop layout because F104 round 4 adds
+    // a second, mobile-only rendering of the same rows (`lg:hidden`) that
+    // exists in the DOM unconditionally (a CSS breakpoint, not a JS
+    // branch) -- this assertion is about the legend, not about there
+    // being exactly one DOM node across both responsive layouts.
+    const desktop = within(screen.getByTestId("phase-timeline-desktop"));
+    expect(desktop.getAllByText("Active")).toHaveLength(1);
+    expect(desktop.getAllByText("Not started")).toHaveLength(1);
+    expect(desktop.queryByText("Blocked")).not.toBeInTheDocument();
+    expect(desktop.queryByText("Done")).not.toBeInTheDocument();
   });
 
   it("shows a tooltip with the phase name, progress and its note on hover, one shared tooltip element", () => {
@@ -248,8 +254,9 @@ describe("PhaseTimeline", () => {
       />,
     );
 
-    expect(screen.getByText(/28 Aug/)).toBeInTheDocument();
-    expect(screen.getByText(/11 Sep/)).toBeInTheDocument();
+    const desktop = within(screen.getByTestId("phase-timeline-desktop"));
+    expect(desktop.getByText(/28 Aug/)).toBeInTheDocument();
+    expect(desktop.getByText(/11 Sep/)).toBeInTheDocument();
   });
 
   it("gives the timeline an accessible role=group summary of where the project is", () => {
@@ -283,8 +290,10 @@ describe("PhaseTimeline", () => {
     );
     // docs/portal-timeline-review-and-demo-readiness.md 2.5: "1000." is
     // our internal ordering value, not a client-facing label -- row
-    // order already carries the sequence.
-    expect(screen.getByText("Kick-off & setup")).toBeInTheDocument();
+    // order already carries the sequence. Both the desktop and mobile
+    // (F104 round 4) renderings of the phase name are checked -- neither
+    // should ever show the raw position value.
+    expect(screen.getAllByText("Kick-off & setup").length).toBeGreaterThan(0);
     expect(screen.queryByText(/1000\./)).not.toBeInTheDocument();
   });
 
@@ -662,6 +671,169 @@ describe("PhaseTimeline", () => {
     // own end -- a small fixed pad, not hundreds of extra pixels of
     // dead space.
     expect(layout.chartWidthPx - barEndPx).toBeLessThan(80);
+  });
+});
+
+describe("PhaseTimeline — mobile layout (F104 round 4)", () => {
+  it("test_F104_round4_mobile_layout_renders_one_full_width_stacked_card_per_phase_instead_of_the_shared_axis_layout", () => {
+    // Coordinator round 4: at 375px the desktop side-by-side layout left
+    // the plot a 49px keyhole (label column ~326 of 375px). The mobile
+    // layout drops the shared axis and stacks one full-width card per
+    // phase instead of shrinking the desktop shape.
+    const phases: PortalPhase[] = [
+      makePhase({
+        id: "p1",
+        name: "Visual direction & design",
+        state: "active",
+        plannedStart: "2026-06-01",
+        plannedEnd: "2026-06-21",
+        totalClientVisibleTasks: 5,
+        doneClientVisibleTasks: 4,
+      }),
+      makePhase({ id: "p2", name: "Build", state: "not_started" }),
+    ];
+    render(<PhaseTimeline phases={phases} today={TODAY} />);
+
+    const mobile = within(screen.getByTestId("phase-timeline-mobile"));
+    const rows = mobile.getAllByTestId("phase-timeline-mobile-row");
+    expect(rows).toHaveLength(2);
+
+    // Each card's own bar is full width of ITS OWN card -- no shared
+    // pixel axis to agree with the other card.
+    for (const row of rows) {
+      const bar = within(row).getByTestId("phase-timeline-mobile-bar");
+      expect(bar).toBeInTheDocument();
+    }
+  });
+
+  it("test_F104_round4_mobile_bar_draws_a_progress_fill_that_differs_between_phases_with_different_fractions", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 3,
+          }),
+          makePhase({
+            id: "p2",
+            name: "Build",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-20",
+            totalClientVisibleTasks: 4,
+            doneClientVisibleTasks: 1,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const mobile = within(screen.getByTestId("phase-timeline-mobile"));
+    const doneBars = mobile.getAllByTestId("phase-timeline-mobile-bar-done");
+    // "3 of 5" (60%) vs "1 of 4" (25%) -- must render at different
+    // widths, same defect class as the desktop bar fill.
+    expect(doneBars[0]).toHaveStyle({ width: "calc(60% - 1px)" });
+    expect(doneBars[1]).toHaveStyle({ width: "calc(25% - 1px)" });
+  });
+
+  it("test_F104_round4_mobile_today_marker_only_appears_on_a_card_whose_own_range_contains_today", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Contains today",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-21",
+          }),
+          makePhase({
+            id: "p2",
+            name: "Already finished",
+            state: "done",
+            plannedStart: "2026-05-01",
+            plannedEnd: "2026-05-10",
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const mobile = within(screen.getByTestId("phase-timeline-mobile"));
+    const rows = mobile.getAllByTestId("phase-timeline-mobile-row");
+    expect(within(rows[0]!).getByTestId("phase-timeline-mobile-today")).toBeInTheDocument();
+    expect(
+      within(rows[1]!).queryByTestId("phase-timeline-mobile-today"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("test_F104_round4_mobile_behind_pace_cue_is_always_visible_text_not_hover_only", () => {
+    // A phone has no hover -- the "behind" signal (a tooltip-only note on
+    // desktop) must be plain, always-visible text on mobile instead.
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-06-01",
+            plannedEnd: "2026-06-21",
+            totalClientVisibleTasks: 5,
+            doneClientVisibleTasks: 1,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const mobile = within(screen.getByTestId("phase-timeline-mobile"));
+    const row = mobile.getByTestId("phase-timeline-mobile-row");
+    expect(row).toHaveAttribute("data-behind", "true");
+    expect(within(row).getByTestId("phase-timeline-mobile-expected-tick")).toBeInTheDocument();
+    expect(within(row).getByTestId("phase-timeline-mobile-behind-note")).toHaveTextContent(
+      /behind/i,
+    );
+  });
+
+  it("test_F104_round4_mobile_qualifier_lines_use_the_same_own_line_mechanism_as_desktop", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            inFlightTaskTitle: "Homepage hero design",
+          }),
+          makePhase({
+            id: "p2",
+            name: "QA & accessibility",
+            state: "blocked",
+            actualStart: null,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    const mobile = within(screen.getByTestId("phase-timeline-mobile"));
+    expect(mobile.getByTestId("phase-timeline-mobile-inflight")).toHaveTextContent(
+      "Homepage hero design",
+    );
+    expect(mobile.getByTestId("phase-timeline-mobile-blocked-note")).toHaveTextContent(
+      /not yet started/i,
+    );
+    // Never appended to the mobile facts line either.
+    for (const facts of mobile.getAllByTestId("phase-timeline-mobile-facts")) {
+      expect(facts.textContent).not.toMatch(/homepage hero design/i);
+      expect(facts.textContent).not.toMatch(/not yet started/i);
+    }
   });
 });
 

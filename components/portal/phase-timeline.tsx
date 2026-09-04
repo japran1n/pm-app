@@ -103,6 +103,16 @@ const STATE_TEXT_CLASS: Record<PortalPhaseState, string> = {
   done: "text-status-done",
 };
 
+// F104 round 4: the mobile stacked-card layout draws its bars as plain
+// `<div>`s (percentage widths), not SVG `<rect>`s, so it needs the same
+// four colours as `bg-*` utilities rather than `fill-*`.
+const STATE_BG_CLASS: Record<PortalPhaseState, string> = {
+  not_started: "bg-muted-foreground/50",
+  active: "bg-status-progress",
+  blocked: "bg-status-blocked",
+  done: "bg-status-done",
+};
+
 function parseDateOnly(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   if (!match) return null;
@@ -350,6 +360,33 @@ export function computePhaseTimelineLayout(
 }
 
 /**
+ * F104 round 4: a phase's own elapsed-time share (0..1) within its OWN
+ * planned date range, independent of `state` or task counts -- the one
+ * piece of date maths both the desktop today-line and the mobile
+ * per-card today marker need. Returns null whenever there is nothing to
+ * mark: the phase has no planned range, the range is zero-length, or
+ * today falls outside it. Kept as the single source of this arithmetic
+ * so `computeExpectedProgress` below (which layers a state/task-count
+ * gate on top for the "behind pace" cue) and the plain today marker can
+ * never compute two different elapsed fractions for the same phase.
+ */
+function computeElapsedSharePercent(phase: PortalPhase, todayIso: string): number | null {
+  if (!phase.plannedStart || !phase.plannedEnd) return null;
+
+  const start = parseDateOnly(phase.plannedStart);
+  const end = parseDateOnly(phase.plannedEnd);
+  const today = parseDateOnly(todayIso);
+  if (!start || !end || !today) return null;
+
+  const totalSpan = diffDays(start, end);
+  if (totalSpan <= 0) return null;
+  if (today < start || today > end) return null;
+
+  const elapsed = diffDays(start, today);
+  return Math.min(Math.max(elapsed / totalSpan, 0), 1);
+}
+
+/**
  * F104 1.5: for an active, dated phase that contains today, the fraction
  * of its own elapsed calendar time versus its own done-task fraction.
  * Returns null for every phase this comparison doesn't apply to (not
@@ -362,20 +399,11 @@ function computeExpectedProgress(
   todayIso: string,
 ): { elapsedShare: number; doneShare: number } | null {
   if (phase.state !== "active") return null;
-  if (!phase.plannedStart || !phase.plannedEnd) return null;
   if (phase.totalClientVisibleTasks === 0) return null;
 
-  const start = parseDateOnly(phase.plannedStart);
-  const end = parseDateOnly(phase.plannedEnd);
-  const today = parseDateOnly(todayIso);
-  if (!start || !end || !today) return null;
+  const elapsedShare = computeElapsedSharePercent(phase, todayIso);
+  if (elapsedShare === null) return null;
 
-  const totalSpan = diffDays(start, end);
-  if (totalSpan <= 0) return null;
-  if (today < start || today > end) return null;
-
-  const elapsed = diffDays(start, today);
-  const elapsedShare = Math.min(Math.max(elapsed / totalSpan, 0), 1);
   const doneShare = phase.doneClientVisibleTasks / phase.totalClientVisibleTasks;
 
   return { elapsedShare, doneShare };
@@ -451,7 +479,20 @@ export function PhaseTimeline({
     >
       <h2 className="text-sm font-semibold text-foreground">Where we are</h2>
 
-      <div className="flex min-w-0 gap-3">
+      {/* F104 round 4: the side-by-side label-column + shared-axis-plot
+          arrangement below is a desktop idea -- on a 375px phone the
+          fixed label column (`w-56`, `sm:w-72`) left the plot a
+          49px-wide keyhole (coordinator measurement:
+          `scroller clientW 49 / scrollW 330`), technically "the plot
+          scrolls, the page doesn't" but practically no picture at all.
+          `hidden lg:flex` keeps this exact layout, unchanged, at `lg`
+          and above; `MobilePhaseList` below (`lg:hidden`) is a
+          completely different shape for narrow screens rather than a
+          shrunk version of this one. Both branches exist in the DOM
+          unconditionally (a Tailwind breakpoint pair, not a JS
+          media-query check) so there is no client/server hydration
+          mismatch and no viewport-detection flash. */}
+      <div data-testid="phase-timeline-desktop" className="hidden min-w-0 gap-3 lg:flex">
         {/* Row labels: a fixed, non-scrolling column so a phase's name
             and state stay readable even while the bar area (below)
             scrolls horizontally on a narrow screen. */}
@@ -733,6 +774,184 @@ export function PhaseTimeline({
           </svg>
         </div>
       </div>
+
+      <MobilePhaseTimelineList phases={phases} today={today} />
+    </div>
+  );
+}
+
+/**
+ * F104 round 4: the mobile ("Where we are") shape for below the `lg`
+ * breakpoint -- one full-width stacked card per phase rather than a
+ * shared time axis behind a narrow fixed label column. This deliberately
+ * drops the shared axis (dataviz "one scale" only applies within a
+ * single chart; two different chart shapes for two breakpoints, each
+ * internally consistent, is not the same violation as mixing scales
+ * inside one chart) in favour of each phase's own bar self-scaled to
+ * its OWN date range -- full width, chosen from the plan's own listed
+ * options ("drop the shared time axis on mobile and let each bar be a
+ * self-scaled progress bar with its dates as text").
+ *
+ * The two signals the coordinator called out as required to survive the
+ * breakpoint both do: the today marker (`computeElapsedSharePercent`,
+ * drawn on any dated card whose own range contains today, matching the
+ * desktop today-line's per-row behaviour rather than a single shared
+ * ruler) and the behind/on-track cue (`computeExpectedProgress` /
+ * `isBehindExpectedProgress`, unchanged, reused as-is). Because a phone
+ * has no hover, the behind cue is not tooltip-only here -- it renders as
+ * its own always-visible line under the bar
+ * (`phase-timeline-mobile-behind-note`), and `clientDescription` (the
+ * desktop tooltip's extra line) renders inline too, for the same reason.
+ */
+function MobilePhaseTimelineList({
+  phases,
+  today,
+}: {
+  phases: PortalPhase[];
+  today: string;
+}) {
+  return (
+    <div
+      data-testid="phase-timeline-mobile"
+      role="list"
+      aria-label={buildTimelineSummary(phases)}
+      className="flex flex-col gap-3 lg:hidden"
+    >
+      {phases.map((phase) => {
+        const factsLine = formatPhaseFactsLine(phase);
+        const qualifierLine = formatQualifierLine(phase);
+        const progress = formatPhaseProgress(phase);
+        const doneShare =
+          progress && phase.totalClientVisibleTasks > 0
+            ? phase.doneClientVisibleTasks / phase.totalClientVisibleTasks
+            : null;
+        const elapsedSharePercent = computeElapsedSharePercent(phase, today);
+        const expected = computeExpectedProgress(phase, today);
+        const behind = isBehindExpectedProgress(phase, today);
+
+        const ariaLabelParts = [`${phase.name}: ${formatPhaseSecondaryLine(phase)}`];
+        if (behind) ariaLabelParts.push("behind its expected pace for today");
+
+        return (
+          <div
+            key={phase.id}
+            data-testid="phase-timeline-mobile-row"
+            data-state={phase.state}
+            data-behind={behind}
+            role="group"
+            aria-label={ariaLabelParts.join(" -- ")}
+            className="rounded-md border border-border p-3"
+          >
+            <span className="block truncate text-sm font-medium text-foreground">
+              {phase.name}
+            </span>
+
+            <span data-testid="phase-timeline-mobile-facts" className="mt-0.5 block text-xs">
+              <span className={cn("font-semibold", STATE_TEXT_CLASS[phase.state])}>
+                {STATE_LABEL[phase.state]}
+              </span>
+              <span className="text-muted-foreground">
+                {factsLine.slice(STATE_LABEL[phase.state].length)}
+              </span>
+            </span>
+
+            {/* Same qualifier mechanism as the desktop row -- its own
+                line, never appended to the facts line above, so the
+                round-2/round-3 truncation defect cannot recur here
+                either. */}
+            {qualifierLine && (
+              <span
+                data-testid={
+                  qualifierLine.kind === "inflight"
+                    ? "phase-timeline-mobile-inflight"
+                    : "phase-timeline-mobile-blocked-note"
+                }
+                className={cn(
+                  "mt-0.5 block text-xs font-medium",
+                  qualifierLine.kind === "blocked-note"
+                    ? "text-status-blocked"
+                    : "text-foreground",
+                )}
+              >
+                {qualifierLine.text}
+              </span>
+            )}
+
+            {/* The self-scaled bar: full card width, this phase's OWN
+                date range only -- there is no shared ruler to agree with
+                any other card, by design. */}
+            <div
+              data-testid="phase-timeline-mobile-bar"
+              className="relative mt-2 h-5 w-full overflow-hidden rounded-md bg-muted-foreground/15"
+            >
+              {doneShare !== null ? (
+                <>
+                  <div
+                    data-testid="phase-timeline-mobile-bar-done"
+                    className={cn("absolute inset-y-0 left-0", STATE_BG_CLASS[phase.state])}
+                    style={{ width: `calc(${doneShare * 100}% - 1px)` }}
+                  />
+                  <div
+                    data-testid="phase-timeline-mobile-bar-remainder"
+                    className={cn("absolute inset-y-0 right-0", STATE_BG_CLASS[phase.state])}
+                    style={{ left: `calc(${doneShare * 100}% + 1px)`, opacity: 0.25 }}
+                  />
+                </>
+              ) : (
+                <div
+                  data-testid="phase-timeline-mobile-bar-done"
+                  className={cn("absolute inset-0", STATE_BG_CLASS[phase.state])}
+                />
+              )}
+
+              {/* Today marker: this card's OWN elapsed-time share, drawn
+                  only when today actually falls inside THIS phase's own
+                  range -- the mobile equivalent of the desktop shared
+                  dashed line, just evaluated per-card instead of once
+                  for the whole chart. */}
+              {elapsedSharePercent !== null && (
+                <div
+                  data-testid="phase-timeline-mobile-today"
+                  aria-hidden="true"
+                  className="absolute top-[-3px] bottom-[-3px] w-0.5 bg-foreground"
+                  style={{ left: `${elapsedSharePercent * 100}%` }}
+                />
+              )}
+
+              {/* Expected-progress tick: identical rule to the desktop
+                  bar (active, dated, has client-visible tasks, today
+                  inside range). */}
+              {expected !== null && (
+                <div
+                  data-testid="phase-timeline-mobile-expected-tick"
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute top-[-3px] bottom-[-3px] w-0.5",
+                    behind ? "bg-status-blocked" : "bg-foreground/50",
+                  )}
+                  style={{ left: `${expected.elapsedShare * 100}%` }}
+                />
+              )}
+            </div>
+
+            {/* No hover on a phone: the behind cue and the phase's own
+                client-facing note (the desktop tooltip's contents) are
+                always-visible text here instead of hidden behind a
+                pointer event that a touch screen never fires. */}
+            {behind && (
+              <p
+                data-testid="phase-timeline-mobile-behind-note"
+                className="mt-1 text-xs font-medium text-status-blocked"
+              >
+                Behind its expected pace for today.
+              </p>
+            )}
+            {phase.clientDescription && (
+              <p className="mt-1 text-xs text-muted-foreground">{phase.clientDescription}</p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

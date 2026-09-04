@@ -199,3 +199,101 @@ app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (one line: `min-w-0` 
 
 ## Status (round 3)
 Still PARTIAL: both coordinator-reported defects are fixed and covered by tests/build, but I still have no browser to re-measure `body.scrollWidth`/`clientWidth` at 808px or 375px myself, or to visually confirm the blocked-note colour reads correctly. Requesting the three re-measurements above.
+
+---
+
+## Round 4 addendum — mobile layout redesign (below `lg`)
+
+Coordinator confirmed both round-3 fixes on screen with exact measurements
+(`sideways false` at both 808px and 375px) and identified the remaining
+problem: at 375px the desktop side-by-side layout left the plot a 49px
+keyhole (`scroller clientW 49 / scrollW 330`) behind a label column
+consuming ~326 of 375px -- technically compliant with "the plot scrolls,
+the page doesn't," practically no picture at all.
+
+**What changed.** The existing side-by-side layout (label column +
+shared-axis SVG) is now wrapped `hidden lg:flex` (`data-testid=
+"phase-timeline-desktop"`) and completely unchanged below that -- same
+markup, same tests. A new `MobilePhaseTimelineList` component, wrapped
+`lg:hidden`, renders below it: one full-width stacked card per phase,
+chosen from the plan's own listed option ("drop the shared time axis on
+mobile and let each bar be a self-scaled progress bar with its dates as
+text") rather than shrinking the desktop shape. Both blocks exist in the
+DOM unconditionally -- this is a pure CSS breakpoint pair (Tailwind
+`hidden`/`lg:flex`/`lg:hidden`), not a JS viewport check, so there is no
+hydration mismatch and no client-side flash while a media query
+evaluates.
+
+Per mobile card:
+- Name (own line), then the same state/dates/count facts line as
+  desktop, in the same weighted-span treatment.
+- The same qualifier mechanism as desktop (`formatQualifierLine`) -- an
+  in-flight title or a blocked "not yet started" note gets its own line,
+  never appended to the facts line, so the round-2/round-3 truncation
+  defect has nowhere to recur on the new layout either
+  (`phase-timeline-mobile-inflight` / `phase-timeline-mobile-blocked-note`).
+- A full-card-width bar (plain `<div>`s with percentage widths, not SVG --
+  simpler for a layout with no shared pixel axis to compute against),
+  self-scaled to THIS phase's own date range only. Same done/remainder
+  split as desktop (`phase-timeline-mobile-bar-done` /
+  `-bar-remainder`, same 1-2px gap, same low-opacity remainder) for a
+  phase with client-visible tasks; a single solid bar otherwise.
+
+**The two required signals, both preserved:**
+- **Today marker** (`phase-timeline-mobile-today`): drawn on a card only
+  when TODAY falls inside THAT phase's own planned range -- the mobile
+  equivalent of the desktop shared dashed line, evaluated per-card
+  instead of once for the whole chart (a card whose own range doesn't
+  contain today correctly shows no marker, matching what the desktop
+  line would show crossing a bar outside its own span: nothing
+  meaningful). Backed by a new pure helper, `computeElapsedSharePercent`,
+  factored out of `computeExpectedProgress`'s inline date math so the
+  two never compute two different fractions for the same phase -- one
+  function does the elapsed-share arithmetic, both callers (the "behind"
+  gate and the plain marker) use it.
+- **Behind/on-track cue** (`phase-timeline-mobile-expected-tick` +
+  `phase-timeline-mobile-behind-note`): `computeExpectedProgress`/
+  `isBehindExpectedProgress` are REUSED as-is (same active + dated + has
+  client-visible tasks + today-in-range gate as desktop -- no
+  behaviour change to when this cue applies). Because a phone has no
+  hover, the desktop's tooltip-only "Behind its expected pace for
+  today." note is NOT hover-gated here -- it renders as always-visible
+  text under the bar whenever `behind` is true. `clientDescription`
+  (the desktop tooltip's other line) is likewise rendered inline,
+  always visible, for the same no-hover reason.
+
+**Checked, not touched: `hours-burndown-chart.tsx`.** Read its layout at
+`components/portal/hours-burndown-chart.tsx` (around its `overflow-x-auto`
+wrapper). It does NOT share the phase timeline's defect class: there is
+no adjacent fixed-width label column consuming most of the viewport --
+the chart is a single full-width `<div className="overflow-x-auto">`
+directly under the card's flex column, so nothing on that chart is
+narrowed to a "keyhole" the way the phase-timeline's plot was. It may
+still legitimately scroll horizontally on a narrow phone if its own
+computed `chartWidthPx` (one column per week of the burn-down) exceeds
+375px, but that is an ordinary "a wide time series scrolls" situation,
+not the same "wasted 90% of the width for a fixed sidebar" bug. I did
+not change this file -- flagged under Out-of-scope work needed below in
+case the coordinator wants it measured too.
+
+**Requested re-measurement, if the coordinator has a moment (375px):**
+1. `document.querySelector('[data-testid="phase-timeline-mobile"]')` should exist and be visible; `document.querySelector('[data-testid="phase-timeline-desktop"]')` should exist in the DOM but have `display: none` (or zero rendered size) at 375px.
+2. For the active "Visual direction & design" phase (or whichever active phase is present in the seed data): confirm `[data-testid="phase-timeline-mobile-bar"]`'s own rendered width is close to the card's full content width (not a narrow sliver), and that `[data-testid="phase-timeline-mobile-bar-done"]` is visibly narrower than the full bar when the phase isn't 100% done.
+3. Confirm a `[data-testid="phase-timeline-mobile-today"]` marker exists inside the card for whichever phase's own planned range contains today, and is absent from cards whose range does not.
+4. For a phase that is behind pace (if one exists in the seed data, e.g. Visual direction & design if it matches the earlier "3 of 5 done, ~70% elapsed" example): confirm `[data-testid="phase-timeline-mobile-behind-note"]` is visible without any hover/tap.
+5. Re-run the same `body.scrollWidth` vs `clientWidth` check at 375px to confirm the mobile layout itself doesn't reintroduce a page-level sideways scroll (its bars are percentage-based, not pixel-width SVGs, so this should hold, but I have not measured it).
+
+## Commands run (round 4)
+`npx vitest run components/portal/phase-timeline.test.tsx` (0) — 30 passed (25 prior + 5 new mobile-layout tests; 3 existing tests scoped to `phase-timeline-desktop` via `within` since the mobile block now duplicates row text in the DOM)
+`npx tsc --noEmit` (0)
+`set -a; source .env; set +a; npm run build` (0)
+
+## Files changed (round 4, additive to the list above)
+components/portal/phase-timeline.tsx (mobile layout; no other file touched this round -- `page.tsx` needed no change since the fix is entirely a new responsive branch inside this component)
+components/portal/phase-timeline.test.tsx
+
+## Out-of-scope work needed (round 4 addition)
+- `components/portal/hours-burndown-chart.tsx` at 375px: structurally different from the phase timeline (no adjacent label column), so it's unlikely to share this exact defect, but I have not measured its actual rendered width at 375px against a real burn-down dataset. Worth a quick coordinator measurement of its own `chartWidthPx` vs 375 if this section gets the same scrutiny pass.
+
+## Status (round 4)
+Still PARTIAL: the mobile redesign is implemented, tested (30/30), typechecks, and builds, and both required signals (today marker, behind cue) are preserved per the coordinator's explicit requirement. I still have no browser to measure the five items above myself.
