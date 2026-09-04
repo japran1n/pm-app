@@ -245,6 +245,20 @@ describe.skipIf(!haveMgmtCreds)(
       expect(notifications[0].actor_id).toBeNull();
     });
 
+    // This test round-trips ~15 sequential Management API SQL calls (two
+    // extra users, a two-row workspace_members insert, two makeTask() calls
+    // -- each itself 2 calls -- a member removal, the sweep call, two
+    // notification reads, and four cleanup deletes), well beyond the ~3-4
+    // calls each of this file's other tests make. In CI the Management API
+    // has enough per-call latency (observed ~1.5-2s/call from passing
+    // sibling tests taking 4-6s for 3 calls) that the file-wide 20000ms
+    // default (set via vi.setConfig above, sized for the lighter tests)
+    // was consistently insufficient here (failed with "Test timed out in
+    // 20000ms" at exactly the 20000ms mark in CI while passing locally in
+    // ~11s) -- a fixture-latency budget defect, not a sweep/product bug:
+    // the assertions themselves (no throw, orphaned row skipped, valid
+    // assignee still notified) were never reached to fail or pass before
+    // the timeout fired.
     it("F321/AS-383: an orphaned assignee (removed from the workspace) does not abort the sweep, and a still-valid assignee on a different overdue task still gets notified", async () => {
       // Second, still-active assignee for the "still gets notified"
       // half of this test's assertion.
@@ -331,7 +345,7 @@ describe.skipIf(!haveMgmtCreds)(
       await sql(`delete from public.task_assignees where task_id in ('${orphanedTaskId}', '${validTaskId}');`);
       await sql(`delete from public.workspace_members where workspace_id = '${workspaceId}' and user_id = '${validAssigneeId}';`);
       await sql(`delete from auth.users where id in ('${validAssigneeId}', '${removedUserId}');`);
-    });
+    }, 45000);
 
     it("AS-383: running the sweep twice does not double-notify the same assignee for the same task (idempotent)", async () => {
       const taskId = await makeTask({ projectId, dueDate: "2020-01-01" });
