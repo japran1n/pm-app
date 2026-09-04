@@ -13,7 +13,7 @@ import {
   PORTAL_PREVIEW_REFRESH_COOKIE,
   PORTAL_PREVIEW_LABEL_COOKIE,
   PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
-} from "@/lib/actions/portal-preview";
+} from "@/lib/portal/preview-cookies";
 
 export type SignInResult =
   | { ok: true }

@@ -32,16 +32,12 @@ import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { mintImpersonationSession } from "@/lib/auth/mint-impersonation-session";
 import { logger } from "@/lib/observability/logger";
 import type { Json } from "@/lib/supabase/database.types";
-
-export const PORTAL_PREVIEW_ACCESS_COOKIE = "portal_preview_access_token";
-export const PORTAL_PREVIEW_REFRESH_COOKIE = "portal_preview_refresh_token";
-export const PORTAL_PREVIEW_LABEL_COOKIE = "portal_preview_client_label";
-// F024b (AS-053): the previewed client's own `workspace_members.id`,
-// stored so the portal layout's per-entry audit write (AS-053's "every
-// entry into the client-preview view") can target the same row this
-// action's own start-of-preview entry does, without an extra DB
-// round-trip on every portal navigation just to re-derive it.
-export const PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE = "portal_preview_client_member_id";
+import {
+  PORTAL_PREVIEW_ACCESS_COOKIE,
+  PORTAL_PREVIEW_REFRESH_COOKIE,
+  PORTAL_PREVIEW_LABEL_COOKIE,
+  PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
+} from "@/lib/portal/preview-cookies";
 
 // F024b (AS-053, "the cookies carry no maxAge"): 30 minutes -- enough to
 // actually look at what the client sees, short enough that an admin who

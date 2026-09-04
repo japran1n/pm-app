@@ -20,8 +20,10 @@ import { cookies } from "next/headers";
 // those components or queries — see this feature's spec section 2 for
 // why a `previewAsClientId` query-parameter approach was rejected
 // instead.
-const PORTAL_PREVIEW_ACCESS_COOKIE = "portal_preview_access_token";
-const PORTAL_PREVIEW_REFRESH_COOKIE = "portal_preview_refresh_token";
+import {
+  PORTAL_PREVIEW_ACCESS_COOKIE,
+  PORTAL_PREVIEW_REFRESH_COOKIE,
+} from "@/lib/portal/preview-cookies";
 
 // F024b (missions/20260903-portal, AS-052/AS-053 remediation): the message
 // shown by both layers of the preview write block below, and re-exported

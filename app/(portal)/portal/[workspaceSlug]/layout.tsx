@@ -8,7 +8,7 @@ import {
   PORTAL_PREVIEW_ACCESS_COOKIE,
   PORTAL_PREVIEW_LABEL_COOKIE,
   PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
-} from "@/lib/actions/portal-preview";
+} from "@/lib/portal/preview-cookies";
 import { ClientPreviewBanner } from "@/components/portal/client-preview-banner";
 import { writeAudit } from "@/lib/activity/audit";
 
