@@ -203,6 +203,46 @@ jobs:
           echo "--- realtime.subscription rows (any stale/leftover postgres_changes subscriptions from a prior test in this run) ---"
           psql "$DB_URL" -c "select count(*) as subscription_count, entity from realtime.subscription group by entity order by entity;" || echo "(realtime.subscription query failed -- schema/table name may differ across CLI versions, not fatal to the rest of this diagnostic)"
 
+      # F102 (AS-369): F099's diagnostic showed `comment_reactions`
+      # (REPLICA IDENTITY FULL) and `comments` (REPLICA IDENTITY default)
+      # are otherwise identically published, and F101's unfiltered probe on
+      # `comment_reactions` itself still received nothing -- so filtering
+      # is ruled out (both outcomes were "neither channel receives"), and
+      # REPLICA IDENTITY FULL is the one remaining schema-level difference
+      # between the passing `comments` sibling test and this failing one.
+      # This step isolates that single variable directly rather than
+      # reasoning about it further: two throwaway scratch tables, identical
+      # except one is REPLICA IDENTITY FULL and the other DEFAULT, both
+      # added to `supabase_realtime`, each gets one unfiltered
+      # postgres_changes INSERT probe (scripts/f102-replica-identity-
+      # probe.mjs) in the same CI run against the same stack the real test
+      # below runs against. Both scratch tables are created and dropped by
+      # this step only -- `comment_reactions` itself is never touched, and
+      # nothing needs to be "restored" on it.
+      - name: F102 replica identity delivery experiment (AS-369, diagnostic)
+        run: |
+          echo "--- creating scratch tables (f102_probe_full, f102_probe_default) ---"
+          psql "$DB_URL" -c "
+            create table f102_probe_full (id uuid primary key default gen_random_uuid(), tag text not null, created_at timestamptz not null default now());
+            create table f102_probe_default (id uuid primary key default gen_random_uuid(), tag text not null, created_at timestamptz not null default now());
+            alter table f102_probe_full replica identity full;
+            alter table f102_probe_default replica identity default;
+            alter publication supabase_realtime add table f102_probe_full;
+            alter publication supabase_realtime add table f102_probe_default;
+          "
+
+          echo "--- relreplident sanity check (expect: full, default) ---"
+          psql "$DB_URL" -c "select relname, case relreplident when 'd' then 'default' when 'n' then 'nothing' when 'f' then 'full' when 'i' then 'index' end as replica_identity from pg_class where relname in ('f102_probe_full', 'f102_probe_default');"
+
+          echo "--- running the delivery probe (scripts/f102-replica-identity-probe.mjs) ---"
+          node scripts/f102-replica-identity-probe.mjs
+
+          echo "--- dropping scratch tables (publication membership drops with the table) ---"
+          psql "$DB_URL" -c "
+            drop table if exists f102_probe_full;
+            drop table if exists f102_probe_default;
+          "
+
       # F092 (AS-369): the four integration tests that wait for a real
       # Supabase Realtime WebSocket event (see
       # tests/realtime-live-delivery-tests.ts) are excluded from the
