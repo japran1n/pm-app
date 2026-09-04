@@ -53,6 +53,12 @@ const ENTRIES = [
   // AS-050) — the site inventory a PM fills in once early and revisits
   // at handover, same settings sub-nav placement as record/budget.
   { slug: "site", label: "Site" },
+  // F080 (missions/20260903-portal, hardening): the enable/disable
+  // control for `projects.portal_enabled`, the readiness checklist, and
+  // the launch/warranty editor — same settings sub-nav placement as
+  // every other project-detail tab. Before this feature nothing in the
+  // app could reach this control at all.
+  { slug: "portal", label: "Client portal" },
 ] as const;
 
 export function ProjectSettingsNav({

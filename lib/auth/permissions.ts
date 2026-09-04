@@ -259,3 +259,17 @@ export function canManageSavedView(ctx: PermissionContext): boolean {
 export function canChangeProjectVisibility(ctx: PermissionContext): boolean {
   return ctx.role === "owner" || ctx.role === "admin";
 }
+
+// F080 (missions/20260903-portal, hardening): turning the client portal
+// on/off for a project (`projects.portal_enabled`/`portal_enabled_at`).
+// Owner/admin only — mirrors `canChangeProjectVisibility` exactly (same
+// two roles, same "workspace-level policy decision, not a project lead's
+// call" rationale). The real boundary is the DB-level
+// `enforce_projects_field_role_allowlist` trigger (`v_owner_admin_cols`,
+// supabase/migrations/20261022010000_f025d_projects_key_insert_guard.sql),
+// which requires the SAME two roles for this SAME pair of columns; this
+// predicate only mirrors that rule for UI gating and the server action's
+// own pre-check, same AS-230 convention as every other predicate here.
+export function canManagePortalSettings(ctx: PermissionContext): boolean {
+  return ctx.role === "owner" || ctx.role === "admin";
+}

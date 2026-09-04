@@ -21,6 +21,7 @@ import {
   Inbox,
   MessageCircle,
   CheckSquare,
+  Eye,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -152,6 +153,25 @@ function navGroups(
             label: "Approvals",
             icon: CheckSquare,
             count: approvalsCount,
+          },
+        ]
+      : []),
+    // F080 (missions/20260903-portal, hardening): "see exactly what the
+    // client sees" was reachable only from a task detail sheet or the
+    // docs editor before this — the one control that would let a PM
+    // catch a portal that's off, blank, or leaking an internal task
+    // title. Gated on BOTH `hasClient` (same "no client, no reason to
+    // preview" convention as Client requests/Approvals above) AND
+    // `canManageWorkspace` (the destination page is hard-gated to
+    // owner/admin -- preview-as-client/page.tsx's own
+    // requireWorkspaceAdmin redirect -- so a member/viewer/guest is
+    // never shown a link that would only bounce them back).
+    ...(hasClient && canManageWorkspace
+      ? [
+          {
+            href: `/w/${workspaceSlug}/preview-as-client`,
+            label: "Preview as client",
+            icon: Eye,
           },
         ]
       : []),
