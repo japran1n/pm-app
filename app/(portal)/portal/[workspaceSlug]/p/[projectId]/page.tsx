@@ -19,6 +19,7 @@ import { getClientDeliverables } from "@/lib/queries/deliverables";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
+import { BudgetBar } from "@/components/portal/budget-bar";
 import { PhaseTimeline } from "@/components/portal/phase-timeline";
 import { RiskBanner } from "@/components/portal/risk-banner";
 import { LiveNow } from "@/components/portal/live-now";
@@ -281,6 +282,18 @@ export default async function PortalOverviewPage({
         daysToLaunch={daysToLaunch}
         launchConfidence={project.launchConfidence}
       />
+
+      {/* F108 (missions/20260903-portal, docs/client-portal-visual-plan.md
+          3.3): the one-glance budget figure — its own full-width block,
+          not squeezed inside the "Hours used" tile above. The tile's
+          column is a third of the page width at `lg`, which is not
+          enough room to plot the ceiling mark and, on the over-budget
+          path, the overage segment PAST it, both legibly labelled — the
+          burn-down chart on the Hours view already earns its own full
+          card for the identical reason. `usedMinutes`/`soldMinutes` are
+          the exact same numbers the tile above already reads, never a
+          second query. */}
+      <BudgetBar usedMinutes={usedMinutes} soldMinutes={hoursSummary.soldMinutes} />
 
       <div className="grid gap-8 lg:grid-cols-3">
         {/* F104 round 3: `min-w-0` -- a CSS grid item's default

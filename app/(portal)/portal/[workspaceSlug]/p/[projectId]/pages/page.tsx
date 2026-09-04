@@ -4,9 +4,8 @@ import { FileText } from "lucide-react";
 import { getPortalPages, getPortalProjects } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
-import { StatusDistribution } from "@/components/portal/status-distribution";
 import { PagesTable } from "@/components/portal/pages-table";
-import { PageTravelStrip } from "@/components/portal/page-travel-strip";
+import { PagePipeline } from "@/components/portal/page-pipeline";
 import type { ClientBucket } from "@/components/portal/status-label";
 
 // F005 (missions/20260903-portal, AS-014, AS-016, AS-017, AS-018): the
@@ -52,9 +51,12 @@ export default async function PortalPagesPage({
     );
   }
 
-  // AS-017: the distribution bar's counts — every bucket, always present
-  // (even at 0), computed once here from the same rows the table below
-  // renders, never a second query.
+  // F108 (missions/20260903-portal, docs/client-portal-visual-plan.md
+  // 3.2): every bucket, always present (even at 0), computed once here
+  // from the same rows the table below renders, never a second query.
+  // These are the exact counts the distribution bar used to draw as a
+  // segmented bar — the pipeline below draws them as steps instead, so
+  // this is the ONLY count computed for this page, not a second one.
   const counts: Record<ClientBucket, number> = {
     waiting: 0,
     progress: 0,
@@ -67,9 +69,15 @@ export default async function PortalPagesPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <StatusDistribution counts={counts} />
+      {/* F108: replaces (not stacks beside) the old distribution bar +
+          table + seven-step explainer paragraph. The pipeline draws the
+          same bucket counts the distribution bar drew, ordered as the
+          journey itself, with the explainer's own job (naming the
+          client's own step) folded into the highlighted "Waiting on
+          you" step rather than living in a separate strip beneath the
+          table. */}
+      <PagePipeline counts={counts} />
       <PagesTable pages={pages} />
-      <PageTravelStrip />
     </div>
   );
 }
