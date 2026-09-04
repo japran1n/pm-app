@@ -121,6 +121,19 @@ jobs:
         # still hard-fail (rather than skip) when `CI` is set and these
         # vars are missing — that behaviour is unchanged, only the source
         # of the vars changed from repo secrets to the local stack.
+        #
+        # Five catalog suites (f016i-anon-execute-catalog,
+        # f016l-public-table-rls-catalog, f025-portal-table-triple-sweep,
+        # f025e-guard-hardening, overdue-notification-sweep) introspect the
+        # REAL hosted project through the Supabase Management API — grants,
+        # RLS membership, cron jobs — which the local stack cannot stand in
+        # for. They deliberately hard-throw rather than skip when CI is set
+        # and these are absent, so that "not run" can never be mistaken for
+        # "passed". Until both repository secrets exist those five fail by
+        # design; every other suite is unaffected.
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: npm run test
 
       - name: End-to-end tests (Playwright)
