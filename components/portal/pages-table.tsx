@@ -46,6 +46,20 @@ const FILTER_LABELS = CLIENT_BUCKET_LABELS;
 
 const FILTER_ORDER: ClientBucket[] = ["waiting", "progress", "blocked", "done"];
 
+// F108 (missions/20260903-portal, docs/client-portal-visual-plan.md 3.2,
+// coordinator review): the sentinel-to-label map for the filter
+// dropdown's own trigger. Base UI's `Select.Value` (components/ui/select.tsx)
+// only mirrors a matching `Select.Item`'s rendered text once the popup has
+// been opened at least once -- before that, its default render is the raw
+// `value` itself, which is how "__all__" (the sentinel, never meant to be
+// read) was reaching the client verbatim on first paint. Passing an
+// explicit children function (Base UI's own documented escape hatch) means
+// the trigger always shows a real label, opened or not.
+const FILTER_TRIGGER_LABELS: Record<string, string> = {
+  [ALL_STATUSES]: "All statuses",
+  ...CLIENT_BUCKET_LABELS,
+};
+
 function formatUpdatedAt(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "numeric",
@@ -67,7 +81,9 @@ export function PagesTable({ pages }: { pages: PortalPage[] }) {
       <div className="flex items-center gap-2">
         <Select value={filter} onValueChange={(value) => setFilter(value ?? ALL_STATUSES)}>
           <SelectTrigger id="pages-status-filter" className="w-56" aria-label="Filter by status">
-            <SelectValue />
+            <SelectValue>
+              {(value: string | null) => FILTER_TRIGGER_LABELS[value ?? ALL_STATUSES] ?? "All statuses"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_STATUSES}>All statuses</SelectItem>
@@ -116,6 +132,20 @@ export function PagesTable({ pages }: { pages: PortalPage[] }) {
                     category={page.status.category}
                     clientBucket={page.status.clientBucket}
                     description={page.status.clientDescription}
+                    // F108 (coordinator review): the pipeline above this
+                    // table already speaks the client's own four-bucket
+                    // vocabulary (status-label.ts) -- this column used to
+                    // render the status's raw internal `name` instead
+                    // (the default seed literally names statuses
+                    // `todo`/`in_progress`/`in_review`/`done`), reading
+                    // as a bug directly beneath the component that gets
+                    // it right. `page.status.clientBucket` is the exact
+                    // resolved bucket every other client-facing surface
+                    // on this page already reads -- never a second,
+                    // locally recomputed one.
+                    labelOverride={
+                      page.status.name === null ? null : CLIENT_BUCKET_LABELS[page.status.clientBucket]
+                    }
                   />
                 </TableCell>
                 <TableCell>

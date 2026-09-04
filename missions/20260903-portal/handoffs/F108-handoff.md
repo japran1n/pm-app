@@ -15,21 +15,24 @@ AS-017: PASS — `PagePipeline` renders every bucket's count in pipeline order (
 AS-085 (labels prop): PASS — pre-existing `status-distribution.test.tsx` (`test_AS_085_a_caller_can_supply_its_own_label_set`) still passes unchanged; Your-list's segmented strip (item 3) already reuses this exact mechanism from F014/F085.
 
 ## Files changed
-components/portal/page-pipeline.tsx (new)
-components/portal/page-pipeline.test.tsx (new)
+components/portal/page-pipeline.tsx (new; round 2: reworked flow + wrap fix)
+components/portal/page-pipeline.test.tsx (new; round 2: rewritten for the new flow/marker shape)
 components/portal/budget-bar.tsx (new)
 components/portal/budget-bar.test.tsx (new)
 components/portal/page-travel-strip.tsx (deleted — superseded)
 components/portal/page-travel-strip.test.tsx (deleted — superseded)
+components/portal/status-pill.tsx (round 2: added optional `labelOverride` prop, default-`null`/unchanged for every existing caller)
+components/portal/pages-table.tsx (round 2: passes `labelOverride` to StatusPill; fixed the filter trigger's `__all__` sentinel leak)
+components/portal/pages-table.test.tsx (round 2: updated assertions for the resolved-bucket label, added a raw-name-never-leaks test)
 app/(portal)/portal/[workspaceSlug]/p/[projectId]/pages/page.tsx (StatusDistribution + PageTravelStrip replaced with PagePipeline)
 app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (BudgetBar added as its own full-width block)
 
 ## Commands run
-`npx vitest run components/portal/page-pipeline.test.tsx components/portal/budget-bar.test.tsx components/portal/status-distribution.test.tsx components/portal/pages-table.test.tsx components/portal/overview-tiles.test.tsx` (0, 27 passed)
+`npx vitest run components/portal/page-pipeline.test.tsx components/portal/pages-table.test.tsx components/portal/status-pill.test.tsx components/portal/status-distribution.test.tsx components/portal/budget-bar.test.tsx components/portal/overview-tiles.test.tsx` (round 2, 0, 39 passed)
 `npx vitest run tests/unit/server-client-boundary-imports.test.ts` (0, 1 passed)
 `npx tsc --noEmit` (1 pre-existing error in `lib/actions/phases.ts`, unrelated — see Notes)
 `npm run build` (fails at the TypeScript step on `lib/actions/phases.ts`, `components/project/phase-list.tsx`, `tests/integration/f002-phase-management.test.ts` — all pre-existing, unrelated to this feature; see Notes)
-`curl -sS -c cookies.txt "http://localhost:3000/dev-login?email=nina@demo.test"` (307, session cookie set) then `curl -sS -b cookies.txt "http://localhost:3000/portal/acme-studio/p/fe557caa-be43-4e78-9eec-92293617edfa/pages"` (200) and the equivalent Overview URL (200) — real markup confirmed, `data-testid="page-pipeline"` and `data-testid="budget-bar"` both present, not an error boundary.
+`curl -sS -c cookies.txt "http://localhost:3000/dev-login?email=nina@demo.test"` (307, session cookie set) then `curl -sS -b cookies.txt "http://localhost:3000/portal/acme-studio/p/<projectId>/pages"` (200) and the equivalent Overview URL (200) — real markup confirmed, `data-testid="page-pipeline"` and `data-testid="budget-bar"` both present, not an error boundary. Project ids are NOT stable across sessions (the DB was reseeded between round 1 and round 2 of this task, changing them) — always re-resolve the current one via `GET /portal/acme-studio` first.
 `curl -sS -c petra-cookies.txt "http://localhost:3000/dev-login?email=petra@demo.test"` (307) then `curl -sS -b petra-cookies.txt "http://localhost:3000/portal/cedarwood-partners/p/8f903494-5569-4a6a-9b35-7a40c07e60bd"` (200, Meridian Ops Dashboard's Overview) — confirmed the over-budget path renders real, non-clamped numbers: `budget-bar-summary` text is "38h used against a 20h budget — 18h over.", and `budget-bar-overage` renders with `bg-status-blocked` at `left: 51.28%, width: 46.15%` — starting exactly at the ceiling and extending well past it.
 
 ## Decisions made
@@ -40,6 +43,65 @@ app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (BudgetBar added as i
 - **One scale, no clamp.** `BudgetBar`'s track width (`scaleMax`) always includes at minimum a 15% headroom past the ceiling, and extends further when `usedMinutes` itself exceeds that headroom, so the overage segment is drawn in `bg-status-blocked` starting exactly at the ceiling position and extending past it — never clamped back inside the track (the defect F085 fixed for the burn-down chart's own data; this is a new component but follows the same rule from the start).
 - **No colour-only encoding**: every `PagePipeline` step pairs its status token with its own `lucide-react` icon (`Clock3`/`UserRound`/`AlertTriangle`/`CheckCircle2`) and its own text label (`CLIENT_BUCKET_LABELS`) — verified by asserting `querySelector("svg")` is present alongside the text in the highlighted-step test.
 - **Item 3 (deliverable strip) required no new code.** Grepped the Your-list route (`app/(portal)/.../your-list/page.tsx` lines 8, 53, 147) and confirmed F014/F085 already built exactly this: a `StatusDistribution` strip above the list, using `YOUR_LIST_BUCKET_LABELS` ("Not sent yet" / "Sent, awaiting review" / "Overdue" / "Delivered and accepted") rather than the Pages vocabulary, per `StatusDistribution`'s own `labels` prop added by F085 for this exact reuse. Confirmed via `status-distribution.test.tsx`'s existing `test_AS_085_a_caller_can_supply_its_own_label_set`, which still passes unchanged.
+
+## Round 2 — coordinator review fixes
+
+The coordinator reviewed the rendered Pages view as `nina` and found four
+problems; addressed all four before completing this task, per its explicit
+"3 and 4 are in scope now" instruction:
+
+1. **Pipeline orphaned its last step at 808px** (wrapped, dangling arrow
+   after `Blocked`). Fixed by removing `blocked` from the arrow-connected
+   flow entirely (see #2) and making the remaining 3-step flow
+   `flex-nowrap` inside an `overflow-x-auto` container — the same
+   "scrolls inside its own container, never the page" pattern
+   `hours-burndown-chart.tsx` already uses for its SVG. The strip now
+   never wraps at any width; it scrolls instead.
+2. **"Blocked" was drawn as a step between "Waiting on you" and "Ready to
+   launch," implying pages pass through it on the way to launch — false.**
+   Reworked `PagePipeline`: the arrow-connected flow is now only
+   `In progress → Waiting on you → Ready to launch` (`FLOW_ORDER`), the
+   three buckets that genuinely follow one another. `Blocked` renders as
+   its own marker (`data-testid="page-pipeline-blocked-aside"`, labelled
+   "Stuck at any step"), set apart by a plain divider rather than an
+   arrow — an arrow means "leads to", a divider doesn't claim that.
+3. **The table's Status column showed raw internal status names**
+   (`todo`/`in_progress`/`in_review`/`done` — the default seed's own
+   literal names, `supabase/migrations/20260824010000_project_statuses.sql`
+   lines 63-66) directly beneath a pipeline using the correct client
+   vocabulary. Fixed by adding an optional `labelOverride` prop to
+   `StatusPill` (default `null` — every existing caller, including the
+   team-side board, is byte-for-byte unchanged) and having `PagesTable`
+   pass `CLIENT_BUCKET_LABELS[page.status.clientBucket]` — the exact
+   bucket word `PagePipeline` above it already uses for the same page.
+4. **The filter dropdown showed the raw `__all__` sentinel** on initial
+   render. Root cause: `components/ui/select.tsx` wraps `@base-ui/react/
+   select`'s `Select.Value`, which (per its own type definition,
+   `node_modules/@base-ui/react/select/value/SelectValue.d.ts`) only
+   mirrors a matching `Select.Item`'s rendered text once that item has
+   actually mounted (i.e. after the popup has been opened at least once)
+   — before that it falls back to rendering the raw `value` prop
+   verbatim. Fixed by passing `SelectValue` an explicit children render
+   function (`FILTER_TRIGGER_LABELS[value] ?? "All statuses"`), Base UI's
+   own documented mechanism for this exact case — confirmed via
+   `node_modules` inspection, not memory, since this is a live library
+   behaviour, not app code.
+
+**Live verification after the fix** (dev server was already running; DB
+had been reseeded between round 1 and round 2, so project ids changed —
+re-resolved via `/portal/acme-studio`):
+- `GET /portal/acme-studio/p/b1e02e94-03fb-48d3-8e4c-fd34c868919b/pages`
+  → 200. Markup shows exactly 4 rendered pill labels — "Ready to
+  launch", "In progress" (x2), "Waiting on you", "Blocked" — and zero
+  occurrences of a raw status name text node.
+- The pipeline's flow (`<ol aria-label="How your pages travel, by
+  count">`) contains exactly the 3 `<li>` flow steps (progress, waiting,
+  done) each followed by a `→`; `Blocked` appears only in the separate
+  `data-testid="page-pipeline-blocked-aside"` block, with no arrow
+  pointing into or out of it.
+- The filter trigger's `<span data-slot="select-value">` renders
+  `All statuses` literally in the initial server-rendered HTML — no
+  `__all__` anywhere in the response body.
 
 ## Out-of-scope work needed
 - No live-server visual verification was possible in this session's sandbox — see Blockers/Notes below for what to check once a dev server is reachable.
@@ -55,7 +117,7 @@ AUTONOMOUS_DECISION: Used a native `title` attribute for the budget bar's per-se
 
 ## Notes for the next worker
 A dev server was already running on port 3000 in this session, so I curled it directly (see Commands run above) rather than only unit-testing the components. Confirmed via markup (not visually — no browser in this sandbox):
-- `/portal/acme-studio/p/fe557caa-be43-4e78-9eec-92293617edfa/pages` (nina@demo.test) returns 200 with `page-pipeline-step-{progress,waiting,blocked,done}` and `page-pipeline-count-*` all present.
+- `/portal/acme-studio/p/<projectId>/pages` (nina@demo.test) returns 200 with `page-pipeline-step-{progress,waiting,blocked,done}` and `page-pipeline-count-*` all present (project id changes across sessions/reseeds — re-resolve via `/portal/acme-studio` first).
 - The same project's Overview returns 200 with `budget-bar-summary` = "36h used of a 100h budget." (under-budget path, no overage node rendered).
 - `/portal/cedarwood-partners/p/8f903494-5569-4a6a-9b35-7a40c07e60bd` (petra@demo.test, Meridian Ops Dashboard) returns 200 with `budget-bar-summary` = "38h used against a 20h budget — 18h over." and `budget-bar-overage` at `left: 51.28%, width: 46.15%` in `bg-status-blocked` — starting at the ceiling and extending well past it, not clamped.
 

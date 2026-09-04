@@ -69,12 +69,28 @@ export function StatusPill({
   clientBucket = null,
   description = null,
   className,
+  labelOverride = null,
 }: {
   name: string | null;
   category: StatusCategory;
   clientBucket?: string | null;
   description?: string | null;
   className?: string;
+  /**
+   * F108 (missions/20260903-portal, docs/client-portal-visual-plan.md
+   * 3.2, coordinator review): a caller-supplied client-facing word to
+   * render INSTEAD of the status's own raw `name` -- e.g. the Pages
+   * table, where the underlying `project_statuses.name` is whatever the
+   * team named it (the default seed literally names its four statuses
+   * `todo`/`in_progress`/`in_review`/`done` -- internal, snake_case
+   * words, never meant for a client to read). `undefined`/`null` (every
+   * existing caller) keeps this component's original AS-015 behaviour
+   * unchanged -- the status's own name, verbatim, is still the ONLY
+   * label the team-side board and every other portal view render. This
+   * does not change which bucket/colour a status resolves to, only the
+   * TEXT drawn inside the same pill.
+   */
+  labelOverride?: string | null;
 }) {
   if (name === null) {
     return (
@@ -107,7 +123,7 @@ export function StatusPill({
       )}
     >
       <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", classes.dot)} />
-      <span className="truncate">{name}</span>
+      <span className="truncate">{labelOverride ?? name}</span>
     </span>
   );
 
