@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
 import { getDocById } from "@/lib/queries/docs";
+import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { MarkdownEditor } from "@/components/docs/markdown-editor";
 
 export default async function ProjectDocEditorPage({
@@ -44,6 +45,11 @@ export default async function ProjectDocEditorPage({
     notFound();
   }
 
+  const currentUserRole = await getWorkspaceRoleForCurrentUser(
+    workspace.id,
+    user.id,
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -72,6 +78,16 @@ export default async function ProjectDocEditorPage({
         projectId={project.id}
         initialClientVisible={doc.clientVisible}
         initialDocKind={doc.docKind}
+        currentUserRole={
+          (currentUserRole ?? undefined) as
+            | "owner"
+            | "admin"
+            | "member"
+            | "viewer"
+            | "guest"
+            | "client"
+            | undefined
+        }
       />
     </div>
   );

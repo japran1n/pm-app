@@ -47,7 +47,7 @@ import {
   Heading2,
 } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -65,6 +65,8 @@ import { toast } from "sonner";
 // (projectId undefined here) has no project to attach the approval to —
 // so it's rendered only when this component actually receives one.
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
+import Link from "next/link";
+import { Eye } from "lucide-react";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -82,6 +84,12 @@ export type MarkdownEditorProps = {
   /** Unused here (breadcrumb/scope is resolved by the page) — accepted so
    * a project-scoped page can pass it without a type error. */
   workspaceSlug?: string;
+  /** F024 (missions/20260903-portal, AS-052): gates the "View as client"
+   * shortcut to owner/admin, mirroring `startClientPreview`'s own
+   * server-side re-check. Undefined (a caller that hasn't been updated)
+   * simply omits the shortcut, same "safe default hides the affordance"
+   * convention every other optional prop in this file already follows. */
+  currentUserRole?: "owner" | "admin" | "member" | "viewer" | "guest" | "client";
   /** F008 (AS-019): when set, this doc belongs to a project and the
    * header's "Request client approval" trigger is rendered — a
    * workspace-level doc (undefined here) has no project to attach an
@@ -100,9 +108,11 @@ export function MarkdownEditor({
   docId,
   initialTitle,
   initialContent,
+  workspaceSlug,
   projectId,
   initialClientVisible,
   initialDocKind,
+  currentUserRole,
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -231,6 +241,22 @@ export function MarkdownEditor({
               projectId={projectId}
               subject={{ subjectType: "doc", subjectId: docId, defaultTitle: title }}
             />
+            {/* F024 (missions/20260903-portal, AS-052): "View as client" --
+                same shortcut and same owner/admin-only gate as
+                task-detail-sheet.tsx's own copy; see that component's
+                doc comment. Requires the doc to already be client-visible
+                for the same reason. */}
+            {workspaceSlug &&
+              initialClientVisible &&
+              (currentUserRole === "owner" || currentUserRole === "admin") && (
+                <Link
+                  href={`/w/${workspaceSlug}/preview-as-client?projectId=${projectId}`}
+                  className={buttonVariants({ variant: "ghost", size: "sm" })}
+                >
+                  <Eye className="size-3.5" aria-hidden="true" />
+                  View as client
+                </Link>
+              )}
           </>
         )}
       </div>

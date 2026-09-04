@@ -170,13 +170,15 @@ import { PendingApprovalToggle } from "@/components/task/pending-approval-toggle
 // this dialog is the one that actually creates an approval_requests row
 // with a decision type, a due date and a message.
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
+import Link from "next/link";
+import { Eye } from "lucide-react";
 // F179 (AS-317, AS-318, AS-319): the recurrence picker + remove control —
 // same "smallest-possible-client-boundary, caller passes current value
 // down, component calls its own Server Action" convention as TagsEditor/
 // Checklist above.
 import { RecurrenceEditor } from "@/components/task/recurrence-editor";
 import type { RecurrenceRule } from "@/lib/recurrence/next-date";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -1620,6 +1622,31 @@ export function TaskDetailSheet({
                   }}
                 />
               )}
+              {/* F024 (missions/20260903-portal, AS-052): "View as client" --
+                  the one-click path into client-preview mode, deep-linked
+                  at this exact task. Owner/admin only (mirrors the
+                  authz gate `startClientPreview` re-checks server-side);
+                  requires the task to already be client-visible, since
+                  previewing a task the client can't see anyway would
+                  just land on the project chooser with nothing to show.
+                  The actual client selection happens on the destination
+                  page (there may be more than one client on this
+                  project) -- this link is the shortcut into that picker
+                  with project/task already filled in, not a bypass of
+                  it. */}
+              {workspaceHasClient &&
+                task.clientVisible &&
+                task.projectId &&
+                workspaceSlug &&
+                (currentUserRole === "owner" || currentUserRole === "admin") && (
+                  <Link
+                    href={`/w/${workspaceSlug}/preview-as-client?projectId=${task.projectId}&taskId=${task.id}`}
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
+                  >
+                    <Eye className="size-3.5" aria-hidden="true" />
+                    View as client
+                  </Link>
+                )}
               <Watchers
                 taskId={task.id}
                 watcherIds={task.watcherIds ?? []}

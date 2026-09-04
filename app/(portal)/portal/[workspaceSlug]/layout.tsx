@@ -1,8 +1,14 @@
 import { notFound, redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 import { canViewClientPortal } from "@/lib/auth/permissions";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
+import {
+  PORTAL_PREVIEW_ACCESS_COOKIE,
+  PORTAL_PREVIEW_LABEL_COOKIE,
+} from "@/lib/actions/portal-preview";
+import { ClientPreviewBanner } from "@/components/portal/client-preview-banner";
 
 // C3 (docs/client-portal-plan.md): the client portal's own shell.
 //
@@ -83,5 +89,30 @@ export default async function PortalLayout({
     redirect(`/w/${workspace.slug}`);
   }
 
-  return <div className="min-h-svh bg-background">{children}</div>;
+  // F024 (AS-052): `lib/supabase/server.ts`'s createClient() above has
+  // already picked up the impersonated client's session transparently if
+  // the preview cookies were present (they're scoped `path: "/portal"`,
+  // so the browser only ever sends them here) -- the guard checks above
+  // this point already ran AS the client, which is exactly the point.
+  // This block only decides whether to render the non-dismissable banner
+  // (spec section 3); it reads the raw cookie directly rather than
+  // threading a flag through createClient()'s return value, since that
+  // function's signature is shared by every other caller in the app.
+  const cookieStore = await cookies();
+  const isPreview = Boolean(
+    cookieStore.get(PORTAL_PREVIEW_ACCESS_COOKIE)?.value,
+  );
+  const previewLabel = cookieStore.get(PORTAL_PREVIEW_LABEL_COOKIE)?.value;
+
+  return (
+    <div className="min-h-svh bg-background">
+      {isPreview && previewLabel && (
+        <ClientPreviewBanner
+          workspaceSlug={workspace.slug}
+          clientLabel={previewLabel}
+        />
+      )}
+      {children}
+    </div>
+  );
 }
