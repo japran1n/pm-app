@@ -19,8 +19,11 @@ const TASK_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "33333333-3333-4333-8333-333333333333";
 const WORKSPACE_ID = "44444444-4444-4444-8444-444444444444";
 
+const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
+
 type TaskRow = {
   id: string;
+  project_id: string;
   client_visible: boolean;
   pending_client_approval: boolean;
   projects: { workspace_id: string } | null;
@@ -123,9 +126,38 @@ vi.mock("@/lib/actions/comments", () => ({
   },
 }));
 
+// F084: the notification fan-out is a separate, already-unit-tested
+// concern (see the recipients helper's own suite) -- mocked here so this
+// file keeps asserting only what it owns (the permission gate + RPC
+// call), and so its `notifyCalls` capture lets a handful of tests below
+// pin that a notification is actually attempted on both the approve and
+// request-changes happy paths, and that a failure there is swallowed
+// (AS-2's non-fatal requirement) rather than failing the client's action.
+let notifyCalls: { userId: string; kind: string; taskId?: string }[];
+let notifyRecipients: string[];
+let notifyThrows: boolean;
+
+vi.mock("@/lib/notifications/portal-recipients", () => ({
+  getPortalEventRecipients: async () => {
+    if (notifyThrows) throw new Error("recipients lookup boom");
+    return notifyRecipients;
+  },
+}));
+
+vi.mock("@/lib/notifications/create-notification", () => ({
+  createNotification: async (
+    _supabase: unknown,
+    params: { userId: string; kind: string; taskId?: string },
+  ) => {
+    notifyCalls.push({ userId: params.userId, kind: params.kind, taskId: params.taskId });
+    return { ok: true };
+  },
+}));
+
 function sharedPendingTask(): TaskRow {
   return {
     id: TASK_ID,
+    project_id: PROJECT_ID,
     client_visible: true,
     pending_client_approval: true,
     projects: { workspace_id: WORKSPACE_ID },
@@ -147,6 +179,9 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
     vi.resetModules();
     rpcCalls = [];
     commentCalls = [];
+    notifyCalls = [];
+    notifyRecipients = ["66666666-6666-4666-8666-666666666666"];
+    notifyThrows = false;
     opts = defaultOpts();
   });
 
@@ -264,6 +299,24 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
     ]);
   });
 
+  // --- F084: no portal event ever notified the team ---
+
+  it("test_F084_approve_task_notifies_the_resolved_recipients", async () => {
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(true);
+    expect(notifyCalls).toEqual([
+      { userId: "66666666-6666-4666-8666-666666666666", kind: "portal_task_decided", taskId: TASK_ID },
+    ]);
+  });
+
+  it("test_F084_approve_task_still_succeeds_when_notifying_fails", async () => {
+    notifyThrows = true;
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(true);
+  });
+
   // --- request-changes: same gates, plus its own message validation ---
 
   it("test_AS_016_request_changes_rejects_an_empty_message", async () => {
@@ -349,6 +402,24 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
         args: { p_task_id: TASK_ID },
       },
     ]);
+  });
+
+  // --- F084: no portal event ever notified the team ---
+
+  it("test_F084_request_changes_notifies_the_resolved_recipients", async () => {
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(true);
+    expect(notifyCalls).toEqual([
+      { userId: "66666666-6666-4666-8666-666666666666", kind: "portal_task_decided", taskId: TASK_ID },
+    ]);
+  });
+
+  it("test_F084_request_changes_still_succeeds_when_notifying_fails", async () => {
+    notifyThrows = true;
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(true);
   });
 
   it("test_AS_016_request_changes_surfaces_failure_when_the_trail_comment_fails", async () => {

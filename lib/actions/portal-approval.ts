@@ -29,6 +29,8 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isClient } from "@/lib/auth/permissions";
 import { addComment } from "@/lib/actions/comments";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
+import { createNotification } from "@/lib/notifications/create-notification";
+import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
 
 type PortalApprovalResult =
   | { ok: true; data: { taskId: string } }
@@ -62,7 +64,7 @@ function friendlyPortalTaskActionError(message: string | undefined): string {
 async function resolvePendingClientTask(
   taskId: string,
 ): Promise<
-  | { ok: true; workspaceId: string }
+  | { ok: true; workspaceId: string; projectId: string }
   | { ok: false; error: string }
 > {
   const admin = createAdminClient();
@@ -70,7 +72,7 @@ async function resolvePendingClientTask(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, client_visible, pending_client_approval, projects!inner(workspace_id)",
+      "id, project_id, client_visible, pending_client_approval, projects!inner(workspace_id)",
     )
     .eq("id", taskId)
     .is("deleted_at", null)
@@ -88,7 +90,7 @@ async function resolvePendingClientTask(
     ? project[0]?.workspace_id
     : project?.workspace_id;
 
-  if (!workspaceId) {
+  if (!workspaceId || !taskRow.project_id) {
     return { ok: false, error: "Task not found." };
   }
 
@@ -99,7 +101,49 @@ async function resolvePendingClientTask(
     return { ok: false, error: "Task not found." };
   }
 
-  return { ok: true, workspaceId };
+  return { ok: true, workspaceId, projectId: taskRow.project_id };
+}
+
+// F084: fan out an in-app notification to the project's decision owners
+// and the task's own assignee -- the team's only signal today that a
+// client acted at all is remembering to open the right queue. Entirely
+// best-effort/non-fatal (same convention as the trail comment above and
+// every other post-write side effect in this file): the client's own
+// action has already succeeded by the time this runs, and a failure to
+// notify must never be reported back to the client as their action
+// having failed.
+async function notifyPortalTaskDecision(params: {
+  taskId: string;
+  projectId: string;
+  workspaceId: string;
+  actorId: string;
+  decision: "approved" | "changes_requested";
+}) {
+  try {
+    const admin = createAdminClient();
+    const recipients = await getPortalEventRecipients(admin, {
+      projectId: params.projectId,
+      taskId: params.taskId,
+      excludeUserId: params.actorId,
+    });
+
+    const supabase = await createClient();
+    for (const userId of recipients) {
+      await createNotification(
+        supabase,
+        {
+          userId,
+          workspaceId: params.workspaceId,
+          kind: "portal_task_decided",
+          taskId: params.taskId,
+          payload: { decision: params.decision, taskId: params.taskId },
+        },
+        "notifyPortalTaskDecision",
+      );
+    }
+  } catch (notifyError) {
+    logger.error("notifyPortalTaskDecision: failed (non-fatal)", { error: notifyError });
+  }
 }
 
 async function requireClientCaller(workspaceId: string) {
@@ -119,7 +163,7 @@ async function requireClientCaller(workspaceId: string) {
     return { ok: false as const, error: "Task not found." };
   }
 
-  return { ok: true as const };
+  return { ok: true as const, userId: user.id };
 }
 
 export async function approvePortalTask(
@@ -171,6 +215,17 @@ export async function approvePortalTask(
   if (!commentResult.ok) {
     logger.error("approvePortalTask: trail comment failed", { error: commentResult.error });
   }
+
+  // F084 (AS-2): the team currently has zero signal that a client
+  // approved a task other than remembering to reopen it. Best-effort --
+  // see notifyPortalTaskDecision's own doc comment.
+  await notifyPortalTaskDecision({
+    taskId,
+    projectId: resolved.projectId,
+    workspaceId: resolved.workspaceId,
+    actorId: caller.userId,
+    decision: "approved",
+  });
 
   revalidatePath("/portal", "layout");
   revalidatePath("/w", "layout");
@@ -253,6 +308,19 @@ export async function requestPortalTaskChanges(
       error: friendlyPortalTaskActionError(updateError.message),
     };
   }
+
+  // F084 (AS-2): mirror of approvePortalTask's notification above, so a
+  // rejection is at least as visible to the team as an approval -- the
+  // defect this feature fixes is specifically that "request changes"
+  // notified no one while carrying the exact same "silently swallowed"
+  // failure mode as the byte-identical RPC it called.
+  await notifyPortalTaskDecision({
+    taskId: parsed.data.taskId,
+    projectId: resolved.projectId,
+    workspaceId: resolved.workspaceId,
+    actorId: caller.userId,
+    decision: "changes_requested",
+  });
 
   revalidatePath("/portal", "layout");
   revalidatePath("/w", "layout");

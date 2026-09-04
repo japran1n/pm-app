@@ -21,6 +21,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, isClient } from "@/lib/auth/permissions";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
+import { createNotification } from "@/lib/notifications/create-notification";
+import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
 import {
   acceptClientRequestSchema,
   createClientRequestSchema,
@@ -215,6 +217,41 @@ export async function createClientRequest(
   if (error || !data) {
     logger.error("createClientRequest failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
+  }
+
+  // F084 (AS-2): a filed request had no signal to the team beyond
+  // remembering to check the queue. Best-effort/non-fatal -- the request
+  // itself has already been created above, and a failure to notify must
+  // never be surfaced as a failure of filing it.
+  try {
+    const admin = createAdminClient();
+    const { data: projectRow } = await admin
+      .from("projects")
+      .select("workspace_id")
+      .eq("id", parsed.data.projectId)
+      .maybeSingle();
+
+    if (projectRow?.workspace_id) {
+      const recipients = await getPortalEventRecipients(admin, {
+        projectId: parsed.data.projectId,
+        excludeUserId: user.id,
+      });
+
+      for (const userId of recipients) {
+        await createNotification(
+          supabase,
+          {
+            userId,
+            workspaceId: projectRow.workspace_id,
+            kind: "client_request_submitted",
+            payload: { requestId: data.id, title: parsed.data.title },
+          },
+          "createClientRequest",
+        );
+      }
+    }
+  } catch (notifyError) {
+    logger.error("createClientRequest: notify failed (non-fatal)", { error: notifyError });
   }
 
   revalidatePath("/portal", "layout");

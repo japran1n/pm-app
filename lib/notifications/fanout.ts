@@ -41,6 +41,27 @@ export type NotificationKind =
   | "task_due_soon"
   | "watcher_update";
 
+// F084: three portal-originated kinds (see lib/notifications/
+// portal-recipients.ts's doc comment), passed straight to
+// `createNotification` from lib/actions/portal-approval.ts,
+// lib/actions/client-requests.ts and lib/actions/portal-deliverables.ts --
+// never through `computeFanoutRecipients` below, the same "direct call,
+// bypasses this file" pattern `decide_approval_atomic` already
+// established for `approval_decided`/`assumption_flagged` (those two
+// never appear in `NotificationKind` either, for the same reason: they
+// are written by a `perform create_notification(...)` inside a SQL
+// function, not through this TypeScript fan-out path at all). Kept as a
+// separate type, not folded into `NotificationKind`, so
+// lib/notifications/preferences.ts's `IN_APP_COLUMN_BY_KIND` -- which is
+// only ever consulted for a `computeFanoutRecipients` result, never for
+// one of these three -- stays an exhaustive map over the kinds it
+// actually needs to gate, instead of being forced to invent an in-app
+// preference column for kinds it never filters.
+export type PortalNotificationKind =
+  | "portal_task_decided"
+  | "client_request_submitted"
+  | "client_deliverable_submitted";
+
 // The four event shapes this feature's spec names: assignment, status
 // change, a new comment (which may itself carry mentions), and a
 // description mention (F205's diffed newly-mentioned set). Each event

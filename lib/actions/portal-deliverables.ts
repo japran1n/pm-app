@@ -49,6 +49,8 @@ import {
 import { deliverPortalDeliverableSchema } from "@/lib/validation/portal-deliverables";
 import type { DeliverableState } from "@/lib/queries/deliverables";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
+import { createNotification } from "@/lib/notifications/create-notification";
+import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
 
 const ATTACHMENTS_BUCKET = "task-attachments";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
@@ -273,6 +275,34 @@ export async function deliverPortalDeliverable(
   if (!row) {
     logger.error("deliverPortalDeliverable: rpc returned no row");
     return { ok: false, error: GENERIC_ERROR };
+  }
+
+  // F084 (AS-2): a delivered file had no signal to the team beyond
+  // remembering to check the queue. Best-effort/non-fatal, same reasoning
+  // as every other post-write side effect in this file (the Storage
+  // upload and the RPC have already succeeded above).
+  try {
+    const recipients = await getPortalEventRecipients(admin, {
+      projectId: taskRow.project_id,
+      taskId: taskRow.id,
+      excludeUserId: user.id,
+    });
+
+    for (const recipientId of recipients) {
+      await createNotification(
+        supabase,
+        {
+          userId: recipientId,
+          workspaceId,
+          kind: "client_deliverable_submitted",
+          taskId: taskRow.id,
+          payload: { deliverableId: parsedId.data.deliverableId },
+        },
+        "deliverPortalDeliverable",
+      );
+    }
+  } catch (notifyError) {
+    logger.error("deliverPortalDeliverable: notify failed (non-fatal)", { error: notifyError });
   }
 
   const { data: workspaceRow } = await admin
