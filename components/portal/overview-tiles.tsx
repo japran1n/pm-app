@@ -79,7 +79,9 @@ const BUCKET_LABEL: Record<ClientBucket, string> = {
  * (this feature's own "a sparkline is not decoration" rule): the caller
  * falls back to the number alone. */
 function Sparkline({ values }: { values: number[] }) {
-  if (values.length < 3) return null;
+  // Guard: `values` has come back undefined at least once from a caller
+  // mid-refactor -- never a shape this reads without checking first.
+  if (!values || values.length < 3) return null;
 
   const width = 64;
   const height = 20;
@@ -124,20 +126,24 @@ function StatusDistributionBar({
 }: {
   distribution: Record<ClientBucket, number>;
 }) {
-  const total = BUCKET_ORDER.reduce((sum, bucket) => sum + distribution[bucket], 0);
+  // Guard: an undefined/partial `distribution` must render nothing, not
+  // throw on an unguarded property read -- same convention as
+  // `Sparkline`'s own guard above.
+  if (!distribution) return null;
+  const total = BUCKET_ORDER.reduce((sum, bucket) => sum + (distribution[bucket] ?? 0), 0);
   if (total === 0) return null;
 
-  const nonZero = BUCKET_ORDER.filter((bucket) => distribution[bucket] > 0);
+  const nonZero = BUCKET_ORDER.filter((bucket) => (distribution[bucket] ?? 0) > 0);
 
   return (
     <div className="flex flex-col gap-1" data-testid="tile-pages-distribution">
       <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
         {BUCKET_ORDER.map((bucket) =>
-          distribution[bucket] > 0 ? (
+          (distribution[bucket] ?? 0) > 0 ? (
             <span
               key={bucket}
               className={BUCKET_BAR_CLASS[bucket]}
-              style={{ width: `${(distribution[bucket] / total) * 100}%` }}
+              style={{ width: `${((distribution[bucket] ?? 0) / total) * 100}%` }}
             />
           ) : null,
         )}

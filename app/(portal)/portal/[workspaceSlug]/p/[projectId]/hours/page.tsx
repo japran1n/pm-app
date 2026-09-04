@@ -6,11 +6,12 @@ import { getProjectHoursClient, getProjectCurrentBudgetPeriod } from "@/lib/quer
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { HoursTiles } from "@/components/portal/hours-tiles";
-import {
-  HoursBurndownChart,
-  computeBurndownSeries,
-  isoWeekToMonday,
-} from "@/components/portal/hours-burndown-chart";
+import { HoursBurndownChart } from "@/components/portal/hours-burndown-chart";
+// F107 (missions/20260903-portal): this is a server component -- pull
+// the pure series/week-math functions from the "use client"-free module
+// (see lib/hours/burndown-series.ts's own header for the exact defect
+// this avoids), not from hours-burndown-chart.tsx.
+import { computeBurndownSeries, isoWeekToMonday } from "@/lib/hours/burndown-series";
 import { HoursByCategory } from "@/components/portal/hours-by-category";
 
 // F019 (missions/20260903-portal, AS-034, AS-038): the Hours view --

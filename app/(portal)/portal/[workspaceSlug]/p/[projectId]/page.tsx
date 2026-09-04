@@ -28,7 +28,7 @@ import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
 import { LaunchHeadline } from "@/components/portal/launch-headline";
 import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
 import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items";
-import { computeBurndownSeries } from "@/components/portal/hours-burndown-chart";
+import { computeBurndownSeries } from "@/lib/hours/burndown-series";
 import type { ClientBucket } from "@/components/portal/status-label";
 
 // F006 (missions/20260903-portal, AS-002, AS-003, AS-010, AS-031): the
