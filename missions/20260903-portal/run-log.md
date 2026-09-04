@@ -584,3 +584,33 @@ All three round-2 blockers confirmed closed. Nothing reverted again.
 - F016k COMPLETE (e60791f) — the AS-003 tautology fixed by making the badge call isDeliverablePastDue in TypeScript rather than re-expressing it as PostgREST filters, with the joint test now exercising both real surfaces and verified to fail when either is mutated alone; both untested swept_at clearing branches covered, with the failure proven by mutating the trigger on the live database and then reapplying the migrations in order; the client_gate guard made behavioural, verified to fail when the gate's flags are neutered rather than only when the call is deleted.
   On `waived`: the worker chose to give it its action rather than delete it — accept_deliverable_atomic now takes 'waived' and the panel has a Waive button. Right call. A PM deciding not to chase an obligation is a real thing, and the enum was describing a gap in the product rather than dead code.
   **M3 remediation complete across all three rounds.**
+
+### M3 fourth gate: one blocker, and it is the sharpest finding of the mission
+
+Report: missions/20260903-portal/milestones/M3-scrutiny-4.md
+
+Everything I asked about is clean — the event trigger fires and revokes on new
+functions, leaves CREATE OR REPLACE ACLs intact, is postgres-owned so only the
+owner can disable it, and rolls back with an aborted transaction; the allow-list
+guard self-maintains against a column added in a rolled-back transaction; the
+waived branch sits after all of accept_deliverable_atomic's gates.
+
+**But F016i's own bookkeeping table has no RLS.** public.f016i_gated_function_oids
+is the only RLS-less table in public, with anon SELECT/INSERT/UPDATE/DELETE live
+over PostgREST — proven over the wire, not inferred: an anon-key POST with
+{"oid": 999999} returned 201, and the probe row was deleted again. Anon inserting
+plausible future oids makes the event trigger skip those functions, so every
+function a future migration creates stays anon-executable. The hole F016i closed,
+reopened through the state F016i created to close it.
+
+What this is an instance of, and the reason I am recording it rather than just
+fixing it: F016i audited functions, because functions were its subject. The table
+it created in order to perform that audit was not in scope of anything — not its
+own test, not the three review rounds before it. Four gates have asked "is this
+change correct?" and none has systematically asked "what did this change add that
+nothing is now checking?"
+
+M4 and M5 add tables of their own. That question goes into their gates.
+
+Keeping M4 running rather than rolling back — the fix is one migration and touches
+nothing M4 builds on, which the reviewer verified before recommending it.
