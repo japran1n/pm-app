@@ -786,3 +786,41 @@ production function, so they would stay green if it regressed. Ninth vacuous tes
 familiar species.
 
 Opened F025e.
+
+### F024 review: YES, a previewing admin can act as the client. Blocker.
+
+Report: missions/20260903-portal/milestones/F024-preview-review.md
+
+Next.js Server Actions POST to the URL of the page that invoked them, so an action
+fired from any /portal/* page carries the path-scoped preview cookies, and
+createClient() returns the impersonated client INSIDE the action rather than only
+inside the render. Nothing consults those cookies except the banner. Every portal
+write path is reachable: approve, request changes, decide an approval, flag an
+assumption, deliver a deliverable, create or withdraw a request, comment — each
+attributed to the client.
+
+decideApproval is the worst of them: it has no application-level authorisation at
+all, the entire check being the RPC's auth.uid() decision-owner test, which the
+impersonated session satisfies by construction.
+
+**This is worse than the leak F024 exists to prevent.** The decision log is the
+artefact AS-023, AS-024 and AS-026 exist to protect, and its whole value is that it
+records what the client decided. A feature built to make the team trust the
+visibility model instead handed them the ability to forge the evidence, while the
+audit log shows only that an admin opened a preview.
+
+The gap is in my specification. I wrote F024's spec entirely in terms of what a
+previewer can SEE — the prohibition on filter-based fakes, the banner, the audit
+row — and never once said what they must not DO. The worker implemented what was
+asked, correctly. Nine milestones of insisting that authorisation belongs in the
+database rather than the UI, and I specified a feature whose entire risk was that
+it would pass every database check.
+
+Two more from the same review: sign-out under preview revokes the real CLIENT's
+Supabase session while leaving the preview cookies and the admin's session intact;
+and AS-053 fails open, because writeAudit swallows errors and the row is written on
+start rather than on entry, with no cookie TTL.
+
+Opened F024b. The fix is a default-deny assertNotPreview() seam every portal action
+routes through — default-deny because this mission has eight instances of the
+opposite arrangement and every one of them eventually fired.
