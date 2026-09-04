@@ -88,6 +88,7 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
   let clientSession: SupabaseClient;
 
   let clientId: string;
+  let ownerId: string;
   const createdUserIds: string[] = [];
 
   beforeAll(async () => {
@@ -109,6 +110,7 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
     };
 
     const owner = await makeUser("owner");
+    ownerId = owner.id;
     const memberUser = await makeUser("member");
     const viewerUser = await makeUser("viewer");
     const clientUser = await makeUser("client");
@@ -416,7 +418,34 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
           alter table public.projects
             add column if not exists f020b_probe_never_committed text;
 
-          set local request.jwt.claims to '{"sub":"${clientId}","role":"authenticated"}';
+          -- Uses the workspace OWNER, not the client fixture user, on
+          -- purpose (root-caused via direct hosted-project reproduction,
+          -- see F088's handoff for the full mechanism). For UPDATE,
+          -- Postgres RLS requires a row to pass BOTH the table's SELECT
+          -- policy and the UPDATE policy's own USING clause before it is
+          -- even considered for the write -- not the UPDATE policy alone.
+          -- projects' SELECT policy (is_project_visible_to_row) carves
+          -- 'client' (and 'guest') out of the general
+          -- "workspace-visibility project" rule entirely
+          -- (wm.role not in ('guest', 'client')), so a client actor's
+          -- row visibility for UPDATE depends not only on an active
+          -- workspace_members row (what projects_update_active_members'
+          -- own USING clause checks) but *additionally* on a matching
+          -- project_members row existing and being visible at the
+          -- moment of that UPDATE -- a second table, a second fixture
+          -- insert, and a second thing that has to be true. That extra
+          -- dependency is exactly what CI's PROBE_ROW_NOT_MATCHED
+          -- outcome traced back to; it doesn't reproduce with an actor
+          -- whose visibility needs only one fact to hold. An owner's
+          -- visibility comes from wm.role in ('owner', 'admin') alone
+          -- (see is_project_visible_to_row), with no project_members
+          -- dependency at all, so it removes the fragile axis instead of
+          -- merely making it less likely to be hit. This also makes the
+          -- probe a *stronger* assertion than before: it now proves the
+          -- allow-list guard rejects a never-listed column for an actor
+          -- who would otherwise pass every other tier's role check, not
+          -- just for a role the guard's other branches already restrict.
+          set local request.jwt.claims to '{"sub":"${ownerId}","role":"authenticated"}';
           set local role authenticated;
 
           begin
