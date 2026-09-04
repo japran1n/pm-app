@@ -24,7 +24,14 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./tests/setup/testing-library.ts"],
     include: REALTIME_LIVE_DELIVERY_TESTS,
-    testTimeout: 30_000,
+    // F096 (AS-369 measurement run): reaction-realtime-delivery.test.ts's
+    // first `it` now carries its own explicit 50_000ms per-test timeout
+    // (see that file) to accommodate a generous 45_000ms internal
+    // measurement ceiling. This global default is raised alongside it so
+    // any other test in this file list that hits its own internal budget
+    // near the old 30s ceiling doesn't get killed by the runner before
+    // its own assertion/timeout logic gets to run.
+    testTimeout: 50_000,
     hookTimeout: 30_000,
     // Belt-and-braces alongside the CLI's --no-file-parallelism: even if
     // this config is ever invoked without that flag, a single worker

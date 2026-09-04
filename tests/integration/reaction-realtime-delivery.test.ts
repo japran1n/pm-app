@@ -386,26 +386,38 @@ describe.skipIf(!haveAdminCreds)(
           // .github/workflows/ci.yml's "Realtime integration tests"
           // step), alone, after every other vitest worker has exited, so
           // it no longer contends with anything for the runner's 2 vCPUs.
-          // With that contention removed, delivery on an uncontended host
-          // measured 1-2s locally (Realtime's own docs and this file's own
-          // git history back that: every prior "the event arrived" trace
-          // above this comment shows the event landing well under a
-          // second after SUBSCRIBED once nothing else was competing for
-          // the connection). The budget below (6000ms) is sized off that
-          // 1-2s measurement with roughly 3-4x headroom for run-to-run
-          // variance on a still-shared-but-uncontended-by-this-suite CI
-          // runner, not padded to blindly absorb four other workers'
-          // scheduling noise the way 13s/20s were. If this still times
-          // out, the on-timeout log below still names itself with the
-          // elapsed time, so a real regression (not scheduling) is what
-          // the next investigation would be measuring.
+          // F092 then guessed a 6000ms budget from a 1-2s local
+          // measurement -- and CI run 33891788785 falsified it too: 6001ms
+          // against a 6000ms budget, still just a lower bound because the
+          // old code abandoned the subscription (and stopped listening)
+          // the instant the timer fired, so every number in this file's
+          // history through F092 is "at least N ms", never the real
+          // delivery time.
+          //
+          // F096 (AS-369, this measurement run): every prior round picked
+          // a number by reasoning about what delivery "should" cost on an
+          // uncontended host. That reasoning has been wrong five times in
+          // a row. This round stops guessing: the listener below is never
+          // torn down early. On event arrival -- whether that's under the
+          // old 6000ms mark or well past it -- the true elapsed time since
+          // SUBSCRIBED is logged and the promise resolves with the actual
+          // payload, so a passing run now also produces a real
+          // measurement instead of silence. Only `HARD_TIMEOUT_MS` below
+          // (deliberately generous, because this run's job is to observe
+          // and print the true number, not to re-guess a tight one) can
+          // still fail the test, and only if the event genuinely never
+          // arrives at all. Once a real elapsed-time number comes back
+          // from this CI run, the budget should be set from that evidence
+          // (with sane headroom) and this comment updated -- see the F096
+          // handoff for what to do with each possible outcome.
+          const HARD_TIMEOUT_MS = 45000;
           const t0 = Date.now();
           const timeout = setTimeout(() => {
             process.stderr.write(
-              `[AS-369] postgres_changes event not received within 6000ms budget (SUBSCRIBED->timeout elapsed ${Date.now() - t0}ms) -- resolving null\n`,
+              `[AS-369] postgres_changes event NOT received within the generous ${HARD_TIMEOUT_MS}ms measurement ceiling (SUBSCRIBED->timeout elapsed ${Date.now() - t0}ms) -- resolving null, this is a genuine non-delivery, not scheduling noise\n`,
             );
             resolve(null);
-          }, 6000);
+          }, HARD_TIMEOUT_MS);
 
           subscriberClient
             .channel(`comment_reactions:${taskId}`)
@@ -420,6 +432,10 @@ describe.skipIf(!haveAdminCreds)(
               (payload: { new: { comment_id: string; user_id: string; emoji: string } }) => {
                 if (payload.new.comment_id !== commentId) return;
                 clearTimeout(timeout);
+                const elapsed = Date.now() - t0;
+                process.stderr.write(
+                  `[AS-369] postgres_changes event received ${elapsed}ms after SUBSCRIBED (measurement run, ceiling was ${HARD_TIMEOUT_MS}ms)\n`,
+                );
                 resolve(payload.new);
               },
             )
@@ -453,9 +469,10 @@ describe.skipIf(!haveAdminCreds)(
           .maybeSingle();
         expect(row).not.toBeNull();
       },
-      // Outer vitest per-test timeout: the internal 6000ms budget above
-      // plus slack for the row-existence query that runs after it.
-      12000,
+      // Outer vitest per-test timeout: the internal 45000ms measurement
+      // ceiling above plus slack for the row-existence query that runs
+      // after it.
+      50000,
     );
 
     it(
