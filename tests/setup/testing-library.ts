@@ -133,3 +133,77 @@ if (typeof document !== "undefined") {
 if (typeof document !== "undefined") {
   await import("@/components/editor/rich-text-editor");
 }
+
+// F099 follow-up: same "give jsdom the real DOM API instead of throwing"
+// move as the two fixes above, for a third failure shape hit by any test
+// that mounts a REAL Tiptap/ProseMirror editor (not a mock) and dispatches
+// a transaction that moves the selection -- e.g. `insertContent`, which
+// `mention-extension.test.tsx`'s F314 block uses to drive the real
+// Suggestion plugin. ProseMirror's `EditorView.updateStateInner` calls
+// `scrollToSelection` -> `coordsAtPos` -> `singleRect`, which measures a
+// jsdom `Range` via `range.getClientRects()`. jsdom implements
+// `Element.prototype.getClientRects`/`getBoundingClientRect` (both return a
+// zero-sized `DOMRect`, since jsdom does no real layout), but never
+// implements `Range.prototype.getClientRects`/`getBoundingClientRect` at
+// all -- so `target.getClientRects` is `undefined`, and calling it throws
+// `TypeError: target.getClientRects is not a function`. Like the WebSocket
+// and rich-text-editor-import fixes above, this throws asynchronously,
+// after the transaction's dispatch has already returned and the test's own
+// assertions have already passed, so it fails the *process* (attributed to
+// whichever file's module graph happens to be mid-flight) while every
+// individual test stays green.
+//
+// Fix: add `getClientRects`/`getBoundingClientRect` to jsdom's `Range`
+// prototype, matching the shape ProseMirror's `singleRect`/`nonZero`
+// helpers need to succeed without a crash: `nonZero()` requires
+// `rect.top < rect.bottom || rect.left < rect.right`, i.e. a real,
+// non-degenerate rect. Deliberately returning jsdom's usual all-zero rect
+// here (matching `Element`'s existing jsdom behavior) would make
+// `singleRect` fall through to `target.getBoundingClientRect()` -- which
+// this same patch also defines, also zero -- and PROSEMIRROR ITSELF treats
+// that as fine (`singleRect`'s own fallback), so it would not resurrect the
+// crash. But it WOULD mean any future test asserting real on-screen
+// coordinates (e.g. "the picker popup appears at the caret") would read
+// this fake rect and could pass against numbers nobody computed. To avoid
+// that false-confidence trap, the values below are an obviously-synthetic,
+// non-zero 1x1 rect at (0, 0) -- not jsdom's real (all-zero) default and
+// not a plausible real caret measurement either. A test asserting a
+// specific real caret position (anything other than exactly x:0, y:0,
+// width:1, height:1) would fail loudly against this value, rather than
+// silently passing against a zero rect; a test only asserting "some rect
+// exists"/"is non-zero-sized" (the actual, common shape of a geometry
+// assertion in a layout-less jsdom suite) is satisfied honestly, matching
+// what ProseMirror itself needs. `DOMRect` is a jsdom global, so this is
+// applied unconditionally on the `Range` prototype -- no per-file opt-in,
+// same reasoning as the two fixes above: any current or future test that
+// mounts a real ProseMirror view can hit this path, and a per-file
+// allowlist is exactly the class of fix that failed three times already
+// today (see F093/F095's comments on this file).
+if (typeof document !== "undefined" && typeof Range !== "undefined") {
+  const syntheticRect = (): DOMRect =>
+    new DOMRect(0, 0, 1, 1);
+
+  // jsdom's `Range` has no runtime `getClientRects`/`getBoundingClientRect`
+  // at all (TypeScript's DOM lib types declare them because real browsers
+  // have them, which is exactly why a `"getClientRects" in Range.prototype`
+  // runtime guard is both unnecessary -- jsdom never defines it -- and
+  // untypeable, since the lib types make that guard narrow to `never`).
+  // Assigning unconditionally is safe here because this file only ever
+  // runs inside jsdom, never a real browser.
+  Range.prototype.getClientRects = function (): DOMRectList {
+    const rect = syntheticRect();
+    const list: DOMRectList & { [index: number]: DOMRect } = Object.assign(
+      [rect],
+      {
+        item(index: number) {
+          return list[index] ?? null;
+        },
+      },
+    ) as unknown as DOMRectList;
+    return list;
+  };
+
+  Range.prototype.getBoundingClientRect = function (): DOMRect {
+    return syntheticRect();
+  };
+}
