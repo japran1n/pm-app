@@ -166,6 +166,48 @@ describe("MetricComparisonCard", () => {
     expect(screen.queryByTestId("metric-bar-chart")).not.toBeInTheDocument();
   });
 
+  // F105 (docs/client-portal-visual-plan.md §3.1): bullet chart rework.
+  // Guard the seeded regression case explicitly -- a `lower` metric whose
+  // "Now" is WORSE than baseline (bounce rate: baseline 55, now 61) must
+  // read unmistakably as a regression: the blocked token, the "Regressed"
+  // text, a down-trend icon, and a direction caption so a client who does
+  // not know bounce rate is lower-better still reads the row correctly.
+  it("test_AS_041_regression_case_lower_metric_worse_now_reads_as_regressed_not_progress", () => {
+    const metric = makeMetric({ id: "m-bounce", name: "Bounce rate", direction: "lower", baselineValue: 55, targetValue: 45 });
+    const snapshot = makeSnapshot({ id: "s-bounce", metricId: "m-bounce", value: 61 });
+    const status = deriveMetricMeasurementStatus(metric, snapshot);
+    expect(status).toBe("regressed");
+
+    render(<MetricComparisonCard metric={metric} latestSnapshot={snapshot} status={status} />);
+
+    const label = screen.getByTestId("metric-status-label");
+    expect(label).toHaveTextContent("Regressed");
+    expect(label.className).toContain("text-status-blocked");
+    // No colour-only encoding: an icon is present alongside colour + text.
+    expect(label.querySelector("svg")).toBeInTheDocument();
+    // A client who doesn't know bounce rate is lower-better still gets told.
+    expect(screen.getByTestId("metric-direction-caption")).toHaveTextContent("Lower is better");
+    // The aria-label states the regression in words, not just via geometry.
+    expect(screen.getByTestId("metric-bar-chart").getAttribute("aria-label")).toContain("regressed");
+  });
+
+  it("test_AS_041_no_baseline_case_still_gets_not_measured_treatment_never_a_zero_length_bullet", () => {
+    const metric = makeMetric({ id: "m-no-baseline-2", baselineValue: null, targetValue: 100 });
+    const status = deriveMetricMeasurementStatus(metric, null);
+    expect(status).toBe("not_measured");
+
+    render(<MetricComparisonCard metric={metric} latestSnapshot={null} status={status} />);
+
+    expect(screen.getByText("No baseline recorded yet.")).toBeInTheDocument();
+    expect(screen.queryByTestId("metric-bar-chart")).not.toBeInTheDocument();
+  });
+
+  it("shows the direction caption for a higher-is-better metric too, so every row is self-explanatory", () => {
+    const metric = makeMetric({ id: "m-higher-cap", direction: "higher" });
+    render(<MetricComparisonCard metric={metric} latestSnapshot={null} status="not_measured" />);
+    expect(screen.getByTestId("metric-direction-caption")).toHaveTextContent("Higher is better");
+  });
+
   describe("computeMetricBarLayout", () => {
     it("positions the target tick proportionally to the scale, never off the chart", () => {
       const layout = computeMetricBarLayout(100, 120, 150, null);
