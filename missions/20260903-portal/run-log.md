@@ -675,3 +675,25 @@ Opened F020b (invert the projects guard — the structural fix, not the patch), 
 - F025 COMPLETE (d86cc12) — two derived suites: the table triple-sweep deriving its list live from information_schema for every client_visible-bearing table and failing if one has no fixture, and the route walk that walks app/(portal) for every page.tsx, statically derives which query functions each route imports, calls them as a real client session and scans the SERIALISED payloads for planted leak markers. Both carry the required proof that they can fail. ~11.6s combined.
   It found a real leak on its first run and, as instructed, documented it rather than patching: client_requests.quoted_amount has no read gate separating a price the team is still thinking about from one actually sent. Opened as F025b.
   The way it was found is the argument for the whole feature: the sweep planted a value in a field nobody had thought to check, and the payload assertion caught it. Four leaks in this mission arrived through exactly that shape, and this is the first one caught by a test rather than by a reviewer.
+- F025b COMPLETE — an explicit quote_sent_at column written only by send_change_request_quote_atomic, and a security_invoker view masking the five quote columns for a client caller until it is set, with the portal's only client-reachable read pointed at the view and the base table left intact for the team and the RPCs. The worker rejected approval_request_id as the "sent" signal for a grep-verified reason: F016f NULLs it during re-quoting for unrelated bookkeeping.
+  It also found that F025's own sweep had a parser gap which meant getProjectChangeRequests was never actually called — the sweep was passing vacuously for the exact function this leak lived in. Seventh vacuous test in this mission, and the first found by a worker rather than a reviewer.
+
+### F025b's side-effect run found two functional regressions, one of them mine
+
+- **F020b's allow-list guard blocks accept_client_request_atomic's own task insert**,
+  because the tasks insert trigger bumps projects.task_counter and the guard raises
+  "task_counter cannot be changed directly". Accepting a client request — a core flow —
+  fails today.
+
+  This is my error. F020b was my structural fix for the eighth instance of the
+  missing-guard class, and I specified its allow-list in terms of what a human member
+  may write, without accounting for what the application itself writes through
+  triggers. F016j's equivalent guard had already solved that with a transaction-local
+  bypass for its legitimate SECURITY DEFINER writers; I did not carry that requirement
+  into F020b's spec.
+
+- **notifications_kind_check rejects the kind decide_approval_atomic writes**, so
+  deciding an approval raises inside the RPC. If that insert shares the transaction, a
+  client clicking Approve gets an error and nothing is recorded.
+
+Opened F025c. Both are blockers: they are core flows, not edge cases.
