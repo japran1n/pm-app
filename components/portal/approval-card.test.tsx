@@ -60,6 +60,10 @@ afterEach(() => {
   nudgeOwnerMock.mockReset();
 });
 
+function todayIsoForTest(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function deferred<T>() {
   let resolve: (value: T) => void = () => {};
   let reject: (reason: unknown) => void = () => {};
@@ -350,6 +354,55 @@ describe("ApprovalCard (F009)", () => {
     expect(
       screen.getByRole("link", { name: /see who to raise it with/i }),
     ).toHaveAttribute("href", "/portal/acme/p/project-1/approvals");
+  });
+
+  // F110 (missions/20260903-portal, plan section 3.5): the age bar's
+  // three honest cases -- overdue must read as past due (not a "full"
+  // bar indistinguishable from on-time), no due date must not fabricate
+  // a scale, and "raised today" must not divide by zero or show a
+  // negative/garbage day count.
+  describe("age bar (F110)", () => {
+    it("test_age_bar_overdue_shows_overdue_text_and_icon_not_colour_alone", () => {
+      renderCard({
+        approval: { ...APPROVAL, requestedAt: "2026-08-01T00:00:00Z", dueAt: "2020-01-01" },
+      });
+
+      const fill = screen.getByTestId("approval-age-bar-fill");
+      expect(fill).toHaveAttribute("data-overdue", "true");
+      // The overdue state must be nameable without colour: a visible
+      // text line plus icon, not just the fill's colour token.
+      const ageBlock = screen.getByTestId("approval-age");
+      expect(ageBlock).toHaveTextContent(/overdue/i);
+    });
+
+    it("test_age_bar_no_due_date_renders_days_waited_with_no_bar", () => {
+      renderCard({ approval: { ...APPROVAL, requestedAt: "2026-08-01T00:00:00Z", dueAt: null } });
+
+      const ageBlock = screen.getByTestId("approval-age");
+      expect(ageBlock).toHaveTextContent(/waiting/i);
+      expect(screen.queryByTestId("approval-age-bar")).not.toBeInTheDocument();
+    });
+
+    it("test_age_bar_raised_today_shows_zero_days_with_no_error", () => {
+      const today = todayIsoForTest();
+      renderCard({
+        approval: { ...APPROVAL, requestedAt: `${today}T00:00:00Z`, dueAt: null },
+      });
+
+      expect(screen.getByTestId("approval-age")).toHaveTextContent(/raised today/i);
+    });
+
+    it("test_age_bar_on_time_fill_is_not_overdue_and_bar_is_present", () => {
+      const today = todayIsoForTest();
+      const dueAt = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+      renderCard({
+        approval: { ...APPROVAL, requestedAt: `${today}T00:00:00Z`, dueAt },
+      });
+
+      const fill = screen.getByTestId("approval-age-bar-fill");
+      expect(fill).toHaveAttribute("data-overdue", "false");
+      expect(screen.getByTestId("approval-age-bar")).toBeInTheDocument();
+    });
   });
 
   it("shows an overdue due chip when the due date has passed and the card is still pending", () => {

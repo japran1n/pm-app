@@ -24,7 +24,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ExternalLink, Loader2, MessageSquareWarning } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Loader2, MessageSquareWarning } from "lucide-react";
 import { toast } from "sonner";
 
 import { decideApproval, nudgeApprovalOwner } from "@/lib/actions/portal-approval";
@@ -66,6 +66,21 @@ function formatDate(iso: string): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+// F110 (missions/20260903-portal): the age bar's scale. `requestedAt` is a
+// `timestamptz`; `dueAt` (when present) is the same date-only convention
+// documented on `formatDate` above -- both are collapsed to UTC calendar
+// midnight before differencing so a client mid-timezone gets whole-day
+// counts, not fractional ones that shift with time of day.
+function utcMidnight(iso: string): number {
+  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
+  const d = new Date(isoWithTime);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((utcMidnight(toIso) - utcMidnight(fromIso)) / 86_400_000);
 }
 
 function artifactHref(
@@ -214,9 +229,49 @@ export function ApprovalCard({
     handleDecision("changes_requested", trimmed);
   };
 
-  const overdue = approval.dueAt !== null && approval.dueAt < todayIso();
+  const today = todayIso();
+  const overdue = approval.dueAt !== null && approval.dueAt < today;
   const href = artifactHref(approval, workspaceSlug, projectId);
   const isExternal = href !== null && approval.subjectType !== "task";
+
+  // F110 (missions/20260903-portal, plan section 3.5): the age bar's axis
+  // is "days from request to due date", NOT a plain 0-100% of elapsed
+  // time against some open-ended max -- that would make an approval two
+  // months old and one three days old both read as "getting full", and
+  // it would make a *past-due* item look no different from one that
+  // landed exactly on its due date, which is the one failure mode this
+  // feature's own brief calls out by name. Concretely: fill width is
+  // elapsed-days-since-requested as a fraction of the requested-to-due
+  // span, clamped to 100% at the due date itself; the due date always
+  // sits at the right edge of the track (a fixed reference point, not a
+  // moving one) so "the fill reached the marker" always means "at or
+  // past due" and nothing else. Once the request is actually overdue,
+  // the fill is re-coloured (status-blocked, same token the due chip
+  // above already uses for overdue) AND a fixed "N days overdue" line
+  // with a warning icon appears -- text and icon, not colour alone, so
+  // greyscale/CVD viewing still reads it correctly (chart rule: no
+  // colour-only encoding).
+  const daysWaited = Math.max(0, daysBetween(approval.requestedAt, today));
+  const overdueDays = approval.dueAt ? Math.max(0, daysBetween(approval.dueAt, today)) : 0;
+  const totalSpanDays = approval.dueAt ? daysBetween(approval.requestedAt, approval.dueAt) : null;
+  // Guard against malformed data (a due date on/before the request date)
+  // the same way division-by-zero guards elsewhere in this codebase do:
+  // fall back to "fully elapsed" rather than NaN/Infinity, since a due
+  // date that isn't after the request date has, by definition, already
+  // been reached.
+  const ageFraction =
+    totalSpanDays === null
+      ? null
+      : totalSpanDays <= 0
+        ? 1
+        : Math.min(1, daysWaited / totalSpanDays);
+  const daysWaitedLabel =
+    daysWaited <= 0 ? "Raised today" : daysWaited === 1 ? "Waiting 1 day" : `Waiting ${daysWaited} days`;
+  const ageBarAriaLabel = approval.dueAt
+    ? overdue
+      ? `Raised ${formatDate(approval.requestedAt)}. ${overdueDays === 1 ? "1 day" : `${overdueDays} days`} past the ${formatDate(approval.dueAt)} due date.`
+      : `Raised ${formatDate(approval.requestedAt)}. Due ${formatDate(approval.dueAt)}.`
+    : undefined;
 
   return (
     <div
@@ -258,6 +313,65 @@ export function ApprovalCard({
         Requested {formatDate(approval.requestedAt)}
         {approval.round > 1 ? ` · Round ${approval.round}` : ""}
       </p>
+
+      {/* F110: the age bar only makes sense for an open approval -- once
+          `settled`, the card already shows what happened and when
+          (the "Approved on"/"Changes requested on" block below), so a
+          bar measuring time-still-waiting would be stale and misleading. */}
+      {!settled && (
+        <div data-testid="approval-age" className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{daysWaitedLabel}</span>
+            {/* No colour-only encoding: overdue is named in text with an
+                icon, never left to the bar's colour alone. */}
+            {overdue && (
+              <span className="flex items-center gap-1 font-medium text-status-blocked">
+                <AlertTriangle className="size-3.5" aria-hidden="true" />
+                {overdueDays === 1 ? "1 day overdue" : `${overdueDays} days overdue`}
+              </span>
+            )}
+          </div>
+          {/* Guard: an approval with no due date has no second point to
+              scale a bar against -- rather than fabricate one, this
+              renders the "days waited" text above with no bar at all
+              (the honest version of what this card used to render
+              nothing for). */}
+          {approval.dueAt && ageFraction !== null && (
+            <div
+              className="group relative flex h-4 w-full items-center"
+              title={ageBarAriaLabel}
+            >
+              <div
+                data-testid="approval-age-bar"
+                role="img"
+                aria-label={ageBarAriaLabel}
+                className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              >
+                <div
+                  data-testid="approval-age-bar-fill"
+                  data-overdue={overdue ? "true" : "false"}
+                  className={cn(
+                    "absolute inset-y-0 left-0 rounded-full",
+                    overdue ? "bg-status-blocked" : "bg-status-waiting",
+                  )}
+                  style={{ width: `${Math.round(ageFraction * 100)}%` }}
+                />
+                {/* Due-date marker, always pinned to the right edge (the
+                    fixed reference point the fill is measured against).
+                    The 2px halo (matching the card surface) is the
+                    2px-gap-between-adjacent-fills chart rule applied to
+                    a fill-plus-marker pair rather than two series. */}
+                <div
+                  aria-hidden="true"
+                  data-testid="approval-age-bar-due-marker"
+                  className="absolute inset-y-0 right-0 w-[2px] rounded-full bg-foreground/60"
+                  style={{ boxShadow: "0 0 0 2px var(--card)" }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {href && (
         <Link

@@ -158,8 +158,8 @@
   /* F004: dark-theme half of the same validated four (see :root's
      comment above) -- lighter/more saturated so each still clears
      contrast against the near-black ground. */
-  --status-waiting: #dbb03e;
-  --status-progress: #7aa5f3;
+  --status-waiting: #b98d28;
+  --status-progress: #5a86dc;
   --status-blocked: #dd5560;
   --status-done: #2f9e73;
   --status-waiting-bg: color-mix(in srgb, var(--status-waiting) 18%, transparent);
