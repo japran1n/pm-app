@@ -125,7 +125,18 @@ function deriveCallArg(moduleSource: string, fnName: string): "projectId" | "wor
   );
   const match = re.exec(moduleSource);
   if (!match) return null;
-  const params = match[1].trim();
+  // F025b: strip a trailing comma before the multi-param check below —
+  // a function declared as `function f(\n  projectId: string,\n)` (every
+  // Prettier-formatted single-arg export in this codebase, including
+  // getProjectChangeRequests) has one, and treating that as "more than
+  // one parameter" silently skipped every function written that way.
+  // That bug is why F025's own sweep never actually called
+  // getProjectChangeRequests before F025b: the marker it planted for
+  // this exact shape (an unsent quote's quoted_amount) was never
+  // exercised through the one query function that reads it, so the
+  // primary success test passed vacuously for that leg regardless of
+  // whether the read-side gate existed.
+  const params = match[1].trim().replace(/,\s*$/, "");
   if (params === "") return null; // no-arg — not a per-project/workspace loader
   // Multi-parameter functions (comma at the top level) are skipped —
   // this suite only auto-calls the common single-scope-id shape every

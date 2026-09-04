@@ -144,8 +144,15 @@ export async function getProjectChangeRequests(
 ): Promise<PortalQueryResult<ProjectChangeRequest[]>> {
   const supabase = await createClient();
 
+  // F025b: reads through client_requests_client_read, not the base
+  // table — that view masks quoted_hours/quoted_amount/quote_currency/
+  // quote_valid_until to NULL for a client caller until the team has
+  // actually sent the quote (quote_sent_at set by
+  // send_change_request_quote_atomic). This is the portal's own
+  // client-reachable read of these columns, so it is exactly the query
+  // that mask exists for.
   const { data, error } = await supabase
-    .from("client_requests")
+    .from("client_requests_client_read")
     .select(
       "id, project_id, title, body, desired_by, status, decline_reason, created_at, scope_verdict, quoted_hours, quoted_amount, quote_currency, quote_valid_until, client_decision, decided_at, approval_request_id",
     )

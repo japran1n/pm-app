@@ -542,6 +542,7 @@ export type Database = {
           project_id: string
           quote_currency: string | null
           quote_note: string | null
+          quote_sent_at: string | null
           quote_valid_until: string | null
           quoted_amount: number | null
           quoted_hours: number | null
@@ -573,6 +574,7 @@ export type Database = {
           project_id: string
           quote_currency?: string | null
           quote_note?: string | null
+          quote_sent_at?: string | null
           quote_valid_until?: string | null
           quoted_amount?: number | null
           quoted_hours?: number | null
@@ -604,6 +606,7 @@ export type Database = {
           project_id?: string
           quote_currency?: string | null
           quote_note?: string | null
+          quote_sent_at?: string | null
           quote_valid_until?: string | null
           quoted_amount?: number | null
           quoted_hours?: number | null
@@ -1833,6 +1836,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_scope_items_change_request_id_fkey"
+            columns: ["change_request_id"]
+            isOneToOne: false
+            referencedRelation: "client_requests_client_read"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "project_scope_items_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -2783,6 +2793,141 @@ export type Database = {
             columns: ["status_id"]
             isOneToOne: false
             referencedRelation: "project_statuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_requests_client_read: {
+        Row: {
+          approval_request_id: string | null
+          body: string | null
+          client_decision: string | null
+          converted_task_id: string | null
+          created_at: string | null
+          created_by: string | null
+          decided_at: string | null
+          decided_by: string | null
+          decline_reason: string | null
+          desired_by: string | null
+          id: string | null
+          kind: string | null
+          origin_assumption_id: string | null
+          project_id: string | null
+          quote_currency: string | null
+          quote_note: string | null
+          quote_sent_at: string | null
+          quote_valid_until: string | null
+          quoted_amount: number | null
+          quoted_hours: number | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          scope_verdict: string | null
+          severity: string | null
+          status: string | null
+          title: string | null
+          track: string | null
+          track_overridden: boolean | null
+          track_override_reason: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          approval_request_id?: string | null
+          body?: string | null
+          client_decision?: string | null
+          converted_task_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          desired_by?: string | null
+          id?: string | null
+          kind?: string | null
+          origin_assumption_id?: string | null
+          project_id?: string | null
+          quote_currency?: never
+          quote_note?: never
+          quote_sent_at?: string | null
+          quote_valid_until?: never
+          quoted_amount?: never
+          quoted_hours?: never
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope_verdict?: string | null
+          severity?: string | null
+          status?: string | null
+          title?: string | null
+          track?: string | null
+          track_overridden?: boolean | null
+          track_override_reason?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          approval_request_id?: string | null
+          body?: string | null
+          client_decision?: string | null
+          converted_task_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          decided_at?: string | null
+          decided_by?: string | null
+          decline_reason?: string | null
+          desired_by?: string | null
+          id?: string | null
+          kind?: string | null
+          origin_assumption_id?: string | null
+          project_id?: string | null
+          quote_currency?: never
+          quote_note?: never
+          quote_sent_at?: string | null
+          quote_valid_until?: never
+          quoted_amount?: never
+          quoted_hours?: never
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          scope_verdict?: string | null
+          severity?: string | null
+          status?: string | null
+          title?: string | null
+          track?: string | null
+          track_overridden?: boolean | null
+          track_override_reason?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_requests_approval_request_id_fkey"
+            columns: ["approval_request_id"]
+            isOneToOne: false
+            referencedRelation: "approval_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_converted_task_id_fkey"
+            columns: ["converted_task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_converted_task_id_fkey"
+            columns: ["converted_task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_origin_assumption_id_fkey"
+            columns: ["origin_assumption_id"]
+            isOneToOne: false
+            referencedRelation: "project_assumptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
