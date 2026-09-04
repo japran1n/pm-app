@@ -14,11 +14,11 @@ plus a new explicit pair of tests for "hidden on Overview" / "shown
 everywhere else." New behaviour is otherwise covered by named tests
 (listed below); none reference an AS-NNN id.
 
-## Files changed (across all three rounds of this task)
+## Files changed (across all four rounds of this task)
 - `app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx`
 - `app/(portal)/portal/[workspaceSlug]/p/[projectId]/hours/page.tsx`
-- `components/portal/overview-tiles.tsx`
-- `components/portal/overview-tiles.test.tsx`
+- `components/portal/overview-tiles.tsx` (round 4: grid className fix)
+- `components/portal/overview-tiles.test.tsx` (round 4: new breakpoint test)
 - `components/portal/hours-burndown-chart.tsx`
 - `components/portal/portal-topbar.tsx` (round 3)
 - `components/portal/portal-topbar.test.tsx` (round 3)
@@ -35,10 +35,39 @@ Did not touch `components/portal/phase-timeline.tsx` (owned by another
 agent) or the `min-w-0` grid item in `page.tsx`.
 
 ## Commands run
-`npx vitest run lib/portal/build-waiting-on-you-items.test.ts components/portal/launch-headline.test.tsx components/portal/waiting-on-you-block.test.tsx components/portal/overview-tiles.test.tsx tests/unit/f019-hours-burndown-chart.test.tsx tests/unit/server-client-boundary-imports.test.ts components/portal/portal-topbar.test.tsx tests/unit/portal-overview-queries.test.ts tests/unit/portal-waiting-on-you-count.test.ts` (0, 85 passed)
+`npx vitest run lib/portal/build-waiting-on-you-items.test.ts components/portal/launch-headline.test.tsx components/portal/waiting-on-you-block.test.tsx components/portal/overview-tiles.test.tsx tests/unit/f019-hours-burndown-chart.test.tsx tests/unit/server-client-boundary-imports.test.ts components/portal/portal-topbar.test.tsx tests/unit/portal-overview-queries.test.ts tests/unit/portal-waiting-on-you-count.test.ts` (0, 86 passed -- round 4 adds one test)
 `npx tsc --noEmit` (0)
 `npm run build` (0, sourced `.env` first)
-Manual runtime re-verification against the coordinator's own running dev server on `:3000` (dev-login + curl) after this round's changes — see "Notes for the next worker."
+Manual runtime re-verification against the coordinator's own running dev server on `:3000` (dev-login + curl) after round 3 AND after round 4 — see "Notes for the next worker."
+
+## Round 4: the orphaned third tile
+
+The coordinator measured all three round-3 fixes as correct and found one
+new thing while checking the tile strip: `sm:grid-cols-2 lg:grid-cols-3`
+put three tiles through a two-column tier between `sm` and `lg` --
+`Pages ready`/`Hours used` side by side, `Days to launch` alone on its
+own row with an empty half beside it.
+
+**Chose three columns, not a fourth tile.** The coordinator set an
+explicit bar for a fourth tile: it must answer something a client
+currently cannot see on this page, not merely fill a hole. I checked the
+two candidates the coordinator's own message named:
+- "Billable vs. total hours" is already exactly what the Hours-used
+  tile's own value + footnote states (`usedMinutes` "Of `soldMinutes`
+  budgeted"). A second tile with the same fact would be the identical
+  redundancy this feature's earlier rounds removed elsewhere.
+- "Next dated milestone" is already visible on this same page, in the
+  phase timeline directly below the tile strip (every phase's own date
+  range). A tile repeating one phase's date is a smaller, less
+  informative copy of a chart already on screen, not new information.
+
+Nothing else read anywhere in this codebase's portal queries answers a
+genuinely new client question on this specific page. Fixed the grid
+instead: `overview-tiles.tsx`'s strip is now `grid-cols-1 sm:grid-cols-3`
+-- one column below `sm`, three columns from `sm` up, with **no**
+two-column class anywhere in between, so three tiles can never split
+2-and-1 at any width. Added a test that asserts the className contains
+`grid-cols-1` and `grid-cols-3` but never `grid-cols-2`.
 
 ## This round: three redundancies from the coordinator's live review
 
@@ -133,6 +162,7 @@ AUTONOMOUS_DECISION: Dropped to three Overview tiles rather than inventing a fou
 AUTONOMOUS_DECISION: Chose `Stamp`/`ClipboardCheck`/`PackageX` (lucide-react) for approval/task/deliverable respectively — picked for semantic fit (a stamp for a decision, a clipboard-check for a task to review, a package-x for something missing/overdue) rather than any existing precedent in this codebase, since no prior UI in this repo distinguishes these three obligation types by icon.
 
 ## Notes for the next worker
-- **Please re-check the same five things from the previous handoff, now that the header chip/tile/icons have changed**: (a) headline in each of on_track/at_risk/slipped, light and dark — should now be the ONLY launch-date/confidence statement visible on Overview (topbar chip gone); (b) a non-Overview route (e.g. Hours) still shows the topbar chip; (c) the tile strip is three tiles wide, not four, with no gap or awkward spacing from the removed fourth; (d) "What we need from you" rows now show three visually distinct icons (a stamp, a clipboard-check, a package-x) — check they read clearly at the row's small size in both themes; (e) the empty "Nothing waiting on you right now." state still renders correctly (unaffected by this round's changes, but worth a quick re-check since the block sits directly above a now-three-tile strip instead of four).
+- All three round-3 items (chip, icons, tile removal) were independently confirmed by the coordinator's own browser measurement — no further check needed on those specifically.
+- **Round 4 needs a mobile-breakpoint check**, per the coordinator's own request: the tile strip is now `grid-cols-1` below `sm` (640px) and `grid-cols-3` from `sm` up, with no two-column tier in between. Please measure at a phone width (< 640px, should stack to one column, tiles full-width) and at a narrow tablet/small-laptop width just above 640px (should already be three columns, not two) — the exact failure mode being checked for is "does any width show two tiles on one row with a third orphaned below," which should now be structurally impossible since `grid-cols-2` does not appear anywhere in the strip's className.
 - I don't have a browser but did verify all three fixes at the raw-HTML level via the coordinator's own running dev server (see "Verified with a live server" above) — real confirmation of presence/absence, not a substitute for actually looking at layout/spacing/colour.
 - `tests/unit/server-client-boundary-imports.test.ts` is still a heuristic (regex, not full AST) — it now also flags property access, but a destructuring import used as a runtime value in some other exotic non-call, non-member-access, non-JSX shape (e.g. spread into an object, passed as a bare identifier to a non-JSX function argument where the callee itself renders it as JSX internally) would still be missed. I did not find such a case in this repo when I ran the widened check clean against the whole `app/`/`components/`/`lib/` tree.

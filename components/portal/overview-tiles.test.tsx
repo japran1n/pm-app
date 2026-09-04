@@ -109,6 +109,20 @@ describe("OverviewTiles", () => {
     expect(strip.children).toHaveLength(3);
   });
 
+  // F107 round 4 (coordinator review): a two-column tier between mobile
+  // and desktop orphaned the third tile alone on its own row. The strip
+  // must go straight from one column to three -- never a two-column
+  // class anywhere in its className -- so three tiles can never split
+  // 2-and-1 at any breakpoint.
+  it("test_tile_strip_has_no_two_column_breakpoint_that_would_orphan_the_third_tile", () => {
+    render(<OverviewTiles {...BASE_PROPS} />);
+
+    const strip = screen.getByTestId("overview-tiles");
+    expect(strip.className).not.toMatch(/grid-cols-2\b/);
+    expect(strip.className).toMatch(/grid-cols-1\b/);
+    expect(strip.className).toMatch(/grid-cols-3\b/);
+  });
+
   // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
   // 2.3): the hours tile's sparkline is the burn-down series, not a new
   // number -- three or more points renders it.

@@ -47,16 +47,25 @@
 // restated only the bare count of the exact same rows twelve rows below
 // it. The coordinator's own instruction was explicit that the block is
 // "strictly more informative" and the tile, not the block, should go.
-// Three tiles remain rather than inventing a fourth metric this schema
-// has no honest read for yet -- the coordinator's review offered this as
-// the explicit fallback ("or drop to three tiles") alongside "consider
-// what the fourth tile should be," and no existing read on this page
-// answers a genuinely new client question the way Hours/Pages/Launch
-// already do (a candidate for a real fourth tile -- e.g. "on-time
-// delivery rate" from `task_activity` completion dates against due dates
-// -- would be new aggregation work, not a reuse of an existing read, and
-// is named in this feature's own handoff as out-of-scope-needing-a-decision
-// rather than invented here under a size constraint).
+//
+// F107 round 4 (coordinator review): three tiles in a grid that stepped
+// through a two-column tier orphaned the third -- fixed below in the
+// grid className, not by adding a tile to fill the hole. A fourth tile
+// was considered against the coordinator's own bar ("does it answer
+// something a client currently cannot see on this PAGE, not whether it
+// fills a hole") and rejected for every candidate found:
+//   - "Billable vs. total hours" is already the Hours-used tile's own
+//     number + footnote (`usedMinutes` of `soldMinutes` budgeted) --
+//     restating it a second time is the exact redundancy this feature's
+//     earlier rounds removed elsewhere on this same page.
+//   - "Next dated milestone" is already visible on this same page, in
+//     the phase timeline directly below this tile strip (every phase's
+//     own date range) -- a tile repeating one phase's date is a smaller,
+//     less informative copy of a chart already on screen, not new
+//     information.
+// Nothing else read anywhere in this codebase's portal queries answers a
+// question this page doesn't already answer elsewhere on itself. Three
+// columns, not four tiles, is the honest answer here.
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -282,7 +291,17 @@ export function OverviewTiles({
   return (
     <div
       data-testid="overview-tiles"
-      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      // F107 round 4 (coordinator review): `sm:grid-cols-2 lg:grid-cols-3`
+      // put three tiles into a two-column tier between `sm` and `lg` --
+      // `Days to launch` orphaned alone on its own row with an empty
+      // half beside it, reading as a missing fourth card rather than a
+      // deliberate three. Going straight from one column (mobile) to
+      // three (from `sm` up, no two-column tier at all) is the one grid
+      // shape three tiles can occupy with no orphan at any width; a
+      // fourth tile was considered and rejected -- see this file's own
+      // header comment for why nothing on this page currently qualifies
+      // as new information rather than a restated one.
+      className="grid grid-cols-1 gap-4 sm:grid-cols-3"
     >
       <Tile
         testId="tile-pages-ready"
