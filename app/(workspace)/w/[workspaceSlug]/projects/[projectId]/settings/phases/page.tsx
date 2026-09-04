@@ -62,7 +62,7 @@ export default async function ProjectPhasesSettingsPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, workspace_id, name")
+    .select("id, workspace_id, name, baseline_frozen_at")
     .eq("id", projectId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -100,7 +100,12 @@ export default async function ProjectPhasesSettingsPage({
 
       <Separator />
 
-      <PhaseList projectId={project.id} initialPhases={phases} canManage={canManage} />
+      <PhaseList
+        projectId={project.id}
+        initialPhases={phases}
+        canManage={canManage}
+        baselineFrozen={project.baseline_frozen_at !== null}
+      />
     </div>
   );
 }

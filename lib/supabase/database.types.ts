@@ -1034,6 +1034,44 @@ export type Database = {
           },
         ]
       }
+      metric_snapshots: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          measured_at: string
+          metric_id: string
+          note: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          measured_at: string
+          metric_id: string
+          note?: string | null
+          value: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          measured_at?: string
+          metric_id?: string
+          note?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metric_snapshots_metric_id_fkey"
+            columns: ["metric_id"]
+            isOneToOne: false
+            referencedRelation: "project_metrics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           comment_reply_email: boolean
@@ -1455,6 +1493,53 @@ export type Database = {
           },
         ]
       }
+      project_improvements: {
+        Row: {
+          after_path: string | null
+          area: string
+          before_path: string | null
+          client_visible: boolean
+          created_at: string
+          explanation: string
+          id: string
+          position: number
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          after_path?: string | null
+          area: string
+          before_path?: string | null
+          client_visible?: boolean
+          created_at?: string
+          explanation: string
+          id?: string
+          position?: number
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          after_path?: string | null
+          area?: string
+          before_path?: string | null
+          client_visible?: boolean
+          created_at?: string
+          explanation?: string
+          id?: string
+          position?: number
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_improvements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           added_by: string | null
@@ -1483,6 +1568,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_metrics: {
+        Row: {
+          baseline_at: string | null
+          baseline_value: number | null
+          client_visible: boolean
+          created_at: string
+          direction: string
+          display_max: number | null
+          id: string
+          name: string
+          position: number
+          project_id: string
+          source: string
+          target_value: number | null
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          baseline_at?: string | null
+          baseline_value?: number | null
+          client_visible?: boolean
+          created_at?: string
+          direction?: string
+          display_max?: number | null
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+          source: string
+          target_value?: number | null
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          baseline_at?: string | null
+          baseline_value?: number | null
+          client_visible?: boolean
+          created_at?: string
+          direction?: string
+          display_max?: number | null
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+          source?: string
+          target_value?: number | null
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_metrics_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -1644,6 +1788,7 @@ export type Database = {
       projects: {
         Row: {
           archived_by: string | null
+          baseline_frozen_at: string | null
           created_at: string
           created_by: string | null
           deleted_at: string | null
@@ -1665,6 +1810,7 @@ export type Database = {
         }
         Insert: {
           archived_by?: string | null
+          baseline_frozen_at?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -1686,6 +1832,7 @@ export type Database = {
         }
         Update: {
           archived_by?: string | null
+          baseline_frozen_at?: string | null
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null

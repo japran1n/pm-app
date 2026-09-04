@@ -72,10 +72,20 @@ const STATE_OPTIONS = Object.entries(STATE_LABELS) as [
   string,
 ][];
 
+// F020 (missions/20260903-portal): the seeded "Audit & baseline" phase
+// (seed_default_phases, 20260909010000) is where the measurement
+// baseline is meant to be frozen (AS-040) — the process's own exit
+// criterion for phase 2. Matched by name rather than position: a PM who
+// renames it still gets a phase-named check that describes what it's
+// actually checking, but a renamed phase simply stops matching (an
+// accepted, documented limitation — see this feature's handoff).
+const BASELINE_PHASE_NAME = "Audit & baseline";
+
 function PhaseRow({
   phase,
   isFirst,
   isLast,
+  baselineFrozen,
   onChanged,
   onRemoved,
   onMove,
@@ -83,6 +93,7 @@ function PhaseRow({
   phase: PhaseListPhase;
   isFirst: boolean;
   isLast: boolean;
+  baselineFrozen: boolean;
   onChanged: (phase: PhaseListPhase) => void;
   onRemoved: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
@@ -106,6 +117,23 @@ function PhaseRow({
     plannedEnd: string;
     clientVisible: boolean;
   }) {
+    // F020 (AS-040's own process rule, section 6): moving THIS phase to
+    // "done" while the project has no frozen baseline is a warning, not
+    // a block — the process says the baseline is phase 2's exit
+    // criterion, but the tool respects the human's decision to proceed
+    // anyway. Fires only on the actual not-done -> done transition, not
+    // on every unrelated field edit.
+    if (
+      next.state === "done" &&
+      state !== "done" &&
+      phase.name === BASELINE_PHASE_NAME &&
+      !baselineFrozen
+    ) {
+      toast.warning(
+        "This project's baseline isn't frozen yet. The process treats freezing the baseline as this phase's exit criterion — consider freezing it (Settings → Measurement) before moving on.",
+      );
+    }
+
     const previous = { name, clientDescription, state, plannedStart, plannedEnd, clientVisible };
     setName(next.name);
     setClientDescription(next.clientDescription);
@@ -324,10 +352,12 @@ export function PhaseList({
   projectId,
   initialPhases,
   canManage,
+  baselineFrozen,
 }: {
   projectId: string;
   initialPhases: PhaseListPhase[];
   canManage: boolean;
+  baselineFrozen: boolean;
 }) {
   const router = useRouter();
   const [phases, setPhases] = useState<PhaseListPhase[]>(
@@ -470,6 +500,7 @@ export function PhaseList({
                 phase={phase}
                 isFirst={index === 0}
                 isLast={index === phases.length - 1}
+                baselineFrozen={baselineFrozen}
                 onChanged={replacePhase}
                 onRemoved={removeFromList}
                 onMove={handleMove}

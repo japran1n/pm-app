@@ -44,6 +44,11 @@ const ENTRIES = [
   // period, not a daily surface, but it's still a project setting, not
   // buried further than deliverables/phases are).
   { slug: "budget", label: "Budget" },
+  // F020 (missions/20260903-portal): metrics, baseline freeze and
+  // before/after improvements (AS-039, AS-040, AS-041) — same settings
+  // sub-nav placement as budget/record, set up once per phase then
+  // measured against periodically, not a daily surface.
+  { slug: "measurement", label: "Measurement" },
 ] as const;
 
 export function ProjectSettingsNav({
