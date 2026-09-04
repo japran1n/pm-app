@@ -120,3 +120,82 @@ than an unexamined "should be fine."
 
 ## Status (round 2)
 Still PARTIAL for the same reason as round 1: no browser-driving tool available this session to produce the required visual-inspection evidence artifact. The two coordinator-reported defects are fixed and covered by new/updated tests; the scroll-clipping issue has a structural fix applied and reasoned about, but is unverified by render.
+
+---
+
+## Round 3 addendum — page-scroll fix + second truncating qualifier
+
+Coordinator confirmed round 2's two defects fixed on screen and provided
+exact DOM measurements for two remaining issues.
+
+**1. Page still scrolled sideways (`body.scrollWidth 952` vs `clientWidth
+808`, while the chart's own scroller measured `330/330`).** This confirms
+the round-1/2 hypothesis exactly: the chart's own container was never the
+problem; a `lg:col-span-2` CSS grid item upstream, with no `min-width: 0`,
+was letting its content's intrinsic width size the grid track (and
+therefore the page) past the viewport. Per the coordinator's explicit
+scope widening ("`page.tsx` is now yours for this one change only"), added
+`min-w-0` to that one grid item in
+`app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx`
+(`<div className="flex flex-col gap-8 lg:col-span-2">` ->
+`<div className="flex min-w-0 flex-col gap-8 lg:col-span-2">`). No other
+line in that file touched. I traced the remaining ancestor chain up to
+the portal's shell layout (`app/(portal)/portal/[workspaceSlug]/p/[projectId]/layout.tsx`)
+and confirmed its own flex container already carries `min-w-0 flex-1` --
+the grid item was the one missing link.
+
+**2. Second truncating qualifier — "not yet started" on a blocked phase.**
+Exactly the class of bug round 2 fixed for the in-flight line: a qualifier
+string appended to the four-part facts line and truncated by the row's
+`truncate` class. Per the coordinator's instruction to fix the CLASS, not
+just the second instance, refactored the truncation-prone "append a
+qualifier to the facts string" pattern out of `formatPhaseFactsLine`
+entirely and introduced a single `formatQualifierLine(phase)` function
+that returns the ONE optional qualifier for a phase (in-flight text, OR
+the blocked-not-started note -- a phase's `state` is exclusive, so these
+never compete). `rowHeightForPhase` and the JSX row now both consume this
+one function, so the blocked note gets an identical own-line/own-row-height
+treatment to the in-flight line: same `BASE_ROW_HEIGHT_PX +
+INFLIGHT_LINE_HEIGHT_PX` growth, same non-appended rendering, distinguished
+only by its own `data-testid="phase-timeline-blocked-note"` and a
+`text-status-blocked` colour (vs the in-flight line's neutral
+`text-foreground`) so a client visually reads a blocked qualifier as
+alarmed and an in-flight one as neutral, consistent with the row's own
+state colour elsewhere. Grepped the rest of `formatPhaseFactsLine` and
+confirmed no other call site pushes a third kind of qualifier onto that
+string -- the two that existed (in-flight, blocked-note) are now both
+routed through `formatQualifierLine`, and any future one has nowhere else
+to go but through it.
+
+Updated `test_AS_010_a_blocked_phase_that_has_not_actually_started_says_so_instead_of_reading_as_an_unexplained_alarm`
+to assert the note is on its own line and absent from the facts line
+(mirroring round 2's fix to the in-flight test), and added
+`test_F104_round3_a_blocked_never_started_notes_own_line_grows_the_row_the_same_way_as_inflight`,
+which asserts the row-height/offset mechanics for the blocked case exactly
+as round 2's test did for the in-flight case, and that the facts line
+`data-testid` never contains "not yet started" for EITHER row on the page.
+
+**375px.** I cannot render the page myself (still no browser tool this
+session), so I did not measure 375px directly. The `min-w-0` fix is
+width-independent CSS (it removes a min-width floor rather than adding a
+breakpoint-specific rule), so it should apply identically at 375px and
+808px; the label column's own `w-56`/`sm:w-72` breakpoint and the chart's
+`overflow-x-auto` scroller are also unchanged from round 1/2, both already
+exercised at narrow widths in intent. I have not verified this with a real
+measurement, though, and say so rather than assuming it.
+
+**Requested re-measurement, if the coordinator has a moment:**
+1. At both 808px and 375px: `body.scrollWidth` vs `document.documentElement.clientWidth` (or your existing query) -- expect them equal now.
+2. The QA row's DOM: confirm `[data-testid="phase-timeline-blocked-note"]` renders the full un-truncated `Not yet started` text, on its own line, not appended to `[data-testid="phase-timeline-row-label"]`.
+3. Visual check that the blocked-note line's colour reads distinctly (I used the same red/`status-blocked` token as the row's own state word) rather than blending into the neutral in-flight-line treatment.
+
+## Commands run (round 3)
+`npx vitest run components/portal/phase-timeline.test.tsx` (0) — 25 passed (24 prior + 1 new round-3 test; 2 existing tests updated to match the new own-line contract)
+`npx tsc --noEmit` (0)
+`set -a; source .env; set +a; npm run build` (0)
+
+## Files changed (round 3, additive to the list above)
+app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (one line: `min-w-0` added to the `lg:col-span-2` grid item, per the coordinator's explicit one-time scope widening)
+
+## Status (round 3)
+Still PARTIAL: both coordinator-reported defects are fixed and covered by tests/build, but I still have no browser to re-measure `body.scrollWidth`/`clientWidth` at 808px or 375px myself, or to visually confirm the blocked-note colour reads correctly. Requesting the three re-measurements above.

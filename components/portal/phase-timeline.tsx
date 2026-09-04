@@ -141,51 +141,72 @@ function blockedNeverStarted(phase: PortalPhase): boolean {
   return phase.state === "blocked" && !phase.actualStart;
 }
 
-/** F104 1.3: the row's secondary line, kept to STATE + DATES + COUNT --
- * three facts, not four, and no longer a single middot run-on string in
- * one grey weight. The state/date/count line and the in-flight line are
- * composed separately by the caller so each can carry its own type
- * weight; this function stays the single source of truth for what goes
- * in each, so the row label, its `aria-label` and its tooltip can never
- * disagree (docs/portal-timeline-review-and-demo-readiness.md 1.2/2.1). */
+/** F104 1.3: the row's facts line, kept to STATE + DATES + COUNT -- three
+ * facts, not four, and no longer a single middot run-on string in one
+ * grey weight. This function stays the single source of truth for what
+ * goes in it, so the row label, its `aria-label` and its tooltip can
+ * never disagree (docs/portal-timeline-review-and-demo-readiness.md
+ * 1.2/2.1).
+ *
+ * F104 round 3: NEVER append a qualifier here. Round 2 fixed the
+ * in-flight title truncating when appended to this line; the coordinator
+ * then found the exact same defect on a second qualifier -- a blocked
+ * phase's "not yet started" note -- because it was still being pushed
+ * onto this string. Both qualifiers now live in `formatQualifierLine`
+ * below instead, which is the ONE place any future qualifier is added,
+ * so this class of bug (four facts and a truncating fifth squeezed onto
+ * one line) cannot recur a third time. */
 function formatPhaseFactsLine(phase: PortalPhase): string {
   const parts = [STATE_LABEL[phase.state]];
   const dateRange = formatPhaseDateRange(phase);
   if (dateRange) parts.push(dateRange);
   const progress = formatPhaseProgress(phase);
   if (progress) parts.push(progress);
-  if (blockedNeverStarted(phase)) parts.push("not yet started");
   return parts.join(" · ");
 }
 
-function formatInFlightLine(phase: PortalPhase): string | null {
+/** F104 round 3: the ONE optional qualifier line under the facts line,
+ * generalised from round 2's in-flight-only version. A phase's `state`
+ * is exclusive, so at most one of these ever applies to a given phase --
+ * there is nothing to prioritise between them. Any FUTURE qualifier
+ * (a third one, if the data ever grows one) belongs here too, never
+ * appended to `formatPhaseFactsLine`, so it gets its own line and its
+ * own row height for free instead of re-introducing the truncation bug
+ * a third time. */
+function formatQualifierLine(
+  phase: PortalPhase,
+): { kind: "inflight" | "blocked-note"; text: string } | null {
   if (phase.state === "active" && phase.inFlightTaskTitle) {
-    return `Now: ${phase.inFlightTaskTitle}`;
+    return { kind: "inflight", text: `Now: ${phase.inFlightTaskTitle}` };
+  }
+  if (blockedNeverStarted(phase)) {
+    return { kind: "blocked-note", text: "Not yet started" };
   }
   return null;
 }
 
-/** F104 round 2: a row's own natural height, driven by its own content
+/** F104 round 2/3: a row's own natural height, driven by its own content
  * rather than one constant shared by every row regardless of what it
- * holds. A phase with an in-flight line needs a third text line; one
- * without needs only two (name + facts). Both the label column and the
- * SVG bar/tick positions are derived from this same per-phase height so
- * the two coordinate systems -- text column and plot area -- cannot
- * drift apart the way a single fixed ROW_HEIGHT_PX did (coordinator
- * review: the in-flight line was overflowing into the next row). */
+ * holds. A phase with a qualifier line (in-flight OR the blocked "not
+ * yet started" note) needs a third text line; one without needs only
+ * two (name + facts). Both the label column and the SVG bar/tick
+ * positions are derived from this same per-phase height so the two
+ * coordinate systems -- text column and plot area -- cannot drift apart
+ * the way a single fixed ROW_HEIGHT_PX did (coordinator review: the
+ * in-flight line was overflowing into the next row). */
 function rowHeightForPhase(phase: PortalPhase): number {
-  return formatInFlightLine(phase) ? BASE_ROW_HEIGHT_PX + INFLIGHT_LINE_HEIGHT_PX : BASE_ROW_HEIGHT_PX;
+  return formatQualifierLine(phase) ? BASE_ROW_HEIGHT_PX + INFLIGHT_LINE_HEIGHT_PX : BASE_ROW_HEIGHT_PX;
 }
 
 /** The full plain-text summary of a row -- facts line plus, when present,
- * the in-flight line -- used everywhere the two need to combine into one
- * string (aria-label, tooltip body, and the row-label test hook). Kept as
- * one function so aria-label / tooltip / visible text can never drift
- * apart from each other. */
+ * its one qualifier line -- used everywhere the two need to combine into
+ * one string (aria-label, tooltip body, and the row-label test hook).
+ * Kept as one function so aria-label / tooltip / visible text can never
+ * disagree with each other. */
 function formatPhaseSecondaryLine(phase: PortalPhase): string {
   const facts = formatPhaseFactsLine(phase);
-  const inFlight = formatInFlightLine(phase);
-  return inFlight ? `${facts} · ${inFlight}` : facts;
+  const qualifier = formatQualifierLine(phase);
+  return qualifier ? `${facts} · ${qualifier.text}` : facts;
 }
 
 export type PhaseTimelineRow = {
@@ -440,7 +461,7 @@ export function PhaseTimeline({
         >
           {layout.rows.map(({ phase, heightPx }) => {
             const factsLine = formatPhaseFactsLine(phase);
-            const inFlightLine = formatInFlightLine(phase);
+            const qualifierLine = formatQualifierLine(phase);
             return (
               <div
                 key={phase.id}
@@ -478,17 +499,31 @@ export function PhaseTimeline({
                     {factsLine.slice(STATE_LABEL[phase.state].length)}
                   </span>
                 </span>
-                {/* F104 1.2/2.7: in-flight work gets its OWN line under
-                    active phases instead of being appended to the facts
-                    line and truncated -- this is the line a client reads
-                    first. */}
-                {inFlightLine && (
+                {/* F104 1.2/2.7 + round 3: any qualifier -- in-flight
+                    work on an active phase, or the "not yet started"
+                    note on a blocked-but-never-started one -- gets its
+                    OWN line instead of being appended to the facts line
+                    and truncated. Round 2 fixed this for the in-flight
+                    case; round 3 generalises it via `formatQualifierLine`
+                    so the blocked note (found truncating the same way,
+                    "not yet …") gets the identical treatment, and any
+                    future qualifier gets it for free too. */}
+                {qualifierLine && (
                   <span
-                    data-testid="phase-timeline-inflight"
-                    className="truncate text-xs font-medium text-foreground"
-                    title={inFlightLine}
+                    data-testid={
+                      qualifierLine.kind === "inflight"
+                        ? "phase-timeline-inflight"
+                        : "phase-timeline-blocked-note"
+                    }
+                    className={cn(
+                      "truncate text-xs font-medium",
+                      qualifierLine.kind === "blocked-note"
+                        ? "text-status-blocked"
+                        : "text-foreground",
+                    )}
+                    title={qualifierLine.text}
                   >
-                    {inFlightLine}
+                    {qualifierLine.text}
                   </span>
                 )}
               </div>

@@ -309,9 +309,18 @@ describe("PhaseTimeline", () => {
     // already has (`actualStart`), is that the phase never actually
     // began -- so "Blocked" does not read as a live, unexplained
     // emergency for a phase scheduled entirely in the future.
+    //
+    // F104 round 3: this note used to be appended to the facts line and
+    // truncated ("not yet …") -- coordinator-observed, the exact same
+    // defect the in-flight line was fixed for in round 2. It now lives
+    // on its own dedicated line (`phase-timeline-blocked-note`), never
+    // appended to the facts line.
     const rowLabel = screen.getByTestId("phase-timeline-row-label");
     expect(rowLabel).toHaveTextContent("Blocked");
-    expect(rowLabel).toHaveTextContent(/not yet started/i);
+    expect(rowLabel.textContent).not.toMatch(/not yet started/i);
+
+    const blockedNote = screen.getByTestId("phase-timeline-blocked-note");
+    expect(blockedNote).toHaveTextContent(/not yet started/i);
 
     const row = screen.getByRole("button", { name: /QA & accessibility/ });
     expect(row.getAttribute("aria-label")).toMatch(/not yet started/i);
@@ -336,6 +345,7 @@ describe("PhaseTimeline", () => {
     const rowLabel = screen.getByTestId("phase-timeline-row-label");
     expect(rowLabel).toHaveTextContent("Blocked");
     expect(rowLabel.textContent).not.toMatch(/not yet started/i);
+    expect(screen.queryByTestId("phase-timeline-blocked-note")).not.toBeInTheDocument();
   });
 
   it("test_AS_010_an_active_phase_shows_the_one_client_visible_task_currently_in_flight", () => {
@@ -543,6 +553,45 @@ describe("PhaseTimeline", () => {
     const row = screen.getByRole("button", { name: /Build/ });
     expect(row).toHaveAttribute("data-behind", "false");
     expect(row.getAttribute("aria-label")).not.toMatch(/behind/i);
+  });
+
+  it("test_F104_round3_a_blocked_never_started_notes_own_line_grows_the_row_the_same_way_as_inflight", () => {
+    // Coordinator round 3: the exact same appended-and-truncated defect
+    // fixed for the in-flight line in round 2 also existed for the
+    // blocked "not yet started" note ("Blocked · 18 Sept – 26 Sept ·
+    // 0 of 1 done · not yet …"). Both now go through the single
+    // `formatQualifierLine` mechanism, so fixing the class fixes both
+    // instances and any future one.
+    const phases: PortalPhase[] = [
+      makePhase({
+        id: "p1",
+        name: "QA & accessibility",
+        state: "blocked",
+        plannedStart: "2026-09-18",
+        plannedEnd: "2026-09-26",
+        actualStart: null,
+        totalClientVisibleTasks: 1,
+        doneClientVisibleTasks: 0,
+      }),
+      makePhase({ id: "p2", name: "Launch", state: "not_started" }),
+    ];
+
+    const layout = computePhaseTimelineLayout(phases, TODAY);
+    const [row1, row2] = layout.rows;
+
+    // Same taller-row mechanism as the in-flight case -- not a special
+    // case bolted on next to it.
+    expect(row1!.heightPx).toBeGreaterThan(row2!.heightPx);
+    expect(row2!.yPx).toBe(row1!.yPx + row1!.heightPx);
+
+    render(<PhaseTimeline phases={phases} today={TODAY} />);
+    const note = screen.getByTestId("phase-timeline-blocked-note");
+    expect(note).toHaveTextContent(/not yet started/i);
+
+    const factsLines = screen.getAllByTestId("phase-timeline-row-label");
+    for (const factsLine of factsLines) {
+      expect(factsLine.textContent).not.toMatch(/not yet started/i);
+    }
   });
 
   it("test_F104_round2_a_rows_own_height_grows_to_fit_its_inflight_line_without_overlapping_the_next_row", () => {

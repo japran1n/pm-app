@@ -209,7 +209,14 @@ export default async function PortalOverviewPage({
       />
 
       <div className="grid gap-8 lg:grid-cols-3">
-        <div className="flex flex-col gap-8 lg:col-span-2">
+        {/* F104 round 3: `min-w-0` -- a CSS grid item's default
+            min-width is `auto`, so without this the PhaseTimeline's
+            internally-scrolling SVG could size THIS track wider than
+            the viewport instead of scrolling inside its own container,
+            pushing the whole page into a sideways scroll (coordinator
+            measurement: body.scrollWidth 952 vs clientWidth 808 while
+            the chart's own scroller fit exactly). */}
+        <div className="flex min-w-0 flex-col gap-8 lg:col-span-2">
           {phasesResult.ok ? (
             <PhaseTimeline phases={phasesResult.data} today={today} />
           ) : (
