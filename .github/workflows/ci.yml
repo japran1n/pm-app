@@ -14,7 +14,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20.9"
+          # 20.9 is what Next declares as its floor, but it is below what the
+          # test runner actually needs: vitest's rolldown dependency imports
+          # `styleText` from node:util, which landed in 20.12, so vitest fails
+          # to start at all on 20.9 ("does not provide an export named
+          # 'styleText'"). 24.x is the active LTS line and is what vitest's
+          # own engines field allows (^20 || ^22 || >=24).
+          node-version: "24.x"
           cache: "npm"
 
       - name: Install dependencies
