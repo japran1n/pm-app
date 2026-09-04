@@ -128,6 +128,17 @@ describe("MetricComparisonCard", () => {
     expect(screen.getByTestId("metric-target-tick")).toBeInTheDocument();
   });
 
+  it("F021c: a snapshot measured before the baseline was set also renders not_measured, never improved", () => {
+    const metric = makeMetric({ id: "m-pre-baseline", direction: "lower", baselineValue: 4200, baselineAt: "2026-03-01" });
+    const snapshot = makeSnapshot({ id: "s-1", metricId: "m-pre-baseline", value: 2000, measuredAt: "2026-01-15" });
+    const status = deriveMetricMeasurementStatus(metric, snapshot);
+    expect(status).toBe("not_measured");
+
+    render(<MetricComparisonCard metric={metric} latestSnapshot={snapshot} status={status} />);
+    expect(screen.getByTestId("metric-status-label")).toHaveTextContent("Not yet measured");
+    expect(screen.queryByTestId("metric-bar-chart")).not.toBeInTheDocument();
+  });
+
   describe("computeMetricBarLayout", () => {
     it("positions the target tick proportionally to the scale, never off the chart", () => {
       const layout = computeMetricBarLayout(100, 120, 150, null);

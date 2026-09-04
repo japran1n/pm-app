@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { BarChart3 } from "lucide-react";
+import { AlertTriangle, BarChart3 } from "lucide-react";
 
 import { getPortalProjects } from "@/lib/queries/portal";
 import {
@@ -75,7 +75,25 @@ export default async function PortalResultsPage({
     getProjectImprovements(projectId),
   ]);
 
-  const metrics = metricsResult.ok ? metricsResult.data : [];
+  // F021c: a failed metrics read used to fall through the exact same
+  // `metrics.length === 0` branch as "no metrics recorded yet" — the same
+  // failure-presented-as-reassuring-fact defect F006f's own header
+  // describes for getProjectPhases (lib/queries/portal.ts), in the one
+  // view whose entire purpose is credibility with the client. A failed
+  // read renders an honest "couldn't load" state instead, never a `[]`
+  // this page can't tell apart from "genuinely nothing yet".
+  if (!metricsResult.ok) {
+    return (
+      <EmptyState
+        icon={AlertTriangle}
+        title="Couldn't load results"
+        description="Something went wrong loading this project's metrics. Try refreshing the page."
+        testId="results-view-error"
+      />
+    );
+  }
+
+  const metrics = metricsResult.data;
   const improvements = improvementsResult.ok ? improvementsResult.data : [];
 
   if (metrics.length === 0 && improvements.length === 0) {

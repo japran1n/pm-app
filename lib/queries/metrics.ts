@@ -217,6 +217,16 @@ export async function getProjectMetricsWithLatestSnapshot(
 // made, so F021's Results view (also assigned AS-041) reads this instead
 // of re-deriving its own status from `latestSnapshot`/`direction`.
 //
+// F021c: "no post-baseline snapshot" means exactly that — a snapshot
+// whose `measuredAt` is before the metric's own `baselineAt` is not a
+// measurement of the work at all, it predates it. Without this
+// comparison a metric baselined 2026-03-01 with a single snapshot from
+// 2026-01-15 rendered "Improved", in green, from data taken before the
+// baseline existed (M4 gate finding). `baselineAt` therefore has to be
+// part of this function's own parameter type, not just `baselineValue`/
+// `direction` — a caller that omits it cannot express the case this
+// function exists to catch.
+//
 // `direction` (AS-039's own weight): for 'lower' metrics (e.g. LCP), a
 // smaller latest value than baseline is an improvement; for 'higher'
 // metrics (e.g. sessions), a larger one is. Getting this backwards is
@@ -224,10 +234,21 @@ export async function getProjectMetricsWithLatestSnapshot(
 export type MetricMeasurementStatus = "not_measured" | "improved" | "regressed" | "unchanged";
 
 export function deriveMetricMeasurementStatus(
-  metric: Pick<ProjectMetric, "baselineValue" | "direction">,
+  metric: Pick<ProjectMetric, "baselineValue" | "direction" | "baselineAt">,
   latestSnapshot: MetricSnapshot | null,
 ): MetricMeasurementStatus {
   if (!latestSnapshot || metric.baselineValue === null) {
+    return "not_measured";
+  }
+
+  // F021c: a snapshot measured before the baseline was set is not a
+  // post-baseline measurement — treat it the same as having none at all.
+  // `baselineAt === null` alongside a non-null `baselineValue` shouldn't
+  // occur (the baseline value and its timestamp are written together),
+  // but if it ever did, there is no baseline date to compare against, so
+  // the honest answer is still "not measured" rather than assuming the
+  // snapshot qualifies.
+  if (metric.baselineAt === null || latestSnapshot.measuredAt < metric.baselineAt) {
     return "not_measured";
   }
 

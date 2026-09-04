@@ -352,7 +352,7 @@ describe.skipIf(!haveCreds)(
     describe("AS-041: a metric with no post-baseline snapshot reads as not yet measured, never as an improvement", () => {
       it("deriveMetricMeasurementStatus returns not_measured when there is no snapshot", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: 4200, direction: "lower" },
+          { baselineValue: 4200, direction: "lower", baselineAt: "2026-02-01" },
           null,
         );
         expect(status).toBe("not_measured");
@@ -360,15 +360,54 @@ describe.skipIf(!haveCreds)(
 
       it("deriveMetricMeasurementStatus returns not_measured when there is no baseline at all, even with a snapshot", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: null, direction: "lower" },
+          { baselineValue: null, direction: "lower", baselineAt: null },
           { id: "x", metricId: "x", value: 10, measuredAt: "2026-01-01", note: null, createdBy: "x", createdAt: "2026-01-01" },
         );
         expect(status).toBe("not_measured");
       });
 
+      // F021c (M4 remediation): the ONE case this whole feature exists to
+      // catch — a metric baselined AFTER its only snapshot was taken must
+      // never read "improved". This is the primary success test for the
+      // date comparison itself: `measuredAt` (2026-01-15) is before
+      // `baselineAt` (2026-03-01), so this measurement predates the work
+      // the baseline represents, and cannot be evidence of anything the
+      // baseline was frozen to measure.
+      it("F021c: a snapshot measured BEFORE the baseline was set reads as not_measured, never improved", () => {
+        const status = deriveMetricMeasurementStatus(
+          { baselineValue: 4200, direction: "lower", baselineAt: "2026-03-01" },
+          {
+            id: "x",
+            metricId: "x",
+            value: 2000,
+            measuredAt: "2026-01-15",
+            note: null,
+            createdBy: "x",
+            createdAt: "2026-01-15",
+          },
+        );
+        expect(status).toBe("not_measured");
+      });
+
+      it("F021c: a snapshot measured on the same day the baseline was set counts as post-baseline", () => {
+        const status = deriveMetricMeasurementStatus(
+          { baselineValue: 4200, direction: "lower", baselineAt: "2026-03-01" },
+          {
+            id: "x",
+            metricId: "x",
+            value: 2000,
+            measuredAt: "2026-03-01",
+            note: null,
+            createdBy: "x",
+            createdAt: "2026-03-01",
+          },
+        );
+        expect(status).toBe("improved");
+      });
+
       it("direction matters: for a 'lower is better' metric, a smaller latest value is an improvement", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: 4200, direction: "lower" },
+          { baselineValue: 4200, direction: "lower", baselineAt: "2026-02-01" },
           { id: "x", metricId: "x", value: 2000, measuredAt: "2026-03-01", note: null, createdBy: "x", createdAt: "2026-03-01" },
         );
         expect(status).toBe("improved");
@@ -376,7 +415,7 @@ describe.skipIf(!haveCreds)(
 
       it("direction matters: for a 'lower is better' metric, a LARGER latest value is a regression, never an improvement", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: 4200, direction: "lower" },
+          { baselineValue: 4200, direction: "lower", baselineAt: "2026-02-01" },
           { id: "x", metricId: "x", value: 5000, measuredAt: "2026-03-01", note: null, createdBy: "x", createdAt: "2026-03-01" },
         );
         expect(status).toBe("regressed");
@@ -384,7 +423,7 @@ describe.skipIf(!haveCreds)(
 
       it("direction matters: for a 'higher is better' metric, a larger latest value is an improvement", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: 100, direction: "higher" },
+          { baselineValue: 100, direction: "higher", baselineAt: "2026-02-01" },
           { id: "x", metricId: "x", value: 150, measuredAt: "2026-03-01", note: null, createdBy: "x", createdAt: "2026-03-01" },
         );
         expect(status).toBe("improved");
@@ -392,7 +431,7 @@ describe.skipIf(!haveCreds)(
 
       it("direction matters: for a 'higher is better' metric, a SMALLER latest value is a regression, never an improvement", () => {
         const status = deriveMetricMeasurementStatus(
-          { baselineValue: 100, direction: "higher" },
+          { baselineValue: 100, direction: "higher", baselineAt: "2026-02-01" },
           { id: "x", metricId: "x", value: 60, measuredAt: "2026-03-01", note: null, createdBy: "x", createdAt: "2026-03-01" },
         );
         expect(status).toBe("regressed");
