@@ -623,3 +623,42 @@ nothing M4 builds on, which the reviewer verified before recommending it.
 - F021 COMPLETE (bd5e44c) — portal Results view: before/now/target bars honouring `direction` so a regression is drawn and labelled as one rather than hidden, an honest "not measured yet" state instead of a zero bar, an improvements list that reads without images and shows them when they exist, and the baseline-frozen header line. **M4 COMPLETE.**
 
 ## M4 gate
+
+### M4 gate: three blockers. The class has an eighth instance, and it shows what we missed.
+
+Report: missions/20260903-portal/milestones/M4-scrutiny.md
+
+Money and privacy are clean, and the reviewer verified it properly: project_hours_client
+builds an explicit three-key jsonb per row, never selects a task column, note or user
+id, its error branch is a constant string, both RPCs are anon-non-executable, the team
+RPC refuses is_project_client, and F019's grep claim holds across the whole portal tree.
+The M3-round-4 question — what did this milestone add that nothing checks — came back
+negative: no RLS-less table, no new bucket, all four new tables carry the two-tier policy
+shape with pg_temp pinned.
+
+**B1, verified:** the hours page asks for 2000-01-01 to today while sold_minutes comes
+from one budget by overlap. A project with a closed 2025 budget and a current 2026 one
+reports Used 45h, Remaining 0h, "+5h Over". Wrong in the direction that starts a false
+overrun conversation, which is the most damaging thing this particular view can do.
+
+**B2, verified:** F020 added projects.baseline_frozen_at and did not extend F006k's
+projects guard — zero occurrences in that migration. projects_update_active_members has
+no role restriction, so a client or viewer can PATCH baseline_frozen_at to null and the
+freeze that the entire Results view rests on is gone.
+
+That is the eighth instance of the class, and this one shows what we actually missed.
+F006k's own sweep of "every column this mission added to a pre-existing table" came back
+clean — because F020's column did not exist yet. F016j then solved this properly for
+client_requests by inverting its guard to an allow-list computed from the live schema.
+**We never applied that inversion to projects.** One table became self-maintaining, the
+other stayed a list somebody has to remember, and the very next column added to it walked
+straight through.
+
+**B3, verified:** the improvement calculation never compares measured_at to baseline_at —
+zero references. A snapshot from before the baseline renders as "Improved" in green. And
+the AS-041 test passes arguments that omit the field the assertion turns on, so it cannot
+fail for its own reason. Sixth test in this mission incapable of failing for the thing it
+names.
+
+Opened F020b (invert the projects guard — the structural fix, not the patch), F021b
+(hours period scoping) and F021c (pre-baseline snapshots plus three majors).
