@@ -2,9 +2,11 @@
 //
 // F006 (missions/20260903-portal): the overview's four tiles. Covers
 // this feature's own "side-effect verification" definition of done
-// directly: no fabricated figure anywhere on the page; the hours tile
-// visibly says the data is not available yet, regardless of what other
-// props this component receives.
+// directly: no fabricated figure anywhere on the page.
+//
+// F085 (missions/20260903-portal audit, defects 1 and 2): the Hours tile
+// is now wired to real minutes rather than a permanent placeholder, and
+// the Waiting-on-you tile is a link.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -15,28 +17,49 @@ afterEach(() => {
   cleanup();
 });
 
+const BASE_PROPS = {
+  waitingOnYouCount: 3,
+  approvalsHref: "/portal/acme/p/project-1/approvals",
+  pagesReadyCount: 5,
+  pagesTotalCount: 12,
+  usedMinutes: 120,
+  soldMinutes: 600,
+  hoursHref: "/portal/acme/p/project-1/hours",
+  daysToLaunch: 40,
+  launchConfidence: "on_track" as const,
+};
+
 describe("OverviewTiles", () => {
-  it("test_hours_tile_never_renders_a_fabricated_number_regardless_of_other_props", () => {
-    render(
-      <OverviewTiles
-        waitingOnYouCount={3}
-        pagesReadyCount={5}
-        pagesTotalCount={12}
-        daysToLaunch={40}
-        launchConfidence="on_track"
-      />,
-    );
+  it("test_AS_031_hours_tile_renders_the_real_used_and_budgeted_figures", () => {
+    render(<OverviewTiles {...BASE_PROPS} usedMinutes={120} soldMinutes={600} />);
+
+    const hoursTile = screen.getByTestId("tile-hours-used");
+    expect(hoursTile).toHaveTextContent("2h");
+    expect(hoursTile).toHaveTextContent("Of 10h budgeted");
+    // Never the F006-era hard-coded placeholder copy again.
+    expect(hoursTile).not.toHaveTextContent("Available with the next release");
+  });
+
+  it("hours tile shows an honest placeholder, never a fabricated number, with no data at all", () => {
+    render(<OverviewTiles {...BASE_PROPS} usedMinutes={null} soldMinutes={null} />);
 
     const hoursTile = screen.getByTestId("tile-hours-used");
     expect(hoursTile).toHaveTextContent("—");
-    expect(hoursTile).toHaveTextContent("Available with the next release");
-    // Never a digit anywhere in the hours tile.
-    expect(hoursTile.textContent).not.toMatch(/\d/);
+    expect(hoursTile).toHaveTextContent("No billable hours yet");
+  });
+
+  it("hours tile links to the Hours view", () => {
+    render(<OverviewTiles {...BASE_PROPS} />);
+
+    const hoursTile = screen.getByTestId("tile-hours-used");
+    expect(hoursTile.tagName).toBe("A");
+    expect(hoursTile).toHaveAttribute("href", "/portal/acme/p/project-1/hours");
   });
 
   it("renders the waiting-on-you count and a real pages-ready fraction", () => {
     render(
       <OverviewTiles
+        {...BASE_PROPS}
         waitingOnYouCount={2}
         pagesReadyCount={4}
         pagesTotalCount={9}
@@ -51,9 +74,20 @@ describe("OverviewTiles", () => {
     expect(screen.getByTestId("tile-days-to-launch")).toHaveTextContent("At risk");
   });
 
+  // F085 (defect 2): the whole reason this tile links anywhere -- a
+  // client who reads "3" no longer has to go hunting for where to act.
+  it("test_AS_002_waiting_on_you_tile_is_a_link_to_approvals", () => {
+    render(<OverviewTiles {...BASE_PROPS} waitingOnYouCount={3} />);
+
+    const tile = screen.getByTestId("tile-waiting-on-you");
+    expect(tile.tagName).toBe("A");
+    expect(tile).toHaveAttribute("href", "/portal/acme/p/project-1/approvals");
+  });
+
   it("shows an honest placeholder, not a fabricated fraction, when there are no pages yet", () => {
     render(
       <OverviewTiles
+        {...BASE_PROPS}
         waitingOnYouCount={0}
         pagesReadyCount={0}
         pagesTotalCount={0}
@@ -74,15 +108,7 @@ describe("OverviewTiles", () => {
   // waiting on you") that this tile must not claim when it doesn't
   // actually know.
   it("test_AS_002_renders_an_honest_placeholder_never_a_fabricated_zero_when_waiting_on_you_failed_to_load", () => {
-    render(
-      <OverviewTiles
-        waitingOnYouCount={null}
-        pagesReadyCount={4}
-        pagesTotalCount={9}
-        daysToLaunch={15}
-        launchConfidence="at_risk"
-      />,
-    );
+    render(<OverviewTiles {...BASE_PROPS} waitingOnYouCount={null} />);
 
     const tile = screen.getByTestId("tile-waiting-on-you");
     expect(tile).toHaveTextContent("—");

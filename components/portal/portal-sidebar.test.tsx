@@ -138,6 +138,35 @@ describe("PortalSidebar (F003)", () => {
   // count it is GIVEN, since F003's own contract is "badge counts come
   // from one server query, passed down as props" (this feature's spec,
   // section 3).
+  // F085 (missions/20260903-portal audit, layout defect): `w-full` on
+  // every row inside the mobile `overflow-x-auto` horizontal strip meant
+  // each item claimed 100% of the flex row's width, so only the first
+  // item was ever visible at a narrow viewport. Desktop rows still carry
+  // `w-full` (correct there -- a vertical list should fill the sidebar);
+  // mobile rows must not.
+  it("test_AS_085_mobile_nav_rows_do_not_carry_w_full_but_desktop_rows_do", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+
+    // Split the markup at the mobile-strip marker (`md:hidden`) -- every
+    // anchor before it is the desktop `<aside>`'s, every anchor after is
+    // the mobile strip's.
+    const mobileMarkerIndex = html.indexOf("md:hidden");
+    expect(mobileMarkerIndex).toBeGreaterThan(-1);
+    const desktopHtml = html.slice(0, mobileMarkerIndex);
+    const mobileHtml = html.slice(mobileMarkerIndex);
+
+    const desktopOverviewAnchor = anchorTags(desktopHtml).find((tag) =>
+      tag.includes('href="/portal/acme/p/proj-1"'),
+    );
+    const mobileOverviewAnchor = anchorTags(mobileHtml).find((tag) =>
+      tag.includes('href="/portal/acme/p/proj-1"'),
+    );
+
+    expect(desktopOverviewAnchor).toContain("w-full");
+    expect(mobileOverviewAnchor).not.toContain("w-full");
+  });
+
   it("renders a nonzero badge count using the shared Badge component", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(

@@ -607,6 +607,115 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
   };
 }
 
+// F085 (missions/20260903-portal audit, defect 2): the Overview tile's
+// honest "what's waiting on you" count. Before this fix, the Overview
+// tile read only `getPortalWaitingOnYou` (task-shaped,
+// `pending_client_approval` rows) while the sidebar's Approvals badge
+// (`getPortalBadgeCounts` above) read `approval_requests` directly for
+// the client's owned decision types — a doc- or phase-subject approval
+// exists in the badge and not in the tile, and past-due deliverables
+// were in neither. This is the one function that unions all three, so
+// the tile and the badge can never disagree about whether there is
+// SOMETHING waiting on the client, only (by design, per each surface's
+// own scope) about which view is the right place to act on it.
+//
+// Dedup: a task-subject approval request keeps `tasks.pending_client_approval`
+// true for exactly as long as it is open (20260916010000's own header) —
+// so a task-subject open approval and its `pending_client_approval` task
+// row are the SAME obligation counted twice unless collapsed onto one
+// key (`task:<id>`). A non-task-subject (doc/phase/artifact) approval has
+// no task row to collide with, so it gets its own key (`approval:<id>`).
+// Past-due deliverables live in a separate table with no task/approval
+// row of their own, so that count is added on top, never deduped against
+// the other two.
+export async function getPortalWaitingOnYouCount(
+  projectId: string,
+): Promise<PortalQueryResult<number>> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "Not signed in." };
+  }
+
+  const overdueResult = await getDeliverablesPastDueCount(projectId);
+  if (!overdueResult.ok) {
+    logger.error("getPortalWaitingOnYouCount: failed to load overdue deliverables count", {
+      error: overdueResult.error,
+    });
+    return { ok: false, error: overdueResult.error };
+  }
+
+  const { data: taskRows, error: taskError } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("pending_client_approval", true)
+    .eq("client_visible", true)
+    .is("deleted_at", null)
+    // Same terminal shape as `getPortalWaitingOnYou`'s identical filter
+    // set above -- ordering has no bearing on a count, this just keeps
+    // one query shape for "pending-approval tasks" rather than a second,
+    // subtly different one.
+    .order("updated_at", { ascending: false });
+
+  if (taskError) {
+    logger.error("getPortalWaitingOnYouCount: failed to load pending-approval tasks", {
+      error: taskError,
+    });
+    return { ok: false, error: taskError.message };
+  }
+
+  const { data: ownerRows, error: ownerError } = await supabase
+    .from("project_decision_owners")
+    .select("decision_type")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id);
+
+  if (ownerError) {
+    logger.error("getPortalWaitingOnYouCount: failed to load decision owners", {
+      error: ownerError,
+    });
+    return { ok: false, error: ownerError.message };
+  }
+
+  const decisionTypes = [...new Set((ownerRows ?? []).map((row) => row.decision_type))];
+
+  const keys = new Set<string>();
+  for (const task of taskRows ?? []) {
+    keys.add(`task:${task.id}`);
+  }
+
+  if (decisionTypes.length > 0) {
+    const { data: approvalRows, error: approvalError } = await supabase
+      .from("approval_requests")
+      .select("id, subject_type, subject_id")
+      .eq("project_id", projectId)
+      .eq("state", "pending")
+      .in("decision_type", decisionTypes);
+
+    if (approvalError) {
+      logger.error("getPortalWaitingOnYouCount: failed to load approvals", {
+        error: approvalError,
+      });
+      return { ok: false, error: approvalError.message };
+    }
+
+    for (const approval of approvalRows ?? []) {
+      keys.add(
+        approval.subject_type === "task" && approval.subject_id
+          ? `task:${approval.subject_id}`
+          : `approval:${approval.id}`,
+      );
+    }
+  }
+
+  return { ok: true, data: keys.size + overdueResult.data };
+}
+
 // F006f (missions/20260903-portal, AS-002): the Overview page's own
 // "Waiting on you" tile and the task list rendered directly beneath it
 // used to be two independently-computed numbers -- the tile read this
@@ -670,6 +779,13 @@ export async function getPortalWaitingOnYou(
 export type PortalRisk = {
   id: string;
   message: string;
+  // F085 (missions/20260903-portal audit, defect 5): carried straight
+  // through from `DeliverableRisk` (lib/queries/deliverables.ts) -- the
+  // banner names the item and its due date, and links the row to Your
+  // list (where the client actually acts on it), rather than a bare
+  // sentence with nothing to click.
+  itemName: string;
+  dueAt: string;
 };
 
 // F014 (missions/20260903-portal, AS-031): "a blocking deliverable past
@@ -689,7 +805,9 @@ export type PortalRisk = {
 // placeholder" instruction, unchanged from before this feature.
 export async function getPortalRisks(projectId: string): Promise<PortalRisk[]> {
   const risk = await getWorstOverdueBlockingDeliverableRisk(projectId);
-  return risk ? [risk] : [];
+  return risk
+    ? [{ id: risk.id, message: risk.message, itemName: risk.itemName, dueAt: risk.dueAt }]
+    : [];
 }
 
 // --- Live now (F006, missions/20260903-portal; P3, docs/client-portal-

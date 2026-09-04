@@ -88,6 +88,7 @@ export function ApprovalCard({
   projectId,
   isOwner,
   ownerName,
+  ownerEmail = null,
 }: {
   approval: PortalApproval;
   workspaceSlug: string;
@@ -98,6 +99,13 @@ export function ApprovalCard({
    * `null` when no one is assigned yet -- rendered as an honest "no
    * owner assigned" line rather than pretending nobody needs to know. */
   ownerName: string | null;
+  /** F085 (missions/20260903-portal audit, defect 6): lets a non-owner
+   * actually reach the named owner instead of just being told a name.
+   * `null` when the owner has no resolvable email (matches `ownerName`'s
+   * own honesty convention) -- the naming line still renders, just
+   * without the action. Optional/defaulted so every pre-existing caller
+   * that predates this field stays valid. */
+  ownerEmail?: string | null;
 }) {
   const [isRequestingChanges, setIsRequestingChanges] = useState(false);
   const [message, setMessage] = useState("");
@@ -215,6 +223,17 @@ export function ApprovalCard({
       {approval.description && (
         <p className="text-sm text-muted-foreground">{approval.description}</p>
       )}
+
+      {/* F085 (missions/20260903-portal audit, defect 6): `requestedAt`
+          and `round` were both fetched and never shown -- a client
+          couldn't tell a request raised this morning from one raised
+          three weeks ago, or a fresh ask from a re-submission of
+          something they already sent back. Both render here, always
+          (not gated on `dueAt` the way the chip above is). */}
+      <p data-testid="approval-requested-meta" className="text-xs text-muted-foreground">
+        Requested {formatDate(approval.requestedAt)}
+        {approval.round > 1 ? ` · Round ${approval.round}` : ""}
+      </p>
 
       {href && (
         <Link
@@ -336,11 +355,36 @@ export function ApprovalCard({
             </Button>
           </div>
           {/* AS-022: presentation only -- naming who decides, not a
-              control. See this file's header comment. */}
+              control. See this file's header comment.
+              F085 (defect 6): naming who decides used to be the end of
+              the line for a non-owner -- buttons disabled, nothing else
+              to do. `ownerEmail` turns "Only Maria can decide this" into
+              an actual way to reach Maria; the unassigned case instead
+              points at Approvals' own "Who approves what" grid
+              (DecisionOwnersGrid, this feature's own sibling fix), the
+              one place a client can see who else to raise it with. */}
           {!isOwner && (
-            <p className="text-xs text-muted-foreground">
-              {ownerName ? `Only ${ownerName} can decide this.` : "No one is assigned to decide this yet."}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                {ownerName ? `Only ${ownerName} can decide this.` : "No one is assigned to decide this yet."}
+              </span>
+              {ownerName && ownerEmail && (
+                <a
+                  href={`mailto:${ownerEmail}?subject=${encodeURIComponent(`Please review: ${approval.title}`)}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Ask {ownerName} to take a look
+                </a>
+              )}
+              {!ownerName && (
+                <Link
+                  href={`/portal/${workspaceSlug}/p/${projectId}/approvals`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  See who to raise it with
+                </Link>
+              )}
+            </div>
           )}
         </div>
       )}

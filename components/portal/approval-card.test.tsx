@@ -273,6 +273,44 @@ describe("ApprovalCard (F009)", () => {
     expect(loggedLine.closest("a")).toBeNull();
   });
 
+  // F085 (missions/20260903-portal audit, defect 6): `requestedAt` and
+  // `round` were fetched and never shown -- a client couldn't tell a
+  // fresh ask from a three-week-old one, or a first round from a
+  // re-submission.
+  it("test_AS_085_shows_when_the_request_was_raised", () => {
+    renderCard({ approval: { ...APPROVAL, requestedAt: "2026-08-01T00:00:00Z", round: 1 } });
+
+    const meta = screen.getByTestId("approval-requested-meta");
+    expect(meta).toHaveTextContent("Requested 1 Aug");
+    // Round 1 is not a re-submission -- no round number shown for it.
+    expect(meta).not.toHaveTextContent("Round");
+  });
+
+  it("test_AS_085_shows_the_round_number_for_a_re_submission", () => {
+    renderCard({ approval: { ...APPROVAL, requestedAt: "2026-08-15T00:00:00Z", round: 2 } });
+
+    const meta = screen.getByTestId("approval-requested-meta");
+    expect(meta).toHaveTextContent("Requested 15 Aug");
+    expect(meta).toHaveTextContent("Round 2");
+  });
+
+  // F085 (defect 6): a non-owner used to get a dead-end "Only X can
+  // decide this." with nothing to do next.
+  it("test_AS_085_non_owner_can_ask_the_named_owner_to_look", () => {
+    renderCard({ isOwner: false, ownerName: "Jane Doe", ownerEmail: "jane@example.com" });
+
+    const link = screen.getByRole("link", { name: /ask jane doe to take a look/i });
+    expect(link).toHaveAttribute("href", expect.stringContaining("mailto:jane@example.com"));
+  });
+
+  it("test_AS_085_unassigned_case_points_at_who_to_raise_it_with", () => {
+    renderCard({ isOwner: false, ownerName: null });
+
+    expect(
+      screen.getByRole("link", { name: /see who to raise it with/i }),
+    ).toHaveAttribute("href", "/portal/acme/p/project-1/approvals");
+  });
+
   it("shows an overdue due chip when the due date has passed and the card is still pending", () => {
     renderCard({ approval: { ...APPROVAL, dueAt: "2020-01-01" } });
 

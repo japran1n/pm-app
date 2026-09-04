@@ -3,6 +3,12 @@
 // (lib/queries/approvals.ts's `getDecisionOwners`). A type with no owner
 // says so plainly rather than showing an empty cell (this feature's own
 // explicit instruction).
+//
+// F085 (missions/20260903-portal audit, defect 6): "No owner assigned"
+// used to stop there -- a client reading it has no way to know who could
+// actually assign one. There is no per-type contact to name (that is
+// exactly what's missing), so the honest next line names the team, not
+// an individual, as who to raise it with.
 import type { PortalDecisionOwner } from "@/lib/queries/approvals";
 import { UserAvatar, personLabel } from "@/components/user-avatar";
 
@@ -47,7 +53,10 @@ export function DecisionOwnersGrid({ owners }: { owners: PortalDecisionOwner[] }
                 {personLabel({ id: owner.userId, name: owner.name, email: null })}
               </span>
             ) : (
-              <span className="text-sm text-muted-foreground">No owner assigned</span>
+              <span className="flex flex-col text-right text-sm text-muted-foreground">
+                <span>No owner assigned</span>
+                <span className="text-xs">Raise it with your project team.</span>
+              </span>
             )}
           </div>
         );

@@ -651,6 +651,7 @@ describe("getPortalRisks — AS-031", () => {
         due_at: "2020-01-01",
         task_id: "task-blogg",
         kind: "copy",
+        title: "Blogg page copy",
       },
     ];
 
@@ -661,6 +662,8 @@ describe("getPortalRisks — AS-031", () => {
         id: "deliverable-1",
         message:
           "The Blogg page cannot be built without its copy, and 18 Nov moves with it.",
+        itemName: "Blogg page copy",
+        dueAt: "2020-01-01",
       },
     ]);
   });
@@ -695,6 +698,7 @@ describe("getPortalRisks — AS-031", () => {
         due_at: "2020-01-01",
         task_id: "task-other-workspace",
         kind: "copy",
+        title: "Cross-project deliverable",
       },
     ];
 
@@ -704,6 +708,8 @@ describe("getPortalRisks — AS-031", () => {
       {
         id: "deliverable-cross-project",
         message: "This item cannot be built without its copy, and 18 Nov moves with it.",
+        itemName: "Cross-project deliverable",
+        dueAt: "2020-01-01",
       },
     ]);
   });
@@ -718,6 +724,7 @@ describe("getPortalRisks — AS-031", () => {
         due_at: "2020-01-01",
         task_id: null,
         kind: "access",
+        title: "Server access",
       },
     ];
 
@@ -727,6 +734,8 @@ describe("getPortalRisks — AS-031", () => {
       {
         id: "deliverable-2",
         message: "This item cannot be built without access to it, and the launch date moves with it.",
+        itemName: "Server access",
+        dueAt: "2020-01-01",
       },
     ]);
   });
@@ -778,6 +787,7 @@ describe("getPortalRisks — AS-031", () => {
         due_at: "2020-01-01",
         task_id: null,
         kind: "copy",
+        title: "Homepage copy",
       },
     ];
 
@@ -793,6 +803,8 @@ describe("getPortalRisks — AS-031", () => {
       {
         id: "delivered-not-accepted",
         message: "This item cannot be built without its copy, and the launch date moves with it.",
+        itemName: "Homepage copy",
+        dueAt: "2020-01-01",
       },
     ]);
   });

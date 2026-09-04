@@ -109,6 +109,15 @@ export default async function PortalHoursPage({
   }
   const months = Array.from(monthTotals.entries()).sort(([a], [b]) => (a < b ? -1 : 1));
   const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" });
+  // F085 (missions/20260903-portal audit, defect 7): the per-row note
+  // used to print `minutes/soldMinutes` -- a share of the WHOLE budget,
+  // not of the row's own month, so three rows read "40% / 35% / 30%",
+  // three numbers sharing one denominator that summed past 100 and told
+  // a client nothing they could check against the table itself. Dropped
+  // in favour of an explicit total row (below) -- the one number a
+  // client actually wants next to a table of months, and one this table
+  // can prove for itself by adding the column up.
+  const totalMinutes = months.reduce((sum, [, minutes]) => sum + minutes, 0);
 
   const periodFormatter = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -157,7 +166,6 @@ export default async function PortalHoursPage({
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="py-1.5 font-normal">Month</th>
                 <th className="py-1.5 font-normal">Hours</th>
-                <th className="py-1.5 font-normal">Note</th>
               </tr>
             </thead>
             <tbody>
@@ -170,15 +178,21 @@ export default async function PortalHoursPage({
                   <tr key={monthKey} className="border-b border-border/50 last:border-0">
                     <td className="py-1.5">{label}</td>
                     <td className="py-1.5 tabular-nums">{hoursLabel}</td>
-                    <td className="py-1.5 text-muted-foreground">
-                      {summary.soldMinutes !== null
-                        ? `${Math.round((minutes / summary.soldMinutes) * 100)}% of the current budget`
-                        : "Billable hours logged this month"}
-                    </td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr data-testid="hours-by-month-total" className="border-t border-border font-medium">
+                <td className="py-1.5">Total</td>
+                <td className="py-1.5 tabular-nums">
+                  {(() => {
+                    const totalHours = totalMinutes / 60;
+                    return Number.isInteger(totalHours) ? `${totalHours}h` : `${totalHours.toFixed(1)}h`;
+                  })()}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>

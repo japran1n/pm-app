@@ -379,7 +379,22 @@ export function formatDeliverableRiskMessage(params: {
   return `${subject} cannot be built without ${need}, and the launch date moves with it.`;
 }
 
-export type DeliverableRisk = { id: string; message: string };
+// F085 (missions/20260903-portal audit, defect 5): the risk banner used
+// to render only `message` -- naming what the item holds up, but never
+// the item's own name, its due date, or anywhere to act on it. `itemName`
+// and `dueAt` are the same deliverable row the message is already built
+// from (never a second lookup); `Your list` (the Your list view,
+// app/(portal)/.../your-list/page.tsx) is where a client actually acts on
+// an outstanding deliverable, so that is the one place `RiskBanner`
+// links to -- `href` is built by the caller (the Overview page, which
+// already has the workspace slug the query below does not) rather than
+// hard-coded here.
+export type DeliverableRisk = {
+  id: string;
+  message: string;
+  itemName: string;
+  dueAt: string;
+};
 
 // AS-031: the single worst (earliest-due, i.e. most overdue) blocking,
 // undelivered deliverable on this project, or `null` when nothing
@@ -399,7 +414,7 @@ export async function getWorstOverdueBlockingDeliverableRisk(
     admin.from("projects").select("target_launch_date").eq("id", projectId).maybeSingle(),
     admin
       .from("client_deliverables")
-      .select("id, kind, due_at, task_id")
+      .select("id, title, kind, due_at, task_id")
       .eq("project_id", projectId)
       .eq("blocking", true)
       .not("state", "in", "(accepted,waived)")
@@ -431,5 +446,11 @@ export async function getWorstOverdueBlockingDeliverableRisk(
       holdsUp,
       targetLaunchDate: project?.target_launch_date ?? null,
     }),
+    itemName: worst.title,
+    // `due_at` is non-null here by construction (`.not("due_at", "is",
+    // null)` above), so this cast is safe -- narrower than the shared
+    // `ClientDeliverable.dueAt` type only because this row is one that
+    // already passed that filter.
+    dueAt: worst.due_at as string,
   };
 }

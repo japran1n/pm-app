@@ -43,6 +43,20 @@ function todayIso(): string {
 //     the client)
 // This mapping is also what each outstanding row's own left-rule token
 // (blocked/waiting) is derived from — same classification, one place.
+// F085 (missions/20260903-portal audit, defect 4): Your list's own
+// wording for the four shared buckets -- these are the client's own
+// obligations, not the team's page-build progress, so "Blocked" (Pages'
+// wording, `CLIENT_BUCKET_LABELS`) becomes "Overdue" here: the exact
+// bucket `classifyBucket` above already reserves for a past-due item,
+// spelling out what it means instead of leaving a client to guess that
+// "blocked" means "you're late."
+const YOUR_LIST_BUCKET_LABELS: Record<ClientBucket, string> = {
+  waiting: "Not sent yet",
+  progress: "Sent, awaiting review",
+  blocked: "Overdue",
+  done: "Delivered and accepted",
+};
+
 export function classifyBucket(deliverable: PortalDeliverable, today: string): ClientBucket {
   if (deliverable.state === "accepted" || deliverable.state === "waived") return "done";
   if (isDeliverablePastDue(deliverable.state, deliverable.dueAt, today)) return "blocked";
@@ -130,7 +144,7 @@ export default async function PortalYourListPage({
         <p className="text-sm font-medium text-foreground">
           {deliveredCount} of {totalCount} delivered
         </p>
-        <StatusDistribution counts={counts} />
+        <StatusDistribution counts={counts} labels={YOUR_LIST_BUCKET_LABELS} />
       </div>
 
       <div className="flex flex-col gap-3">

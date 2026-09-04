@@ -155,11 +155,21 @@ function NavRow({
   // instruction -- delete this prop along with `buildPortalSecondaryNavItems`
   // once F016/F023 give Files and Requests a permanent home.
   variant = "primary",
+  // F085 (missions/20260903-portal audit, layout defect): `w-full` only
+  // makes sense inside the desktop `<aside>`'s vertical `<nav>`, where
+  // every row should fill the sidebar's width. The mobile strip
+  // (`overflow-x-auto`, below) is a horizontal flex row -- `w-full` there
+  // means "100% of the row", so the FIRST item fills the whole scroll
+  // container and every other item is pushed off-screen (at 375px, only
+  // "Overview" was ever visible). Defaults to "desktop" so the existing
+  // `<aside>` call sites are unchanged.
+  layout = "desktop",
 }: {
   item: PortalNavItem;
   active: boolean;
   onNavigate?: () => void;
   variant?: "primary" | "secondary";
+  layout?: "desktop" | "mobile";
 }) {
   const Icon = item.icon;
   return (
@@ -169,7 +179,8 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(
-        "flex w-full shrink-0 items-center rounded-md transition-colors",
+        "flex shrink-0 items-center rounded-md transition-colors",
+        layout === "desktop" && "w-full",
         variant === "secondary"
           ? "gap-2 px-3 py-1.5 text-tag"
           : "gap-2.5 px-3 py-2 text-sm font-medium",
@@ -315,7 +326,12 @@ export function PortalSidebar({
         <div className="px-3 pb-2">{projectCard}</div>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2">
           {items.map((item) => (
-            <NavRow key={item.key} item={item} active={isItemActive(pathname, item)} />
+            <NavRow
+              key={item.key}
+              item={item}
+              active={isItemActive(pathname, item)}
+              layout="mobile"
+            />
           ))}
           {/* TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s
               own comment for why these two rows exist and when to
@@ -327,6 +343,7 @@ export function PortalSidebar({
               item={item}
               active={isItemActive(pathname, item)}
               variant="secondary"
+              layout="mobile"
             />
           ))}
         </nav>

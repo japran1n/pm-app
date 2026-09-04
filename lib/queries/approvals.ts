@@ -162,6 +162,11 @@ export type PortalDecisionOwner = {
   userId: string;
   name: string | null;
   avatarUrl: string | null;
+  // F085 (missions/20260903-portal audit, defect 6): "give the client a
+  // way to ask the named owner to look" needs an address to ask them AT.
+  // Sourced the same way `resolvePeople` already sources every other
+  // display value here -- never a second, independent lookup.
+  email: string | null;
 };
 
 // The "who approves what" grid. RLS (`project_decision_owners_select_*`)
@@ -193,6 +198,7 @@ export async function getDecisionOwners(
       userId: row.user_id,
       name: people.get(row.user_id)?.name ?? null,
       avatarUrl: people.get(row.user_id)?.avatarUrl ?? null,
+      email: people.get(row.user_id)?.email ?? null,
     })),
   };
 }

@@ -14,9 +14,22 @@
 //
 // Tokens only: the four `--status-*` bucket colours (app/globals.css,
 // F004), never a literal hex here.
+//
+// F085 (missions/20260903-portal audit, defect 4): this used to import
+// `CLIENT_BUCKET_LABELS` directly and render its Pages-view wording
+// unconditionally -- correct for the Pages view (F005), but reused
+// verbatim by Your list (F014), where the same four buckets describe
+// obligations the CLIENT owes, not pages the team is building. "Blocked"
+// read as generic team-status jargon two lines below a "3 of 5
+// delivered" header that was actually about the client's own deliverables
+// -- the word never told a client that it meant "you're late." `labels`
+// is now a required prop; every caller supplies its own wording via
+// `CLIENT_BUCKET_LABELS` (pages) or its own map (Your list, below).
 
 import { cn } from "@/lib/utils";
 import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
+
+export { CLIENT_BUCKET_LABELS };
 
 const BUCKET_ORDER: ClientBucket[] = ["waiting", "progress", "blocked", "done"];
 
@@ -38,8 +51,14 @@ const BUCKET_TONE: Record<ClientBucket, string> = {
 
 export function StatusDistribution({
   counts,
+  labels = CLIENT_BUCKET_LABELS,
 }: {
   counts: Record<ClientBucket, number>;
+  /** Defaults to the Pages view's own vocabulary (`CLIENT_BUCKET_LABELS`)
+   * so every pre-existing caller is unchanged. A caller describing a
+   * different set of things (e.g. Your list's own deliverables, not
+   * pages) supplies its own map instead. */
+  labels?: Record<ClientBucket, string>;
 }) {
   const total = BUCKET_ORDER.reduce((sum, bucket) => sum + counts[bucket], 0);
   const segments = BUCKET_ORDER.filter((bucket) => counts[bucket] > 0);
@@ -75,7 +94,7 @@ export function StatusDistribution({
               aria-hidden="true"
               className={cn("size-2 shrink-0 rounded-full", BUCKET_TONE[bucket])}
             />
-            <dt className="text-muted-foreground">{CLIENT_BUCKET_LABELS[bucket]}</dt>
+            <dt className="text-muted-foreground">{labels[bucket]}</dt>
             <dd className="font-medium tabular-nums">{counts[bucket]}</dd>
           </div>
         ))}

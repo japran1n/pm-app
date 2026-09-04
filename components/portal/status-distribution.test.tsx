@@ -81,4 +81,26 @@ describe("StatusDistribution", () => {
     }
     expect(screen.getAllByText("0")).toHaveLength(4);
   });
+
+  // F085 (missions/20260903-portal audit, defect 4): a caller can supply
+  // its own wording instead of the Pages-view default -- proves the
+  // component is no longer hard-wired to `CLIENT_BUCKET_LABELS`.
+  it("test_AS_085_a_caller_can_supply_its_own_label_set", () => {
+    render(
+      <StatusDistribution
+        counts={{ waiting: 1, progress: 0, blocked: 2, done: 0 }}
+        labels={{
+          waiting: "Not sent yet",
+          progress: "Sent, awaiting review",
+          blocked: "Overdue",
+          done: "Delivered and accepted",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Not sent yet")).toBeInTheDocument();
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting on you")).not.toBeInTheDocument();
+  });
 });
