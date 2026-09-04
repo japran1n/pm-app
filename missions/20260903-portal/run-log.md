@@ -862,3 +862,36 @@ attribute to the client. Neither is imported by any portal component — reachin
 them requires hand-crafting a Server Action ID — and the actor already holds
 those rights on /w/*, so it is misattribution of a permitted act rather than
 escalation. Worth closing eventually; not worth blocking on.
+
+### Final full suite: 3231 passed, 98 failed — 92 of them noise, two of them real
+
+143 rate-limit errors account for the overwhelming majority, as at the M1 gate.
+Six failures are genuine:
+
+- **Two perf-budget**, at 529ms and 514ms against a 500ms budget under a 481-file
+  concurrent run. The M1 gate saw the same thing and the file passed in isolation.
+- **Three F009b AS-022 tests** expecting P0001 and receiving 42501, because F009d
+  split the no-owner refusal out of the shared not-found oracle and changed the
+  code. A test-versus-implementation mismatch of our own making.
+- **One template round-trip**: a hidden phase's client_visible flag no longer
+  survives save-as-template and create-from-template.
+
+That last one is a regression of a fix we already made. F016h fixed it in
+20260917020000; the last migration to touch that function is F013's
+20260927020000, which added deliverables to the payload and re-created the
+function without F016h's handling.
+
+**Fourth occurrence of one shape**, after F016e's two reverts and F018 dropping
+two values from notifications_kind_check: a migration re-creates a function or a
+constraint in order to change one thing, written from the author's mental model of
+what it contains rather than from its current definition.
+
+And it is worth being precise about how it survived. F013's worker ran "the tests
+relevant to your change" — my instruction, in every prompt — and
+project-from-template.test.ts did not look relevant to a feature about
+deliverables, even though that feature re-created the function the test exercises.
+The instruction was followed correctly and produced a regression that then sat for
+a day. The full-suite run I kept deferring because of rate-limit noise is what
+found it.
+
+Opened F025f.
