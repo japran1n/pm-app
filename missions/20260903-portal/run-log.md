@@ -752,3 +752,37 @@ author set are disjoint by role) rather than incidentally. That is the standard 
 answer I have been asking for all mission.
 
 Opened F025d.
+
+### Final gate: the parent stalled, two children reported
+
+The gate agent stalled waiting on its own children; two of them completed and
+their findings stand on their own. Questions 1, 2 and 5 — whether a previewing
+admin can ACT as the client, preview session hygiene, and spot-checking three
+assertions — went unanswered and are being re-run focused.
+
+**M5 audit: no blocker.** It verified the good parts properly rather than by
+inspection: RLS enabled on both new tables with all four conjuncts in the client
+policies, pg_temp pinned on every predicate, no client write path at either the
+policy or the action layer, the view genuinely security_invoker with no anon
+grant, and every quote-column read going through it. It also noted the one place
+this mission's recurring "new column walks through the guard" defect was actually
+avoided: F020b computes unknown columns generically, so F023's warranty fields
+were covered without anyone remembering them.
+
+Two majors, both the same gap from two sides:
+
+- The portal's guides, links and accounts queries rely on RLS alone, where every
+  sibling query in this codebase is double-guarded — and one of those siblings
+  explains in its own comment why the explicit filter exists. Not a live leak;
+  the layout redirects non-clients and F024's preview uses a real client session.
+  But three functions whose payload carries a staging URL and an account ledger
+  are standing on one guard.
+- The AS-054 sweep disables its `docs` RPC leg with a comment that was true when
+  F025 was written and that F023 made false. The one table whose production query
+  lacks its own filter is the one whose third leg is switched off.
+
+And the AS-049/050/051 tests re-implement the query inline rather than calling the
+production function, so they would stay green if it regressed. Ninth vacuous test,
+familiar species.
+
+Opened F025e.
