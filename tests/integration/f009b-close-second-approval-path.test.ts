@@ -341,16 +341,21 @@ describe.skipIf(!haveCreds)("F009b — one gated approval path, database-validat
 
       const { error } = await session.rpc("approve_portal_task_atomic", { p_task_id: taskId });
 
-      // `assert_portal_task_actionable_by_client` raises a plain
-      // `raise exception 'task not found'` with no explicit errcode, so
-      // Postgres defaults to P0001 -- the same oracle-neutral "task not
-      // found" every other rejection branch in that function already
-      // uses (confirmed: grep `raise exception` in
-      // 20260906010000_portal_task_actions_project_visibility.sql and
-      // 20260918010000_f006i_authz_round_2.sql shows none of that
-      // function's branches set `using errcode`).
-      expect(error?.code).toBe(TASK_NOT_FOUND);
-      expect(error?.message).toMatch(/task not found/i);
+      // F009d (20261021010000) split the "owns no decision type" branch
+      // out of the shared "task not found" oracle: by the time this
+      // check runs, the caller has already proven membership, project
+      // visibility, portal-enabled, and pending state (the Approve
+      // button is already on their screen), so naming this refusal with
+      // its own errcode/message leaks nothing new. It now raises 42501
+      // (insufficient_privilege) with an explicit "no one is assigned to
+      // decide this yet" message, matching the Approvals-view path's own
+      // RLS_DENIED code for the identical "owns nothing" situation. The
+      // other four branches of that function (deleted/non-member,
+      // invisible-or-portal-off, not-pending) are untouched and still
+      // raise the oracle-neutral 'task not found' at P0001 -- see the
+      // "of another project" / "portal disabled" cases below.
+      expect(error?.code).toBe(RLS_DENIED);
+      expect(error?.message).toMatch(/no one is assigned to decide this yet/i);
 
       const { data: row } = await admin
         .from("tasks")
@@ -387,7 +392,10 @@ describe.skipIf(!haveCreds)("F009b — one gated approval path, database-validat
 
       const { error } = await session.rpc("request_portal_task_changes_atomic", { p_task_id: taskId });
 
-      expect(error?.code).toBe(TASK_NOT_FOUND);
+      // Same F009d split as the approve_portal_task_atomic case above --
+      // both RPCs share assert_portal_task_actionable_by_client.
+      expect(error?.code).toBe(RLS_DENIED);
+      expect(error?.message).toMatch(/no one is assigned to decide this yet/i);
     });
   });
 
@@ -410,8 +418,13 @@ describe.skipIf(!haveCreds)("F009b — one gated approval path, database-validat
     });
     const taskPageResult = await session.rpc("approve_portal_task_atomic", { p_task_id: taskId });
 
+    // Both surfaces now agree on the errcode too, not just the refusal
+    // itself: F009d (20261021010000) named this one branch of
+    // assert_portal_task_actionable_by_client with the same 42501 that
+    // decide_approval_atomic already used, so a non-owner is refused
+    // identically on both the Approvals view and the legacy task page.
     expect(approvalsViewResult.error?.code).toBe(RLS_DENIED);
-    expect(taskPageResult.error?.code).toBe(TASK_NOT_FOUND);
+    expect(taskPageResult.error?.code).toBe(RLS_DENIED);
   });
 
   // -----------------------------------------------------------------
