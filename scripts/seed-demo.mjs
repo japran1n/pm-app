@@ -331,14 +331,18 @@ const PROJECTS = [
     startInDays: -75,
     endInDays: -10,
     launched: true,
+    // clientVisible mix, same rule as Website Redesign: the client-facing
+    // work (program rules, enrollment UX, rewards catalogue, go-live) is
+    // visible; the purely technical build (ledger schema) and the team's
+    // own QA pass stay internal.
     tasks: [
-      ["Loyalty program rules & tiers", "done", "high", -68, "sasa", 180],
-      ["Points ledger schema", "done", "high", -60, "luka", 240],
-      ["Enrollment flow design", "done", "medium", -50, "ana", 200],
-      ["Enrollment flow build", "done", "high", -38, "luka", 360],
-      ["Rewards catalogue UI", "done", "medium", -25, "ana", 220],
-      ["QA pass & launch checklist", "done", "medium", -14, "maja", 150],
-      ["Go-live & monitoring", "done", "urgent", -10, "sasa", 90],
+      ["Loyalty program rules & tiers", "done", "high", -68, "sasa", 180, true],
+      ["Points ledger schema", "done", "high", -60, "luka", 240, false],
+      ["Enrollment flow design", "done", "medium", -50, "ana", 200, true],
+      ["Enrollment flow build", "done", "high", -38, "luka", 360, true],
+      ["Rewards catalogue UI", "done", "medium", -25, "ana", 220, true],
+      ["QA pass & launch checklist", "done", "medium", -14, "maja", 150, false],
+      ["Go-live & monitoring", "done", "urgent", -10, "sasa", 90, true],
     ],
   },
 ];
@@ -368,9 +372,13 @@ const WORKSPACE2_PROJECTS = [
       ["Warehouse schema design", "done", "high", -20, "sasa", 360, true],
       ["ETL pipeline: transactions feed", "done", "high", -12, "ivan", 480, false],
       ["ETL pipeline: positions feed", "in_progress", "high", -4, "ivan", 540, false],
+      ["Data quality checks & reconciliation", "done", "medium", -2, "ivan", 180, true],
       ["Dashboard: cash flow chart", "in_progress", "medium", 2, "sasa", 420, true],
       ["Dashboard: exposure by sector", "todo", "medium", 9, "ivan", 0, true],
+      ["Dashboard: liquidity forecast view", "todo", "medium", 12, "sasa", 0, true],
       ["Access control & audit logging", "todo", "high", 15, "sasa", 0, false],
+      ["UAT with Meridian ops team", "todo", "high", 20, "ivan", 0, true],
+      ["Rollout & training", "todo", "urgent", 25, "sasa", 0, true],
     ],
   },
   {
@@ -1205,11 +1213,708 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
   }
 }
 
-// Minimal portal seed for the launched/finished Northwind project: just
-// the launch header fields (F001) plus a warranty window (F025c) -- no
-// phases/approvals/deliverables, since this project's job in the demo set
-// is "what does done look like", not a second full walkthrough.
-async function seedLaunchedPortalData({ projectId }) {
+// --- portal demo data: Northwind Loyalty App (finished) ----------------------
+//
+// This project's job in the demo set is "what does done look like" -- every
+// phase/approval/deliverable below resolves to its own settled end state
+// (done/approved/accepted), reached by authoring the underlying tasks that
+// way, never by overriding a phase's own state after the fact.
+
+// Which of Northwind's own tasks belong to which phase, mapped by meaning
+// (same convention as WEBSITE_TASK_PHASES). "Technical foundation" is left
+// with zero CLIENT-VISIBLE tasks on purpose -- "Points ledger schema" is
+// assigned to it but is not client-visible, so the phase is real work with
+// a real task, yet still exercises the "no client-visible tasks" render
+// path, distinct from Website Redesign's "Kick-off" (which has no task at
+// all).
+const NORTHWIND_PHASES = [
+  { name: "Program design", client_description: "Deciding the tiers, points economics and rules of the program.", state: "done", plannedStart: -75, plannedEnd: -64, actualStart: -75, actualEnd: -62 },
+  { name: "Technical foundation", client_description: "Building the points ledger that everything else reads from.", state: "done", plannedStart: -64, plannedEnd: -53, actualStart: -62, actualEnd: -51 },
+  { name: "Enrollment experience", client_description: "Designing and building how a customer joins the program.", state: "done", plannedStart: -53, plannedEnd: -36, actualStart: -51, actualEnd: -35 },
+  { name: "Rewards & catalogue", client_description: "The catalogue customers redeem points against.", state: "done", plannedStart: -36, plannedEnd: -22, actualStart: -35, actualEnd: -21 },
+  { name: "Launch", client_description: "Final QA and go-live.", state: "done", plannedStart: -22, plannedEnd: -10, actualStart: -21, actualEnd: -10 },
+];
+
+const NORTHWIND_TASK_PHASES = {
+  "Loyalty program rules & tiers": "Program design",
+  "Points ledger schema": "Technical foundation",
+  "Enrollment flow design": "Enrollment experience",
+  "Enrollment flow build": "Enrollment experience",
+  "Rewards catalogue UI": "Rewards & catalogue",
+  "QA pass & launch checklist": "Launch",
+  "Go-live & monitoring": "Launch",
+};
+
+// nina has no seat on this project (no `guestAccess` above -- staff reach
+// it via "Preview as client"), but decision-owner/decided-by rows can
+// still reference her user id directly; neither column is FK-scoped to
+// project membership.
+const NORTHWIND_DECISION_OWNERS = [
+  { decisionType: "content", username: "nina" },
+  { decisionType: "brand", username: "nina" },
+  { decisionType: "commercial", username: "nina" },
+  { decisionType: "technical", username: "sasa" },
+];
+
+// Every approval below is already settled -- a finished project has
+// nothing left pending.
+const NORTHWIND_APPROVALS = [
+  {
+    title: "Approve enrollment flow design",
+    decisionType: "content",
+    subjectType: "task",
+    subjectTaskTitle: "Enrollment flow design",
+    state: "approved",
+    dueInDays: -53,
+    deciderUsername: "nina",
+    decidedDaysAgo: 48,
+    decisionNote: "Simple and clear. Ship it.",
+    description: "The enrollment screens a new customer sees when joining the program.",
+  },
+  {
+    title: "Approve rewards catalogue UI",
+    decisionType: "content",
+    subjectType: "task",
+    subjectTaskTitle: "Rewards catalogue UI",
+    state: "approved",
+    dueInDays: -27,
+    deciderUsername: "nina",
+    decidedDaysAgo: 24,
+    decisionNote: "Approved — nice use of the product photography.",
+    description: "Layout and filtering for the rewards a customer can redeem points against.",
+  },
+  {
+    title: "Sign off launch readiness",
+    decisionType: "technical",
+    subjectType: "phase",
+    subjectPhaseName: "Launch",
+    state: "approved",
+    dueInDays: -13,
+    deciderUsername: "sasa",
+    decidedDaysAgo: 11,
+    decisionNote: "QA pass is clean. Cleared for go-live.",
+    description: "Final QA and go-live checklist for the loyalty program.",
+  },
+  {
+    title: "Approve initial tier structure (4 tiers)",
+    decisionType: "commercial",
+    subjectType: "artifact",
+    artifactUrl: "https://www.figma.com/file/northwind-loyalty/tier-structure-v1",
+    state: "changes_requested",
+    dueInDays: -70,
+    deciderUsername: "nina",
+    decidedDaysAgo: 68,
+    decisionNote: "Four tiers is too many to explain at checkout — collapse to three.",
+    description: "The original four-tier points structure, before it was simplified.",
+  },
+];
+
+// All four already accepted or waived — nothing left owed post-launch.
+const NORTHWIND_DELIVERABLES = [
+  {
+    title: "Loyalty program terms & conditions copy",
+    kind: "copy",
+    ownerName: "Nina Marić",
+    state: "accepted",
+    deliveredDaysAgo: 55,
+    acceptedDaysAgo: 53,
+    acceptedByUsername: "luka",
+    reviewNote: "Legal-reviewed on our side too. Good to publish.",
+    blocking: true,
+    description: "Final legal copy for how points are earned, expire and can be redeemed.",
+    holdsUp: "Loyalty program rules & tiers",
+  },
+  {
+    title: "Rewards catalogue product list & images",
+    kind: "image",
+    ownerName: "Nina Marić",
+    state: "accepted",
+    deliveredDaysAgo: 30,
+    acceptedDaysAgo: 28,
+    acceptedByUsername: "ana",
+    reviewNote: "All images are in and cropped correctly.",
+    blocking: true,
+    description: "Product photography and copy for every reward in the catalogue.",
+    holdsUp: "Rewards catalogue UI",
+  },
+  {
+    title: "Storefront API credentials",
+    kind: "access",
+    ownerName: "Nina Marić",
+    state: "accepted",
+    deliveredDaysAgo: 65,
+    acceptedDaysAgo: 63,
+    acceptedByUsername: "luka",
+    reviewNote: "Confirmed working against the sandbox and prod storefront.",
+    blocking: true,
+    description: "Read/write access to the storefront so points can be earned at checkout.",
+    holdsUp: "Points ledger schema",
+  },
+  {
+    title: "Legacy loyalty program data export",
+    kind: "data",
+    ownerName: "Nina Marić",
+    state: "waived",
+    blocking: false,
+    description: "Export of the old punch-card loyalty scheme — turned out there was nothing worth migrating.",
+    holdsUp: "Enrollment flow build",
+  },
+];
+
+// Post-launch results: enrollment and redemption both cleared target;
+// support tickets improved from the pre-launch estimate but haven't
+// reached target yet -- not every number is a clean win.
+const NORTHWIND_METRICS = [
+  {
+    name: "Enrollment rate (of eligible customers)",
+    unit: "%",
+    source: "manual",
+    direction: "higher",
+    baselineValue: 0,
+    targetValue: 15,
+    currentValue: 18,
+    baselineDaysAgo: 75,
+    currentDaysAgo: 2,
+  },
+  {
+    name: "Points redemption rate",
+    unit: "%",
+    source: "manual",
+    direction: "higher",
+    baselineValue: 0,
+    targetValue: 20,
+    currentValue: 24,
+    baselineDaysAgo: 75,
+    currentDaysAgo: 2,
+  },
+  {
+    name: "Enrollment errors / week",
+    unit: "count",
+    source: "manual",
+    direction: "lower",
+    baselineValue: 40,
+    targetValue: 5,
+    currentValue: 3,
+    baselineDaysAgo: 75,
+    currentDaysAgo: 2,
+  },
+  {
+    name: "Support tickets mentioning loyalty",
+    unit: "count",
+    source: "manual",
+    direction: "lower",
+    baselineValue: 25,
+    targetValue: 10,
+    currentValue: 14,
+    baselineDaysAgo: 75,
+    currentDaysAgo: 2,
+  },
+];
+
+const NORTHWIND_SCOPE_ITEMS = [
+  { title: "Points-based enrollment with 3 tiers", description: "Bronze/Silver/Gold, thresholds by annual spend.", included: true, source: "proposal" },
+  { title: "Points ledger with real-time balance", description: "Earn on checkout, visible immediately in the account.", included: true, source: "proposal" },
+  { title: "Rewards catalogue (20+ SKUs at launch)", description: "Redeemable products and discount codes.", included: true, source: "proposal" },
+  { title: "Storefront checkout integration", description: "Points earned and redeemed at the existing checkout, no new cart.", included: true, source: "proposal" },
+];
+
+const NORTHWIND_DECISIONS = [
+  {
+    title: "Loyalty tiers: 3 tiers (Bronze/Silver/Gold), not 4",
+    decisionType: "commercial",
+    decidedByName: "Nina Marić",
+    rationale: "Four tiers was too hard to explain in a single checkout banner; three tiers with round thresholds tested better.",
+    daysAgo: 68,
+    phaseName: "Program design",
+  },
+  {
+    title: "Points expire on a 12-month rolling basis",
+    decisionType: "commercial",
+    decidedByName: "Saša Japranin",
+    rationale: "Matches Northwind's existing return-window policy and avoids an indefinite liability on the books.",
+    daysAgo: 55,
+  },
+];
+
+const NORTHWIND_LINKS = [
+  { kind: "live", label: "Live loyalty program", url: "https://www.northwind.example.com/loyalty", clientVisible: true },
+  { kind: "drive", label: "Brand & photography assets", url: "https://drive.example.com/northwind-loyalty-assets", clientVisible: true },
+  { kind: "gtm", label: "GTM container", url: "https://tagmanager.google.com/#/container/000000", clientVisible: false },
+  { kind: "other", label: "Internal ops runbook", url: "https://www.notion.so/acme/northwind-loyalty-runbook", clientVisible: false },
+];
+
+const NORTHWIND_ACCOUNTS = [
+  { service: "Loyalty program domain redirect", owner: "client", status: "transferred", clientVisible: true },
+  { service: "Storefront API keys", owner: "agency", status: "transferred", clientVisible: true, note: "Handed over at go-live; agency's own sandbox keys were revoked." },
+  { service: "Internal monitoring dashboard", owner: "agency", status: "provisioned", clientVisible: false },
+  { service: "Rewards fulfillment vendor account", owner: "client", status: "pending", clientVisible: true, note: "Client is finalising the vendor contract renewal for year two." },
+];
+
+// --- portal demo data: Meridian Ops Dashboard (mid-flight, over budget) -----
+//
+// The other half of the "one mid-flight, one finished" contrast: real work
+// is underway, some of it not yet visible to the client, and the budget is
+// already spent past what was sold for this period (WORKSPACE2_BUDGET
+// below, unchanged from earlier rounds).
+
+// "Pipeline build" carries a real task ("ETL pipeline: positions feed") but
+// it is not client-visible, so the phase itself has zero client-visible
+// tasks -- an active phase can look "empty" to the client while the team
+// is genuinely heads-down on it. "Dashboard build" is active at a genuine
+// 0% (three client-visible tasks, all still todo/in_progress) rather than
+// any tasks being pre-completed to force a number.
+const MERIDIAN_PHASES = [
+  { name: "Discovery & source audit", client_description: "Understanding the source systems the dashboard will read from.", state: "done", plannedStart: -35, plannedEnd: -25, actualStart: -35, actualEnd: -24 },
+  { name: "Data foundations", client_description: "Warehouse schema and the data-quality checks everything downstream relies on.", state: "done", plannedStart: -25, plannedEnd: -10, actualStart: -24, actualEnd: -9 },
+  { name: "Pipeline build", client_description: "Building the feeds that keep the warehouse in sync with source systems.", state: "active", plannedStart: -20, plannedEnd: 5, actualStart: -12, actualEnd: null },
+  { name: "Dashboard build", client_description: "The charts and views your team will use day to day.", state: "active", plannedStart: -5, plannedEnd: 15, actualStart: 2, actualEnd: null },
+  { name: "Rollout & handover", client_description: "User acceptance testing and training before this becomes the system of record.", state: "not_started", plannedStart: 15, plannedEnd: 28, actualStart: null, actualEnd: null },
+];
+
+const MERIDIAN_TASK_PHASES = {
+  "Source system audit": "Discovery & source audit",
+  "Warehouse schema design": "Data foundations",
+  "Data quality checks & reconciliation": "Data foundations",
+  "ETL pipeline: transactions feed": "Pipeline build",
+  "ETL pipeline: positions feed": "Pipeline build",
+  "Dashboard: cash flow chart": "Dashboard build",
+  "Dashboard: exposure by sector": "Dashboard build",
+  "Dashboard: liquidity forecast view": "Dashboard build",
+  "Access control & audit logging": "Dashboard build",
+  "UAT with Meridian ops team": "Rollout & handover",
+  "Rollout & training": "Rollout & handover",
+};
+
+// `technical`/`commercial` point at petra (the finance-side client owner
+// for this engagement); `content`/`brand` stay with the agency lead since
+// a data/ops dashboard has no brand or copy decisions of its own to hand
+// off.
+const MERIDIAN_DECISION_OWNERS = [
+  { decisionType: "technical", username: "petra" },
+  { decisionType: "commercial", username: "petra" },
+  { decisionType: "content", username: "sasa" },
+  { decisionType: "brand", username: "sasa" },
+];
+
+const MERIDIAN_APPROVALS = [
+  {
+    title: "Approve warehouse schema design",
+    decisionType: "technical",
+    subjectType: "task",
+    subjectTaskTitle: "Warehouse schema design",
+    state: "approved",
+    dueInDays: -18,
+    deciderUsername: "petra",
+    decidedDaysAgo: 17,
+    decisionNote: "Reviewed with our data team, looks right.",
+    description: "The warehouse table design the rest of the pipeline is built on.",
+  },
+  {
+    title: "Sign off data foundations phase",
+    decisionType: "technical",
+    subjectType: "phase",
+    subjectPhaseName: "Data foundations",
+    state: "pending",
+    dueInDays: -2, // overdue
+    description: "Confirming the reconciliation checks are accurate enough to build the dashboard on top of.",
+  },
+  {
+    title: "Approve dashboard cash flow chart",
+    decisionType: "content",
+    subjectType: "task",
+    subjectTaskTitle: "Dashboard: cash flow chart",
+    state: "pending",
+    dueInDays: 6,
+    description: "First look at the cash flow chart before we build the remaining dashboard views to match it.",
+  },
+  {
+    title: "Approve data retention & access policy",
+    decisionType: "commercial",
+    subjectType: "artifact",
+    artifactUrl: "https://drive.example.com/meridian/data-retention-policy-v1",
+    state: "changes_requested",
+    dueInDays: -9,
+    deciderUsername: "petra",
+    decidedDaysAgo: 8,
+    decisionNote: "Retention period needs to match our 7-year regulatory requirement, not 3.",
+    description: "How long raw feeds and dashboard exports are kept once ingested.",
+  },
+];
+
+const MERIDIAN_DELIVERABLES = [
+  {
+    title: "Chart of accounts mapping",
+    kind: "data",
+    ownerName: "Petra Vidak",
+    state: "not_started",
+    dueInDays: -3, // overdue
+    blocking: true,
+    description: "Mapping from Meridian's internal account codes to the categories the dashboard groups by.",
+    holdsUp: "Dashboard: cash flow chart",
+  },
+  {
+    title: "Sample transaction export (last 90 days)",
+    kind: "data",
+    ownerName: "Petra Vidak",
+    state: "in_progress",
+    dueInDays: 4,
+    blocking: true,
+    description: "A representative export so the transactions feed can be validated end to end.",
+    holdsUp: "ETL pipeline: transactions feed",
+  },
+  {
+    title: "Read-only warehouse credentials",
+    kind: "access",
+    ownerName: "Petra Vidak",
+    state: "delivered",
+    deliveredDaysAgo: 5,
+    dueInDays: -1,
+    blocking: false,
+    description: "Credentials so the agency can query the warehouse directly while building the pipeline.",
+    holdsUp: "Warehouse schema design",
+  },
+  {
+    title: "Sign-off on data classification policy",
+    kind: "decision",
+    ownerName: "Petra Vidak",
+    state: "accepted",
+    deliveredDaysAgo: 4,
+    acceptedDaysAgo: 3,
+    acceptedByUsername: "ivan",
+    reviewNote: "Filed with compliance, thanks.",
+    blocking: true,
+    description: "Which fields count as sensitive and must be masked before they reach the dashboard.",
+    holdsUp: "Access control & audit logging",
+  },
+  {
+    title: "Legacy BI tool export templates",
+    kind: "other",
+    ownerName: "Petra Vidak",
+    state: "waived",
+    blocking: false,
+    description: "Export templates from the old BI tool — not needed once we agreed to rebuild the views from scratch.",
+    holdsUp: "Dashboard: exposure by sector",
+  },
+];
+
+// Bounce-rate-style honesty check: manual reporting hours are UP, not
+// down, this early — the old spreadsheet process still runs in parallel
+// until the dashboard is trusted, so it's a real regression against
+// baseline, not a forced win.
+const MERIDIAN_METRICS = [
+  {
+    name: "Dashboard load time (p95)",
+    unit: "s",
+    source: "lighthouse",
+    direction: "lower",
+    baselineValue: 6.5,
+    targetValue: 2.5,
+    currentValue: 3.8,
+    baselineDaysAgo: 20,
+    currentDaysAgo: 1,
+  },
+  {
+    name: "Data pipeline latency",
+    unit: "min",
+    source: "manual",
+    direction: "lower",
+    baselineValue: 240,
+    targetValue: 30,
+    currentValue: 90,
+    baselineDaysAgo: 20,
+    currentDaysAgo: 1,
+  },
+  {
+    name: "Reconciliation accuracy",
+    unit: "%",
+    source: "manual",
+    direction: "higher",
+    baselineValue: 92,
+    targetValue: 99.5,
+    currentValue: 96.2,
+    baselineDaysAgo: 20,
+    currentDaysAgo: 1,
+  },
+  {
+    name: "Manual reporting hours / month",
+    unit: "hours",
+    source: "manual",
+    direction: "lower",
+    baselineValue: 40,
+    targetValue: 5,
+    currentValue: 42, // regression: the old spreadsheet still runs in parallel
+    baselineDaysAgo: 20,
+    currentDaysAgo: 1,
+  },
+];
+
+const MERIDIAN_SCOPE_ITEMS = [
+  { title: "Ingest transactions & positions feeds from 2 core systems", description: "Nightly batch to start, streaming considered for phase 2.", included: true, source: "proposal" },
+  { title: "Warehouse schema for daily reconciliation", description: "Single source of truth the dashboard and finance team both read from.", included: true, source: "proposal" },
+  { title: "Dashboard: cash flow, exposure by sector, liquidity forecast", description: "Three initial views; more can be scoped once these are trusted.", included: true, source: "proposal" },
+  { title: "Role-based access for 3 user tiers", description: "Analyst, manager, and admin — mirrors Meridian's own org chart.", included: true, source: "proposal" },
+];
+
+const MERIDIAN_DECISIONS = [
+  {
+    title: "Warehouse: Snowflake over BigQuery",
+    decisionType: "technical",
+    decidedByName: "Saša Japranin",
+    rationale: "Meridian's own analysts already know Snowflake; avoids a second tool to train on.",
+    daysAgo: 18,
+    phaseName: "Data foundations",
+  },
+  {
+    title: "Dashboard refresh cadence: hourly, not real-time",
+    decisionType: "commercial",
+    decidedByName: "Petra Vidak",
+    rationale: "Real-time streaming would have doubled the infrastructure cost for a dashboard that's reviewed a few times a day.",
+    daysAgo: 6,
+  },
+];
+
+const MERIDIAN_LINKS = [
+  { kind: "staging", label: "Staging dashboard", url: "https://staging.meridian-dashboard.dev", clientVisible: true },
+  { kind: "drive", label: "Shared data dictionary", url: "https://drive.example.com/meridian/data-dictionary", clientVisible: true },
+  { kind: "other", label: "Warehouse admin console", url: "https://app.snowflake.com/meridian-internal", clientVisible: false },
+  { kind: "analytics", label: "Pipeline monitoring (Datadog)", url: "https://app.datadoghq.com/dashboard/meridian-pipeline", clientVisible: false },
+];
+
+const MERIDIAN_ACCOUNTS = [
+  { service: "Snowflake warehouse account", owner: "client", status: "pending", clientVisible: true, note: "Client IT needs to provision production credentials before go-live." },
+  { service: "Dashboard hosting (Vercel project)", owner: "agency", status: "provisioned", clientVisible: true },
+  { service: "Datadog monitoring", owner: "agency", status: "provisioned", clientVisible: false },
+  { service: "Client SSO integration", owner: "client", status: "transferred", clientVisible: true },
+];
+
+// Shared portal-table seeder for a project that already has its own tasks
+// created (`taskIdByTitle`). Generalises the phases/decision-owners/
+// approvals/deliverables/metrics/scope/decisions/links/accounts blocks
+// `seedPortalDemoData` above writes for Website Redesign, minus the
+// Website-only pieces (pages, the training doc, the custom Blocked
+// column) neither Northwind nor Meridian need for their role in the demo
+// set. `budget` is optional since Website's own budget insert already has
+// its own call site and Meridian's replaces the old budget-only seeder.
+async function seedProjectPortalTables({
+  projectId,
+  owner,
+  userIds,
+  taskIdByTitle,
+  phases,
+  taskPhases,
+  decisionOwners,
+  approvals,
+  deliverables,
+  metrics,
+  scopeItems,
+  decisions,
+  links,
+  accounts,
+  budget,
+  label,
+}) {
+  const { data: phaseRows, error: phasesError } = await admin
+    .from("project_phases")
+    .insert(
+      phases.map((p, index) => ({
+        project_id: projectId,
+        name: p.name,
+        client_description: p.client_description,
+        position: (index + 1) * 1000,
+        state: p.state,
+        planned_start: daysFromNow(p.plannedStart),
+        planned_end: daysFromNow(p.plannedEnd),
+        actual_start: p.actualStart !== null ? daysFromNow(p.actualStart) : null,
+        actual_end: p.actualEnd !== null ? daysFromNow(p.actualEnd) : null,
+      })),
+    )
+    .select("id, name");
+  check(`project_phases ${label}`, { error: phasesError });
+  const phaseIdByName = Object.fromEntries((phaseRows ?? []).map((p) => [p.name, p.id]));
+
+  for (const [title, phaseName] of Object.entries(taskPhases)) {
+    const taskId = taskIdByTitle[title];
+    const phaseId = phaseIdByName[phaseName];
+    if (!taskId || !phaseId) continue;
+    check(
+      `link task to phase (${label}): ${title}`,
+      await admin.from("tasks").update({ phase_id: phaseId }).eq("id", taskId),
+    );
+  }
+
+  check(
+    `project_decision_owners ${label}`,
+    await admin.from("project_decision_owners").insert(
+      decisionOwners.map((o) => ({
+        project_id: projectId,
+        decision_type: o.decisionType,
+        user_id: userIds[o.username],
+      })),
+    ),
+  );
+
+  check(
+    `approval_requests ${label}`,
+    await admin.from("approval_requests").insert(
+      approvals.map((a) => ({
+        project_id: projectId,
+        phase_id: a.subjectType === "phase" ? phaseIdByName[a.subjectPhaseName] : null,
+        subject_type: a.subjectType,
+        subject_id:
+          a.subjectType === "task"
+            ? taskIdByTitle[a.subjectTaskTitle]
+            : a.subjectType === "phase"
+              ? phaseIdByName[a.subjectPhaseName]
+              : null,
+        artifact_url: a.subjectType === "artifact" ? a.artifactUrl : null,
+        title: a.title,
+        description: a.description,
+        decision_type: a.decisionType,
+        state: a.state,
+        requested_by: owner,
+        requested_at: daysFromNow(a.dueInDays - 5),
+        due_at: new Date(Date.now() + a.dueInDays * 86400000).toISOString(),
+        decided_by: a.decidedDaysAgo !== undefined ? userIds[a.deciderUsername] : null,
+        decided_at: a.decidedDaysAgo !== undefined ? daysFromNow(-a.decidedDaysAgo) : null,
+        decision_note: a.decisionNote ?? null,
+      })),
+    ),
+  );
+
+  check(
+    `client_deliverables ${label}`,
+    await admin.from("client_deliverables").insert(
+      deliverables.map((d, index) => ({
+        project_id: projectId,
+        task_id: d.holdsUp ? (taskIdByTitle[d.holdsUp] ?? null) : null,
+        title: d.title,
+        description: d.description,
+        kind: d.kind,
+        owner_name: d.ownerName,
+        state: d.state,
+        blocking: d.blocking,
+        position: (index + 1) * 1000,
+        due_at: d.dueInDays !== undefined ? new Date(Date.now() + d.dueInDays * 86400000).toISOString() : null,
+        delivered_at: d.deliveredDaysAgo !== undefined ? daysFromNow(-d.deliveredDaysAgo) : null,
+        accepted_at: d.acceptedDaysAgo !== undefined ? daysFromNow(-d.acceptedDaysAgo) : null,
+        accepted_by: d.acceptedByUsername ? userIds[d.acceptedByUsername] : null,
+        review_note: d.reviewNote ?? null,
+      })),
+    ),
+  );
+
+  if (budget) {
+    check(
+      `project_budgets ${label}`,
+      await admin.from("project_budgets").insert({
+        project_id: projectId,
+        period_start: daysFromNow(budget.periodStartInDays),
+        period_end: daysFromNow(budget.periodEndInDays),
+        sold_minutes: budget.soldMinutes,
+        currency: budget.currency,
+        rate_amount: budget.rateAmount,
+        rollover: budget.rollover,
+        note: budget.note,
+      }),
+    );
+  }
+
+  const { data: metricRows, error: metricsError } = await admin
+    .from("project_metrics")
+    .insert(
+      metrics.map((m, index) => ({
+        project_id: projectId,
+        name: m.name,
+        unit: m.unit,
+        source: m.source,
+        direction: m.direction,
+        baseline_value: m.baselineValue,
+        baseline_at: daysFromNow(-m.baselineDaysAgo),
+        target_value: m.targetValue,
+        position: (index + 1) * 1000,
+      })),
+    )
+    .select("id, name");
+  check(`project_metrics ${label}`, { error: metricsError });
+  const metricIdByName = Object.fromEntries((metricRows ?? []).map((m) => [m.name, m.id]));
+
+  check(
+    `metric_snapshots ${label}`,
+    await admin.from("metric_snapshots").insert(
+      metrics.map((m) => ({
+        metric_id: metricIdByName[m.name],
+        value: m.currentValue,
+        measured_at: daysFromNow(-m.currentDaysAgo),
+        created_by: owner,
+      })),
+    ),
+  );
+
+  check(
+    `project_scope_items ${label}`,
+    await admin.from("project_scope_items").insert(
+      scopeItems.map((s, index) => ({
+        project_id: projectId,
+        title: s.title,
+        description: s.description,
+        included: s.included,
+        source: s.source,
+        position: (index + 1) * 1000,
+      })),
+    ),
+  );
+
+  check(
+    `project_decisions ${label}`,
+    await admin.from("project_decisions").insert(
+      decisions.map((d) => ({
+        project_id: projectId,
+        phase_id: d.phaseName ? (phaseIdByName[d.phaseName] ?? null) : null,
+        title: d.title,
+        decision_type: d.decisionType,
+        decided_by_name: d.decidedByName,
+        decided_on: daysFromNow(-d.daysAgo),
+        rationale: d.rationale,
+        created_by: owner,
+      })),
+    ),
+  );
+
+  check(
+    `project_links ${label}`,
+    await admin.from("project_links").insert(
+      links.map((l, index) => ({
+        project_id: projectId,
+        kind: l.kind,
+        label: l.label,
+        url: l.url,
+        client_visible: l.clientVisible,
+        position: (index + 1) * 1000,
+      })),
+    ),
+  );
+
+  check(
+    `project_accounts ${label}`,
+    await admin.from("project_accounts").insert(
+      accounts.map((a, index) => ({
+        project_id: projectId,
+        service: a.service,
+        owner: a.owner,
+        status: a.status,
+        client_visible: a.clientVisible,
+        note: a.note ?? null,
+        renewal_date: a.renewalInDays ? daysFromNow(a.renewalInDays) : null,
+        position: (index + 1) * 1000,
+      })),
+    ),
+  );
+}
+
+// Northwind Loyalty App — launch header fields (F001) + warranty window
+// (F025c) plus the full portal table set above, all resolving to the
+// project's own finished state.
+async function seedLaunchedPortalData({ projectId, owner, userIds, taskIdByTitle }) {
   check(
     "portal launch fields Northwind Loyalty App",
     await admin
@@ -1225,14 +1930,31 @@ async function seedLaunchedPortalData({ projectId }) {
       })
       .eq("id", projectId),
   );
+
+  await seedProjectPortalTables({
+    projectId,
+    owner,
+    userIds,
+    taskIdByTitle,
+    phases: NORTHWIND_PHASES,
+    taskPhases: NORTHWIND_TASK_PHASES,
+    decisionOwners: NORTHWIND_DECISION_OWNERS,
+    approvals: NORTHWIND_APPROVALS,
+    deliverables: NORTHWIND_DELIVERABLES,
+    metrics: NORTHWIND_METRICS,
+    scopeItems: NORTHWIND_SCOPE_ITEMS,
+    decisions: NORTHWIND_DECISIONS,
+    links: NORTHWIND_LINKS,
+    accounts: NORTHWIND_ACCOUNTS,
+    label: "Northwind Loyalty App",
+  });
 }
 
-// Budget-only portal seed for Cedarwood's over-budget project -- the one
-// table this demo state needs (F017's `project_budgets`); no
-// phases/approvals/deliverables, since the point of this project is the
-// Hours view's red "over budget" path, not a second full portal
-// walkthrough.
-async function seedWorkspace2Budget({ projectId }) {
+// Meridian Ops Dashboard — over-budget, mid-flight portal data. `budget`
+// stays WORKSPACE2_BUDGET (unchanged from earlier rounds): sold less than
+// this project's own logged minutes already total, so the burn-down's red
+// path is real.
+async function seedWorkspace2Budget({ projectId, owner, userIds, taskIdByTitle }) {
   check(
     "portal_enabled Meridian Ops Dashboard",
     await admin
@@ -1240,19 +1962,25 @@ async function seedWorkspace2Budget({ projectId }) {
       .update({ portal_enabled: true, portal_enabled_at: new Date().toISOString() })
       .eq("id", projectId),
   );
-  check(
-    "project_budgets Meridian Ops Dashboard",
-    await admin.from("project_budgets").insert({
-      project_id: projectId,
-      period_start: daysFromNow(WORKSPACE2_BUDGET.periodStartInDays),
-      period_end: daysFromNow(WORKSPACE2_BUDGET.periodEndInDays),
-      sold_minutes: WORKSPACE2_BUDGET.soldMinutes,
-      currency: WORKSPACE2_BUDGET.currency,
-      rate_amount: WORKSPACE2_BUDGET.rateAmount,
-      rollover: WORKSPACE2_BUDGET.rollover,
-      note: WORKSPACE2_BUDGET.note,
-    }),
-  );
+
+  await seedProjectPortalTables({
+    projectId,
+    owner,
+    userIds,
+    taskIdByTitle,
+    phases: MERIDIAN_PHASES,
+    taskPhases: MERIDIAN_TASK_PHASES,
+    decisionOwners: MERIDIAN_DECISION_OWNERS,
+    approvals: MERIDIAN_APPROVALS,
+    deliverables: MERIDIAN_DELIVERABLES,
+    metrics: MERIDIAN_METRICS,
+    scopeItems: MERIDIAN_SCOPE_ITEMS,
+    decisions: MERIDIAN_DECISIONS,
+    links: MERIDIAN_LINKS,
+    accounts: MERIDIAN_ACCOUNTS,
+    budget: WORKSPACE2_BUDGET,
+    label: "Meridian Ops Dashboard",
+  });
 }
 
 // Creates one workspace's accounts-already-created projects (shared by
@@ -1418,8 +2146,8 @@ async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberU
     }
 
     if (spec.launched) {
-      await seedLaunchedPortalData({ projectId: project.id });
-      console.log(`  ✓ ${spec.name} — portal demo data (launched/finished, warranty)`);
+      await seedLaunchedPortalData({ projectId: project.id, owner, userIds, taskIdByTitle });
+      console.log(`  ✓ ${spec.name} — portal demo data (launched/finished, warranty, phases, approvals, deliverables, metrics, scope, decisions, links, accounts)`);
     }
 
     if (spec.archive) {
@@ -1434,8 +2162,8 @@ async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberU
     }
 
     if (portalSeeder && spec.name === WORKSPACE2_CLIENT_PROJECT) {
-      await portalSeeder({ projectId: project.id });
-      console.log(`  ✓ ${spec.name} — portal demo data (over budget)`);
+      await portalSeeder({ projectId: project.id, owner, userIds, taskIdByTitle });
+      console.log(`  ✓ ${spec.name} — portal demo data (over budget, phases, approvals, deliverables, metrics, scope, decisions, links, accounts)`);
     }
   }
   return taskCount;
