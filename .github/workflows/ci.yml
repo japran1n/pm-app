@@ -148,6 +148,21 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: npm run test
 
+      # F092 (AS-369): the four integration tests that wait for a real
+      # Supabase Realtime WebSocket event (see
+      # tests/realtime-live-delivery-tests.ts) are excluded from the
+      # `npm run test` step above and run here instead, alone, after every
+      # other vitest worker from that step has exited -- so they no longer
+      # contend with 3 other vitest workers and the local `supabase start`
+      # Realtime container for the runner's 2 vCPUs. That contention was
+      # the measured cause of the 13-20s delivery latency this test class
+      # showed when run inside the shared, 4-worker suite.
+      - name: Realtime integration tests (serial, uncontended)
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: npm run test:realtime
+
       - name: End-to-end tests (Playwright)
         run: |
           npx playwright install --with-deps

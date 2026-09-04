@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "test:realtime": "vitest run -c vitest.realtime.config.ts --no-file-parallelism",
     "seed:demo": "node --env-file=.env scripts/seed-demo.mjs",
     "db:apply": "node --env-file=.env scripts/apply-migration.mjs",
     "db:gen-types": "node --env-file=.env scripts/gen-types.mjs",

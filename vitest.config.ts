@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { REALTIME_LIVE_DELIVERY_TESTS } from "./tests/realtime-live-delivery-tests";
 
 export default defineConfig({
   resolve: {
@@ -30,7 +31,28 @@ export default defineConfig({
     // did not expect test.beforeAll() to be called here"). Exclude the
     // whole missions/ tree -- it is orchestrator/evidence bookkeeping, not
     // application test surface -- without touching tests/ or components/.
-    exclude: ["**/node_modules/**", "tests/e2e/**", "extension/**", "missions/**"],
+    // F092 (AS-369): the handful of integration tests below open a real
+    // WebSocket to Supabase Realtime and wait for a genuine
+    // postgres_changes/broadcast event to arrive over the wire. Run
+    // together with the other ~470 files under this config's
+    // maxWorkers: 4, they contend with each other and with the local
+    // `supabase start` Realtime container for the CI runner's 2 vCPUs,
+    // which is what produced 13-20s delivery latency (measured, not
+    // guessed -- see reaction-realtime-delivery.test.ts) despite the
+    // event being delivered correctly every time. They are excluded from
+    // this config and run instead by vitest.realtime.config.ts in their
+    // own serial, uncontended CI step (see .github/workflows/ci.yml) so
+    // their delivery-latency budget can be tight and meaningful instead
+    // of padded to absorb scheduling noise. The list lives in
+    // tests/realtime-live-delivery-tests.ts so both configs read the same
+    // source of truth and a file can never be silently dropped from both.
+    exclude: [
+      "**/node_modules/**",
+      "tests/e2e/**",
+      "extension/**",
+      "missions/**",
+      ...REALTIME_LIVE_DELIVERY_TESTS,
+    ],
     // F278: default 5s timeout produced non-deterministic failures against
     // the real remote Supabase project (two consecutive runs gave 41 and 36
     // failures); 30s was deterministic (575/575 green).
