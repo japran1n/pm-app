@@ -410,6 +410,8 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
     it("a column added to projects after this migration is protected by default, with no edit to the guard function", async () => {
       const sql = `
         do $probe$
+        declare
+          v_row_count int;
         begin
           alter table public.projects
             add column if not exists f020b_probe_never_committed text;
@@ -421,6 +423,17 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
             update public.projects
                set f020b_probe_never_committed = 'author-supplied value'
              where id = '${projectId}';
+            get diagnostics v_row_count = row_count;
+            if v_row_count = 0 then
+              -- Distinguish "the guard let this through" from "the UPDATE
+              -- never reached the guard at all" -- e.g. RLS silently
+              -- filtered the row so 0 rows matched, which produces the
+              -- exact same observable "no exception raised" outcome as a
+              -- real guard hole. Both must not be reported as
+              -- GUARD_DID_NOT_FIRE, which claims the guard specifically
+              -- failed to reject a value it saw.
+              raise exception 'PROBE_ROW_NOT_MATCHED: the UPDATE affected 0 rows -- the probe proves nothing about the guard, since it was never invoked on this row';
+            end if;
             raise exception 'GUARD_DID_NOT_FIRE';
           exception
             when sqlstate '42501' then
@@ -442,6 +455,7 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
 
       expect(threw).not.toBeNull();
       const message = String(threw);
+      expect(message).not.toMatch(/PROBE_ROW_NOT_MATCHED/);
       expect(message).not.toMatch(/GUARD_DID_NOT_FIRE/);
       expect(message).toMatch(/ROLLBACK_PROBE_TRANSACTION/);
 
