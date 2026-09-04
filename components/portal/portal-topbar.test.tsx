@@ -10,6 +10,18 @@
 // has ever heard of, and (the DoD's own "side-effect verification") that
 // the eight primary views keep the labels they always had.
 //
+// F107 round 2 (missions/20260903-portal, docs/client-portal-visual-plan.md
+// 2.1): the two launch chips are now hidden on the Overview route --
+// `LaunchHeadline` states the identical two facts there, larger, with
+// more context (`launch_note`), and showing both was the exact
+// "duplicated fact competing for attention" the coordinator's review
+// named. AS-005 ("the client can see the project's target launch date
+// and current launch confidence somewhere in the portal shell") does not
+// require the SAME view to state it twice -- these tests now assert the
+// chip on a non-Overview route (where no headline exists) and assert its
+// ABSENCE on Overview specifically, rather than asserting it everywhere
+// unconditionally as before.
+//
 // `usePortalTitleOverride()` reads a Context with no Provider here (no
 // `PortalTitleProvider` wraps these renders) -- `useContext` returns the
 // context's default (`null`) in that case, so every test below exercises
@@ -22,7 +34,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
-let mockPathname = "/portal/acme/p/proj-1";
+let mockPathname = "/portal/acme/p/proj-1/results";
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
 }));
@@ -39,6 +51,7 @@ const baseProps = {
 
 describe("PortalTopbar (F003)", () => {
   it("test_AS_005_displays_the_projects_target_launch_date", () => {
+    mockPathname = "/portal/acme/p/proj-1/results";
     const html = renderToStaticMarkup(
       createElement(PortalTopbar, { ...baseProps, targetLaunchDate: "2026-11-03" }),
     );
@@ -47,6 +60,7 @@ describe("PortalTopbar (F003)", () => {
   });
 
   it("test_AS_005_displays_the_projects_current_launch_confidence", () => {
+    mockPathname = "/portal/acme/p/proj-1/results";
     const html = renderToStaticMarkup(
       createElement(PortalTopbar, { ...baseProps, launchConfidence: "at_risk" }),
     );
@@ -55,6 +69,7 @@ describe("PortalTopbar (F003)", () => {
   });
 
   it("test_AS_005_shows_an_honest_placeholder_when_launch_data_is_not_set_yet", () => {
+    mockPathname = "/portal/acme/p/proj-1/results";
     const html = renderToStaticMarkup(createElement(PortalTopbar, baseProps));
 
     // Neither field is faked when the team hasn't set it -- an em dash,
@@ -74,6 +89,36 @@ describe("PortalTopbar (F003)", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const overviewHtml = renderToStaticMarkup(createElement(PortalTopbar, baseProps));
     expect(overviewHtml).toContain("Overview");
+  });
+
+  // F107 round 2: the chip duplicates `LaunchHeadline` on Overview --
+  // hidden there specifically, not globally.
+  it("test_AS_005_hides_the_launch_chips_on_the_overview_route", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(
+      createElement(PortalTopbar, {
+        ...baseProps,
+        targetLaunchDate: "2026-10-04",
+        launchConfidence: "on_track",
+      }),
+    );
+
+    expect(html).not.toContain('data-testid="topbar-launch-chips"');
+    expect(html).not.toContain("4 Oct 2026");
+  });
+
+  it("test_AS_005_keeps_the_launch_chips_on_every_non_overview_route", () => {
+    mockPathname = "/portal/acme/p/proj-1/hours";
+    const html = renderToStaticMarkup(
+      createElement(PortalTopbar, {
+        ...baseProps,
+        targetLaunchDate: "2026-10-04",
+        launchConfidence: "on_track",
+      }),
+    );
+
+    expect(html).toContain('data-testid="topbar-launch-chips"');
+    expect(html).toContain("4 Oct 2026");
   });
 });
 

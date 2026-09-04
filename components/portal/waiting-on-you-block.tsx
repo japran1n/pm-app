@@ -5,20 +5,30 @@
 // number the tile above still carries (that tile is untouched -- see
 // overview-tiles.tsx's own header for why the count stays there too).
 import Link from "next/link";
-import { CheckCircle2, Circle, FileClock } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, PackageX, Stamp } from "lucide-react";
 
 import type {
   WaitingOnYouItem,
   WaitingOnYouItemKind,
 } from "@/lib/portal/build-waiting-on-you-items";
 
-// No colour-only encoding: each kind gets its own icon AND its own
-// label text (below, in the row itself) so the distinction survives
-// greyscale, per this feature's own chart-rules instruction.
-const KIND_ICON: Record<WaitingOnYouItemKind, typeof Circle> = {
-  approval: FileClock,
-  task: FileClock,
-  deliverable: FileClock,
+// F107 round 2 (coordinator review): a single shared icon across all
+// three kinds made an approval, a pending-approval task and an overdue
+// deliverable indistinguishable at a glance, despite being three
+// different asks with three different actions. Each kind now gets its
+// own icon; no colour-only encoding either way -- the icon is always
+// paired with its own label text (the row's title plus `agedLabel`
+// below), so the distinction never rests on the glyph alone.
+const KIND_ICON: Record<WaitingOnYouItemKind, typeof Stamp> = {
+  // A non-task-subject approval (doc/phase/artifact) -- a decision to
+  // make, not a task to open.
+  approval: Stamp,
+  // A task sitting in `pending_client_approval` -- something to review
+  // inside its own task detail page.
+  task: ClipboardCheck,
+  // A past-due deliverable -- something missing/overdue, not a decision
+  // to render.
+  deliverable: PackageX,
 };
 
 function agedLabel(daysWaiting: number, kind: WaitingOnYouItemKind): string {

@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
 //
-// F006 (missions/20260903-portal): the overview's four tiles. Covers
-// this feature's own "side-effect verification" definition of done
-// directly: no fabricated figure anywhere on the page.
+// F006 (missions/20260903-portal): the overview's tiles. Covers this
+// feature's own "side-effect verification" definition of done directly:
+// no fabricated figure anywhere on the page.
 //
-// F085 (missions/20260903-portal audit, defects 1 and 2): the Hours tile
-// is now wired to real minutes rather than a permanent placeholder, and
-// the Waiting-on-you tile is a link.
+// F085 (missions/20260903-portal audit, defect 1): the Hours tile is now
+// wired to real minutes rather than a permanent placeholder.
+//
+// F107 round 2 (missions/20260903-portal, coordinator review): the
+// "Waiting on you" tile is removed -- `WaitingOnYouBlock` (rendered
+// above this strip on the Overview page, its own component/test file)
+// already names the same rows with age and an inline action, and the
+// tile restated only their bare count. Three tiles remain.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -18,8 +23,6 @@ afterEach(() => {
 });
 
 const BASE_PROPS = {
-  waitingOnYouCount: 3,
-  approvalsHref: "/portal/acme/p/project-1/approvals",
   pagesReadyCount: 5,
   pagesTotalCount: 12,
   pagesStatusDistribution: { done: 5, progress: 4, waiting: 2, blocked: 1 },
@@ -58,11 +61,10 @@ describe("OverviewTiles", () => {
     expect(hoursTile).toHaveAttribute("href", "/portal/acme/p/project-1/hours");
   });
 
-  it("renders the waiting-on-you count and a real pages-ready fraction", () => {
+  it("renders a real pages-ready fraction and days-to-launch", () => {
     render(
       <OverviewTiles
         {...BASE_PROPS}
-        waitingOnYouCount={2}
         pagesReadyCount={4}
         pagesTotalCount={9}
         daysToLaunch={15}
@@ -70,31 +72,20 @@ describe("OverviewTiles", () => {
       />,
     );
 
-    expect(screen.getByTestId("tile-waiting-on-you")).toHaveTextContent("2");
     expect(screen.getByTestId("tile-pages-ready")).toHaveTextContent("4 / 9");
     expect(screen.getByTestId("tile-days-to-launch")).toHaveTextContent("15");
     expect(screen.getByTestId("tile-days-to-launch")).toHaveTextContent("At risk");
-  });
-
-  // F085 (defect 2): the whole reason this tile links anywhere -- a
-  // client who reads "3" no longer has to go hunting for where to act.
-  it("test_AS_002_waiting_on_you_tile_is_a_link_to_approvals", () => {
-    render(<OverviewTiles {...BASE_PROPS} waitingOnYouCount={3} />);
-
-    const tile = screen.getByTestId("tile-waiting-on-you");
-    expect(tile.tagName).toBe("A");
-    expect(tile).toHaveAttribute("href", "/portal/acme/p/project-1/approvals");
   });
 
   it("shows an honest placeholder, not a fabricated fraction, when there are no pages yet", () => {
     render(
       <OverviewTiles
         {...BASE_PROPS}
-        waitingOnYouCount={0}
         pagesReadyCount={0}
         pagesTotalCount={0}
         daysToLaunch={null}
         launchConfidence={null}
+        pagesStatusDistribution={{ done: 0, progress: 0, waiting: 0, blocked: 0 }}
       />,
     );
 
@@ -105,17 +96,17 @@ describe("OverviewTiles", () => {
     );
   });
 
-  // F006f (missions/20260903-portal, AS-002): a failed read is `null`,
-  // never coalesced to 0 -- 0 is a real, different answer ("nothing is
-  // waiting on you") that this tile must not claim when it doesn't
-  // actually know.
-  it("test_AS_002_renders_an_honest_placeholder_never_a_fabricated_zero_when_waiting_on_you_failed_to_load", () => {
-    render(<OverviewTiles {...BASE_PROPS} waitingOnYouCount={null} />);
+  // F107 round 2: no fourth tile restates the "What we need from you"
+  // block's own count -- the strip is exactly three tiles now.
+  it("test_no_waiting_on_you_tile_renders_in_the_tile_strip", () => {
+    render(<OverviewTiles {...BASE_PROPS} />);
 
-    const tile = screen.getByTestId("tile-waiting-on-you");
-    expect(tile).toHaveTextContent("—");
-    expect(tile).toHaveTextContent("We couldn't load this");
-    expect(tile.textContent).not.toContain("0");
+    expect(screen.queryByTestId("tile-waiting-on-you")).toBeNull();
+    const strip = screen.getByTestId("overview-tiles");
+    // Direct children only -- nested chart testids (`tile-sparkline`,
+    // `tile-pages-distribution`) also match a `^tile-` prefix and are
+    // not tiles themselves.
+    expect(strip.children).toHaveLength(3);
   });
 
   // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md

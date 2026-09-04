@@ -11,7 +11,6 @@ import {
   getPortalRisks,
   getPortalTeam,
   getPortalWaitingOnYou,
-  getPortalWaitingOnYouCount,
   getProjectPhases,
 } from "@/lib/queries/portal";
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
@@ -104,7 +103,6 @@ export default async function PortalOverviewPage({
     phasesResult,
     pages,
     waitingOnYouResult,
-    waitingOnYouCountResult,
     risks,
     liveNow,
     team,
@@ -122,13 +120,15 @@ export default async function PortalOverviewPage({
     // Approvals badge (a different, deliberately broader count across
     // every approval_requests subject type, not just tasks) stays on its
     // own query.
+    //
+    // F107 round 2 (missions/20260903-portal, coordinator review): the
+    // separate `getPortalWaitingOnYouCount` union read that used to feed
+    // the now-removed "Waiting on you" TILE is gone -- `WaitingOnYouBlock`
+    // below is built from THIS list plus `openApprovalsResult`/
+    // `deliverablesResult` (already fetched for the block), and restating
+    // the same rows as a bare count directly beneath their own named list
+    // was the exact duplication the coordinator's review named.
     getPortalWaitingOnYou(project.id, project.name),
-    // F085 (missions/20260903-portal audit, defect 2): the TILE above the
-    // list reads this separate, deliberately broader union count instead
-    // of `waitingOnYouResult.data.length` -- see that function's own
-    // header comment for why "how many tasks are pending" and "what's
-    // waiting on you" are no longer the same question.
-    getPortalWaitingOnYouCount(project.id),
     getPortalRisks(project.id),
     getPortalLiveNow(project.id),
     getPortalTeam(project.id),
@@ -271,10 +271,6 @@ export default async function PortalOverviewPage({
       <WaitingOnYouBlock items={waitingOnYouItems} />
 
       <OverviewTiles
-        waitingOnYouCount={
-          waitingOnYouCountResult.ok ? waitingOnYouCountResult.data : null
-        }
-        approvalsHref={`/portal/${workspace.slug}/p/${project.id}/approvals`}
         pagesReadyCount={pagesReadyCount}
         pagesTotalCount={pages.length}
         pagesStatusDistribution={pagesStatusDistribution}

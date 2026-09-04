@@ -16,11 +16,15 @@
 //
 // This is a static, source-level check (no server needs to boot) for the
 // exact shape of that defect: no file WITHOUT a "use client" directive
-// may import a named (non type-only) binding from a file that HAS one.
-// It walks the same two directories the failure came from (app/, the
-// Server Component tree, and components/, where "use client" files
-// live) rather than every file in the repo, to keep it fast and its
-// intent obvious.
+// may import a named (non type-only) binding from a file that HAS one and
+// then use it as a runtime value in a non-JSX position -- a function call
+// (`Name(...)`) or a property/member access (`Name.foo`), per the
+// coordinator's own follow-up request after this test caught the
+// original regression. Rendering the SAME import as JSX (`<Name />`, or
+// a compound `<Name.Sub />`) is excluded deliberately: that is the
+// entire point of composing Server and Client Components and is not
+// this defect. It walks `app/`, `components/`, and `lib/` rather than
+// every file in the repo, to keep it fast and its intent obvious.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -120,17 +124,33 @@ describe("server files never call a value exported from a \"use client\" module"
 
   // Rendering a "use client" component as JSX from a Server Component is
   // the whole point of the App Router and is NOT this defect -- only
-  // CALLING an imported name as a plain function (never referenced as a
-  // JSX tag anywhere in the file) is. `usedAsJsx`/`usedAsCall` are a
-  // heuristic, not a full parse, but it is the exact distinction that
-  // separates every legitimate `<PhaseList />`/`<Toaster />` import in
-  // this codebase from the one real defect this test exists to catch
+  // USING an imported name as a runtime value in a non-JSX position
+  // (calling it, or reading a property off it) is. `usedAsJsx` vs.
+  // `usedAsRuntimeValue` is a heuristic, not a full parse, but it is the
+  // exact distinction that separates every legitimate
+  // `<PhaseList />`/`<Toaster />`/`<Dialog.Trigger />` import in this
+  // codebase from the one real defect this test exists to catch
   // (`computeBurndownSeries(...)`, never rendered as JSX).
+  //
+  // F107 round 2 (coordinator review): "extending it to catch a server
+  // component rendering a client-only value in a non-JSX position" --
+  // the original round only checked a bare function call
+  // (`Name(`). A `"use client"` export read via property/member access
+  // (`Name.something`, e.g. a client-only constant object or a static
+  // method) is the same class of runtime access and throws for the
+  // identical reason, so it is now covered too. A compound JSX tag
+  // (`<Dialog.Trigger />`) is excluded from BOTH the JSX check and the
+  // property-access check by checking for `<Name` OR `<Name\.` as JSX
+  // usage, so a legitimate compound-component render is never flagged
+  // for the member access its own JSX already performs.
   function usedAsJsx(source: string, name: string): boolean {
     return new RegExp(`<${name}\\b`).test(source);
   }
   function usedAsCall(source: string, name: string): boolean {
     return new RegExp(`\\b${name}\\s*\\(`).test(source);
+  }
+  function usedAsPropertyAccess(source: string, name: string): boolean {
+    return new RegExp(`\\b${name}\\.[A-Za-z_$]`).test(source);
   }
 
   for (const file of files) {
@@ -144,13 +164,16 @@ describe("server files never call a value exported from a \"use client\" module"
       if (targetSource === undefined) continue;
       if (!isUseClientFile(targetSource)) continue;
 
-      const calledNotRendered = names.filter(
-        (name) => usedAsCall(source, name) && !usedAsJsx(source, name),
+      const usedAsRuntimeValueNotRendered = names.filter(
+        (name) =>
+          (usedAsCall(source, name) || usedAsPropertyAccess(source, name)) &&
+          !usedAsJsx(source, name),
       );
-      if (calledNotRendered.length > 0) {
+      if (usedAsRuntimeValueNotRendered.length > 0) {
         violations.push(
-          `${relative(ROOT, file)} calls [${calledNotRendered.join(", ")}] as a function, ` +
-            `imported from ${relative(ROOT, resolved)}, which has a "use client" directive`,
+          `${relative(ROOT, file)} uses [${usedAsRuntimeValueNotRendered.join(", ")}] as a ` +
+            `runtime value (call or property access), imported from ${relative(ROOT, resolved)}, ` +
+            `which has a "use client" directive`,
         );
       }
     }

@@ -17,15 +17,13 @@
 // with no hours budget/logged time at all, the same "never a fabricated
 // figure" convention every other tile here already follows.
 //
-// F085 (defect 2): "Waiting on you" is now a link -- the tile answered
-// "what's waiting on me?" with a number a client could read but never
-// click through on. It links to Approvals, the one view built for acting
-// on what's pending (Your list and past-due deliverables both stay
-// reachable from the sidebar one tap away).
+// F085 (defect 2): "Waiting on you" used to be a link -- the tile
+// answered "what's waiting on me?" with a number a client could read but
+// never click through on.
 //
 // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md 2.3):
 // "a number with its trend behind it answers 'and is that good?' without
-// a click." Two of the four tiles now carry that trend, from data that
+// a click." Two of the three tiles now carry that trend, from data that
 // ALREADY exists elsewhere on the page -- neither is a new query:
 //   - Hours used: `usedMinutesSeries`, the same cumulative-minutes series
 //     `computeBurndownSeries` (hours-burndown-chart.tsx) already computes
@@ -34,15 +32,31 @@
 //     `resolveClientBucket` (status-label.ts) already assigns each page
 //     on this same page (`pagesReadyCount`/`pagesTotalCount` above are
 //     themselves derived from it).
-// "Waiting on you" stays a bare number by the plan's own instruction ("a
-// sparkline here would be noise"). "Days to launch" stays bare too: no
-// history of `target_launch_date` changes exists anywhere in this schema
-// (grepped every migration under supabase/migrations for a
-// `target_launch_date`-adjacent audit/history table and found none) --
-// Part 4 of the same plan names this same gap for `launch_confidence`
-// and asks that the decision be explicit rather than incidental; the
-// same applies here, so no slip indicator is drawn rather than faking
-// one from a shape the data doesn't have.
+// "Days to launch" stays bare: no history of `target_launch_date` changes
+// exists anywhere in this schema (grepped every migration under
+// supabase/migrations for a `target_launch_date`-adjacent audit/history
+// table and found none) -- Part 4 of the same plan names this same gap
+// for `launch_confidence` and asks that the decision be explicit rather
+// than incidental; the same applies here, so no slip indicator is drawn
+// rather than faking one from a shape the data doesn't have.
+//
+// F107 round 2 (docs/client-portal-visual-plan.md, coordinator review):
+// the "Waiting on you" TILE is removed entirely -- `WaitingOnYouBlock`
+// (rendered above this strip on the Overview page) already names every
+// one of the same items with its own age and inline action; the tile
+// restated only the bare count of the exact same rows twelve rows below
+// it. The coordinator's own instruction was explicit that the block is
+// "strictly more informative" and the tile, not the block, should go.
+// Three tiles remain rather than inventing a fourth metric this schema
+// has no honest read for yet -- the coordinator's review offered this as
+// the explicit fallback ("or drop to three tiles") alongside "consider
+// what the fourth tile should be," and no existing read on this page
+// answers a genuinely new client question the way Hours/Pages/Launch
+// already do (a candidate for a real fourth tile -- e.g. "on-time
+// delivery rate" from `task_activity` completion dates against due dates
+// -- would be new aggregation work, not a reuse of an existing read, and
+// is named in this feature's own handoff as out-of-scope-needing-a-decision
+// rather than invented here under a size constraint).
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -230,8 +244,6 @@ function minutesToHours(minutes: number): string {
 }
 
 export function OverviewTiles({
-  waitingOnYouCount,
-  approvalsHref,
   pagesReadyCount,
   pagesTotalCount,
   pagesStatusDistribution,
@@ -242,17 +254,6 @@ export function OverviewTiles({
   daysToLaunch,
   launchConfidence,
 }: {
-  /** F006f (missions/20260903-portal, AS-002): `null` means the read
-   * this tile depends on failed -- rendered as an honest "-", the same
-   * "don't claim a number you don't have" convention `daysToLaunch`
-   * below already uses, never coalesced to 0 (indistinguishable from a
-   * real "nothing waiting on you"). F085: this is now the union of open
-   * approvals, pending-approval tasks and past-due deliverables
-   * (`getPortalWaitingOnYouCount`, lib/queries/portal.ts) -- not just
-   * `pending_client_approval` tasks. */
-  waitingOnYouCount: number | null;
-  /** Where the tile links -- the Approvals view. */
-  approvalsHref: string;
   pagesReadyCount: number;
   pagesTotalCount: number;
   /** F107: counts per client-facing status bucket (`resolveClientBucket`
@@ -281,23 +282,8 @@ export function OverviewTiles({
   return (
     <div
       data-testid="overview-tiles"
-      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
     >
-      <Tile
-        testId="tile-waiting-on-you"
-        label="Waiting on you"
-        href={approvalsHref}
-        value={waitingOnYouCount === null ? "—" : String(waitingOnYouCount)}
-        footnote={
-          waitingOnYouCount === null
-            ? "We couldn't load this"
-            : waitingOnYouCount === 0
-              ? "Nothing waiting on you"
-              : waitingOnYouCount === 1
-                ? "1 item needs your review"
-                : `${waitingOnYouCount} items need your review`
-        }
-      />
       <Tile
         testId="tile-pages-ready"
         label="Pages ready"

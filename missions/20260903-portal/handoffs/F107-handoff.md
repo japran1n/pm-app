@@ -6,157 +6,133 @@ COMPLETE
 ## Assertions covered
 No F107 feature spec or validation-contract assertion IDs exist for this
 task — it was assigned directly from `docs/client-portal-visual-plan.md`
-Part 0/Part 2, not through the mission's `/mission-tasks` pipeline. No
-existing assertion IDs were touched or weakened. New behaviour is covered
-by named tests instead (listed below); none reference an AS-NNN id.
+Part 0/Part 2, not through the mission's `/mission-tasks` pipeline.
+AS-005 (`portal-topbar.test.tsx`) is the one EXISTING assertion this
+round's fix touches — not weakened: still asserts the chip shows the
+launch date/confidence, now on a route where no headline duplicates it,
+plus a new explicit pair of tests for "hidden on Overview" / "shown
+everywhere else." New behaviour is otherwise covered by named tests
+(listed below); none reference an AS-NNN id.
 
-## Files changed
+## Files changed (across all three rounds of this task)
 - `app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx`
-- `app/(portal)/portal/[workspaceSlug]/p/[projectId]/hours/page.tsx` (fix round: same latent defect, see below)
+- `app/(portal)/portal/[workspaceSlug]/p/[projectId]/hours/page.tsx`
 - `components/portal/overview-tiles.tsx`
 - `components/portal/overview-tiles.test.tsx`
-- `components/portal/hours-burndown-chart.tsx` (fix round: pure functions extracted, re-exported)
-- `components/portal/launch-headline.tsx` (new)
-- `components/portal/launch-headline.test.tsx` (new)
-- `components/portal/waiting-on-you-block.tsx` (new)
-- `components/portal/waiting-on-you-block.test.tsx` (new)
-- `lib/portal/build-waiting-on-you-items.ts` (new)
-- `lib/portal/build-waiting-on-you-items.test.ts` (new)
-- `lib/hours/burndown-series.ts` (new, fix round)
-- `tests/unit/server-client-boundary-imports.test.ts` (new, fix round — the check requested)
+- `components/portal/hours-burndown-chart.tsx`
+- `components/portal/portal-topbar.tsx` (round 3)
+- `components/portal/portal-topbar.test.tsx` (round 3)
+- `components/portal/waiting-on-you-block.tsx` (round 3: per-kind icons)
+- `components/portal/waiting-on-you-block.test.tsx` (round 3)
+- `components/portal/launch-headline.tsx`
+- `components/portal/launch-headline.test.tsx`
+- `lib/portal/build-waiting-on-you-items.ts`
+- `lib/portal/build-waiting-on-you-items.test.ts`
+- `lib/hours/burndown-series.ts`
+- `tests/unit/server-client-boundary-imports.test.ts` (round 3: widened to catch property/member access, not just calls)
 
 Did not touch `components/portal/phase-timeline.tsx` (owned by another
 agent) or the `min-w-0` grid item in `page.tsx`.
 
 ## Commands run
-`npx vitest run lib/portal/build-waiting-on-you-items.test.ts components/portal/launch-headline.test.tsx components/portal/waiting-on-you-block.test.tsx components/portal/overview-tiles.test.tsx tests/unit/f019-hours-burndown-chart.test.tsx tests/unit/server-client-boundary-imports.test.ts components/portal/portal-topbar.test.tsx tests/unit/portal-overview-queries.test.ts` (0, 78 passed)
+`npx vitest run lib/portal/build-waiting-on-you-items.test.ts components/portal/launch-headline.test.tsx components/portal/waiting-on-you-block.test.tsx components/portal/overview-tiles.test.tsx tests/unit/f019-hours-burndown-chart.test.tsx tests/unit/server-client-boundary-imports.test.ts components/portal/portal-topbar.test.tsx tests/unit/portal-overview-queries.test.ts tests/unit/portal-waiting-on-you-count.test.ts` (0, 85 passed)
 `npx tsc --noEmit` (0)
 `npm run build` (0, sourced `.env` first)
-Manual runtime verification against the coordinator's own already-running dev server on `:3000` (see "Notes for the next worker" — this is the check the coordinator asked me to do, not a substitute for it being automated; automation is `tests/unit/server-client-boundary-imports.test.ts`, described below).
+Manual runtime re-verification against the coordinator's own running dev server on `:3000` (dev-login + curl) after this round's changes — see "Notes for the next worker."
 
-## THE BREAKAGE AND THE FIX (read first)
+## This round: three redundancies from the coordinator's live review
 
-The coordinator reported the Overview page threw on every request in the
-committed code:
+**1. Header chip duplicated the headline.** `PortalTopbar` now hides its
+two launch `Badge`s specifically on the Overview route
+(`pathname === basePath`, the exact same comparison
+`resolvePortalStaticTitle`'s own first branch already makes — reused, not
+reinvented) and keeps them on every other route. I did **not** conclude
+the test intended the chip on every view including Overview — the
+coordinator's framing was correct: AS-005 asserts the fact is visible
+somewhere in the shell, not that this specific view must state it twice.
+Updated `portal-topbar.test.tsx`'s three AS-005 tests to exercise a
+non-Overview route (`/results`) instead of the shell root, and added two
+new explicit tests: the chip is absent on Overview
+(`test_AS_005_hides_the_launch_chips_on_the_overview_route`) and present
+elsewhere (`test_AS_005_keeps_the_launch_chips_on_every_non_overview_route`).
 
-```
-Error: Attempted to call computeBurndownSeries() from the server but
-computeBurndownSeries is on the client.
-```
+**2. "Waiting on you" tile duplicated the block above it.** Removed the
+tile entirely (three tiles remain: Pages ready, Hours used, Days to
+launch) rather than inventing a fourth metric under a size constraint.
+I looked for an honest replacement — an "on-time delivery rate" from
+`task_activity` completion vs. due dates was the only candidate that
+came close to a real client question the other three tiles don't already
+answer — and concluded it's new aggregation work deserving its own
+decision/spec, not something to slot in silently here. Named as
+out-of-scope work below. The now-unused `getPortalWaitingOnYouCount` read
+was removed from the Overview page's `Promise.all` (the function itself
+is untouched — still exported, still has its own passing test file,
+`tests/unit/portal-waiting-on-you-count.test.ts` — in case a future tile
+or badge wants it again).
 
-**Root cause**: `computeBurndownSeries` was defined and exported from
-`components/portal/hours-burndown-chart.tsx`, which has a `"use client"`
-directive at its top. Once a file is marked `"use client"`, Next.js turns
-*every* export from it into a client-reference proxy for any server-side
-importer — importing its *type* is erased at compile time and harmless,
-but *calling* one of its runtime exports from a Server Component throws
-at request time. `page.tsx` (the Overview page, a Server Component)
-imported and called `computeBurndownSeries` directly from that file. This
-is a Next.js RSC runtime rule, not a TypeScript or bundler-time one, so
-`npx tsc --noEmit` and `npm run build` were both green through the whole
-defect — neither one executes a Server Component's body.
+**3. All five block rows shared one icon.** `WaitingOnYouBlock` now maps
+each `WaitingOnYouItemKind` to its own lucide icon: `approval` → `Stamp`
+(a decision to make), `task` → `ClipboardCheck` (something to review
+inside its own task page), `deliverable` → `PackageX` (something
+overdue/missing). Icon still pairs with the row's own title/age/action
+text — no colour-only (or icon-only) encoding.
 
-**Fix**: matched the exact precedent named in the coordinator's message —
-`lib/metrics/measurement-status.ts`, extracted from
-`lib/queries/metrics.ts` for the identical class of defect (F069). Moved
-the pure, DOM-free series/week-math functions (`computeBurndownSeries`,
-`isoWeekToMonday`, `enumerateIsoWeeks`, `formatWeekLabel`, the
-`BurndownPoint` type) out of `hours-burndown-chart.tsx` into a new module
-with no `"use client"` directive and no client-only imports:
-`lib/hours/burndown-series.ts`. `hours-burndown-chart.tsx` re-exports all
-of them unchanged (`export { ... } from "@/lib/hours/burndown-series"`)
-so its own component body and every existing caller/test of those names
-(`tests/unit/f019-hours-burndown-chart.test.tsx`) keep working without a
-second copy. `page.tsx` now imports `computeBurndownSeries` from
-`lib/hours/burndown-series` directly.
+## Verified with a live server, not just tsc/build
 
-**A second, pre-existing instance of the same defect was found and fixed
-while in there**: `app/(portal)/portal/[workspaceSlug]/p/[projectId]/hours/page.tsx`
-(the Hours view itself, also a Server Component) imported
-`computeBurndownSeries` AND `isoWeekToMonday` from `hours-burndown-chart.tsx`
-the same way — this predates F107 entirely (it's the Hours view from
-F019) and was not something I introduced, but it is the identical class
-of bug sitting live in the same file tree, so I fixed it in the same
-commit rather than leaving it for someone else to hit next. It now
-imports both from `lib/hours/burndown-series` too.
+Same approach as the previous round, repeated after this round's changes
+(the coordinator's dev server on `:3000`, `dev-login` + `curl` against
+the seeded "Website Redesign" project as the seeded client `nina`):
 
-### The two "unguarded read on a possibly-undefined prop" reports
+- Overview route: HTTP 200, no error text. `tile-waiting-on-you` is
+  **absent** from the tile strip (only `tile-pages-ready`,
+  `tile-hours-used`, `tile-days-to-launch` render). `topbar-launch-chips`
+  is **absent** from the page.
+- Hours route (non-Overview): `topbar-launch-chips` **is present**.
+- The five "What we need from you" rows render three distinct lucide
+  icon classes in the raw HTML: `lucide-stamp` (approval),
+  `lucide-clipboard-check` (task), `lucide-package-x` (deliverable).
 
-Checked `Sparkline` (`overview-tiles.tsx`, receives `values`) and
-`StatusDistributionBar` (receives `distribution`) in the committed code
-as it stood before this fix round — both already read the prop
-unconditionally (`values.length`, `distribution[bucket]`) with no guard.
-I could not reproduce an actual `undefined` at either call site in the
-current `page.tsx` (both call sites pass real arrays/objects), so these
-were very likely a transient mid-edit state as the coordinator guessed —
-but per the instruction to guard regardless, both now guard explicitly:
-`Sparkline` returns `null` if `!values` (before checking `.length`), and
-`StatusDistributionBar` returns `null` if `!distribution`, with `?? 0`
-on every subsequent per-bucket read so a partial object degrades to "no
-bar" instead of throwing.
+## The boundary-test extension
 
-## What would have caught this, and what I did about it
-
-**Answer to the coordinator's question**: nothing in this repo's existing
-CI gate exercises a Server Component's actual function body — `tsc`
-type-checks, `next build` compiles and prerenders only the routes with no
-dynamic server-only data dependency (this route has one, so it's never
-statically rendered during build), and no test in the suite imports and
-renders `PortalOverviewPage` itself (I checked: `grep -rl
-"PortalOverviewPage" tests` returns nothing). The only thing that would
-have caught it before a human opened the page is either (a) an actual
-request against a running server with a real session — which is what I
-did manually below, or (b) a **static check for the shape of the defect
-itself**, independent of ever executing the function.
-
-I added (b) as an automated, permanent check: `tests/unit/server-client-boundary-imports.test.ts`.
-It walks `app/`, `components/`, and `lib/`, and flags any file **without**
-a `"use client"` directive that imports a named value from a file **with**
-one and then **calls it as a function** (as opposed to rendering it as a
-JSX tag, which is the normal, correct way to use a Client Component from
-a Server Component and must not be flagged). I proved it actually catches
-this exact regression: I reverted `page.tsx`'s import back to
-`hours-burndown-chart.tsx` locally, reran the test, watched it fail with
-the exact file/line, then restored the fix and reran it green. This is
-now a standing check — future workers touching either portal `page.tsx`
-or a client-only helper file get a fast, specific failure instead of a
-production 500.
-
-I recommend the orchestrator add this test file's path to whatever the
-mission treats as "the gate that must pass before a page can ship" (it's
-already inside the ordinary `npx vitest run` sweep, so nothing further
-should be needed if the mission runs the full suite before milestones —
-if it currently only runs `tsc`/`build`/targeted tests per worker, this
-file should be added to that targeted set going forward for any feature
-touching a portal Server Component).
+Widened `tests/unit/server-client-boundary-imports.test.ts` per the
+coordinator's specific ask: it previously only flagged a bare function
+call (`Name(`) on a value imported from a `"use client"` module. It now
+also flags property/member access (`Name.foo`) on the same import — the
+other common way to use a client-only export as a runtime value outside
+JSX (e.g. reading a constant object, calling a static method). A
+compound JSX tag (`<Dialog.Trigger />`) is excluded from both checks by
+treating `<Name` as JSX usage regardless of what follows, so a legitimate
+compound-component render is never flagged for the member access its own
+JSX performs. Ran it against the whole `app/`/`components/`/`lib/` tree
+after the change — zero new violations, so this widening did not turn up
+any false positives against real, legitimate code in this repo.
 
 ## Decisions made
-- **Headline (2.1)**: new `LaunchHeadline` component reads `project.targetLaunchDate` / `project.launchConfidence` / `project.launchNote` (already fetched by the page via `getPortalProjects`) and renders as the largest text on the page, with an icon per confidence state (no colour-only encoding) and an honest "Launch date not set yet" empty state when neither field is set.
-- **Topbar chip left in place, not removed**: `docs/client-portal-visual-plan.md` 2.1 asks explicitly for a decision on the existing small `LAUNCH … · ON TRACK` chip in `PortalTopbar`. I checked `components/portal/portal-topbar.test.tsx` (AS-005) and its three tests assert the chip renders the launch date/confidence on the Overview root path itself — removing or hiding it there would break a passing, in-contract test for an assertion outside this task's scope, which the "never weaken a test" rule forbids. Resolution: the chip stays untouched (file not edited at all), sized as a small `Badge` versus the new headline's `text-h2`+icon treatment, so the two are visually a "headline" and a "persistent small reminder" rather than two headlines competing. Documented in `launch-headline.tsx`'s own header comment.
-- **"What we need from you" (2.2)**: added a pure function `buildWaitingOnYouItems` (no new DB read) that composes three already-fetched lists into one sorted, deduped item list: `getOpenApprovalsForClient` (same read the Approvals view renders), the page's existing `getPortalWaitingOnYou` task list, and `getClientDeliverables` filtered by the existing shared `isDeliverablePastDue` predicate. Dedup follows `getPortalWaitingOnYouCount`'s own documented rule (a task-subject open approval and its `pending_client_approval` task row are the same obligation, collapsed on the task id) so this block's row count can never exceed the tile's union count. Items sort oldest-first.
-- **Tiles (2.3)**: `overview-tiles.tsx` gained an optional `chart` slot (sparkline, beside the value) and `belowFootnote` slot (wider chart, own row). Hours used gets a sparkline built from `computeBurndownSeries` (now sourced from `lib/hours/burndown-series.ts`, not reimplemented) — renders nothing below 3 points per the plan's own rule. Pages ready gets a stacked distribution bar from the same `clientBucket` classification `pagesReadyCount` already uses, with a text caption underneath (e.g. "5 done · 2 waiting on you") so the distribution survives greyscale without a new hue. Waiting on you stays a bare number (plan's own instruction — "a sparkline here would be noise"). Days to launch stays bare: grepped every migration for a `target_launch_date` history/audit table and found none — Part 4 of the same plan names the identical gap for `launch_confidence` and asks the decision be explicit; documented in `overview-tiles.tsx`'s own header rather than faking a slip indicator.
-- Reused the existing status palette tokens (`bg-status-done` etc.) verbatim for the distribution bar — did not touch `app/globals.css`.
-- **Extraction module placement**: put the extracted functions in `lib/hours/` (new directory) rather than `lib/queries/hours.ts`, mirroring `lib/metrics/measurement-status.ts` living outside `lib/queries/metrics.ts` — both precedents keep the pure/client-safe code physically separate from the file that imports `lib/supabase/server.ts`, so the import graph itself makes the boundary obvious rather than relying on everyone remembering which exports are "the safe ones."
+(Carried over from prior rounds, plus this round's three above.)
+- **Headline (2.1)**: `LaunchHeadline` reads `project.targetLaunchDate` / `project.launchConfidence` / `project.launchNote`, renders as the largest text on the page, icon per confidence state, honest empty state.
+- **"What we need from you" (2.2)**: `buildWaitingOnYouItems` composes three already-fetched reads (`getOpenApprovalsForClient`, the page's existing `getPortalWaitingOnYou`, `getClientDeliverables` filtered by `isDeliverablePastDue`) into one deduped, oldest-first list — no new query.
+- **Tiles (2.3)**: Hours used carries a sparkline from `computeBurndownSeries` (now in `lib/hours/burndown-series.ts`); Pages ready carries a stacked distribution bar from the existing `clientBucket` classification; Days to launch stays bare (no `target_launch_date` history exists in this schema — grepped every migration).
+- **Client/server boundary fix**: extracted `computeBurndownSeries` and its week-math helpers out of `"use client"` `hours-burndown-chart.tsx` into directive-free `lib/hours/burndown-series.ts`, matching the `lib/metrics/measurement-status.ts` (F069) precedent exactly. Fixed the identical pre-existing defect in the Hours view's own `page.tsx` in the same commit.
 
 ## Out-of-scope work needed
+- A genuine fourth Overview tile (e.g. "on-time delivery rate" from `task_activity` completion vs. due dates) is a real candidate now that "Waiting on you" is gone, but needs its own decision/spec (what "on time" means, whether it's a rate or a count, what the honest empty state is) rather than being invented under this task's own size constraint.
 - Part 1 (phase timeline chart fixes) is explicitly owned by another agent reworking `phase-timeline.tsx` — not touched.
 - Part 3 visuals (bullet charts for Results, pipeline for Pages, budget honest-figure bar, deliverable-state strip, approval ageing, weekly delivery rhythm) are separate items in the same plan, not this task.
-- Part 4 defects (blocked-phase reason field, phase progress weighting, `launch_confidence` history) are PM-tool gaps the plan itself flags as needing new schema/migration work before any UI can honestly show them — a `target_launch_date`/`launch_confidence` history table would also be needed to give "Days to launch" a real slip indicator (see Decisions above).
-- Part 5 (dark-mode status palette lightness-band failure) is a separate, already-identified defect; not touched here per the "do not change those hues" instruction in this task's own brief.
-- Consider running `tests/unit/server-client-boundary-imports.test.ts` as its own named CI step (not just inside a blanket `vitest run`) so a future regression of this exact class surfaces by name rather than as one line in a large failure list.
+- Part 4 defects (blocked-phase reason field, phase progress weighting, `launch_confidence`/`target_launch_date` history) are PM-tool gaps the plan itself flags as needing new schema/migration work.
+- Part 5 (dark-mode status palette lightness-band failure) is a separate, already-identified defect; not touched here per the "do not change those hues" instruction.
+- Consider running `tests/unit/server-client-boundary-imports.test.ts` as its own named CI step so a future regression of this exact class surfaces by name.
 
 ## Blockers
 (none — Status is COMPLETE)
 
 ## Autonomous decisions
-AUTONOMOUS_DECISION: No F107 feature spec, clarification file, or validation-contract assertions exist for this task (it was handed down directly from `docs/client-portal-visual-plan.md`, bypassing `/mission-tasks`). Treated the task-prompt's own detailed instructions as the clarified spec and the plan doc's Part 0/Part 2 text as the definition of done, per the "resolve ambiguity from clarified spec... skill" and ZERO_QUESTIONS posture. New tests are named descriptively (e.g. `test_headline_at_risk_state`, `test_waiting_on_you_empty_case`) rather than against an AS-NNN id, since none was assigned.
+AUTONOMOUS_DECISION: Hid the topbar's launch chips on the Overview route specifically (not globally) rather than leaving them everywhere or removing them everywhere, per the coordinator's explicit instruction and reasoning about AS-005's actual scope. Updated the three existing AS-005 tests to a non-Overview route and added two new tests locking in the route-conditional behaviour, rather than leaving the old assertion silently describing behaviour that no longer holds on Overview.
 
-AUTONOMOUS_DECISION: Left `PortalTopbar`'s launch chip untouched rather than suppressing it on the Overview route, to avoid breaking the three passing AS-005 tests in `portal-topbar.test.tsx` that assert its presence on that exact path. See "Decisions made" above.
+AUTONOMOUS_DECISION: Dropped to three Overview tiles rather than inventing a fourth metric, since no existing read on the page answers a new client question the way Hours/Pages/Launch already do — a real fourth tile is named as out-of-scope work needing its own decision, not fabricated here.
 
-AUTONOMOUS_DECISION: Fixed the same client/server boundary defect in the Hours view's own `page.tsx` (pre-existing, not introduced by F107) in the same commit rather than filing a separate follow-up, since it was the same three-line change once the shared module existed and leaving it would mean a second, still-live production 500 one click away from the page I was asked to fix.
+AUTONOMOUS_DECISION: Chose `Stamp`/`ClipboardCheck`/`PackageX` (lucide-react) for approval/task/deliverable respectively — picked for semantic fit (a stamp for a decision, a clipboard-check for a task to review, a package-x for something missing/overdue) rather than any existing precedent in this codebase, since no prior UI in this repo distinguishes these three obligation types by icon.
 
 ## Notes for the next worker
-- **I do not have a browser and still could not do a full visual/screenshot pass.** But per the coordinator's instruction to reduce reliance on "I couldn't verify," I did verify the *fix itself* at runtime rather than only via `tsc`/`build`: the coordinator's own dev server was already running on `localhost:3000`. I used `/dev-login?email=nina@demo.test` (the seeded demo client account for the seeded "Website Redesign" project, workspace `acme-studio`) to get a real session cookie, then `curl`'d `/portal/acme-studio/p/<project-id>` directly. Response: HTTP 200, no "Attempted to call" text anywhere in the payload, and the streamed RSC HTML contains real rendered markup for `data-testid="launch-headline"` (`"On track"`, with its `launch_note` sentence), `data-testid="waiting-on-you-block"` (real approval/task rows), `data-testid="tile-sparkline"` (a real polyline), and `data-testid="tile-pages-distribution"` (a real segmented bar with `bg-status-done`/`bg-status-progress`/etc. segments sized proportionally). This is real evidence the page renders end-to-end post-fix, not just that it type-checks.
-- Please still take the five screenshots from my first handoff pass for the visual/design checks (colour, spacing, dark mode) that a curl can't tell you: (a) headline in each of on_track/at_risk/slipped, light and dark; (b) Hours-used sparkline on a project with ≥3 weeks logged; (c) Pages-ready distribution bar; (d) "What we need from you" with a mix of approval/task/deliverable rows; (e) the empty "Nothing waiting on you right now." state.
-- `lib/hours/burndown-series.ts` and `lib/portal/build-waiting-on-you-items.ts` are both pure and directly unit-tested — no DB/mocking needed to extend either's test coverage further.
-- `tests/unit/server-client-boundary-imports.test.ts` is a heuristic (regex-based, not a full AST parse) — it distinguishes "called as a function" from "rendered as JSX" by checking for a `<Name` tag anywhere in the importing file. A file that does both (rarely, if ever, a real pattern) would be missed; I did not find one when I ran it clean against the whole `app/`/`components/`/`lib/` tree.
+- **Please re-check the same five things from the previous handoff, now that the header chip/tile/icons have changed**: (a) headline in each of on_track/at_risk/slipped, light and dark — should now be the ONLY launch-date/confidence statement visible on Overview (topbar chip gone); (b) a non-Overview route (e.g. Hours) still shows the topbar chip; (c) the tile strip is three tiles wide, not four, with no gap or awkward spacing from the removed fourth; (d) "What we need from you" rows now show three visually distinct icons (a stamp, a clipboard-check, a package-x) — check they read clearly at the row's small size in both themes; (e) the empty "Nothing waiting on you right now." state still renders correctly (unaffected by this round's changes, but worth a quick re-check since the block sits directly above a now-three-tile strip instead of four).
+- I don't have a browser but did verify all three fixes at the raw-HTML level via the coordinator's own running dev server (see "Verified with a live server" above) — real confirmation of presence/absence, not a substitute for actually looking at layout/spacing/colour.
+- `tests/unit/server-client-boundary-imports.test.ts` is still a heuristic (regex, not full AST) — it now also flags property access, but a destructuring import used as a runtime value in some other exotic non-call, non-member-access, non-JSX shape (e.g. spread into an object, passed as a bare identifier to a non-JSX function argument where the callee itself renders it as JSX internally) would still be missed. I did not find such a case in this repo when I ran the widened check clean against the whole `app/`/`components/`/`lib/` tree.

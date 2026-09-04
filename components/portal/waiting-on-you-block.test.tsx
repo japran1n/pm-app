@@ -57,4 +57,56 @@ describe("WaitingOnYouBlock", () => {
     expect(deliverableItem).toHaveTextContent("5 days overdue");
     expect(deliverableItem).toHaveTextContent("Open");
   });
+
+  // F107 round 2 (coordinator review): a shared icon across all three
+  // kinds made an approval, a task and a deliverable indistinguishable
+  // at a glance -- each kind now renders its own icon (checked here by
+  // the actual SVG each lucide icon emits, not just by kind label text,
+  // since the row's own title/action text was never in question).
+  it("test_waiting_on_you_gives_each_item_kind_its_own_icon", () => {
+    render(
+      <WaitingOnYouBlock
+        items={[
+          {
+            key: "approval:a-1",
+            kind: "approval",
+            title: "Approve style guide",
+            href: "/portal/acme/p/project-1/approvals",
+            daysWaiting: 2,
+            actionLabel: "Review",
+          },
+          {
+            key: "task:task-1",
+            kind: "task",
+            title: "Homepage hero copy",
+            href: "/portal/acme/p/project-1/t/task-1",
+            daysWaiting: 3,
+            actionLabel: "Review",
+          },
+          {
+            key: "deliverable:d-1",
+            kind: "deliverable",
+            title: "Logo files",
+            href: "/portal/acme/p/project-1/your-list",
+            daysWaiting: 5,
+            actionLabel: "Open",
+          },
+        ]}
+      />,
+    );
+
+    const approvalIcon = screen
+      .getByTestId("waiting-on-you-item-approval:a-1")
+      .querySelector("svg")!;
+    const taskIcon = screen
+      .getByTestId("waiting-on-you-item-task:task-1")
+      .querySelector("svg")!;
+    const deliverableIcon = screen
+      .getByTestId("waiting-on-you-item-deliverable:d-1")
+      .querySelector("svg")!;
+
+    expect(approvalIcon.outerHTML).not.toEqual(taskIcon.outerHTML);
+    expect(taskIcon.outerHTML).not.toEqual(deliverableIcon.outerHTML);
+    expect(approvalIcon.outerHTML).not.toEqual(deliverableIcon.outerHTML);
+  });
 });

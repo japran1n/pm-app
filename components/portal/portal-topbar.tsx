@@ -12,6 +12,22 @@
 // server-fetched and passed down as plain props -- this component makes
 // no query of its own.
 //
+// F107 round 2 (missions/20260903-portal, docs/client-portal-visual-plan.md
+// 2.1): the two launch chips are hidden on the Overview route only. The
+// Overview page now opens with `LaunchHeadline` -- "On track / Launching
+// 4 October 2026" at `text-h2`, plus the `launch_note` sentence -- and
+// rendering the SAME two facts again immediately above it, at a fraction
+// of the size, is the "two headlines competing" defect the coordinator's
+// review named directly. AS-005 ("the client can see the project's
+// target launch date and current launch confidence") does not require
+// BOTH surfaces to show it on the SAME view -- the Overview route still
+// states both facts, once, more prominently than the chip ever did; the
+// chip continues to answer the same question on the other ten routes
+// under this shell, where no headline exists to duplicate. AS-005's own
+// tests (`portal-topbar.test.tsx`) were updated to assert the chip on a
+// non-Overview route and its ABSENCE on Overview, rather than dropping
+// the assertion.
+//
 // F006e (missions/20260903-portal, AS-004): the view title used to be
 // looked up in `buildPortalNavItems`'s eight-item list -- so any route
 // NOT in that list (files, requests, task detail) fell through to
@@ -123,18 +139,25 @@ export function PortalTopbar({
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
   const titleOverride = usePortalTitleOverride();
   const title = titleOverride ?? resolvePortalStaticTitle(pathname, basePath);
+  // F107 round 2: the Overview route is exactly where `resolvePortalStaticTitle`
+  // already treats `pathname === basePath` as its own case (the function's
+  // own first branch) -- reusing that identical comparison here instead of
+  // a second, differently-spelled check.
+  const isOverviewRoute = pathname === basePath;
 
   return (
     <header className="sticky top-0 z-10 flex flex-col gap-1 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
       <span className="text-tag text-muted-foreground">{projectName}</span>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-h4 font-semibold tracking-tight">{title}</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
-          <Badge variant="outline">
-            {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence —"}
-          </Badge>
-        </div>
+        {!isOverviewRoute && (
+          <div className="flex flex-wrap items-center gap-2" data-testid="topbar-launch-chips">
+            <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
+            <Badge variant="outline">
+              {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence —"}
+            </Badge>
+          </div>
+        )}
       </div>
     </header>
   );
