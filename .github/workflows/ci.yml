@@ -20,6 +20,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `next typegen` writes the route/layout types (LayoutProps, PageProps,
+      # ...) that app code references into .next/types. Without it, tsc here
+      # fails on `Cannot find name 'LayoutProps'` — it passes locally only
+      # because a previous `next dev`/`next build` left .next in place. The
+      # Build step below regenerates these anyway; this makes the earlier
+      # Type-check step self-sufficient rather than order-dependent.
+      - name: Generate Next.js route types
+        run: npx next typegen
+
       - name: Type-check
         run: npx tsc --noEmit
 
