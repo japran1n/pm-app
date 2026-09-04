@@ -1,0 +1,60 @@
+// @vitest-environment jsdom
+//
+// F107 (missions/20260903-portal, docs/client-portal-visual-plan.md 2.2):
+// the "nothing waiting on you" empty case, plus items rendering their
+// name, age and inline action.
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import "@testing-library/jest-dom/vitest";
+
+import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("WaitingOnYouBlock", () => {
+  it("test_waiting_on_you_empty_case", () => {
+    render(<WaitingOnYouBlock items={[]} />);
+
+    expect(screen.getByTestId("waiting-on-you-empty")).toHaveTextContent(
+      "Nothing waiting on you right now.",
+    );
+  });
+
+  it("test_waiting_on_you_renders_named_items_with_age_and_inline_action", () => {
+    render(
+      <WaitingOnYouBlock
+        items={[
+          {
+            key: "task:task-1",
+            kind: "task",
+            title: "Homepage hero copy",
+            href: "/portal/acme/p/project-1/t/task-1",
+            daysWaiting: 3,
+            actionLabel: "Review",
+          },
+          {
+            key: "deliverable:d-1",
+            kind: "deliverable",
+            title: "Logo files",
+            href: "/portal/acme/p/project-1/your-list",
+            daysWaiting: 5,
+            actionLabel: "Open",
+          },
+        ]}
+      />,
+    );
+
+    const taskItem = screen.getByTestId("waiting-on-you-item-task:task-1");
+    expect(taskItem).toHaveTextContent("Homepage hero copy");
+    expect(taskItem).toHaveTextContent("3 days waiting");
+    expect(taskItem).toHaveTextContent("Review");
+    expect(taskItem).toHaveAttribute("href", "/portal/acme/p/project-1/t/task-1");
+
+    const deliverableItem = screen.getByTestId("waiting-on-you-item-deliverable:d-1");
+    expect(deliverableItem).toHaveTextContent("Logo files");
+    expect(deliverableItem).toHaveTextContent("5 days overdue");
+    expect(deliverableItem).toHaveTextContent("Open");
+  });
+});

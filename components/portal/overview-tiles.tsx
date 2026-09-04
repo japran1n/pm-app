@@ -22,9 +22,32 @@
 // click through on. It links to Approvals, the one view built for acting
 // on what's pending (Your list and past-due deliverables both stay
 // reachable from the sidebar one tap away).
+//
+// F107 (missions/20260903-portal, docs/client-portal-visual-plan.md 2.3):
+// "a number with its trend behind it answers 'and is that good?' without
+// a click." Two of the four tiles now carry that trend, from data that
+// ALREADY exists elsewhere on the page -- neither is a new query:
+//   - Hours used: `usedMinutesSeries`, the same cumulative-minutes series
+//     `computeBurndownSeries` (hours-burndown-chart.tsx) already computes
+//     for the Hours view's own burn-down chart.
+//   - Pages ready: `pagesStatusDistribution`, the same four-bucket counts
+//     `resolveClientBucket` (status-label.ts) already assigns each page
+//     on this same page (`pagesReadyCount`/`pagesTotalCount` above are
+//     themselves derived from it).
+// "Waiting on you" stays a bare number by the plan's own instruction ("a
+// sparkline here would be noise"). "Days to launch" stays bare too: no
+// history of `target_launch_date` changes exists anywhere in this schema
+// (grepped every migration under supabase/migrations for a
+// `target_launch_date`-adjacent audit/history table and found none) --
+// Part 4 of the same plan names this same gap for `launch_confidence`
+// and asks that the decision be explicit rather than incidental; the
+// same applies here, so no slip indicator is drawn rather than faking
+// one from a shape the data doesn't have.
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
+import type { ClientBucket } from "@/components/portal/status-label";
 
 const LAUNCH_CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   on_track: "On track",
@@ -32,12 +55,108 @@ const LAUNCH_CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   slipped: "Slipped",
 };
 
+const BUCKET_ORDER: ClientBucket[] = ["done", "progress", "waiting", "blocked"];
+
+// Same status tokens `status-pill.tsx` already renders these buckets
+// with -- never a new hue, per this feature's own chart-rules
+// instruction not to touch the validated palette.
+const BUCKET_BAR_CLASS: Record<ClientBucket, string> = {
+  done: "bg-status-done",
+  progress: "bg-status-progress",
+  waiting: "bg-status-waiting",
+  blocked: "bg-status-blocked",
+};
+
+const BUCKET_LABEL: Record<ClientBucket, string> = {
+  done: "done",
+  progress: "in progress",
+  waiting: "waiting on you",
+  blocked: "blocked",
+};
+
+/** A tiny single-scale sparkline -- thin line, no axis, no grid, direct
+ * label only on the endpoint. Fewer than three points renders nothing
+ * (this feature's own "a sparkline is not decoration" rule): the caller
+ * falls back to the number alone. */
+function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 3) return null;
+
+  const width = 64;
+  const height = 20;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 1);
+  const step = width / (values.length - 1);
+
+  const points = values.map((v, i) => {
+    const x = i * step;
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  });
+
+  return (
+    <svg
+      width={width}
+      height={height}
+      role="presentation"
+      aria-hidden="true"
+      data-testid="tile-sparkline"
+      className="shrink-0"
+    >
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        className="stroke-brand"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A tiny single-scale stacked bar of the four client-facing status
+ * buckets, with a text caption underneath carrying the same counts --
+ * the caption, not the colour, is what makes the distribution readable
+ * in greyscale (chart-rules: no colour-only encoding). */
+function StatusDistributionBar({
+  distribution,
+}: {
+  distribution: Record<ClientBucket, number>;
+}) {
+  const total = BUCKET_ORDER.reduce((sum, bucket) => sum + distribution[bucket], 0);
+  if (total === 0) return null;
+
+  const nonZero = BUCKET_ORDER.filter((bucket) => distribution[bucket] > 0);
+
+  return (
+    <div className="flex flex-col gap-1" data-testid="tile-pages-distribution">
+      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        {BUCKET_ORDER.map((bucket) =>
+          distribution[bucket] > 0 ? (
+            <span
+              key={bucket}
+              className={BUCKET_BAR_CLASS[bucket]}
+              style={{ width: `${(distribution[bucket] / total) * 100}%` }}
+            />
+          ) : null,
+        )}
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {nonZero.map((bucket) => `${distribution[bucket]} ${BUCKET_LABEL[bucket]}`).join(" · ")}
+      </span>
+    </div>
+  );
+}
+
 function Tile({
   label,
   value,
   footnote,
   testId,
   href,
+  chart,
+  belowFootnote,
 }: {
   label: string;
   value: string;
@@ -46,14 +165,25 @@ function Tile({
   /** Present only for a tile that has somewhere useful to send a client
    * -- absent tiles render as a plain, non-interactive card. */
   href?: string;
+  /** F107: a compact sparkline drawn beside the value -- absent for a
+   * tile with no history to show (this feature's own "say so rather than
+   * faking a shape" rule). */
+  chart?: ReactNode;
+  /** F107: a wider chart (the pages status distribution bar) that needs
+   * its own row rather than squeezing beside the value. */
+  belowFootnote?: ReactNode;
 }) {
   const body = (
     <>
       <span className="text-tag text-muted-foreground">{label}</span>
-      <span className="text-2xl font-semibold tracking-tight tabular-nums">
-        {value}
-      </span>
+      <div className="flex items-end justify-between gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {value}
+        </span>
+        {chart}
+      </div>
       <span className="text-xs text-muted-foreground">{footnote}</span>
+      {belowFootnote}
     </>
   );
 
@@ -98,7 +228,9 @@ export function OverviewTiles({
   approvalsHref,
   pagesReadyCount,
   pagesTotalCount,
+  pagesStatusDistribution,
   usedMinutes,
+  usedMinutesSeries,
   soldMinutes,
   hoursHref,
   daysToLaunch,
@@ -117,11 +249,20 @@ export function OverviewTiles({
   approvalsHref: string;
   pagesReadyCount: number;
   pagesTotalCount: number;
+  /** F107: counts per client-facing status bucket (`resolveClientBucket`
+   * output), the same classification `pagesReadyCount` above is derived
+   * from -- drawn as a small stacked bar under the tile's own number. */
+  pagesStatusDistribution: Record<ClientBucket, number>;
   /** F085 (defect 1): billable minutes used against the current budget
    * period, the same read F019's Hours view uses. `null` when there is
    * no budget and nothing logged yet -- rendered as an honest "-", never
    * 0h standing in for "no data". */
   usedMinutes: number | null;
+  /** F107: cumulative billable minutes per week, the same series
+   * `computeBurndownSeries` builds for the Hours view's burn-down chart
+   * -- rendered as a sparkline behind the tile's own number. Fewer than
+   * three points renders no sparkline (this feature's own rule). */
+  usedMinutesSeries: number[];
   /** `null` when no budget has been set for the current period. */
   soldMinutes: number | null;
   hoursHref: string;
@@ -156,6 +297,11 @@ export function OverviewTiles({
         label="Pages ready"
         value={pagesTotalCount === 0 ? "—" : `${pagesReadyCount} / ${pagesTotalCount}`}
         footnote={pagesTotalCount === 0 ? "No pages shared yet" : "Ready to launch"}
+        belowFootnote={
+          pagesTotalCount > 0 ? (
+            <StatusDistributionBar distribution={pagesStatusDistribution} />
+          ) : undefined
+        }
       />
       <Tile
         testId="tile-hours-used"
@@ -169,6 +315,7 @@ export function OverviewTiles({
               ? "No budget set yet"
               : `Of ${minutesToHours(soldMinutes)} budgeted`
         }
+        chart={<Sparkline values={usedMinutesSeries} />}
       />
       <Tile
         testId="tile-days-to-launch"

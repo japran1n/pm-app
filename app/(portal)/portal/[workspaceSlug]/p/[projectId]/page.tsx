@@ -15,6 +15,8 @@ import {
   getProjectPhases,
 } from "@/lib/queries/portal";
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
+import { getOpenApprovalsForClient } from "@/lib/queries/approvals";
+import { getClientDeliverables } from "@/lib/queries/deliverables";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
@@ -23,6 +25,11 @@ import { RiskBanner } from "@/components/portal/risk-banner";
 import { LiveNow } from "@/components/portal/live-now";
 import { TeamCard } from "@/components/portal/team-card";
 import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
+import { LaunchHeadline } from "@/components/portal/launch-headline";
+import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
+import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items";
+import { computeBurndownSeries } from "@/components/portal/hours-burndown-chart";
+import type { ClientBucket } from "@/components/portal/status-label";
 
 // F006 (missions/20260903-portal, AS-002, AS-003, AS-010, AS-031): the
 // prototype's own Overview -- a risk banner slot, four tiles, the phase
@@ -104,6 +111,8 @@ export default async function PortalOverviewPage({
     overview,
     activity,
     currentPeriod,
+    openApprovalsResult,
+    deliverablesResult,
   ] = await Promise.all([
     getProjectPhases(project.id),
     getPortalPages(project.id),
@@ -133,6 +142,15 @@ export default async function PortalOverviewPage({
     // F085 (defect 1): the current budget period, same read F019's own
     // Hours page uses -- see this file's own WIDE_FROM comment.
     getProjectCurrentBudgetPeriod(project.id),
+    // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
+    // 2.2): the exact read the Approvals view itself renders -- reused
+    // here to build "What we need from you", never a second query for
+    // the same rows. See `buildWaitingOnYouItems`'s own header for why
+    // no fourth path exists.
+    getOpenApprovalsForClient(project.id),
+    // F107 (2.2): the exact read the Your list view renders -- reused
+    // here (filtered to past-due) for the same reason.
+    getClientDeliverables(project.id),
   ]);
 
   // F085 (defect 1): usedMinutes/soldMinutes come from the SAME RPC
@@ -153,6 +171,46 @@ export default async function PortalOverviewPage({
 
   const pagesReadyCount = pages.filter((page) => page.status.clientBucket === "done").length;
   const daysToLaunch = computeDaysToLaunch(project.targetLaunchDate, today);
+
+  // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
+  // 2.3): the Pages ready tile's distribution bar -- the SAME
+  // `clientBucket` every page here already carries (`pagesReadyCount`
+  // above is itself one slice of this same count), never a second
+  // classification.
+  const pagesStatusDistribution = pages.reduce(
+    (acc, page) => {
+      acc[page.status.clientBucket] += 1;
+      return acc;
+    },
+    { waiting: 0, progress: 0, blocked: 0, done: 0 } as Record<ClientBucket, number>,
+  );
+
+  // F107 (2.3): the Hours used tile's sparkline -- the SAME cumulative
+  // series `computeBurndownSeries` builds for the Hours view's own
+  // burn-down chart (hours-burndown-chart.tsx), never a second query.
+  const usedMinutesSeries = computeBurndownSeries(
+    hoursSummary.weekly,
+    hoursSummary.soldMinutes,
+    today,
+  ).map((point) => point.usedMinutes);
+
+  // F107 (2.2): "What we need from you" -- built from the three reads
+  // above (open approvals, the project-scoped pending-approval task
+  // list already fetched for the list under the phase timeline, and
+  // past-due deliverables), never a fourth path to the same data. A
+  // failed approvals or deliverables read degrades to an empty list for
+  // that source rather than failing the whole page -- the tile above
+  // already carries the honest "we couldn't load this" state for the
+  // union count; this block just may show fewer rows than that count
+  // implies until the read succeeds again.
+  const waitingOnYouItems = buildWaitingOnYouItems({
+    approvals: openApprovalsResult.ok ? openApprovalsResult.data : [],
+    tasks: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
+    deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
+    workspaceSlug: workspace.slug,
+    projectId: project.id,
+    todayIso: today,
+  });
 
   // F085 (missions/20260903-portal audit, defect 2): the TILE no longer
   // reads `waitingOnYouResult.data.length` -- it reads the deliberately
@@ -189,10 +247,28 @@ export default async function PortalOverviewPage({
 
   return (
     <div className="flex flex-col gap-8">
+      {/* F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
+          2.1): "are we on track?" and "when, and how sure?" answered
+          first, largest, before anything else on the page -- the same
+          `launchConfidence`/`targetLaunchDate`/`launchNote` the topbar's
+          own small chip and the Your-site launch day card already read
+          (see this component's own header for why the topbar chip stays
+          rather than being deleted). */}
+      <LaunchHeadline
+        targetLaunchDate={project.targetLaunchDate}
+        launchConfidence={project.launchConfidence}
+        launchNote={project.launchNote}
+      />
+
       <RiskBanner
         risks={risks}
         yourListHref={`/portal/${workspace.slug}/p/${project.id}/your-list`}
       />
+
+      {/* F107 (2.2): "what do you need from me?" answered second, as a
+          named, actionable block -- not buried inside the tile strip
+          below. */}
+      <WaitingOnYouBlock items={waitingOnYouItems} />
 
       <OverviewTiles
         waitingOnYouCount={
@@ -201,7 +277,9 @@ export default async function PortalOverviewPage({
         approvalsHref={`/portal/${workspace.slug}/p/${project.id}/approvals`}
         pagesReadyCount={pagesReadyCount}
         pagesTotalCount={pages.length}
+        pagesStatusDistribution={pagesStatusDistribution}
         usedMinutes={usedMinutes}
+        usedMinutesSeries={usedMinutesSeries}
         soldMinutes={hoursSummary.soldMinutes}
         hoursHref={`/portal/${workspace.slug}/p/${project.id}/hours`}
         daysToLaunch={daysToLaunch}

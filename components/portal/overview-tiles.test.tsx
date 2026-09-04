@@ -22,7 +22,9 @@ const BASE_PROPS = {
   approvalsHref: "/portal/acme/p/project-1/approvals",
   pagesReadyCount: 5,
   pagesTotalCount: 12,
+  pagesStatusDistribution: { done: 5, progress: 4, waiting: 2, blocked: 1 },
   usedMinutes: 120,
+  usedMinutesSeries: [30, 60, 90, 120],
   soldMinutes: 600,
   hoursHref: "/portal/acme/p/project-1/hours",
   daysToLaunch: 40,
@@ -114,5 +116,45 @@ describe("OverviewTiles", () => {
     expect(tile).toHaveTextContent("—");
     expect(tile).toHaveTextContent("We couldn't load this");
     expect(tile.textContent).not.toContain("0");
+  });
+
+  // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
+  // 2.3): the hours tile's sparkline is the burn-down series, not a new
+  // number -- three or more points renders it.
+  it("test_hours_tile_renders_a_sparkline_when_history_has_three_or_more_points", () => {
+    render(<OverviewTiles {...BASE_PROPS} usedMinutesSeries={[30, 60, 90, 120]} />);
+
+    const hoursTile = screen.getByTestId("tile-hours-used");
+    expect(hoursTile.querySelector('[data-testid="tile-sparkline"]')).not.toBeNull();
+  });
+
+  it("test_hours_tile_renders_no_sparkline_with_fewer_than_three_points", () => {
+    render(<OverviewTiles {...BASE_PROPS} usedMinutesSeries={[30, 60]} />);
+
+    const hoursTile = screen.getByTestId("tile-hours-used");
+    expect(hoursTile.querySelector('[data-testid="tile-sparkline"]')).toBeNull();
+  });
+
+  it("test_pages_tile_renders_the_status_distribution_bar_with_its_own_counts_as_text", () => {
+    render(<OverviewTiles {...BASE_PROPS} pagesStatusDistribution={{ done: 5, progress: 4, waiting: 2, blocked: 1 }} />);
+
+    const pagesTile = screen.getByTestId("tile-pages-ready");
+    expect(pagesTile).toHaveTextContent("5 done");
+    expect(pagesTile).toHaveTextContent("2 waiting on you");
+    expect(pagesTile).toHaveTextContent("1 blocked");
+  });
+
+  it("test_pages_tile_renders_no_distribution_bar_when_there_are_no_pages", () => {
+    render(
+      <OverviewTiles
+        {...BASE_PROPS}
+        pagesReadyCount={0}
+        pagesTotalCount={0}
+        pagesStatusDistribution={{ done: 0, progress: 0, waiting: 0, blocked: 0 }}
+      />,
+    );
+
+    const pagesTile = screen.getByTestId("tile-pages-ready");
+    expect(pagesTile.querySelector('[data-testid="tile-pages-distribution"]')).toBeNull();
   });
 });
