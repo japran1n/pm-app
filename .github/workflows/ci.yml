@@ -4,6 +4,18 @@ on:
   push:
   pull_request:
 
+# The five Management-API catalog suites introspect and briefly mutate the
+# REAL hosted Supabase project (adding and dropping a probe column on
+# public.projects, for one). Two runs doing that at once corrupt each
+# other: run 33857487411 failed f020b's self-maintaining-guard assertion
+# purely because a concurrent rerun was probing the same table, and the
+# test passed alone immediately afterwards. Serialise runs on this branch
+# so that cannot recur. Queued runs are not cancelled -- each push's result
+# is still reported.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   ci:
     runs-on: ubuntu-latest
