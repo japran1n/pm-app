@@ -40,6 +40,34 @@ vi.mock("@/lib/actions/palette-search", () => ({
 
 import { CommandPalette } from "@/components/command/command-palette";
 
+
+// F093 follow-up: mock the Supabase browser client so mounting the real
+// <CommandPalette> never opens a real WebSocket via
+// lib/hooks/use-palette-search-realtime.ts's usePaletteSearchRealtime.
+// Locally (a bare `vitest run` with no NEXT_PUBLIC_SUPABASE_* env vars in
+// the process) that hook's own try/catch around createClient() silently
+// no-ops instead of subscribing, which is why this leak passed locally
+// but failed in CI (env vars ARE set there, from `supabase status -o
+// env`) -- masking the leak rather than fixing it. Same
+// "channel().on().subscribe()" fake shape as
+// tests/unit/f022-board-realtime-guard-call-site.test.tsx.
+function makeFakeSupabaseRealtimeClient() {
+  const channelObject = {
+    on: vi.fn(() => channelObject),
+    subscribe: vi.fn(() => channelObject),
+  };
+  return {
+    channel: vi.fn(() => channelObject),
+    removeChannel: vi.fn(),
+    auth: {
+      getSession: vi.fn(async () => ({ data: { session: null } })),
+    },
+  };
+}
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => makeFakeSupabaseRealtimeClient(),
+}));
+
 const defaultProps = { workspaceId: "ws-1", workspaceSlug: "acme" };
 
 afterEach(() => {

@@ -67,6 +67,21 @@ vi.mock("@/components/task/use-comments-realtime", () => ({
   useCommentsRealtime: () => {},
 }));
 
+// F093 follow-up: comment-list.tsx ALSO mounts useReactionsRealtime (a
+// SEPARATE Realtime subscription, on the `reactions` table via
+// lib/tasks/subscribe-comments-realtime.ts's subscribeToReactionsRealtime)
+// -- missing this mock is exactly what let this file open a real
+// WebSocket (only useCommentsRealtime was stubbed above) whenever
+// NEXT_PUBLIC_SUPABASE_URL/KEY happen to be set in the process env (e.g.
+// CI, which loads them from `supabase status -o env`) rather than absent
+// (the default for a bare local `vitest run`, where
+// @/lib/supabase/client's createClient() throws on missing config and is
+// silently swallowed by each hook's own try/catch -- masking the leak
+// rather than fixing it).
+vi.mock("@/components/task/use-reactions-realtime", () => ({
+  useReactionsRealtime: () => {},
+}));
+
 const ADA: UserAvatarPerson = {
   id: "11111111-2222-4333-8444-555555555555",
   name: "Ada Lovelace",
