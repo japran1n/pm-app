@@ -166,6 +166,43 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: npm run test
 
+      # F099 (AS-369): with F098's channel-leak fix in place, run
+      # 33903580222 showed the `comment_reactions` postgres_changes INSERT
+      # test times out with NO "received" line at all -- the event is
+      # never delivered on CI's local Docker stack, not merely slow. Every
+      # prior round (F072/F074/F092/F096/F097/F098) reasoned about
+      # transport latency; none of them queried the one thing that
+      # actually determines whether `postgres_changes` can fire at all:
+      # the publication membership and replica identity Postgres itself
+      # is using. This step dumps that state, unmodified, immediately
+      # before the Realtime step runs against the identical stack --
+      # decisive evidence instead of a seventh latency guess. `comments`
+      # (whose sibling test passes) is queried alongside
+      # `comment_reactions` (whose test fails) so the two rows are
+      # directly comparable in one place.
+      #
+      # `DB_URL` comes from the "Export local Supabase env vars" step
+      # above -- `supabase status -o env` emits it unprefixed (see that
+      # step's own comment) and it lands in $GITHUB_ENV like every other
+      # var from that call, so every later step (this one included)
+      # inherits it with no extra plumbing.
+      - name: Diagnose supabase_realtime publication state (F099, AS-369)
+        run: |
+          echo "--- pg_publication_tables (supabase_realtime) ---"
+          psql "$DB_URL" -c "select schemaname, tablename from pg_publication_tables where pubname = 'supabase_realtime' and tablename in ('comments', 'comment_reactions') order by tablename;"
+
+          echo "--- pg_publication flags (supabase_realtime) ---"
+          psql "$DB_URL" -c "select pubname, puballtables, pubinsert, pubupdate, pubdelete, pubtruncate from pg_publication where pubname = 'supabase_realtime';"
+
+          echo "--- relreplident (comments vs comment_reactions) ---"
+          psql "$DB_URL" -c "select relname, case relreplident when 'd' then 'default' when 'n' then 'nothing' when 'f' then 'full' when 'i' then 'index' end as replica_identity from pg_class where relname in ('comments', 'comment_reactions');"
+
+          echo "--- comment_reactions columns (confirm task_id shape) ---"
+          psql "$DB_URL" -c "select column_name, data_type, is_nullable from information_schema.columns where table_name = 'comment_reactions' order by ordinal_position;"
+
+          echo "--- realtime.subscription rows (any stale/leftover postgres_changes subscriptions from a prior test in this run) ---"
+          psql "$DB_URL" -c "select count(*) as subscription_count, entity from realtime.subscription group by entity order by entity;" || echo "(realtime.subscription query failed -- schema/table name may differ across CLI versions, not fatal to the rest of this diagnostic)"
+
       # F092 (AS-369): the four integration tests that wait for a real
       # Supabase Realtime WebSocket event (see
       # tests/realtime-live-delivery-tests.ts) are excluded from the
