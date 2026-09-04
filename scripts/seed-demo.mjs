@@ -37,8 +37,19 @@ const DEMO_PASSWORD = "Demo1234!";
 const WORKSPACE_NAME = "Acme Studio";
 const WORKSPACE_SLUG = "acme-studio";
 
+// Second workspace: a different kind of client work (financial/ops
+// consulting instead of Acme's web/brand/mobile design work) so switching
+// into it obviously changes what's on screen -- different project names,
+// different people, its own client. `sasa` belongs to both (the switch is
+// real for whoever demos); everyone else in ACCOUNTS_WS2 belongs only here
+// (the boundary -- an Acme-only account like `vuk` can't reach this
+// workspace at all, and `petra` below can't reach Acme Studio).
+const WORKSPACE2_NAME = "Cedarwood Partners";
+const WORKSPACE2_SLUG = "cedarwood-partners";
+
 // --- accounts ---------------------------------------------------------------
 
+// Acme Studio's own roster (unchanged from earlier rounds).
 const ACCOUNTS = [
   { username: "sasa", name: "Saša Japranin", role: "owner" },
   { username: "maja", name: "Maja Ilić", role: "admin" },
@@ -46,6 +57,17 @@ const ACCOUNTS = [
   { username: "ana", name: "Ana Kovač", role: "member" },
   { username: "vuk", name: "Vuk Simić", role: "viewer" },
   { username: "nina", name: "Nina Marić (Northwind)", role: "client" },
+];
+
+// Cedarwood Partners' own roster. `sasa` (owner in both workspaces) is
+// listed here too so the switcher has a real cross-workspace account, but
+// is NOT re-created -- `main()` unions this list with ACCOUNTS by username
+// before creating auth users, so `sasa` is created once and simply gets a
+// second `workspace_members` row below.
+const ACCOUNTS_WS2 = [
+  { username: "sasa", name: "Saša Japranin", role: "owner" },
+  { username: "ivan", name: "Ivan Radović", role: "admin" },
+  { username: "petra", name: "Petra Vidak (Meridian Capital)", role: "client" },
 ];
 
 const emailFor = (username) => `${username}@${DEMO_EMAIL_DOMAIN}`;
@@ -237,6 +259,11 @@ const PROJECTS = [
     ],
   },
   {
+    // Deliberately never given `portal_enabled: true` (the column's own
+    // default) -- this is the "portal switched off" state from the demo
+    // brief: the project exists, has real work, but the client portal
+    // toggle in its Settings panel is genuinely off, so flipping it live
+    // during the demo visibly changes something.
     name: "Mobile App v2",
     description:
       "Second major release: offline mode, push notifications, and a rebuilt onboarding.",
@@ -255,18 +282,24 @@ const PROJECTS = [
     ],
   },
   {
+    // Archived (`archive: true` below sets `deleted_at`/`archived_by`
+    // after creation, mirroring lib/actions/projects.ts's archiveProject())
+    // so the /w/[slug]/archive screen has a real row instead of being
+    // empty. Dates moved fully into the past to match: this work wrapped
+    // and got shelved, it isn't mid-flight.
     name: "Brand Refresh",
     description:
       "Logo refinement, tone of voice, and a one-page brand guideline for the new site.",
     visibility: "workspace",
-    startInDays: -30,
-    endInDays: 7,
+    startInDays: -60,
+    endInDays: -18,
+    archive: true,
     tasks: [
-      ["Moodboard & direction", "done", "medium", -22, "ana", 120],
-      ["Logo lockup variants", "done", "high", -15, "ana", 260],
-      ["Tone of voice one-pager", "in_review", "medium", 0, "maja", 90],
-      ["Brand guideline PDF", "in_progress", "medium", 4, "ana", 140],
-      ["Social templates", "todo", "low", 7, "ana", 0],
+      ["Moodboard & direction", "done", "medium", -52, "ana", 120],
+      ["Logo lockup variants", "done", "high", -45, "ana", 260],
+      ["Tone of voice one-pager", "done", "medium", -30, "maja", 90],
+      ["Brand guideline PDF", "in_progress", "medium", -20, "ana", 140],
+      ["Social templates", "todo", "low", -18, "ana", 0],
     ],
   },
   {
@@ -283,7 +316,97 @@ const PROJECTS = [
       ["Retire legacy admin scripts", "todo", "backlog", 35, "luka", 0],
     ],
   },
+  {
+    // Launched/finished: every task done, dates fully in the past, portal
+    // ON with `target_launch_date` already passed and warranty fields
+    // filled in -- "what does done look like" (4.3) gets a real answer via
+    // preview-as-client rather than only ever showing mid-flight projects.
+    // No client account attached (`guestAccess` omitted): staff reach this
+    // one through "Preview as client", the same route the demo script
+    // uses for it.
+    name: "Northwind Loyalty App — Phase 1",
+    description:
+      "Points-based loyalty program for Northwind's storefront: enrollment flow, points ledger, and a rewards catalogue.",
+    visibility: "workspace",
+    startInDays: -75,
+    endInDays: -10,
+    launched: true,
+    tasks: [
+      ["Loyalty program rules & tiers", "done", "high", -68, "sasa", 180],
+      ["Points ledger schema", "done", "high", -60, "luka", 240],
+      ["Enrollment flow design", "done", "medium", -50, "ana", 200],
+      ["Enrollment flow build", "done", "high", -38, "luka", 360],
+      ["Rewards catalogue UI", "done", "medium", -25, "ana", 220],
+      ["QA pass & launch checklist", "done", "medium", -14, "maja", 150],
+      ["Go-live & monitoring", "done", "urgent", -10, "sasa", 90],
+    ],
+  },
 ];
+
+// Cedarwood Partners' own projects -- different sector (ops/finance
+// consulting, not web/brand/mobile design), different names, different
+// people (only `sasa` and `ivan` are on either; `petra`, the client, is
+// on WORKSPACE2_CLIENT_PROJECT only) so switching into this workspace
+// obviously changed what's on screen.
+const WORKSPACE2_CLIENT_PROJECT = "Meridian Ops Dashboard";
+
+const WORKSPACE2_PROJECTS = [
+  {
+    // Over budget: `WORKSPACE2_BUDGET` below sells 20h for the current
+    // period; these tasks alone log more than that before any client-side
+    // rollup happens, so the burn-down's red path is a real number, not a
+    // contrived percentage.
+    name: WORKSPACE2_CLIENT_PROJECT,
+    description:
+      "Real-time ops metrics dashboard for Meridian Capital: data pipeline, warehouse views, and the client-facing charts.",
+    visibility: "workspace",
+    startInDays: -35,
+    endInDays: 21,
+    guestAccess: true, // petra (client) is added to this project
+    tasks: [
+      ["Source system audit", "done", "high", -28, "ivan", 300, true],
+      ["Warehouse schema design", "done", "high", -20, "sasa", 360, true],
+      ["ETL pipeline: transactions feed", "done", "high", -12, "ivan", 480, false],
+      ["ETL pipeline: positions feed", "in_progress", "high", -4, "ivan", 540, false],
+      ["Dashboard: cash flow chart", "in_progress", "medium", 2, "sasa", 420, true],
+      ["Dashboard: exposure by sector", "todo", "medium", 9, "ivan", 0, true],
+      ["Access control & audit logging", "todo", "high", 15, "sasa", 0, false],
+    ],
+  },
+  {
+    // No portal data at all -- a plain internal project so the workspace
+    // has more than one project and `petra` (client, only on the project
+    // above) has something concrete she still can't reach even inside her
+    // own workspace.
+    name: "Meridian Compliance Audit",
+    description:
+      "Internal-only: quarterly compliance review ahead of Meridian's own regulator sign-off.",
+    visibility: "private",
+    startInDays: -14,
+    endInDays: 28,
+    tasks: [
+      ["Collect prior-quarter findings", "done", "medium", -8, "ivan", 120],
+      ["Gap analysis vs. new reporting rules", "in_progress", "high", 5, "sasa", 240],
+      ["Draft remediation plan", "todo", "medium", 14, "ivan", 0],
+      ["Internal sign-off review", "todo", "high", 27, "sasa", 0],
+    ],
+  },
+];
+
+// F017's `project_budgets` -- deliberately sold LESS than the client
+// project's own logged minutes above (7h logged so far this period vs.
+// tasks that alone total well past that once QA/positions work lands),
+// so `remainingMinutes` in hours-tiles.tsx goes negative and the burn-down
+// genuinely reads over budget instead of being forced there.
+const WORKSPACE2_BUDGET = {
+  periodStartInDays: -30,
+  periodEndInDays: 30,
+  soldMinutes: 1200, // 20h sold for this phase
+  currency: "USD",
+  rateAmount: 140,
+  rollover: "none",
+  note: "Dashboard build, initial engagement.",
+};
 
 const CHECKLISTS = {
   "Build homepage in Next.js": [
@@ -1082,74 +1205,68 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
   }
 }
 
-// --- main -------------------------------------------------------------------
-
-async function main() {
-  console.log(`→ Seeding demo data into ${SUPABASE_URL}\n`);
-
-  // 1. Accounts
-  const userIds = {};
-  for (const account of ACCOUNTS) {
-    userIds[account.username] = await upsertAccount(account);
-    const { error } = await admin
-      .from("profiles")
-      .upsert(
-        {
-          id: userIds[account.username],
-          display_name: account.name,
-          timezone: "Europe/Belgrade",
-        },
-        { onConflict: "id" },
-      );
-    check(`profile ${account.username}`, { error });
-    console.log(`  ✓ ${account.name} — ${emailFor(account.username)}`);
-  }
-
-  const owner = userIds.sasa;
-
-  // 2. Fresh workspace
-  const { data: existingWorkspaces } = await admin
-    .from("workspaces")
-    .select("id")
-    .eq("slug", WORKSPACE_SLUG);
-  for (const ws of existingWorkspaces ?? []) {
-    await wipeWorkspace(ws.id);
-  }
-
-  const { data: workspace, error: wsError } = await admin
-    .from("workspaces")
-    .insert({ name: WORKSPACE_NAME, slug: WORKSPACE_SLUG })
-    .select("id")
-    .single();
-  check("create workspace", { error: wsError });
-  console.log(`\n  ✓ Workspace "${WORKSPACE_NAME}" (/w/${WORKSPACE_SLUG})`);
-
-  const { error: membersError } = await admin.from("workspace_members").insert(
-    ACCOUNTS.map((a) => ({
-      workspace_id: workspace.id,
-      user_id: userIds[a.username],
-      role: a.role,
-      status: "active",
-      invited_email: emailFor(a.username),
-    })),
+// Minimal portal seed for the launched/finished Northwind project: just
+// the launch header fields (F001) plus a warranty window (F025c) -- no
+// phases/approvals/deliverables, since this project's job in the demo set
+// is "what does done look like", not a second full walkthrough.
+async function seedLaunchedPortalData({ projectId }) {
+  check(
+    "portal launch fields Northwind Loyalty App",
+    await admin
+      .from("projects")
+      .update({
+        portal_enabled: true,
+        portal_enabled_at: daysFromNow(-75),
+        target_launch_date: daysFromNow(-10),
+        launch_confidence: "on_track",
+        launch_note: "Launched on schedule. Now in the warranty window.",
+        warranty_until: daysFromNow(20),
+        warranty_terms: "30 days of bug-fix support post-launch, covering the enrollment flow and points ledger only.",
+      })
+      .eq("id", projectId),
   );
-  check("workspace members", { error: membersError });
+}
 
-  // A pending invite, so the members screen shows both states.
-  await admin.from("workspace_members").insert({
-    workspace_id: workspace.id,
-    role: "member",
-    status: "invited",
-    invited_email: "novi.kolega@demo.test",
-  });
+// Budget-only portal seed for Cedarwood's over-budget project -- the one
+// table this demo state needs (F017's `project_budgets`); no
+// phases/approvals/deliverables, since the point of this project is the
+// Hours view's red "over budget" path, not a second full portal
+// walkthrough.
+async function seedWorkspace2Budget({ projectId }) {
+  check(
+    "portal_enabled Meridian Ops Dashboard",
+    await admin
+      .from("projects")
+      .update({ portal_enabled: true, portal_enabled_at: new Date().toISOString() })
+      .eq("id", projectId),
+  );
+  check(
+    "project_budgets Meridian Ops Dashboard",
+    await admin.from("project_budgets").insert({
+      project_id: projectId,
+      period_start: daysFromNow(WORKSPACE2_BUDGET.periodStartInDays),
+      period_end: daysFromNow(WORKSPACE2_BUDGET.periodEndInDays),
+      sold_minutes: WORKSPACE2_BUDGET.soldMinutes,
+      currency: WORKSPACE2_BUDGET.currency,
+      rate_amount: WORKSPACE2_BUDGET.rateAmount,
+      rollover: WORKSPACE2_BUDGET.rollover,
+      note: WORKSPACE2_BUDGET.note,
+    }),
+  );
+}
 
-  // 3. Projects, columns, tasks
+// Creates one workspace's accounts-already-created projects (shared by
+// both Acme Studio's PROJECTS and Cedarwood's WORKSPACE2_PROJECTS), so the
+// per-task/checklist/comment/time-entry logic isn't duplicated. Mirrors
+// the loop main() used to run inline for PROJECTS. Returns the number of
+// tasks created.
+async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberUsernames, portalSeeder }) {
   let taskCount = 0;
-  for (const spec of PROJECTS) {
+  for (const spec of projectSpecs) {
     const { data: project, error: projectError } = await admin
       .from("projects")
       .insert({
-        workspace_id: workspace.id,
+        workspace_id: workspaceId,
         name: spec.name,
         description: spec.description,
         visibility: spec.visibility,
@@ -1166,14 +1283,14 @@ async function main() {
 
     const projectMembers = [
       { project_id: project.id, user_id: owner, project_role: "lead", added_by: owner },
-      { project_id: project.id, user_id: userIds.maja, project_role: "member", added_by: owner },
-      { project_id: project.id, user_id: userIds.luka, project_role: "member", added_by: owner },
-      { project_id: project.id, user_id: userIds.ana, project_role: "member", added_by: owner },
+      ...memberUsernames
+        .filter((u) => u !== "sasa")
+        .map((u) => ({ project_id: project.id, user_id: userIds[u], project_role: "member", added_by: owner })),
     ];
     if (spec.guestAccess) {
       projectMembers.push({
         project_id: project.id,
-        user_id: userIds.nina,
+        user_id: userIds[spec.clientUsername ?? "nina"],
         project_role: "member",
         added_by: owner,
       });
@@ -1184,16 +1301,9 @@ async function main() {
     );
 
     let position = 0;
-    // Only populated (and only needed) for Website Redesign — the portal
-    // seeding block below links approvals/deliverables back to specific
-    // tasks by title.
     const taskIdByTitle = {};
     for (const [title, status, priority, dueInDays, assignee, minutes, clientVisible] of spec.tasks) {
       position += 1000;
-      // F415: a deterministic estimate from priority, so the estimate-vs-
-      // logged bar (F413) and per-person rollup (F414) have real numbers
-      // to render instead of every "of Xh estimated" branch staying dark
-      // because no seeded task ever had one.
       const ESTIMATE_BY_PRIORITY = {
         urgent: 240,
         high: 180,
@@ -1236,12 +1346,6 @@ async function main() {
       );
 
       if (minutes > 0) {
-        // F017 (missions/20260903-portal): Website Redesign's own tasks
-        // get a work_category + explicit billable flag from
-        // WEBSITE_WORK_CATEGORY so the Hours view's category rollup and
-        // billable/non-billable split have a real spread to render;
-        // every other project keeps this feature's original behaviour
-        // (work_category null, billable derived from visibility).
         const categoryOverride = WEBSITE_WORK_CATEGORY[title];
         const entries = [
           {
@@ -1305,20 +1409,173 @@ async function main() {
     if (spec.name === "Website Redesign") {
       await seedPortalDemoData({
         projectId: project.id,
-        workspaceId: workspace.id,
+        workspaceId,
         owner,
         userIds,
         taskIdByTitle,
       });
       console.log("  ✓ Website Redesign — portal demo data (phases, approvals, deliverables, budget, metrics, scope, site, pages)");
     }
+
+    if (spec.launched) {
+      await seedLaunchedPortalData({ projectId: project.id });
+      console.log(`  ✓ ${spec.name} — portal demo data (launched/finished, warranty)`);
+    }
+
+    if (spec.archive) {
+      check(
+        `archive project ${spec.name}`,
+        await admin
+          .from("projects")
+          .update({ deleted_at: new Date().toISOString(), archived_by: owner })
+          .eq("id", project.id),
+      );
+      console.log(`  ✓ ${spec.name} — archived`);
+    }
+
+    if (portalSeeder && spec.name === WORKSPACE2_CLIENT_PROJECT) {
+      await portalSeeder({ projectId: project.id });
+      console.log(`  ✓ ${spec.name} — portal demo data (over budget)`);
+    }
+  }
+  return taskCount;
+}
+
+// --- main -------------------------------------------------------------------
+
+async function main() {
+  console.log(`→ Seeding demo data into ${SUPABASE_URL}\n`);
+
+  // 1. Accounts — union of both workspaces' rosters by username so an
+  // account that belongs to both (currently only `sasa`) is created once.
+  const allAccounts = [...ACCOUNTS];
+  for (const a of ACCOUNTS_WS2) {
+    if (!allAccounts.some((existing) => existing.username === a.username)) {
+      allAccounts.push(a);
+    }
   }
 
-  console.log(`\nDone. ${taskCount} tasks across ${PROJECTS.length} projects.\n`);
+  const userIds = {};
+  for (const account of allAccounts) {
+    userIds[account.username] = await upsertAccount(account);
+    const { error } = await admin
+      .from("profiles")
+      .upsert(
+        {
+          id: userIds[account.username],
+          display_name: account.name,
+          timezone: "Europe/Belgrade",
+        },
+        { onConflict: "id" },
+      );
+    check(`profile ${account.username}`, { error });
+    console.log(`  ✓ ${account.name} — ${emailFor(account.username)}`);
+  }
+
+  const owner = userIds.sasa;
+
+  // 2. Fresh workspaces (wipe both by slug, then recreate).
+  for (const slug of [WORKSPACE_SLUG, WORKSPACE2_SLUG]) {
+    const { data: existingWorkspaces } = await admin
+      .from("workspaces")
+      .select("id")
+      .eq("slug", slug);
+    for (const ws of existingWorkspaces ?? []) {
+      await wipeWorkspace(ws.id);
+    }
+  }
+
+  const { data: workspace, error: wsError } = await admin
+    .from("workspaces")
+    .insert({ name: WORKSPACE_NAME, slug: WORKSPACE_SLUG })
+    .select("id")
+    .single();
+  check("create workspace", { error: wsError });
+  console.log(`\n  ✓ Workspace "${WORKSPACE_NAME}" (/w/${WORKSPACE_SLUG})`);
+
+  const { error: membersError } = await admin.from("workspace_members").insert(
+    ACCOUNTS.map((a) => ({
+      workspace_id: workspace.id,
+      user_id: userIds[a.username],
+      role: a.role,
+      status: "active",
+      invited_email: emailFor(a.username),
+    })),
+  );
+  check("workspace members", { error: membersError });
+
+  // A pending invite, so the members screen shows both states.
+  await admin.from("workspace_members").insert({
+    workspace_id: workspace.id,
+    role: "member",
+    status: "invited",
+    invited_email: "novi.kolega@demo.test",
+  });
+
+  const { data: workspace2, error: ws2Error } = await admin
+    .from("workspaces")
+    .insert({ name: WORKSPACE2_NAME, slug: WORKSPACE2_SLUG })
+    .select("id")
+    .single();
+  check("create workspace2", { error: ws2Error });
+  console.log(`  ✓ Workspace "${WORKSPACE2_NAME}" (/w/${WORKSPACE2_SLUG})`);
+
+  check(
+    "workspace2 members",
+    await admin.from("workspace_members").insert(
+      ACCOUNTS_WS2.map((a) => ({
+        workspace_id: workspace2.id,
+        user_id: userIds[a.username],
+        role: a.role,
+        status: "active",
+        invited_email: emailFor(a.username),
+      })),
+    ),
+  );
+
+  // 3. Projects, columns, tasks — Acme Studio.
+  const acmeTaskCount = await seedProjects({
+    workspaceId: workspace.id,
+    owner,
+    userIds,
+    projectSpecs: PROJECTS,
+    memberUsernames: ["maja", "luka", "ana"],
+  });
+  console.log(`\nAcme Studio: ${acmeTaskCount} tasks across ${PROJECTS.length} projects.`);
+
+  // 4. Projects, columns, tasks — Cedarwood Partners. `owner` stays `sasa`
+  // (the cross-workspace account) so both workspaces share one lead, same
+  // as Acme's own project-lead pattern above.
+  const ws2Specs = WORKSPACE2_PROJECTS.map((p) =>
+    p.guestAccess ? { ...p, clientUsername: "petra" } : p,
+  );
+  const cedarwoodTaskCount = await seedProjects({
+    workspaceId: workspace2.id,
+    owner,
+    userIds,
+    projectSpecs: ws2Specs,
+    memberUsernames: ["ivan"],
+    portalSeeder: seedWorkspace2Budget,
+  });
+  console.log(`Cedarwood Partners: ${cedarwoodTaskCount} tasks across ${WORKSPACE2_PROJECTS.length} projects.\n`);
+
+  const taskCount = acmeTaskCount + cedarwoodTaskCount;
+  console.log(`Done. ${taskCount} tasks total.\n`);
   console.log("Sign in at http://localhost:3000/sign-in (Password tab):\n");
   for (const a of ACCOUNTS) {
     console.log(
-      `  ${a.username.padEnd(6)} / ${DEMO_PASSWORD}   ${emailFor(a.username).padEnd(20)} ${a.role}`,
+      `  ${a.username.padEnd(6)} / ${DEMO_PASSWORD}   ${emailFor(a.username).padEnd(20)} ${a.role.padEnd(8)} Acme Studio`,
+    );
+  }
+  for (const a of ACCOUNTS_WS2) {
+    if (a.username === "sasa") {
+      console.log(
+        `  ${a.username.padEnd(6)} / ${DEMO_PASSWORD}   ${emailFor(a.username).padEnd(20)} ${a.role.padEnd(8)} Cedarwood Partners (+ Acme Studio)`,
+      );
+      continue;
+    }
+    console.log(
+      `  ${a.username.padEnd(6)} / ${DEMO_PASSWORD}   ${emailFor(a.username).padEnd(20)} ${a.role.padEnd(8)} Cedarwood Partners`,
     );
   }
   console.log("");
