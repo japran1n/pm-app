@@ -1277,6 +1277,56 @@ export type Database = {
           },
         ]
       }
+      project_budgets: {
+        Row: {
+          created_at: string
+          currency: string | null
+          id: string
+          note: string | null
+          period_end: string
+          period_start: string
+          project_id: string
+          rate_amount: number | null
+          rollover: string
+          sold_minutes: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string | null
+          id?: string
+          note?: string | null
+          period_end: string
+          period_start: string
+          project_id: string
+          rate_amount?: number | null
+          rollover?: string
+          sold_minutes: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string | null
+          id?: string
+          note?: string | null
+          period_end?: string
+          period_start?: string
+          project_id?: string
+          rate_amount?: number | null
+          rollover?: string
+          sold_minutes?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_budgets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_decision_owners: {
         Row: {
           created_at: string
@@ -2224,6 +2274,7 @@ export type Database = {
           task_id: string
           updated_at: string
           user_id: string
+          work_category: string | null
         }
         Insert: {
           billable?: boolean
@@ -2235,6 +2286,7 @@ export type Database = {
           task_id: string
           updated_at?: string
           user_id: string
+          work_category?: string | null
         }
         Update: {
           billable?: boolean
@@ -2246,6 +2298,7 @@ export type Database = {
           task_id?: string
           updated_at?: string
           user_id?: string
+          work_category?: string | null
         }
         Relationships: [
           {
@@ -2825,6 +2878,24 @@ export type Database = {
         }[]
       }
       notify_overdue_task_assignees: { Args: never; Returns: number }
+      project_hours_client: {
+        Args: { p_from: string; p_project_id: string; p_to: string }
+        Returns: Json
+      }
+      project_hours_team: {
+        Args: { p_from: string; p_project_id: string; p_to: string }
+        Returns: {
+          billable: boolean
+          entry_date: string
+          entry_id: string
+          minutes: number
+          note: string
+          task_id: string
+          task_title: string
+          user_id: string
+          work_category: string
+        }[]
+      }
       purge_comment: {
         Args: { p_comment_id: string }
         Returns: {
