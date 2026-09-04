@@ -596,7 +596,7 @@ const decideDeliverableImpl = withAuthz(
 
 export async function decideDeliverable(input: {
   deliverableId: string;
-  decision: "accepted" | "returned";
+  decision: "accepted" | "returned" | "waived";
   note?: string | null;
 }): Promise<DecideDeliverableResult> {
   return decideDeliverableImpl(input);

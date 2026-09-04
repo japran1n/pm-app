@@ -126,36 +126,41 @@ export function isDeliverablePastDue(
 // `classifyBucket`) already counts every outstanding, past-due
 // deliverable regardless of `blocking`. This used to additionally filter
 // `.eq("blocking", true)`, so the sidebar badge and the page it links to
-// reported two different numbers for the same project. This function is
-// now the ONE query behind both surfaces (the same "one question, one
-// query" fix F006f applied to the approvals tile/list, lib/queries/
-// portal.ts:607-629): not yet delivered/accepted/waived, has a due date,
-// and that due date has passed — exactly `isDeliverablePastDue` above,
-// which the Your list view's `classifyBucket` also calls (F016h).
+// reported two different numbers for the same project.
 //
-// (The risk banner's `getWorstOverdueBlockingDeliverableRisk` below is a
-// different question — "the worst BLOCKING item at risk" is AS-031's own
-// wording, not this one — so it keeps its own `blocking` filter.)
+// F016k (M3 remediation round 2): this used to RE-EXPRESS
+// `isDeliverablePastDue`'s condition as three PostgREST filters
+// (`.not("state", "in", ...)`, `.not("due_at", "is", null)`,
+// `.lt("due_at", today)`) instead of calling the shared function itself
+// — a second, independently-typed copy of the same predicate that could
+// drift from `isDeliverablePastDue` (and from `classifyBucket`, which
+// calls it) without either surface's own test noticing, because neither
+// test exercised the OTHER surface's real code. This now fetches the
+// bare columns the predicate needs and calls `isDeliverablePastDue`
+// itself, once, in TypeScript — the badge is no longer a second
+// implementation of "is this deliverable past due", it is a caller of
+// the one that exists.
 export async function getDeliverablesPastDueCount(
   projectId: string,
 ): Promise<PortalQueryResult<number>> {
   const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("client_deliverables")
-    .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId)
-    .not("state", "in", "(accepted,waived)")
-    .not("due_at", "is", null)
-    .lt("due_at", today);
+    .select("state, due_at")
+    .eq("project_id", projectId);
 
   if (error) {
     logger.error("getDeliverablesPastDueCount: failed to load count", { error });
     return { ok: false, error: error.message };
   }
 
-  return { ok: true, data: count ?? 0 };
+  const count = (data ?? []).filter((row) =>
+    isDeliverablePastDue(row.state as DeliverableState, row.due_at, today),
+  ).length;
+
+  return { ok: true, data: count };
 }
 
 // --- "What it holds up" (F014, missions/20260903-portal, AS-029, AS-031) --

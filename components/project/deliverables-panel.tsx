@@ -180,17 +180,23 @@ function DeliverableRow({
     });
   }
 
-  function handleDecide(decision: "accepted" | "returned") {
+  function handleDecide(decision: "accepted" | "returned" | "waived") {
     if (decision === "returned" && !reviewNoteDraft.trim()) {
       toast.error("A note is required when returning a deliverable.");
       return;
     }
 
+    // F016k (AS-030): waiving carries the same optional note the
+    // "returned" note field already collects -- reused as "why", not a
+    // second free-text field, but never required (see this feature's
+    // migration comment for why).
+    const note = decision === "returned" || decision === "waived" ? reviewNoteDraft : null;
+
     startDecideTransition(async () => {
       const result = await decideDeliverable({
         deliverableId: deliverable.id,
         decision,
-        note: decision === "returned" ? reviewNoteDraft : null,
+        note,
       });
 
       if (!result.ok) {
@@ -202,14 +208,25 @@ function DeliverableRow({
       onChanged({
         ...deliverable,
         state: result.data.state,
-        reviewNote: decision === "returned" ? reviewNoteDraft : null,
+        reviewNote: note,
       });
-      toast.success(decision === "accepted" ? "Deliverable accepted." : "Sent back to the client.");
+      toast.success(
+        decision === "accepted"
+          ? "Deliverable accepted."
+          : decision === "waived"
+            ? "Deliverable waived."
+            : "Sent back to the client.",
+      );
     });
   }
 
   const linkedTask = taskOptions.find((task) => task.id === deliverable.taskId);
   const canReview = deliverable.state === "delivered";
+  // F016k (AS-030): waiving is not a review outcome gated on the client
+  // having delivered something -- a PM can decide not to chase an
+  // obligation at any point before it is settled. Only "already settled"
+  // (accepted/waived) rules it out.
+  const canWaive = deliverable.state !== "accepted" && deliverable.state !== "waived";
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border p-3">
@@ -386,7 +403,8 @@ function DeliverableRow({
 
       {deliverable.reviewNote && (
         <p className="text-xs text-muted-foreground">
-          Last returned with: &ldquo;{deliverable.reviewNote}&rdquo;
+          {deliverable.state === "waived" ? "Waived" : "Last returned"} with: &ldquo;
+          {deliverable.reviewNote}&rdquo;
         </p>
       )}
 
@@ -426,6 +444,26 @@ function DeliverableRow({
               Return with note
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* F016k (AS-030): waiving is a real, separate decision from
+          accept/return — a team member deciding not to chase an
+          obligation at all, not a review outcome. Available whenever the
+          deliverable is not already settled, independent of whether it
+          has been delivered. */}
+      {canWaive && (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => handleDecide("waived")}
+            disabled={isDeciding}
+            aria-label={`Waive ${deliverable.title}`}
+          >
+            {isDeciding ? <Loader2 className="h-4 w-4 animate-spin" /> : "Waive — we won't chase this"}
+          </Button>
         </div>
       )}
     </div>

@@ -98,7 +98,9 @@ export type DeleteDeliverableInput = z.infer<typeof deleteDeliverableSchema>;
 // `.superRefine()` that could drift from the database's own check.
 export const decideDeliverableSchema = z.object({
   deliverableId: z.string().uuid("Invalid deliverable."),
-  decision: z.enum(["accepted", "returned"]),
+  // F016k (AS-030): 'waived' added -- a team member deciding not to
+  // chase an obligation, no note required (unlike 'returned').
+  decision: z.enum(["accepted", "returned", "waived"]),
   note: z
     .string()
     .trim()

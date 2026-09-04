@@ -59,6 +59,12 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
   let ownerId: string;
   let memberId: string;
   let clientId: string;
+  // F016k (item 4): a second project, portal DISABLED, whose only
+  // purpose is proving `send_change_request_quote_atomic`'s
+  // `client_gate(...)` call actually refuses a caller it should refuse
+  // -- not a grep over the migration text that would pass equally well
+  // if the call were commented out.
+  let portalDisabledProjectId: string;
 
   const createdUserIds: string[] = [];
   const createdRequestIds: string[] = [];
@@ -121,6 +127,26 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
       { project_id: projectId, user_id: clientId, project_role: "member", added_by: ownerId },
     ]);
 
+    const { data: portalDisabledProject, error: portalDisabledErr } = await admin
+      .from("projects")
+      .insert({
+        workspace_id: workspaceId,
+        name: "Quote gate project (portal disabled)",
+        visibility: "workspace",
+        created_by: ownerId,
+        portal_enabled: false,
+      })
+      .select("id")
+      .single();
+    if (portalDisabledErr || !portalDisabledProject) {
+      throw new Error(`portal-disabled project: ${portalDisabledErr?.message}`);
+    }
+    portalDisabledProjectId = portalDisabledProject.id;
+
+    await admin.from("project_members").insert([
+      { project_id: portalDisabledProjectId, user_id: memberId, project_role: "lead", added_by: ownerId },
+    ]);
+
     // decide_approval_atomic's own AS-022 ownership check: the client
     // decision needs a named 'commercial' decision owner. Use the client
     // themselves — a project's own client is exactly who decides on a
@@ -151,6 +177,9 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
     await admin.from("client_requests").delete().in("id", createdRequestIds);
     await admin.from("project_decision_owners").delete().eq("project_id", projectId);
     await admin.from("project_members").delete().eq("project_id", projectId);
+    await admin.from("client_requests").delete().eq("project_id", portalDisabledProjectId);
+    await admin.from("project_members").delete().eq("project_id", portalDisabledProjectId);
+    await admin.from("projects").delete().eq("id", portalDisabledProjectId);
     await admin.from("projects").delete().eq("id", projectId);
     await admin.from("workspace_members").delete().eq("workspace_id", workspaceId);
     await admin.from("workspaces").delete().eq("id", workspaceId);
@@ -550,5 +579,50 @@ describe.skipIf(!haveCreds)("change request quote gate (AS-047, AS-048)", () => 
       .select("id")
       .eq("change_request_id", requestId);
     expect(scopeItems).toHaveLength(1);
+  });
+
+  // F016f (M3-scrutiny-2 remediation) added a STATIC test (tests/unit/
+  // f016f-client-gate-revert-guard.test.ts) proving
+  // `send_change_request_quote_atomic`'s applied body still contains a
+  // call to `public.client_gate(`. That guard passes equally well if the
+  // call is present but its flags are neutered (e.g. a future migration
+  // that changes `p_require_portal_enabled` to `false`), because a text
+  // match cannot see what a boolean argument actually does. F016k (item
+  // 4): this test exercises the gate for real — a project with
+  // `portal_enabled = false` must refuse this RPC, from a caller
+  // (`memberSession`) who passes every OTHER check the function makes
+  // (active workspace writer, valid scope_verdict). A neutered or
+  // deleted `client_gate` call would let this request succeed instead.
+  it("test_AS_047_send_change_request_quote_atomic_refuses_a_project_with_portal_disabled", async () => {
+    const { data: request, error: requestErr } = await admin
+      .from("client_requests")
+      .insert({
+        project_id: portalDisabledProjectId,
+        created_by: memberId,
+        title: "Filed on a portal-disabled project",
+        status: "submitted",
+      })
+      .select("id")
+      .single();
+    if (requestErr || !request) throw new Error(`request: ${requestErr?.message}`);
+
+    const { error } = await memberSession.rpc("send_change_request_quote_atomic", {
+      p_request_id: request.id,
+      p_scope_verdict: "in_scope",
+    });
+
+    expect(error).not.toBeNull();
+    expect(error?.code).toBe("42501");
+    expect(error?.message).toContain("portal is not enabled");
+
+    // The row itself proves the RPC took no effect on refusal, not only
+    // that it returned an error.
+    const { data: unchanged } = await admin
+      .from("client_requests")
+      .select("status, scope_verdict")
+      .eq("id", request.id)
+      .single();
+    expect(unchanged?.status).toBe("submitted");
+    expect(unchanged?.scope_verdict).toBeNull();
   });
 });

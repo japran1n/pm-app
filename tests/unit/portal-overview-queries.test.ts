@@ -158,27 +158,22 @@ vi.mock("@/lib/supabase/server", () => ({
         };
       }
       if (table === "client_deliverables") {
+        // F016k (AS-003): `getDeliverablesPastDueCount` no longer asks
+        // PostgREST to re-express `isDeliverablePastDue` as filters — it
+        // fetches `state`/`due_at` for the project and calls the real
+        // function itself. The mock mirrors that: one `.eq("project_id",
+        // ...)` terminal call returning the raw rows, not a pre-filtered
+        // count.
         return {
-          select: vi.fn(() => {
-            const filters: Array<(row: Row) => boolean> = [];
-            const builder = {
-              eq: vi.fn((col: string, val: unknown) => {
-                filters.push(eqFilter(col, val));
-                return builder;
-              }),
-              not: vi.fn((col: string, op: string, val: unknown) => {
-                if (op === "is") filters.push(notNullFilter(col));
-                else if (op === "in") filters.push(notInFilter(col, val as string));
-                return builder;
-              }),
-              lt: vi.fn(async (col: string, val: unknown) => {
-                if (deliverableRowsError) return { count: null, error: deliverableRowsError };
-                filters.push(ltFilter(col, val));
-                return { count: applyFilters(deliverableRows, filters).length, error: null };
-              }),
-            };
-            return builder;
-          }),
+          select: vi.fn(() => ({
+            eq: vi.fn(async (col: string, val: unknown) => {
+              if (deliverableRowsError) return { data: null, error: deliverableRowsError };
+              return {
+                data: applyFilters(deliverableRows, [eqFilter(col, val)]),
+                error: null,
+              };
+            }),
+          })),
         };
       }
       throw new Error(`unexpected table ${table}`);

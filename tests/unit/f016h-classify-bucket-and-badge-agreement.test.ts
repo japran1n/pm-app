@@ -8,10 +8,45 @@
 // view now agree on a past-due `delivered` row, the one axis round 2
 // found them disagreeing on.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { classifyBucket } from "@/app/(portal)/portal/[workspaceSlug]/p/[projectId]/your-list/page";
-import { isDeliverablePastDue, type PortalDeliverable, type DeliverableState } from "@/lib/queries/deliverables";
+import {
+  getDeliverablesPastDueCount,
+  type PortalDeliverable,
+  type DeliverableState,
+} from "@/lib/queries/deliverables";
+
+// F016k (M3 remediation round 2, AS-003): the joint test below used to
+// compute "the badge's count" by calling `isDeliverablePastDue` a SECOND
+// time inline, then compare that to `classifyBucket` (which also calls
+// `isDeliverablePastDue`) -- a tautology dressed up as an agreement
+// test, since both sides were the same function applied twice. It could
+// not fail: changing the real badge (`getDeliverablesPastDueCount`,
+// lib/queries/deliverables.ts) to something that disagreed with
+// `isDeliverablePastDue` would never be exercised by this test at all.
+//
+// This mocks `@/lib/supabase/server` (the one seam `getDeliverablesPastDueCount`
+// reads through) with a real row set, and calls the REAL function --
+// the same one `getPortalBadgeCounts` calls in production -- rather than
+// re-deriving its own count from the shared predicate. `classifyBucket`
+// is also called for real, unmocked. Two independent code paths, one
+// row set, one number.
+let deliverableTableRows: { state: DeliverableState; due_at: string | null }[] = [];
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => ({
+    from: vi.fn((table: string) => {
+      if (table !== "client_deliverables") throw new Error(`unexpected table ${table}`);
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(async () => ({ data: deliverableTableRows, error: null })),
+        })),
+      };
+    }),
+  })),
+}));
+
 
 const TODAY = "2026-06-15";
 const PAST = "2020-01-01";
@@ -82,32 +117,34 @@ describe("classifyBucket (F016h, AS-003)", () => {
   });
 });
 
-// F016h: the badge (`getDeliverablesPastDueCount`) and the view
+// F016h/F016k: the badge (`getDeliverablesPastDueCount`) and the view
 // (`classifyBucket`'s "blocked" bucket) must land on the same number for
-// the same project. Both now call the one shared `isDeliverablePastDue`
-// predicate — this test proves that for a mixed set including a past-due
-// `delivered` row (the exact case that used to diverge) and a past-due
-// `not_started` row, the count the badge's own predicate would produce
-// equals the count of rows the view classifies as "blocked".
-describe("badge/view agreement (F016h, AS-003)", () => {
-  it("test_AS_003_badge_count_equals_view_blocked_count_for_a_project_with_delivered_but_unaccepted_items", () => {
-    const deliverables: PortalDeliverable[] = [
-      makeDeliverable("delivered", PAST), // past due, delivered -- the disagreement case
-      makeDeliverable("not_started", PAST), // past due, never started
-      makeDeliverable("accepted", PAST), // settled, must not count either way
-      makeDeliverable("in_progress", FUTURE), // not yet due
+// the same project. This calls the REAL badge function (through a mocked
+// database seam) and the REAL view function against the same row set,
+// including a past-due `delivered` row (the exact case that used to
+// diverge) — proving the two independently-written surfaces agree,
+// rather than comparing one predicate to itself.
+describe("badge/view agreement (F016h/F016k, AS-003)", () => {
+  it("test_AS_003_badge_count_equals_view_blocked_count_for_a_project_with_delivered_but_unaccepted_items", async () => {
+    const rows: { state: DeliverableState; due_at: string | null }[] = [
+      { state: "delivered", due_at: PAST }, // past due, delivered -- the disagreement case
+      { state: "not_started", due_at: PAST }, // past due, never started
+      { state: "accepted", due_at: PAST }, // settled, must not count either way
+      { state: "in_progress", due_at: FUTURE }, // not yet due
     ];
+    deliverableTableRows = rows;
 
-    const badgeCount = deliverables.filter((d) =>
-      isDeliverablePastDue(d.state, d.dueAt, TODAY),
-    ).length;
+    const deliverables: PortalDeliverable[] = rows.map((r) => makeDeliverable(r.state, r.due_at));
 
+    const badgeResult = await getDeliverablesPastDueCount("project-1");
     const viewBlockedCount = deliverables.filter(
       (d) => classifyBucket(d, TODAY) === "blocked",
     ).length;
 
-    expect(badgeCount).toBe(2);
+    expect(badgeResult).toEqual({ ok: true, data: 2 });
     expect(viewBlockedCount).toBe(2);
-    expect(badgeCount).toBe(viewBlockedCount);
+    if (badgeResult.ok) {
+      expect(badgeResult.data).toBe(viewBlockedCount);
+    }
   });
 });

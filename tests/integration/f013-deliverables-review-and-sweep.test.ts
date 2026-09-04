@@ -564,5 +564,118 @@ describe.skipIf(!haveCreds)(
       const { data: task } = await admin.from("tasks").select("status_id").eq("id", taskId).single();
       expect(task!.status_id).toBe(blockedStatusId);
     });
+
+    // F016k (M3 remediation round 2, item 2): before this feature, the
+    // ONLY tested branch of `clear_client_deliverable_swept_at` was the
+    // due_at change above -- deleting the trigger's
+    // `(new.state in ('accepted', 'waived') and old.state not in
+    // ('accepted', 'waived'))` clause entirely would have kept the whole
+    // suite green. These two tests cover that clause's own two states
+    // directly, via a raw UPDATE (not the RPC) so each is isolated to
+    // the trigger itself rather than also depending on
+    // accept_deliverable_atomic's own logic.
+    it("F016k/AS-030: swept_at clears when a deliverable is accepted", async () => {
+      const taskId = await makeTask(todoStatusId);
+      const d1 = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+      const { data: sweptRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(sweptRow!.swept_at).not.toBeNull();
+
+      await admin.from("client_deliverables").update({ state: "accepted" }).eq("id", d1.id);
+
+      const { data: clearedRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(clearedRow!.swept_at).toBeNull();
+    });
+
+    it("F016k/AS-030: swept_at clears when a deliverable is waived", async () => {
+      const taskId = await makeTask(todoStatusId);
+      const d1 = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+      const { data: sweptRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(sweptRow!.swept_at).not.toBeNull();
+
+      await admin.from("client_deliverables").update({ state: "waived" }).eq("id", d1.id);
+
+      const { data: clearedRow } = await admin
+        .from("client_deliverables")
+        .select("swept_at")
+        .eq("id", d1.id)
+        .single();
+      expect(clearedRow!.swept_at).toBeNull();
+    });
+
+    // F016k (item 3): `accept_deliverable_atomic` can now produce
+    // `state = 'waived'` — previously nothing in the product could reach
+    // this state at all, even though the enum value, the sweep's
+    // exclusion filter and the swept_at trigger's own branch (tested
+    // above) all already assumed it existed.
+    it("F016k/AS-030: a team member can waive a deliverable, with no note required", async () => {
+      const deliverable = await makeDeliverable({ state: "in_progress" });
+
+      const { data, error } = await memberSession.rpc("accept_deliverable_atomic", {
+        p_deliverable_id: deliverable.id,
+        p_decision: "waived",
+        p_note: null,
+      });
+      expect(error).toBeNull();
+      const row = Array.isArray(data) ? data[0] : data;
+      expect(row?.state).toBe("waived");
+
+      const { data: dbRow } = await admin
+        .from("client_deliverables")
+        .select("state, accepted_at, accepted_by")
+        .eq("id", deliverable.id)
+        .single();
+      expect(dbRow?.state).toBe("waived");
+      // A waive is not an acceptance -- these must stay null, unlike the
+      // 'accepted' path.
+      expect(dbRow?.accepted_at).toBeNull();
+      expect(dbRow?.accepted_by).toBeNull();
+    });
+
+    it("F016k/AS-030 negative: a waived deliverable's overdue-ness no longer blocks its task", async () => {
+      const taskId = await makeTask(todoStatusId);
+      const deliverable = await makeDeliverable({
+        state: "in_progress",
+        blocking: true,
+        dueAt: "2020-01-01",
+        taskId,
+      });
+
+      await memberSession.rpc("accept_deliverable_atomic", {
+        p_deliverable_id: deliverable.id,
+        p_decision: "waived",
+        p_note: null,
+      });
+
+      await admin.rpc("sweep_overdue_blocking_deliverables");
+
+      const { data: task } = await admin.from("tasks").select("status_id").eq("id", taskId).single();
+      expect(task!.status_id).toBe(todoStatusId);
+    });
   },
 );
