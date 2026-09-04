@@ -14,6 +14,7 @@
 // <ListStatusSelect>.
 
 import Link from "next/link";
+import { CircleDot, Eye } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
@@ -269,6 +270,30 @@ function MyTaskRowItem({
       >
         {PRIORITY_LABELS[priority]}
       </Badge>
+      {/* F083: same icon+text client-visible/awaiting-client indicators
+          as the board's TaskCard (components/task/task-card.tsx) — "which
+          of my tasks is the client watching" is one of the two questions
+          the portal creates that My Tasks couldn't answer before this. */}
+      {row.clientVisible && (
+        <span
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+          data-testid="client-visible-indicator"
+        >
+          <Eye className="size-3" aria-hidden="true" />
+          <span className="sr-only">Client can see this task</span>
+          Client-visible
+        </span>
+      )}
+      {row.pendingClientApproval && (
+        <span
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
+          data-testid="awaiting-client-indicator"
+        >
+          <CircleDot className="size-3" aria-hidden="true" />
+          <span className="sr-only">Awaiting client decision</span>
+          Awaiting client
+        </span>
+      )}
       {/* F231 (AS-438): inline status change, resolved against THIS row's
           own project's columns. */}
       <MyTaskStatusCell

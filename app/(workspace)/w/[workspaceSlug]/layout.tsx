@@ -53,6 +53,7 @@ import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/proje
 // server-fetched-by-the-layout convention as every other sidebar figure
 // on this page.
 import { getOpenApprovalsForWorkspace } from "@/lib/queries/approvals";
+import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 
 // AS-022: force every request under /w/* through a real server round-trip
@@ -183,6 +184,7 @@ export default async function WorkspaceLayout({
     { count: clientMemberCount },
     { data: projectMemberRows, error: projectMemberRowsError },
     openApprovals,
+    openClientRequestCount,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -240,6 +242,11 @@ export default async function WorkspaceLayout({
     // to an empty array internally (logging its own error), so a
     // failure here shows an un-badged nav item, never a broken layout.
     getOpenApprovalsForWorkspace(activeWorkspace.id),
+
+    // F083: open (submitted/in_review) client-request count for the
+    // sidebar's "Client requests" badge — same "non-fatal, fails open to
+    // 0" convention as openApprovals above.
+    getOpenClientRequestCountForWorkspace(activeWorkspace.id),
   ]);
 
   if (membershipsError) {
@@ -371,6 +378,7 @@ export default async function WorkspaceLayout({
             isFavorite: favoriteProjectIds.has(project.id),
           }))}
           approvalsCount={openApprovals.length}
+          requestsCount={openClientRequestCount}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           <AppHeader

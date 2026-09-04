@@ -14,7 +14,7 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { Ban, Clock, ListTree, Repeat, TriangleAlert } from "lucide-react";
+import { Ban, Clock, Eye, ListTree, CircleDot, Repeat, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
@@ -189,6 +189,19 @@ export type TaskCardTask = {
    * select `tags` yet simply never puts a task in any tag lane (it falls
    * through to the "None" lane instead of crashing). */
   tags?: string[];
+  // F083: whether this task is currently shared with the client
+  // (`tasks.client_visible`) — same field the task detail sheet's
+  // ClientVisibilityToggle reads/writes. Optional/undefined means "no
+  // client on this workspace" OR "this query hasn't been updated to
+  // select it yet", same "safe default" convention as every other
+  // optional field on this type — the indicator below simply doesn't
+  // render in either case.
+  clientVisible?: boolean;
+  // F083: whether this task is currently awaiting a client decision
+  // (`tasks.pending_client_approval`) — same field the task detail
+  // sheet's PendingApprovalToggle reads/writes. Optional/undefined, same
+  // "safe default" convention as `clientVisible` above.
+  pendingClientApproval?: boolean;
 };
 
 export function TaskCard({
@@ -314,6 +327,38 @@ export function TaskCard({
               month: "short",
               day: "numeric",
             })}
+          </span>
+        )}
+        {/* F083: "the client can see this" is icon + text, never colour
+            alone — same pairing this card already uses for overdue above
+            (line 311-312 pattern). Distinct from the "awaiting client"
+            chip below: a task can be visible without being awaited, or
+            vice versa is not possible in practice but the two flags are
+            independent columns, so both render independently. */}
+        {task.clientVisible && (
+          <span
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+            data-testid="client-visible-indicator"
+          >
+            <Eye className="size-3" aria-hidden="true" />
+            <span className="sr-only">Client can see this task</span>
+            Client-visible
+          </span>
+        )}
+        {/* F083: "waiting on the client" — icon + text, never colour
+            alone, same pairing convention. Uses the same amber
+            "informing, not alarming" treatment the over-estimate badge
+            above uses (F269's AS-526-hardened `text-amber-700`/
+            `dark:text-amber-500` contrast pair), since this is a fact
+            about the task, not an error. */}
+        {task.pendingClientApproval && (
+          <span
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
+            data-testid="awaiting-client-indicator"
+          >
+            <CircleDot className="size-3" aria-hidden="true" />
+            <span className="sr-only">Awaiting client decision</span>
+            Awaiting client
           </span>
         )}
         {!!task.totalMinutes && task.totalMinutes > 0 && (

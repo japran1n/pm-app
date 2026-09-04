@@ -16,6 +16,7 @@
 // mechanism.
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import NextLink from "next/link";
 import { Link as LinkIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,17 @@ import { withdrawApproval } from "@/lib/actions/approvals";
 import type { WorkspaceApproval } from "@/lib/queries/approvals";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // F010: WorkspaceApproval plus the "who must decide" name, resolved once
 // per (projectId, decisionType) pair by the page (lib/queries/approvals.ts's
@@ -142,15 +154,58 @@ export function ApprovalsQueue({
               const pastDue = isPastDue(approval);
               const busy = busyId === approval.id && isPending;
 
+              // F083: "What" links through to the underlying task/doc when
+              // the queue row has one to link to — a task-subject approval
+              // deep-links into the board the same way My Tasks/Timeline
+              // already do (`?taskId=` — see e.g. my-tasks/page.tsx), a
+              // doc-subject approval links to the doc editor. `phase` and
+              // `artifact` subjects (and any task/doc whose subject row has
+              // since been deleted, per WorkspaceApproval's own comment)
+              // have no single destination page, so those stay plain text
+              // rather than link to something that 404s.
+              const whatHref =
+                approval.subjectId && approval.subjectType === "task"
+                  ? `/w/${workspaceSlug}/projects/${approval.projectId}/board?taskId=${approval.subjectId}`
+                  : approval.subjectId && approval.subjectType === "doc"
+                    ? `/w/${workspaceSlug}/docs/${approval.subjectId}`
+                    : null;
+
               return (
                 <tr key={approval.id} className="align-top">
-                  <td className="px-4 py-3 font-medium">{approval.title}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{approval.projectName}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {whatHref ? (
+                      <NextLink href={whatHref} className="underline-offset-2 hover:underline">
+                        {approval.title}
+                      </NextLink>
+                    ) : (
+                      approval.title
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    <NextLink
+                      href={`/w/${workspaceSlug}/projects/${approval.projectId}/board`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {approval.projectName}
+                    </NextLink>
+                  </td>
                   <td className="px-4 py-3">
                     <Badge variant="outline">{DECISION_TYPE_LABEL[approval.decisionType]}</Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {approval.decisionOwnerName ?? "Unassigned"}
+                    {approval.decisionOwnerName ?? (
+                      // F083: "Unassigned" links straight to the settings
+                      // panel that fixes it (project settings' own
+                      // DecisionOwnersSection) — the very problem this
+                      // screen exists to surface should be one click from
+                      // its fix.
+                      <NextLink
+                        href={`/w/${workspaceSlug}/projects/${approval.projectId}/settings`}
+                        className="underline-offset-2 hover:underline"
+                      >
+                        Unassigned
+                      </NextLink>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -180,18 +235,47 @@ export function ApprovalsQueue({
                         <LinkIcon className="size-3.5" aria-hidden="true" />
                         Copy link
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => handleWithdraw(approval)}
-                      >
-                        {busy ? (
-                          <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                        ) : null}
-                        Withdraw
-                      </Button>
+                      {/* F083: withdrawal is permanent —
+                          prevent_approval_request_settled_update
+                          (lib/actions/approvals.ts's own comment on
+                          withdrawApproval) rejects any further update once
+                          state leaves 'pending', for every caller including
+                          the service-role admin client. One unconfirmed
+                          click on the most destructive control on a screen
+                          a PM scans every morning was the gap; this matches
+                          the AlertDialog pattern used for the equally
+                          irreversible phase delete
+                          (components/project/phase-list.tsx). */}
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button variant="outline" size="sm" type="button" disabled={busy}>
+                              {busy ? (
+                                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                              ) : null}
+                              Withdraw
+                            </Button>
+                          }
+                        />
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Withdraw &ldquo;{approval.title}&rdquo;?
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              The client&apos;s pending decision disappears and
+                              cannot be reopened — it can only be re-raised as
+                              a brand new request.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleWithdraw(approval)}>
+                              Withdraw
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </td>
                 </tr>

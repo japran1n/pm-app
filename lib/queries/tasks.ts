@@ -312,7 +312,12 @@ export async function getProjectListTasks(
       // client-side — see TaskCardTask.parentTaskId's own comment for why
       // this is presentation-only and does not remove anything from this
       // already-flat query (AS-275).
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, projects(key), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
+      // F083: `client_visible, pending_client_approval` added so the list
+      // view's TaskCards can render the client-visibility/awaiting-client
+      // indicators, same as the detail sheet's own toggles read/write —
+      // see TaskCardTask.clientVisible/pendingClientApproval's own
+      // comments.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, projects(key), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -414,6 +419,9 @@ export async function getProjectListTasks(
     parentTaskId: task.parent_task_id,
     // F434-F440: see this function's select above.
     taskType: firstRelated(task.task_types) ?? null,
+    // F083: see this function's select above.
+    clientVisible: task.client_visible ?? false,
+    pendingClientApproval: task.pending_client_approval ?? false,
   }));
 }
 
@@ -476,7 +484,8 @@ export async function getWorkspaceListTasks(
       // `TaskCard`s also receive real recurrence data, same as the
       // board/list views.
       // F222 (AS-410): see getProjectListTasks above for the rationale.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category)",
+      // F083: see getProjectListTasks above for the rationale.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, client_visible, pending_client_approval, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -583,6 +592,9 @@ export async function getWorkspaceListTasks(
     assigneeIds: (task.task_assignees ?? []).map((row) => row.user_id),
     // F179 follow-up (AS-317): see this function's select above.
     recurrence: task.recurrence as RecurrenceRule | null,
+    // F083: see this function's select above.
+    clientVisible: task.client_visible ?? false,
+    pendingClientApproval: task.pending_client_approval ?? false,
   }));
 
   // UX-20: "overdue"/"due_soon"/"completed" aren't filterable columns —

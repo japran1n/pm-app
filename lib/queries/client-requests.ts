@@ -39,6 +39,39 @@ export type TeamClientRequest = {
   trackOverridden: boolean;
 };
 
+// F083: count of client requests still waiting on the team — "submitted"
+// (not yet triaged) or "in_review" (triaged, awaiting a decision) — for
+// the sidebar's "Client requests" badge. Mirrors
+// `getOpenApprovalsForWorkspace`'s "count only the still-open state, fail
+// open to 0 rather than break the layout" convention (lib/queries/approvals.ts).
+export async function getOpenClientRequestCountForWorkspace(
+  workspaceId: string,
+): Promise<number> {
+  const supabase = await createClient();
+
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  const projectIds = (projects ?? []).map((p) => p.id as string);
+  if (projectIds.length === 0) return 0;
+
+  const { count, error } = await supabase
+    .from("client_requests")
+    .select("id", { count: "exact", head: true })
+    .in("project_id", projectIds)
+    .in("status", ["submitted", "in_review"]);
+
+  if (error) {
+    logger.error("getOpenClientRequestCountForWorkspace failed", { error });
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 export async function getWorkspaceClientRequests(
   workspaceId: string,
 ): Promise<TeamClientRequest[]> {

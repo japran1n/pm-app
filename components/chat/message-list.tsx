@@ -36,6 +36,17 @@ import { useIsUserOnline } from "@/components/nav/workspace-presence-provider";
 // (use-chat-messages-realtime) propagates the resulting UPDATE to every open
 // client, this component doesn't need to locally patch state after success.
 import { editMessage, deleteMessage } from "@/lib/actions/chat-messages";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
@@ -259,8 +270,12 @@ function MessageRow({
     setEditing(false);
   }, [editText, bodyText, message.id]);
 
+  // F083: was `window.confirm` — the one unstyled, unthemed,
+  // keyboard-inconsistent confirmation left in the app, on a permanent
+  // deletion, in the highest-frequency surface. Converted to the same
+  // AlertDialog pattern this codebase already uses everywhere else (18+
+  // call sites), rendered from the Trash2 button below.
   const handleDelete = useCallback(async () => {
-    if (!window.confirm("Delete this message?")) return;
     await deleteMessage(message.id);
   }, [message.id]);
 
@@ -382,14 +397,34 @@ function MessageRow({
           >
             <Pencil className="size-3.5" />
           </button>
-          <button
-            type="button"
-            title="Delete"
-            onClick={() => void handleDelete()}
-            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <button
+                  type="button"
+                  title="Delete"
+                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              }
+            />
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this message?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This can&apos;t be undone. The message will be removed for
+                  everyone in this channel.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void handleDelete()}>
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
     </div>

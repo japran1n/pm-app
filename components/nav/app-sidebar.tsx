@@ -108,6 +108,7 @@ function navGroups(
   canManageWorkspace: boolean,
   hasClient: boolean,
   approvalsCount: number,
+  requestsCount: number,
 ): { label: string | null; items: NavItem[] }[] {
   const work: NavItem[] = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -143,6 +144,10 @@ function navGroups(
             href: `/w/${workspaceSlug}/requests`,
             label: "Client requests",
             icon: Inbox,
+            // F083: a change request is at least as time-sensitive as a
+            // pending approval — same count-badge treatment as
+            // "Approvals" directly below, threaded the same way.
+            count: requestsCount,
           },
           // F010: same "only present when the workspace has a client at
           // all" gating as Client requests above — an approval queue is
@@ -219,6 +224,7 @@ function SidebarContent({
   initialUnreadCount,
   projects,
   approvalsCount = 0,
+  requestsCount = 0,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -231,6 +237,12 @@ function SidebarContent({
   initialUnreadCount: number;
   projects: SidebarProjectItem[];
   approvalsCount?: number;
+  /** F083: open (submitted/in_review) client-request count for the
+   * "Client requests" nav item's badge — server-fetched by the layout via
+   * `getOpenClientRequestCountForWorkspace(...)`. Default `0` keeps every
+   * existing caller/test rendering the item with no badge instead of
+   * crashing, same convention as `approvalsCount` above. */
+  requestsCount?: number;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -238,7 +250,14 @@ function SidebarContent({
   // the same server-fetched `hasClient` flag the task sheet's share toggle
   // uses rather than a prop threaded through two more component layers.
   const hasClient = useMembership()?.hasClient ?? false;
-  const groups = navGroups(workspaceSlug, isGuest, canManageWorkspace, hasClient, approvalsCount);
+  const groups = navGroups(
+    workspaceSlug,
+    isGuest,
+    canManageWorkspace,
+    hasClient,
+    approvalsCount,
+    requestsCount,
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -415,6 +434,7 @@ export function AppSidebar({
   initialUnreadCount = 0,
   projects = [],
   approvalsCount = 0,
+  requestsCount = 0,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -439,6 +459,12 @@ export function AppSidebar({
    * Default `0` keeps every existing caller/test rendering the item with
    * no badge instead of crashing. */
   approvalsCount?: number;
+  /** F083: open client-request count for the "Client requests" nav
+   * item's badge — server-fetched by the layout via
+   * `getOpenClientRequestCountForWorkspace(...)`. Default `0` keeps every
+   * existing caller/test rendering the item with no badge instead of
+   * crashing. */
+  requestsCount?: number;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -465,6 +491,7 @@ export function AppSidebar({
           initialUnreadCount={initialUnreadCount}
           projects={projects}
           approvalsCount={approvalsCount}
+          requestsCount={requestsCount}
         />
       </aside>
 
@@ -506,6 +533,7 @@ export function AppSidebar({
               initialUnreadCount={initialUnreadCount}
               projects={projects}
               approvalsCount={approvalsCount}
+              requestsCount={requestsCount}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>

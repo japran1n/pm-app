@@ -79,6 +79,12 @@ export type MyTaskRow = {
   // true), never as two rows.
   isWatched: boolean;
   isAssigned: boolean;
+  // F083: same client-visibility/awaiting-client fields the board/list
+  // TaskCards carry (TaskCardTask.clientVisible/pendingClientApproval) —
+  // "which of my tasks is the client watching" is exactly the question
+  // My Tasks needs to answer without opening every row.
+  clientVisible: boolean;
+  pendingClientApproval: boolean;
 };
 
 export type MyTasksBuckets = {
@@ -94,7 +100,9 @@ function firstRelated<T>(relation: T | T[] | null | undefined): T | null {
 }
 
 const TASK_SELECT_COLUMNS =
-  "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category)";
+  // F083: `client_visible, pending_client_approval` added — see
+  // MyTaskRow.clientVisible/pendingClientApproval's own comment.
+  "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, client_visible, pending_client_approval, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category)";
 
 function toRow(
   task: {
@@ -105,6 +113,8 @@ function toRow(
     due_date: string | null;
     number: number;
     project_id: string;
+    client_visible?: boolean | null;
+    pending_client_approval?: boolean | null;
     projects: { id: string; key: string | null; name: string } | { id: string; key: string | null; name: string }[] | null;
     project_statuses: { category: string } | { category: string }[] | null;
   },
@@ -127,6 +137,8 @@ function toRow(
     bucket: bucketForDueDate(task.due_date, timeZone),
     isWatched: false,
     isAssigned: false,
+    clientVisible: task.client_visible ?? false,
+    pendingClientApproval: task.pending_client_approval ?? false,
   };
 }
 

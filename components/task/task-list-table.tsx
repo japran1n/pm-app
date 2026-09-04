@@ -28,7 +28,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleDot, Eye, TriangleAlert } from "lucide-react";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { formatDuration } from "@/lib/time/format-duration";
@@ -481,6 +481,30 @@ export function TaskListTable({
                       <span aria-hidden="true" className="size-5 shrink-0" />
                     )}
                     <span>{task.title}</span>
+                    {/* F083: same icon+text indicators as the board's
+                        TaskCard (components/task/task-card.tsx) — see
+                        that file's own comment for the pairing
+                        rationale. Compact icon-only here (list row is
+                        already dense); the sr-only text still carries
+                        the same meaning for assistive tech. */}
+                    {task.clientVisible && (
+                      <span
+                        className="inline-flex shrink-0 items-center text-muted-foreground"
+                        data-testid="client-visible-indicator"
+                      >
+                        <Eye className="size-3.5" aria-hidden="true" />
+                        <span className="sr-only">Client can see this task</span>
+                      </span>
+                    )}
+                    {task.pendingClientApproval && (
+                      <span
+                        className="inline-flex shrink-0 items-center text-amber-700 dark:text-amber-500"
+                        data-testid="awaiting-client-indicator"
+                      >
+                        <CircleDot className="size-3.5" aria-hidden="true" />
+                        <span className="sr-only">Awaiting client decision</span>
+                      </span>
+                    )}
                     {childCountByParentId.has(task.id) && (
                       <span className="text-xs text-muted-foreground">
                         {childCountByParentId.get(task.id)}

@@ -34,6 +34,27 @@ import TimelineError from "@/app/(workspace)/w/[workspaceSlug]/timeline/error";
 import TrashError from "@/app/(workspace)/w/[workspaceSlug]/trash/error";
 import RootError from "@/app/error";
 
+// F083: 12 routes (13 with the new settings/portal route, plus 2 more —
+// t/[taskKey] and requests/preview-as-client — the audit found) had no
+// error.tsx at all, so a query failure escaped to the ROOT boundary,
+// destroying the sidebar. Added alongside every other route's
+// error.tsx/loading.tsx pair.
+import ProjectSettingsBudgetError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/budget/error";
+import ProjectSettingsMeasurementError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/measurement/error";
+import ProjectSettingsRecordError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/record/error";
+import ProjectSettingsSiteError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/site/error";
+import ProjectSettingsPortalError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/portal/error";
+import ProjectHoursError from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/hours/error";
+import RequestsError from "@/app/(workspace)/w/[workspaceSlug]/requests/error";
+import PreviewAsClientError from "@/app/(workspace)/w/[workspaceSlug]/preview-as-client/error";
+import SettingsTaskTypesError from "@/app/(workspace)/w/[workspaceSlug]/settings/task-types/error";
+import SettingsStatusTemplatesError from "@/app/(workspace)/w/[workspaceSlug]/settings/status-templates/error";
+import TaskByKeyError from "@/app/(workspace)/w/[workspaceSlug]/t/[taskKey]/error";
+import DocsError from "@/app/(workspace)/w/[workspaceSlug]/docs/error";
+import DocError from "@/app/(workspace)/w/[workspaceSlug]/docs/[docId]/error";
+import ChatError from "@/app/(workspace)/w/[workspaceSlug]/chat/error";
+import ChatChannelError from "@/app/(workspace)/w/[workspaceSlug]/chat/[channelId]/error";
+
 afterEach(() => {
   cleanup();
 });
@@ -67,6 +88,22 @@ const routeErrorBoundaries: Array<{
   { name: "timeline", Component: TimelineError },
   { name: "trash", Component: TrashError },
   { name: "root app shell (app/error.tsx)", Component: RootError },
+  // F083 additions:
+  { name: "project settings budget", Component: ProjectSettingsBudgetError },
+  { name: "project settings measurement", Component: ProjectSettingsMeasurementError },
+  { name: "project settings record", Component: ProjectSettingsRecordError },
+  { name: "project settings site", Component: ProjectSettingsSiteError },
+  { name: "project settings portal", Component: ProjectSettingsPortalError },
+  { name: "project hours", Component: ProjectHoursError },
+  { name: "requests", Component: RequestsError },
+  { name: "preview as client", Component: PreviewAsClientError },
+  { name: "settings task types", Component: SettingsTaskTypesError },
+  { name: "settings status templates", Component: SettingsStatusTemplatesError },
+  { name: "task by key", Component: TaskByKeyError },
+  { name: "docs", Component: DocsError },
+  { name: "doc", Component: DocError },
+  { name: "chat", Component: ChatError },
+  { name: "chat channel", Component: ChatChannelError },
 ];
 
 describe("AS-500: route error boundaries never blank the app shell", () => {
