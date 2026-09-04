@@ -232,7 +232,39 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
         name: "Client-inserted project",
         baseline_frozen_at: new Date().toISOString(),
       });
+      // F025d: asserts the SPECIFIC rejection (the writer-role check on
+      // baseline_frozen_at), not merely that some error occurred. Before
+      // F025d, `projects_assign_key` (BEFORE INSERT, sorts before this
+      // guard by trigger name) populated `key` first on EVERY insert, so
+      // this insert raised a DIFFERENT 42501 -- the generic "not an
+      // allow-listed column" exception naming `key`, raised before the
+      // writer-role check for baseline_frozen_at was ever reached -- and
+      // the test passed for the wrong reason.
       expect(error).not.toBeNull();
+      expect(error?.code).toBe("42501");
+      expect(error?.message).toContain("baseline-freeze");
+      expect(error?.message).not.toContain("not an allow-listed column");
+    });
+
+    it("F025d AS-primary: an ordinary workspace member CAN create a project over PostgREST as an authenticated session (the clean insert case no test previously covered)", async () => {
+      const { data, error } = await memberSession
+        .from("projects")
+        .insert({ workspace_id: workspaceId, name: "F025d clean member-created project" })
+        .select("id, key, workspace_id, name, task_counter, portal_enabled, baseline_frozen_at")
+        .single();
+
+      expect(error).toBeNull();
+      expect(data?.id).toBeTruthy();
+      // The trigger-assigned key must actually be present and non-sentinel
+      // -- proving the bypass let assign_project_key()'s write through,
+      // not merely that the guard didn't fire.
+      expect(data?.key).toBeTruthy();
+      expect(data?.key).not.toBe("");
+      expect(data?.task_counter).toBe(0);
+      expect(data?.portal_enabled).toBe(false);
+      expect(data?.baseline_frozen_at).toBeNull();
+
+      if (data?.id) await admin.from("projects").delete().eq("id", data.id);
     });
 
     it("an ordinary member (a writer) CAN unfreeze, and CAN re-freeze", async () => {
