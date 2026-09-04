@@ -156,10 +156,23 @@
   --brand: var(--gg-brand-500);
   --brand-foreground: var(--gg-light-100);
   /* F004: dark-theme half of the same validated four (see :root's
-     comment above) -- lighter/more saturated so each still clears
-     contrast against the near-black ground. */
-  --status-waiting: #b98d28;
-  --status-progress: #5a86dc;
+     comment above), re-stepped for F110 (missions/20260903-portal): OKLCH
+     lightness has to sit in [0.48, 0.67] against this surface (the
+     validator's dark-mode band -- NOT the light-mode band above, which is
+     wider), and #7aa5f3/#dbb03e both sat above that ceiling. The fix
+     deliberately keeps waiting/progress on the darker side of the band
+     rather than the lighter side: pushing amber toward the middle of the
+     band cut its CVD (colour-blind) separation from #dd5560 (worst
+     adjacent pair, deuteranopia) from a comfortable ΔE 15.8 down to a
+     WARN-band 6.6 -- legal per the validator but a real loss for a
+     deuteranopic reader on tokens this page now leans on hard (bars,
+     pipelines, bullet charts). Darkening amber further, toward the low
+     end of the band, recovers full separation (ΔE 8.1, back above the
+     validator's own PASS target of 8.0) with normal-vision and contrast
+     margins intact -- see F110's handoff for the full set of validator
+     runs this was chosen from. */
+  --status-waiting: #996c1a;
+  --status-progress: #2d75a9;
   --status-blocked: #dd5560;
   --status-done: #2f9e73;
   --status-waiting-bg: color-mix(in srgb, var(--status-waiting) 18%, transparent);

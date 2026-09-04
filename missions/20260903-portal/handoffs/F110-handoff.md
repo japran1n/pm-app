@@ -10,7 +10,10 @@ by the orchestrator, not via a `features/F110-*.md` spec/clarification pair
 assertions are claimed here; this is a fix + a UI addition on top of
 already-covered F009/F085 surfaces. All pre-existing AS-021/022/023/025/085
 tests in `components/portal/approval-card.test.tsx` still pass unchanged
-(see Commands run).
+(see Commands run). This handoff supersedes my own earlier version of
+itself for Part A: the coordinator reviewed the first palette fix and
+found it traded away CVD separation it shouldn't have; Part A below is the
+corrected version, with both attempts' validator output shown.
 
 ## Files changed
 app/globals.css
@@ -19,9 +22,14 @@ components/portal/approval-card.test.tsx
 missions/20260903-portal/handoffs/F110-handoff.md
 
 ## Commands run
-`node <dataviz>/scripts/validate_palette.js "#2f9e73,#5a86dc,#b98d28,#dd5560" --mode dark` (0) — see full output below
-`npx vitest run components/portal/approval-card.test.tsx` (0) — 25 passed (21 pre-existing unchanged + 4 new F110 age-bar tests)
-`npx vitest run tests/unit/server-client-boundary-imports.test.ts` (0) — 1 passed
+`node validate_palette.js "#2f9e73,#7aa5f3,#dbb03e,#dd5560" --mode dark` (1) — starting point, FAIL on lightness band, full output in Decisions made
+`node validate_palette.js "#2f9e73,#5a86dc,#b98d28,#dd5560" --mode dark` (0) — first (reverted) pass, ALL CHECKS PASS but CVD WARN at ΔE 6.6 — not shipped
+`node validate_palette.js "#2f9e73,#7aa5f3,#c78605,#dd5560" --mode dark` (1) — control run proving blue alone (unmoved) fails the band independent of amber
+`node validate_palette.js "#2f9e73,#2d75a9,#996c1a,#dd5560" --mode dark` (0) — final, shipped: ALL CHECKS PASS, CVD is a genuine PASS (ΔE 8.1), not a WARN
+`node validate_palette.js "#12784f,#3670e1,#b57a00,#b8332a" --mode light` (0) — light palette re-confirmed untouched/passing after Part A changes
+`grep -n "const BAND" validate_palette.js` (0) — confirmed dark band is [0.48, 0.67], not the light band's [0.43, 0.77] the brief quoted
+`node -e '... validate(["#2f9e73","#7aa5f3","#2f9e73","#2f9e73"], {mode:"dark"}) ...'` (0) — isolated proof that #7aa5f3 alone is 0.053 over the dark ceiling
+`npx vitest run components/portal/approval-card.test.tsx components/portal/budget-bar.test.tsx components/portal/deliverable-row.test.tsx components/portal/page-pipeline.test.tsx components/portal/metric-comparison-card.test.tsx tests/unit/server-client-boundary-imports.test.ts` (0) — 6 files, 54 passed
 `npx tsc --noEmit` (0)
 `npm run build` (0)
 `curl -sL http://localhost:3000/dev-login?email=nina@demo.test` (200, redirected to `/portal/acme-studio`)
@@ -29,55 +37,136 @@ missions/20260903-portal/handoffs/F110-handoff.md
 
 ## Decisions made
 
-### Part A — dark status palette re-step
-- Ran the validator on the current dark palette first to confirm the
-  starting point matched what was reported:
-  ```
-  Palette (dark, surface #1a1a19, categorical): 4 slots
-    [FAIL] Lightness band   outside band: [["#7aa5f3",0.723],["#dbb03e",0.776]]
-    [PASS] Chroma floor
-    [PASS] CVD separation      worst adjacent #dd5560↔#dbb03e ΔE 15.8 (deutan) · tritan 9.4
-    [PASS] Normal-vision floor worst adjacent #7aa5f3↔#2f9e73 ΔE 20.8 (normal)
-    [PASS] Contrast vs surface all 4 >= 3:1
-  ```
-- Darkened `--status-progress` (blue) from `#7aa5f3` (L 0.723) to `#5a86dc`,
-  and `--status-waiting` (amber) from `#dbb03e` (L 0.776) to `#b98d28`,
-  keeping hue/chroma character (still recognisably blue and amber) while
-  pulling both into the lightness band. Iterated the amber down in steps
-  (`#c99b2e` → `#b98d28`) because moving it into the band first surfaced a
-  **new** failure — the amber got close enough to the red in hue/lightness
-  that CVD separation (deutan) dropped from a comfortable 15.8 to a failing
-  ΔE. Had to go one step further and check the full report at each step
-  rather than stopping once lightness passed, per the instruction not to
-  pick a lesser evil silently. Final value passes both:
-  ```
-  node validate_palette.js "#2f9e73,#5a86dc,#c99b2e,#dd5560" --mode dark
-  [FAIL] Lightness band   outside band: [["#c99b2e",0.714]]   <- one more step needed
-  ```
-  ```
-  node validate_palette.js "#2f9e73,#5a86dc,#b98d28,#dd5560" --mode dark
-    [PASS] Lightness band       all 4 inside L 0.48–0.67
-    [PASS] Chroma floor         all 4 >= 0.1
-    [WARN] CVD separation       worst adjacent #dd5560↔#b98d28 ΔE 6.6 (deutan) · tritan 3.8
-    [PASS] Normal-vision floor  worst adjacent #dd5560↔#b98d28 ΔE 16.7 (normal)
-    [PASS] Contrast vs surface  all 4 >= 3:1
-    → ALL CHECKS PASS  (CVD in the 6–8 floor band is legal ONLY with secondary
-      encoding: direct labels, gaps, or texture)
-  ```
-  The CVD line is a WARN, not a FAIL, and the validator's own footer says
-  this is legal *given* secondary encoding. This codebase already gives
-  every status token secondary encoding wherever it distinguishes state:
-  the approval due chip and the new age-bar overdue marker both pair the
-  colour with an icon and explicit text ("Overdue" / "N days overdue"),
-  never colour alone (grep `text-status-blocked` usage across
-  `components/portal/*.tsx` — every non-decorative use is adjacent to text
-  or an icon). So this WARN is acceptable as shipped rather than chased
-  further into a fifth colour attempt that would risk drifting the amber
-  out of "recognisably amber."
-- Did not touch the light-mode block (`--status-*` under `:root`), which
-  the validator already reports as passing.
-- `--status-done` (green) and `--status-blocked` (red) in dark mode were
-  left untouched — they were never flagged.
+### Part A — dark status palette re-step (revised after coordinator review)
+
+**Correction to my first pass, and to the brief that started it:** the brief
+described the target band as "L 0.43–0.77." That is the validator's
+**light-mode** band. The dark-mode band the validator actually enforces
+(`BAND.dark` in `validate_palette.js`) is **[0.48, 0.67]** — narrower, and
+with a lower ceiling. Checked directly against the source:
+
+```
+grep -n "const BAND" validate_palette.js
+const BAND = { light: [0.43, 0.77], dark: [0.48, 0.67] };
+```
+
+Two consequences of that correction:
+
+1. `#dbb03e` (amber) at L 0.776 was not "0.006 over a 0.77 ceiling" — it was
+   0.106 over the real 0.67 ceiling.
+2. `#7aa5f3` (blue) at L 0.723 was **not already inside the band** — it was
+   0.053 over the same 0.67 ceiling. Confirmed by isolating it from the
+   other three (which the validator would otherwise also flag independently):
+   ```
+   node -e '... validate(["#2f9e73","#7aa5f3","#2f9e73","#2f9e73"], {mode:"dark"}) ...'
+   ["Lightness band", false, "outside band: [[\"#7aa5f3\",0.723]]"]
+   ```
+   So my first pass's premise — that blue needed to move at all — was correct;
+   what was wrong was treating the *amber* move as the one that cost the
+   separation. Re-tested that directly: reverting blue to `#7aa5f3` and
+   moving only the amber still fails on blue alone, confirming blue's move
+   was never optional:
+   ```
+   node validate_palette.js "#2f9e73,#7aa5f3,#c78605,#dd5560" --mode dark
+   [FAIL] Lightness band   outside band: [["#7aa5f3",0.723]]
+   [WARN] CVD separation   worst adjacent #dd5560↔#c78605 ΔE 7.9 (deutan) · tritan 9.4
+   ```
+
+**What actually cost the separation** was not "blue moved instead of amber"
+— it was that my first pass moved the amber roughly to the *middle* of the
+band (L≈0.64), which brought it close enough to the fixed red
+(`#dd5560`, never allowed to move) in lightness/hue space to collapse
+deuteranopic separation from a comfortable ΔE 15.8 down to a WARN-band 6.6.
+The coordinator's instruction to treat separation as the thing to protect,
+and to check what the minimum move actually is, was the right diagnosis —
+just aimed at the wrong culprit (amber's *position in the band*, not
+whether blue moved).
+
+**Search approach**: rather than hand-picking further hex values, wrote a
+one-off script (deleted after use, not committed) that called the
+validator's own exported `validate()` function across a grid of
+HSL-generated amber/blue candidates, filtering for a genuine `ok: true`
+(no hard FAIL) and reading the reported deutan/tritan ΔE and normal-vision
+ΔE out of the report strings. This let me search hundreds of candidates
+against the validator itself instead of guessing hexes one at a time. Key
+finding: **amber's position within the band, not just "in vs. out," drives
+the separation from red** — the closer amber sits to the band's lighter
+end, the more it converges with red under deuteranopia; the darker end of
+the band (L≈0.35–0.36 in this hue) recovers full separation. Below L≈0.34
+the amber starts reading as brown rather than amber (confirmed by checking
+HSL: saturation stays high, ~70–80%, but at L<34% the swatch is
+indistinguishable from a dark bronze in casual viewing) so I did not chase
+lower values even though they scored marginally higher on deutan ΔE.
+
+Three runs, in order:
+
+```
+# 1. Starting point (unchanged from before this task)
+node validate_palette.js "#2f9e73,#7aa5f3,#dbb03e,#dd5560" --mode dark
+[FAIL] Lightness band       outside band: [["#7aa5f3",0.723],["#dbb03e",0.776]]
+[PASS] Chroma floor          all 4 >= 0.1
+[PASS] CVD separation        worst adjacent #dd5560↔#dbb03e ΔE 15.8 (deutan) · tritan 9.4
+[PASS] Normal-vision floor   worst adjacent #7aa5f3↔#2f9e73 ΔE 20.8 (normal)
+[PASS] Contrast vs surface   all 4 >= 3:1
+
+# 2. My first (reverted) pass — clears the band but costs separation
+node validate_palette.js "#2f9e73,#5a86dc,#b98d28,#dd5560" --mode dark
+[PASS] Lightness band        all 4 inside L 0.48–0.67
+[PASS] Chroma floor          all 4 >= 0.1
+[WARN] CVD separation        worst adjacent #dd5560↔#b98d28 ΔE 6.6 (deutan) · tritan 3.8
+[PASS] Normal-vision floor   worst adjacent #dd5560↔#b98d28 ΔE 16.7 (normal)
+[PASS] Contrast vs surface   all 4 >= 3:1
+→ ALL CHECKS PASS (WARN does not fail the run, but this is the trade the
+  coordinator flagged as wrong — kept here only to show the delta.)
+
+# 3. Final: amber moved to the low end of the band instead of the middle,
+#    blue re-picked alongside it (same grid search, optimising for deutan
+#    ΔE with normal-vision margin >= 1.0 above the 15.0 hard floor)
+node validate_palette.js "#2f9e73,#2d75a9,#996c1a,#dd5560" --mode dark
+[PASS] Lightness band        all 4 inside L 0.48–0.67
+[PASS] Chroma floor          all 4 >= 0.1
+[PASS] CVD separation        worst adjacent #dd5560↔#996c1a ΔE 8.1 (deutan) · tritan 8.4
+[PASS] Normal-vision floor   worst adjacent #dd5560↔#996c1a ΔE 16.1 (normal)
+[PASS] Contrast vs surface   all 4 >= 3:1
+→ ALL CHECKS PASS (CVD is a genuine PASS here, not a WARN — 8.1 clears the
+  validator's own 8.0 target, not just its 6.0 floor.)
+```
+
+**Shipped values**: `--status-progress: #2d75a9` (from `#7aa5f3`),
+`--status-waiting: #996c1a` (from `#dbb03e`), both in the dark-mode block
+only. `--status-done` and `--status-blocked` in dark mode are untouched —
+never flagged. The light-mode block (`:root`) is untouched and still
+reports `ALL CHECKS PASS` (re-ran it after finishing Part A to confirm; see
+Commands run).
+
+**Trade acknowledged**: `#996c1a` is a noticeably deeper/darker amber than
+the light-mode counterpart (`#b57a00`) and than my reverted first attempt —
+this is the real cost of holding deutan separation at genuine-PASS rather
+than floor-legal. It reads as a deep gold/ochre rather than a bright amber
+chip. I judged this an acceptable trade given the coordinator's explicit
+instruction to protect separation over convenience, and confirmed via the
+grid search that no combination at a lighter L than ~0.35 (in this hue,
+with this fixed red) clears the 8.0 deutan target while also keeping
+tritan ≥ 6.0 and the normal-vision floor with a safety margin ≥ 1.0 above
+15.0 — see the search transcript summary below. It was not necessary to
+accept a band miss or fall back to the WARN-band value: a genuine
+all-PASS combination exists, so that's what shipped.
+
+```
+# Grid-search summary (script not committed — ad hoc, run via `node -e`
+# against the validator's own exported validate()):
+# - Amber L >= 0.36 (any hue 33-46°, sat 60-100%, paired against blue
+#   swept across hue 205-226°, sat 50-90%, L 42-66%): zero combinations
+#   reach deutan >= 8.0 while also holding tritan >= 6.0 and normal-vision
+#   margin >= 16.0 (i.e. >= 1.0 above the hard floor).
+# - Amber L = 0.35 is the practical ceiling where such combinations start
+#   to exist; #996c1a / blue #2d75a9 was the best-margined pick found
+#   there (deutan 8.1, tritan 8.4, normal 16.1).
+```
+Also updated the code comment directly above these two variables in
+`app/globals.css` to record the real dark-mode band, why blue needed to
+move independent of amber, and the separation trade-off, so the next
+person reading this file doesn't have to reconstruct this from git blame.
 
 ### Part B — approval ageing bar
 - **Axis decision**: the bar's scale is "days from request to due date,"
@@ -128,15 +217,19 @@ missions/20260903-portal/handoffs/F110-handoff.md
   these were modified.
 
 ## Out-of-scope work needed
-- The dark-mode `[WARN]` on CVD separation between `--status-waiting` and
-  `--status-blocked` (ΔE 6.6, deutan) is in the "legal with secondary
-  encoding" band per the validator's own footer, and this codebase already
-  supplies that encoding everywhere these tokens appear non-decoratively.
-  If a future pass wants to clear the WARN outright (not just satisfy its
-  condition), that needs a wider hue re-step across both amber and red
-  together, which risks drifting one or both out of "recognisably the
-  same colour" — flagging rather than doing silently, per this task's own
-  instruction.
+- (Resolved, kept for the record) The dark-mode CVD WARN from my first
+  pass (ΔE 6.6 between `--status-waiting` and `--status-blocked`) is fixed
+  in the shipped palette (ΔE 8.1, genuine PASS) — see Part A above. No
+  outstanding WARN remains on either mode's palette.
+- `--status-waiting` in dark mode (`#996c1a`) is a visibly deeper/darker
+  amber than its light-mode counterpart (`#b57a00`) — this is the real
+  cost of holding CVD separation at genuine-PASS rather than floor-legal
+  against the fixed `#dd5560` red. If a future design pass wants a lighter
+  dark-mode amber, that requires either loosening the CVD separation
+  target back down (a product/accessibility call, not mine to make
+  unilaterally) or re-deriving a different fixed red, which is out of this
+  task's scope (`--status-blocked` was never flagged and I was told not to
+  touch colors that weren't failing).
 - No spec/clarification files exist for "F110" under
   `missions/20260903-portal/features/` or `clarifications/` — this task
   was dispatched directly by the orchestrator's message rather than
@@ -157,12 +250,15 @@ an overdue item's fill position depend on how long ago it went overdue,
 which is exactly the "overdue reads as complete" failure mode called out
 in the brief.
 
-AUTONOMOUS_DECISION: Left the dark-mode CVD separation check at WARN
-(not chased to a clean PASS) because the validator's own message states
-WARN-band CVD is legal given secondary encoding, and this codebase already
-applies that encoding (icon + text) to every non-decorative use of these
-tokens, including the new age-bar overdue state. Documented as
-out-of-scope rather than silently accepted without justification.
+AUTONOMOUS_DECISION: (superseded) My first pass left the dark-mode CVD
+check at WARN (ΔE 6.6), reasoning that WARN-band separation was legal given
+this codebase's existing icon+text secondary encoding. The coordinator
+reviewed that trade and rejected it: separation should be protected, not
+merely kept legal, given how hard these tokens are now leaned on. Revised
+per that feedback — the shipped palette reaches a genuine PASS (ΔE 8.1),
+achieved by moving the amber to the low end of the lightness band rather
+than its middle, not by accepting the WARN. Full before/after validator
+runs are in Part A above.
 
 ## Notes for the next worker
 - Palette validator lives at
