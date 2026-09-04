@@ -27,7 +27,7 @@ import type { PortalProject } from "@/lib/queries/portal";
 
 type OnCall = {
   event: string;
-  filter: { event: string; schema: string; table: string };
+  filter: { event: string; schema: string; table: string; filter?: string };
   callback: (payload: unknown) => void;
 };
 
@@ -304,6 +304,22 @@ describe("PortalTaskList (F009)", () => {
     });
 
     expect(currentSupabase.removeChannel).toHaveBeenCalledTimes(1);
+  });
+
+  it("test_F081_subscription_is_filtered_to_this_project_id", async () => {
+    // F081: an unfiltered `postgres_changes` binding on `tasks` makes
+    // Realtime RLS-recheck and ship every OTHER project's task writes in
+    // the whole Supabase project to this client, just to have them
+    // discarded client-side (see the reaction-realtime-delivery.test.ts
+    // history this fix references). Asserting the actual `filter` string
+    // passed to `.on()` -- not just that SOME filter object exists --
+    // catches a future regression that adds the binding back with `event`/
+    // `schema`/`table` but drops `filter`.
+    render(<PortalTaskList project={project} workspaceSlug="acme" />);
+    await flushAuthHydration();
+
+    const match = onCalls.find((call) => call.filter.table === "tasks");
+    expect(match?.filter.filter).toBe("project_id=eq.project-1");
   });
 
   it("test_AS_024_no_channel_leak_across_remount", async () => {

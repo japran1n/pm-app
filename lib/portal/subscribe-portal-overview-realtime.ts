@@ -7,15 +7,24 @@
 // environment. The hook (use-portal-overview-realtime.ts) is a thin
 // wrapper: call this in an effect, return the unsubscribe it gives back.
 //
-// Subscribes to `tasks` with NO row filter -- correctness comes from
-// Realtime re-applying the table's RLS SELECT policy before broadcasting,
-// the same pattern components/my-tasks/use-my-tasks-realtime.ts already
-// uses for a workspace-wide (not single-project) subscription. A portal
-// session's RLS already limits what reaches this client to tasks in
-// projects it was granted access to, so no extra client-side scoping is
-// needed here -- only the client_visible/deleted_at/pending_client_approval
-// membership predicate that lib/portal/reconcile-portal-realtime-task.ts
-// (F007) already encodes.
+// F081: this component is mounted in two shapes (see
+// components/portal/portal-overview-live.tsx) -- the multi-project
+// workspace chooser page (no single project to scope to) and the
+// per-project portal shell (`projectId` known). The `tasks` table has no
+// `workspace_id` column (only `project_id`, joined through `projects`), so
+// there is no equality filter that can scope the workspace-chooser case
+// server-side; that path is left genuinely unfiltered and correctness
+// there still comes from Realtime re-applying the table's RLS SELECT
+// policy before broadcasting -- the same pattern
+// components/my-tasks/use-my-tasks-realtime.ts uses for its own
+// workspace-wide (not single-project) subscription. But when `projectId`
+// IS known (the common case -- every per-project portal page), there is no
+// reason to make Realtime RLS-recheck and ship every OTHER project's task
+// writes in the whole Supabase project to this client just to have them
+// discarded by the `pending_client_approval`/project-match predicate in
+// lib/portal/reconcile-portal-realtime-task.ts (F007) -- so that case gets
+// a real `project_id=eq.<projectId>` filter, matching the pattern proven at
+// lib/board/subscribe-board-realtime.ts.
 //
 // One channel for the one table this feature touches, per F003's lesson:
 // co-locating unrelated bindings on a single channel means a publication
@@ -47,8 +56,18 @@ export function subscribeToPortalOverviewRealtime(
   supabase: SupabaseClient,
   workspaceId: string,
   onChange: (event: PortalOverviewRealtimeEvent) => void,
+  // F081: when set, scopes the Realtime row filter (and the channel topic,
+  // so a project-scoped subscriber never shares -- and therefore never
+  // silently inherits the filter of -- a differently-scoped subscriber's
+  // already-open channel for the same workspace) to this one project.
+  // `undefined`/omitted keeps the pre-existing workspace-wide, unfiltered
+  // behaviour the multi-project chooser page genuinely needs (see this
+  // file's header comment for why that case cannot be filtered).
+  projectId?: string,
 ): () => void {
-  const topic = `portal-overview:${workspaceId}`;
+  const topic = projectId
+    ? `portal-overview:${workspaceId}:${projectId}`
+    : `portal-overview:${workspaceId}`;
   return acquireSharedTopicChannel<PortalOverviewRealtimeEvent>(
     supabase,
     topic,
@@ -61,6 +80,7 @@ export function subscribeToPortalOverviewRealtime(
             event: "*",
             schema: "public",
             table: "tasks",
+            ...(projectId ? { filter: `project_id=eq.${projectId}` } : {}),
           },
           (payload: PortalOverviewRealtimeEvent) => {
             dispatch(payload);

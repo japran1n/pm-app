@@ -223,7 +223,20 @@ export function subscribeToPortalTaskListRealtime(
         .channel(topic)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "tasks" },
+          {
+            event: "*",
+            schema: "public",
+            table: "tasks",
+            // F081: server-side row filter matching the pattern already
+            // proven at lib/board/subscribe-board-realtime.ts -- this
+            // surface only ever cares about one project's tasks (the
+            // `projectId` used for the topic name and the
+            // reconcilePortalRealtimeTask predicate below), so there is no
+            // reason to make Realtime RLS-recheck and ship every OTHER
+            // project's task writes in the whole Supabase project to this
+            // client just to have them discarded client-side.
+            filter: `project_id=eq.${projectId}`,
+          },
           (payload: RealtimePostgresChangesPayload<RawTaskRow>) => {
             dispatch(payload);
           },

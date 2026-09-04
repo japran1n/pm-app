@@ -177,7 +177,7 @@ export function PortalOverviewLive({
 
       return next.map((row) => toOverviewTask(row, projectNameById));
     });
-  });
+  }, projectId);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">

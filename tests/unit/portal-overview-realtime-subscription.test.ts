@@ -45,7 +45,7 @@ function createMockSupabaseClient() {
 }
 
 describe("subscribeToPortalOverviewRealtime (AS-024)", () => {
-  it("subscribes on a per-workspace channel, on the tasks table, for all events, with no row filter", () => {
+  it("subscribes on a per-workspace channel, on the tasks table, for all events, with no row filter when no projectId is given (multi-project chooser page -- tasks has no workspace_id column to filter on)", () => {
     const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
     const onChange = vi.fn();
 
@@ -59,6 +59,59 @@ describe("subscribeToPortalOverviewRealtime (AS-024)", () => {
       schema: "public",
       table: "tasks",
     });
+  });
+
+  // F081: an unfiltered `postgres_changes` binding on `tasks` makes
+  // Realtime RLS-recheck and ship every OTHER project's task writes in the
+  // whole Supabase project to this client, just to have them discarded
+  // client-side by the pending_client_approval/project-match predicate.
+  // When the caller (the per-project portal shell) knows its projectId,
+  // there is no reason to pay that cost -- assert the actual `filter`
+  // string, not just that a filter object exists, so a future regression
+  // that drops `filter` while keeping `event`/`schema`/`table` is caught.
+  it("F081: subscribes with a project_id row filter, on a project-scoped channel, when projectId is given", () => {
+    const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
+    const onChange = vi.fn();
+
+    subscribeToPortalOverviewRealtime(
+      supabase as never,
+      "ws-1",
+      onChange,
+      "project-1",
+    );
+
+    expect(channelCalls).toEqual(["portal-overview:ws-1:project-1"]);
+    expect(onCalls).toHaveLength(1);
+    expect(onCalls[0].filter).toEqual({
+      event: "*",
+      schema: "public",
+      table: "tasks",
+      filter: "project_id=eq.project-1",
+    });
+  });
+
+  it("F081: two different projects in the same workspace get distinct, independently-filtered channels", () => {
+    const { supabase, onCalls, channelCalls } = createMockSupabaseClient();
+
+    subscribeToPortalOverviewRealtime(
+      supabase as never,
+      "ws-1",
+      vi.fn(),
+      "project-a",
+    );
+    subscribeToPortalOverviewRealtime(
+      supabase as never,
+      "ws-1",
+      vi.fn(),
+      "project-b",
+    );
+
+    expect(channelCalls).toEqual([
+      "portal-overview:ws-1:project-a",
+      "portal-overview:ws-1:project-b",
+    ]);
+    expect(onCalls[0].filter.filter).toBe("project_id=eq.project-a");
+    expect(onCalls[1].filter.filter).toBe("project_id=eq.project-b");
   });
 
   it("forwards a received payload to onChange unchanged", () => {

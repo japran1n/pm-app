@@ -34,14 +34,24 @@ export type { PortalOverviewRealtimeEvent };
 export function usePortalOverviewRealtime(
   workspaceId: string,
   onChange: (event: PortalOverviewRealtimeEvent) => void,
+  // F081: forwarded to subscribeToPortalOverviewRealtime -- see that
+  // file's header comment. Scopes the underlying Realtime row filter to
+  // this one project when the caller (the per-project portal shell) knows
+  // it; omitted for the multi-project workspace chooser page.
+  projectId?: string | null,
 ) {
   useEffect(() => {
     if (!workspaceId) return;
 
     const supabase = createClient();
     return subscribeWhenAuthenticated(supabase, (client) =>
-      subscribeToPortalOverviewRealtime(client, workspaceId, onChange),
+      subscribeToPortalOverviewRealtime(
+        client,
+        workspaceId,
+        onChange,
+        projectId ?? undefined,
+      ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId]);
+  }, [workspaceId, projectId]);
 }
