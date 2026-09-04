@@ -248,6 +248,52 @@ describe.skipIf(!haveAdminCreds)(
           `Failed to sign in subscriber: ${subscriberSignInErr.message}`,
         );
       }
+
+      // F073 (AS-369 mechanism fix): `subscriberClient` has never opened a
+      // WebSocket yet at this point -- its first `.channel(...).subscribe()`
+      // call anywhere in this file is what actually establishes the
+      // Realtime connection (supabase-js connects lazily). Instrumenting the
+      // first `it` below (recording ms from `.subscribe()` call to the
+      // `SUBSCRIBED` callback, separately from ms from `SUBSCRIBED` to the
+      // event arriving) showed the 13364ms CI overrun was spent almost
+      // entirely on THIS one-time connection handshake, not on delivery
+      // after SUBSCRIBED -- against the real project this handshake alone
+      // measured ~1.1s, and CI's Realtime container is `supabase start`ed
+      // cold in the same job, competing for the runner's 2 vCPUs against
+      // `maxWorkers: 4`, so it can plausibly take several seconds there.
+      // The scoping test below reuses this same already-open socket for its
+      // own channel (a channel *join*, not a new connection) and never pays
+      // this cost, which is exactly why it passes reliably at the same
+      // budget while the first test intermittently didn't: the two tests
+      // were never actually measuring the same thing. Paying the one-time
+      // connection cost here, inside `beforeAll` (30s `hookTimeout`, not the
+      // 13-18s per-test delivery budget), makes both tests' budgets
+      // apples-to-apples measurements of join+delivery only -- the honest
+      // fix, since the failure was a slow *handshake*, not slow or missing
+      // *delivery* (confirmed above: the CI log shows the promise resolving
+      // to `null`, i.e. the timeout fired, not a connection error -- and the
+      // instrumented handshake timing pinpoints where that 13s went).
+      await new Promise<void>((resolve, reject) => {
+        const warmupChannel = subscriberClient.channel("f202-warmup");
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              "F202: subscriberClient failed to establish its Realtime connection within beforeAll's hookTimeout",
+            ),
+          );
+        }, 25000);
+        warmupChannel.subscribe((status, err) => {
+          if (status === "SUBSCRIBED") {
+            clearTimeout(timeout);
+            void subscriberClient.removeChannel(warmupChannel).then(() => resolve());
+            return;
+          }
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            clearTimeout(timeout);
+            reject(err ?? new Error(`warmup subscribe failed: ${status}`));
+          }
+        });
+      });
     });
 
     beforeEach(() => {

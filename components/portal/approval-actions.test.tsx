@@ -167,21 +167,13 @@ describe("PortalApprovalActions (F005)", () => {
     retryButton.removeAttribute("disabled");
     fireEvent.click(retryButton);
 
-    // Default `waitFor` budget (1000ms) has been observed to flake here
-    // ONLY inside the full CI suite run (`vitest.config.ts`'s
-    // `maxWorkers: 4`, never in isolation, never on a dev machine) — the
-    // retry click's `startTransition` genuinely does reach `handleApprove`
-    // and call `approveMock` a second time, just occasionally slower than
-    // 1000ms to commit and be observed under that contention. Widened
-    // budget only, same shape as F320's fix to
-    // tests/integration/reaction-realtime-delivery.test.ts — what's
-    // asserted (a second, genuinely new call) is unchanged.
-    await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2), {
-      timeout: 5000,
-    });
-    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument(), {
-      timeout: 5000,
-    });
+    // F073: the whole suite's default `waitFor` budget is now 5000ms (see
+    // tests/setup/testing-library.ts) precisely because of the flake this
+    // comment used to describe -- per-call overrides here were whack-a-mole
+    // (fixing this call just moved the failure to the next-slowest
+    // `waitFor` in this same file). No override needed any more.
+    await waitFor(() => expect(approveMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText("Approved.")).toBeInTheDocument());
     second.resolve({ ok: true, data: { taskId: "task-1" } });
   });
 

@@ -20,6 +20,9 @@ export default defineConfig({
     // server) — see tests/integration/comment-delete-broadcast.test.ts
     // and friends. Node stays the default; DOM tests opt in individually.
     environment: "node",
+    // F073: global testing-library `asyncUtilTimeout` — see the file for
+    // the full rationale. Loaded for every test file, DOM or not.
+    setupFiles: ["./tests/setup/testing-library.ts"],
     // F013: `missions/**` holds prior-mission evidence directories that can
     // contain Playwright spec files (e.g. missions/*/milestones/*-evidence*/
     // *.spec.ts) using `test.beforeAll()` from @playwright/test, which
