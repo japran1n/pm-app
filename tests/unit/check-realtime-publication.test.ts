@@ -257,9 +257,13 @@ describe("checkRealtimePublication (end-to-end over injected fakes)", () => {
   });
 
   it("exits 1 with a plain message (not a stack trace) when credentials are missing", async () => {
+    // Explicit falsy strings, not `undefined` — the guard's default
+    // parameters (`accessToken = ACCESS_TOKEN`) fall back to the real
+    // process.env values on `undefined`, which now exist in CI. An empty
+    // string is a real override that still fails the `!accessToken` check.
     const result = await checkRealtimePublication({
-      accessToken: undefined,
-      projectRef: undefined,
+      accessToken: "",
+      projectRef: "",
     });
     expect(result.code).toBe(1);
     expect(result.isError).toBe(true);

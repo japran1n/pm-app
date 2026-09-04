@@ -81,7 +81,11 @@ describe("checkDrift (end-to-end guard logic, subprocess mocked)", () => {
   });
 
   it("AS-004: exits 1 with a plain message (no stack trace) when required env vars are missing", () => {
-    const result = checkDrift({ accessToken: undefined, projectRef: undefined, env: {} as NodeJS.ProcessEnv });
+    // Explicit falsy strings, not `undefined` — checkDrift's default
+    // parameters (`accessToken = ACCESS_TOKEN`) fall back to the real
+    // process.env values on `undefined`, which now exist in CI. An empty
+    // string is a real override that still fails the `!accessToken` check.
+    const result = checkDrift({ accessToken: "", projectRef: "", env: {} as NodeJS.ProcessEnv });
     expect(result.code).toBe(1);
     expect(result.isError).toBe(true);
     expect(result.message).toBe("Missing SUPABASE_ACCESS_TOKEN / SUPABASE_PROJECT_REF in .env");
@@ -95,7 +99,9 @@ describe("checkDrift (end-to-end guard logic, subprocess mocked)", () => {
     const secretRef = "abcdefghijklmno-project-ref";
 
     // Failure path: missing env still must not echo whatever partial value exists.
-    const missing = checkDrift({ accessToken: undefined, projectRef: secretRef, env: {} as NodeJS.ProcessEnv });
+    // Use "" (not undefined) for accessToken — undefined would trigger the
+    // default-parameter fallback to the real process.env value in CI.
+    const missing = checkDrift({ accessToken: "", projectRef: secretRef, env: {} as NodeJS.ProcessEnv });
     expect(missing.message).not.toContain(secretRef);
 
     // Subprocess failure path.

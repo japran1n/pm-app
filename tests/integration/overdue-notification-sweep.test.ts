@@ -146,7 +146,22 @@ describe.skipIf(!haveMgmtCreds)(
       `);
       projectId = proj.id;
 
+      // `deleted_at` is one of the owner/admin-only columns guarded by
+      // enforce_projects_field_role_allowlist() (F020b/F025c/F025d,
+      // supabase/migrations/20261017010000_f020b_projects_allowlist_guard.sql
+      // and 20261022010000_f025d_projects_key_insert_guard.sql). This
+      // suite's `sql()` helper executes via the Management API's raw SQL
+      // endpoint, which carries no JWT claims, so auth.role() reads as
+      // neither 'service_role' nor an owner/admin workspace member and the
+      // guard would reject this INSERT. Setting the JWT claims GUC to
+      // service_role for this one statement (same technique the guard's
+      // own test suite uses to simulate other roles, see
+      // f020b-projects-allowlist-guard.test.ts's `set local
+      // request.jwt.claims`) satisfies the guard's existing, intentional
+      // service_role bypass — this is fixture setup acting with the same
+      // privilege the app's real admin client already has, not a new hole.
       const [archivedProj] = await sql<{ id: string }>(`
+        set local request.jwt.claims to '{"role":"service_role"}';
         insert into public.projects (workspace_id, name, created_by, deleted_at)
         values ('${workspaceId}', 'F212 Archived Project ${suffix}', '${assigneeUserId}', now())
         returning id;
@@ -155,16 +170,35 @@ describe.skipIf(!haveMgmtCreds)(
     }, 60000);
 
     afterAll(async () => {
-      await sql(`delete from public.notifications where workspace_id = '${workspaceId}';`);
-      await sql(
-        `delete from public.tasks where project_id in ('${projectId}', '${archivedProjectId}');`,
-      );
-      await sql(
-        `delete from public.projects where id in ('${projectId}', '${archivedProjectId}');`,
-      );
-      await sql(`delete from public.workspace_members where workspace_id = '${workspaceId}';`);
-      await sql(`delete from public.workspaces where id = '${workspaceId}';`);
-      await sql(`delete from auth.users where id in ('${assigneeUserId}', '${optedOutUserId}');`);
+      // beforeAll can throw partway through (e.g. an insert rejected by a
+      // guard), leaving later ids (e.g. archivedProjectId) unset. Filtering
+      // them out here — rather than interpolating a bare `undefined` into
+      // the query text as `'undefined'` — keeps teardown a no-op for rows
+      // that were never created instead of sending Postgres an invalid uuid
+      // literal that aborts the whole DELETE (and everything after it).
+      const projectIds = [projectId, archivedProjectId].filter(Boolean);
+      const userIds = [assigneeUserId, optedOutUserId].filter(Boolean);
+
+      if (workspaceId) {
+        await sql(`delete from public.notifications where workspace_id = '${workspaceId}';`);
+      }
+      if (projectIds.length > 0) {
+        await sql(
+          `delete from public.tasks where project_id in (${projectIds.map((id) => `'${id}'`).join(", ")});`,
+        );
+        await sql(
+          `delete from public.projects where id in (${projectIds.map((id) => `'${id}'`).join(", ")});`,
+        );
+      }
+      if (workspaceId) {
+        await sql(`delete from public.workspace_members where workspace_id = '${workspaceId}';`);
+        await sql(`delete from public.workspaces where id = '${workspaceId}';`);
+      }
+      if (userIds.length > 0) {
+        await sql(
+          `delete from auth.users where id in (${userIds.map((id) => `'${id}'`).join(", ")});`,
+        );
+      }
     }, 60000);
 
     async function makeTask(opts: {
