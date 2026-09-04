@@ -61,7 +61,16 @@ const FALLBACK_SLOT_WIDTH_PX = 96;
 // thin 12px stripe inside a 56px row. Two text lines (name + state line)
 // at text-sm/text-xs still read comfortably at this height and stay
 // above the 24px WCAG 2.5.8 minimum target size.
-const ROW_HEIGHT_PX = 40;
+// F104 round 2: rows are no longer a single constant. A phase with no
+// in-flight line needs two text lines (name + facts); an active phase
+// WITH an in-flight line needs three, and forcing both into one fixed
+// height made the third line overflow into the row below (coordinator
+// review, round 2). `rowHeightForPhase` below derives each row's own
+// height from its own content, and both the label column and the SVG
+// bars are positioned from that same per-row measurement, so the two
+// coordinate systems can never drift apart.
+const BASE_ROW_HEIGHT_PX = 40;
+const INFLIGHT_LINE_HEIGHT_PX = 16;
 const BAR_HEIGHT_PX = 20;
 const HEADER_HEIGHT_PX = 24;
 // F104 1.5: gap between a bar's "done" fill and its lower-opacity
@@ -156,6 +165,18 @@ function formatInFlightLine(phase: PortalPhase): string | null {
   return null;
 }
 
+/** F104 round 2: a row's own natural height, driven by its own content
+ * rather than one constant shared by every row regardless of what it
+ * holds. A phase with an in-flight line needs a third text line; one
+ * without needs only two (name + facts). Both the label column and the
+ * SVG bar/tick positions are derived from this same per-phase height so
+ * the two coordinate systems -- text column and plot area -- cannot
+ * drift apart the way a single fixed ROW_HEIGHT_PX did (coordinator
+ * review: the in-flight line was overflowing into the next row). */
+function rowHeightForPhase(phase: PortalPhase): number {
+  return formatInFlightLine(phase) ? BASE_ROW_HEIGHT_PX + INFLIGHT_LINE_HEIGHT_PX : BASE_ROW_HEIGHT_PX;
+}
+
 /** The full plain-text summary of a row -- facts line plus, when present,
  * the in-flight line -- used everywhere the two need to combine into one
  * string (aria-label, tooltip body, and the row-label test hook). Kept as
@@ -174,11 +195,21 @@ export type PhaseTimelineRow = {
   /** True when this bar used the equal-width fallback because the phase
    * is missing a planned start and/or end date. */
   fallback: boolean;
+  /** This row's own top offset within the plot's content area (below the
+   * header), derived from every preceding row's own height -- never a
+   * fixed index * constant. */
+  yPx: number;
+  /** This row's own height, from `rowHeightForPhase` -- three lines for
+   * an active phase with in-flight work, two otherwise. */
+  heightPx: number;
 };
 
 export type PhaseTimelineLayout = {
   rows: PhaseTimelineRow[];
   chartWidthPx: number;
+  /** Sum of every row's own heightPx -- the plot's content height below
+   * the header, before HEADER_HEIGHT_PX is added by the caller. */
+  contentHeightPx: number;
   weekMarks: { xPx: number; label: string | null }[];
   todayXPx: number | null;
 };
@@ -199,14 +230,24 @@ export function computePhaseTimelineLayout(
     // falls back to an equal-width slot in position order rather than
     // collapsing to zero width. There is no date axis to draw.
     const chartWidthPx = Math.max(phases.length, 1) * FALLBACK_SLOT_WIDTH_PX;
-    return {
-      rows: phases.map((phase, index) => ({
+    let offsetPx = 0;
+    const rows = phases.map((phase, index) => {
+      const heightPx = rowHeightForPhase(phase);
+      const row = {
         phase,
         xPx: index * FALLBACK_SLOT_WIDTH_PX,
         widthPx: FALLBACK_SLOT_WIDTH_PX - 8,
         fallback: true,
-      })),
+        yPx: offsetPx,
+        heightPx,
+      };
+      offsetPx += heightPx;
+      return row;
+    });
+    return {
+      rows,
       chartWidthPx,
+      contentHeightPx: offsetPx,
       weekMarks: [],
       todayXPx: null,
     };
@@ -241,13 +282,18 @@ export function computePhaseTimelineLayout(
     datelessPhases.length > 0 ? chartWidthPx / datelessPhases.length : 0;
 
   let datelessIndex = 0;
+  let rowOffsetPx = 0;
   const rows: PhaseTimelineRow[] = phases.map((phase) => {
+    const heightPx = rowHeightForPhase(phase);
+    const yPx = rowOffsetPx;
+    rowOffsetPx += heightPx;
+
     if (phase.plannedStart && phase.plannedEnd) {
       const start = parseDateOnly(phase.plannedStart)!;
       const end = parseDateOnly(phase.plannedEnd)!;
       const xPx = diffDays(rangeStart, start) * PX_PER_DAY;
       const widthPx = Math.max(diffDays(start, end) * PX_PER_DAY, MIN_BAR_WIDTH_PX);
-      return { phase, xPx, widthPx, fallback: false };
+      return { phase, xPx, widthPx, fallback: false, yPx, heightPx };
     }
 
     const xPx = datelessIndex * datelessSlotWidth;
@@ -257,8 +303,11 @@ export function computePhaseTimelineLayout(
       xPx,
       widthPx: Math.max(datelessSlotWidth - 8, MIN_BAR_WIDTH_PX),
       fallback: true,
+      yPx,
+      heightPx,
     };
   });
+  const contentHeightPx = rowOffsetPx;
 
   const weekMarks: { xPx: number; label: string | null }[] = [];
   let weekIndex = 0;
@@ -276,7 +325,7 @@ export function computePhaseTimelineLayout(
 
   const todayXPx = diffDays(rangeStart, today) * PX_PER_DAY;
 
-  return { rows, chartWidthPx, weekMarks, todayXPx };
+  return { rows, chartWidthPx, contentHeightPx, weekMarks, todayXPx };
 }
 
 /**
@@ -360,18 +409,28 @@ export function PhaseTimeline({
 
   const layout = computePhaseTimelineLayout(phases, today);
   const hoveredRow = layout.rows.find((row) => row.phase.id === hoveredPhaseId) ?? null;
-  const chartHeightPx = HEADER_HEIGHT_PX + layout.rows.length * ROW_HEIGHT_PX;
+  const chartHeightPx = HEADER_HEIGHT_PX + layout.contentHeightPx;
 
   return (
     <div
       role="group"
       aria-label={buildTimelineSummary(phases)}
       data-testid="phase-timeline"
-      className="flex flex-col gap-4 rounded-lg border border-border p-5"
+      // `min-w-0`: this component is placed inside a CSS grid column
+      // (Overview page, `lg:grid-cols-3` -> `lg:col-span-2`) whose
+      // default track min-width is `auto`, meaning it will NOT shrink
+      // below its content's intrinsic width unless something in the
+      // chain sets `min-width: 0`. Without it here, the SVG's own
+      // intrinsic width could size the whole grid track (and therefore
+      // the page) instead of scrolling inside `phase-timeline-scroll`
+      // below -- the "clipped at the right edge of the viewport"
+      // symptom this component must not cause regardless of its
+      // parent's layout.
+      className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5"
     >
       <h2 className="text-sm font-semibold text-foreground">Where we are</h2>
 
-      <div className="flex gap-3">
+      <div className="flex min-w-0 gap-3">
         {/* Row labels: a fixed, non-scrolling column so a phase's name
             and state stay readable even while the bar area (below)
             scrolls horizontally on a narrow screen. */}
@@ -379,13 +438,13 @@ export function PhaseTimeline({
           className="flex w-56 shrink-0 flex-col sm:w-72"
           style={{ paddingTop: HEADER_HEIGHT_PX }}
         >
-          {phases.map((phase) => {
+          {layout.rows.map(({ phase, heightPx }) => {
             const factsLine = formatPhaseFactsLine(phase);
             const inFlightLine = formatInFlightLine(phase);
             return (
               <div
                 key={phase.id}
-                style={{ height: ROW_HEIGHT_PX }}
+                style={{ height: heightPx }}
                 className="flex flex-col justify-center gap-0.5 border-b border-border/50 pr-2"
               >
                 {/* Widened rather than truncated: phase names are short
@@ -418,9 +477,6 @@ export function PhaseTimeline({
                   <span className="text-muted-foreground">
                     {factsLine.slice(STATE_LABEL[phase.state].length)}
                   </span>
-                  {inFlightLine && (
-                    <span className="text-muted-foreground"> · {inFlightLine}</span>
-                  )}
                 </span>
                 {/* F104 1.2/2.7: in-flight work gets its OWN line under
                     active phases instead of being appended to the facts
@@ -498,9 +554,9 @@ export function PhaseTimeline({
               </g>
             )}
 
-            {layout.rows.map((row, index) => {
+            {layout.rows.map((row) => {
               const y =
-                HEADER_HEIGHT_PX + index * ROW_HEIGHT_PX + (ROW_HEIGHT_PX - BAR_HEIGHT_PX) / 2;
+                HEADER_HEIGHT_PX + row.yPx + (row.heightPx - BAR_HEIGHT_PX) / 2;
               const phase = row.phase;
               const progress = formatPhaseProgress(phase);
               const doneShare =
@@ -613,12 +669,7 @@ export function PhaseTimeline({
             {hoveredRow && (
               <foreignObject
                 x={Math.min(hoveredRow.xPx, Math.max(layout.chartWidthPx - 220, 0))}
-                y={
-                  HEADER_HEIGHT_PX +
-                  layout.rows.findIndex((r) => r.phase.id === hoveredRow.phase.id) *
-                    ROW_HEIGHT_PX +
-                  ROW_HEIGHT_PX
-                }
+                y={HEADER_HEIGHT_PX + hoveredRow.yPx + hoveredRow.heightPx}
                 width={220}
                 height={100}
               >

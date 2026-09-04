@@ -51,3 +51,72 @@ AUTONOMOUS_DECISION: Kept the in-flight line's label text as `Now: <title>` (cap
 - `computePhaseTimelineLayout` and the two new pure helpers (`computeExpectedProgress`, `isBehindExpectedProgress`) are exported/kept as private pure functions respectively — only the layout function was already exported for testing per the file's existing pattern; the progress helpers are exercised indirectly through rendered `data-behind`/`phase-timeline-expected-tick` attributes, consistent with how the file already tests behaviour through the DOM rather than exporting every internal helper.
 - The `--status-blocked` / `--status-progress` etc. tokens were not touched, per the constraint in the task; dark-mode contrast on two of those tokens is a known, separately tracked issue (Part 5) and this component's new "behind" tick/tooltip text will inherit it unchanged.
 - No MCP tools were relevant to this feature — it is a pure client-side rendering component with no live external service state.
+
+---
+
+## Round 2 addendum — coordinator-observed defects fixed
+
+The coordinator rendered the live page and reported two collisions plus a
+scroll-containment question. All three are addressed in this same commit.
+
+**Defect 1 — duplicated in-flight text.** The round-1 JSX still appended
+`inFlightLine` to the facts-line `<span>` in addition to rendering it on its
+own dedicated line, so it showed twice (`Now: Ho…Now: Homepage hi-fi
+design`), with the first copy truncated. Fixed by deleting the appended
+`<span>` from the facts line entirely — `formatInFlightLine`'s output now
+renders in exactly one place, the dedicated `phase-timeline-inflight` line.
+`formatPhaseSecondaryLine` (used for `aria-label` and the tooltip, not the
+visible facts span) still legitimately combines both strings into one
+sentence for assistive tech / hover, which is a different, single-string
+context, not a duplicate on-screen line.
+
+**Defect 2 — fixed row height caused text overflow into the next row.**
+Replaced the single `ROW_HEIGHT_PX` constant with a per-row `heightPx`
+(`rowHeightForPhase`): `BASE_ROW_HEIGHT_PX` (40, two lines) or
+`BASE_ROW_HEIGHT_PX + INFLIGHT_LINE_HEIGHT_PX` (56, three lines) when
+`formatInFlightLine` returns non-null for that phase. `computePhaseTimelineLayout`
+now threads a running `yPx` offset through both branches (dateless-fallback
+and dated) and returns `contentHeightPx` (sum of all row heights) on the
+layout object. The label column (`layout.rows.map(({ phase, heightPx }) =>
+...)`) and the SVG (`row.yPx`, `row.heightPx` for bar `y` and the
+expected-progress tick; `hoveredRow.yPx + hoveredRow.heightPx` for the
+tooltip's `y`) both read from these same per-row numbers, so the two
+coordinate systems (text column, plot area) are derived from one source and
+cannot drift apart the way the old `index * ROW_HEIGHT_PX` arithmetic could.
+Added `test_F104_round2_a_rows_own_height_grows_to_fit_its_inflight_line_without_overlapping_the_next_row`,
+which asserts the taller row's height, the following row's exact `yPx`
+(`row1.yPx + row1.heightPx`, i.e. zero gap and zero overlap), and that the
+two rendered bars land at increasing `y` in the DOM.
+
+**Scroll containment (investigated, not just re-asserted).** Traced the
+component's actual placement: `app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx`
+renders `<PhaseTimeline>` inside `<div className="grid gap-8
+lg:grid-cols-3">` → `<div className="flex flex-col gap-8 lg:col-span-2">`.
+A CSS grid track's default `min-width` is `auto`, i.e. a grid item will NOT
+shrink below its content's intrinsic width unless something in the
+ancestor chain sets `min-width: 0` — and nothing in the pre-round-2 markup
+did. That is a plausible, structurally-verifiable explanation for "clipped
+at the right edge of the viewport": the SVG's own intrinsic width could
+have been sizing the grid column (and the page) instead of being contained
+and scrolled by `phase-timeline-scroll`'s `min-w-0 flex-1 overflow-x-auto`.
+Fixed defensively inside this component (in scope, same file) by adding
+`min-w-0` to the component's own root wrapper and to the inner `flex gap-3`
+row, so the component constrains its own width regardless of how its
+parent grid/flex context behaves. I did not touch `page.tsx` (out of
+file-scope for this handoff) — if `min-w-0` on the grid item itself
+(`lg:col-span-2` div) is also needed, that is a one-line follow-up outside
+this component.
+
+I still could not render the page in a browser this session (no
+browser-driving tool available) to visually confirm the clipping is gone,
+or that both themes / 375px look correct — this remains the same
+caveat as round 1, now narrowed to a specific, reasoned CSS fix rather
+than an unexamined "should be fine."
+
+## Commands run (round 2)
+`npx vitest run components/portal/phase-timeline.test.tsx` (0) — 24 passed (23 prior + 1 new round-2 regression test)
+`npx tsc --noEmit` (0)
+`set -a; source .env; set +a; npm run build` (0)
+
+## Status (round 2)
+Still PARTIAL for the same reason as round 1: no browser-driving tool available this session to produce the required visual-inspection evidence artifact. The two coordinator-reported defects are fixed and covered by new/updated tests; the scroll-clipping issue has a structural fix applied and reasoned about, but is unverified by render.

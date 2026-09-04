@@ -356,9 +356,15 @@ describe("PhaseTimeline", () => {
     );
     // docs/portal-timeline-review-and-demo-readiness.md 2.7: the single
     // most valuable line on the page -- what is currently in flight
-    // inside an active phase.
+    // inside an active phase. F104 round 2: this lives ONLY on its own
+    // dedicated line, not also appended to the facts line (that
+    // duplication -- coordinator-observed "Now: Ho…Now: Ho…" -- is the
+    // exact defect this round fixes).
+    const inFlightLine = screen.getByTestId("phase-timeline-inflight");
+    expect(inFlightLine).toHaveTextContent("Homepage hero design");
+
     const rowLabel = screen.getByTestId("phase-timeline-row-label");
-    expect(rowLabel).toHaveTextContent("Homepage hero design");
+    expect(rowLabel.textContent).not.toContain("Homepage hero design");
 
     const row = screen.getByRole("button", { name: /Visual direction & design/ });
     expect(row.getAttribute("aria-label")).toContain("Homepage hero design");
@@ -537,6 +543,43 @@ describe("PhaseTimeline", () => {
     const row = screen.getByRole("button", { name: /Build/ });
     expect(row).toHaveAttribute("data-behind", "false");
     expect(row.getAttribute("aria-label")).not.toMatch(/behind/i);
+  });
+
+  it("test_F104_round2_a_rows_own_height_grows_to_fit_its_inflight_line_without_overlapping_the_next_row", () => {
+    // Coordinator review round 2: a fixed ROW_HEIGHT_PX shared by every
+    // row could not fit three lines (name + facts + in-flight) in the
+    // same height as a two-line row, so the in-flight line overflowed
+    // into the row below ("Now: Homepage hi-fi design" rendered on top
+    // of "Build"). Rows must now take their own, different heights, and
+    // the SVG bar's own vertical position must be derived from that same
+    // per-row height so the two never disagree.
+    const phases: PortalPhase[] = [
+      makePhase({
+        id: "p1",
+        name: "Visual direction & design",
+        state: "active",
+        plannedStart: "2026-06-01",
+        plannedEnd: "2026-06-20",
+        inFlightTaskTitle: "Homepage hero design",
+      }),
+      makePhase({ id: "p2", name: "Build", state: "not_started" }),
+    ];
+
+    const layout = computePhaseTimelineLayout(phases, TODAY);
+    const [row1, row2] = layout.rows;
+
+    // The in-flight row is taller than the plain row.
+    expect(row1!.heightPx).toBeGreaterThan(row2!.heightPx);
+    // The second row starts exactly where the first row's own (taller)
+    // height ends -- no overlap, no gap.
+    expect(row2!.yPx).toBe(row1!.yPx + row1!.heightPx);
+
+    render(<PhaseTimeline phases={phases} today={TODAY} />);
+    // Both rows' bars exist and are vertically distinct in the SVG.
+    const bars = screen.getAllByTestId("phase-timeline-bar-done");
+    const y0 = Number(bars[0]!.getAttribute("y"));
+    const y1 = Number(bars[1]!.getAttribute("y"));
+    expect(y1).toBeGreaterThan(y0);
   });
 
   it("test_F104_range_ends_shortly_past_the_last_phase_not_at_an_arbitrary_far_boundary", () => {
