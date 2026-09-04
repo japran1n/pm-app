@@ -231,37 +231,13 @@ export async function getProjectMetricsWithLatestSnapshot(
 // smaller latest value than baseline is an improvement; for 'higher'
 // metrics (e.g. sessions), a larger one is. Getting this backwards is
 // exactly the failure mode this feature's spec warns about.
-export type MetricMeasurementStatus = "not_measured" | "improved" | "regressed" | "unchanged";
-
-export function deriveMetricMeasurementStatus(
-  metric: Pick<ProjectMetric, "baselineValue" | "direction" | "baselineAt">,
-  latestSnapshot: MetricSnapshot | null,
-): MetricMeasurementStatus {
-  if (!latestSnapshot || metric.baselineValue === null) {
-    return "not_measured";
-  }
-
-  // F021c: a snapshot measured before the baseline was set is not a
-  // post-baseline measurement — treat it the same as having none at all.
-  // `baselineAt === null` alongside a non-null `baselineValue` shouldn't
-  // occur (the baseline value and its timestamp are written together),
-  // but if it ever did, there is no baseline date to compare against, so
-  // the honest answer is still "not measured" rather than assuming the
-  // snapshot qualifies.
-  if (metric.baselineAt === null || latestSnapshot.measuredAt < metric.baselineAt) {
-    return "not_measured";
-  }
-
-  if (latestSnapshot.value === metric.baselineValue) {
-    return "unchanged";
-  }
-
-  const movedUp = latestSnapshot.value > metric.baselineValue;
-  const improvedOnHigher = metric.direction === "higher" && movedUp;
-  const improvedOnLower = metric.direction === "lower" && !movedUp;
-
-  return improvedOnHigher || improvedOnLower ? "improved" : "regressed";
-}
+// F069: moved to lib/metrics/measurement-status.ts, which has no
+// server-only imports, so client components can call this function at
+// runtime without pulling lib/supabase/server.ts into the browser
+// bundle. Re-exported here so every existing server-side import path
+// (`@/lib/queries/metrics`) keeps working unchanged.
+export type { MetricMeasurementStatus } from "@/lib/metrics/measurement-status";
+export { deriveMetricMeasurementStatus } from "@/lib/metrics/measurement-status";
 
 // AS-039: every improvement on this project, in display order.
 export async function getProjectImprovements(

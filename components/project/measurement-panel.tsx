@@ -34,10 +34,10 @@ import {
   updateMetric,
   uploadImprovementImage,
 } from "@/lib/actions/metrics";
-import {
-  deriveMetricMeasurementStatus,
-  type MetricWithLatestSnapshot,
-  type ProjectImprovement,
+import { deriveMetricMeasurementStatus } from "@/lib/metrics/measurement-status";
+import type {
+  MetricWithLatestSnapshot,
+  ProjectImprovement,
 } from "@/lib/queries/metrics";
 import { metricDirectionSchema, metricSourceSchema } from "@/lib/validation/metrics";
 import { Button } from "@/components/ui/button";
