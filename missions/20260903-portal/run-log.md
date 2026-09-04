@@ -697,3 +697,25 @@ Opened F020b (invert the projects guard — the structural fix, not the patch), 
   client clicking Approve gets an error and nothing is recorded.
 
 Opened F025c. Both are blockers: they are core flows, not edge cases.
+- F025c COMPLETE — a transaction-local app.projects_field_guard_bypass flag set by assign_task_number() around its task_counter UPDATE, using F016j's technique rather than widening the allow-list by hand; and notifications_kind_check restored to include approval_decided and assumption_flagged.
+
+### The second regression was worse than reported, and it was also ours
+
+The worker established what I asked it to establish first: the notification insert
+DOES share decide_approval_atomic's transaction. So the missing kinds meant every
+Approve click rolled the entire decision back. A client pressing Approve got an
+error and nothing was recorded — the worst outcome this system has available, and
+precisely the failure AS-023 exists to forbid.
+
+And the kinds were not missing by omission. **F018's migration silently dropped them
+from the check constraint.** That is the third time in this mission that one feature's
+migration has quietly undone another's, after F016e's two reverts. The pattern is
+specific: a migration that re-creates a constraint or function to change one thing,
+written from the author's mental model of what it contains rather than from what it
+actually contains.
+
+Worth stating plainly: AS-023 has been false since F018 landed, and no gate caught
+it — three scrutiny rounds ran over that period. It surfaced from a side-effect test
+run in an unrelated feature. The lesson is not about F018; it is that re-creating a
+database object from memory rather than from its current definition is a move this
+codebase punishes, and it has now punished it three times.
