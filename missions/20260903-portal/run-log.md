@@ -895,3 +895,6 @@ a day. The full-suite run I kept deferring because of rate-limit noise is what
 found it.
 
 Opened F025f.
+- F025f COMPLETE (bb2f615) — client_visible handling restored in create_project_from_template (forward-only), F009d's 42501 confirmed as the correct refusal code with the three F009b tests updated to match rather than the behaviour reverted, and perf-budget confirmed passing in isolation.
+  Its step-4 sweep is the best statement of scope in this mission. It enumerated every function re-created by this mission's migrations with a grep rather than from memory — naming that choice explicitly, because "an author's mental model of a function's contents rather than its grep-verified one" is the exact failure it was hunting — pairwise-diffed every consecutive re-creation, and then said plainly that it did NOT apply the same rigour to constraint drops and would not assert a completeness it could not back with a command.
+  Opened F025g for that half. It is not hypothetical: the one known constraint-side instance is F018's, which made AS-023 false for a day while three scrutiny rounds ran without catching it.
