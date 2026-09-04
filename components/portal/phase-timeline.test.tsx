@@ -104,7 +104,7 @@ describe("PhaseTimeline", () => {
       />,
     );
     for (const label of ["Not started", "Active", "Blocked", "Done"]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
 
@@ -116,6 +116,8 @@ describe("PhaseTimeline", () => {
         state: "active",
         plannedStart: "2026-06-01",
         plannedEnd: "2026-06-10",
+        totalClientVisibleTasks: 5,
+        doneClientVisibleTasks: 3,
         progressPercent: 60,
         clientDescription: "Slike odobrene, sadržaj isporučen.",
       }),
@@ -136,7 +138,7 @@ describe("PhaseTimeline", () => {
 
     const tooltip = screen.getByTestId("phase-timeline-tooltip");
     expect(tooltip).toHaveTextContent("Priprema materijala");
-    expect(tooltip).toHaveTextContent("60% complete");
+    expect(tooltip).toHaveTextContent("3 of 5 done");
     expect(tooltip).toHaveTextContent("Slike odobrene, sadržaj isporučen.");
 
     // Exactly one tooltip element exists for the whole chart, not one
@@ -145,6 +147,95 @@ describe("PhaseTimeline", () => {
 
     fireEvent.mouseLeave(screen.getByRole("button", { name: /Priprema materijala/ }));
     expect(screen.queryByTestId("phase-timeline-tooltip")).not.toBeInTheDocument();
+  });
+
+  it("test_AS_011_a_done_phase_with_completed_tasks_shows_a_count_not_a_percentage", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Dogovor i priprema",
+            state: "done",
+            plannedStart: "2026-05-01",
+            plannedEnd: "2026-05-31",
+            totalClientVisibleTasks: 4,
+            doneClientVisibleTasks: 4,
+            progressPercent: 100,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    // Never a bare percentage: a client reading "Done · 100%" and "Done
+    // · 4 of 4 done" both mean the phase finished, but only the count
+    // exposes the denominator.
+    expect(screen.getByText(/Done · .*4 of 4 done/)).toBeInTheDocument();
+    expect(screen.queryByText(/100%/)).not.toBeInTheDocument();
+
+    const row = screen.getByRole("button", { name: /Dogovor i priprema/ });
+    expect(row).toHaveAttribute("aria-label", expect.stringContaining("4 of 4 done"));
+    expect(row.getAttribute("aria-label")).not.toContain("%");
+  });
+
+  it("test_AS_011_a_done_phase_with_zero_client_visible_tasks_shows_the_state_alone_never_0_percent", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Kick-off & setup",
+            state: "done",
+            totalClientVisibleTasks: 0,
+            doneClientVisibleTasks: 0,
+            progressPercent: 0,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    // The empty case: nothing client-visible to count. The row must say
+    // "Done" alone -- never "Done · 0%", which reads as "finished, zero
+    // percent complete" and is self-contradictory.
+    const rowLabel = screen.getByTestId("phase-timeline-row-label");
+    expect(rowLabel).toHaveTextContent("Done");
+    expect(rowLabel.textContent).not.toContain("%");
+    expect(rowLabel.textContent).not.toContain("of 0 done");
+
+    const row = screen.getByRole("button", { name: /Kick-off & setup/ });
+    expect(row).toHaveAttribute("aria-label", expect.stringContaining("Done"));
+    expect(row.getAttribute("aria-label")).not.toContain("%");
+    expect(row.getAttribute("aria-label")).not.toContain("of 0 done");
+
+    fireEvent.mouseEnter(row);
+    const tooltip = screen.getByTestId("phase-timeline-tooltip");
+    expect(tooltip).toHaveTextContent("Done");
+    expect(tooltip).not.toHaveTextContent("%");
+  });
+
+  it("shows each row's planned date range on the row itself, not only on hover", () => {
+    render(
+      <PhaseTimeline
+        phases={[
+          makePhase({
+            id: "p1",
+            name: "Visual direction & design",
+            state: "active",
+            plannedStart: "2026-08-28",
+            plannedEnd: "2026-09-11",
+            totalClientVisibleTasks: 7,
+            doneClientVisibleTasks: 4,
+            progressPercent: 57,
+          }),
+        ]}
+        today={TODAY}
+      />,
+    );
+
+    expect(screen.getByText(/28 Aug/)).toBeInTheDocument();
+    expect(screen.getByText(/11 Sep/)).toBeInTheDocument();
   });
 
   it("gives the timeline an accessible role=img summary of where the project is", () => {

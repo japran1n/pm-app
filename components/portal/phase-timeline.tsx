@@ -96,6 +96,36 @@ function formatWeekLabel(date: Date): string {
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+// A phase's secondary line: state, its date range, and (only when there
+// is something client-visible to count) a count of done-vs-total tasks --
+// never a bare percentage, which hides the denominator and, worse, reads
+// as self-contradictory on a finished phase with nothing tracked
+// ("Done · 0%"). Used for the row's own text, its aria-label and its
+// hover tooltip so all three always agree (docs/portal-timeline-review-
+// and-demo-readiness.md 1.2, 2.1).
+function formatPhaseProgress(phase: PortalPhase): string | null {
+  if (phase.totalClientVisibleTasks === 0) return null;
+  return `${phase.doneClientVisibleTasks} of ${phase.totalClientVisibleTasks} done`;
+}
+
+function formatPhaseDateRange(phase: PortalPhase): string | null {
+  const start = phase.plannedStart ? parseDateOnly(phase.plannedStart) : null;
+  const end = phase.plannedEnd ? parseDateOnly(phase.plannedEnd) : null;
+  if (!start || !end) return null;
+  return `${formatWeekLabel(start)} – ${formatWeekLabel(end)}`;
+}
+
+/** The row's secondary line: "Active · 28 Aug – 11 Sep · 4 of 7 done", or
+ * just "Done" alone when there is nothing client-visible to count. */
+function formatPhaseSecondaryLine(phase: PortalPhase): string {
+  const parts = [STATE_LABEL[phase.state]];
+  const dateRange = formatPhaseDateRange(phase);
+  if (dateRange) parts.push(dateRange);
+  const progress = formatPhaseProgress(phase);
+  if (progress) parts.push(progress);
+  return parts.join(" · ");
+}
+
 export type PhaseTimelineRow = {
   phase: PortalPhase;
   xPx: number;
@@ -259,7 +289,7 @@ export function PhaseTimeline({
             and state stay readable even while the bar area (below)
             scrolls horizontally on a narrow screen. */}
         <div
-          className="flex w-36 shrink-0 flex-col sm:w-44"
+          className="flex w-56 shrink-0 flex-col sm:w-72"
           style={{ paddingTop: HEADER_HEIGHT_PX }}
         >
           {phases.map((phase) => (
@@ -268,11 +298,21 @@ export function PhaseTimeline({
               style={{ height: ROW_HEIGHT_PX }}
               className="flex flex-col justify-center gap-0.5 border-b border-border/50 pr-2"
             >
+              {/* Widened rather than truncated: phase names are short
+                  and finite (docs/portal-timeline-review-and-demo-
+                  readiness.md 2.4) -- `truncate` here used to cut
+                  "Visual direction & design" mid-word, and a row you
+                  cannot identify is worse than a wider one. The row
+                  height itself is unchanged (out of scope). */}
               <span className="truncate text-sm font-medium text-foreground">
                 {phase.position}. {phase.name}
               </span>
-              <span className={cn("text-xs", STATE_TEXT_CLASS[phase.state])}>
-                {STATE_LABEL[phase.state]} · {phase.progressPercent}%
+              <span
+                data-testid="phase-timeline-row-label"
+                className={cn("truncate text-xs", STATE_TEXT_CLASS[phase.state])}
+                title={formatPhaseSecondaryLine(phase)}
+              >
+                {formatPhaseSecondaryLine(phase)}
               </span>
             </div>
           ))}
@@ -351,7 +391,7 @@ export function PhaseTimeline({
                   data-fallback={row.fallback}
                   tabIndex={0}
                   role="button"
-                  aria-label={`${row.phase.name}: ${STATE_LABEL[row.phase.state]}, ${row.phase.progressPercent}% complete`}
+                  aria-label={`${row.phase.name}: ${formatPhaseSecondaryLine(row.phase)}`}
                   onMouseEnter={() => setHoveredPhaseId(row.phase.id)}
                   onMouseLeave={() => setHoveredPhaseId(null)}
                   onFocus={() => setHoveredPhaseId(row.phase.id)}
@@ -403,7 +443,7 @@ export function PhaseTimeline({
                 >
                   <p className="font-medium">{hoveredRow.phase.name}</p>
                   <p className="text-muted-foreground">
-                    {hoveredRow.phase.progressPercent}% complete
+                    {formatPhaseSecondaryLine(hoveredRow.phase)}
                   </p>
                   {hoveredRow.phase.clientDescription && (
                     <p className="mt-1 text-muted-foreground">

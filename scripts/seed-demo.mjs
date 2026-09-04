@@ -359,6 +359,46 @@ const WEBSITE_PHASES = [
   { name: "Launch", client_description: "DNS cutover and go-live.", state: "not_started", plannedStart: 27, plannedEnd: 30, actualStart: null, actualEnd: null },
 ];
 
+// Which phase each of Website Redesign's own tasks belongs to, mapped by
+// what the task actually is (not by list index — the phases above and the
+// tasks in PROJECTS were written independently of each other).
+//
+// "Kick-off & setup" gets no task at all: none of the ten tasks are
+// kick-off/tooling work, and leaving it empty is deliberate -- it is the
+// one phase that legitimately has zero client-visible tasks, which is
+// exactly the case AS-011/AS-012's "no tasks" branch needs to render
+// (`Done` alone, no `0%`) rather than only ever being exercised in a unit
+// test.
+//
+// Both "done" phases below (Audit & baseline, Site structure) resolve to
+// a full 1-of-1: the two tasks that are both `status: "done"` AND
+// `client_visible: true` in PROJECTS are exactly "Audit current site
+// content" and "Agree information architecture", and each belongs to
+// exactly one of these two phases by what it literally is.
+//
+// Both "active" phases (Visual direction & design, Build) come out at
+// 0-of-N: every client-visible task that belongs to either phase by
+// meaning is `in_review`/`in_progress`/`todo`, i.e. not yet in the
+// "done" status category. That is real information, not a bug in this
+// mapping -- an active phase whose visible work is genuinely still in
+// flight is not "done", and forcing one of the two already-used done
+// tasks in here just to manufacture a non-zero percentage would be
+// exactly the kind of number-forcing this seed is required not to do.
+// The two active phases still read as distinct rows because their
+// denominators differ (0 of 2 vs 0 of 1) even though both round to 0%.
+const WEBSITE_TASK_PHASES = {
+  "Audit current site content": "Audit & baseline",
+  "Agree information architecture": "Site structure",
+  "Design system: colours & type": "Visual direction & design",
+  "Homepage hi-fi design": "Visual direction & design",
+  "Pricing page hi-fi design": "Visual direction & design",
+  "Build homepage in Next.js": "Build",
+  "CMS migration script": "Build",
+  "Accessibility pass (WCAG AA)": "QA & accessibility",
+  "SEO redirect map": "Build",
+  "Launch checklist & go-live": "Launch",
+};
+
 // F007's `project_decision_owners`
 // (20260916010000_approval_requests.sql:120), one row per
 // `decision_type` (content | brand | technical | commercial). Three
@@ -716,6 +756,23 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
     .select("id, name");
   check("project_phases Website Redesign", { error: phasesError });
   const phaseIdByName = Object.fromEntries((phases ?? []).map((p) => [p.name, p.id]));
+
+  // 1b. Link Website Redesign's own tasks to the phase they belong to
+  // (`tasks.phase_id`, 20260909010000_portal_foundations.sql:72) --
+  // without this, every phase's client-visible task total is zero and
+  // the timeline's progress figure is 0% everywhere, including on
+  // phases marked Done (see docs/portal-timeline-review-and-demo-
+  // readiness.md 1.1). "Kick-off & setup" is intentionally absent from
+  // WEBSITE_TASK_PHASES and stays at zero linked tasks.
+  for (const [title, phaseName] of Object.entries(WEBSITE_TASK_PHASES)) {
+    const taskId = taskIdByTitle[title];
+    const phaseId = phaseIdByName[phaseName];
+    if (!taskId || !phaseId) continue;
+    check(
+      `link task to phase: ${title}`,
+      await admin.from("tasks").update({ phase_id: phaseId }).eq("id", taskId),
+    );
+  }
 
   // 2. Decision owners
   check(
