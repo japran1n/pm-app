@@ -3,8 +3,8 @@ import Link from "next/link";
 import { AlertTriangle, Paperclip, Inbox } from "lucide-react";
 
 import { getPortalProjects } from "@/lib/queries/portal";
-import { getProjectLinks, getProjectAccounts } from "@/lib/queries/project-site";
-import { getAllDocs } from "@/lib/queries/docs";
+import { getClientVisiblePortalLinks, getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
+import { getClientVisibleDocs } from "@/lib/queries/docs";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { LaunchDayCard } from "@/components/portal/launch-day-card";
@@ -13,17 +13,22 @@ import { ProjectAccountsTable } from "@/components/portal/project-accounts-table
 import { ProjectGuidesList } from "@/components/portal/project-guides-list";
 
 // F023 (missions/20260903-portal, AS-049, AS-050, AS-051): replaces
-// F003's `PortalComingSoon` stub. Reads `getProjectLinks`/
-// `getProjectAccounts` (both exported from lib/queries/project-site.ts
-// by F022 specifically for this feature to call) plus `getAllDocs`
-// (lib/queries/docs.ts, filtered client-side to `doc_kind === 'training'`)
-// -- all three through the ordinary RLS-respecting server client, same
-// "one visibility path, not two" convention every other portal page in
-// this mission documents on itself (see results/page.tsx, hours/page.tsx):
-// RLS already restricts a client caller to `client_visible = true` rows
-// of a portal-enabled project it belongs to, so a link/account/doc with
-// `client_visible = false` is never in the payload this page receives at
-// all, not merely hidden by a client-side filter.
+// F003's `PortalComingSoon` stub. Reads `getClientVisiblePortalLinks`/
+// `getClientVisiblePortalAccounts` (both exported from
+// lib/queries/project-site.ts by F025e; F022's unfiltered
+// getProjectLinks/getProjectAccounts stay reserved for the team settings
+// panel, see that file's own header) plus
+// `getClientVisibleDocs` (lib/queries/docs.ts, further filtered
+// client-side to `doc_kind === 'training'`) -- all three through the
+// ordinary RLS-respecting server client. RLS already restricts a client
+// caller to `client_visible = true` rows of a portal-enabled project it
+// belongs to, but F025e double-guards all three the same way
+// lib/queries/portal.ts:337-342 documents and every sibling portal query
+// in this mission follows: each function also applies its own explicit
+// `client_visible = true` predicate, so a link/account/doc with
+// `client_visible = false` is never in the payload even for a team caller
+// previewing the portal, not merely excluded by RLS for an actual client
+// session.
 //
 // Also the entry point for Files (relocated here per F003b's own note
 // that Files belongs inside "Your site") and for Requests, per this
@@ -61,9 +66,9 @@ export default async function PortalSitePage({
     .maybeSingle();
 
   const [linksResult, accountsResult, guidesRaw] = await Promise.all([
-    getProjectLinks(projectId),
-    getProjectAccounts(projectId),
-    getAllDocs(workspace.id, projectId).catch(() => null),
+    getClientVisiblePortalLinks(projectId),
+    getClientVisiblePortalAccounts(projectId),
+    getClientVisibleDocs(workspace.id, projectId).catch(() => null),
   ]);
 
   // A failed links/accounts read renders an honest "couldn't load" state,

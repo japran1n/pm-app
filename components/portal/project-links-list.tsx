@@ -1,9 +1,9 @@
 // F023 (missions/20260903-portal, AS-049): the "Links" section of the
 // portal's "Your site" view. `links` has already been through
-// `getProjectLinks` (RLS-scoped) -- this component never applies its own
-// `clientVisible` filter, matching the read side's own convention that
-// RLS is the one visibility boundary (lib/queries/project-site.ts's own
-// header comment).
+// `getClientVisiblePortalLinks` (F025e; RLS-scoped and explicitly
+// filtered to client_visible = true) -- this component never applies its
+// own `clientVisible` filter, matching the read side's own convention
+// (lib/queries/project-site.ts's own header comment).
 //
 // Every link opens in a new tab with rel="noopener noreferrer" (this
 // view's own "external links leave the portal" note), and shows its

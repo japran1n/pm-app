@@ -1,9 +1,9 @@
 // F023 (missions/20260903-portal, AS-050): the "Accounts" section of the
 // portal's "Your site" view -- the table that answers "what do I
 // actually own?". `accounts` has already been through
-// `getProjectAccounts` (RLS-scoped to `client_visible = true` rows for a
-// client caller) -- this component renders exactly what it is given, no
-// second filter.
+// `getClientVisiblePortalAccounts` (F025e; RLS-scoped and explicitly
+// filtered to client_visible = true rows) -- this component renders
+// exactly what it is given, no second filter.
 //
 // Owner and status are the whole content, per this feature's own spec
 // ("keep it plain") -- no credential/secret field exists on this row at

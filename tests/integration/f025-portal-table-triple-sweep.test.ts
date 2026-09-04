@@ -24,11 +24,14 @@
 //      lib/queries/project-site.ts, lib/queries/portal.ts) never returns
 //      the hidden row's marker either
 //
-// `docs` has no dedicated portal-facing "list every doc" query function
-// yet (grepped: only lib/queries/docs.ts and lib/queries/approvals.ts
-// touch `docs`, both team/artifact-shaped, not a client list view) — its
-// RPC leg is skipped and noted below and in this feature's handoff as an
-// out-of-scope finding, not silently passed.
+// F025e re-enabled the `docs` RPC leg: F023 added `getClientVisibleDocs`
+// (lib/queries/docs.ts) as the portal's own client-facing list-docs
+// query, so the `rpc: null` this fixture used to carry is gone. The
+// `NULL_RPC_ALLOWLIST` check further below fails this suite if a future
+// fixture goes back to `rpc: null` without an entry (and reason) in that
+// allowlist — the mechanism the comment above this once lacked: the old
+// staleness check only proved a fixture *exists* per catalog table, not
+// that its `rpc` leg still covers something.
 //
 // Failure test (this feature's Definition of Done, non-optional): the
 // `project_phases` hidden fixture is flipped to `client_visible = true`
@@ -230,8 +233,9 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
   let getProjectAssumptions: typeof import("@/lib/queries/project-records").getProjectAssumptions;
   let getProjectMetricsWithLatestSnapshot: typeof import("@/lib/queries/metrics").getProjectMetricsWithLatestSnapshot;
   let getProjectImprovements: typeof import("@/lib/queries/metrics").getProjectImprovements;
-  let getProjectLinks: typeof import("@/lib/queries/project-site").getProjectLinks;
-  let getProjectAccounts: typeof import("@/lib/queries/project-site").getProjectAccounts;
+  let getClientVisiblePortalLinks: typeof import("@/lib/queries/project-site").getClientVisiblePortalLinks;
+  let getClientVisiblePortalAccounts: typeof import("@/lib/queries/project-site").getClientVisiblePortalAccounts;
+  let getClientVisibleDocs: typeof import("@/lib/queries/docs").getClientVisibleDocs;
   let TABLE_FIXTURES: Record<string, TableFixture>;
 
   beforeAll(async () => {
@@ -242,7 +246,10 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
     ({ getProjectMetricsWithLatestSnapshot, getProjectImprovements } = await import(
       "@/lib/queries/metrics"
     ));
-    ({ getProjectLinks, getProjectAccounts } = await import("@/lib/queries/project-site"));
+    ({ getClientVisiblePortalLinks, getClientVisiblePortalAccounts } = await import(
+      "@/lib/queries/project-site"
+    ));
+    ({ getClientVisibleDocs } = await import("@/lib/queries/docs"));
 
     TABLE_FIXTURES = {
     project_phases: {
@@ -374,7 +381,7 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       markerColumn: "label",
       rpc: async (pid) => {
         activeSession = clientSession;
-        return getProjectLinks(pid);
+        return getClientVisiblePortalLinks(pid);
       },
       insert: async (a, pid) => {
         const vMarker = marker("project_links", "visible");
@@ -408,7 +415,7 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       markerColumn: "service",
       rpc: async (pid) => {
         activeSession = clientSession;
-        return getProjectAccounts(pid);
+        return getClientVisiblePortalAccounts(pid);
       },
       insert: async (a, pid) => {
         // `looks_like_credential` forbids secret-shaped strings in
@@ -442,10 +449,14 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
     },
     docs: {
       markerColumn: "title",
-      // No dedicated client-facing "list docs" query function exists yet
-      // (see file header) — RPC leg intentionally skipped, not silently
-      // passed: the `rpc: null` value below is asserted on explicitly.
-      rpc: null,
+      // F025e: getClientVisibleDocs (lib/queries/docs.ts) is the
+      // portal's own client-facing list-docs query (F023's site page
+      // calls it) — this leg was disabled by F025 with a comment that
+      // predated that function and is re-enabled here.
+      rpc: async (pid) => {
+        activeSession = clientSession;
+        return getClientVisibleDocs(workspaceId, pid);
+      },
       insert: async (a, pid, ctx) => {
         const vMarker = marker("docs", "visible");
         const hMarker = marker("docs", "hidden");
@@ -480,7 +491,8 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       // f005-portal-pages.test.ts and f003-portal-shell.test.ts already
       // (getPortalPages/getPortalOverview); this suite still runs the
       // direct-select and count legs below for completeness of the
-      // catalog-derived sweep.
+      // catalog-derived sweep. Listed in NULL_RPC_ALLOWLIST below so the
+      // anti-staleness check doesn't flag it.
       rpc: null,
       insert: async (a, pid, ctx) => {
         const vMarker = marker("tasks", "visible");
@@ -527,6 +539,46 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       expect(
         staleFixtures,
         `Fixture(s) in this suite for a table the catalog no longer reports: ${JSON.stringify(staleFixtures)}`,
+      ).toEqual([]);
+    },
+  );
+
+  // F025e: the check above catches a fixture that's missing entirely. It
+  // does NOT catch a fixture whose `rpc` leg has quietly gone stale --
+  // exactly what happened to `docs` once F023 added getClientVisibleDocs
+  // and nobody updated this suite. `NULL_RPC_ALLOWLIST` is the only
+  // place `rpc: null` is allowed to stand unchallenged, each entry
+  // carrying its own reason; any other fixture with `rpc: null` fails
+  // this test, forcing whoever disables an RPC leg to either wire it up
+  // or explain themselves here.
+  const NULL_RPC_ALLOWLIST: Record<string, string> = {
+    tasks: "covered at the RPC layer by f005-portal-pages.test.ts / f003-portal-shell.test.ts",
+  };
+
+  it(
+    "anti-staleness: every TABLE_FIXTURES entry with rpc === null is explicitly allowlisted, " +
+      "with a reason — a fixture that silently stopped covering its table's RPC leg fails here",
+    () => {
+      const unexplainedNullRpc = Object.entries(TABLE_FIXTURES)
+        .filter(([, cfg]) => cfg.rpc === null)
+        .map(([table]) => table)
+        .filter((table) => !(table in NULL_RPC_ALLOWLIST));
+
+      expect(
+        unexplainedNullRpc,
+        `Table(s) whose fixture has rpc: null but no NULL_RPC_ALLOWLIST entry explaining why: ` +
+          `${JSON.stringify(unexplainedNullRpc)}. Either wire up the RPC leg (a client-facing ` +
+          "query function for this table may now exist, as it did for docs) or add an " +
+          "allowlist entry with a reason.",
+      ).toEqual([]);
+
+      const allowlistedButCovered = Object.keys(NULL_RPC_ALLOWLIST).filter(
+        (table) => TABLE_FIXTURES[table]?.rpc !== null,
+      );
+      expect(
+        allowlistedButCovered,
+        `NULL_RPC_ALLOWLIST entry for table(s) whose fixture now has a real rpc — remove the ` +
+          `stale allowlist entry: ${JSON.stringify(allowlistedButCovered)}`,
       ).toEqual([]);
     },
   );

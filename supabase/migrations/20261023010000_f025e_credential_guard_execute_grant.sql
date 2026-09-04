@@ -1,0 +1,36 @@
+-- F025e (missions/20260903-portal, M5 final remediation): single-guard
+-- doc reads and, from the same audit, an EXECUTE-grant gap on
+-- looks_like_credential.
+--
+-- looks_like_credential (public.looks_like_credential, first created by
+-- 20261014010000_f022_links_accounts_docs_visibility.sql, replaced by
+-- 20261014020000_f022b_credential_guard_underscore_fix.sql) is called
+-- from the CHECK constraints on project_accounts.service/note (and
+-- project_links, see that migration). F016i's event trigger
+-- (20261007010000_f016i_event_trigger_default_execute_and_catalog_test.sql
+-- -- applied BEFORE 20261014010000, so it was live for
+-- looks_like_credential's first creation) revoked EXECUTE from public,
+-- anon AND authenticated the moment this function was first created,
+-- and 20261014020000's `create or replace function` preserved that
+-- revoked ACL verbatim (Postgres preserves an existing function's ACL
+-- across a replace -- the same behaviour F016i's own header documents
+-- and relies on). No migration ever re-granted `authenticated`.
+--
+-- A CHECK constraint's function calls execute as the role performing
+-- the INSERT/UPDATE, not as a superuser, so this was silently fine only
+-- because every write to project_links/project_accounts today goes
+-- through the service-role client (grepped: no INSERT/UPDATE on either
+-- table anywhere under lib/actions reachable from an authenticated
+-- session yet). The moment a real authenticated-role write path is
+-- added, that INSERT/UPDATE would fail with a bare
+-- "permission denied for function looks_like_credential" rather than
+-- the CHECK's own constraint-violation error -- an unhelpful failure
+-- mode for what should read as "that value looks like a secret."
+--
+-- Fix: grant authenticated EXECUTE explicitly, matching this schema's
+-- own "revoke from public once by default, grant back deliberately"
+-- convention (F016i's own header) -- `looks_like_credential` is a pure,
+-- side-effect-free predicate over its own text argument; granting
+-- `authenticated` EXECUTE exposes no data an authenticated caller
+-- couldn't already compute by pattern-matching a string themselves.
+grant execute on function public.looks_like_credential(text) to authenticated;

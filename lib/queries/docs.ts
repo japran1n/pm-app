@@ -222,6 +222,41 @@ export async function getAllDocs(
   return (data ?? []).map(mapDocRow);
 }
 
+// F025e (missions/20260903-portal, AS-051): the client-facing sibling of
+// getAllDocs, for the portal's site page (F023) rather than the
+// workspace docs sidebar. RLS already scopes a client caller's `docs`
+// reads to client_visible = true rows of a portal-enabled project it
+// belongs to, but this function's own contract is narrower than plain
+// scope -- "every guide shareable with this project's client" -- so the
+// client_visible predicate is applied explicitly here too, the same
+// convention lib/queries/portal.ts:337-342 documents and every sibling
+// portal query in this mission follows: it holds even for a team caller
+// previewing the portal, not only for an actual client session. Kept
+// separate from getAllDocs (used unfiltered by the two workspace-internal
+// docs pages, app/(workspace)/w/[workspaceSlug]/docs and .../docs) rather
+// than adding a flag to it, so a team-only caller of getAllDocs can never
+// end up accidentally scoped by this predicate.
+export async function getClientVisibleDocs(
+  workspaceId: string,
+  projectId: string | null,
+): Promise<Doc[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await applyScope(
+    docsBaseQuery(supabase),
+    workspaceId,
+    projectId,
+  )
+    .eq("client_visible", true)
+    .order("position", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapDocRow);
+}
+
 // Fetches a single doc by id for the editor page. Returns null (not a
 // thrown error) on "not found" or "no access" — RLS makes those
 // indistinguishable from the caller's point of view, same convention as
