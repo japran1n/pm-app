@@ -577,3 +577,5 @@ inverts it to an allow-list, and F016i replaces "someone must remember to revoke
 with a catalog-derived test that fails in CI.
 
 All three round-2 blockers confirmed closed. Nothing reverted again.
+- F016i COMPLETE (432839d) — the reviewer's proof verified live first, then F016g's no-op default-privileges statement replaced with a ddl_command_end event trigger on CREATE FUNCTION that revokes public/anon/authenticated EXECUTE the first time a function's oid is seen, tracked in a table backfilled with all existing functions so CREATE OR REPLACE on an already-granted function is left alone. Event triggers turned out to be permitted here. clear_client_deliverable_swept_at retro-fixed.
+  The catalog-derived test earned its place immediately: on its first run it caught a real bug — the event trigger function's own grants — and a pre-existing unrelated anon grant on is_valid_timezone, which the worker allow-listed with a documented follow-up rather than blind-revoking something outside its scope. "Someone must remember" is now "CI says no".
