@@ -24,6 +24,7 @@
 // only check.
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
@@ -35,6 +36,7 @@ import {
   reorderDeliverableSchema,
   deleteDeliverableSchema,
   decideDeliverableSchema,
+  deliverableKindSchema,
 } from "@/lib/validation/deliverables";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type { ClientDeliverable, DeliverableKind, DeliverableState } from "@/lib/queries/deliverables";
@@ -401,7 +403,13 @@ export async function updateDeliverable(input: {
 // ---------------------------------------------------------------------
 
 export type DeleteDeliverableResult =
-  | { ok: true; data: { id: string } }
+  // F090 item 5: `restore` carries the exact pre-delete row (the same
+  // shape `restoreDeliverable` below re-inserts verbatim) so the caller
+  // can offer a real Undo, not just a visual "it's gone" — a hard
+  // `.delete()` with no `deleted_at`/Trash entry means the row is
+  // genuinely gone the instant this resolves, so the only way back is
+  // whatever the deleting request itself already captured.
+  | { ok: true; data: { id: string; restore: ClientDeliverable } }
   | { ok: false; error: string };
 
 const deleteDeliverableImpl = withAuthz(
@@ -415,6 +423,19 @@ const deleteDeliverableImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadDeliverableExtra(admin, input.deliverableId),
   },
   async (input, ctx): Promise<DeleteDeliverableResult> => {
+    // F090 item 5: read the full row BEFORE deleting it -- the only
+    // moment this data still exists to be captured for Undo.
+    const { data: existing, error: readError } = await ctx.admin
+      .from("client_deliverables")
+      .select(DELIVERABLE_COLUMNS)
+      .eq("id", input.deliverableId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteDeliverable: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("client_deliverables")
       .delete()
@@ -435,9 +456,106 @@ const deleteDeliverableImpl = withAuthz(
 
     await revalidateDeliverableSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.deliverableId } };
+    return { ok: true, data: { id: input.deliverableId, restore: toDeliverableActionData(existing) } };
   },
 );
+
+// ---------------------------------------------------------------------
+// restoreDeliverable (F090 item 5 — undo for the hard delete above)
+// ---------------------------------------------------------------------
+
+const restoreDeliverableSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid deliverable."),
+  phaseId: z.string().uuid().nullable(),
+  taskId: z.string().uuid().nullable(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).nullable(),
+  kind: deliverableKindSchema,
+  ownerName: z.string().min(1).max(120),
+  dueAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
+  blocking: z.boolean(),
+  state: z.string(),
+  deliveredAt: z.string().nullable(),
+  acceptedAt: z.string().nullable(),
+  acceptedBy: z.string().uuid().nullable(),
+  reviewNote: z.string().nullable(),
+  position: z.number(),
+});
+
+const restoreDeliverableImpl = withAuthz(
+  restoreDeliverableSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's deliverables.",
+    writeError: "Viewers don't have permission to manage deliverables.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's deliverables.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<DeliverableActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("client_deliverables")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        phase_id: input.phaseId,
+        task_id: input.taskId,
+        title: input.title,
+        description: input.description,
+        kind: input.kind,
+        owner_name: input.ownerName,
+        due_at: input.dueAt,
+        blocking: input.blocking,
+        state: input.state,
+        delivered_at: input.deliveredAt,
+        accepted_at: input.acceptedAt,
+        accepted_by: input.acceptedBy,
+        review_note: input.reviewNote,
+        position: input.position,
+      })
+      .select(DELIVERABLE_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreDeliverable: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "client_deliverable.restored",
+      targetType: "client_deliverable",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, title: input.title },
+    });
+
+    await revalidateDeliverableSettings(ctx.workspaceSlug, ctx.projectId);
+
+    return { ok: true, data: toDeliverableActionData(data) };
+  },
+);
+
+export async function restoreDeliverable(input: {
+  projectId: string;
+  id: string;
+  phaseId: string | null;
+  taskId: string | null;
+  title: string;
+  description: string | null;
+  kind: DeliverableKind;
+  ownerName: string;
+  dueAt: string | null;
+  blocking: boolean;
+  state: DeliverableState;
+  deliveredAt: string | null;
+  acceptedAt: string | null;
+  acceptedBy: string | null;
+  reviewNote: string | null;
+  position: number;
+}): Promise<DeliverableActionResult> {
+  return restoreDeliverableImpl(input);
+}
 
 export async function deleteDeliverable(deliverableId: string): Promise<DeleteDeliverableResult> {
   return deleteDeliverableImpl({ deliverableId });

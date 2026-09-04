@@ -23,6 +23,7 @@
 // silent no-op that would look like success.
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
@@ -341,7 +342,17 @@ export async function updateMetric(input: {
 // deleteMetric
 // ---------------------------------------------------------------------
 
-export type DeleteMetricResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteMetricResult =
+  // F090 item 5: `restore` is the pre-delete metric row. NOTE: this
+  // metric's own `metric_snapshots` rows are cascade-deleted by the FK
+  // (`on delete cascade`, per lib/queries/metrics.ts) the instant the
+  // metric itself is deleted -- restoreMetric below brings the metric
+  // definition back, but NOT its snapshot history, which is a real,
+  // documented limitation of reinsert-on-undo for a parent row with
+  // cascading children (see this feature's handoff for why full
+  // snapshot-preserving undo is out of scope here).
+  | { ok: true; data: { id: string; restore: ProjectMetric } }
+  | { ok: false; error: string };
 
 const deleteMetricImpl = withAuthz(
   deleteMetricSchema,
@@ -354,6 +365,17 @@ const deleteMetricImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadMetricExtra(admin, input.metricId),
   },
   async (input, ctx): Promise<DeleteMetricResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_metrics")
+      .select(METRIC_COLUMNS)
+      .eq("id", input.metricId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteMetric: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("project_metrics")
       .delete()
@@ -374,12 +396,94 @@ const deleteMetricImpl = withAuthz(
 
     await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.metricId } };
+    return { ok: true, data: { id: input.metricId, restore: toMetricData(existing) } };
   },
 );
 
 export async function deleteMetric(metricId: string): Promise<DeleteMetricResult> {
   return deleteMetricImpl({ metricId });
+}
+
+// F090 item 5: restoreMetric — undo for the hard delete above (metric
+// definition only; see DeleteMetricResult's own comment on snapshots).
+const restoreMetricSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid metric."),
+  name: z.string().min(1),
+  unit: z.string().nullable(),
+  source: z.string(),
+  baselineValue: z.number().nullable(),
+  baselineAt: z.string().nullable(),
+  targetValue: z.number().nullable(),
+  direction: z.string(),
+  displayMax: z.number().nullable(),
+  clientVisible: z.boolean(),
+  position: z.number(),
+});
+
+const restoreMetricImpl = withAuthz(
+  restoreMetricSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's metrics.",
+    writeError: "Viewers don't have permission to manage metrics.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's metrics.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<MetricActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_metrics")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        name: input.name,
+        unit: input.unit,
+        source: input.source,
+        baseline_value: input.baselineValue,
+        baseline_at: input.baselineAt,
+        target_value: input.targetValue,
+        direction: input.direction,
+        display_max: input.displayMax,
+        client_visible: input.clientVisible,
+        position: input.position,
+      })
+      .select(METRIC_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreMetric: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_metric.restored",
+      targetType: "project_metric",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, name: input.name },
+    });
+
+    await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toMetricData(data) };
+  },
+);
+
+export async function restoreMetric(input: {
+  projectId: string;
+  id: string;
+  name: string;
+  unit: string | null;
+  source: MetricSource;
+  baselineValue: number | null;
+  baselineAt: string | null;
+  targetValue: number | null;
+  direction: MetricDirection;
+  displayMax: number | null;
+  clientVisible: boolean;
+  position: number;
+}): Promise<MetricActionResult> {
+  return restoreMetricImpl(input);
 }
 
 // ---------------------------------------------------------------------
@@ -539,7 +643,14 @@ export async function createSnapshot(input: {
 // keeps the record honestly append-only).
 // ---------------------------------------------------------------------
 
-export type DeleteSnapshotResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteSnapshotResult =
+  // F090 item 5: `restore` is the pre-delete snapshot row. Per this
+  // feature's own audit, `metric_snapshots` is one of the explicitly
+  // named candidates for real soft-delete (a frozen measurement is an
+  // audit-trail item) -- this reinsert-on-undo is the pragmatic interim
+  // fix, not that larger migration. See this feature's handoff.
+  | { ok: true; data: { id: string; restore: MetricSnapshot } }
+  | { ok: false; error: string };
 
 type SnapshotExtra = ProjectExtra & { metricId: string };
 
@@ -594,6 +705,17 @@ const deleteSnapshotImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadSnapshotExtra(admin, input.snapshotId),
   },
   async (input, ctx): Promise<DeleteSnapshotResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("metric_snapshots")
+      .select("id, metric_id, value, measured_at, note, created_by, created_at")
+      .eq("id", input.snapshotId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteSnapshot: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("metric_snapshots")
       .delete()
@@ -606,12 +728,70 @@ const deleteSnapshotImpl = withAuthz(
 
     await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.snapshotId } };
+    return { ok: true, data: { id: input.snapshotId, restore: toSnapshotData(existing) } };
   },
 );
 
 export async function deleteSnapshot(snapshotId: string): Promise<DeleteSnapshotResult> {
   return deleteSnapshotImpl({ snapshotId });
+}
+
+// F090 item 5: restoreSnapshot — undo for the hard delete above.
+const restoreSnapshotSchema = z.object({
+  metricId: z.string().uuid("Invalid metric."),
+  id: z.string().uuid("Invalid snapshot."),
+  value: z.number(),
+  measuredAt: z.string(),
+  note: z.string().nullable(),
+  createdBy: z.string().uuid(),
+  createdAt: z.string(),
+});
+
+const restoreSnapshotImpl = withAuthz(
+  restoreSnapshotSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's metrics.",
+    writeError: "Viewers don't have permission to manage metrics.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's metrics.",
+    resolveWorkspace: (input, admin) => loadMetricExtra(admin, input.metricId),
+  },
+  async (input, ctx): Promise<SnapshotActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("metric_snapshots")
+      .insert({
+        id: input.id,
+        metric_id: input.metricId,
+        value: input.value,
+        measured_at: input.measuredAt,
+        note: input.note,
+        created_by: input.createdBy,
+        created_at: input.createdAt,
+      })
+      .select("id, metric_id, value, measured_at, note, created_by, created_at")
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreSnapshot: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toSnapshotData(data) };
+  },
+);
+
+export async function restoreSnapshot(input: {
+  metricId: string;
+  id: string;
+  value: number;
+  measuredAt: string;
+  note: string | null;
+  createdBy: string;
+  createdAt: string;
+}): Promise<SnapshotActionResult> {
+  return restoreSnapshotImpl(input);
 }
 
 // ---------------------------------------------------------------------
@@ -855,7 +1035,9 @@ export async function updateImprovement(input: {
   return updateImprovementImpl(input);
 }
 
-export type DeleteImprovementResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteImprovementResult =
+  | { ok: true; data: { id: string; restore: ProjectImprovement } }
+  | { ok: false; error: string };
 
 const deleteImprovementImpl = withAuthz(
   deleteImprovementSchema,
@@ -868,6 +1050,17 @@ const deleteImprovementImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadImprovementExtra(admin, input.improvementId),
   },
   async (input, ctx): Promise<DeleteImprovementResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_improvements")
+      .select(IMPROVEMENT_COLUMNS)
+      .eq("id", input.improvementId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteImprovement: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("project_improvements")
       .delete()
@@ -888,12 +1081,88 @@ const deleteImprovementImpl = withAuthz(
 
     await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.improvementId } };
+    return {
+      ok: true,
+      data: { id: input.improvementId, restore: toImprovementData(existing) },
+    };
   },
 );
 
 export async function deleteImprovement(improvementId: string): Promise<DeleteImprovementResult> {
   return deleteImprovementImpl({ improvementId });
+}
+
+// F090 item 5: restoreImprovement — undo for the hard delete above. The
+// before/after Storage objects themselves are never removed by
+// deleteImprovementImpl (only the DB row), so re-inserting the row with
+// the same `before_path`/`after_path` is safe -- the files are still
+// there.
+const restoreImprovementSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid improvement."),
+  area: z.string().min(1),
+  explanation: z.string(),
+  beforePath: z.string().nullable(),
+  afterPath: z.string().nullable(),
+  position: z.number(),
+  clientVisible: z.boolean(),
+});
+
+const restoreImprovementImpl = withAuthz(
+  restoreImprovementSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's improvements.",
+    writeError: "Viewers don't have permission to manage improvements.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's improvements.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<ImprovementActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_improvements")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        area: input.area,
+        explanation: input.explanation,
+        before_path: input.beforePath,
+        after_path: input.afterPath,
+        position: input.position,
+        client_visible: input.clientVisible,
+      })
+      .select(IMPROVEMENT_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreImprovement: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_improvement.restored",
+      targetType: "project_improvement",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, area: input.area },
+    });
+
+    await revalidateMeasurementSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toImprovementData(data) };
+  },
+);
+
+export async function restoreImprovement(input: {
+  projectId: string;
+  id: string;
+  area: string;
+  explanation: string;
+  beforePath: string | null;
+  afterPath: string | null;
+  position: number;
+  clientVisible: boolean;
+}): Promise<ImprovementActionResult> {
+  return restoreImprovementImpl(input);
 }
 
 const reorderImprovementImpl = withAuthz(

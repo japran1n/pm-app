@@ -221,7 +221,21 @@ export function PortalSettingsPanel({
                 disabled={!canEditLaunch || isLaunchPending}
               >
                 <SelectTrigger id="portal-launch-confidence" aria-label="Launch confidence">
-                  <SelectValue placeholder="Not set" />
+                  {/* F090 item 4: Radix's <Select.Value> only renders a
+                      registered SelectItem's own children once
+                      SelectContent has actually mounted (it lives in a
+                      portal, so that's only after the user opens the
+                      dropdown) -- until then it falls back to the raw
+                      `value` string, which rendered the bare `on_track`
+                      enum on first paint. Passing the already-computed
+                      label as an explicit child bypasses that fallback
+                      entirely, matching every other confidence display
+                      in this codebase (portal-topbar.tsx, launch-day-
+                      card.tsx, overview-tiles.tsx) that already looks the
+                      value up through its own label map. */}
+                  <SelectValue placeholder="Not set">
+                    {launchConfidence ? CONFIDENCE_LABELS[launchConfidence] : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(Object.keys(CONFIDENCE_LABELS) as PortalLaunchConfidence[]).map((value) => (

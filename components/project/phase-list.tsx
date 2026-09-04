@@ -30,9 +30,11 @@ import {
   createPhase,
   deletePhase,
   reorderPhases,
+  restorePhase,
   seedDefaultPhases,
   updatePhase,
 } from "@/lib/actions/phases";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import type { TeamProjectPhase } from "@/lib/queries/phases";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +90,7 @@ function PhaseRow({
   baselineFrozen,
   onChanged,
   onRemoved,
+  onRestored,
   onMove,
 }: {
   phase: PhaseListPhase;
@@ -96,6 +99,7 @@ function PhaseRow({
   baselineFrozen: boolean;
   onChanged: (phase: PhaseListPhase) => void;
   onRemoved: (id: string) => void;
+  onRestored: (phase: PhaseListPhase) => void;
   onMove: (id: string, direction: "up" | "down") => void;
 }) {
   const [name, setName] = useState(phase.name);
@@ -185,6 +189,29 @@ function PhaseRow({
         return;
       }
       onRemoved(phase.id);
+      // F090 item 5: hard `.delete()`, no `deleted_at`/Trash entry --
+      // Undo re-inserts the captured row via restorePhase. Any task/
+      // deliverable that referenced this phase had its own `phase_id`
+      // set to null by the FK when the phase was deleted and is NOT
+      // re-linked here -- a real, documented limitation (see
+      // deletePhaseImpl's own comment in lib/actions/phases.ts).
+      showUndoToast({
+        message: "Phase deleted.",
+        description: "This can't be recovered once this undo window closes.",
+        onUndo: async () => {
+          const restoreResult = await restorePhase(result.data.restore);
+          if (!restoreResult.ok) {
+            toast.error(restoreResult.error);
+            return;
+          }
+          onRestored({
+            ...restoreResult.data,
+            actualStart: result.data.restore.actualStart,
+            actualEnd: result.data.restore.actualEnd,
+            taskCount: 0,
+          });
+        },
+      });
     });
   }
 
@@ -378,6 +405,12 @@ export function PhaseList({
     setPhases((current) => current.filter((p) => p.id !== id));
   }
 
+  function restoreToList(phase: PhaseListPhase) {
+    setPhases((current) =>
+      [...current.filter((p) => p.id !== phase.id), phase].sort((a, b) => a.position - b.position),
+    );
+  }
+
   function handleAdd() {
     if (!newName.trim()) {
       toast.error("Phase name is required.");
@@ -503,6 +536,7 @@ export function PhaseList({
                 baselineFrozen={baselineFrozen}
                 onChanged={replacePhase}
                 onRemoved={removeFromList}
+                onRestored={restoreToList}
                 onMove={handleMove}
               />
             ) : (

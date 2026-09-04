@@ -3162,11 +3162,13 @@ export type Database = {
           checklist_total: number
           child_done: number
           child_total: number
+          client_visible: boolean
           due_date: string
           estimate_minutes: number
           id: string
           number: number
           open_blocker_count: number
+          pending_client_approval: boolean
           position: number
           priority: string
           project_key: string

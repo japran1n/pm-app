@@ -36,10 +36,19 @@ const UNDO_TOAST_DURATION_MS = 8000;
 export function showUndoToast({
   message,
   onUndo,
+  description,
 }: {
   /** e.g. "Task deleted." / "Comment deleted." / "Moved 3 tasks to trash." */
   message: string;
   onUndo: () => void | Promise<void>;
+  /** F090 item 5: overridable for callers whose deleted row is NOT also
+   * in Trash (a hard `.delete()` with no `deleted_at` column) -- the
+   * default keeps this feature's original Clarified copy requirement for
+   * every trash-backed caller (task/comment/bulk-task delete), but
+   * telling a client-portal-settings user their deleted metric/decision/
+   * budget period is "Also available in Trash" would be a lie once the
+   * 8s undo window closes; it is genuinely gone. */
+  description?: string;
 }): void {
   let handled = false;
 
@@ -47,7 +56,7 @@ export function showUndoToast({
     // Per this feature's Clarified copy requirement: undoing after the
     // toast itself has expired is still possible via the trash page, and
     // the toast's own copy says so.
-    description: "Also available in Trash.",
+    description: description ?? "Also available in Trash.",
     duration: UNDO_TOAST_DURATION_MS,
     action: {
       label: "Undo",

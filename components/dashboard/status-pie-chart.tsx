@@ -45,7 +45,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
   return (
     <div className="flex h-[260px] flex-col justify-center gap-5">
       <div
-        role="img"
+        role="group"
         aria-label={data
           .map((datum) => `${datum.label}: ${datum.count}`)
           .join(", ")}

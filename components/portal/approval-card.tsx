@@ -27,7 +27,7 @@ import Link from "next/link";
 import { Check, ExternalLink, Loader2, MessageSquareWarning } from "lucide-react";
 import { toast } from "sonner";
 
-import { decideApproval } from "@/lib/actions/portal-approval";
+import { decideApproval, nudgeApprovalOwner } from "@/lib/actions/portal-approval";
 import { getApprovalDocSnapshotUrl } from "@/lib/actions/approvals";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -88,7 +88,7 @@ export function ApprovalCard({
   projectId,
   isOwner,
   ownerName,
-  ownerEmail = null,
+  ownerId = null,
 }: {
   approval: PortalApproval;
   workspaceSlug: string;
@@ -99,13 +99,17 @@ export function ApprovalCard({
    * `null` when no one is assigned yet -- rendered as an honest "no
    * owner assigned" line rather than pretending nobody needs to know. */
   ownerName: string | null;
-  /** F085 (missions/20260903-portal audit, defect 6): lets a non-owner
-   * actually reach the named owner instead of just being told a name.
-   * `null` when the owner has no resolvable email (matches `ownerName`'s
-   * own honesty convention) -- the naming line still renders, just
-   * without the action. Optional/defaulted so every pre-existing caller
-   * that predates this field stays valid. */
-  ownerEmail?: string | null;
+  /** F085 (missions/20260903-portal audit, defect 6), replaced by F090
+   * item 3: lets a non-owner actually reach the named owner instead of
+   * just being told a name. Originally a `mailto:` built from an
+   * `ownerEmail` prop -- now `nudgeApprovalOwner` (lib/actions/
+   * portal-approval.ts) re-derives the current owner server-side from
+   * `project_decision_owners` and sends a real in-app notification, so
+   * this prop only gates whether the button renders at all (`null` means
+   * "no owner assigned yet", same honesty convention as `ownerName`) --
+   * it is never sent to the server. Optional/defaulted so every
+   * pre-existing caller that predates this field stays valid. */
+  ownerId?: string | null;
 }) {
   const [isRequestingChanges, setIsRequestingChanges] = useState(false);
   const [message, setMessage] = useState("");
@@ -129,6 +133,26 @@ export function ApprovalCard({
   // components/portal/file-list.tsx) from the decide transition above --
   // its own pending state so clicking "Open" never disables Approve.
   const [isOpeningDoc, startOpenDocTransition] = useTransition();
+
+  // F090 item 3: same "settle in place, never remove the affordance"
+  // shape as `settled` above for the decide actions -- once a nudge
+  // succeeds the button becomes a confirmation, not a re-triggerable
+  // action (matches this card's own "success is durable feedback, not a
+  // toast that vanishes" convention).
+  const [nudgeSent, setNudgeSent] = useState(false);
+  const [isNudging, startNudgeTransition] = useTransition();
+
+  const handleNudgeOwner = () => {
+    startNudgeTransition(async () => {
+      const result = await nudgeApprovalOwner(approval.id);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setNudgeSent(true);
+      toast.success(ownerName ? `${ownerName} was notified.` : "The decision owner was notified.");
+    });
+  };
 
   const handleOpenDocSnapshot = () => {
     startOpenDocTransition(async () => {
@@ -368,13 +392,21 @@ export function ApprovalCard({
               <span>
                 {ownerName ? `Only ${ownerName} can decide this.` : "No one is assigned to decide this yet."}
               </span>
-              {ownerName && ownerEmail && (
-                <a
-                  href={`mailto:${ownerEmail}?subject=${encodeURIComponent(`Please review: ${approval.title}`)}`}
-                  className="font-medium text-primary hover:underline"
+              {ownerName && ownerId && !nudgeSent && (
+                <button
+                  type="button"
+                  onClick={handleNudgeOwner}
+                  disabled={isNudging}
+                  data-testid="nudge-owner-button"
+                  className="font-medium text-primary hover:underline disabled:opacity-60"
                 >
-                  Ask {ownerName} to take a look
-                </a>
+                  {isNudging ? "Notifying…" : `Ask ${ownerName} to take a look`}
+                </button>
+              )}
+              {ownerName && ownerId && nudgeSent && (
+                <span data-testid="nudge-owner-sent" className="font-medium text-muted-foreground">
+                  {ownerName} was notified.
+                </span>
               )}
               {!ownerName && (
                 <Link

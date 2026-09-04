@@ -25,9 +25,12 @@ import {
   deleteProjectLink,
   reorderProjectAccount,
   reorderProjectLink,
+  restoreProjectAccount,
+  restoreProjectLink,
   updateProjectAccount,
   updateProjectLink,
 } from "@/lib/actions/project-site";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import type {
   ProjectAccount,
   ProjectAccountOwner,
@@ -113,7 +116,8 @@ function DeleteRowButton({ label, onConfirm }: { label: string; onConfirm: () =>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &ldquo;{label}&rdquo;?</AlertDialogTitle>
           <AlertDialogDescription>
-            This removes it from the project and the client portal. This cannot be undone.
+            This removes it from the project and the client portal. You can undo this
+            for a few seconds right after deleting.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -170,12 +174,14 @@ function LinkRow({
   link,
   onChanged,
   onRemoved,
+  onRestored,
   onMove,
   isReordering,
 }: {
   link: ProjectLink;
   onChanged: (link: ProjectLink) => void;
   onRemoved: (id: string) => void;
+  onRestored: (link: ProjectLink) => void;
   onMove: (direction: "up" | "down") => void;
   isReordering: boolean;
 }) {
@@ -270,6 +276,18 @@ function LinkRow({
               return;
             }
             onRemoved(link.id);
+            showUndoToast({
+              message: "Link deleted.",
+              description: "This can't be recovered once this undo window closes.",
+              onUndo: async () => {
+                const restoreResult = await restoreProjectLink(result.data.restore);
+                if (!restoreResult.ok) {
+                  toast.error(restoreResult.error);
+                  return;
+                }
+                onRestored(restoreResult.data);
+              },
+            });
           }}
         />
       </div>
@@ -381,6 +399,13 @@ function LinksTab({
                   )
                 }
                 onRemoved={(id) => setLinks((current) => current.filter((l) => l.id !== id))}
+                onRestored={(restored) =>
+                  setLinks((current) =>
+                    [...current.filter((l) => l.id !== restored.id), restored].sort(
+                      (a, b) => a.position - b.position,
+                    ),
+                  )
+                }
                 onMove={(direction) => handleMove(link.id, direction)}
                 isReordering={reorderingId === link.id}
               />
@@ -445,12 +470,14 @@ function AccountRow({
   account,
   onChanged,
   onRemoved,
+  onRestored,
   onMove,
   isReordering,
 }: {
   account: ProjectAccount;
   onChanged: (account: ProjectAccount) => void;
   onRemoved: (id: string) => void;
+  onRestored: (account: ProjectAccount) => void;
   onMove: (direction: "up" | "down") => void;
   isReordering: boolean;
 }) {
@@ -581,6 +608,18 @@ function AccountRow({
               return;
             }
             onRemoved(account.id);
+            showUndoToast({
+              message: "Account deleted.",
+              description: "This can't be recovered once this undo window closes.",
+              onUndo: async () => {
+                const restoreResult = await restoreProjectAccount(result.data.restore);
+                if (!restoreResult.ok) {
+                  toast.error(restoreResult.error);
+                  return;
+                }
+                onRestored(restoreResult.data);
+              },
+            });
           }}
         />
       </div>
@@ -690,6 +729,13 @@ function AccountsTab({
                   )
                 }
                 onRemoved={(id) => setAccounts((current) => current.filter((a) => a.id !== id))}
+                onRestored={(restored) =>
+                  setAccounts((current) =>
+                    [...current.filter((a) => a.id !== restored.id), restored].sort(
+                      (a, b) => a.position - b.position,
+                    ),
+                  )
+                }
                 onMove={(direction) => handleMove(account.id, direction)}
                 isReordering={reorderingId === account.id}
               />

@@ -30,10 +30,14 @@ import {
   deleteMetric,
   deleteSnapshot,
   freezeBaseline,
+  restoreImprovement,
+  restoreMetric,
+  restoreSnapshot,
   updateImprovement,
   updateMetric,
   uploadImprovementImage,
 } from "@/lib/actions/metrics";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import { deriveMetricMeasurementStatus } from "@/lib/metrics/measurement-status";
 import type {
   MetricWithLatestSnapshot,
@@ -101,11 +105,13 @@ function MetricRow({
   baselineFrozenAt,
   onChanged,
   onRemoved,
+  onRestored,
 }: {
   metric: MetricWithLatestSnapshot;
   baselineFrozenAt: string | null;
   onChanged: (metric: MetricWithLatestSnapshot) => void;
   onRemoved: (id: string) => void;
+  onRestored: (metric: MetricWithLatestSnapshot) => void;
 }) {
   const [name, setName] = useState(metric.name);
   const [unit, setUnit] = useState(metric.unit ?? "");
@@ -178,6 +184,23 @@ function MetricRow({
         return;
       }
       onRemoved(metric.id);
+      // F090 item 5: brings back the metric definition, NOT its snapshot
+      // history (`metric_snapshots` cascade-deletes with the metric --
+      // see deleteMetric's own comment in lib/actions/metrics.ts). Named
+      // by this audit as a real soft-delete candidate; this is the
+      // interim fix.
+      showUndoToast({
+        message: "Metric deleted.",
+        description: "This can't be recovered once this undo window closes.",
+        onUndo: async () => {
+          const restoreResult = await restoreMetric(result.data.restore);
+          if (!restoreResult.ok) {
+            toast.error(restoreResult.error);
+            return;
+          }
+          onRestored({ ...restoreResult.data, latestSnapshot: null });
+        },
+      });
     });
   }
 
@@ -305,7 +328,9 @@ function MetricRow({
               <AlertDialogTitle>Delete &ldquo;{metric.name}&rdquo;?</AlertDialogTitle>
               <AlertDialogDescription>
                 This removes the metric, its baseline, and every recorded
-                measurement. This cannot be undone.
+                measurement. You can undo removing the metric itself for a
+                few seconds right after deleting, but its recorded
+                measurements are not restored by that undo.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -419,6 +444,21 @@ function MetricRow({
                   return;
                 }
                 onChanged({ ...metric, latestSnapshot: null });
+                // F090 item 5: this audit's own named soft-delete
+                // candidate (a frozen measurement is an audit-trail
+                // item) -- reinsert-on-undo is the interim fix.
+                showUndoToast({
+                  message: "Measurement deleted.",
+                  description: "This can't be recovered once this undo window closes.",
+                  onUndo: async () => {
+                    const restoreResult = await restoreSnapshot(result.data.restore);
+                    if (!restoreResult.ok) {
+                      toast.error(restoreResult.error);
+                      return;
+                    }
+                    onChanged({ ...metric, latestSnapshot: restoreResult.data });
+                  },
+                });
               });
             }}
           >
@@ -458,10 +498,12 @@ function ImprovementRow({
   improvement,
   onChanged,
   onRemoved,
+  onRestored,
 }: {
   improvement: ProjectImprovement;
   onChanged: (improvement: ProjectImprovement) => void;
   onRemoved: (id: string) => void;
+  onRestored: (improvement: ProjectImprovement) => void;
 }) {
   const [area, setArea] = useState(improvement.area);
   const [explanation, setExplanation] = useState(improvement.explanation);
@@ -493,6 +535,18 @@ function ImprovementRow({
         return;
       }
       onRemoved(improvement.id);
+      showUndoToast({
+        message: "Improvement deleted.",
+        description: "This can't be recovered once this undo window closes.",
+        onUndo: async () => {
+          const restoreResult = await restoreImprovement(result.data.restore);
+          if (!restoreResult.ok) {
+            toast.error(restoreResult.error);
+            return;
+          }
+          onRestored(restoreResult.data);
+        },
+      });
     });
   }
 
@@ -618,9 +672,25 @@ export function MeasurementPanel({
     );
   }
 
+  function restoreMetricToList(restored: MetricWithLatestSnapshot) {
+    setMetrics((current) =>
+      [...current.filter((m) => m.id !== restored.id), restored].sort(
+        (a, b) => a.position - b.position,
+      ),
+    );
+  }
+
   function replaceImprovement(next: ProjectImprovement) {
     setImprovements((current) =>
       current.map((i) => (i.id === next.id ? next : i)).sort((a, b) => a.position - b.position),
+    );
+  }
+
+  function restoreImprovementToList(restored: ProjectImprovement) {
+    setImprovements((current) =>
+      [...current.filter((i) => i.id !== restored.id), restored].sort(
+        (a, b) => a.position - b.position,
+      ),
     );
   }
 
@@ -731,6 +801,7 @@ export function MeasurementPanel({
                   baselineFrozenAt={frozenAt}
                   onChanged={replaceMetric}
                   onRemoved={(id) => setMetrics((current) => current.filter((m) => m.id !== id))}
+                  onRestored={restoreMetricToList}
                 />
               ) : (
                 <div key={metric.id} className="flex items-center gap-2 rounded-md border border-border p-3">
@@ -781,6 +852,7 @@ export function MeasurementPanel({
                   improvement={improvement}
                   onChanged={replaceImprovement}
                   onRemoved={(id) => setImprovements((current) => current.filter((i) => i.id !== id))}
+                  onRestored={restoreImprovementToList}
                 />
               ) : (
                 <div key={improvement.id} className="rounded-md border border-border p-3">

@@ -13,6 +13,7 @@
 // to phases).
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
@@ -285,7 +286,7 @@ export async function updateProjectLink(input: {
 }
 
 export type DeleteProjectLinkResult =
-  | { ok: true; data: { id: string } }
+  | { ok: true; data: { id: string; restore: ProjectLink } }
   | { ok: false; error: string };
 
 const deleteProjectLinkImpl = withAuthz(
@@ -297,6 +298,17 @@ const deleteProjectLinkImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadLinkExtra(admin, input.linkId),
   },
   async (input, ctx): Promise<DeleteProjectLinkResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_links")
+      .select(LINK_COLUMNS)
+      .eq("id", input.linkId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteProjectLink: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error } = await ctx.admin.from("project_links").delete().eq("id", input.linkId);
 
     if (error) {
@@ -313,12 +325,76 @@ const deleteProjectLinkImpl = withAuthz(
     });
 
     await revalidateSiteSettings(ctx.workspaceSlug, ctx.projectId);
-    return { ok: true, data: { id: input.linkId } };
+    return { ok: true, data: { id: input.linkId, restore: toProjectLink(existing) } };
   },
 );
 
 export async function deleteProjectLink(linkId: string): Promise<DeleteProjectLinkResult> {
   return deleteProjectLinkImpl({ linkId });
+}
+
+// F090 item 5: restoreProjectLink — undo for the hard delete above.
+const restoreProjectLinkSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid link."),
+  kind: z.string(),
+  label: z.string().min(1),
+  url: z.string().min(1),
+  clientVisible: z.boolean(),
+  position: z.number(),
+});
+
+const restoreProjectLinkImpl = withAuthz(
+  restoreProjectLinkSchema,
+  {
+    requireWrite: true,
+    requireVisibility: true,
+    ...AUTHZ_ERRORS,
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<ProjectLinkActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_links")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        kind: input.kind,
+        label: input.label,
+        url: input.url,
+        client_visible: input.clientVisible,
+        position: input.position,
+      })
+      .select(LINK_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreProjectLink: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_link.restored",
+      targetType: "project_link",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, label: input.label },
+    });
+
+    await revalidateSiteSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toProjectLink(data) };
+  },
+);
+
+export async function restoreProjectLink(input: {
+  projectId: string;
+  id: string;
+  kind: ProjectLinkKind;
+  label: string;
+  url: string;
+  clientVisible: boolean;
+  position: number;
+}): Promise<ProjectLinkActionResult> {
+  return restoreProjectLinkImpl(input);
 }
 
 export type ReorderProjectLinkResult =
@@ -604,7 +680,7 @@ export async function updateProjectAccount(input: {
 }
 
 export type DeleteProjectAccountResult =
-  | { ok: true; data: { id: string } }
+  | { ok: true; data: { id: string; restore: ProjectAccount } }
   | { ok: false; error: string };
 
 const deleteProjectAccountImpl = withAuthz(
@@ -616,6 +692,17 @@ const deleteProjectAccountImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadAccountExtra(admin, input.accountId),
   },
   async (input, ctx): Promise<DeleteProjectAccountResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_accounts")
+      .select(ACCOUNT_COLUMNS)
+      .eq("id", input.accountId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteProjectAccount: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error } = await ctx.admin
       .from("project_accounts")
       .delete()
@@ -635,12 +722,82 @@ const deleteProjectAccountImpl = withAuthz(
     });
 
     await revalidateSiteSettings(ctx.workspaceSlug, ctx.projectId);
-    return { ok: true, data: { id: input.accountId } };
+    return { ok: true, data: { id: input.accountId, restore: toProjectAccount(existing) } };
   },
 );
 
 export async function deleteProjectAccount(accountId: string): Promise<DeleteProjectAccountResult> {
   return deleteProjectAccountImpl({ accountId });
+}
+
+// F090 item 5: restoreProjectAccount — undo for the hard delete above.
+const restoreProjectAccountSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid account."),
+  service: z.string().min(1),
+  owner: z.string(),
+  status: z.string(),
+  renewalDate: z.string().nullable(),
+  note: z.string().nullable(),
+  clientVisible: z.boolean(),
+  position: z.number(),
+});
+
+const restoreProjectAccountImpl = withAuthz(
+  restoreProjectAccountSchema,
+  {
+    requireWrite: true,
+    requireVisibility: true,
+    ...AUTHZ_ERRORS,
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<ProjectAccountActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_accounts")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        service: input.service,
+        owner: input.owner,
+        status: input.status,
+        renewal_date: input.renewalDate,
+        note: input.note,
+        client_visible: input.clientVisible,
+        position: input.position,
+      })
+      .select(ACCOUNT_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreProjectAccount: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_account.restored",
+      targetType: "project_account",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, service: input.service },
+    });
+
+    await revalidateSiteSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toProjectAccount(data) };
+  },
+);
+
+export async function restoreProjectAccount(input: {
+  projectId: string;
+  id: string;
+  service: string;
+  owner: ProjectAccountOwner;
+  status: ProjectAccountStatus;
+  renewalDate: string | null;
+  note: string | null;
+  clientVisible: boolean;
+  position: number;
+}): Promise<ProjectAccountActionResult> {
+  return restoreProjectAccountImpl(input);
 }
 
 export type ReorderProjectAccountResult =

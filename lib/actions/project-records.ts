@@ -18,6 +18,7 @@
 // SECURITY DEFINER, bypasses RLS as its own enforcement point).
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
@@ -300,7 +301,10 @@ export async function updateScopeItem(input: {
 }
 
 export type DeleteScopeItemResult =
-  | { ok: true; data: { id: string } }
+  // F090 item 5: `restore` is the pre-delete row, verbatim -- see
+  // deliverables.ts's deleteDeliverableImpl for why (hard `.delete()`,
+  // no `deleted_at`/Trash entry).
+  | { ok: true; data: { id: string; restore: ProjectScopeItem } }
   | { ok: false; error: string };
 
 const deleteScopeItemImpl = withAuthz(
@@ -312,6 +316,17 @@ const deleteScopeItemImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadScopeItemExtra(admin, input.scopeItemId),
   },
   async (input, ctx): Promise<DeleteScopeItemResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_scope_items")
+      .select(SCOPE_ITEM_COLUMNS)
+      .eq("id", input.scopeItemId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteScopeItem: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error } = await ctx.admin
       .from("project_scope_items")
       .delete()
@@ -331,12 +346,84 @@ const deleteScopeItemImpl = withAuthz(
     });
 
     await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
-    return { ok: true, data: { id: input.scopeItemId } };
+    return { ok: true, data: { id: input.scopeItemId, restore: toScopeItem(existing) } };
   },
 );
 
 export async function deleteScopeItem(scopeItemId: string): Promise<DeleteScopeItemResult> {
   return deleteScopeItemImpl({ scopeItemId });
+}
+
+// F090 item 5: restoreScopeItem — undo for the hard delete above. Note:
+// `change_request_id` is deliberately NOT accepted here even though
+// `toScopeItem` reads it off the row -- a scope item created FROM a
+// change request (`source: "change_request"`) is re-inserted with a null
+// `change_request_id` link, same as every other field this schema
+// re-validates rather than blindly trusting the client-held snapshot,
+// since the linked change request itself may have moved on in the
+// interim. The item's own text/inclusion/source are restored exactly;
+// only the cross-table link is dropped.
+const restoreScopeItemSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid scope item."),
+  title: z.string().min(1).max(200),
+  description: z.string().nullable(),
+  included: z.boolean(),
+  source: z.enum(["proposal", "change_request"]),
+  position: z.number(),
+});
+
+const restoreScopeItemImpl = withAuthz(
+  restoreScopeItemSchema,
+  {
+    requireWrite: true,
+    requireVisibility: true,
+    ...AUTHZ_ERRORS,
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<ScopeItemActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_scope_items")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        title: input.title,
+        description: input.description,
+        included: input.included,
+        source: input.source,
+        position: input.position,
+      })
+      .select(SCOPE_ITEM_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreScopeItem: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_scope_item.restored",
+      targetType: "project_scope_item",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, title: input.title },
+    });
+
+    await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toScopeItem(data) };
+  },
+);
+
+export async function restoreScopeItem(input: {
+  projectId: string;
+  id: string;
+  title: string;
+  description: string | null;
+  included: boolean;
+  source: ScopeItemSource;
+  position: number;
+}): Promise<ScopeItemActionResult> {
+  return restoreScopeItemImpl(input);
 }
 
 // ---------------------------------------------------------------------
@@ -539,7 +626,15 @@ export async function updateDecision(input: {
 }
 
 export type DeleteDecisionResult =
-  | { ok: true; data: { id: string } }
+  // F090 item 5: `restore` is the pre-delete row -- see this file's
+  // scope-item restore above for the same shape/rationale. NOTE
+  // (F090's own instruction): a decision record is one of this audit's
+  // own named candidates for real soft-delete (a frozen decision is an
+  // audit-trail item, not a scratch note) -- this reinsert-on-undo is
+  // the pragmatic fix for the immediate "one click, no confirmation
+  // asymmetry, gone forever" defect, not a replacement for that larger
+  // migration. See this feature's handoff for the explicit call-out.
+  | { ok: true; data: { id: string; restore: ProjectDecision } }
   | { ok: false; error: string };
 
 const deleteDecisionImpl = withAuthz(
@@ -551,6 +646,17 @@ const deleteDecisionImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadDecisionExtra(admin, input.decisionId),
   },
   async (input, ctx): Promise<DeleteDecisionResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_decisions")
+      .select(DECISION_COLUMNS)
+      .eq("id", input.decisionId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteDecision: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error } = await ctx.admin
       .from("project_decisions")
       .delete()
@@ -570,12 +676,89 @@ const deleteDecisionImpl = withAuthz(
     });
 
     await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
-    return { ok: true, data: { id: input.decisionId } };
+    return { ok: true, data: { id: input.decisionId, restore: toDecision(existing) } };
   },
 );
 
 export async function deleteDecision(decisionId: string): Promise<DeleteDecisionResult> {
   return deleteDecisionImpl({ decisionId });
+}
+
+// F090 item 5: restoreDecision — undo for the hard delete above.
+// `phaseId`/`createdBy` are re-validated (uuid or null) but not
+// re-checked for cross-project/still-active membership -- same trust
+// level createDecision already gives its own caller-supplied
+// `phaseId`/`decidedByName` (see createDecisionImpl below).
+const restoreDecisionSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid decision."),
+  phaseId: z.string().uuid().nullable(),
+  title: z.string().min(1).max(200),
+  rationale: z.string().nullable(),
+  decisionType: z.string(),
+  decidedOn: z.string(),
+  decidedByName: z.string().nullable(),
+  clientVisible: z.boolean(),
+  createdBy: z.string().uuid(),
+});
+
+const restoreDecisionImpl = withAuthz(
+  restoreDecisionSchema,
+  {
+    requireWrite: true,
+    requireVisibility: true,
+    ...AUTHZ_ERRORS,
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<DecisionActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_decisions")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        phase_id: input.phaseId,
+        title: input.title,
+        rationale: input.rationale,
+        decision_type: input.decisionType,
+        decided_on: input.decidedOn,
+        decided_by_name: input.decidedByName,
+        client_visible: input.clientVisible,
+        created_by: input.createdBy,
+      })
+      .select(DECISION_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreDecision: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_decision.restored",
+      targetType: "project_decision",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, title: input.title },
+    });
+
+    await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toDecision(data) };
+  },
+);
+
+export async function restoreDecision(input: {
+  projectId: string;
+  id: string;
+  phaseId: string | null;
+  title: string;
+  rationale: string | null;
+  decisionType: DecisionType;
+  decidedOn: string;
+  decidedByName: string | null;
+  clientVisible: boolean;
+  createdBy: string;
+}): Promise<DecisionActionResult> {
+  return restoreDecisionImpl(input);
 }
 
 // "Turn into decision" — components/task/comment-list.tsx's comment menu
@@ -898,7 +1081,7 @@ export async function updateAssumption(input: {
 }
 
 export type DeleteAssumptionResult =
-  | { ok: true; data: { id: string } }
+  | { ok: true; data: { id: string; restore: ProjectAssumption } }
   | { ok: false; error: string };
 
 const deleteAssumptionImpl = withAuthz(
@@ -910,6 +1093,17 @@ const deleteAssumptionImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadAssumptionExtra(admin, input.assumptionId),
   },
   async (input, ctx): Promise<DeleteAssumptionResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_assumptions")
+      .select(ASSUMPTION_COLUMNS)
+      .eq("id", input.assumptionId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteAssumption: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error } = await ctx.admin
       .from("project_assumptions")
       .delete()
@@ -929,10 +1123,80 @@ const deleteAssumptionImpl = withAuthz(
     });
 
     await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
-    return { ok: true, data: { id: input.assumptionId } };
+    return { ok: true, data: { id: input.assumptionId, restore: toAssumption(existing) } };
   },
 );
 
 export async function deleteAssumption(assumptionId: string): Promise<DeleteAssumptionResult> {
   return deleteAssumptionImpl({ assumptionId });
+}
+
+// F090 item 5: restoreAssumption — undo for the hard delete above.
+const restoreAssumptionSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid assumption."),
+  text: z.string().min(1),
+  state: z.string(),
+  confirmedOn: z.string().nullable(),
+  confirmedByName: z.string().nullable(),
+  clientVisible: z.boolean(),
+  flaggedByClientAt: z.string().nullable(),
+  flaggedNote: z.string().nullable(),
+});
+
+const restoreAssumptionImpl = withAuthz(
+  restoreAssumptionSchema,
+  {
+    requireWrite: true,
+    requireVisibility: true,
+    ...AUTHZ_ERRORS,
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<AssumptionActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_assumptions")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        text: input.text,
+        state: input.state,
+        confirmed_on: input.confirmedOn,
+        confirmed_by_name: input.confirmedByName,
+        client_visible: input.clientVisible,
+        flagged_by_client_at: input.flaggedByClientAt,
+        flagged_note: input.flaggedNote,
+      })
+      .select(ASSUMPTION_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreAssumption: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_assumption.restored",
+      targetType: "project_assumption",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, text: input.text },
+    });
+
+    await revalidateRecordSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toAssumption(data) };
+  },
+);
+
+export async function restoreAssumption(input: {
+  projectId: string;
+  id: string;
+  text: string;
+  state: AssumptionState;
+  confirmedOn: string | null;
+  confirmedByName: string | null;
+  clientVisible: boolean;
+  flaggedByClientAt: string | null;
+  flaggedNote: string | null;
+}): Promise<AssumptionActionResult> {
+  return restoreAssumptionImpl(input);
 }

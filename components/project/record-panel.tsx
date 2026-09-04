@@ -27,10 +27,14 @@ import {
   deleteAssumption,
   deleteDecision,
   deleteScopeItem,
+  restoreAssumption,
+  restoreDecision,
+  restoreScopeItem,
   updateAssumption,
   updateDecision,
   updateScopeItem,
 } from "@/lib/actions/project-records";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import { raiseChangeRequestFromAssumption } from "@/lib/actions/client-requests";
 import type {
   AssumptionState,
@@ -121,7 +125,8 @@ function DeleteRowButton({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &ldquo;{label}&rdquo;?</AlertDialogTitle>
           <AlertDialogDescription>
-            This removes it from the project and the client portal. This cannot be undone.
+            This removes it from the project and the client portal. You can undo this
+            for a few seconds right after deleting.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -145,10 +150,12 @@ function ScopeRow({
   item,
   onChanged,
   onRemoved,
+  onRestored,
 }: {
   item: ProjectScopeItem;
   onChanged: (item: ProjectScopeItem) => void;
   onRemoved: (id: string) => void;
+  onRestored: (item: ProjectScopeItem) => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [included, setIncluded] = useState(item.included);
@@ -235,6 +242,18 @@ function ScopeRow({
               return;
             }
             onRemoved(item.id);
+            showUndoToast({
+              message: "Scope item deleted.",
+              description: "This can't be recovered once this undo window closes.",
+              onUndo: async () => {
+                const restoreResult = await restoreScopeItem(result.data.restore);
+                if (!restoreResult.ok) {
+                  toast.error(restoreResult.error);
+                  return;
+                }
+                onRestored(restoreResult.data);
+              },
+            });
           }}
         />
       </div>
@@ -291,6 +310,13 @@ function ScopeTab({
                   setItems((current) => current.map((i) => (i.id === next.id ? next : i)))
                 }
                 onRemoved={(id) => setItems((current) => current.filter((i) => i.id !== id))}
+                onRestored={(restored) =>
+                  setItems((current) =>
+                    [...current.filter((i) => i.id !== restored.id), restored].sort(
+                      (a, b) => a.position - b.position,
+                    ),
+                  )
+                }
               />
             ) : (
               <div key={item.id} className="rounded-md border border-border p-3 text-sm">
@@ -330,10 +356,12 @@ function DecisionRow({
   decision,
   onChanged,
   onRemoved,
+  onRestored,
 }: {
   decision: ProjectDecision;
   onChanged: (decision: ProjectDecision) => void;
   onRemoved: (id: string) => void;
+  onRestored: (decision: ProjectDecision) => void;
 }) {
   const [title, setTitle] = useState(decision.title);
   const [rationale, setRationale] = useState(decision.rationale ?? "");
@@ -439,6 +467,23 @@ function DecisionRow({
                 return;
               }
               onRemoved(decision.id);
+              // F090 item 5: decisions are one of this audit's own named
+              // candidates for real soft-delete (see deleteDecision's own
+              // comment in lib/actions/project-records.ts) -- this
+              // reinsert-on-undo is the pragmatic interim fix, not that
+              // larger migration.
+              showUndoToast({
+                message: "Decision deleted.",
+                description: "This can't be recovered once this undo window closes.",
+                onUndo: async () => {
+                  const restoreResult = await restoreDecision(result.data.restore);
+                  if (!restoreResult.ok) {
+                    toast.error(restoreResult.error);
+                    return;
+                  }
+                  onRestored(restoreResult.data);
+                },
+              });
             }}
           />
         </div>
@@ -514,6 +559,13 @@ function DecisionsTab({
                 onRemoved={(id) =>
                   setDecisions((current) => current.filter((d) => d.id !== id))
                 }
+                onRestored={(restored) =>
+                  setDecisions((current) =>
+                    [...current.filter((d) => d.id !== restored.id), restored].sort(
+                      (a, b) => (a.decidedOn < b.decidedOn ? 1 : -1),
+                    ),
+                  )
+                }
               />
             ) : (
               <div key={decision.id} className="rounded-md border border-border p-3 text-sm">
@@ -553,11 +605,13 @@ function AssumptionRow({
   assumption,
   onChanged,
   onRemoved,
+  onRestored,
   onRaised,
 }: {
   assumption: ProjectAssumption;
   onChanged: (assumption: ProjectAssumption) => void;
   onRemoved: (id: string) => void;
+  onRestored: (assumption: ProjectAssumption) => void;
   onRaised: (request: TeamClientRequest) => void;
 }) {
   const [text, setText] = useState(assumption.text);
@@ -708,6 +762,18 @@ function AssumptionRow({
               return;
             }
             onRemoved(assumption.id);
+            showUndoToast({
+              message: "Assumption deleted.",
+              description: "This can't be recovered once this undo window closes.",
+              onUndo: async () => {
+                const restoreResult = await restoreAssumption(result.data.restore);
+                if (!restoreResult.ok) {
+                  toast.error(restoreResult.error);
+                  return;
+                }
+                onRestored(restoreResult.data);
+              },
+            });
           }}
         />
       </div>
@@ -763,6 +829,12 @@ function AssumptionsTab({
                 }
                 onRemoved={(id) =>
                   setAssumptions((current) => current.filter((a) => a.id !== id))
+                }
+                onRestored={(restored) =>
+                  setAssumptions((current) => [
+                    ...current.filter((a) => a.id !== restored.id),
+                    restored,
+                  ])
                 }
                 onRaised={(request) => setQuoteRequest(request)}
               />

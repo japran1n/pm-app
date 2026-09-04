@@ -106,7 +106,7 @@ export default async function PortalApprovalsPage({
                   projectId={project.id}
                   isOwner={owner?.userId === user?.id}
                   ownerName={owner?.name ?? null}
-                  ownerEmail={owner?.email ?? null}
+                  ownerId={owner?.userId ?? null}
                 />
               );
             })}

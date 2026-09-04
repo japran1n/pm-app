@@ -45,6 +45,7 @@
 // cast; the `untyped()` escape hatch F002 added here has been removed.
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
@@ -381,7 +382,25 @@ export async function updatePhase(input: {
 // null` (20260909010000_portal_foundations.sql) already makes safe by
 // construction.
 
-export type DeletePhaseResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type PhaseRestoreSnapshot = PhaseActionData & {
+  actualStart: string | null;
+  actualEnd: string | null;
+};
+
+export type DeletePhaseResult =
+  | { ok: true; data: { id: string; restore: PhaseRestoreSnapshot } }
+  | { ok: false; error: string };
+
+const PHASE_COLUMNS =
+  "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position";
+
+// F090 item 5: `actual_start`/`actual_end` are real columns on
+// `project_phases` (see lib/queries/phases.ts's TeamProjectPhase) that
+// PHASE_COLUMNS/PhaseActionData never selected -- captured separately
+// here purely for the delete/restore round trip so Undo doesn't silently
+// drop them, without widening PhaseActionData's own shape (used by
+// create/update, which never touch these two columns).
+const PHASE_SNAPSHOT_COLUMNS = `${PHASE_COLUMNS}, actual_start, actual_end`;
 
 const deletePhaseImpl = withAuthz(
   deletePhaseSchema,
@@ -394,6 +413,24 @@ const deletePhaseImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadPhaseExtra(admin, input.phaseId),
   },
   async (input, ctx): Promise<DeletePhaseResult> => {
+    // F090 item 5: read the full row before deleting -- the only moment
+    // this data still exists to capture for Undo. Note: any task/
+    // deliverable whose `phase_id` pointed here is set null by the FK
+    // (`on delete set null`) and is NOT re-linked by restorePhase below
+    // -- restoring the phase row itself is not the same as restoring
+    // every reference to it, a real limitation of the reinsert-on-undo
+    // approach for a table other rows reference.
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_phases")
+      .select(PHASE_SNAPSHOT_COLUMNS)
+      .eq("id", input.phaseId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deletePhase: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("project_phases")
       .delete()
@@ -414,12 +451,92 @@ const deletePhaseImpl = withAuthz(
 
     await revalidatePhaseSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.phaseId } };
+    return {
+      ok: true,
+      data: {
+        id: input.phaseId,
+        restore: {
+          ...toPhaseActionData(existing),
+          actualStart: existing.actual_start,
+          actualEnd: existing.actual_end,
+        },
+      },
+    };
   },
 );
 
 export async function deletePhase(phaseId: string): Promise<DeletePhaseResult> {
   return deletePhaseImpl({ phaseId });
+}
+
+// ---------------------------------------------------------------------
+// restorePhase (F090 item 5 — undo for the hard delete above)
+// ---------------------------------------------------------------------
+
+const restorePhaseSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid phase."),
+  name: z.string().min(1).max(200),
+  clientDescription: z.string().nullable(),
+  state: z.string(),
+  plannedStart: z.string().nullable(),
+  plannedEnd: z.string().nullable(),
+  clientVisible: z.boolean(),
+  position: z.number(),
+  actualStart: z.string().nullable(),
+  actualEnd: z.string().nullable(),
+});
+
+const restorePhaseImpl = withAuthz(
+  restorePhaseSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's phases.",
+    writeError: "Viewers don't have permission to manage phases.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's phases.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<PhaseActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_phases")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        name: input.name,
+        client_description: input.clientDescription,
+        state: input.state,
+        planned_start: input.plannedStart,
+        planned_end: input.plannedEnd,
+        client_visible: input.clientVisible,
+        position: input.position,
+        actual_start: input.actualStart,
+        actual_end: input.actualEnd,
+      })
+      .select(PHASE_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restorePhase: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_phase.restored",
+      targetType: "project_phase",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId, name: input.name },
+    });
+
+    await revalidatePhaseSettings(ctx.workspaceSlug, ctx.projectId);
+
+    return { ok: true, data: toPhaseActionData(data) };
+  },
+);
+
+export async function restorePhase(input: PhaseRestoreSnapshot): Promise<PhaseActionResult> {
+  return restorePhaseImpl(input);
 }
 
 // ---------------------------------------------------------------------

@@ -120,6 +120,14 @@ export async function getProjectBoardTasks(
     // boundary" convention as `assignee_ids` above -- feeds the board's
     // client-side "group by tag" swimlanes (lib/board/grouping.ts).
     tags: string[];
+    // F090 item 2: the board's own client-visibility/awaiting-client
+    // indicators, added to the RPC's return in
+    // 20261028010000_f090_board_client_visibility.sql -- same
+    // "not null default false" columns the List view/My Tasks already
+    // select directly off `tasks` (see this file's
+    // `getProjectListTasks`/`getMyTasks` below).
+    client_visible: boolean;
+    pending_client_approval: boolean;
   };
 
   return ((data ?? []) as BoardTaskRow[]).map((task) => {
@@ -184,6 +192,12 @@ export async function getProjectBoardTasks(
       // F224 (AS-418, AS-423): straight off the RPC row -- see this
       // function's BoardTaskRow type above.
       tags: task.tags ?? [],
+      // F090 item 2: straight off the RPC row -- see this function's
+      // BoardTaskRow type above. TaskCard already renders both
+      // indicators when set (built for the List view/My Tasks in F083);
+      // the board was simply never passing them through.
+      clientVisible: task.client_visible ?? false,
+      pendingClientApproval: task.pending_client_approval ?? false,
     };
   });
 }

@@ -11,6 +11,7 @@
 // client).
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { canWrite } from "@/lib/auth/permissions";
@@ -308,7 +309,12 @@ export async function updateProjectBudget(input: {
 // ---------------------------------------------------------------------
 
 export type DeleteProjectBudgetResult =
-  | { ok: true; data: { id: string } }
+  // F090 item 5: `restore` is the pre-delete row. NOTE: a budget period
+  // is one of this audit's own named candidates for real soft-delete (a
+  // frozen billing period is an audit-trail item) -- this reinsert-on-
+  // undo is the pragmatic interim fix, not that larger migration. See
+  // this feature's handoff.
+  | { ok: true; data: { id: string; restore: ProjectBudget } }
   | { ok: false; error: string };
 
 const deleteProjectBudgetImpl = withAuthz(
@@ -322,6 +328,17 @@ const deleteProjectBudgetImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadBudgetExtra(admin, input.budgetId),
   },
   async (input, ctx): Promise<DeleteProjectBudgetResult> => {
+    const { data: existing, error: readError } = await ctx.admin
+      .from("project_budgets")
+      .select(BUDGET_COLUMNS)
+      .eq("id", input.budgetId)
+      .maybeSingle();
+
+    if (readError || !existing) {
+      logger.error("deleteProjectBudget: pre-delete read failed", { error: readError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
     const { error: deleteError } = await ctx.admin
       .from("project_budgets")
       .delete()
@@ -342,7 +359,7 @@ const deleteProjectBudgetImpl = withAuthz(
 
     await revalidateBudgetSettings(ctx.workspaceSlug, ctx.projectId);
 
-    return { ok: true, data: { id: input.budgetId } };
+    return { ok: true, data: { id: input.budgetId, restore: toBudgetActionData(existing) } };
   },
 );
 
@@ -350,6 +367,78 @@ export async function deleteProjectBudget(
   budgetId: string,
 ): Promise<DeleteProjectBudgetResult> {
   return deleteProjectBudgetImpl({ budgetId });
+}
+
+// F090 item 5: restoreProjectBudget — undo for the hard delete above.
+const restoreProjectBudgetSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  id: z.string().uuid("Invalid budget period."),
+  periodStart: z.string(),
+  periodEnd: z.string(),
+  soldMinutes: z.number(),
+  currency: z.string().nullable(),
+  rateAmount: z.number().nullable(),
+  rollover: z.string(),
+  note: z.string().nullable(),
+});
+
+const restoreProjectBudgetImpl = withAuthz(
+  restoreProjectBudgetSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's budget.",
+    writeError: "Viewers and clients don't have permission to manage the budget.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's budget.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<ProjectBudgetActionResult> => {
+    const { data, error } = await ctx.admin
+      .from("project_budgets")
+      .insert({
+        id: input.id,
+        project_id: ctx.projectId,
+        period_start: input.periodStart,
+        period_end: input.periodEnd,
+        sold_minutes: input.soldMinutes,
+        currency: input.currency,
+        rate_amount: input.rateAmount,
+        rollover: input.rollover,
+        note: input.note,
+      })
+      .select(BUDGET_COLUMNS)
+      .single();
+
+    if (error || !data) {
+      logger.error("restoreProjectBudget: insert failed", { error });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project_budget.restored",
+      targetType: "project_budget",
+      targetId: input.id,
+      metadata: { projectId: ctx.projectId },
+    });
+
+    await revalidateBudgetSettings(ctx.workspaceSlug, ctx.projectId);
+    return { ok: true, data: toBudgetActionData(data) };
+  },
+);
+
+export async function restoreProjectBudget(input: {
+  projectId: string;
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  soldMinutes: number;
+  currency: string | null;
+  rateAmount: number | null;
+  rollover: BudgetRollover;
+  note: string | null;
+}): Promise<ProjectBudgetActionResult> {
+  return restoreProjectBudgetImpl(input);
 }
 
 // ---------------------------------------------------------------------

@@ -60,7 +60,14 @@ export type NotificationKind =
 export type PortalNotificationKind =
   | "portal_task_decided"
   | "client_request_submitted"
-  | "client_deliverable_submitted";
+  | "client_deliverable_submitted"
+  // F090 item 3: a client naming one decision owner to look at one still-
+  // open approval request (lib/actions/portal-approval.ts's
+  // nudgeApprovalOwner) -- replaces approval-card.tsx's old `mailto:`
+  // stopgap. Single-recipient, never fanned out via
+  // `getPortalEventRecipients`, same "direct call, bypasses this file"
+  // shape as the three kinds above.
+  | "approval_owner_nudge";
 
 // The four event shapes this feature's spec names: assignment, status
 // change, a new comment (which may itself carry mentions), and a

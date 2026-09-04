@@ -14,14 +14,21 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-const { toastErrorMock, toastSuccessMock, decideMock, refreshMock, getSnapshotUrlMock } =
-  vi.hoisted(() => ({
-    toastErrorMock: vi.fn(),
-    toastSuccessMock: vi.fn(),
-    decideMock: vi.fn(),
-    refreshMock: vi.fn(),
-    getSnapshotUrlMock: vi.fn(),
-  }));
+const {
+  toastErrorMock,
+  toastSuccessMock,
+  decideMock,
+  refreshMock,
+  getSnapshotUrlMock,
+  nudgeOwnerMock,
+} = vi.hoisted(() => ({
+  toastErrorMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
+  decideMock: vi.fn(),
+  refreshMock: vi.fn(),
+  getSnapshotUrlMock: vi.fn(),
+  nudgeOwnerMock: vi.fn(),
+}));
 
 vi.mock("sonner", () => ({
   toast: { error: toastErrorMock, success: toastSuccessMock },
@@ -33,6 +40,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/actions/portal-approval", () => ({
   decideApproval: decideMock,
+  nudgeApprovalOwner: nudgeOwnerMock,
 }));
 
 vi.mock("@/lib/actions/approvals", () => ({
@@ -49,6 +57,7 @@ afterEach(() => {
   decideMock.mockReset();
   refreshMock.mockReset();
   getSnapshotUrlMock.mockReset();
+  nudgeOwnerMock.mockReset();
 });
 
 function deferred<T>() {
@@ -295,12 +304,44 @@ describe("ApprovalCard (F009)", () => {
   });
 
   // F085 (defect 6): a non-owner used to get a dead-end "Only X can
-  // decide this." with nothing to do next.
-  it("test_AS_085_non_owner_can_ask_the_named_owner_to_look", () => {
-    renderCard({ isOwner: false, ownerName: "Jane Doe", ownerEmail: "jane@example.com" });
+  // decide this." with nothing to do next. F090 item 3: this used to be
+  // a `mailto:` link (lib/notifications/** was locked at the time) --
+  // now a real in-app notification via `nudgeApprovalOwner`.
+  it("test_AS_085_non_owner_can_ask_the_named_owner_to_look", async () => {
+    nudgeOwnerMock.mockResolvedValue({ ok: true });
+    renderCard({ isOwner: false, ownerName: "Jane Doe", ownerId: "user-jane" });
 
-    const link = screen.getByRole("link", { name: /ask jane doe to take a look/i });
-    expect(link).toHaveAttribute("href", expect.stringContaining("mailto:jane@example.com"));
+    const button = screen.getByTestId("nudge-owner-button");
+    expect(button).toHaveTextContent(/ask jane doe to take a look/i);
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    await waitFor(() => {
+      expect(nudgeOwnerMock).toHaveBeenCalledWith(APPROVAL.id);
+    });
+    // Never calls a mailto: navigation -- the action is the only side
+    // effect.
+    expect(screen.queryByRole("link", { name: /ask jane doe to take a look/i })).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByTestId("nudge-owner-sent")).toHaveTextContent(/jane doe was notified/i);
+    });
+  });
+
+  it("test_AS_085_nudge_failure_shows_an_error_and_stays_retryable", async () => {
+    nudgeOwnerMock.mockResolvedValue({ ok: false, error: "Something went wrong." });
+    renderCard({ isOwner: false, ownerName: "Jane Doe", ownerId: "user-jane" });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("nudge-owner-button"));
+    });
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith("Something went wrong.");
+    });
+    expect(screen.getByTestId("nudge-owner-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("nudge-owner-sent")).toBeNull();
   });
 
   it("test_AS_085_unassigned_case_points_at_who_to_raise_it_with", () => {

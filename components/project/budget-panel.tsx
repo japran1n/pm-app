@@ -22,8 +22,10 @@ import {
   createProjectBudget,
   deleteProjectBudget,
   previewProjectBudgetSpent,
+  restoreProjectBudget,
   updateProjectBudget,
 } from "@/lib/actions/project-budgets";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import type { BudgetRollover, ProjectBudget } from "@/lib/queries/project-budgets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,11 +76,13 @@ function BudgetRow({
   canManage,
   onChanged,
   onRemoved,
+  onRestored,
 }: {
   budget: ProjectBudget;
   canManage: boolean;
   onChanged: (budget: ProjectBudget) => void;
   onRemoved: (id: string) => void;
+  onRestored: (budget: ProjectBudget) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [periodStart, setPeriodStart] = useState(budget.periodStart);
@@ -147,6 +151,21 @@ function BudgetRow({
         return;
       }
       onRemoved(budget.id);
+      // F090 item 5: this audit's own named soft-delete candidate (a
+      // frozen billing period is an audit-trail item) -- reinsert-on-
+      // undo is the interim fix.
+      showUndoToast({
+        message: "Budget period deleted.",
+        description: "This can't be recovered once this undo window closes.",
+        onUndo: async () => {
+          const restoreResult = await restoreProjectBudget(result.data.restore);
+          if (!restoreResult.ok) {
+            toast.error(restoreResult.error);
+            return;
+          }
+          onRestored(restoreResult.data);
+        },
+      });
     });
   }
 
@@ -424,6 +443,9 @@ export function BudgetPanel({
               }
               onRemoved={(id) =>
                 setBudgets((current) => current.filter((b) => b.id !== id))
+              }
+              onRestored={(restored) =>
+                setBudgets((current) => [...current.filter((b) => b.id !== restored.id), restored])
               }
             />
           ))}

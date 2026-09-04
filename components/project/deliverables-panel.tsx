@@ -32,8 +32,10 @@ import {
   decideDeliverable,
   deleteDeliverable,
   reorderDeliverables,
+  restoreDeliverable,
   updateDeliverable,
 } from "@/lib/actions/deliverables";
+import { showUndoToast } from "@/lib/toast/undo-toast";
 import type {
   ClientDeliverable,
   DeliverableKind,
@@ -104,6 +106,7 @@ function DeliverableRow({
   isLast,
   onChanged,
   onRemoved,
+  onRestored,
   onMove,
 }: {
   deliverable: ClientDeliverable;
@@ -112,6 +115,7 @@ function DeliverableRow({
   isLast: boolean;
   onChanged: (deliverable: ClientDeliverable) => void;
   onRemoved: (id: string) => void;
+  onRestored: (deliverable: ClientDeliverable) => void;
   onMove: (id: string, direction: "up" | "down") => void;
 }) {
   const [title, setTitle] = useState(deliverable.title);
@@ -177,6 +181,23 @@ function DeliverableRow({
         return;
       }
       onRemoved(deliverable.id);
+      // F090 item 5: `client_deliverables` is a hard `.delete()` with no
+      // `deleted_at`/Trash entry -- the RPC's own `restore` payload
+      // (an exact snapshot of the row as it existed a moment ago) is the
+      // only way back, so Undo re-inserts it verbatim via
+      // restoreDeliverable rather than anything Trash-shaped.
+      showUndoToast({
+        message: "Deliverable deleted.",
+        description: "This can't be recovered once this undo window closes.",
+        onUndo: async () => {
+          const restoreResult = await restoreDeliverable(result.data.restore);
+          if (!restoreResult.ok) {
+            toast.error(restoreResult.error);
+            return;
+          }
+          onRestored(restoreResult.data);
+        },
+      });
     });
   }
 
@@ -364,7 +385,8 @@ function DeliverableRow({
                 <AlertDialogTitle>Delete &ldquo;{deliverable.title}&rdquo;?</AlertDialogTitle>
                 <AlertDialogDescription>
                   This removes the deliverable from the project and the
-                  client portal. This cannot be undone.
+                  client portal. You can undo this for a few seconds right after
+                  deleting.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -499,6 +521,18 @@ export function DeliverablesPanel({
     setDeliverables((current) => current.filter((d) => d.id !== id));
   }
 
+  // F090 item 5: puts a restored (re-inserted) row back into local state
+  // -- same "insert then re-sort by position" shape handleAdd already
+  // uses below, since a restored row's own `position` is whatever it had
+  // before deletion, not necessarily last.
+  function restoreToList(deliverable: ClientDeliverable) {
+    setDeliverables((current) =>
+      [...current.filter((d) => d.id !== deliverable.id), deliverable].sort(
+        (a, b) => a.position - b.position,
+      ),
+    );
+  }
+
   function handleAdd() {
     if (!newTitle.trim()) {
       toast.error("Title is required.");
@@ -588,6 +622,7 @@ export function DeliverablesPanel({
                 isLast={index === deliverables.length - 1}
                 onChanged={replaceDeliverable}
                 onRemoved={removeFromList}
+                onRestored={restoreToList}
                 onMove={handleMove}
               />
             ) : (

@@ -442,3 +442,114 @@ export async function decideApproval(
     },
   };
 }
+
+export type NudgeApprovalOwnerResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+const nudgeApprovalOwnerSchema = z.object({
+  requestId: z.string().uuid("Invalid approval request."),
+});
+
+// F090 item 3: replaces approval-card.tsx's `mailto:` link (F085's own
+// stopgap -- lib/notifications/** was locked by a concurrent agent at the
+// time, see that feature's header comment) with a real in-app
+// notification to the named decision owner, now that F084 has landed
+// `lib/notifications/portal-recipients.ts` and the `create_notification`
+// plumbing this action needs.
+//
+// Deliberately narrower than `getPortalEventRecipients` (F084's helper
+// notifies EVERY decision owner plus the task's assignee for a decision
+// event): this is a client explicitly naming ONE person to look at ONE
+// still-open approval, not a fan-out. The owner is looked up server-side
+// from `project_decision_owners` for this exact request's own
+// `decision_type` -- never trusted from the client, even though
+// approval-card.tsx already has an `ownerId`/`ownerName` prop pair, the
+// same "the RPC/action re-derives the truth, the prop is presentation
+// only" convention AS-022's own doc comment on that prop establishes.
+export async function nudgeApprovalOwner(
+  requestId: string,
+): Promise<NudgeApprovalOwnerResult> {
+  const preview = await assertNotPreview();
+  if (!preview.ok) return preview;
+
+  const parsed = nudgeApprovalOwnerSchema.safeParse({ requestId });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  // RLS-respecting select: `approval_requests_select_client`
+  // (20260916010000) already scopes this to a request on a project the
+  // caller's workspace membership can see, so a client can never probe
+  // for another project's approval id via this action.
+  const { data: request, error: requestError } = await supabase
+    .from("approval_requests")
+    .select("id, project_id, decision_type, title, state")
+    .eq("id", parsed.data.requestId)
+    .maybeSingle();
+
+  if (requestError || !request) {
+    return { ok: false, error: "Approval request not found." };
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("workspace_id")
+    .eq("id", request.project_id)
+    .maybeSingle();
+
+  if (!project?.workspace_id) {
+    return { ok: false, error: "Approval request not found." };
+  }
+
+  const caller = await requireClientCaller(project.workspace_id);
+  if (!caller.ok) return caller;
+
+  // Same RLS policy family (`project_decision_owners_select_client`) --
+  // whoever currently owns THIS request's decision type, re-derived here
+  // rather than trusted from the client's `ownerId` prop.
+  const { data: owner } = await supabase
+    .from("project_decision_owners")
+    .select("user_id")
+    .eq("project_id", request.project_id)
+    .eq("decision_type", request.decision_type)
+    .maybeSingle();
+
+  if (!owner?.user_id) {
+    return { ok: false, error: "No one is assigned to decide this yet." };
+  }
+
+  if (owner.user_id === caller.userId) {
+    // Defensive -- approval-card.tsx never renders this action for the
+    // owner themselves (it is only shown in the `!isOwner` branch), but
+    // the RPC-equivalent re-check convention this file uses everywhere
+    // else (see decideApproval's own comment) applies here too.
+    return { ok: false, error: "You are the decision owner for this request." };
+  }
+
+  const notified = await createNotification(
+    supabase,
+    {
+      userId: owner.user_id,
+      workspaceId: project.workspace_id,
+      kind: "approval_owner_nudge",
+      payload: { approvalRequestId: request.id, title: request.title },
+    },
+    "nudgeApprovalOwner",
+  );
+
+  if (!notified.ok) {
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  return { ok: true };
+}
