@@ -232,10 +232,25 @@ describe("Task detail Sheet is full-screen on phone widths (F265, AS-516)", () =
       "Comments & activity",
       "Time tracking",
     ]) {
-      const trigger = screen.getByRole("button", { name: title });
+      // F095: `getByRole("button", { name: title })` alone is ambiguous
+      // for "Checklist" specifically -- the rich text editor's own
+      // formatting toolbar (components/editor/rich-text-editor.tsx) also
+      // has a button whose accessible name is "Checklist" (the inline
+      // task-list toggle), and now that the F095 fix makes that editor's
+      // dynamic-imported module resolve deterministically before this
+      // assertion runs instead of racing it, both buttons are reliably
+      // present in the DOM by the time this query runs. Scope to the
+      // collapsible section trigger specifically (this feature's own
+      // `data-slot="collapsible-trigger"` marker, per
+      // components/ui/collapsible.tsx's convention) rather than widening
+      // the accessible-name match, which would let this collide with the
+      // editor toolbar button again the next time timing shifts.
+      const trigger = screen
+        .getAllByRole("button", { name: title })
+        .find((el) => el.getAttribute("data-slot") === "collapsible-trigger");
       expect(trigger).toBeInTheDocument();
-      expect(trigger.className).toMatch(/max-sm:flex/);
-      expect(trigger.className).toMatch(/hidden/);
+      expect(trigger!.className).toMatch(/max-sm:flex/);
+      expect(trigger!.className).toMatch(/hidden/);
     }
   });
 
@@ -255,7 +270,11 @@ describe("Task detail Sheet is full-screen on phone widths (F265, AS-516)", () =
       ).toBeInTheDocument(),
     );
 
-    const checklistTrigger = screen.getByRole("button", { name: "Checklist" });
+    // F095: see the matching comment above -- scope to the collapsible
+    // trigger, not the editor toolbar's same-named "Checklist" button.
+    const checklistTrigger = screen
+      .getAllByRole("button", { name: "Checklist" })
+      .find((el) => el.getAttribute("data-slot") === "collapsible-trigger")!;
     // Expanded by default (AS-516's spec: sections "become collapsible",
     // not "start collapsed") -- data-panel-open is base-ui's Collapsible
     // convention for the trigger's own state marker.

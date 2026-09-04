@@ -82,3 +82,54 @@ if (typeof document !== "undefined") {
   // member off it.
   globalThis.WebSocket = ForbiddenWebSocket;
 }
+
+// F095: the same "convert an async post-teardown crash into something
+// deterministic" move as the WebSocket stub above, for a different failure
+// shape. Any component tree that mounts `task-detail-sheet.tsx` /
+// `board.tsx` pulls in `components/editor/rich-text-editor.tsx` through a
+// `next/dynamic(() => import(...), { ssr: false })` wrapper (client-only by
+// design -- see that file's header comment). That `import()` is a REAL,
+// uncached module resolution (tiptap + its extensions, including
+// `@tiptap/extension-mention`) the first time any given isolated test
+// file's module graph touches it, which takes multiple event-loop turns of
+// genuine fs/transform work. A test that renders the sheet and only awaits
+// whatever `waitFor` is needed for its OWN assertions (e.g. a title field
+// that's present before the dynamic chunk resolves) has no reason to know
+// it needs to wait for that unrelated chunk too -- and correctly shouldn't
+// have to; asserting on an editor's load state from a test about page-field
+// gating would be exactly the kind of unrelated coupling the "mock what
+// you're not testing" convention exists to avoid. When the import settles
+// AFTER that file's last test finishes, vitest's environment has already
+// been torn down and the whole process exits 1 attributed to whichever
+// file happened to be mid-flight -- while every reported test is green
+// (see this feature's spec). It reproduced against
+// `f006c-task-detail-sheet-page-fields-system-key-gate.test.tsx` in one CI
+// run and a *different* file in an earlier one; it is a property of the
+// import's timing, not of any one test file, so a per-file mock list would
+// only ever chase the next slow file.
+//
+// Fix: eagerly load the module HERE, once, before any test in the file
+// runs, and await it so `setupFiles` (which vitest fully awaits before
+// running a single test) doesn't resolve until it's done. Every subsequent
+// `import("@/components/editor/rich-text-editor")` -- including the
+// `next/dynamic` one buried in task-detail-sheet.tsx -- then resolves an
+// ALREADY-cached module: no further fs/transform work, just a microtask
+// tick. Every test in this suite that renders the editor already has at
+// least one `await`/`waitFor` after the render that triggers it (there is
+// no synchronous-only assertion path for a component that fetches its own
+// data first), and any `await` drains the microtask queue, so that tick
+// reliably lands inside the test's own lifetime instead of leaking past
+// teardown -- the same "collapse an unbounded async tail into one
+// deterministic, already-resolved step" idea as the WebSocket fix above,
+// just applied to a module import instead of a socket.
+//
+// A file that explicitly `vi.mock("@/components/editor/rich-text-editor",
+// ...)`s (e.g. mention-picker-narrowing.test.tsx) still gets the mock:
+// vitest resolves `vi.mock` calls (hoisted to the top of that file) before
+// that file's own imports run, and this warm-up's dynamic `import()` here
+// consults the very same per-file mock registry at resolution time, so it
+// transparently loads the mock instead of the real module for that file --
+// nothing to special-case.
+if (typeof document !== "undefined") {
+  await import("@/components/editor/rich-text-editor");
+}
