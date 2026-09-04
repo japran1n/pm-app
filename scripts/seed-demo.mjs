@@ -212,9 +212,24 @@ const PROJECTS = [
       ["Audit current site content", "done", "medium", -14, "maja", 180, true],
       ["Agree information architecture", "done", "high", -9, "maja", 240, true],
       ["Design system: colours & type", "done", "high", -5, "ana", 300, false],
+      // Visual direction & design (active): three of these five
+      // client-visible tasks are already done, two are still in flight --
+      // a genuine, non-zero, non-100% mix, authored directly into the
+      // dataset rather than reached by editing this phase's own `state`
+      // or any task's status after the fact.
+      ["Content style guide", "done", "medium", -6, "maja", 90, true],
+      ["Navigation component design", "done", "medium", -3, "ana", 120, true],
+      ["About page hi-fi design", "done", "medium", -1, "ana", 150, true],
       ["Homepage hi-fi design", "in_review", "high", 2, "ana", 420, true],
       ["Pricing page hi-fi design", "in_progress", "medium", 5, "ana", 150, true],
+      // Build (active): one of four client-visible tasks done -- earlier
+      // in its own progress than Visual direction & design, on purpose,
+      // so the two active bars read as visibly different fills rather
+      // than the same "just started" fraction.
+      ["Set up design tokens in codebase", "done", "medium", 1, "luka", 120, true],
       ["Build homepage in Next.js", "in_progress", "urgent", 6, "luka", 480, true],
+      ["Build navigation component", "todo", "medium", 8, "luka", 0, true],
+      ["Build about page in Next.js", "todo", "medium", 10, "luka", 0, true],
       ["CMS migration script", "todo", "high", 11, "luka", 0, false],
       ["Accessibility pass (WCAG AA)", "todo", "medium", 14, "maja", 0, true],
       ["SEO redirect map", "todo", "low", 18, "luka", 0, false],
@@ -360,10 +375,10 @@ const WEBSITE_PHASES = [
 ];
 
 // Which phase each of Website Redesign's own tasks belongs to, mapped by
-// what the task actually is (not by list index — the phases above and the
+// what the task actually is (not by list index -- the phases above and the
 // tasks in PROJECTS were written independently of each other).
 //
-// "Kick-off & setup" gets no task at all: none of the ten tasks are
+// "Kick-off & setup" gets no task at all: none of these tasks are
 // kick-off/tooling work, and leaving it empty is deliberate -- it is the
 // one phase that legitimately has zero client-visible tasks, which is
 // exactly the case AS-011/AS-012's "no tasks" branch needs to render
@@ -372,27 +387,36 @@ const WEBSITE_PHASES = [
 //
 // Both "done" phases below (Audit & baseline, Site structure) resolve to
 // a full 1-of-1: the two tasks that are both `status: "done"` AND
-// `client_visible: true` in PROJECTS are exactly "Audit current site
-// content" and "Agree information architecture", and each belongs to
-// exactly one of these two phases by what it literally is.
+// `client_visible: true` and belong to either phase by meaning are
+// exactly "Audit current site content" and "Agree information
+// architecture".
 //
-// Both "active" phases (Visual direction & design, Build) come out at
-// 0-of-N: every client-visible task that belongs to either phase by
-// meaning is `in_review`/`in_progress`/`todo`, i.e. not yet in the
-// "done" status category. That is real information, not a bug in this
-// mapping -- an active phase whose visible work is genuinely still in
-// flight is not "done", and forcing one of the two already-used done
-// tasks in here just to manufacture a non-zero percentage would be
-// exactly the kind of number-forcing this seed is required not to do.
-// The two active phases still read as distinct rows because their
-// denominators differ (0 of 2 vs 0 of 1) even though both round to 0%.
+// Both "active" phases land on a genuine, different, non-zero fraction --
+// authored directly into PROJECTS's own task statuses and `clientVisible`
+// flags above, never by editing a phase's `state` or a task's `status`
+// after the fact to force a number:
+//   - Visual direction & design: 3 of 5 client-visible tasks done
+//     ("Content style guide", "Navigation component design", "About page
+//     hi-fi design" are done; "Homepage hi-fi design" and "Pricing page
+//     hi-fi design" are still in review/in progress).
+//   - Build: 1 of 4 client-visible tasks done ("Set up design tokens in
+//     codebase" is done; the rest of the build is still in progress or
+//     not started), deliberately earlier in its own progress than Visual
+//     direction & design so the two active bars fill to visibly
+//     different widths.
 const WEBSITE_TASK_PHASES = {
   "Audit current site content": "Audit & baseline",
   "Agree information architecture": "Site structure",
   "Design system: colours & type": "Visual direction & design",
+  "Content style guide": "Visual direction & design",
+  "Navigation component design": "Visual direction & design",
+  "About page hi-fi design": "Visual direction & design",
   "Homepage hi-fi design": "Visual direction & design",
   "Pricing page hi-fi design": "Visual direction & design",
+  "Set up design tokens in codebase": "Build",
   "Build homepage in Next.js": "Build",
+  "Build navigation component": "Build",
+  "Build about page in Next.js": "Build",
   "CMS migration script": "Build",
   "Accessibility pass (WCAG AA)": "QA & accessibility",
   "SEO redirect map": "Build",

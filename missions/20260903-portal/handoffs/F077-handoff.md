@@ -161,3 +161,56 @@ situation.
   since `mcp-registry.md` scopes MCP use to schema/policy introspection
   and this was a data-shape verification against the seed's own admin
   client.
+
+## Follow-up (same feature, orchestrator-requested)
+
+The orchestrator flagged that both active phases landed at `0 of N done`,
+which — while honest — still showed a client zero progress on everything
+currently in flight. The correction: the "don't force agreement" rule was
+about not editing a phase's `state` or a task's `status` to fabricate a
+number after the fact, not about refusing to author richer demo data.
+`PROJECTS`'s own task list is authored data; adding tasks to it, with
+real statuses and real `clientVisible` flags chosen up front, is the
+intended way to change what the demo shows.
+
+Reworked Website Redesign's task list only (`scripts/seed-demo.mjs`,
+`PROJECTS[0].tasks`), adding six new tasks:
+- `Visual direction & design` gained three new done+visible tasks
+  ("Content style guide", "Navigation component design", "About page
+  hi-fi design"), landing the phase at **3 of 5** client-visible tasks
+  done (the other two, "Homepage hi-fi design" and "Pricing page hi-fi
+  design", stay `in_review`/`in_progress` as before).
+- `Build` gained one done+visible task ("Set up design tokens in
+  codebase") and two more not-yet-done visible tasks ("Build navigation
+  component", "Build about page in Next.js"), landing the phase at
+  **1 of 4** client-visible tasks done.
+
+Updated `WEBSITE_TASK_PHASES` to route the six new tasks to their phase.
+No other file touched — `components/portal/phase-timeline.tsx` and its
+test file are unchanged in this follow-up, per instruction.
+
+Per-phase table after the rework (identical across two consecutive
+`npm run seed:demo` runs — `taskCount=39, phaseCount=7, projCount=4` both
+times):
+
+```
+done         Kick-off & setup             total=0 visible=0 done=0
+done         Audit & baseline             total=1 visible=1 done=1
+done         Site structure               total=1 visible=1 done=1
+active       Visual direction & design    total=6 visible=5 done=3
+active       Build                        total=6 visible=4 done=1
+blocked      QA & accessibility           total=1 visible=1 done=0
+not_started  Launch                       total=1 visible=1 done=0
+```
+
+State/completion agreement, reached by authoring the dataset rather than
+overriding either side: both `done` phases are fully done (1 of 1); both
+`active` phases show genuine, different, non-zero, non-complete fractions
+(3 of 5 and 1 of 4 — visibly different bar fills); `blocked` and
+`not_started` still show 0 done, consistent with a phase that hasn't
+started or is blocked before starting (docs 1.3, explicitly out of scope
+for this task).
+
+Commands run for the follow-up: `node --check scripts/seed-demo.mjs` (0),
+`npm run seed:demo` (0, run twice, identical row counts and per-phase
+table both times).
