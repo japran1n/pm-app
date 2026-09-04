@@ -76,11 +76,32 @@ jobs:
         # purpose. Local dev keys are fixed, well-known demo JWTs (not
         # secrets) baked into the CLI/Docker images, so no repository
         # secret is needed here.
+        #
+        # `-o env` formats every `KEY=VALUE` line shell-quoted (e.g.
+        # `NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54321"`, quotes
+        # included), which is correct for `source`-ing into a shell but
+        # is NOT what $GITHUB_ENV expects: the runner's env-file parser
+        # takes everything after the first `=` on a single-line entry
+        # literally, quotes and all. Appending the CLI's raw output
+        # straight into $GITHUB_ENV therefore set every one of these
+        # vars (and the many other unprefixed ones the CLI also emits,
+        # e.g. DB_URL/JWT_SECRET) to a value wrapped in a literal pair
+        # of double quotes -- so `new URL('"http://127.0.0.1:54321"')`
+        # (leading `"` is not `http`) failed
+        # supabase-js's own `validateSupabaseUrl` with "Invalid
+        # supabaseUrl: Must be a valid HTTP or HTTPS URL." everywhere a
+        # client was constructed from these env vars. `next build`
+        # didn't surface this because it only inlines the raw string
+        # into the client bundle at build time without constructing a
+        # client eagerly. The `sed` below strips a single matching pair
+        # of leading/trailing double quotes from each line's value
+        # before the line reaches $GITHUB_ENV.
         run: |
           supabase status -o env \
             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL \
             --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY \
             --override-name auth.service_role_key=SUPABASE_SECRET_KEY \
+            | sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)="(.*)"$/\1=\2/' \
             >> "$GITHUB_ENV"
 
       - name: Build
