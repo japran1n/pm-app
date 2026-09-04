@@ -33,6 +33,31 @@ type PortalApprovalResult =
   | { ok: true; data: { taskId: string } }
   | { ok: false; error: string };
 
+// F009d: `assert_portal_task_actionable_by_client` (20260925010000,
+// hardened by 20261021010000) raises the shared, deliberately generic
+// 'task not found' oracle for five of its six rejection branches, but
+// names the sixth ("caller owns no decision type on this project") on
+// its own -- see that migration's own header for why revealing only that
+// one branch is safe. Recognise that one specific, caller-safe string
+// and forward it so the client is told what actually happened (a
+// configuration gap, not a crash) instead of the same generic error a
+// real failure would show. Every other RPC error (including the shared
+// 'task not found' oracle) still collapses to the generic message below,
+// unchanged -- this is a narrow allow-list of ONE known-safe string, not
+// a general "forward whatever the RPC said".
+const NO_DECISION_OWNER_MESSAGE =
+  "assert_portal_task_actionable_by_client: no one is assigned to decide this yet";
+// Matches approval-card.tsx's own text for the identical situation on
+// the Approvals view, so the two surfaces agree.
+const NO_DECISION_OWNER_FRIENDLY_MESSAGE = "No one is assigned to decide this yet.";
+
+function friendlyPortalTaskActionError(message: string | undefined): string {
+  if (message === NO_DECISION_OWNER_MESSAGE) {
+    return NO_DECISION_OWNER_FRIENDLY_MESSAGE;
+  }
+  return "Something went wrong. Please try again in a moment.";
+}
+
 async function resolvePendingClientTask(
   taskId: string,
 ): Promise<
@@ -128,7 +153,7 @@ export async function approvePortalTask(
     logger.error("approvePortalTask: update failed", { error: updateError });
     return {
       ok: false,
-      error: "Something went wrong. Please try again in a moment.",
+      error: friendlyPortalTaskActionError(updateError.message),
     };
   }
 
@@ -214,7 +239,7 @@ export async function requestPortalTaskChanges(
     logger.error("requestPortalTaskChanges: update failed", { error: updateError });
     return {
       ok: false,
-      error: "Something went wrong. Please try again in a moment.",
+      error: friendlyPortalTaskActionError(updateError.message),
     };
   }
 

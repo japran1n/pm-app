@@ -206,6 +206,47 @@ describe("approvePortalTask / requestPortalTaskChanges (F020)", () => {
     expect(result.ok).toBe(false);
   });
 
+  // F009d (item FN): a generic RPC failure still collapses to the generic
+  // message ...
+  it("test_F009D_generic_rpc_error_still_collapses_to_the_generic_message", async () => {
+    opts.rpcError = { message: "task not found" };
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("Something went wrong. Please try again in a moment.");
+    }
+  });
+
+  // ... but the one RPC error that names "no decision owner configured"
+  // (assert_portal_task_actionable_by_client, 20261021010000) is forwarded
+  // as an honest, specific message instead -- matching the wording
+  // approval-card.tsx already shows for the identical situation on the
+  // Approvals view, so a client sees the same sentence on both surfaces.
+  it("test_F009D_no_decision_owner_rpc_error_is_forwarded_with_the_approvals_view_wording", async () => {
+    opts.rpcError = {
+      message: "assert_portal_task_actionable_by_client: no one is assigned to decide this yet",
+    };
+    const { approvePortalTask } = await import("@/lib/actions/portal-approval");
+    const result = await approvePortalTask(TASK_ID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("No one is assigned to decide this yet.");
+    }
+  });
+
+  it("test_F009D_request_changes_no_decision_owner_rpc_error_is_forwarded", async () => {
+    opts.rpcError = {
+      message: "assert_portal_task_actionable_by_client: no one is assigned to decide this yet",
+    };
+    const { requestPortalTaskChanges } = await import("@/lib/actions/portal-approval");
+    const result = await requestPortalTaskChanges(TASK_ID, "please fix this");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("No one is assigned to decide this yet.");
+    }
+  });
+
   it("test_AS_013_014_happy_path_calls_approve_rpc_with_the_parsed_task_id", async () => {
     const { approvePortalTask } = await import("@/lib/actions/portal-approval");
     const result = await approvePortalTask(TASK_ID);

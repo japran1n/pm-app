@@ -421,4 +421,67 @@ describe.skipIf(!haveCreds)("F011 decide_approval_atomic changes_requested creat
     expect(decidedAtUpdateError).not.toBeNull();
     expect((decidedAtUpdateError as { code?: string } | null)?.code).toBe("42501");
   });
+
+  // F009d (item FM, AS-024): before this feature, F011b's trigger only
+  // named the four decision fields -- `project_id`, `subject_id`,
+  // `artifact_url` and `round` were free to rewrite on a settled row,
+  // even by service_role. The allow-list inversion
+  // (20261020010000) must reject those too, on the SAME row this file's
+  // other AS-024 test already proved was settled, and using the SAME
+  // admin (service_role) client -- FM's own complaint was specifically
+  // that service_role could do this.
+  it("test_AS_024_FM_columns_outside_the_four_named_decision_fields_are_also_frozen_once_settled", async () => {
+    const requestId = await insertPendingRequest(subjectTaskId);
+    const { error: decideError } = await clientSession.rpc("decide_approval_atomic", {
+      p_request_id: requestId,
+      p_decision: "changes_requested",
+      p_note: "F009d: every column of a settled row must be frozen by default.",
+    });
+    expect(decideError).toBeNull();
+
+    // The trigger fires BEFORE UPDATE, ahead of any FK check, so a
+    // syntactically-valid-but-nonexistent uuid still proves the guard
+    // rejects the write on its own -- the update never gets far enough
+    // to hit a foreign-key violation instead.
+    const otherUuid = "00000000-0000-4000-8000-0000000000aa";
+
+    const { error: projectIdUpdateError } = await admin
+      .from("approval_requests")
+      .update({ project_id: otherUuid })
+      .eq("id", requestId);
+    expect(projectIdUpdateError).not.toBeNull();
+    expect((projectIdUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: subjectIdUpdateError } = await admin
+      .from("approval_requests")
+      .update({ subject_id: otherUuid })
+      .eq("id", requestId);
+    expect(subjectIdUpdateError).not.toBeNull();
+    expect((subjectIdUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: artifactUrlUpdateError } = await admin
+      .from("approval_requests")
+      .update({ artifact_url: "https://example.com/tampered" })
+      .eq("id", requestId);
+    expect(artifactUrlUpdateError).not.toBeNull();
+    expect((artifactUrlUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    const { error: roundUpdateError } = await admin
+      .from("approval_requests")
+      .update({ round: 2 })
+      .eq("id", requestId);
+    expect(roundUpdateError).not.toBeNull();
+    expect((roundUpdateError as { code?: string } | null)?.code).toBe("42501");
+
+    // The allow-listed columns stay writable: `updated_at` (touched by
+    // every write) is exercised implicitly by every UPDATE above having
+    // been attempted at all (the trigger runs BEFORE UPDATE and rejects
+    // the whole statement, so this only proves the trigger evaluates the
+    // diff, not that updated_at itself passes -- covered directly here).
+    const { error: updatedAtOnlyError } = await admin
+      .from("approval_requests")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", requestId);
+    expect(updatedAtOnlyError).toBeNull();
+  });
 });
