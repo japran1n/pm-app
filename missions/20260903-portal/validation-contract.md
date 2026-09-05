@@ -119,3 +119,8 @@ AS-070: A message sent by a workspace member appears exactly once in the channel
 AS-071: A message consisting of or containing a bare URL renders that URL as a clickable link.
 AS-072: A message containing a URL to a page with retrievable Open Graph metadata shows a preview card (at minimum a title) below the message text; a message whose URL has no retrievable metadata still renders as a plain clickable link per AS-071, with no error surfaced to the user.
 AS-073: Scrolling within an open channel's message list does not scroll the surrounding page, and the channel's own toolbar remains visible and in the same position regardless of scroll position within the message list.
+
+## Links render but are inert (F121)
+
+AS-074: A link inside read-only rendered rich text (chat message, task comment, task description) is visually distinguishable from surrounding text and opens its target when clicked, while a link inside the editable editor still does not navigate on click.
+AS-075: components/editor/rich-text-editor.tsx contains no raw control bytes, so ordinary text tooling reads it as text rather than binary.
