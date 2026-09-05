@@ -61,3 +61,37 @@ AUTONOMOUS_DECISION: Chose "sign off"/"send over"/"a decision on" as the verb pe
   - Project `39cda423-7c60-4fb5-b6d9-8882db9b681d` (Northwind Loyalty App — Phase 1, launched): `"Nothing needed from you right now."` — the honest case-4 empty state, no invented next-phase date because no `not_started` phase remains.
 - **What to screenshot to confirm visually**: open the Overview page for each of those two projects as `nina@demo.test` (via `/dev-login?email=nina@demo.test`, workspace `acme-studio`) and screenshot the area directly under the big "On track"/confidence headline, above the risk banner / "Waiting on you" block. For Website Redesign you should see the "Next from you: send over Final homepage copy — expected around 1 Sept." line in small muted text right under the launch note. For Northwind Loyalty App — Phase 1 you should see "Nothing needed from you right now." in the same spot, with no second clause (this project has no upcoming not-started phase in the demo data, so no next-check-in date is stated — that absence is itself correct behaviour, not a bug).
 - No MCP tools were used — this is pure application logic over already-fetched Supabase reads; no schema, RLS, or live-config changes were needed.
+
+## Round 2 (coordinator review)
+
+Fixed three defects the coordinator found by screenshotting both projects after the first commit:
+
+1. **Future-tense headline on a launched project.** `LaunchHeadline` now takes an optional `today` prop (the same ISO date the Overview page already computes for `daysToLaunch`) and renders `Launched <date>` once `targetLaunchDate < today`, `Launching <date>` otherwise. The "Days to launch" tile (`overview-tiles.tsx`) does the matching fix: once `daysToLaunch < 0` the label becomes "Days since launch", the value is the absolute day count, and the footnote reads "Launched" instead of a stale confidence label that no longer means anything post-launch.
+2. **Case 4's missing second clause.** `buildNextFromYouAnswer` now takes `warrantyUntil` (the project's `warranty_until`, read once via a small new query on the Overview page mirroring the exact pattern `site/page.tsx` already uses for the same field) and falls back to it — `"...you're covered under warranty until <date>."` — when there is no upcoming not-started phase to name. If neither a phase nor a warranty date exists, it still names what happens next without inventing a date: `"...we'll be in touch when there's something new to share."` Never stops at the bare negative.
+3. **Duplicate empty-state copy.** `WaitingOnYouBlock` now renders `null` (not a card with "Nothing waiting on you right now.") when `items` is empty — the headline's own case-4 sentence is the one that survives, per the coordinator's own instruction that the headline (read first) keeps it and the block goes.
+
+Note: a THIRD, unrelated occurrence of "Nothing waiting on you right now." exists in `components/portal/portal-overview-live.tsx` (the separate, further-down "Waiting on you" live list under the phase timeline — not the block directly under the headline the coordinator screenshotted). Left untouched — out of scope for this round, flagged below.
+
+### Files changed (round 2, additive to the list above)
+lib/portal/build-next-from-you.ts (warrantyUntil param + case-4 fallback tiers)
+lib/portal/build-next-from-you.test.ts (warrantyUntil in every call; 2 new case-4 tests)
+components/portal/launch-headline.tsx (today prop, Launched/Launching tense)
+components/portal/launch-headline.test.tsx (3 new tests)
+components/portal/overview-tiles.tsx (Days since launch after launch)
+components/portal/overview-tiles.test.tsx (1 new test)
+components/portal/waiting-on-you-block.tsx (empty case renders null)
+components/portal/waiting-on-you-block.test.tsx (empty-case test rewritten, not weakened — asserts nothing renders instead of asserting the old copy)
+app/(portal)/portal/[workspaceSlug]/p/[projectId]/page.tsx (warranty_until read, today/warrantyUntil wired through)
+
+### Commands run (round 2)
+`npx vitest run lib/portal/build-next-from-you.test.ts components/portal/launch-headline.test.tsx components/portal/overview-tiles.test.tsx components/portal/waiting-on-you-block.test.tsx tests/unit/server-client-boundary-imports.test.ts` (0, 40 passed)
+`npx tsc --noEmit` (0)
+`npm run build` (0)
+curl against the running dev server as nina@demo.test, both project ids — confirmed via RSC payload inspection
+
+### Live verification (round 2)
+- Northwind Loyalty App — Phase 1 (`39cda423-7c60-4fb5-b6d9-8882db9b681d`): headline now `Launched 26 August 2026`; tile now `Days since launch · 10 · Launched`; `launch-headline-next` now `"Nothing needed from you right now — you're covered under warranty until 25 Sept."`; `waiting-on-you-block` testid is absent from the page entirely.
+- Website Redesign (`79ef6e45-2557-46f1-bda6-91bd248832e8`): unchanged and still correct — `Launching 5 October 2026`, tile still `Days to launch`, `launch-headline-next` still `"Next from you: send over Final homepage copy — expected around 1 Sept."`, `waiting-on-you-block` still renders its items normally.
+
+### Out-of-scope work needed (round 2 addition)
+`components/portal/portal-overview-live.tsx` renders its own "Nothing waiting on you right now." for the separate, further-down "Waiting on you" live list (project-scoped pending-approval tasks under the phase timeline). This is a third near-duplicate of the same sentence family on the same page, one screen further down than the block just fixed. Not touched this round — the coordinator's review named the block immediately under the headline specifically; this is a different component with its own live-subscription tests (`tests/unit/portal-overview-live.test.tsx`) that would need updating too. Worth a follow-up decision on whether that list should also lose its own empty-state sentence or keep it (it is further from the headline and arguably still useful context there).

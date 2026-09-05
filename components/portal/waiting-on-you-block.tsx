@@ -5,7 +5,7 @@
 // number the tile above still carries (that tile is untouched -- see
 // overview-tiles.tsx's own header for why the count stays there too).
 import Link from "next/link";
-import { CheckCircle2, ClipboardCheck, PackageX, Stamp } from "lucide-react";
+import { ClipboardCheck, PackageX, Stamp } from "lucide-react";
 
 import type {
   WaitingOnYouItem,
@@ -39,16 +39,16 @@ function agedLabel(daysWaiting: number, kind: WaitingOnYouItemKind): string {
 }
 
 export function WaitingOnYouBlock({ items }: { items: WaitingOnYouItem[] }) {
+  // F115 round 2 (coordinator review, docs/client-portal-phase-2-plan.md
+  // C): this used to render its own "Nothing waiting on you right now."
+  // empty state -- a second, near-identical sentence on the same screen
+  // as the launch headline's own "Nothing needed from you right now."
+  // (`buildNextFromYouAnswer`'s case 4), the copy equivalent of the
+  // Overview's earlier duplicate-count bug. The headline sits where the
+  // client reads first, so it keeps the sentence; this block renders
+  // nothing at all rather than restating it a screen-height lower.
   if (items.length === 0) {
-    return (
-      <div
-        data-testid="waiting-on-you-block"
-        className="flex items-center gap-2 rounded-lg border border-border p-5 text-sm text-muted-foreground"
-      >
-        <CheckCircle2 aria-hidden="true" className="size-4 shrink-0 text-status-done" />
-        <span data-testid="waiting-on-you-empty">Nothing waiting on you right now.</span>
-      </div>
-    );
+    return null;
   }
 
   return (

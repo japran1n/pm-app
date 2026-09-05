@@ -96,6 +96,21 @@ describe("OverviewTiles", () => {
     );
   });
 
+  // F115 round 2 (coordinator review): a launched project's tile must
+  // not still read "Days to launch · Passed · On track" -- future-tense
+  // copy about a live site.
+  it("test_AS_days_to_launch_tile_reads_honestly_after_launch", () => {
+    render(<OverviewTiles {...BASE_PROPS} daysToLaunch={-10} launchConfidence="on_track" />);
+
+    const tile = screen.getByTestId("tile-days-to-launch");
+    expect(tile).toHaveTextContent("Days since launch");
+    expect(tile).toHaveTextContent("10");
+    expect(tile).toHaveTextContent("Launched");
+    expect(tile).not.toHaveTextContent("Passed");
+    expect(tile).not.toHaveTextContent("On track");
+    expect(tile).not.toHaveTextContent("Days to launch");
+  });
+
   // F107 round 2: no fourth tile restates the "What we need from you"
   // block's own count -- the strip is exactly three tiles now.
   it("test_no_waiting_on_you_tile_renders_in_the_tile_strip", () => {

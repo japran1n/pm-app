@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
 //
 // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md 2.2):
-// the "nothing waiting on you" empty case, plus items rendering their
-// name, age and inline action.
+// items rendering their name, age and inline action.
+//
+// F115 round 2 (coordinator review): this block used to also cover its
+// own "nothing waiting on you" empty-state copy -- removed because it
+// duplicated the launch headline's own case-4 sentence one screen-height
+// above it (see waiting-on-you-block.tsx's own header). The empty case
+// is now "renders nothing", covered below.
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -14,12 +19,11 @@ afterEach(() => {
 });
 
 describe("WaitingOnYouBlock", () => {
-  it("test_waiting_on_you_empty_case", () => {
-    render(<WaitingOnYouBlock items={[]} />);
+  it("test_waiting_on_you_empty_case_renders_nothing_rather_than_a_duplicate_sentence", () => {
+    const { container } = render(<WaitingOnYouBlock items={[]} />);
 
-    expect(screen.getByTestId("waiting-on-you-empty")).toHaveTextContent(
-      "Nothing waiting on you right now.",
-    );
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("waiting-on-you-block")).not.toBeInTheDocument();
   });
 
   it("test_waiting_on_you_renders_named_items_with_age_and_inline_action", () => {

@@ -82,6 +82,48 @@ describe("LaunchHeadline", () => {
     expect(screen.queryByTestId("launch-headline-next")).not.toBeInTheDocument();
   });
 
+  // F115 round 2 (coordinator review): a launched project must not
+  // speak in the future tense about its own launch date.
+  it("test_AS_headline_says_launching_when_the_target_date_is_still_ahead", () => {
+    render(
+      <LaunchHeadline
+        targetLaunchDate="2026-10-04"
+        launchConfidence="on_track"
+        launchNote={null}
+        today="2026-09-05"
+      />,
+    );
+
+    const headline = screen.getByTestId("launch-headline");
+    expect(headline).toHaveTextContent("Launching 4 October 2026");
+    expect(headline).not.toHaveTextContent("Launched 4 October 2026");
+  });
+
+  it("test_AS_headline_says_launched_when_the_target_date_is_in_the_past", () => {
+    render(
+      <LaunchHeadline
+        targetLaunchDate="2026-08-26"
+        launchConfidence="on_track"
+        launchNote={null}
+        today="2026-09-05"
+      />,
+    );
+
+    const headline = screen.getByTestId("launch-headline");
+    expect(headline).toHaveTextContent("Launched 26 August 2026");
+    expect(headline).not.toHaveTextContent("Launching 26 August 2026");
+  });
+
+  it("test_AS_headline_defaults_to_launching_when_today_is_not_supplied", () => {
+    // Backward-compatible default -- callers that don't pass `today`
+    // (including this component's own pre-F115-round-2 tests above) keep
+    // getting the original "Launching" phrasing rather than a crash or a
+    // silently wrong "Launched".
+    render(<LaunchHeadline targetLaunchDate="2026-08-26" launchConfidence="on_track" launchNote={null} />);
+
+    expect(screen.getByTestId("launch-headline")).toHaveTextContent("Launching 26 August 2026");
+  });
+
   it("test_AS_next_from_you_line_renders_in_the_honest_empty_launch_state_too", () => {
     render(
       <LaunchHeadline

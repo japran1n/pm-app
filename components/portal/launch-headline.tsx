@@ -50,6 +50,7 @@ export function LaunchHeadline({
   launchConfidence,
   launchNote,
   nextFromYou,
+  today,
 }: {
   targetLaunchDate: string | null;
   launchConfidence: PortalLaunchConfidence | null;
@@ -62,6 +63,16 @@ export function LaunchHeadline({
   // this prop, keep passing unchanged -- omitting the prop omits the
   // line, it never renders an empty string.
   nextFromYou?: string;
+  // F115 round 2 (coordinator review): the headline used to say
+  // "Launching 26 August 2026" about a project that shipped ten days
+  // ago -- a live site described in the future tense undermines every
+  // other number on the page. `today` (the same ISO date the Overview
+  // page already computes once for `daysToLaunch`) is what turns
+  // "Launching" into "Launched" once the date is in the past. Optional
+  // and defaulting to "not launched yet" so this component's
+  // pre-existing tests (which don't pass it) keep asserting the
+  // "Launching" phrasing they already assert.
+  today?: string;
 }) {
   // Honest empty state (this file's own "never a fabricated figure"
   // convention, same as overview-tiles.tsx and launch-day-card.tsx): no
@@ -84,6 +95,7 @@ export function LaunchHeadline({
 
   const Icon = launchConfidence ? CONFIDENCE_ICON[launchConfidence] : CheckCircle2;
   const colorClass = launchConfidence ? CONFIDENCE_COLOR[launchConfidence] : "text-muted-foreground";
+  const hasLaunched = Boolean(today && targetLaunchDate && targetLaunchDate < today);
 
   return (
     <div
@@ -97,7 +109,9 @@ export function LaunchHeadline({
           {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence not set yet"}
         </span>
         <span className="text-h4 font-medium text-muted-foreground">
-          {targetLaunchDate ? `Launching ${formatDate(targetLaunchDate)}` : "Launch date not set yet"}
+          {targetLaunchDate
+            ? `${hasLaunched ? "Launched" : "Launching"} ${formatDate(targetLaunchDate)}`
+            : "Launch date not set yet"}
         </span>
       </div>
       {launchNote && (

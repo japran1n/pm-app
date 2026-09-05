@@ -116,6 +116,7 @@ export default async function PortalOverviewPage({
     openApprovalsResult,
     deliverablesResult,
     weeklyDeliveryResult,
+    warrantyRow,
   ] = await Promise.all([
     getProjectPhases(project.id),
     getPortalPages(project.id),
@@ -161,6 +162,15 @@ export default async function PortalOverviewPage({
     // lib/queries/portal.ts's own header on getPortalWeeklyDelivery for
     // the two reads (tasks, task_activity) this needs and why.
     getPortalWeeklyDelivery(project.id, project.startDate, today),
+    // F115 round 2 (coordinator review, docs/client-portal-phase-2-plan.md
+    // C): case 4's warranty-window fallback and the headline's own
+    // "Launched"/"Launching" tense both need `warranty_until` -- not
+    // carried by `getPortalProjects`' `PortalProject` shape (no other
+    // caller on THIS page needs it), so this reads it directly, same
+    // pattern the "Your site" launch-day card already uses
+    // (site/page.tsx's own identical comment). RLS already scopes this
+    // SELECT the same as every other read on this page.
+    supabase.from("projects").select("warranty_until").eq("id", project.id).maybeSingle(),
   ]);
 
   // F085 (defect 1): usedMinutes/soldMinutes come from the SAME RPC
@@ -228,11 +238,14 @@ export default async function PortalOverviewPage({
   // `waitingOnYouItems` and the phase timeline), never a fourth query.
   // A failed read degrades to an empty list for that source, same
   // posture as `waitingOnYouItems` above.
+  const warrantyUntil = warrantyRow.data?.warranty_until ?? null;
+
   const nextFromYou = buildNextFromYouAnswer({
     approvals: openApprovalsResult.ok ? openApprovalsResult.data : [],
     deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
     phases: phasesResult.ok ? phasesResult.data : [],
     todayIso: today,
+    warrantyUntil,
   });
 
   // F085 (missions/20260903-portal audit, defect 2): the TILE no longer
@@ -282,6 +295,7 @@ export default async function PortalOverviewPage({
         launchConfidence={project.launchConfidence}
         launchNote={project.launchNote}
         nextFromYou={nextFromYou}
+        today={today}
       />
 
       <RiskBanner

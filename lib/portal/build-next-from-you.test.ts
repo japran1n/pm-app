@@ -82,6 +82,7 @@ describe("buildNextFromYouAnswer", () => {
       deliverables: [],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: sign off the About page — expected around 12 Sept.");
   });
@@ -92,6 +93,7 @@ describe("buildNextFromYouAnswer", () => {
       deliverables: [],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: sign off the About page.");
   });
@@ -104,6 +106,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe(
       "Next from you: send over brand logo files — expected around 1 Sept.",
@@ -118,6 +121,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe(
       "Next from you: send over brand logo files — expected around 1 Sept.",
@@ -137,6 +141,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: homepage copy — expected around 12 Sept.");
   });
@@ -149,6 +154,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: homepage copy.");
   });
@@ -168,6 +174,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: next copy batch — expected around 20 Sept.");
   });
@@ -185,6 +192,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe(
       "Next from you: a decision on checkout flow direction — expected around 15 Sept.",
@@ -199,6 +207,7 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Next from you: a decision on checkout flow direction.");
   });
@@ -209,6 +218,7 @@ describe("buildNextFromYouAnswer", () => {
       deliverables: [],
       phases: [phase({ name: "QA", state: "not_started", plannedStart: "2026-09-18" })],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe(
       "Nothing needed from you right now — next check-in around the start of QA, week of 18 Sept.",
@@ -221,18 +231,40 @@ describe("buildNextFromYouAnswer", () => {
       deliverables: [],
       phases: [phase({ name: "QA", state: "not_started", plannedStart: null })],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
     expect(result).toBe("Nothing needed from you right now — next check-in around the start of QA.");
   });
 
-  it("test_AS_next_from_you_case4_nothing_pending_and_no_upcoming_phase_at_all", () => {
+  it("test_AS_next_from_you_case4_launched_project_falls_back_to_warranty_window", () => {
+    // A launched project (every phase done) has no not-started phase to
+    // name -- the plan's own instruction that case 4's clause matters
+    // most for exactly this shape (a warranty-window client) means the
+    // warranty date, already read for the launch-day card, is the
+    // honest next thing to name here.
     const result = buildNextFromYouAnswer({
       approvals: [],
       deliverables: [],
       phases: [phase({ name: "Launch", state: "done", plannedStart: "2026-08-01" })],
       todayIso: TODAY,
+      warrantyUntil: "2026-11-26",
     });
-    expect(result).toBe("Nothing needed from you right now.");
+    expect(result).toBe(
+      "Nothing needed from you right now — you're covered under warranty until 26 Nov.",
+    );
+  });
+
+  it("test_AS_next_from_you_case4_no_upcoming_phase_and_no_warranty_date_still_names_what_happens_next", () => {
+    const result = buildNextFromYouAnswer({
+      approvals: [],
+      deliverables: [],
+      phases: [phase({ name: "Launch", state: "done", plannedStart: "2026-08-01" })],
+      todayIso: TODAY,
+      warrantyUntil: null,
+    });
+    expect(result).toBe(
+      "Nothing needed from you right now — we'll be in touch when there's something new to share.",
+    );
   });
 
   it("test_AS_next_from_you_decided_approvals_and_accepted_deliverables_do_not_count_as_owed", () => {
@@ -244,7 +276,10 @@ describe("buildNextFromYouAnswer", () => {
       ],
       phases: [],
       todayIso: TODAY,
+      warrantyUntil: null,
     });
-    expect(result).toBe("Nothing needed from you right now.");
+    expect(result).toBe(
+      "Nothing needed from you right now — we'll be in touch when there's something new to share.",
+    );
   });
 });

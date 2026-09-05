@@ -238,11 +238,20 @@ function Tile({
   );
 }
 
+// F115 round 2 (coordinator review): a launched project (`daysToLaunch`
+// negative) used to keep the "Days to launch" label and read "Passed ·
+// On track" -- a live site's own tile describing itself as still
+// approaching a launch that has already happened, directly under a
+// headline this same change fixed for the identical reason. Once the
+// date has passed there is nothing left to "track" toward, so the
+// confidence label (which answers "will we hit the date?") is dropped
+// too rather than kept and made to look like it still means something.
 function daysToLaunchFootnote(
   daysToLaunch: number | null,
   launchConfidence: PortalLaunchConfidence | null,
 ): string {
   if (daysToLaunch === null) return "Launch date not set yet";
+  if (daysToLaunch < 0) return "Launched";
   if (launchConfidence) return LAUNCH_CONFIDENCE_LABEL[launchConfidence];
   return "Confidence not set yet";
 }
@@ -330,14 +339,8 @@ export function OverviewTiles({
       />
       <Tile
         testId="tile-days-to-launch"
-        label="Days to launch"
-        value={
-          daysToLaunch === null
-            ? "—"
-            : daysToLaunch < 0
-              ? "Passed"
-              : String(daysToLaunch)
-        }
+        label={daysToLaunch !== null && daysToLaunch < 0 ? "Days since launch" : "Days to launch"}
+        value={daysToLaunch === null ? "—" : String(Math.abs(daysToLaunch))}
         footnote={daysToLaunchFootnote(daysToLaunch, launchConfidence)}
       />
     </div>

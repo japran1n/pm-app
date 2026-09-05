@@ -63,11 +63,19 @@ export function buildNextFromYouAnswer({
   deliverables,
   phases,
   todayIso,
+  warrantyUntil,
 }: {
   approvals: PortalApproval[];
   deliverables: ClientDeliverable[];
   phases: PortalPhase[];
   todayIso: string;
+  /** The project's own `warranty_until` (same field the "Your site"
+   * launch-day card already reads) -- case 4's fallback second clause
+   * for a LAUNCHED project with no upcoming phase left to name. `null`
+   * when no warranty date has been set; that is a real, common state,
+   * not a bug, and case 4 falls through to a dateless clause rather than
+   * inventing one. */
+  warrantyUntil: string | null;
 }): string {
   // Case 1: open approvals (with or without a due date) and past-due
   // deliverables are both "owed now" -- the plan lists them as one rung.
@@ -141,10 +149,15 @@ export function buildNextFromYouAnswer({
       : `Next from you: a decision on ${next.title}.`;
   }
 
-  // Case 4: nothing pending. Told explicitly, per the plan's own
-  // instruction that silence reads as neglect -- named with the next
-  // phase's planned start when the phase list has one, otherwise no
-  // invented date.
+  // Case 4: nothing pending. The plan is explicit that this clause is
+  // the whole reason case 4 exists -- a client with nothing to do must
+  // still be told WHEN they will next hear from us, never just the bare
+  // negative. Three tiers, each honest about what it can and can't date:
+  //   a. the next not-started phase's own planned start, if one exists;
+  //   b. for a project with no phase left to start (i.e. launched), the
+  //      warranty window it is already covered under, if one is set;
+  //   c. neither exists -- still names what happens next, just without
+  //      a date this data doesn't support.
   const nextPhase = phases
     .filter((phase) => phase.state === "not_started")
     .sort((a, b) => a.position - b.position)[0];
@@ -155,5 +168,8 @@ export function buildNextFromYouAnswer({
   if (nextPhase) {
     return `Nothing needed from you right now — next check-in around the start of ${nextPhase.name}.`;
   }
-  return "Nothing needed from you right now.";
+  if (warrantyUntil) {
+    return `Nothing needed from you right now — you're covered under warranty until ${formatShortDate(warrantyUntil)}.`;
+  }
+  return "Nothing needed from you right now — we'll be in touch when there's something new to share.";
 }
