@@ -427,3 +427,18 @@
       0 2px 8px rgb(0 0 0 / 0.4);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   F121 (AS-074) — links inside read-only rendered rich text (chat
+   messages, task comments, task descriptions) must be visually
+   distinguishable from surrounding text. Scoped to `.rich-text-renderer`
+   only — the editable `RichTextEditor` is unaffected, and this must never
+   become a global `a {}` rule that repaints every link in the app.
+   ───────────────────────────────────────────────────────────────────────── */
+@layer components {
+  .rich-text-renderer a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}

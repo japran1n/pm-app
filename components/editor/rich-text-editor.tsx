@@ -141,6 +141,7 @@ function sharedExtensions({
   assignTaskItemIds = false,
   onReadOnlyChecked,
   getMentionItems,
+  linksClickable = false,
 }: {
   assignTaskItemIds?: boolean
   /** F173 (AS-311): fired when a checkbox is clicked in a non-editable
@@ -154,6 +155,13 @@ function sharedExtensions({
    * same as before this feature — so callers that don't pass
    * `mentionSuggestions` (RichTextEditorProps) see no behaviour change. */
   getMentionItems?: () => MentionSuggestionItem[]
+  /** F121 (AS-074): only `RichTextRenderer` (read-only display) should
+   * pass `true` here. Clicking a link while editing must never navigate
+   * away from the editor, so `RichTextEditor` always leaves this `false`
+   * and gets the original `openOnClick: false` behaviour, unchanged. When
+   * `true`, links open safely in a new tab (`target="_blank"`,
+   * `rel="noopener noreferrer"`). */
+  linksClickable?: boolean
 } = {}) {
   const taskItemExtension = assignTaskItemIds
     ? TaskItemWithId.extend({
@@ -166,8 +174,16 @@ function sharedExtensions({
   return [
     StarterKit.configure({
       link: {
-        openOnClick: false,
+        openOnClick: linksClickable,
         autolink: true,
+        ...(linksClickable
+          ? {
+              HTMLAttributes: {
+                target: "_blank",
+                rel: "noopener noreferrer",
+              },
+            }
+          : {}),
       },
     }),
     TaskList,
@@ -726,7 +742,7 @@ function sanitiseHref(href: unknown): string | null {
   // Strip ASCII control characters and whitespace that browsers/parsers
   // are known to ignore inside a URL scheme (a classic
   // "java\tscript:alert(1)" bypass) before checking the scheme.
-  const normalised = trimmed.replace(/[ -\s]/g, "")
+  const normalised = trimmed.replace(/[\x00-\x1F\x7F\s]/g, "")
   if (!ALLOWED_LINK_PROTOCOLS.test(normalised)) return null
   return trimmed
 }
@@ -884,6 +900,9 @@ export function RichTextRenderer({
 
   const editor = useEditor({
     extensions: sharedExtensions({
+      // F121 (AS-074): read-only rendered content is the only place links
+      // should be clickable — see `sharedExtensions`'s `linksClickable` doc.
+      linksClickable: true,
       // F310: this closure is rebuilt (and the editor instance recreated)
       // whenever `mentionSuggestionsKey` changes below.
       getMentionItems: mentionsEnabled ? () => mentionSuggestions : undefined,
