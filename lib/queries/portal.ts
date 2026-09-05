@@ -26,6 +26,11 @@ import {
 import { resolvePeople } from "@/lib/queries/people";
 import { resolveClientBucket, type ClientBucket } from "@/components/portal/status-label";
 import { computeWeeklyDeliverySeries, type WeeklyDeliveryWeek } from "@/lib/portal/weekly-delivery";
+import {
+  PROJECT_ROLE_LABELS,
+  PROJECT_ROLE_ORDER,
+  type ProjectRoleValue,
+} from "@/lib/queries/project-roles";
 
 export type StatusCategory = "not_started" | "in_progress" | "done";
 
@@ -980,11 +985,21 @@ export async function getPortalLiveNow(
 // `getPortalProjects`' own gate), and excludes any member who is
 // themselves a client of this workspace: "your team" means the agency's
 // team, not this client's own membership row or a co-client's.
+// F112 (missions/20260903-portal, six-star review Part 0/D): each person
+// gets a real card -- name, project ROLE (job title, from `project_roles`
+// -- PM, team lead, design lead, Webflow lead, designer, developer, NOT
+// the `project_members.project_role` permission), a one-line "what they
+// own" (`project_roles.note`, free text), and how to reach them (email).
+// A person can hold more than one `project_roles` row; the card shows one
+// row per (person, role) pair, same as the settings editor.
 export type PortalTeamMember = {
   id: string;
+  userId: string;
   name: string | null;
   avatarUrl: string | null;
   roleLabel: string;
+  note: string | null;
+  email: string | null;
 };
 
 export async function getPortalTeam(projectId: string): Promise<PortalTeamMember[]> {
@@ -1010,33 +1025,73 @@ export async function getPortalTeam(projectId: string): Promise<PortalTeamMember
 
   const userIds = [...new Set(members.map((m) => m.user_id))];
 
-  const [people, roleRows] = await Promise.all([
+  const [people, roleRows, projectRoleRows] = await Promise.all([
     resolvePeople(userIds),
     admin
       .from("workspace_members")
       .select("user_id, role")
       .eq("workspace_id", project.workspace_id)
       .in("user_id", userIds),
+    admin
+      .from("project_roles")
+      .select("user_id, role, note")
+      .eq("project_id", projectId),
   ]);
 
   const roleByUserId = new Map((roleRows.data ?? []).map((r) => [r.user_id, r.role]));
+  const teamMemberIds = members
+    .map((member) => member.user_id)
+    .filter((userId) => roleByUserId.get(userId) !== "client");
+  const teamMemberIdSet = new Set(teamMemberIds);
 
-  return members
-    .filter((member) => roleByUserId.get(member.user_id) !== "client")
-    .map((member) => {
-      const person = people.get(member.user_id);
-      return {
-        id: member.user_id,
+  const jobsByUserId = new Map<string, { role: string; note: string | null }[]>();
+  for (const row of projectRoleRows.data ?? []) {
+    if (!teamMemberIdSet.has(row.user_id)) continue;
+    const list = jobsByUserId.get(row.user_id) ?? [];
+    list.push({ role: row.role, note: row.note });
+    jobsByUserId.set(row.user_id, list);
+  }
+
+  const orderIndex = new Map(PROJECT_ROLE_ORDER.map((value, index) => [value, index]));
+  const rows: (PortalTeamMember & { sortIndex: number })[] = [];
+  for (const userId of teamMemberIds) {
+    const person = people.get(userId);
+    const jobs = jobsByUserId.get(userId);
+    if (jobs?.length) {
+      for (const job of jobs) {
+        rows.push({
+          id: `${userId}:${job.role}`,
+          userId,
+          name: person?.name ?? null,
+          avatarUrl: person?.avatarUrl ?? null,
+          roleLabel: PROJECT_ROLE_LABELS[job.role as ProjectRoleValue] ?? job.role,
+          note: job.note,
+          email: person?.email ?? null,
+          sortIndex: orderIndex.get(job.role as ProjectRoleValue) ?? 99,
+        });
+      }
+    } else {
+      const member = members.find((m) => m.user_id === userId);
+      rows.push({
+        id: userId,
+        userId,
         name: person?.name ?? null,
         avatarUrl: person?.avatarUrl ?? null,
-        // `project_members.project_role` (`lead` | `member`,
-        // 20260821140520) is the only per-project "role" this schema
-        // has -- rendered as a client-facing label rather than the raw
-        // enum value, the same "translate internal vocabulary" job
-        // status-label.ts does for statuses.
-        roleLabel: member.project_role === "lead" ? "Project lead" : "Team member",
-      };
-    });
+        // No `project_roles` job title assigned yet -- fall back to the
+        // only per-project "role" this schema had before this feature
+        // (`project_members.project_role`, `lead` | `member`), same label
+        // this card rendered before F112.
+        roleLabel: member?.project_role === "lead" ? "Project lead" : "Team member",
+        note: null,
+        email: person?.email ?? null,
+        sortIndex: 99,
+      });
+    }
+  }
+
+  return rows
+    .sort((a, b) => a.sortIndex - b.sortIndex)
+    .map(({ sortIndex: _sortIndex, ...row }) => row);
 }
 
 // --- Client requests (C5) ---------------------------------------------------

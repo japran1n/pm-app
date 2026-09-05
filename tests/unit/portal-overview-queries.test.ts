@@ -187,6 +187,7 @@ let projectRow: Row | null;
 let activeTimerRows: Row[];
 let projectMemberRows: Row[];
 let workspaceMemberRoleRows: Row[];
+let projectRoleRows: Row[];
 let phaseRows: Row[];
 // F014 (missions/20260903-portal, AS-031): `getWorstOverdueBlockingDeliverableRisk`
 // (lib/queries/deliverables.ts) reads through the admin client too --
@@ -302,6 +303,13 @@ vi.mock("@/lib/supabase/admin", () => ({
           })),
         };
       }
+      if (table === "project_roles") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(async () => ({ data: projectRoleRows, error: null })),
+          })),
+        };
+      }
       if (table === "project_phases") {
         // F016c: `resolveHoldsUpContext` adds a second `.eq("project_id",
         // projectId)` ahead of the pre-existing `.eq("client_visible",
@@ -359,6 +367,7 @@ beforeEach(() => {
   activeTimerRows = [];
   projectMemberRows = [];
   workspaceMemberRoleRows = [];
+  projectRoleRows = [];
   phaseRows = [];
   waitingTaskRows = [];
   waitingTasksError = null;
@@ -995,5 +1004,45 @@ describe("getPortalTeam", () => {
     projectMemberRows = [];
     const team = await getPortalTeam(PROJECT_ID);
     expect(team).toEqual([]);
+  });
+
+  // F112 (six-star review Part 0/D): a `project_roles` job title takes
+  // priority over the `project_members.project_role` permission label,
+  // one row per (person, role) pair, team lead first.
+  it("uses the project_roles job title and note, team lead sorted first", async () => {
+    projectMemberRows = [
+      { user_id: "dev-1", project_role: "member" },
+      { user_id: "lead-1", project_role: "lead" },
+    ];
+    workspaceMemberRoleRows = [
+      { user_id: "dev-1", role: "member" },
+      { user_id: "lead-1", role: "admin" },
+    ];
+    projectRoleRows = [
+      { user_id: "dev-1", role: "developer", note: "Backend build." },
+      { user_id: "lead-1", role: "team_lead", note: "Runs the weekly check-in." },
+    ];
+
+    const team = await getPortalTeam(PROJECT_ID);
+
+    expect(team).toHaveLength(2);
+    expect(team[0]!.roleLabel).toBe("Team lead");
+    expect(team[0]!.note).toBe("Runs the weekly check-in.");
+    expect(team[1]!.roleLabel).toBe("Developer");
+    expect(team[1]!.note).toBe("Backend build.");
+  });
+
+  it("renders one row per role when a person holds two project_roles jobs", async () => {
+    projectMemberRows = [{ user_id: "multi-1", project_role: "member" }];
+    workspaceMemberRoleRows = [{ user_id: "multi-1", role: "member" }];
+    projectRoleRows = [
+      { user_id: "multi-1", role: "design_lead", note: null },
+      { user_id: "multi-1", role: "developer", note: null },
+    ];
+
+    const team = await getPortalTeam(PROJECT_ID);
+
+    expect(team).toHaveLength(2);
+    expect(team.map((m) => m.roleLabel).sort()).toEqual(["Design lead", "Developer"]);
   });
 });

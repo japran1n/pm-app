@@ -17,8 +17,24 @@ describe("TeamCard", () => {
     render(
       <TeamCard
         members={[
-          { id: "u1", name: "Ana Petrović", avatarUrl: null, roleLabel: "Project lead" },
-          { id: "u2", name: "Marko Ilić", avatarUrl: null, roleLabel: "Team member" },
+          {
+            id: "u1",
+            userId: "u1",
+            name: "Ana Petrović",
+            avatarUrl: null,
+            roleLabel: "Project lead",
+            note: null,
+            email: null,
+          },
+          {
+            id: "u2",
+            userId: "u2",
+            name: "Marko Ilić",
+            avatarUrl: null,
+            roleLabel: "Team member",
+            note: null,
+            email: null,
+          },
         ]}
       />,
     );
@@ -26,6 +42,32 @@ describe("TeamCard", () => {
     expect(screen.getByText("Project lead")).toBeInTheDocument();
     expect(screen.getByText("Marko Ilić")).toBeInTheDocument();
     expect(screen.getByText("Team member")).toBeInTheDocument();
+  });
+
+  // F112 (six-star review Part 0/D): a real card per person -- job title,
+  // what they own, and how to reach them.
+  it("renders the project role, the one-line 'what they own' note, and a mailto contact link", () => {
+    render(
+      <TeamCard
+        members={[
+          {
+            id: "u1:team_lead",
+            userId: "u1",
+            name: "Ana Petrović",
+            avatarUrl: null,
+            roleLabel: "Team lead",
+            note: "Runs the weekly check-in and owns delivery.",
+            email: "ana@agency.test",
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Team lead")).toBeInTheDocument();
+    expect(
+      screen.getByText("Runs the weekly check-in and owns delivery."),
+    ).toBeInTheDocument();
+    const link = screen.getByText("ana@agency.test");
+    expect(link).toHaveAttribute("href", "mailto:ana@agency.test");
   });
 
   it("shows an honest empty message rather than a fabricated member when there are none", () => {

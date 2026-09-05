@@ -569,6 +569,22 @@ const WEBSITE_DECISION_OWNERS = [
   { decisionType: "technical", username: "sasa" },
 ];
 
+// F112 (missions/20260903-portal, six-star review Part 0/D): `project_roles`
+// — who does what JOB on this project, separate from `project_decision_
+// owners` above (which names a CLIENT's authority over a decision type,
+// not an agency job). Deliberately a different set of people than
+// WEBSITE_DECISION_OWNERS: decision owners are always the client (nina)
+// or, for "technical", the account lead (sasa); project roles are always
+// the agency team already seeded onto this project (sasa/maja/luka/ana),
+// so the two tables never describe the same fact about the same person
+// here — nothing for the portal to contradict.
+const WEBSITE_PROJECT_ROLES = [
+  { username: "sasa", role: "pm", note: "Client relationship, scope and timeline." },
+  { username: "maja", role: "team_lead", note: "Day-to-day lead — weekly check-ins, content and QA." },
+  { username: "ana", role: "design_lead", note: "Homepage, about and product page designs." },
+  { username: "luka", role: "developer", note: "Next.js build and CMS migration." },
+];
+
 // F007's `approval_requests`. Two open (one overdue, one not), two
 // already decided (one approved, one changes_requested) — decided rows
 // are inserted WITH their final state directly (not via an update: the
@@ -942,6 +958,20 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
     ),
   );
 
+  // 2b. Project roles (F112) — who does what job on the team.
+  check(
+    "project_roles Website Redesign",
+    await admin.from("project_roles").insert(
+      WEBSITE_PROJECT_ROLES.map((r) => ({
+        project_id: projectId,
+        user_id: userIds[r.username],
+        role: r.role,
+        note: r.note,
+        added_by: owner,
+      })),
+    ),
+  );
+
   // 3. Approval requests — decided rows are inserted already-decided
   // (state != 'pending'), never inserted pending then updated: the
   // table's own trigger rejects any update once a row has left 'pending'
@@ -1189,12 +1219,13 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
   check("task_types Page", { error: pageTypeError });
 
   let pagePosition = 0;
+  const pageTaskIdByTitle = {};
   for (const page of WEBSITE_PAGES) {
     pagePosition += 1000;
     const statusName = page.status === "__blocked__" ? "Blocked" : page.status;
-    check(
-      `page task ${page.title}`,
-      await admin.from("tasks").insert({
+    const { data: pageTask, error: pageTaskError } = await admin
+      .from("tasks")
+      .insert({
         project_id: projectId,
         title: page.title,
         description: `${page.title} — placeholder detail for testing. Replace with real content.`,
@@ -1209,9 +1240,44 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
         page_order: page.order,
         pending_client_approval: page.pendingClientApproval === true,
         tags: ["page"],
-      }),
+      })
+      .select("id")
+      .single();
+    check(`page task ${page.title}`, { error: pageTaskError });
+    pageTaskIdByTitle[page.title] = pageTask.id;
+  }
+
+  // F113 (client-portal-phase-2-plan.md item B): per-page links --
+  // Figma frame + staging URL for every page, both client-visible, so
+  // the Pages table's own Links affordance has something to show for
+  // every row in the demo. No live URL yet (Website Redesign hasn't
+  // launched) -- that gap is deliberate, matching the project-level
+  // strip's own "not live yet" honest state.
+  const pageLinksRows = [];
+  for (const page of WEBSITE_PAGES) {
+    const taskId = pageTaskIdByTitle[page.title];
+    if (!taskId) continue;
+    const slugPath = page.slug === "/" ? "home" : page.slug.replace(/^\//, "");
+    pageLinksRows.push(
+      {
+        task_id: taskId,
+        kind: "figma",
+        label: `${page.title} — Figma frame`,
+        url: `https://www.figma.com/file/acme-northwind-redesign?node-id=${slugPath}`,
+        client_visible: true,
+        position: 1000,
+      },
+      {
+        task_id: taskId,
+        kind: "staging",
+        label: `${page.title} — staging`,
+        url: `https://staging.northwind-redesign.dev/${slugPath === "home" ? "" : slugPath}`,
+        client_visible: true,
+        position: 2000,
+      },
     );
   }
+  check("page_links Website Redesign", await admin.from("page_links").insert(pageLinksRows));
 }
 
 // --- portal demo data: Northwind Loyalty App (finished) ----------------------
@@ -1255,6 +1321,15 @@ const NORTHWIND_DECISION_OWNERS = [
   { decisionType: "brand", username: "nina" },
   { decisionType: "commercial", username: "nina" },
   { decisionType: "technical", username: "sasa" },
+];
+
+// F112: project roles for Cedarwood Partners' own team (sasa + ivan) —
+// ivan holds two jobs on this one project, demonstrating the "one person,
+// two roles" case the spec calls out.
+const NORTHWIND_PROJECT_ROLES = [
+  { username: "sasa", role: "pm", note: "Client relationship and scope." },
+  { username: "ivan", role: "team_lead", note: "Ran delivery day to day." },
+  { username: "ivan", role: "developer", note: "Enrollment flow and points ledger build." },
 ];
 
 // Every approval below is already settled -- a finished project has
@@ -1497,6 +1572,12 @@ const MERIDIAN_DECISION_OWNERS = [
   { decisionType: "brand", username: "sasa" },
 ];
 
+// F112: project roles for Meridian Ops Dashboard.
+const MERIDIAN_PROJECT_ROLES = [
+  { username: "sasa", role: "pm", note: "Client relationship and scope." },
+  { username: "ivan", role: "developer", note: "Warehouse schema and dashboard build." },
+];
+
 const MERIDIAN_APPROVALS = [
   {
     title: "Approve warehouse schema design",
@@ -1704,6 +1785,7 @@ async function seedProjectPortalTables({
   phases,
   taskPhases,
   decisionOwners,
+  roles,
   approvals,
   deliverables,
   metrics,
@@ -1754,6 +1836,21 @@ async function seedProjectPortalTables({
       })),
     ),
   );
+
+  if (roles?.length) {
+    check(
+      `project_roles ${label}`,
+      await admin.from("project_roles").insert(
+        roles.map((r) => ({
+          project_id: projectId,
+          user_id: userIds[r.username],
+          role: r.role,
+          note: r.note,
+          added_by: owner,
+        })),
+      ),
+    );
+  }
 
   check(
     `approval_requests ${label}`,
@@ -1941,6 +2038,7 @@ async function seedLaunchedPortalData({ projectId, owner, userIds, taskIdByTitle
     phases: NORTHWIND_PHASES,
     taskPhases: NORTHWIND_TASK_PHASES,
     decisionOwners: NORTHWIND_DECISION_OWNERS,
+    roles: NORTHWIND_PROJECT_ROLES,
     approvals: NORTHWIND_APPROVALS,
     deliverables: NORTHWIND_DELIVERABLES,
     metrics: NORTHWIND_METRICS,
@@ -1973,6 +2071,7 @@ async function seedWorkspace2Budget({ projectId, owner, userIds, taskIdByTitle }
     phases: MERIDIAN_PHASES,
     taskPhases: MERIDIAN_TASK_PHASES,
     decisionOwners: MERIDIAN_DECISION_OWNERS,
+    roles: MERIDIAN_PROJECT_ROLES,
     approvals: MERIDIAN_APPROVALS,
     deliverables: MERIDIAN_DELIVERABLES,
     metrics: MERIDIAN_METRICS,

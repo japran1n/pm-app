@@ -35,6 +35,16 @@ import {
 import { DecisionOwnersSection } from "@/components/approvals/decision-owners";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
 import { canWrite } from "@/lib/auth/permissions";
+// F112 (missions/20260903-portal, six-star review Part 0/D): "Team" —
+// project roles (PM, team lead, design lead, Webflow lead, designer,
+// developer) editor, placed beside "Who approves what" per this
+// feature's own spec.
+import {
+  getProjectRoles,
+  getProjectTeamCandidates,
+  type ProjectRoleRow,
+} from "@/lib/queries/project-roles";
+import { ProjectRolesSection } from "@/components/project/project-roles";
 
 // F133: project settings panel — explicit member list (AS-236), an
 // add-member picker scoped to existing workspace members, a remove
@@ -145,6 +155,8 @@ export default async function ProjectSettingsPage({
   let lossPreview: Awaited<ReturnType<typeof getVisibilityLossPreview>> = [];
   let decisionOwners: PortalDecisionOwner[] = [];
   let clientMembers: Awaited<ReturnType<typeof getProjectClientMembers>> = [];
+  let projectRoles: ProjectRoleRow[] = [];
+  let teamCandidates: Awaited<ReturnType<typeof getProjectTeamCandidates>> = [];
   let loadError = false;
 
   try {
@@ -153,17 +165,21 @@ export default async function ProjectSettingsPage({
     // canManage/canToggleVisibility, both already known), but whenever
     // fetched they run alongside `members` instead of after it.
     let decisionOwnersResult: Awaited<ReturnType<typeof getDecisionOwners>>;
-    [members, addable, lossPreview, decisionOwnersResult, clientMembers] = await Promise.all([
-      getProjectMembers(project.id),
-      canManage
-        ? getAddableWorkspaceMembers(workspace.id, project.id)
-        : Promise.resolve(addable),
-      canToggleVisibility
-        ? getVisibilityLossPreview(workspace.id, project.id)
-        : Promise.resolve(lossPreview),
-      getDecisionOwners(project.id),
-      getProjectClientMembers(workspace.id),
-    ]);
+    let projectRolesResult: Awaited<ReturnType<typeof getProjectRoles>>;
+    [members, addable, lossPreview, decisionOwnersResult, clientMembers, projectRolesResult, teamCandidates] =
+      await Promise.all([
+        getProjectMembers(project.id),
+        canManage
+          ? getAddableWorkspaceMembers(workspace.id, project.id)
+          : Promise.resolve(addable),
+        canToggleVisibility
+          ? getVisibilityLossPreview(workspace.id, project.id)
+          : Promise.resolve(lossPreview),
+        getDecisionOwners(project.id),
+        getProjectClientMembers(workspace.id),
+        getProjectRoles(project.id),
+        getProjectTeamCandidates(workspace.id, project.id),
+      ]);
     // F079 (missions/20260903-portal audit, defect 1): `getDecisionOwners`
     // now reports a failed read as `{ ok: false }` rather than silently
     // coalescing it to `[]` (see that function's own header comment) --
@@ -175,6 +191,10 @@ export default async function ProjectSettingsPage({
       throw new Error(decisionOwnersResult.error);
     }
     decisionOwners = decisionOwnersResult.data;
+    if (!projectRolesResult.ok) {
+      throw new Error(projectRolesResult.error);
+    }
+    projectRoles = projectRolesResult.data;
   } catch (error) {
     logger.error("ProjectSettingsPage: failed to load member data", { error: error });
     loadError = true;
@@ -288,6 +308,25 @@ export default async function ProjectSettingsPage({
               projectId={project.id}
               owners={decisionOwners}
               clientMembers={clientMembers}
+              canManage={canManageDecisionOwners}
+            />
+          </section>
+
+          <Separator />
+
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-semibold">Team</h2>
+              <p className="text-sm text-muted-foreground">
+                Who does what on this project — PM, team lead, design lead,
+                Webflow lead, designer, developer. Shown to the client on
+                the portal&apos;s Your team card, team lead first.
+              </p>
+            </div>
+            <ProjectRolesSection
+              projectId={project.id}
+              roles={projectRoles}
+              candidates={teamCandidates}
               canManage={canManageDecisionOwners}
             />
           </section>
