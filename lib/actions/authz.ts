@@ -20,6 +20,7 @@
 // centralizing every AUTH decision (membership, write gate, visibility).
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import type { ZodType } from "zod";
+import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -100,6 +101,54 @@ export type AuthzOptions<TInput, TExtra extends AuthzExtra = AuthzExtra> = {
 
 export type AuthzFailure = { ok: false; error: string };
 
+// F124 (AS-081, AS-083, AS-085): every `withAuthz`-wrapped action used to
+// pay two, fully sequential, unconditional network round trips before its
+// own resolveWorkspace step even started: createClient() (reads request
+// cookies, cheap) followed by an AWAITED `supabase.auth.getUser()` (a real
+// call to Supabase Auth that verifies the JWT). Two independent fixes,
+// deliberately no further than that:
+//
+// 1. `cache()` — React's per-request memoization primitive, the exact one
+//    lib/queries/projects.ts's `getProjectById` already uses. If more than
+//    one call site in the SAME request resolves identity through this
+//    function, only the first pays the network round trip; later calls in
+//    that request get the memoized `{ supabase, user }` pair instead of a
+//    second `getUser()` call. `cache()` is per-request by construction —
+//    not a concern that needs a manual invalidation/reset here — because
+//    of how it's implemented: `cache()` closes over React's *current
+//    dispatcher* (`ReactSharedInternals.A`), which Next.js's own
+//    react-server runtime swaps to a fresh one for every request/action
+//    invocation it processes (this is the same mechanism that scopes
+//    `fetch()` deduplication and the framework's own per-request caches);
+//    if no such dispatcher is active (e.g. this file under a plain
+//    Vitest unit test, which never goes through Next's request runtime),
+//    `cache()`'s own fallback in that case is to skip memoization
+//    entirely and just call the wrapped function directly every time —
+//    confirmed by reading both react-server and non-react-server builds
+//    of `cache()` in node_modules/react: the failure mode of "no active
+//    per-request dispatcher" is "memoize nothing, ever" (identical to
+//    this code before this change), never "reuse a stale value from a
+//    different request." There is no code path here that reads or writes
+//    any state keyed by anything OTHER than that per-request dispatcher,
+//    so a value produced for user A's request can only ever be handed
+//    back to a call made against that same dispatcher, i.e. the same
+//    request. See this feature's handoff for how this was exercised
+//    against the real dev server to double-check the isolation claim
+//    empirically, not just by reading the source.
+// 2. Still calls `getUser()`, never `getSession()` (AS-084) —
+//    `getSession()` reads the cookie payload without verifying it against
+//    Supabase Auth, which is exactly the vulnerability this file's own
+//    header comment (W11) exists to centralize a defense against. Caching
+//    the RESULT of a verified call is not the same thing as skipping
+//    verification, and this change never does the latter.
+const getAuthenticatedUser = cache(async function getAuthenticatedUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user };
+});
+
 // Wraps `handler` with the standard auth pipeline. Returns a function that
 // takes the RAW (unparsed) input a Server Action received, so a thin
 // wrapper function preserving the action's original public signature can
@@ -124,10 +173,27 @@ export function withAuthz<
       };
     }
 
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    // F124 (AS-081): identity resolution (step 1) and workspace resolution
+    // (step 2) are independent — `resolveWorkspace` takes only `parsed.data`
+    // and `admin`, never `user` — so they run concurrently instead of one
+    // after the other. `admin` is a plain client-object construction (no
+    // I/O — see lib/supabase/admin.ts), so building it before the
+    // `Promise.all` doesn't reintroduce a sequential wait.
+    //
+    // Precedence when BOTH fail, decided deliberately rather than left to
+    // fall out of Promise.all's ordering (which reports whichever
+    // constituent settles, not a fixed "first argument wins" rule): the
+    // `!user` check runs FIRST, exactly matching this function's
+    // pre-F124 behavior, where `resolveWorkspace` was never even called
+    // (let alone allowed to fail) until AFTER the signed-in check passed.
+    // A signed-out caller against a nonexistent/foreign workspace still
+    // gets `notSignedInError`, byte-for-byte the same as before (AS-082).
+    const admin = createAdminClient();
+
+    const [{ supabase, user }, resolved] = await Promise.all([
+      getAuthenticatedUser(),
+      options.resolveWorkspace(parsed.data, admin),
+    ]);
 
     if (!user) {
       return {
@@ -135,10 +201,6 @@ export function withAuthz<
         error: options.notSignedInError ?? "You must be signed in.",
       };
     }
-
-    const admin = createAdminClient();
-
-    const resolved = await options.resolveWorkspace(parsed.data, admin);
 
     if (!resolved.ok) {
       return { ok: false, error: resolved.error };
