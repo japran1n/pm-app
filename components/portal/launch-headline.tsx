@@ -49,10 +49,19 @@ export function LaunchHeadline({
   targetLaunchDate,
   launchConfidence,
   launchNote,
+  nextFromYou,
 }: {
   targetLaunchDate: string | null;
   launchConfidence: PortalLaunchConfidence | null;
   launchNote: string | null;
+  // F115 (missions/20260903-portal, docs/client-portal-phase-2-plan.md
+  // C): "when will you need me again, and for what?" -- one line in the
+  // same voice as the headline itself, placed here rather than as a
+  // fifth OverviewTiles card. Optional (not `nextFromYou: string`) so
+  // this component's own pre-existing tests, which render it without
+  // this prop, keep passing unchanged -- omitting the prop omits the
+  // line, it never renders an empty string.
+  nextFromYou?: string;
 }) {
   // Honest empty state (this file's own "never a fabricated figure"
   // convention, same as overview-tiles.tsx and launch-day-card.tsx): no
@@ -64,6 +73,11 @@ export function LaunchHeadline({
         <p className="text-h3 font-semibold tracking-tight text-muted-foreground">
           Launch date not set yet
         </p>
+        {nextFromYou && (
+          <p className="text-sm text-muted-foreground" data-testid="launch-headline-next">
+            {nextFromYou}
+          </p>
+        )}
       </div>
     );
   }
@@ -89,6 +103,11 @@ export function LaunchHeadline({
       {launchNote && (
         <p className="text-sm text-muted-foreground" data-testid="launch-headline-note">
           {launchNote}
+        </p>
+      )}
+      {nextFromYou && (
+        <p className="text-sm text-muted-foreground" data-testid="launch-headline-next">
+          {nextFromYou}
         </p>
       )}
     </div>

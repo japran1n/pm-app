@@ -55,4 +55,45 @@ describe("LaunchHeadline", () => {
     expect(headline).not.toHaveTextContent("At risk");
     expect(headline).not.toHaveTextContent("Slipped");
   });
+
+  // F115 (missions/20260903-portal, docs/client-portal-phase-2-plan.md
+  // C): "what happens next" reads as part of this same headline block --
+  // one line, no card of its own -- and is omitted entirely (not an
+  // empty paragraph) when the caller doesn't supply it, so this
+  // component's own three tests above keep passing unchanged.
+  it("test_AS_next_from_you_line_renders_under_the_headline_when_supplied", () => {
+    render(
+      <LaunchHeadline
+        targetLaunchDate="2026-10-04"
+        launchConfidence="on_track"
+        launchNote={null}
+        nextFromYou="Next from you: sign off the About page — expected around 12 Sept."
+      />,
+    );
+
+    expect(screen.getByTestId("launch-headline-next")).toHaveTextContent(
+      "Next from you: sign off the About page — expected around 12 Sept.",
+    );
+  });
+
+  it("test_AS_next_from_you_line_omitted_when_not_supplied", () => {
+    render(<LaunchHeadline targetLaunchDate="2026-10-04" launchConfidence="on_track" launchNote={null} />);
+
+    expect(screen.queryByTestId("launch-headline-next")).not.toBeInTheDocument();
+  });
+
+  it("test_AS_next_from_you_line_renders_in_the_honest_empty_launch_state_too", () => {
+    render(
+      <LaunchHeadline
+        targetLaunchDate={null}
+        launchConfidence={null}
+        launchNote={null}
+        nextFromYou="Nothing needed from you right now."
+      />,
+    );
+
+    expect(screen.getByTestId("launch-headline-next")).toHaveTextContent(
+      "Nothing needed from you right now.",
+    );
+  });
 });

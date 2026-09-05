@@ -30,6 +30,7 @@ import { WeeklyDeliveryChart } from "@/components/portal/weekly-delivery-chart";
 import { LaunchHeadline } from "@/components/portal/launch-headline";
 import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
 import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items";
+import { buildNextFromYouAnswer } from "@/lib/portal/build-next-from-you";
 import { computeBurndownSeries } from "@/lib/hours/burndown-series";
 import type { ClientBucket } from "@/components/portal/status-label";
 
@@ -221,6 +222,19 @@ export default async function PortalOverviewPage({
     todayIso: today,
   });
 
+  // F115 (missions/20260903-portal, docs/client-portal-phase-2-plan.md
+  // C): "what happens next" -- reuses the SAME open-approvals,
+  // deliverables and phases reads already fetched above (for
+  // `waitingOnYouItems` and the phase timeline), never a fourth query.
+  // A failed read degrades to an empty list for that source, same
+  // posture as `waitingOnYouItems` above.
+  const nextFromYou = buildNextFromYouAnswer({
+    approvals: openApprovalsResult.ok ? openApprovalsResult.data : [],
+    deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
+    phases: phasesResult.ok ? phasesResult.data : [],
+    todayIso: today,
+  });
+
   // F085 (missions/20260903-portal audit, defect 2): the TILE no longer
   // reads `waitingOnYouResult.data.length` -- it reads the deliberately
   // broader `getPortalWaitingOnYouCount` union above. The list rendered
@@ -267,6 +281,7 @@ export default async function PortalOverviewPage({
         targetLaunchDate={project.targetLaunchDate}
         launchConfidence={project.launchConfidence}
         launchNote={project.launchNote}
+        nextFromYou={nextFromYou}
       />
 
       <RiskBanner
