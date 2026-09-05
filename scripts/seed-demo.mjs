@@ -841,12 +841,29 @@ const WEBSITE_ASSUMPTIONS = [
 ];
 
 // F022's `project_links` (20261014010000_..._docs_visibility.sql):
-// `kind` from that migration's own CHECK. Staging + eventual live URL
-// are client-visible; the Figma file and the GA4 property are internal.
+// `kind` from that migration's own CHECK.
+//
+// F113 (docs/client-portal-phase-2-plan.md item B, coordinator review):
+// the Figma file is now client-visible -- the whole point of the
+// project-level strip is that Figma sits PERMANENTLY alongside staging,
+// not that it's hidden by default. This flips this project's own seed
+// row, not the schema's default (`project_links.client_visible` still
+// defaults false at the column level, unchanged -- see that migration's
+// own header on why a link added in a hurry must stay internal until a
+// human opts it in). Whether `figma` specifically should default to
+// visible workspace-wide is a product question for the next feature
+// that touches `project_links`' defaults, not something this seed
+// silently decides.
+//
+// No `live` row here on purpose: Website Redesign has not launched
+// (`target_launch_date` below is 30 days out), so there is genuinely no
+// live URL yet -- the project-level strip's own "Not live yet" honest
+// placeholder (components/portal/portal-link-strip.tsx) is exactly the
+// state this project should demonstrate. `NORTHWIND_LINKS` below is the
+// launched sibling that carries a real `live` row instead.
 const WEBSITE_LINKS = [
   { kind: "staging", label: "Staging preview", url: "https://staging.northwind-redesign.dev", clientVisible: true },
-  { kind: "live", label: "Live site (after launch)", url: "https://www.northwind.example.com", clientVisible: true },
-  { kind: "figma", label: "Figma design file", url: "https://www.figma.com/file/acme-northwind-redesign", clientVisible: false },
+  { kind: "figma", label: "Figma design file", url: "https://www.figma.com/file/acme-northwind-redesign", clientVisible: true },
   { kind: "analytics", label: "GA4 property", url: "https://analytics.google.com/analytics/web/#/p000000000", clientVisible: false },
 ];
 
@@ -1512,6 +1529,18 @@ const NORTHWIND_DECISIONS = [
   },
 ];
 
+// F113 (docs/client-portal-phase-2-plan.md item B, coordinator review):
+// this launched project needs its own Page-type tasks so its Pages view
+// isn't empty, and each carries a real LIVE page link -- the counterpart
+// to Website Redesign's pages, which carry Figma + staging but
+// deliberately no live link yet (that project hasn't launched). Without
+// this, "the launched project's pages have live links" was untestable:
+// Northwind had zero Page-type tasks at all before this fix.
+const NORTHWIND_PAGES = [
+  { title: "Enrollment", slug: "/enroll", order: 1, assignee: "luka" },
+  { title: "Rewards catalogue", slug: "/rewards", order: 2, assignee: "ana" },
+];
+
 const NORTHWIND_LINKS = [
   { kind: "live", label: "Live loyalty program", url: "https://www.northwind.example.com/loyalty", clientVisible: true },
   { kind: "drive", label: "Brand & photography assets", url: "https://drive.example.com/northwind-loyalty-assets", clientVisible: true },
@@ -2013,7 +2042,7 @@ async function seedProjectPortalTables({
 // Northwind Loyalty App — launch header fields (F001) + warranty window
 // (F025c) plus the full portal table set above, all resolving to the
 // project's own finished state.
-async function seedLaunchedPortalData({ projectId, owner, userIds, taskIdByTitle }) {
+async function seedLaunchedPortalData({ projectId, workspaceId, owner, userIds, taskIdByTitle }) {
   check(
     "portal launch fields Northwind Loyalty App",
     await admin
@@ -2048,6 +2077,58 @@ async function seedLaunchedPortalData({ projectId, owner, userIds, taskIdByTitle
     accounts: NORTHWIND_ACCOUNTS,
     label: "Northwind Loyalty App",
   });
+
+  // F113 (docs/client-portal-phase-2-plan.md item B, coordinator
+  // review): this launched project's own pages, each with a real live
+  // link -- Website Redesign's own Page task type is workspace-scoped
+  // (task_types.workspace_id + system_key = 'page' has a unique index,
+  // 20260912010000_task_type_system_key.sql) and this project shares
+  // that same workspace, so it's read here rather than re-created.
+  const { data: pageType, error: pageTypeError } = await admin
+    .from("task_types")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .eq("system_key", "page")
+    .maybeSingle();
+  check("task_types Page (Northwind lookup)", { error: pageTypeError });
+
+  let northwindPagePosition = 9000;
+  for (const page of NORTHWIND_PAGES) {
+    northwindPagePosition += 1000;
+    const { data: pageTask, error: pageTaskError } = await admin
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: page.title,
+        description: `${page.title} — placeholder detail for testing. Replace with real content.`,
+        status: "done",
+        priority: "medium",
+        author_id: owner,
+        assignee_id: userIds[page.assignee],
+        position: northwindPagePosition,
+        client_visible: true,
+        task_type_id: pageType?.id ?? null,
+        page_slug: page.slug,
+        page_order: page.order,
+        tags: ["page"],
+      })
+      .select("id")
+      .single();
+    check(`page task ${page.title} (Northwind)`, { error: pageTaskError });
+
+    const slugPath = page.slug.replace(/^\//, "");
+    check(
+      `page_links live ${page.title} (Northwind)`,
+      await admin.from("page_links").insert({
+        task_id: pageTask.id,
+        kind: "live",
+        label: `${page.title} — live`,
+        url: `https://www.northwind.example.com/loyalty/${slugPath}`,
+        client_visible: true,
+        position: 1000,
+      }),
+    );
+  }
 }
 
 // Meridian Ops Dashboard — over-budget, mid-flight portal data. `budget`
@@ -2247,7 +2328,7 @@ async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberU
     }
 
     if (spec.launched) {
-      await seedLaunchedPortalData({ projectId: project.id, owner, userIds, taskIdByTitle });
+      await seedLaunchedPortalData({ projectId: project.id, workspaceId, owner, userIds, taskIdByTitle });
       console.log(`  ✓ ${spec.name} — portal demo data (launched/finished, warranty, phases, approvals, deliverables, metrics, scope, decisions, links, accounts)`);
     }
 
