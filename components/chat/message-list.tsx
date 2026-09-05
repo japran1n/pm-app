@@ -1,10 +1,23 @@
 "use client";
 
 // F4 (docs/advanced-chat-plan.md): renders a channel's top-level messages.
-// Mirrors components/task/comment-list.tsx's "list + auto-scroll" shape,
-// simplified: no rich-text editor (plain <textarea> composer per this
-// milestone's clarified scope -- see message-composer.tsx), no edit/delete
-// UI yet (F9), no reactions yet (F8), no threads panel yet (F10).
+// Mirrors components/task/comment-list.tsx's "list + auto-scroll" shape.
+//
+// Faza A (docs/chat-slack-parity-plan.md): three fixes landed together
+// here, all pre-existing gaps rather than new features --
+//   - BUG-1: messages render through the shared RichTextRenderer (same
+//     component task comments/descriptions already use) instead of
+//     extractPlainText's flattened string, so a pasted link is an actual
+//     clickable <a>, not inert text -- see use-rich-text-renderer.ts.
+//   - BUG-2: attachments (uploaded by the composer, linked to the message
+//     by sendMessage) are now actually rendered -- see chat-attachment.tsx.
+//   - BUG-3/4/5: the old hover toolbar hardcoded 6 emoji that didn't match
+//     the DB's reaction allow-list (3 of them silently failed), reactions
+//     only appeared for the message's OWN sender to add, and the reaction
+//     summary chips were absolutely positioned over the next message.
+//     Replaced by the already-built (but previously unused anywhere --
+//     BUG-16) MessageReactionPicker, which uses the real allow-list, is
+//     available on every message, and renders in normal flow.
 //
 // Grouping: consecutive messages from the same sender within 5 minutes of
 // each other render without repeating the author header -- purely visual,
@@ -19,23 +32,23 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { formatDistanceToNow, format, isAfter, subHours } from "date-fns";
-import { Pencil, Trash2, SmilePlus } from "lucide-react";
+import { Pencil, Trash2, Reply } from "lucide-react";
 
 import { extractPlainText, docFromPlainText } from "@/lib/comments/rich-text";
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
-import type { ChatMessage } from "@/components/chat/channel-view";
-import { toggleMessageReaction } from "@/lib/actions/chat-reactions";
-import type { MessageReactionSummary } from "@/lib/queries/chat";
+import type { ChatMessage, ChatMessageAttachment } from "@/components/chat/channel-view";
+import { editMessage, deleteMessage } from "@/lib/actions/chat-messages";
+import { useRichTextRenderer } from "@/components/chat/use-rich-text-renderer";
+import { ChatAttachment } from "@/components/chat/chat-attachment";
+import {
+  MessageReactionPicker,
+  type MessageReactionSummary,
+} from "@/components/chat/message-reaction-picker";
 // F7 (docs/advanced-chat-plan.md): green online dot next to a message
 // author's avatar -- reads from the workspace-wide presence context
 // mounted in the workspace layout (WorkspacePresenceProvider), no
 // per-message-list Presence channel of its own.
 import { useIsUserOnline } from "@/components/nav/workspace-presence-provider";
-// F9 (docs/advanced-chat-plan.md): edit/delete own messages -- reuses the
-// same Server Actions F3 already ships (editMessage/deleteMessage); realtime
-// (use-chat-messages-realtime) propagates the resulting UPDATE to every open
-// client, this component doesn't need to locally patch state after success.
-import { editMessage, deleteMessage } from "@/lib/actions/chat-messages";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,10 +64,14 @@ import {
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 const AUTO_SCROLL_THRESHOLD_PX = 120;
 
-function authorOf(
-  userId: string,
-  members: { userId: string; name: string | null; email: string | null; avatarUrl: string | null }[],
-): UserAvatarPerson {
+type ChatMember = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+};
+
+function authorOf(userId: string, members: ChatMember[]): UserAvatarPerson {
   const member = members.find((m) => m.userId === userId);
   return {
     id: userId,
@@ -64,10 +81,7 @@ function authorOf(
   };
 }
 
-function authorLabel(
-  userId: string,
-  members: { userId: string; name: string | null; email: string | null }[],
-): string {
+function authorLabel(userId: string, members: ChatMember[]): string {
   const member = members.find((m) => m.userId === userId);
   return member?.name || member?.email || userId;
 }
@@ -81,7 +95,7 @@ function MessageAuthorAvatar({
   members,
 }: {
   userId: string;
-  members: { userId: string; name: string | null; email: string | null; avatarUrl: string | null }[];
+  members: ChatMember[];
 }) {
   const isOnline = useIsUserOnline(userId);
   return (
@@ -98,8 +112,6 @@ function MessageAuthorAvatar({
   );
 }
 
-const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "🙏", "🔥"];
-
 export function MessageList({
   messages,
   members,
@@ -107,16 +119,27 @@ export function MessageList({
   replyCounts,
   onOpenThread,
   reactions,
+  onReactionsChange,
+  mentionSuggestions,
   hasMoreMessages,
   isLoadingMoreMessages,
   onLoadMoreMessages,
 }: {
   messages: ChatMessage[];
-  members: { userId: string; name: string | null; email: string | null; avatarUrl: string | null }[];
+  members: ChatMember[];
   currentUserId?: string;
   replyCounts?: Record<string, number>;
   onOpenThread?: (messageId: string) => void;
   reactions?: Map<string, MessageReactionSummary[]>;
+  // Faza A: propagates MessageReactionPicker's optimistic post-toggle
+  // state back up to ChannelView's master `reactionsByMessage` map, so it
+  // stays the single source of truth (the realtime subscription writes to
+  // the same map for every other client's toggles).
+  onReactionsChange?: (messageId: string, next: MessageReactionSummary[]) => void;
+  // Faza A (BUG-1): passed down from ChannelView instead of recomputed
+  // here, so the composer and the renderer's mention-chip resolution never
+  // drift from the same member list.
+  mentionSuggestions?: { id: string; label: string }[];
   // W10 (pagination hardening): "Load earlier messages" affordance --
   // backend already supported a `before` cursor (getChannelMessages), this
   // wires it into the UI. Optional so callers that don't paginate (e.g.
@@ -172,6 +195,8 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const richText = useRichTextRenderer();
+
   if (messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground">
@@ -209,10 +234,9 @@ export function MessageList({
           !previous.deletedAt === !message.deletedAt;
 
         const isOwn = message.senderId === currentUserId;
-        // F13: resolves a stored mention's CURRENT display name against
-        // this channel's already-fetched `members` list, mirroring
-        // comment-list.tsx's own `extractPlainText(..., resolveLabel)`
-        // usage -- never a raw user id shown to a reader.
+        // Pre-hydration/no-JS fallback text, and the initial value for the
+        // plain-text edit textarea below -- rich rendering (once `richText`
+        // resolves) is what viewers actually see once mounted.
         const bodyText = message.deletedAt
           ? "Message deleted"
           : extractPlainText(message.bodyJson, (userId) =>
@@ -231,6 +255,9 @@ export function MessageList({
             onOpenThread={onOpenThread}
             messageReactions={reactions?.get(message.id) ?? []}
             currentUserId={currentUserId}
+            onReactionsChange={onReactionsChange}
+            mentionSuggestions={mentionSuggestions}
+            RichTextRenderer={richText}
           />
         );
       })}
@@ -248,16 +275,22 @@ function MessageRow({
   onOpenThread,
   messageReactions,
   currentUserId,
+  onReactionsChange,
+  mentionSuggestions,
+  RichTextRenderer,
 }: {
   message: ChatMessage;
   isOwn: boolean;
   bodyText: string;
   sameSenderAsPrevious: boolean;
-  members: { userId: string; name: string | null; email: string | null; avatarUrl: string | null }[];
+  members: ChatMember[];
   replyCounts?: Record<string, number>;
   onOpenThread?: (messageId: string) => void;
   messageReactions: MessageReactionSummary[];
   currentUserId?: string;
+  onReactionsChange?: (messageId: string, next: MessageReactionSummary[]) => void;
+  mentionSuggestions?: { id: string; label: string }[];
+  RichTextRenderer: ReturnType<typeof useRichTextRenderer>;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(bodyText);
@@ -278,6 +311,8 @@ function MessageRow({
   const handleDelete = useCallback(async () => {
     await deleteMessage(message.id);
   }, [message.id]);
+
+  const attachments: ChatMessageAttachment[] = message.attachments ?? [];
 
   return (
     <div
@@ -320,23 +355,53 @@ function MessageRow({
               <button type="button" onClick={() => { setEditing(false); setEditText(bodyText); }} className="text-muted-foreground hover:underline">Cancel</button>
             </div>
           </div>
+        ) : message.deletedAt ? (
+          <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">
+            Message deleted
+          </p>
+        ) : RichTextRenderer ? (
+          // Faza A: the shared renderer's `<a>` inherits this app's global
+          // reset (color: inherit, no underline) same as task comments --
+          // a real, clickable link that's visually indistinguishable from
+          // plain text. Scoped to chat only (not touching the shared
+          // editor component or the global reset) since a visibly-a-link
+          // link was the literal ask.
+          <div className="text-sm [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
+            <RichTextRenderer
+              content={message.bodyJson}
+              aria-label={`Message from ${authorLabel(message.senderId, members)}`}
+              mentionSuggestions={mentionSuggestions}
+            />
+            {message.editedAt && (
+              <span className="text-xs text-muted-foreground">(edited)</span>
+            )}
+          </div>
         ) : (
-          <p
-            className={
-              message.deletedAt
-                ? "whitespace-pre-wrap text-sm italic text-muted-foreground"
-                : "whitespace-pre-wrap text-sm"
-            }
-          >
-            {bodyText || (message.deletedAt ? "Message deleted" : "")}
-            {!message.deletedAt && message.editedAt && (
+          <p className="whitespace-pre-wrap text-sm">
+            {bodyText}
+            {message.editedAt && (
               <span className="ml-1 text-xs text-muted-foreground">(edited)</span>
             )}
           </p>
         )}
-        {!message.deletedAt && onOpenThread && (
-          <div className="mt-0.5 flex items-center gap-3">
-            {replyCounts?.[message.id] ? (
+        {!message.deletedAt && attachments.length > 0 && (
+          <div className="mt-1.5 flex flex-col gap-1.5">
+            {attachments.map((attachment) => (
+              <ChatAttachment key={attachment.id} attachment={attachment} />
+            ))}
+          </div>
+        )}
+        {!message.deletedAt && (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <MessageReactionPicker
+              messageId={message.id}
+              reactions={messageReactions}
+              members={members}
+              currentUserId={currentUserId}
+              canReact={!!currentUserId}
+              onChange={(next) => onReactionsChange?.(message.id, next)}
+            />
+            {!!replyCounts?.[message.id] && onOpenThread && (
               <button
                 type="button"
                 onClick={() => onOpenThread(message.id)}
@@ -345,86 +410,63 @@ function MessageRow({
                 {replyCounts[message.id]}{" "}
                 {replyCounts[message.id] === 1 ? "reply" : "replies"}
               </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onOpenThread(message.id)}
-                className="text-xs text-muted-foreground hover:underline"
-              >
-                Reply
-              </button>
             )}
           </div>
         )}
       </div>
-      {!message.deletedAt && messageReactions.length > 0 && (
-        <div className="absolute -bottom-5 left-11 flex gap-1">
-          {messageReactions.map((r) => {
-            const reacted = currentUserId ? r.userIds.includes(currentUserId) : false;
-            return (
-              <button
-                key={r.emoji}
-                type="button"
-                title={`${r.userIds.length} reaction${r.userIds.length !== 1 ? "s" : ""}`}
-                onClick={() => void toggleMessageReaction(message.id, r.emoji)}
-                className={`flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs ${reacted ? "border-primary/40 bg-primary/10" : "border-border bg-background hover:bg-accent"}`}
-              >
-                {r.emoji} <span className="text-muted-foreground">{r.userIds.length}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {isOwn && !message.deletedAt && !editing && hovered && (
+      {!message.deletedAt && !editing && hovered && (
         <div className="absolute right-0 top-0 flex items-center gap-0.5 rounded border border-border bg-background p-0.5 shadow-sm">
-          {QUICK_EMOJIS.map((emoji) => (
+          {onOpenThread && (
             <button
-              key={emoji}
               type="button"
-              title={`React ${emoji}`}
-              onClick={() => void toggleMessageReaction(message.id, emoji)}
-              className="rounded p-0.5 text-sm hover:bg-accent"
+              title="Reply in thread"
+              onClick={() => onOpenThread(message.id)}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
             >
-              {emoji}
+              <Reply className="size-3.5" />
             </button>
-          ))}
-          <span className="mx-0.5 h-4 w-px bg-border" />
-          <button
-            type="button"
-            title="Edit"
-            onClick={() => { setEditText(bodyText); setEditing(true); }}
-            className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Pencil className="size-3.5" />
-          </button>
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <button
-                  type="button"
-                  title="Delete"
-                  className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              }
-            />
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this message?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This can&apos;t be undone. The message will be removed for
-                  everyone in this channel.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => void handleDelete()}>
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          )}
+          {isOwn && (
+            <>
+              <span className="mx-0.5 h-4 w-px bg-border" />
+              <button
+                type="button"
+                title="Edit"
+                onClick={() => { setEditText(bodyText); setEditing(true); }}
+                className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <button
+                      type="button"
+                      title="Delete"
+                      className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  }
+                />
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this message?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This can&apos;t be undone. The message will be removed for
+                      everyone in this channel.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => void handleDelete()}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
         </div>
       )}
     </div>

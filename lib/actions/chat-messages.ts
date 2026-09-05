@@ -24,7 +24,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getThreadMessages, getChannelMessages } from "@/lib/queries/chat";
+import { getThreadMessages, getChannelMessages, getMessageAttachments } from "@/lib/queries/chat";
 import {
   deleteMessageSchema,
   editMessageSchema,
@@ -55,12 +55,22 @@ import { createNotification } from "@/lib/notifications/create-notification";
 // `signedUrl` is minted fresh at read time (never persisted/reused across
 // requests) -- same convention as every other attachment surface in this
 // codebase (lib/actions/attachments.ts's getAttachmentSignedUrl).
+//
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): `signedUrl` and
+// `fileSize` are optional and `storagePath` was added because this type
+// now covers TWO origins that weren't both wired up before -- sendMessage
+// below (a fresh signedUrl, no storagePath) and getThreadMessagesAction's
+// getMessageAttachments merge (a storagePath, no signedUrl yet --
+// ChatAttachment mints one client-side on demand). Same widened shape as
+// channel-view.tsx's own ChatMessageAttachment; see that file's doc
+// comment for the full origin story.
 export type ChatMessageAttachment = {
   id: string;
   fileName: string;
   mimeType: string | null;
-  fileSize: number | null;
-  signedUrl: string | null;
+  fileSize?: number | null;
+  signedUrl?: string | null;
+  storagePath?: string;
 };
 
 export type ChatMessage = {
@@ -304,11 +314,25 @@ async function linkAndLoadAttachments(
 // Component can't import it directly, same "wrap the query in an action"
 // convention this file already follows for reads that need a client entry
 // point.
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): merges in each thread
+// message's attachments (parent + every reply) before returning -- same
+// gap as the main channel list (getChannelMessages never joins
+// message_attachments either), fixed here in one place since ThreadPanel
+// has no other server round-trip to piggyback a second fetch onto.
+// Attachments carry `storagePath` only (no signed URL is minted here) --
+// ChatAttachment mints one client-side on demand, same as the main list.
 export async function getThreadMessagesAction(
   parentMessageId: string,
 ): Promise<ChatMessage[]> {
   const messages = await getThreadMessages(parentMessageId);
-  return messages;
+  const attachmentsByMessage = await getMessageAttachments(
+    messages.map((m) => m.id),
+  );
+  if (attachmentsByMessage.size === 0) return messages;
+  return messages.map((m) => {
+    const attachments = attachmentsByMessage.get(m.id);
+    return attachments ? { ...m, attachments } : m;
+  });
 }
 
 // W10 (pagination hardening): thin Server Action wrapper so the

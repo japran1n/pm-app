@@ -420,6 +420,62 @@ export async function getMessageReactions(
   return byMessage;
 }
 
+// ---------------------------------------------------------------------
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): file/image attachments
+// for a batch of messages, grouped by message id -- same batched-query
+// shape as getMessageReactions above. This was never wired up anywhere
+// (F11's own migration doc comment expected "other channel members see it
+// on their next message-list load/refresh", but no query or page ever
+// called it): the composer uploaded files and sendMessage linked them,
+// but nothing re-fetched them for a page load or a channel member who
+// wasn't the sender. Deliberately does NOT mint signed URLs here (a
+// server-rendered signed URL baked into the initial HTML would sit
+// unused for however long the viewer takes to scroll to it, burning
+// into its TTL) -- lib/actions/chat-attachments.ts's existing
+// getChatAttachmentSignedUrl action mints one on demand, client-side,
+// the moment a message actually renders (see ChatAttachment in
+// chat-attachment.tsx).
+export type ChatMessageAttachmentRow = {
+  id: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number | null;
+  storagePath: string;
+};
+
+export async function getMessageAttachments(
+  messageIds: string[],
+): Promise<Map<string, ChatMessageAttachmentRow[]>> {
+  const byMessage = new Map<string, ChatMessageAttachmentRow[]>();
+  if (messageIds.length === 0) return byMessage;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("message_attachments")
+    .select("id, message_id, file_name, mime_type, file_size, storage_path")
+    .in("message_id", messageIds);
+
+  if (error) {
+    logger.error("getMessageAttachments: query failed", { error: error });
+    return byMessage;
+  }
+
+  for (const row of data ?? []) {
+    if (!row.message_id) continue;
+    const list = byMessage.get(row.message_id) ?? [];
+    list.push({
+      id: row.id,
+      fileName: row.file_name,
+      mimeType: row.mime_type,
+      fileSize: row.file_size,
+      storagePath: row.storage_path,
+    });
+    byMessage.set(row.message_id, list);
+  }
+
+  return byMessage;
+}
+
 export async function getChannelMembers(
   channelId: string,
 ): Promise<ChannelMemberSummary[]> {

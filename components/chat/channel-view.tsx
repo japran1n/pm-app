@@ -15,10 +15,12 @@ import type { JSONContent } from "@tiptap/react";
 import { sendMessage, getChannelMessagesAction } from "@/lib/actions/chat-messages";
 import { markChannelRead } from "@/lib/actions/chat-read";
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
+import { useMessageReactionsRealtime } from "@/components/chat/use-message-reactions-realtime";
 import { useTypingIndicator } from "@/components/chat/use-typing-indicator";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { ThreadPanel } from "@/components/chat/thread-panel";
+import type { MessageReactionSummary } from "@/lib/queries/chat";
 // F7 (docs/advanced-chat-plan.md): "who's online in this channel" strip in
 // the header, reading from the workspace-wide presence context.
 import { useWorkspacePresence } from "@/components/nav/workspace-presence-provider";
@@ -30,11 +32,24 @@ import { UserAvatar } from "@/components/user-avatar";
 // so a burst of messages doesn't fire one Server Action call each.
 const MARK_READ_DEBOUNCE_MS = 1500;
 
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): this previously declared
+// `storagePath` as the required field, but lib/actions/chat-messages.ts's
+// linkAndLoadAttachments (the ONLY place that ever produced a value of
+// this type) has always returned `{ id, fileName, mimeType, fileSize,
+// signedUrl }` -- no `storagePath` at all. Since handleSend below never
+// forwarded attachmentIds to sendMessage in the first place, this type
+// mismatch was never exercised. Both shapes are now legitimate: a
+// just-sent message carries `signedUrl` (chat-messages.ts); a page-loaded
+// message carries `storagePath` (lib/queries/chat.ts's
+// getMessageAttachments) and ChatAttachment mints its own signed URL on
+// demand -- see components/chat/chat-attachment.tsx.
 export type ChatMessageAttachment = {
   id: string;
   fileName: string;
   mimeType: string | null;
-  storagePath: string;
+  fileSize?: number | null;
+  signedUrl?: string | null;
+  storagePath?: string;
 };
 
 export type ChatMessage = {
@@ -64,6 +79,8 @@ export function ChannelView({
   members,
   currentUserId,
   initialReplyCounts,
+  initialReactions,
+  initialAttachments,
 }: {
   workspaceSlug: string;
   channelId: string;
@@ -74,15 +91,96 @@ export function ChannelView({
   // F10 (docs/advanced-chat-plan.md): reply count per top-level message id,
   // for the "N replies" line under each message.
   initialReplyCounts?: Record<string, number>;
+  // Faza A: reactions/attachments for this page's initial top-level
+  // messages, keyed by message id -- see getMessageReactions/
+  // getMessageAttachments in lib/queries/chat.ts. Plain objects (not
+  // Maps) because that's what actually survives a Server->Client
+  // Component prop, same convention initialReplyCounts already uses.
+  initialReactions?: Record<string, MessageReactionSummary[]>;
+  initialAttachments?: Record<string, ChatMessageAttachment[]>;
 }) {
   // Initial page load is newest-first (getChannelMessages, F3), reversed
   // here to oldest-first for top-to-bottom rendering, same convention
-  // comment-list.tsx documents for its own `comments` prop.
+  // comment-list.tsx documents for its own `comments` prop. Attachments
+  // (Faza A) are merged in here since getChannelMessages itself never
+  // joins message_attachments -- see getMessageAttachments's doc comment.
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    [...initialMessages].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    ),
+    [...initialMessages]
+      .sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+      .map((m) => ({
+        ...m,
+        attachments: initialAttachments?.[m.id] ?? m.attachments,
+      })),
   );
+
+  // Faza A (BUG-3/4/5): live reaction state for this channel's top-level
+  // messages, seeded from the page's initial fetch and kept current by
+  // useMessageReactionsRealtime below. MessageReactionPicker's own
+  // `onChange` (an immediate local update after a successful toggle) and
+  // the realtime subscription (an update for every OTHER client's toggle,
+  // and a second, idempotent confirmation of the caller's own) both write
+  // through this same setter, so the two paths can never drift.
+  const [reactionsByMessage, setReactionsByMessage] = useState<
+    Map<string, MessageReactionSummary[]>
+  >(() => new Map(Object.entries(initialReactions ?? {})));
+
+  function applyReactionEvent(
+    messageId: string,
+    emoji: string,
+    userId: string,
+    add: boolean,
+  ) {
+    setReactionsByMessage((previous) => {
+      const next = new Map(previous);
+      const current = next.get(messageId) ?? [];
+      const existing = current.find((r) => r.emoji === emoji);
+      let updated: MessageReactionSummary[];
+      if (add) {
+        if (existing) {
+          if (existing.userIds.includes(userId)) return previous;
+          updated = current.map((r) =>
+            r.emoji === emoji ? { ...r, userIds: [...r.userIds, userId] } : r,
+          );
+        } else {
+          updated = [...current, { emoji, userIds: [userId] }];
+        }
+      } else if (existing) {
+        updated = current
+          .map((r) =>
+            r.emoji === emoji
+              ? { ...r, userIds: r.userIds.filter((id) => id !== userId) }
+              : r,
+          )
+          .filter((r) => r.userIds.length > 0);
+      } else {
+        return previous;
+      }
+      next.set(messageId, updated);
+      return next;
+    });
+  }
+
+  useMessageReactionsRealtime(channelId, (event) => {
+    applyReactionEvent(
+      event.messageId,
+      event.emoji,
+      event.userId,
+      event.eventType === "INSERT",
+    );
+  });
+
+  function handleReactionsChange(
+    messageId: string,
+    next: MessageReactionSummary[],
+  ) {
+    setReactionsByMessage((previous) => {
+      const updated = new Map(previous);
+      updated.set(messageId, next);
+      return updated;
+    });
+  }
 
   // W10 (pagination hardening): getChannelMessages' default page size --
   // the initial server fetch (app/(workspace)/w/[workspaceSlug]/chat/
@@ -221,8 +319,14 @@ export function ChannelView({
     label: m.name || m.email || m.userId,
   }));
 
-  async function handleSend(bodyJson: JSONContent) {
-    const result = await sendMessage(channelId, bodyJson);
+  // Faza A (BUG-2): `attachmentIds` used to be silently dropped here --
+  // the composer already uploaded the files and passed their ids, but
+  // this function's signature only accepted `bodyJson`, so `sendMessage`
+  // was always called with zero attachments and every upload stayed
+  // permanently unlinked. Forwarding it is the entire fix; sendMessage's
+  // attachmentIds param already existed and worked (F11).
+  async function handleSend(bodyJson: JSONContent, attachmentIds?: string[]) {
+    const result = await sendMessage(channelId, bodyJson, undefined, attachmentIds);
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
@@ -286,6 +390,9 @@ export function ChannelView({
         hasMoreMessages={hasMoreMessages}
         isLoadingMoreMessages={isLoadingMoreMessages}
         onLoadMoreMessages={() => void handleLoadMoreMessages()}
+        reactions={reactionsByMessage}
+        onReactionsChange={handleReactionsChange}
+        mentionSuggestions={mentionSuggestions}
       />
       <TypingIndicatorLine typingUsers={typingUsers} />
       <MessageComposer
