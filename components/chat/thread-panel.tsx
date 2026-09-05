@@ -19,6 +19,8 @@ import type { JSONContent } from "@tiptap/react";
 import { extractPlainText } from "@/lib/comments/rich-text";
 import { getThreadMessagesAction, sendMessage } from "@/lib/actions/chat-messages";
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
+import { useRichTextRenderer } from "@/components/chat/use-rich-text-renderer";
+import { ChatAttachment } from "@/components/chat/chat-attachment";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,52 @@ import type { ChatChannelMember, ChatMessage } from "@/components/chat/channel-v
 function authorLabel(userId: string, members: ChatChannelMember[]): string {
   const member = members.find((m) => m.userId === userId);
   return member?.name || member?.email || userId;
+}
+
+// Faza A (docs/chat-slack-parity-plan.md, BUG-1/BUG-2): shared by the
+// parent message and every reply below -- rich-rendered body (falling
+// back to plain text before the lazy RichTextRenderer import resolves,
+// same pattern message-list.tsx uses) plus any attachments, so the two
+// render sites can never drift from each other.
+function ThreadMessageBody({
+  message,
+  RichTextRenderer,
+  mentionSuggestions,
+}: {
+  message: ChatMessage;
+  RichTextRenderer: ReturnType<typeof useRichTextRenderer>;
+  mentionSuggestions: { id: string; label: string }[];
+}) {
+  if (message.deletedAt) {
+    return (
+      <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">
+        Message deleted
+      </p>
+    );
+  }
+  return (
+    <>
+      {RichTextRenderer ? (
+        <div className="text-sm [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
+          <RichTextRenderer
+            content={message.bodyJson}
+            mentionSuggestions={mentionSuggestions}
+          />
+        </div>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm">
+          {extractPlainText(message.bodyJson)}
+        </p>
+      )}
+      {message.attachments && message.attachments.length > 0 && (
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          {message.attachments.map((attachment) => (
+            <ChatAttachment key={attachment.id} attachment={attachment} />
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 export function ThreadPanel({
@@ -103,8 +151,16 @@ export function ThreadPanel({
     label: m.name || m.email || m.userId,
   }));
 
-  async function handleSend(bodyJson: JSONContent) {
-    const result = await sendMessage(channelId, bodyJson, parentMessageId);
+  // Faza A (docs/chat-slack-parity-plan.md, BUG-1): same lazy RichText
+  // renderer as message-list.tsx, so a link/mention/list in a reply
+  // renders identically to one in the main channel view.
+  const RichTextRenderer = useRichTextRenderer();
+
+  // Faza A (BUG-2): `attachmentIds` used to be silently dropped here too
+  // (same gap as ChannelView's handleSend) -- the composer only gets an
+  // attach button at all once `channelId` is passed to it below.
+  async function handleSend(bodyJson: JSONContent, attachmentIds?: string[]) {
+    const result = await sendMessage(channelId, bodyJson, parentMessageId, attachmentIds);
     if (!result.ok) {
       setError(result.error);
       return { ok: false, error: result.error };
@@ -174,11 +230,11 @@ export function ThreadPanel({
                     : format(new Date(parent.createdAt), "MMM d, HH:mm")}
                 </span>
               </div>
-              <p className="whitespace-pre-wrap text-sm">
-                {parent.deletedAt
-                  ? "Message deleted"
-                  : extractPlainText(parent.bodyJson)}
-              </p>
+              <ThreadMessageBody
+                message={parent}
+                RichTextRenderer={RichTextRenderer}
+                mentionSuggestions={mentionSuggestions}
+              />
             </div>
           </div>
         )}
@@ -217,11 +273,11 @@ export function ThreadPanel({
                           : format(new Date(reply.createdAt), "MMM d, HH:mm")}
                       </span>
                     </div>
-                    <p className="whitespace-pre-wrap text-sm">
-                      {reply.deletedAt
-                        ? "Message deleted"
-                        : extractPlainText(reply.bodyJson)}
-                    </p>
+                    <ThreadMessageBody
+                      message={reply}
+                      RichTextRenderer={RichTextRenderer}
+                      mentionSuggestions={mentionSuggestions}
+                    />
                   </div>
                 </div>
               ))}
@@ -235,6 +291,7 @@ export function ThreadPanel({
         onSend={handleSend}
         disabled={!parent}
         mentionSuggestions={mentionSuggestions}
+        channelId={channelId}
       />
     </div>
   );

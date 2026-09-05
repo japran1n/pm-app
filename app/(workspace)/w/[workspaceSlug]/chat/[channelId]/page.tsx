@@ -8,7 +8,13 @@ import { logger } from "@/lib/observability/logger";
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { getChannelMessages, getChannelMembers, getReplyCounts } from "@/lib/queries/chat";
+import {
+  getChannelMessages,
+  getChannelMembers,
+  getReplyCounts,
+  getMessageReactions,
+  getMessageAttachments,
+} from "@/lib/queries/chat";
 import { ChannelView } from "@/components/chat/channel-view";
 
 export default async function ChatChannelPage({
@@ -52,6 +58,20 @@ export default async function ChatChannelPage({
     getReplyCounts(channelId),
   ]);
 
+  // Faza A (docs/chat-slack-parity-plan.md, BUG-2/3/4/5): reactions and
+  // attachments for this page's own top-level messages, batched in one
+  // extra round-trip each (needs the message ids from above, so this
+  // can't join the first Promise.all). Converted to plain objects --
+  // Maps don't survive a Server->Client Component prop the way a plain
+  // object does, same convention getReplyCounts already established.
+  const messageIds = messages.map((m) => m.id);
+  const [reactionsByMessage, attachmentsByMessage] = await Promise.all([
+    getMessageReactions(messageIds),
+    getMessageAttachments(messageIds),
+  ]);
+  const initialReactions = Object.fromEntries(reactionsByMessage);
+  const initialAttachments = Object.fromEntries(attachmentsByMessage);
+
   const channelName =
     channel.kind === "dm"
       ? members
@@ -69,6 +89,8 @@ export default async function ChatChannelPage({
       members={members}
       currentUserId={user.id}
       initialReplyCounts={replyCounts}
+      initialReactions={initialReactions}
+      initialAttachments={initialAttachments}
     />
   );
 }

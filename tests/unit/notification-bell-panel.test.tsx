@@ -11,6 +11,7 @@ const markNotificationReadMock = vi.fn();
 const markAllNotificationsReadMock = vi.fn();
 const getNotificationSnapshotMock = vi.fn();
 const toastErrorMock = vi.fn();
+const toastCallMock = vi.fn();
 
 vi.mock("@/lib/actions/notifications", () => ({
   markNotificationRead: (...args: unknown[]) => markNotificationReadMock(...args),
@@ -18,11 +19,43 @@ vi.mock("@/lib/actions/notifications", () => ({
   getNotificationSnapshot: (...args: unknown[]) => getNotificationSnapshotMock(...args),
 }));
 
+// Faza D: NotificationBell now calls plain `toast(...)` (a chat DM/thread-
+// reply/mention toast), not just `toast.error`/`toast.success` -- sonner's
+// real export is a callable function with methods attached, so the mock
+// needs the same shape or `toast(...)` throws "not a function".
 vi.mock("sonner", () => ({
-  toast: {
-    error: (...args: unknown[]) => toastErrorMock(...args),
-    success: vi.fn(),
-  },
+  toast: Object.assign(
+    (...args: unknown[]) => toastCallMock(...args),
+    {
+      error: (...args: unknown[]) => toastErrorMock(...args),
+      success: vi.fn(),
+    },
+  ),
+}));
+
+// Faza D: NotificationBell fetches sound preferences on mount via this
+// Server Action -- mocked so the test never touches the real action's
+// `cookies()`/Supabase call (unavailable outside a request scope in this
+// jsdom test, same reason @/lib/actions/notifications is mocked above).
+vi.mock("@/lib/actions/notification-preferences", () => ({
+  getNotificationPreferences: vi.fn(async () => ({
+    ok: true,
+    data: {
+      soundEnabled: true,
+      soundVolume: 60,
+      soundOnlyWhenUnfocused: true,
+    },
+  })),
+}));
+
+// Faza D: NotificationBell's chat toast plays a sound via the real Web
+// Audio API, unavailable in jsdom -- mocked to a no-op.
+vi.mock("@/lib/notifications/sound", () => ({
+  playNotificationSound: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 // F209 (AS-388): capture the onInsert callback NotificationBell registers

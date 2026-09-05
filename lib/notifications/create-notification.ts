@@ -28,6 +28,7 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import type {
   NotificationKind,
   PortalNotificationKind,
+  ChatNotificationKind,
 } from "@/lib/notifications/fanout";
 
 export type CreateNotificationParams = {
@@ -39,7 +40,7 @@ export type CreateNotificationParams = {
   // `PortalNotificationKind` (F084 portal events) callers share, so it is
   // the natural point to accept either rather than each having its own
   // near-duplicate RPC-calling helper.
-  kind: NotificationKind | PortalNotificationKind;
+  kind: NotificationKind | PortalNotificationKind | ChatNotificationKind;
   // F13 (docs/advanced-chat-plan.md, chat @-mentions): every pre-existing
   // fan-out call site always has a task, so this stayed required until
   // now. A chat mention has no task at all -- the RPC's own `p_task_id`

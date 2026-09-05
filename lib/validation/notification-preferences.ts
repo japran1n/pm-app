@@ -25,6 +25,16 @@ export const updateNotificationPreferencesSchema = z
     taskDueSoonInApp: z.boolean(),
     taskDueSoonEmail: z.boolean(),
     emailEnabled: z.boolean(),
+    // Faza D (docs/chat-slack-parity-plan.md): chat_dm/chat_thread_reply
+    // are in-app-only kinds (no email sender consults them either, same
+    // as every *_email column above being dormant behind
+    // EMAIL_NOTIFICATIONS_ENABLED in preferences-form.tsx) -- no
+    // chatDmEmail/chatThreadReplyEmail field exists on purpose.
+    chatDmInApp: z.boolean(),
+    chatThreadReplyInApp: z.boolean(),
+    soundEnabled: z.boolean(),
+    soundVolume: z.number().int().min(0).max(100),
+    soundOnlyWhenUnfocused: z.boolean(),
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, {

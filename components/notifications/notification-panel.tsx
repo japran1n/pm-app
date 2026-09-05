@@ -23,6 +23,7 @@ import {
   markNotificationRead,
 } from "@/lib/actions/notifications";
 import type { NotificationKind, NotificationListItem } from "@/lib/queries/notifications";
+import { chatNotificationHref } from "@/lib/notifications/chat-link";
 
 // AS-385: "actor, action, and task" — the action half is derived purely
 // from `kind` (F206/F207's closed vocabulary), since no notification kind
@@ -44,6 +45,13 @@ function actionLabel(kind: NotificationKind): string {
       return "a task you're watching is due soon:";
     case "watcher_update":
       return "updated a task you're watching:";
+    // Faza D (docs/chat-slack-parity-plan.md): composes with itemLabel
+    // below the same way every other kind does -- "sent you" + "a direct
+    // message", "replied to" + "your thread".
+    case "chat_dm":
+      return "sent you";
+    case "chat_thread_reply":
+      return "replied to";
     default:
       return "sent an update on";
   }
@@ -57,9 +65,16 @@ function taskLabel(task: NotificationListItem["task"]): string {
 
 // F13 (docs/advanced-chat-plan.md): a chat mention has no task at all --
 // distinct label so the row reads "mentioned you in a message" rather
-// than the task-oriented "mentioned you in a task" default.
+// than the task-oriented "mentioned you in a task" default. Faza D:
+// chat_dm/chat_thread_reply get their own more specific noun phrase for
+// the same "no task" case, composing with actionLabel's "sent you" /
+// "replied to" above.
 function itemLabel(notification: NotificationListItem): string {
-  if (!notification.task && notification.chatMention) return "a message";
+  if (!notification.task && notification.chatMention) {
+    if (notification.kind === "chat_dm") return "a direct message";
+    if (notification.kind === "chat_thread_reply") return "your thread";
+    return "a message";
+  }
   return taskLabel(notification.task);
 }
 
@@ -78,17 +93,6 @@ function itemLabel(notification: NotificationListItem): string {
 // the sheet opens — see this feature's other changes). Only appended on
 // the board-deep-link branch — the search-page fallback has nowhere
 // meaningful to carry it.
-// F13 (docs/advanced-chat-plan.md): a chat mention deep-links to
-// `/chat/[channelId]?highlight=[messageId]` per that feature's spec step
-// 3, instead of the task-oriented board/search links below.
-function chatMentionHref(
-  workspaceSlug: string,
-  chatMention: NotificationListItem["chatMention"],
-): string | null {
-  if (!chatMention) return null;
-  return `/w/${workspaceSlug}/chat/${encodeURIComponent(chatMention.channelId)}?highlight=${encodeURIComponent(chatMention.messageId)}`;
-}
-
 function taskHref(
   workspaceSlug: string,
   task: NotificationListItem["task"],
@@ -281,7 +285,7 @@ export function NotificationPanel({
           {notifications.map((notification) => {
             const href =
               taskHref(workspaceSlug, notification.task, notification.commentId ?? null) ??
-              chatMentionHref(workspaceSlug, notification.chatMention ?? null);
+              chatNotificationHref(workspaceSlug, notification.chatMention ?? null);
             const isUnread = !notification.readAt;
 
             const content = (

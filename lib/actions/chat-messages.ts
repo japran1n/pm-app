@@ -24,7 +24,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getThreadMessages, getChannelMessages } from "@/lib/queries/chat";
+import { getThreadMessages, getChannelMessages, getMessageAttachments } from "@/lib/queries/chat";
 import {
   deleteMessageSchema,
   editMessageSchema,
@@ -55,12 +55,22 @@ import { createNotification } from "@/lib/notifications/create-notification";
 // `signedUrl` is minted fresh at read time (never persisted/reused across
 // requests) -- same convention as every other attachment surface in this
 // codebase (lib/actions/attachments.ts's getAttachmentSignedUrl).
+//
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): `signedUrl` and
+// `fileSize` are optional and `storagePath` was added because this type
+// now covers TWO origins that weren't both wired up before -- sendMessage
+// below (a fresh signedUrl, no storagePath) and getThreadMessagesAction's
+// getMessageAttachments merge (a storagePath, no signedUrl yet --
+// ChatAttachment mints one client-side on demand). Same widened shape as
+// channel-view.tsx's own ChatMessageAttachment; see that file's doc
+// comment for the full origin story.
 export type ChatMessageAttachment = {
   id: string;
   fileName: string;
   mimeType: string | null;
-  fileSize: number | null;
-  signedUrl: string | null;
+  fileSize?: number | null;
+  signedUrl?: string | null;
+  storagePath?: string;
 };
 
 export type ChatMessage = {
@@ -162,81 +172,184 @@ async function revalidateChannelPath(
   }
 }
 
-// F13 (docs/advanced-chat-plan.md): notifies every mentioned user who is
-// (a) an actual member of this channel -- the same visibility boundary
-// lib/comments/mentions.ts's resolveVisibleMentionIds enforces for task
-// comments, generalised here to "is this id currently in channel_members"
-// since chat access is scoped by channel membership, not project
-// visibility -- and (b) not the sender themselves (never notify yourself
-// for your own mention, matching AS-384's "except the author" rule this
-// codebase already applies everywhere else notifications fan out).
+// F13 (docs/advanced-chat-plan.md) + Faza D (docs/chat-slack-parity-plan.md):
+// computes who gets notified for a just-sent message and with which kind,
+// then writes each one. Three sources, in priority order (a user who
+// qualifies through more than one is notified once, with the more
+// specific kind, same dedupe rule lib/notifications/fanout.ts's
+// computeFanoutRecipients documents for the task-notification path):
+//
+//   1. mention -- every @mentioned user who is an ACTUAL current member of
+//      this channel (the same visibility boundary lib/comments/
+//      mentions.ts's resolveVisibleMentionIds enforces for task comments,
+//      generalised to "is this id currently in channel_members" since
+//      chat access is scoped by channel membership, not project
+//      visibility) and not the sender.
+//   2. chat_dm -- if this channel is a DM (kind='dm'), every OTHER member
+//      gets notified for ANY message, not just an @mention -- a DM has no
+//      "just browsing" case the way a busy workspace channel does.
+//   3. chat_thread_reply -- if this message is a threaded reply, every
+//      other participant in that thread (the parent's sender plus anyone
+//      else who has already replied) gets notified, mirroring
+//      `comment_reply`'s "notify watchers of the parent" shape. Mutually
+//      exclusive with (2): a DM's own threads still just re-notify via
+//      chat_dm, since every DM member is already being notified on every
+//      message regardless of thread status.
+//
+// Deliberately does NOT notify for a plain top-level message in a
+// non-DM channel with no mention -- that's the unread badge's job
+// (chat-nav-list.tsx), not a notification; a notification for every
+// message in a busy workspace channel would be exactly the kind of spam
+// this app's existing per-kind preference model is designed to avoid.
+//
 // Non-fatal by design, mirroring every other post-write notification side
 // effect in this codebase (see e.g. notifyNewlyMentionedUsers): a
 // notification failure must never fail the message send itself.
-async function notifyMentionedChannelMembers(
+async function notifyChatMessageRecipients(
   supabase: Awaited<ReturnType<typeof createClient>>,
   admin: ReturnType<typeof createAdminClient>,
   params: {
     channelId: string;
     messageId: string;
+    parentMessageId: string | null;
     senderId: string;
     bodyJson: JSONContent;
   },
 ): Promise<void> {
-  const mentionedIds = Array.from(extractMentionIds(params.bodyJson)).filter(
-    (id) => id !== params.senderId,
-  );
-  if (mentionedIds.length === 0) return;
-
   try {
     const { data: channelRow, error: channelError } = await admin
       .from("channels")
-      .select("workspace_id")
+      .select("workspace_id, kind")
       .eq("id", params.channelId)
       .maybeSingle();
 
     if (channelError || !channelRow) {
-      logger.error("sendMessage: mention notify - channel lookup failed (non-fatal)", { error: channelError });
+      logger.error("sendMessage: notify - channel lookup failed (non-fatal)", { error: channelError });
       return;
     }
 
-    // Only ids that are ACTUAL current channel members are notified -- a
-    // hand-crafted bodyJson referencing someone with no access to this
-    // channel is silently skipped for notification purposes (the message
-    // itself already posted; this only gates who gets pinged), same
-    // "re-derive the real access predicate server-side, never trust the
-    // client's mention list" rule lib/comments/mentions.ts documents for
-    // the task/comment path.
-    const { data: memberRows, error: memberError } = await admin
-      .from("channel_members")
-      .select("user_id")
-      .eq("channel_id", params.channelId)
-      .in("user_id", mentionedIds);
+    const kindByUser = new Map<
+      string,
+      "mention" | "chat_dm" | "chat_thread_reply"
+    >();
 
-    if (memberError) {
-      logger.error("sendMessage: mention notify - member lookup failed (non-fatal)", { error: memberError });
-      return;
+    // (1) mentions -- re-derived against real channel_members, never
+    // trusting the client's bodyJson mention list, same rule
+    // lib/comments/mentions.ts documents for the task/comment path.
+    const mentionedIds = Array.from(extractMentionIds(params.bodyJson)).filter(
+      (id) => id !== params.senderId,
+    );
+    if (mentionedIds.length > 0) {
+      const { data: memberRows, error: memberError } = await admin
+        .from("channel_members")
+        .select("user_id")
+        .eq("channel_id", params.channelId)
+        .in("user_id", mentionedIds);
+
+      if (memberError) {
+        logger.error("sendMessage: notify - mention member lookup failed (non-fatal)", { error: memberError });
+      } else {
+        for (const row of memberRows ?? []) {
+          kindByUser.set(row.user_id as string, "mention");
+        }
+      }
     }
 
-    const visibleRecipientIds = (memberRows ?? []).map((row) => row.user_id as string);
+    // (2) DM: every other member, any message. (3) thread reply: every
+    // other thread participant. Mutually exclusive per the doc comment
+    // above -- a DM's threaded reply still resolves via (2), not (3).
+    if (channelRow.kind === "dm") {
+      const { data: memberRows, error: memberError } = await admin
+        .from("channel_members")
+        .select("user_id")
+        .eq("channel_id", params.channelId)
+        .neq("user_id", params.senderId);
 
-    for (const recipientId of visibleRecipientIds) {
+      if (memberError) {
+        logger.error("sendMessage: notify - dm member lookup failed (non-fatal)", { error: memberError });
+      } else {
+        for (const row of memberRows ?? []) {
+          const id = row.user_id as string;
+          if (!kindByUser.has(id)) kindByUser.set(id, "chat_dm");
+        }
+      }
+    } else if (params.parentMessageId) {
+      const { data: threadRows, error: threadError } = await admin
+        .from("messages")
+        .select("sender_id")
+        .or(
+          `id.eq.${params.parentMessageId},parent_message_id.eq.${params.parentMessageId}`,
+        );
+
+      if (threadError) {
+        logger.error("sendMessage: notify - thread participant lookup failed (non-fatal)", { error: threadError });
+      } else {
+        for (const row of threadRows ?? []) {
+          const id = row.sender_id as string;
+          if (id === params.senderId) continue;
+          if (!kindByUser.has(id)) kindByUser.set(id, "chat_thread_reply");
+        }
+      }
+    }
+
+    if (kindByUser.size === 0) return;
+
+    // Faza D: preference gate. A parallel, chat-specific implementation
+    // of lib/notifications/preferences.ts's filterRecipientsByInAppPreference
+    // (same fail-open-on-error, no-row-means-enabled posture) rather than
+    // extending that function's NotificationKind-typed map -- chat_dm/
+    // chat_thread_reply are a separate ChatNotificationKind, per
+    // lib/notifications/fanout.ts's doc comment on why.
+    const recipientIds = Array.from(kindByUser.keys());
+    const { data: prefRows, error: prefError } = await admin
+      .from("notification_preferences")
+      .select("user_id, mention_in_app, chat_dm_in_app, chat_thread_reply_in_app")
+      .in("user_id", recipientIds);
+
+    if (prefError) {
+      logger.error("sendMessage: notify - preferences read failed (fail-open, non-fatal)", { error: prefError });
+    }
+
+    const prefByUser = new Map((prefRows ?? []).map((row) => [row.user_id, row]));
+
+    for (const [recipientId, kind] of kindByUser) {
+      const pref = prefByUser.get(recipientId);
+      if (pref) {
+        const enabled =
+          kind === "mention"
+            ? pref.mention_in_app
+            : kind === "chat_dm"
+              ? pref.chat_dm_in_app
+              : pref.chat_thread_reply_in_app;
+        if (enabled === false) continue;
+      }
+
       await createNotification(
         supabase,
         {
           userId: recipientId,
           workspaceId: channelRow.workspace_id as string,
-          kind: "mention",
-          // F13: no task_id for a chat mention -- channelId/messageId are
-          // carried in payload instead (see create-notification.ts's doc
-          // comment on why comment_id can't be reused for a message id).
-          payload: { channelId: params.channelId, messageId: params.messageId },
+          kind,
+          // F13: no task_id for a chat notification -- channelId/messageId
+          // are carried in payload instead (see create-notification.ts's
+          // doc comment on why comment_id can't be reused for a message
+          // id). Faza D: a chat_thread_reply's `messageId` is a REPLY,
+          // which never appears in the main channel list (getChannelMessages
+          // filters to parent_message_id is null) -- `parentMessageId` is
+          // included so the notification's link can open the right thread
+          // panel directly instead of landing on a channel view with
+          // nothing to scroll to (see chatNotificationHref/ChannelView).
+          payload: {
+            channelId: params.channelId,
+            messageId: params.messageId,
+            ...(params.parentMessageId ? { parentMessageId: params.parentMessageId } : {}),
+          },
         },
         "sendMessage",
       );
     }
   } catch (notifyError) {
-    logger.error("sendMessage: mention notification failed (non-fatal)", { error: notifyError });
+    logger.error("sendMessage: notify failed (non-fatal)", { error: notifyError });
   }
 }
 
@@ -304,11 +417,25 @@ async function linkAndLoadAttachments(
 // Component can't import it directly, same "wrap the query in an action"
 // convention this file already follows for reads that need a client entry
 // point.
+// Faza A (docs/chat-slack-parity-plan.md, BUG-2): merges in each thread
+// message's attachments (parent + every reply) before returning -- same
+// gap as the main channel list (getChannelMessages never joins
+// message_attachments either), fixed here in one place since ThreadPanel
+// has no other server round-trip to piggyback a second fetch onto.
+// Attachments carry `storagePath` only (no signed URL is minted here) --
+// ChatAttachment mints one client-side on demand, same as the main list.
 export async function getThreadMessagesAction(
   parentMessageId: string,
 ): Promise<ChatMessage[]> {
   const messages = await getThreadMessages(parentMessageId);
-  return messages;
+  const attachmentsByMessage = await getMessageAttachments(
+    messages.map((m) => m.id),
+  );
+  if (attachmentsByMessage.size === 0) return messages;
+  return messages.map((m) => {
+    const attachments = attachmentsByMessage.get(m.id);
+    return attachments ? { ...m, attachments } : m;
+  });
 }
 
 // W10 (pagination hardening): thin Server Action wrapper so the
@@ -411,13 +538,14 @@ export async function sendMessage(
     user.id,
   );
 
-  // F13: fire-and-forget style (awaited, but errors inside are already
-  // caught and logged non-fatally) -- a mention notification failure must
+  // F13/Faza D: fire-and-forget style (awaited, but errors inside are
+  // already caught and logged non-fatally) -- a notification failure must
   // never fail the message send itself, same convention as every other
   // post-write notification side effect in this codebase.
-  await notifyMentionedChannelMembers(supabase, admin, {
+  await notifyChatMessageRecipients(supabase, admin, {
     channelId: parsed.data.channelId,
     messageId: inserted.id,
+    parentMessageId: parsed.data.parentMessageId ?? null,
     senderId: user.id,
     bodyJson: parsed.data.bodyJson as JSONContent,
   });

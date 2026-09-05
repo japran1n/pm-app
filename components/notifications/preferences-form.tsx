@@ -28,26 +28,51 @@
 // KIND_ROWS.email wiring, and the "In-app / Email" grid header already
 // exist below and only need the flag, not a UI rebuild.
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { Volume2 } from "lucide-react";
 
 import {
   updateNotificationPreferences,
   type NotificationPreferences,
 } from "@/lib/actions/notification-preferences";
+import { playNotificationSound } from "@/lib/notifications/sound";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 const EMAIL_NOTIFICATIONS_ENABLED = false;
 
 type Field = keyof NotificationPreferences;
+// Faza D: every KIND_ROWS toggle is a plain on/off switch -- soundVolume
+// (the one non-boolean field on NotificationPreferences) is excluded so
+// `current[row.inApp]` below type-checks as `boolean`, not `boolean |
+// number`, without every call site needing its own cast.
+type BooleanField = Exclude<Field, "soundVolume">;
 
-const KIND_ROWS: { label: string; description: string; inApp: Field; email: Field }[] = [
+// Faza D (docs/chat-slack-parity-plan.md): chat_dm/chat_thread_reply have
+// no email column at all (in-app only, see the validation schema's own
+// comment on why) -- `email` is optional here rather than every row
+// requiring one, and the email Switch below simply doesn't render for a
+// row that omits it (moot today either way since EMAIL_NOTIFICATIONS_ENABLED
+// is false, but correct if that flag is ever flipped before these two
+// kinds grow an email column of their own).
+const KIND_ROWS: { label: string; description: string; inApp: BooleanField; email?: BooleanField }[] = [
   {
     label: "Mentions",
-    description: "Someone @mentions you in a comment or task description.",
+    description: "Someone @mentions you in a comment, task description, or chat message.",
     inApp: "mentionInApp",
     email: "mentionEmail",
+  },
+  {
+    label: "Direct messages",
+    description: "Someone sends you a direct message.",
+    inApp: "chatDmInApp",
+  },
+  {
+    label: "Thread replies",
+    description: "Someone replies in a chat thread you're part of.",
+    inApp: "chatThreadReplyInApp",
   },
   {
     label: "Assignments",
@@ -84,8 +109,15 @@ export function NotificationPreferencesForm({
   const [current, setCurrent] = useState(initialPreferences);
   const [, startTransition] = useTransition();
   const [pendingField, setPendingField] = useState<Field | null>(null);
+  // Faza D: the volume range input fires continuously while dragging --
+  // tracked separately from `current.soundVolume` so the slider handle
+  // moves smoothly on every input event while the actual save is
+  // debounced (see changeVolume below), rather than one Server Action
+  // call per pixel of drag.
+  const [volumeDraft, setVolumeDraft] = useState(initialPreferences.soundVolume);
+  const volumeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function toggle(field: Field, nextValue: boolean) {
+  function toggle(field: BooleanField, nextValue: boolean) {
     setCurrent((prev) => ({ ...prev, [field]: nextValue }));
     setPendingField(field);
 
@@ -109,6 +141,29 @@ export function NotificationPreferencesForm({
       }
       setPendingField(null);
     });
+  }
+
+  // Faza D: debounced save (300ms after the last drag movement) so
+  // dragging the slider doesn't fire a Server Action per pixel -- the
+  // draft value is what's actually displayed/played, `current.soundVolume`
+  // only updates once the save lands.
+  function changeVolume(nextValue: number) {
+    setVolumeDraft(nextValue);
+    if (volumeSaveTimerRef.current) clearTimeout(volumeSaveTimerRef.current);
+    volumeSaveTimerRef.current = setTimeout(() => {
+      startTransition(async () => {
+        const result = await updateNotificationPreferences({
+          soundVolume: nextValue,
+        });
+        if (result.ok) {
+          setSaved(result.data);
+          setCurrent(result.data);
+        } else {
+          setVolumeDraft(saved.soundVolume);
+          toast.error(result.error);
+        }
+      });
+    }, 300);
   }
 
   const gridColsClassName = EMAIL_NOTIFICATIONS_ENABLED
@@ -164,17 +219,85 @@ export function NotificationPreferencesForm({
               onCheckedChange={(checked) => toggle(row.inApp, checked)}
               aria-label={`${row.label} in-app notifications`}
             />
-            {EMAIL_NOTIFICATIONS_ENABLED ? (
+            {EMAIL_NOTIFICATIONS_ENABLED && row.email ? (
               <Switch
                 id={row.email}
                 checked={current[row.email]}
                 disabled={pendingField === row.email}
-                onCheckedChange={(checked) => toggle(row.email, checked)}
+                onCheckedChange={(checked) => toggle(row.email!, checked)}
                 aria-label={`${row.label} email notifications`}
               />
+            ) : EMAIL_NOTIFICATIONS_ENABLED ? (
+              // A row with no email column at all (chat_dm/chat_thread_reply)
+              // still needs an empty cell so the grid's three columns stay
+              // aligned with every other row.
+              <span />
             ) : null}
           </div>
         ))}
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-md border p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="sound-enabled">Notification sound</Label>
+            <p className="text-sm text-muted-foreground">
+              Play a short sound for direct messages, thread replies, and
+              mentions.
+            </p>
+          </div>
+          <Switch
+            id="sound-enabled"
+            checked={current.soundEnabled}
+            disabled={pendingField === "soundEnabled"}
+            onCheckedChange={(checked) => toggle("soundEnabled", checked)}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Volume2 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={volumeDraft}
+            disabled={!current.soundEnabled}
+            onChange={(e) => changeVolume(Number(e.target.value))}
+            aria-label="Notification sound volume"
+            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+          />
+          <span className="w-9 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
+            {volumeDraft}%
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!current.soundEnabled}
+            onClick={() => playNotificationSound(volumeDraft)}
+          >
+            Test
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 border-t pt-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="sound-only-unfocused">
+              Only play when this tab isn&apos;t focused
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Off means it also plays for messages you&apos;re already looking
+              at.
+            </p>
+          </div>
+          <Switch
+            id="sound-only-unfocused"
+            checked={current.soundOnlyWhenUnfocused}
+            disabled={pendingField === "soundOnlyWhenUnfocused" || !current.soundEnabled}
+            onCheckedChange={(checked) => toggle("soundOnlyWhenUnfocused", checked)}
+          />
+        </div>
       </div>
     </div>
   );
