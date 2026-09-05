@@ -143,3 +143,15 @@ AS-082: Every authorization refusal that held before this change still refuses, 
 AS-083: A request resolves the caller's authenticated identity at most once, rather than once per call site.
 AS-084: The caller's identity is still established by the JWT-verifying user lookup; no unverified session read is substituted for it.
 AS-085: A representative set of server actions is measured before and after, and the recorded numbers show the reduction rather than asserting it.
+
+## Link preview refetching (F125)
+
+AS-086: A URL whose preview has already been resolved is not fetched again on a subsequent render, by the same viewer or a different one, until its cached entry expires.
+AS-087: A URL that yields no usable preview is remembered as such and is not refetched on every render.
+AS-088: Resolving a link preview never delays the message from rendering.
+
+## Test-suite auth pressure (F126)
+
+AS-089: A full test run performs far fewer authentication operations than it has test files, by reusing pooled identities and cached sessions instead of creating and signing in a fresh user per file.
+AS-090: Tests migrated to the shared auth helper assert the same behaviour as before, with no assertion weakened to accommodate a shared identity.
+AS-091: Test data created by a migrated file is still removed when that file finishes, including when its tests fail.
