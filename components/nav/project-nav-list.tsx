@@ -213,13 +213,22 @@ export function ProjectNavList({
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      // AS-512: this section owns its own bounded, internally-scrolling
-      // area (min-h-0 + max-h + overflow-y-auto below) rather than growing
-      // unbounded inside the sidebar's flex column — that's what keeps the
-      // primary nav items (rendered as siblings, not children, of this
-      // component in AppSidebar) pinned/visible no matter how many
-      // projects there are.
-      className="flex min-h-0 flex-shrink flex-col border-t"
+      // AS-512/F119 (AS-069): this section owns its own bounded,
+      // internally-scrolling area rather than growing unbounded inside the
+      // sidebar's flex column — that's what keeps the primary nav items
+      // (rendered as siblings, not children, of this component in
+      // AppSidebar) pinned/visible no matter how many projects there are.
+      // `flex-1 min-h-0` here (not the old `flex-shrink` alone) is
+      // required: this Collapsible is itself a flex item inside the
+      // wrapper's own `flex min-h-0 flex-1 flex-col` (app-sidebar.tsx) --
+      // without `flex-1` this element sized itself to its own CONTENT
+      // height (the default flex `min-height: auto` behaviour) instead of
+      // stretching to fill the space the wrapper actually gave it, so the
+      // CollapsibleContent's `overflow-y-auto` below never had a bounded
+      // ancestor to overflow against and silently never engaged --
+      // projects past the first couple rows were simply invisible with no
+      // scroll affordance (F119, AS-069).
+      className="flex min-h-0 flex-1 flex-col border-t"
     >
       <CollapsibleTrigger
         render={
@@ -228,7 +237,7 @@ export function ProjectNavList({
             // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
             // same breakpoint convention as the other mobile-Sheet nav
             // controls in this file/app-sidebar.tsx.
-            className="flex min-h-9 items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
+            className="flex min-h-9 shrink-0 items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown
@@ -241,7 +250,12 @@ export function ProjectNavList({
           </button>
         }
       />
-      <CollapsibleContent className="min-h-0 overflow-y-auto">
+      {/* F119 (AS-069): `flex-1 min-h-0` so this panel actually fills the
+          remaining space below the trigger above (rather than sizing to
+          its own content) -- that bounded height is what makes
+          `overflow-y-auto` a real, working scroll container instead of a
+          no-op. */}
+      <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {projects.length === 0 ? (
           <div className="flex flex-col gap-2 px-3 pb-3">
             <p className="text-sm text-sidebar-foreground/60">

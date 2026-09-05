@@ -108,3 +108,14 @@ AS-065: A task created through a board or list quick-add carries the task type t
 AS-066: An existing task's type can be changed from the task detail view, and the change is visible immediately without a page reload.
 AS-067: Changing a task's type never changes that task's own client_visible flag.
 AS-068: A project's overview or settings surface displays tracked and estimated hours grouped by task type, sourced from rpc_project_time_totals.
+
+## Sidebar cramped on short viewports (F119)
+
+AS-069: On a viewport short enough that the primary nav plus header and footer leave little vertical room, the workspace sidebar's project list is independently scrollable and every project remains reachable by scrolling, rather than being visually compressed or cut off.
+
+## Chat regressions from the parity merge (F120)
+
+AS-070: A message sent by a workspace member appears exactly once in the channel and in any thread it belongs to, both immediately after sending and after a page reload.
+AS-071: A message consisting of or containing a bare URL renders that URL as a clickable link.
+AS-072: A message containing a URL to a page with retrievable Open Graph metadata shows a preview card (at minimum a title) below the message text; a message whose URL has no retrievable metadata still renders as a plain clickable link per AS-071, with no error surfaced to the user.
+AS-073: Scrolling within an open channel's message list does not scroll the surrounding page, and the channel's own toolbar remains visible and in the same position regardless of scroll position within the message list.

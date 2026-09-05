@@ -282,94 +282,116 @@ function SidebarContent({
           components/onboarding/tour.tsx only needs a target to be ABSENT
           when it truly shouldn't apply (e.g. the "New task" step for a
           viewer); this nav exists for every signed-in member. */}
-      {/* AS-512: this primary nav is a fixed-height block, not the
-          scrolling flex-1 area it used to be -- the Projects section below
-          (ProjectNavList) is the one that grows/scrolls now, so a
-          workspace with many projects never pushes Dashboard/My
-          Tasks/etc. out of view. */}
-      {/* BUGFIX: `overflow-y-auto` here was a leftover from before
-          AS-512 moved scrolling down to the Projects section below (see
-          this block's own comment) — a stale class this refactor never
-          removed. Left in place, it doesn't scroll this block (there's
-          nothing to overflow, its content is fixed), but a `flex flex-col`
-          child with `overflow-y-auto` still creates its own independent
-          scroll container, which is what was producing a spurious
-          scrollbar in the primary nav. */}
-      <nav
-        data-tour="sidebar-nav"
-        className="flex flex-col gap-3 p-2"
-      >
-        {groups.map((group, groupIndex) => (
-          <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
-            {group.label && (
-              <p className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
-                {group.label}
-              </p>
-            )}
-            {group.items.map(({ href, label, icon: Icon, exact, count }) => {
-              const isActive = exact
-                ? pathname === href
-                : pathname === href || pathname.startsWith(`${href}/`);
+      {/* AS-512: this primary nav is meant to be a fixed-height block, not
+          a scrolling flex-1 area -- the Projects section below
+          (ProjectNavList) is the one that grows/scrolls under normal
+          conditions, so a workspace with many projects never pushes
+          Dashboard/My Tasks/etc. out of view. */}
+      {/* F119 (AS-069): wrapping {nav, Projects} together in their own
+          `flex min-h-0 flex-1 flex-col overflow-y-auto` region (rather
+          than letting `nav` sit as a bare sibling of the header/footer)
+          is what gives this whole middle area a real last-resort scroll
+          fallback for a workspace with ~12 primary-nav items on a very
+          short viewport: `nav` below keeps `shrink-0` (it should never be
+          compressed -- AS-512's intent), and the Projects wrapper keeps
+          its own `flex-1 min-h-0` + internal `overflow-y-auto`
+          (project-nav-list.tsx) as the normal, independent scroll
+          container. Under ordinary viewport heights this outer
+          `overflow-y-auto` is a no-op (content already fits, Projects
+          absorbs the squeeze down to 0 first since it's the only
+          `flex-1` item) -- it only actually engages, scrolling `nav`
+          itself, in the true edge case where even a fully-collapsed
+          (0-height) Projects section still doesn't leave enough room for
+          every primary nav item. That is the "last resort" this
+          component's own spec calls for: normally Projects is the only
+          section that scrolls; nav only ever joins in when nothing else
+          is left to give up. This does NOT reintroduce the BUGFIX'd
+          spurious-scrollbar issue from before AS-512: that bug was a
+          `overflow-y-auto` on an element with no bounded ancestor and
+          nothing to overflow, so it fired unconditionally; this
+          `overflow-y-auto` only ever shows a scrollbar when its content
+          genuinely exceeds its allotted (bounded via `min-h-0` +
+          `flex-1` up the chain to the sidebar's own `h-svh`) height. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <nav
+          data-tour="sidebar-nav"
+          className="flex shrink-0 flex-col gap-3 p-2"
+        >
+          {groups.map((group, groupIndex) => (
+            <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
+              {group.label && (
+                <p className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map(({ href, label, icon: Icon, exact, count }) => {
+                const isActive = exact
+                  ? pathname === href
+                  : pathname === href || pathname.startsWith(`${href}/`);
 
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={isActive ? "page" : undefined}
-                  onClick={onNavigate}
-                  className={cn(
-                    // F265 (AS-518): `max-md:min-h-11` -- this Link is used
-                    // both in the always-visible desktop `<aside>` (>= md,
-                    // mouse-driven, untouched) AND inside the hamburger-
-                    // triggered mobile Sheet (< md, this is the actual
-                    // touch-target surface) -- `md` (not `sm`) because
-                    // that's the real breakpoint this same component
-                    // switches between the two presentations at (see
-                    // AppSidebar below: `hidden ... md:flex` / `...
-                    // md:hidden`), so a `sm:` check would leave 640-767px
-                    // tablet widths (where the mobile Sheet is still what's
-                    // shown) under-sized.
-                    "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium max-md:min-h-11",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  )}
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
-                  {/* F010: same small-numeric-badge shape as the bell's own
-                      unread count (components/notifications/notification-bell.tsx)
-                      — 0/undefined renders nothing, so a settled workspace's
-                      nav item looks exactly like any other plain link. */}
-                  {typeof count === "number" && count > 0 && (
-                    <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px]">
-                      {count}
-                    </Badge>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={onNavigate}
+                    className={cn(
+                      // F265 (AS-518): `max-md:min-h-11` -- this Link is used
+                      // both in the always-visible desktop `<aside>` (>= md,
+                      // mouse-driven, untouched) AND inside the hamburger-
+                      // triggered mobile Sheet (< md, this is the actual
+                      // touch-target surface) -- `md` (not `sm`) because
+                      // that's the real breakpoint this same component
+                      // switches between the two presentations at (see
+                      // AppSidebar below: `hidden ... md:flex` / `...
+                      // md:hidden`), so a `sm:` check would leave 640-767px
+                      // tablet widths (where the mobile Sheet is still what's
+                      // shown) under-sized.
+                      "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium max-md:min-h-11",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    )}
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate">{label}</span>
+                    {/* F010: same small-numeric-badge shape as the bell's own
+                        unread count (components/notifications/notification-bell.tsx)
+                        — 0/undefined renders nothing, so a settled workspace's
+                        nav item looks exactly like any other plain link. */}
+                    {typeof count === "number" && count > 0 && (
+                      <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px]">
+                        {count}
+                      </Badge>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
 
-      {/* F262 (AS-509, AS-511, AS-512, AS-513): visible to every role
-          including guests -- a guest's own project list is already scoped
-          server-side by the RLS-backed query the layout uses (F134/F132),
-          same "hide nothing, the query already filtered it" convention
-          Dashboard/My Tasks/Calendar above follow (unlike Members/Archive/
-          Templates/Trash, which are role-gated because their *pages*, not
-          just their data, are off-limits to a guest). `flex-1 min-h-0`
-          here (not on the primary nav above) is what makes this the ONE
-          section that grows to fill remaining space and scrolls
-          internally. */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <ProjectNavList
-          workspaceSlug={workspaceSlug}
-          workspaceId={currentWorkspaceId}
-          projects={projects}
-          onNavigate={onNavigate}
-        />
+        {/* F262 (AS-509, AS-511, AS-512, AS-513): visible to every role
+            including guests -- a guest's own project list is already
+            scoped server-side by the RLS-backed query the layout uses
+            (F134/F132), same "hide nothing, the query already filtered
+            it" convention Dashboard/My Tasks/Calendar above follow
+            (unlike Members/Archive/Templates/Trash, which are role-gated
+            because their *pages*, not just their data, are off-limits to
+            a guest). `flex-1 min-h-0` here (not on the primary nav above)
+            is what makes this the section that grows to fill remaining
+            space within this wrapper and scrolls internally under normal
+            conditions (F119, AS-069) -- see project-nav-list.tsx's own
+            comment for why the inner Collapsible also needs `flex-1
+            min-h-0` all the way down for that scroll to actually engage. */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <ProjectNavList
+            workspaceSlug={workspaceSlug}
+            workspaceId={currentWorkspaceId}
+            projects={projects}
+            onNavigate={onNavigate}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 border-t p-3">
