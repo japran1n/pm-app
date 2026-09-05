@@ -41,6 +41,8 @@ import type { ChatMessage, ChatMessageAttachment } from "@/components/chat/chann
 import { editMessage, deleteMessage } from "@/lib/actions/chat-messages";
 import { useRichTextRenderer } from "@/components/chat/use-rich-text-renderer";
 import { ChatAttachment } from "@/components/chat/chat-attachment";
+import { LinkPreviewCard } from "@/components/chat/link-preview-card";
+import { firstPreviewableUrl } from "@/lib/chat/extract-links";
 import {
   MessageReactionPicker,
   type MessageReactionSummary,
@@ -431,6 +433,10 @@ function MessageRow({
             )}
           </p>
         )}
+        {!message.deletedAt && (() => {
+          const previewUrl = firstPreviewableUrl(message.bodyJson);
+          return previewUrl ? <LinkPreviewCard url={previewUrl} /> : null;
+        })()}
         {!message.deletedAt && attachments.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1.5">
             {attachments.map((attachment) => (

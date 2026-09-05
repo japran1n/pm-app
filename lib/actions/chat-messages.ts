@@ -42,6 +42,10 @@ import {
 // call sites that already own the Tiptap JSONContent body, rather than a
 // SQL-side generated column -- see that migration's doc comment.
 import { toPlainJson, extractPlainText } from "@/lib/comments/rich-text";
+// F120 (AS-071): bare-URL autolinker -- see that file's doc comment for why
+// this needs to run server-side rather than relying solely on Tiptap's own
+// client-side autolink plugin.
+import { autolinkBody } from "@/lib/chat/autolink-body";
 // F13 (docs/advanced-chat-plan.md): reuses the exact same mention-id
 // extraction the description/comment mention pipeline already uses
 // (lib/notifications/mentions.ts's `extractMentionIds`) rather than a
@@ -508,13 +512,18 @@ export async function sendMessage(
   // client) so RLS's messages_insert_channel_members / sender_id = auth.uid()
   // policy is the real enforcement boundary, mirroring watchTask/
   // toggleReaction's "self-serve via own session" convention.
+  // AS-071: bare URLs (no link mark yet, e.g. never followed by a trailing
+  // space before the message was sent) get linkified here, before the
+  // plain-text projection is derived from the same document.
+  const linkedBodyJson = autolinkBody(parsed.data.bodyJson as JSONContent);
+
   const { data: inserted, error: insertError } = await supabase
     .from("messages")
     .insert({
       channel_id: parsed.data.channelId,
       sender_id: user.id,
-      body_json: toPlainJson(parsed.data.bodyJson as JSONContent),
-      body_text: extractPlainText(parsed.data.bodyJson as JSONContent),
+      body_json: toPlainJson(linkedBodyJson),
+      body_text: extractPlainText(linkedBodyJson),
       parent_message_id: parsed.data.parentMessageId ?? null,
     })
     .select(
@@ -606,11 +615,14 @@ export async function editMessage(
 
   const editedAt = new Date().toISOString();
 
+  // AS-071: same autolink pass as sendMessage, applied on edit too.
+  const linkedBodyJson = autolinkBody(parsed.data.bodyJson as JSONContent);
+
   const { data: updated, error: updateError } = await supabase
     .from("messages")
     .update({
-      body_json: toPlainJson(parsed.data.bodyJson as JSONContent),
-      body_text: extractPlainText(parsed.data.bodyJson as JSONContent),
+      body_json: toPlainJson(linkedBodyJson),
+      body_text: extractPlainText(linkedBodyJson),
       edited_at: editedAt,
     })
     .eq("id", parsed.data.messageId)

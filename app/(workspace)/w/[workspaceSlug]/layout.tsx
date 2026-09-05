@@ -352,7 +352,25 @@ export default async function WorkspaceLayout({
       <ShortcutHelpDialog />
       <OnboardingTour initialDismissed={tourDismissed} />
       <BreadcrumbProvider>
-      <div className="flex min-h-svh">
+      {
+        // F120 (AS-073): `min-h-svh` only sets a FLOOR on this row's height
+        // -- it lets the row grow past the viewport if any descendant's
+        // content is taller than the screen, which is exactly what turns
+        // into a whole-page scroll for a route (like chat) that has its own
+        // internal, bounded-height scroll container further down
+        // (components/chat/message-list.tsx's `overflow-y-auto`): the two
+        // scroll containers fight, and depending on which one the browser
+        // decides owns the scroll, `<main>`'s sticky children (a channel's
+        // toolbar) can end up positioned against the wrong scroll context
+        // and appear to vanish. `h-svh` (a fixed height, not a minimum)
+        // plus `min-h-0` on `<main>` below caps this row at the viewport
+        // exactly, so `<main>`'s own `overflow-y-auto` only ever activates
+        // for a route that doesn't already manage its own internal
+        // scrolling (unchanged behaviour for every non-chat page), while a
+        // route like chat that DOES bound its own content to `h-full
+        // min-h-0` never grows past that cap in the first place.
+      }
+      <div className="flex h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}
           workspaces={switcherWorkspaces}
@@ -380,7 +398,7 @@ export default async function WorkspaceLayout({
           approvalsCount={openApprovals.length}
           requestsCount={openClientRequestCount}
         />
-        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <AppHeader
             workspaceId={activeWorkspace.id}
             workspaceSlug={workspaceSlug}

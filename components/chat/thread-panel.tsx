@@ -21,6 +21,8 @@ import { getThreadMessagesAction, sendMessage } from "@/lib/actions/chat-message
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
 import { useRichTextRenderer } from "@/components/chat/use-rich-text-renderer";
 import { ChatAttachment } from "@/components/chat/chat-attachment";
+import { LinkPreviewCard } from "@/components/chat/link-preview-card";
+import { firstPreviewableUrl } from "@/lib/chat/extract-links";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { UserAvatar } from "@/components/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,10 @@ function ThreadMessageBody({
           {extractPlainText(message.bodyJson)}
         </p>
       )}
+      {(() => {
+        const previewUrl = firstPreviewableUrl(message.bodyJson);
+        return previewUrl ? <LinkPreviewCard url={previewUrl} /> : null;
+      })()}
       {message.attachments && message.attachments.length > 0 && (
         <div className="mt-1.5 flex flex-col gap-1.5">
           {message.attachments.map((attachment) => (
