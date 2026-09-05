@@ -124,3 +124,9 @@ AS-073: Scrolling within an open channel's message list does not scroll the surr
 
 AS-074: A link inside read-only rendered rich text (chat message, task comment, task description) is visually distinguishable from surrounding text and opens its target when clicked, while a link inside the editable editor still does not navigate on click.
 AS-075: components/editor/rich-text-editor.tsx contains no raw control bytes, so ordinary text tooling reads it as text rather than binary.
+
+## Link marks stored without an href (F122)
+
+AS-076: A chat message containing a bare URL is stored with a link mark that carries a usable href, regardless of whether the client editor already applied a link mark of its own.
+AS-077: A link mark that arrives carrying no usable href is repaired rather than skipped, so the resulting message renders as an anchor.
+AS-078: A message whose stored link mark has no href still renders its text safely with no anchor, and no href is invented for it on read.
