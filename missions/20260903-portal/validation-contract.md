@@ -89,3 +89,22 @@ AS-052: An owner or admin can view the portal exactly as a specific client sees 
 AS-053: Every entry into the client-preview view is written to the audit log.
 AS-054: For every table added by this mission, a row that is not client-visible is absent from direct selects, from aggregates and counts, and from every RPC response.
 AS-055: A client session that walks every portal route returns no internal-only field in any response payload.
+
+## Task types (F116)
+
+AS-056: A workspace carries six system task types identified by stable keys — page, delivery, qa, client_request, change_request, improvement — each resolvable independently of its human-editable name.
+AS-057: After migration, no live task is left without a task type.
+AS-058: A task cannot be created without a task type.
+AS-059: Each system task type carries a fixed billable flag, and no workspace-level write can change it.
+AS-060: A task created with a given type receives that type's default client visibility as its initial value only.
+AS-061: A task's own client_visible flag remains the sole gate on portal exposure; a task type never widens it.
+AS-062: A project reports tracked and estimated time grouped by task type.
+AS-063: Accepting a client request produces a task typed client_request, and raising a change request produces one typed change_request.
+
+## Task type picker in UI (F118)
+
+AS-064: A task created through the New Task dialog carries the task type the user picked in that dialog.
+AS-065: A task created through a board or list quick-add carries the task type the user picked, when the entry point exposes a picker.
+AS-066: An existing task's type can be changed from the task detail view, and the change is visible immediately without a page reload.
+AS-067: Changing a task's type never changes that task's own client_visible flag.
+AS-068: A project's overview or settings surface displays tracked and estimated hours grouped by task type, sourced from rpc_project_time_totals.
