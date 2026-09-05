@@ -1,0 +1,7 @@
+Approved: 2026-09-02T19:27:03Z
+Baseline commit: 2db1badaebdfa0523f4c110b602e6afa29e09517
+Approver: user (standing instruction — "otvori novu misiju za ovo i radi,
+nemoj da stajes i da me pitas za potvrde itd. samo radi bez pauze dok ne
+zavrsis sve"). The orchestrator locked the contract on the user's behalf
+under that instruction.
+Contract: 34 assertions (AS-001 .. AS-034) — immutable from this point.

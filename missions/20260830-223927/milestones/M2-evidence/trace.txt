@@ -1,0 +1,15 @@
+[2026-08-31T12:17:00.370Z] seed ok ws=207db5fe-3c11-4ecf-96c7-a9c498207bcf proj=92f857f5-3bb4-4300-b715-67fd1c70debf priv=21d3243c-39bf-47b6-a153-b031001874d3 viewer=0c56ce29-855b-4187-9c69-81d8758f5027
+[2026-08-31T12:17:07.624Z] AS-019: due_date 2026-09-01 -> 2026-09-02
+[2026-08-31T12:17:08.476Z] AS-019 => PASS
+[2026-08-31T12:17:08.665Z] AS-020: inserted new task on 2026-09-03
+[2026-08-31T12:17:09.520Z] AS-020 => PASS
+[2026-08-31T12:17:09.679Z] AS-021: cleared due_date on new task
+[2026-08-31T12:17:09.747Z] AS-021 => PASS
+[2026-08-31T12:17:09.899Z] AS-022: inserted dated task in private project
+[2026-08-31T12:17:15.942Z] AS-022 => PASS (leaked: 0)
+[2026-08-31T12:17:23.676Z] palette open with both tasks in results
+[2026-08-31T12:17:23.909Z] AS-023: renamed task
+[2026-08-31T12:17:24.793Z] AS-023 => PASS
+[2026-08-31T12:17:24.956Z] AS-024: deleted task
+[2026-08-31T12:17:30.297Z] AS-024: after re-search, deleted title occurrences = 0
+[2026-08-31T12:17:30.372Z] AS-024 => PASS

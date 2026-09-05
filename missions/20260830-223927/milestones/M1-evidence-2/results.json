@@ -1,0 +1,46 @@
+{
+  "AS-005": [
+    {
+      "immediate": true,
+      "ms": 119,
+      "observed": "In progress"
+    },
+    {
+      "immediate": true,
+      "ms": 159,
+      "observed": "In review"
+    },
+    {
+      "immediate": false,
+      "ms": null,
+      "observed": "In review"
+    }
+  ],
+  "AS-007": [
+    {
+      "immediate": true,
+      "ms": 141,
+      "observed": "Urgent"
+    },
+    {
+      "immediate": true,
+      "ms": 109,
+      "observed": "No priority"
+    },
+    {
+      "immediate": true,
+      "ms": 143,
+      "observed": "Medium"
+    }
+  ],
+  "AS-006": {
+    "before": "Done",
+    "after": "Done",
+    "toast": "Failed to set status to To do"
+  },
+  "AS-008": {
+    "before": "Medium",
+    "after": "Medium",
+    "toast": "Failed to set priority to High"
+  }
+}

@@ -1,0 +1,24 @@
+[2026-08-31T12:24:46.289Z] seed ok ws=df3fe134-ff2b-4f5b-81d4-cabf3be45faf proj=bc64a703-a6e1-4a02-aa71-3be548dcfc2d priv=195d5ca3-91db-44ea-b99e-dbc2fca98f8a viewer=df814d0c-a2d3-4548-9aed-d9af5833c15b
+[2026-08-31T12:24:54.198Z] My Tasks loaded. t1=e10c0f81-6e52-44a0-bd49-99faf851234f priv=2c52bc17-d748-43d7-ba5c-ef0fd32b2d1c
+[2026-08-31T12:24:54.432Z] AS-015: inserted task_assignees for viewer
+[2026-08-31T12:24:56.297Z] AS-015 => PASS
+[2026-08-31T12:25:00.891Z] AS-016: status -> in_progress (page already showing task)
+[2026-08-31T12:25:02.242Z] AS-016 => PASS
+[2026-08-31T12:25:02.396Z] AS-017: deleted task_assignees row
+[2026-08-31T12:25:03.716Z] AS-017 => PASS
+[2026-08-31T12:25:03.855Z] AS-018: updated private-project task (viewer has no access)
+[2026-08-31T12:25:09.905Z] AS-018 => PASS (occurrences of private title: 0)
+[2026-08-31T12:25:16.460Z] AS-019: due_date 2026-09-01 -> 2026-09-02
+[2026-08-31T12:25:16.606Z] AS-019 => PASS
+[2026-08-31T12:25:16.744Z] AS-020: inserted new task on 2026-09-03
+[2026-08-31T12:25:17.598Z] AS-020 => PASS
+[2026-08-31T12:25:17.715Z] AS-021: cleared due_date on new task
+[2026-08-31T12:25:18.548Z] AS-021 => PASS
+[2026-08-31T12:25:18.687Z] AS-022: inserted dated task in private project
+[2026-08-31T12:25:24.735Z] AS-022 => PASS (leaked: 0)
+[2026-08-31T12:25:32.047Z] palette open with both tasks in results
+[2026-08-31T12:25:32.269Z] AS-023: renamed task
+[2026-08-31T12:25:33.164Z] AS-023 => PASS
+[2026-08-31T12:25:33.305Z] AS-024: deleted task
+[2026-08-31T12:25:38.642Z] AS-024: after re-search, deleted title occurrences = 0
+[2026-08-31T12:25:38.743Z] AS-024 => PASS

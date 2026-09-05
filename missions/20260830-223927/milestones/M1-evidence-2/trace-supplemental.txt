@@ -1,0 +1,75 @@
+URL: http://localhost:3000/w/m1ux2-1788162286166-fvaii/projects/e944dee2-6a8f-4da3-afb2-0ca6911c3777/list
+BODY: Command palette
+
+Search or run a command
+
+M1
+M1UX2 WS
+Dashboard
+My Tasks
+Projects
+Chat
+
+PLAN
+
+Calendar
+Timeline
+Time
+
+TEAM
+
+Members
+
+OTHER
+
+Archive
+Templates
+Trash
+Settings
+PROJECTS
+MP
+M1UX2 Project
+M1
+m1ux2-1788162286166-fvaii@example.com
+Theme
+Sign out
+M1UX2 WS
+Projects
+M1UX2 Project
+List
+M1UX2 Project
+
+No description.
+
+Back to projects
+Board
+List
+Docs
+VIEWS
+SAVE VIEW
+All statuses
+All priorities
+All assignees
+NEW TASK
+	Key	Title	Status	Priority	Type	Assignee	Due date
+	Estimate	Logged
+
+	MP-1	
+M1 Alpha Task
+	
+To Do
+	
+Low
+		
+Unassigned
+	
+	—	—
+
+== AS-005 supplemental: 3rd + 4th status change in ONE open sheet (action held 4000ms) ==
+initial: "To do"
+AS-005b-change-1: chose "In progress" -> trigger showed "In progress" after 168ms (IMMEDIATE, action held 4000ms)
+AS-005b-change-2: chose "In review" -> trigger showed "In review" after 137ms (IMMEDIATE, action held 4000ms)
+AS-005b-change-3: chose "To do" -> trigger showed "To do" after 137ms (IMMEDIATE, action held 4000ms)
+  (route: letting a pre-mutation guard POST through undelayed)
+AS-005b-change-4-done: chose "Done" -> trigger showed "Done" after 769ms (IMMEDIATE, action held 4000ms)
+after settle 4: "Done"

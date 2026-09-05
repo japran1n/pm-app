@@ -1,0 +1,98 @@
+# Scrutiny 1 — Mission 20260902-212300 (F001–F013, baseline 2db1bad → HEAD 450754c)
+
+Read-only adversarial review. No code, test, or contract was modified.
+Verdicts judge whether the assertion is *enforced by something that can fail*,
+not whether the current tests are green (they are: 1572/1572).
+
+## Verdict table
+
+| ID | Verdict | Sev | Reason |
+|---|---|---|---|
+| AS-001 | PASS | — | `checkDrift` returns code 0 on a clean payload; `findDrift` filters `!entry.remote`. `tests/unit/check-migration-drift.test.ts:56`. |
+| AS-002 | PASS | — | Drifted versions named in the message; test asserts the exact version string appears. `check-migration-drift.mjs:88-95`. |
+| AS-003 | FAIL | major | `check-migration-drift.mjs:88` interpolates the **raw, unscrubbed** subprocess stderr into the user-facing message, which `main()` writes to stderr. The whole `process.env` (including `SUPABASE_ACCESS_TOKEN`) is handed to the child. The AS-003 test only ever feeds `stderr: "cli failed"` / `"network error"` — it never feeds a stderr *containing* the token, so it cannot fail against the actual risk. Mutant that survives: none needed; the real CLI is the mutant. Needs a redaction pass over stderr plus a test whose fixture stderr embeds the token value. |
+| AS-004 | PASS | — | Early return with a plain message before any spawn; asserted, including `spawnSync` not called. `check-migration-drift.mjs:70-76`. |
+| AS-005 | PASS | minor | I ran the real discovery: it returns exactly the 9 distinct tables present across all 18 `postgres_changes` bindings in `components/`+`lib/`. Fragility: `extractSubscribedTables` bounds its search window at the **first `)` after `"postgres_changes"`** (`check-realtime-publication.mjs:56-62`), so a binding whose options object contains a paren before `table:` (e.g. a `filter: \`id=in.(...)\`` placed first, or `event: getEvent()`) is silently skipped — a false PASS, the exact silent-failure class this verifier exists to prevent. |
+| AS-006 | FAIL | major | The "source-derived, not a hand list" property is never exercised end-to-end. `checkRealtimePublication`'s tests all inject `discover: () => [...]`, and the `extractSubscribedTables` tests run over inline fixture strings. Surviving mutant: replace the body of `discoverSubscribedTables` with `return ["tasks","comments"];` — every test in `tests/unit/check-realtime-publication.test.ts` still passes. Nothing asserts that `discoverSubscribedTables()` over the real tree yields the real binding set. |
+| AS-007 | PASS | — | Distinct topics `tasks:my-tasks:${userId}:assignees` / `:tasks`, one `.on()` each (`use-my-tasks-realtime.ts:137-138,146,192`). Collapsing them onto one topic fails `f004-my-tasks-realtime-topology.test.ts:74,85,95`. |
+| AS-008 | PASS | — | `f008-my-tasks-realtime.test.ts:470-508`: assignees callback deliberately never fired, `tasks` UPDATE still reaches `onUpdate`. Single-channel mutant throws. |
+| AS-009 | PASS | — | `f008:510-536`. Weaker in isolation (an "both on assignees topic" mutant survives this test alone) but killed cross-file by `f004:74,95`. |
+| AS-010 | PASS | — | Returned closure calls both releases (`use-my-tasks-realtime.ts:233-236`); release is idempotent (`lib/realtime/shared-topic-channel.ts:125-129`) and each `removeChannel` runs in its own macrotask, so a throwing removal cannot block the sibling. Asserted `f004:125,132,138`. |
+| AS-011 | FAIL | major | The Set identity is genuine *inside* `subscribeToMyTasksRealtime` (one binding closed over by both handlers), and the hook passes `trackedTaskIdsRef.current` (`use-my-tasks-realtime.ts:283`). But the only production caller is untested at that boundary. Surviving mutant: change line 283 to `new Set(trackedTaskIdsRef.current)`. Every test stays green — `f008` calls the subscribe function directly and bypasses line 283, and `personal-todo-list-realtime-wiring.test.tsx` never performs assignee-INSERT-then-`tasks`-UPDATE. The mutant is a real user-visible bug (assigned mid-session → later status change never renders). |
+| AS-012 | PASS | — | `setOptimisticApproved(true)` precedes `startTransition` (`approval-actions.tsx:62`); test asserts "Approved." with the action promise unresolved. |
+| AS-013 | PASS | — | `toast.error(result.error)` — the action's own message — plus revert; test asserts the exact string and that `refresh` is not called (`approval-actions.tsx:69-73`). |
+| AS-014 | FAIL | major | Implementation is correct (`finally { inFlightRef.current = false }`, `approval-actions.tsx:80-82`), but the "nothing left permanently pending" half has **no test**. Surviving mutant: delete the `finally` (or move the reset into the success branch). All tests stay green; production effect is an Approve button that is permanently inert after any single failure. |
+| AS-015 | FAIL | **blocker** | The test is vacuous. RTL wraps each `fireEvent` in `act`, so the first click's optimistic state flushes *between* the two clicks, the component switches to the "Approved." branch (`approval-actions.tsx:122-129`) and the button node is detached — the second click never reaches a handler. This was verified empirically by running the equivalent component (a) with the ref deleted and only `disabled={isPending}`, and (b) with **no guard at all**: both variants pass `toHaveBeenCalledTimes(1)`. The production ref at `:57-59` is correct, but the assertion is unverified. A real test must dispatch both clicks inside one `act()`. |
+| AS-016 | FAIL | major | Optimistic apply/revert with the draft message preserved is properly covered. Two gaps: (1) the double-send test (`approval-actions.test.tsx:177-196`) is vacuous for the identical reason as AS-015 — the "Sent" branch unmounts the Send button between clicks; (2) the whitespace-only test clicks a **disabled** button, so deleting `if (!trimmed) return` (`approval-actions.tsx:87-88`) leaves it green — only the `disabled` half of the double defence is tested. |
+| AS-017 | PASS | — | `supabase/migrations/*_client_requests_realtime_publication.sql` adds `public.client_requests` to `supabase_realtime`, idempotently guarded on `pg_publication_tables`, and correctly leaves replica identity at DEFAULT. |
+| AS-018 | PASS | — | `lib/portal/reconcile-portal-realtime-task.ts:83-88` removes on an UPDATE that no longer matches; both the `!== false` predicate mutant and the dropped-removal mutant fail (`portal-overview-live.test.tsx:79`, `reconcile-portal-realtime-task.test.ts:131`). |
+| AS-019 | PASS | — | `reconcile…:90-95` appends an UPDATE that newly qualifies; `portal-overview-live.test.tsx:111`. |
+| AS-020 | PASS | — | Single gate at `reconcile…:59` (`client_visible === true && deleted_at == null && predicate`). The DELETE path (`:101-106`) keys off `event.old.id` alone and never evaluates the predicate — correct for Supabase default replica identity, and proven with a payload of `old: { id }` only (`reconcile…test.ts:155`, `task-list.test.tsx:127`). Dropping the `deleted_at` clause is killed by `reconcile…test.ts:97`. All three portal surfaces route through this reconciler (`request-list` targets a different table with no visibility column). |
+| AS-021 | FAIL | major | Title is covered; **status is not, and is partly unimplemented**. Surviving mutant: swap `status: raw.status ?? existing?.status` → `status: existing?.status ?? raw.status` at `components/portal/task-list.tsx:129` — the only AS-021 test sends `status: "In review"`, identical to the seed (`task-list.test.tsx:88` vs `:113`), so no test ever observes an incoming status. Live defect regardless of the mutant: `task-list.tsx:138` pins `category: existing?.category ?? "not_started"`, so a task moved into a Done column keeps its stale category and the group ordering (`CATEGORY_RANK`, `:53`), the `clientStatusLabel` heading (`:246`) and the overdue-red rule (`:253`) all stay wrong until a reload. |
+| AS-022 | PASS | — | DELETE branch `task-list.tsx:168-174` and the UPDATE gate `:188`; both the dropped-DELETE and dropped-`client_visible` mutants are killed (`task-list.test.tsx:127,145`). |
+| AS-023 | PASS | — | `request-list.tsx:122-142`; the `status: existing?.status ?? raw.status` mutant IS killed by the `submitted → accepted` test (`request-list.test.tsx:121`). |
+| AS-024 | FAIL | major | Teardown itself is real and directly tested, including StrictMode double-mount and deferred teardown (`use-portal-overview-realtime.ts:37`, `task-list.tsx:223`, `request-list.tsx:169`; tests `task-list.test.tsx:192,209`, `portal-overview-realtime-subscription.test.ts:83,100`). But the "props change mid-flight" half fails: surviving mutant — change `use-portal-overview-realtime.ts:39` deps from `[workspaceId]` to `[]`; nothing tests a `workspaceId` change, so a workspace switch keeps the old channel bound. The same file also suppresses `exhaustive-deps` and omits `onChange` (`:38`), permanently pinning the overview to the first render's callback. |
+| AS-025 | FAIL | major | Implementation reasoned correct: `pendingMovesRef` is populated before dispatch, the realtime callback bails out first (`board.tsx:~250`), and `crossLane` is only true when `groupBy ∈ {assignee,priority,tag}` — so `pendingCallCount = 2` always has exactly two release sites. But **the entire test file is regex over `board.tsx` source text**. Surviving mutant: invert the guard to `!pendingMovesRef.current.has(event.new.id)` — the regex at `tests/unit/board-optimistic-move-realtime-guard.test.ts:56` uses an unanchored `[\s\S]{0,120}` between `"UPDATE"` and the `.has(...)` call, so a leading `!` still matches and every test passes while the board becomes catastrophically wrong. |
+| AS-026 | FAIL | major | Same file, same class. Surviving mutant: rewrite `releasePendingMove` to `map.delete(taskId)` unconditionally, ignoring the count. All five `.finally` regex sites still match, `pendingCallCount` still matches, every test passes — yet a cross-lane drag releases the guard on the *first* settle while the second Server Action is still in flight, which is the precise bug this feature exists to prevent. The counting semantics of `addPendingMove`/`releasePendingMove` are never executed by any test. |
+| AS-027 | FAIL | major | The release-on-failure path is asserted only by counting `.finally(...)` string occurrences (`board-optimistic-move-realtime-guard.test.ts:110-120`). No test ever resolves an action with `{ok:false}` or a rejection and then delivers a realtime event to confirm it is applied. Same `addPendingMove(taskId, 1)` mutant survives. |
+| AS-028 | FAIL | **blocker** | No coverage at all. No test dispatches a realtime UPDATE for a task with no in-flight move. The only "behavioural" test is a `renderToStaticMarkup` smoke test with no drag and no realtime. Combined with the inverted-guard mutant surviving (AS-025), the assertion "unchanged from current behaviour" is entirely unenforced. |
+| AS-029 | PASS | — | `tests/e2e/portal-approve.spec.ts` is genuinely discriminating by design: a `window`-level sentinel plus a `load`-event counter (`:291,:345-356`) prove the row left "Waiting on you" *without* a navigation, so the spec would fail if the app achieved the result by reload. Judged on assertion rigour only, not execution. |
+| AS-030 | PASS | — | Per-run unique suffix, fixtures created in `beforeAll` and torn down in `afterAll` in dependency order including `auth.admin.deleteUser` (`:195-211`). |
+| AS-031 | PASS | — | `npx tsc --noEmit` exits 0. |
+| AS-032 | FAIL | **blocker** | `npm run lint` reports **1 error**, newly introduced by this mission: `components/portal/portal-overview-live.tsx:118:64 error Unexpected any @typescript-eslint/no-explicit-any`. Its source is a leftover debug statement shipping to the production client bundle: `console.log("F012_DEBUG event", event.eventType, (event as any).new);` — this logs portal task rows (titles, ids, due dates) to every client's console. |
+| AS-033 | PASS | — | 205 files / 1572 tests pass with `tests/integration/**` and `tests/e2e/**` excluded. |
+| AS-034 | PASS | — | Every new unit/component test mocks `createClient` or injects fakes; `spawnSync` and `fetch` are both mocked/injected. No new test opens a live connection. |
+
+**Milestone verdict: REJECT.** 3 blockers (AS-015, AS-028, AS-032) and 8 majors.
+
+## Recommended follow-up features
+
+**FU-A — Remove the leftover debug log and restore a clean lint.** `components/portal/portal-overview-live.tsx:118` ships `console.log("F012_DEBUG event", …, (event as any).new)` to the client. Delete the statement and the `as any` cast it requires. This is the sole new lint error in the tree, so removing it restores AS-032, and it also stops portal task titles/ids/due dates being written to every client's browser console. Confirm `npm run lint` reports 0 errors afterwards and add nothing else to the file.
+
+**FU-B — Replace the board guard's source-text tests with executable ones.** `tests/unit/board-optimistic-move-realtime-guard.test.ts` asserts entirely by regex over `board.tsx`, so an inverted guard (`!…has(id)`) and a count-ignoring `releasePendingMove` both survive. Extract the pending-move bookkeeping into a small pure module (e.g. `lib/board/pending-moves.ts` exporting create/add/release/has over a Map) and drive it from `board.tsx`, then unit-test it directly: add-2-release-1 stays guarded, add-2-release-2 is released, release of an unknown id is a no-op, release never goes negative. Separately add a test that exercises the realtime callback's decision function with (i) an UPDATE for a guarded id → skipped, (ii) an UPDATE for an unguarded id → applied (AS-028, currently uncovered), (iii) INSERT/DELETE for a guarded id → unaffected. Keep `board.tsx` behaviour identical.
+
+**FU-C — Make the approve/request-changes double-click tests non-vacuous.** The AS-015 and AS-016 double-click tests currently pass with the in-flight ref deleted entirely, because RTL flushes state between `fireEvent` calls and the optimistic branch detaches the button. Rewrite both to dispatch two clicks inside a single `act(() => { … })` (or on a node captured before the first click) so no re-render intervenes, and assert exactly one `approvePortalTask` / `requestPortalChanges` call. Add the AS-014 gap in the same feature: after a failing approve, click Approve again and assert a *second* call is issued, which pins the `finally { inFlightRef.current = false }` reset. Also assert the `if (!trimmed) return` guard directly by invoking the submit path with a whitespace message rather than clicking a disabled button.
+
+**FU-D — Cover the portal-overview hook's dependency and callback identity.** `components/portal/use-portal-overview-realtime.ts` suppresses `exhaustive-deps` and omits `onChange`, pinning the overview to the first render's callback, and no test changes `workspaceId` mid-life. Add tests that (i) re-render with a new `workspaceId` and assert the old channel is released and a new one acquired, and (ii) re-render with a new `onChange` and assert events reach the current callback — then fix the hook (a ref for the callback, `workspaceId` kept in deps) to make both pass. Also re-seed `portal-overview-live.tsx` state when the server prop identity changes, matching the pattern `task-list.tsx:211` and `request-list.tsx:155` already use, so a `router.refresh()` does not leave accumulated client-side state and a stale `projectNameById` map.
+
+**FU-E — Make the portal task list apply an incoming status and category.** `components/portal/task-list.tsx:129` is never observed by a test because the AS-021 fixture sends the same status the row was seeded with; more importantly `:138` pins `category: existing?.category ?? "not_started"`, so a task moved into a Done column keeps a stale category and the group ordering (`CATEGORY_RANK`), the `clientStatusLabel` heading and the overdue-red rule all stay wrong until reload. Carry the category through the realtime payload (or derive it from the incoming status against the project's statuses) and add a test that sends a status *different* from the seed and asserts both the rendered status label and the group placement change.
+
+**FU-F — Prove the realtime verifier's discovery is source-derived, and harden its parser.** `discoverSubscribedTables` in `scripts/check-realtime-publication.mjs` is never run against the real tree by any test — replacing its body with a hardcoded array leaves the suite green, which is exactly the failure AS-006 forbids. Add a test that calls `discoverSubscribedTables()` over the actual `components/`/`lib/` directories and asserts the returned set contains every table currently bound (today: tasks, task_assignees, comments, comment_reactions, messages, message_reactions, notifications, project_statuses, client_requests) and that the count matches an independent grep-style scan. Separately, replace the `indexOf(")")` window bound at `:56-62` with brace-matching over the options object, and add a fixture where a paren appears before `table:` (e.g. `filter: \`id=in.(${ids})\``) — the current parser silently drops that binding, producing a false PASS.
+
+**FU-G — Redact subprocess output in the migration drift guard.** `scripts/check-migration-drift.mjs:88` interpolates the Supabase CLI's raw stderr into a message printed to the process's own stderr, while the entire `process.env` (containing `SUPABASE_ACCESS_TOKEN`) is handed to that child. AS-003 forbids a credential value reaching stdout/stderr on any path, and the existing test only feeds benign stderr fixtures so it cannot detect the risk. Add a redaction step that replaces any occurrence of the access token, secret key, or project ref value in captured stderr with a placeholder before it is surfaced, and add a test whose mocked stderr embeds the token value verbatim and asserts the returned message does not contain it.
+
+**FU-H — Cover the My Tasks hook's tracked-id Set identity at the call site.** `components/my-tasks/use-my-tasks-realtime.ts:283` passes `trackedTaskIdsRef.current`, but no test exercises that boundary: changing it to `new Set(trackedTaskIdsRef.current)` leaves every test green while breaking AS-011 in production (a task assigned mid-session then updated never refreshes). Add a hook-level test that mounts the hook, delivers a `task_assignees` INSERT for the current user on the assignees channel, then delivers a `tasks` UPDATE for that same id on the tasks channel, and asserts `onUpdate` fires. While there, address the related smell that the seeding effect re-adds `initialTaskIds` on every render when the caller passes an inline array, silently returning un-assigned ids to the tracked set.
+
+---
+
+## Appendix — gate output
+
+### `npx tsc --noEmit`
+Exit 0, no output.
+
+### `npm run lint` (tail)
+```
+/Users/sasajapranin/Desktop/pm-app/components/portal/portal-overview-live.tsx
+  118:64  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+✖ 16 problems (1 error, 15 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+The 15 warnings are pre-existing (mission evidence probe scripts and older
+`_unused`-arg test mocks). The 1 error is new in this mission.
+
+### `npx vitest run` (excluding tests/integration, tests/e2e, missions)
+```
+ Test Files  205 passed (205)
+      Tests  1572 passed (1572)
+   Duration  39.91s
+```
+
+### Real-tree realtime discovery (run manually, not by any test)
+```
+DISCOVERED: [ 'client_requests', 'comment_reactions', 'comments',
+  'message_reactions', 'messages', 'notifications', 'project_statuses',
+  'task_assignees', 'tasks' ]
+```
+Cross-checked against 18 `postgres_changes` bindings across `components/`
+and `lib/` — the set is complete today.

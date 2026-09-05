@@ -1,0 +1,92 @@
+URL: http://localhost:3000/w/m1ux2-1788162178125-kibis/projects/00ec1079-a296-4f43-a845-25edbd484f81/list
+BODY: Command palette
+
+Search or run a command
+
+M1
+M1UX2 WS
+Dashboard
+My Tasks
+Projects
+Chat
+
+PLAN
+
+Calendar
+Timeline
+Time
+
+TEAM
+
+Members
+
+OTHER
+
+Archive
+Templates
+Trash
+Settings
+PROJECTS
+MP
+M1UX2 Project
+M1
+m1ux2-1788162178125-kibis@example.com
+Theme
+Sign out
+M1UX2 WS
+Projects
+M1UX2 Project
+List
+M1UX2 Project
+
+No description.
+
+Back to projects
+Board
+List
+Docs
+VIEWS
+SAVE VIEW
+All statuses
+All priorities
+All assignees
+NEW TASK
+	Key	Title	Status	Priority	Type	Assignee	Due date
+	Estimate	Logged
+
+	MP-1	
+M1 Alpha Task
+	
+To Do
+	
+Low
+		
+Unassigned
+	
+	—	—
+
+== AS-005: status changes in one open sheet (server action held 4000ms) ==
+initial status trigger: "To do"
+AS-005-status-change-1: chose "In progress" -> trigger showed "In progress" after 119ms (IMMEDIATE, action held 4000ms)
+after settle 1: "In progress"
+AS-005-status-change-2: chose "In review" -> trigger showed "In review" after 159ms (IMMEDIATE, action held 4000ms)
+after settle 2: "In review"
+AS-005-status-change-3: chose "Done" -> trigger showed "In review" (STALE for >3000ms while action held 4000ms)
+after settle 3: "Done"
+
+== AS-007: priority changes in the SAME open sheet ==
+initial priority trigger: "Low"
+AS-007-priority-change-1: chose "Urgent" -> trigger showed "Urgent" after 141ms (IMMEDIATE, action held 4000ms)
+after settle 1: "Urgent"
+AS-007-priority-change-2-clear: chose "No priority" -> trigger showed "No priority" after 109ms (IMMEDIATE, action held 4000ms)
+after settle 2: "No priority"
+AS-007-priority-change-3: chose "Medium" -> trigger showed "Medium" after 143ms (IMMEDIATE, action held 4000ms)
+after settle 3: "Medium"
+
+== AS-006: status revert on server error (action aborted) ==
+before: "Done"
+after failed save: "Done" | toast: Failed to set status to To do
+
+== AS-008: priority revert on server error (action aborted) ==
+before: "Medium"
+after failed save: "Medium" | toast: Failed to set priority to High
