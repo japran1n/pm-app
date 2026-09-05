@@ -8,12 +8,14 @@
 // auditable (the fetch always happens from our own server, never the
 // visitor's browser reaching out to an attacker-controlled endpoint).
 //
-// This is intentionally the "straightforward synchronous-fetch-with-timeout
-// version" the spec calls out as acceptable scope: no persistent cache
-// table, no redirect-chain/paywall hardening beyond `fetch`'s own default
-// redirect-following. A hardened version would additionally need:
-//   - a `link_previews` cache table (url_hash pk) so the same URL isn't
-//     re-fetched on every render/reload across every viewer,
+// F125 (AS-086/AS-087): added a server-side cache (`link-preview-cache.ts`)
+// so a resolved (or definitively-unresolvable) URL is not refetched on
+// every render, by every viewer, forever. See that module's own comment
+// for why it is a plain in-process TTL map rather than a `link_previews`
+// table or `unstable_cache`.
+//
+// Remaining scope this file still does NOT cover -- a hardened version
+// would additionally need:
 //   - a rate limit per workspace/sender to stop a chat channel from being
 //     used to hammer an arbitrary external host,
 //   - real SSRF hardening via DNS resolution + blocking the resolved IP
@@ -22,6 +24,7 @@
 //     rebinding.
 // See the F120 handoff for the full list.
 import { logger } from "@/lib/observability/logger";
+import { getCachedLinkPreview, setCachedLinkPreview } from "@/lib/chat/link-preview-cache";
 
 export type LinkPreviewResult =
   | {
@@ -35,6 +38,11 @@ export type LinkPreviewResult =
       };
     }
   | { ok: false };
+
+// The success-case payload shape, factored out so the cache module (which
+// is generic over "whatever data a successful lookup carries") can be
+// typed precisely at this call site without duplicating the shape.
+type LinkPreviewData = Extract<LinkPreviewResult, { ok: true }>["data"];
 
 const FETCH_TIMEOUT_MS = 3000;
 const MAX_RESPONSE_BYTES = 512 * 1024;
@@ -115,8 +123,26 @@ function extractTitleTag(html: string): string | null {
  * (invalid/blocked URL, timeout, non-2xx response, no HTML, no usable
  * title) resolves to `{ ok: false }` so the caller can render a plain link
  * with no visible error, per AS-072.
+ *
+ * F125 (AS-086/AS-087): checks the shared server-side cache first. A hit
+ * -- success OR negative -- returns immediately with no network fetch at
+ * all; a miss fetches as before and populates the cache for every
+ * subsequent render/viewer/page-load until the entry's TTL expires. The
+ * cache key is the RAW input URL exactly as received (not `isFetchableUrl`'s
+ * normalized `URL#toString()`), so a blocked/unparseable URL is cached and
+ * short-circuits future calls before `isFetchableUrl` even has to
+ * re-evaluate it.
  */
 export async function getLinkPreview(rawUrl: string): Promise<LinkPreviewResult> {
+  const cached = getCachedLinkPreview<LinkPreviewData>(rawUrl);
+  if (cached !== undefined) return cached;
+
+  const result = await fetchLinkPreview(rawUrl);
+  setCachedLinkPreview<LinkPreviewData>(rawUrl, result);
+  return result;
+}
+
+async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewResult> {
   const url = isFetchableUrl(rawUrl);
   if (!url) return { ok: false };
 
