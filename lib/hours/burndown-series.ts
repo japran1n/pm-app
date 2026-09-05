@@ -66,7 +66,14 @@ export function computeBurndownSeries(
   });
 }
 
-function isoWeekOf(dateIso: string): string {
+// F111 (missions/20260903-portal, docs/client-portal-visual-plan.md 3.6):
+// exported (was module-private) so the weekly-delivery series
+// (lib/portal/weekly-delivery.ts) can bucket a plain completion-date
+// string into the same ISO week grid this file's own burn-down series
+// uses, rather than a second, possibly-inconsistent week-math
+// implementation living beside it. No behaviour change to this
+// function's existing callers in this file.
+export function isoWeekOf(dateIso: string): string {
   const [y, m, d] = dateIso.split("-").map(Number);
   const date = new Date(Date.UTC(y!, (m ?? 1) - 1, d ?? 1));
   return toIsoWeekString(date);
