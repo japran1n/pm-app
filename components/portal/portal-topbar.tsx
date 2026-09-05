@@ -48,6 +48,7 @@ import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
 import { usePortalTitleOverride } from "@/components/portal/portal-title-context";
+import { PortalLinkStrip, type PortalKeyLink } from "@/components/portal/portal-link-strip";
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
 
 const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
@@ -128,12 +129,18 @@ export function PortalTopbar({
   projectName,
   targetLaunchDate,
   launchConfidence,
+  keyLinks,
 }: {
   workspaceSlug: string;
   projectId: string;
   projectName: string;
   targetLaunchDate: string | null;
   launchConfidence: PortalLaunchConfidence | null;
+  // F113 (client-portal-phase-2-plan.md item B): Figma/staging/live,
+  // rendered as `PortalLinkStrip` below. Optional so every existing
+  // caller/test that doesn't pass it keeps rendering exactly as before
+  // (no strip, not a crash).
+  keyLinks?: PortalKeyLink[];
 }) {
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
@@ -159,6 +166,7 @@ export function PortalTopbar({
           </div>
         )}
       </div>
+      {keyLinks && <PortalLinkStrip links={keyLinks} />}
     </header>
   );
 }

@@ -5,10 +5,12 @@ import {
   getPortalCurrentUserProfile,
   getPortalProjects,
 } from "@/lib/queries/portal";
+import { getClientVisiblePortalLinks } from "@/lib/queries/project-site";
 import { createClient } from "@/lib/supabase/server";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { PortalTopbar } from "@/components/portal/portal-topbar";
 import { PortalTitleProvider } from "@/components/portal/portal-title-context";
+import type { PortalKeyLink } from "@/components/portal/portal-link-strip";
 
 // F003 (missions/20260903-portal, AS-001, AS-004, AS-005, AS-006): the
 // prototype's own shell -- fixed-width sticky sidebar (brand, project
@@ -62,14 +64,26 @@ export default async function PortalProjectLayout({
   // fabricating a placeholder identity for the sidebar footer.
   if (!user) redirect("/sign-in");
 
-  const [projects, badges, profile] = await Promise.all([
+  const [projects, badges, profile, keyLinksResult] = await Promise.all([
     getPortalProjects(workspace.id),
     getPortalBadgeCounts(projectId),
     getPortalCurrentUserProfile(user.id),
+    getClientVisiblePortalLinks(projectId),
   ]);
 
   const project = projects.find((p) => p.id === projectId);
   if (!project) notFound();
+
+  // F113 (client-portal-phase-2-plan.md item B): the topbar's fixed
+  // Figma/staging/live strip, same place on every route. A failed read
+  // degrades to an empty strip (no chips rendered at all) rather than
+  // failing this whole shell — the strip is a convenience surface, the
+  // rest of the portal must still render.
+  const keyLinks: PortalKeyLink[] = keyLinksResult.ok
+    ? keyLinksResult.data
+        .filter((link) => link.kind === "figma" || link.kind === "staging" || link.kind === "live")
+        .map((link) => ({ kind: link.kind as PortalKeyLink["kind"], label: link.label, url: link.url }))
+    : [];
 
   return (
     // F006e (missions/20260903-portal, AS-004): `PortalTitleProvider`
@@ -106,6 +120,7 @@ export default async function PortalProjectLayout({
             projectName={project.name}
             targetLaunchDate={project.targetLaunchDate}
             launchConfidence={project.launchConfidence}
+            keyLinks={keyLinks}
           />
           <main className="flex-1 px-6 py-8">{children}</main>
         </div>

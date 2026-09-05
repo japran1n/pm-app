@@ -164,6 +164,7 @@ import {
 import { Watchers } from "@/components/task/watchers";
 import { ClientVisibilityToggle } from "@/components/task/client-visibility-toggle";
 import { PendingApprovalToggle } from "@/components/task/pending-approval-toggle";
+import { PageLinksEditor } from "@/components/task/page-links-editor";
 // F008 (missions/20260903-portal, AS-019): the richer "raise a real
 // approval request" path, shown beside PendingApprovalToggle rather than
 // replacing it — that toggle stays the quick "waiting on client" flag,
@@ -2058,6 +2059,15 @@ export function TaskDetailSheet({
                     />
                   </div>
                 </div>
+              )}
+
+              {/* F113 (client-portal-phase-2-plan.md item B): per-page
+                  links, same task-type gate as the Page slug/order
+                  fields directly above -- a page's Figma/staging/live
+                  links belong with the page, not a separate settings
+                  screen. */}
+              {task.taskTypeSystemKey === "page" && (
+                <PageLinksEditor taskId={task.id} canEdit={canEdit} />
               )}
 
               <MobileCollapsibleSection title="Description">

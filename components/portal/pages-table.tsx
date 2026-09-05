@@ -30,8 +30,10 @@ import {
 import { EmptyState } from "@/components/empty-state";
 import { UserAvatar } from "@/components/user-avatar";
 import { StatusPill } from "@/components/portal/status-pill";
+import { PageLinksMenu } from "@/components/portal/page-links-menu";
 import { FileQuestion } from "lucide-react";
 import type { PortalPage } from "@/lib/queries/portal";
+import type { PageLink } from "@/lib/queries/page-links";
 import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
 
 const ALL_STATUSES = "__all__";
@@ -68,7 +70,19 @@ function formatUpdatedAt(iso: string): string {
   });
 }
 
-export function PagesTable({ pages }: { pages: PortalPage[] }) {
+export function PagesTable({
+  pages,
+  linksByPageId,
+}: {
+  pages: PortalPage[];
+  // F113 (client-portal-phase-2-plan.md item B): each page's own
+  // client-visible links (Figma/staging/live), keyed by task id. Optional
+  // so this component's own existing unit tests (which construct
+  // `PortalPage[]` without this prop) keep passing unchanged --
+  // `linksByPageId?.get(...) ?? []` below treats "prop omitted" exactly
+  // like "no links for this page", never a crash.
+  linksByPageId?: Map<string, PageLink[]>;
+}) {
   const [filter, setFilter] = useState<string>(ALL_STATUSES);
 
   const filteredPages =
@@ -111,6 +125,7 @@ export function PagesTable({ pages }: { pages: PortalPage[] }) {
               <TableHead>Status</TableHead>
               <TableHead>Who has it</TableHead>
               <TableHead>Updated</TableHead>
+              <TableHead>Links</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,6 +191,9 @@ export function PagesTable({ pages }: { pages: PortalPage[] }) {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatUpdatedAt(page.updatedAt)}
+                </TableCell>
+                <TableCell>
+                  <PageLinksMenu links={linksByPageId?.get(page.id) ?? []} />
                 </TableCell>
               </TableRow>
             ))}

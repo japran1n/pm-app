@@ -1228,6 +1228,57 @@ export type Database = {
           },
         ]
       }
+      page_links: {
+        Row: {
+          client_visible: boolean
+          created_at: string
+          id: string
+          kind: string
+          label: string
+          position: number
+          task_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          kind: string
+          label: string
+          position?: number
+          task_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          client_visible?: boolean
+          created_at?: string
+          id?: string
+          kind?: string
+          label?: string
+          position?: number
+          task_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_links_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_links_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       personal_todos: {
         Row: {
           created_at: string
@@ -1807,6 +1858,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_phases_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_roles: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          id: string
+          note: string | null
+          project_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          project_id: string
+          role: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          note?: string | null
+          project_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_roles_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -3301,6 +3393,7 @@ export type Database = {
         Args: { target_task_id: string }
         Returns: boolean
       }
+      is_valid_link_kind: { Args: { kind: string }; Returns: boolean }
       is_valid_timezone: { Args: { tz: string }; Returns: boolean }
       is_workspace_admin: {
         Args: { target_workspace_id: string }

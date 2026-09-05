@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { FileText } from "lucide-react";
 
 import { getPortalPages, getPortalProjects } from "@/lib/queries/portal";
+import { getClientVisiblePageLinksByTaskIds } from "@/lib/queries/page-links";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { PagesTable } from "@/components/portal/pages-table";
@@ -51,6 +52,14 @@ export default async function PortalPagesPage({
     );
   }
 
+  // F113 (client-portal-phase-2-plan.md item B): each page's own
+  // client-visible links, batched in one query keyed by task id --
+  // never one query per row. A failed read degrades to "no links" per
+  // page rather than failing the whole view -- links are a convenience
+  // affordance here, not the page's primary content.
+  const linksResult = await getClientVisiblePageLinksByTaskIds(pages.map((page) => page.id));
+  const linksByPageId = linksResult.ok ? linksResult.data : new Map();
+
   // F108 (missions/20260903-portal, docs/client-portal-visual-plan.md
   // 3.2): every bucket, always present (even at 0), computed once here
   // from the same rows the table below renders, never a second query.
@@ -77,7 +86,7 @@ export default async function PortalPagesPage({
           you" step rather than living in a separate strip beneath the
           table. */}
       <PagePipeline counts={counts} />
-      <PagesTable pages={pages} />
+      <PagesTable pages={pages} linksByPageId={linksByPageId} />
     </div>
   );
 }

@@ -1,0 +1,21 @@
+-- F113b (missions/20260903-portal, client-portal-phase-2-plan.md item B):
+-- same EXECUTE-grant gap F025e already fixed once for
+-- `looks_like_credential` (20261023010000), now hit again by this
+-- feature's own new function.
+--
+-- F016i's event trigger revokes EXECUTE from public/anon/authenticated
+-- the moment any new function is created in this database
+-- (20261007010000_f016i_event_trigger_default_execute_and_catalog_test.sql),
+-- which was already live when 20261101020000 created
+-- `public.is_valid_link_kind`. That function backs the CHECK constraints
+-- on `page_links.kind` AND (via 20261101020000's own re-point) on
+-- `project_links.kind` -- both fire under the calling role's own
+-- privileges on INSERT/UPDATE, not a superuser's. `page_links` is
+-- written from a real authenticated-role path from day one (this
+-- feature's own `lib/actions/page-links.ts` uses `ctx.admin`, the
+-- service-role client, same as `project_links` -- so this grant is
+-- defense in depth today, exactly as F025e's own header describes for
+-- `looks_like_credential`, and becomes load-bearing the moment any
+-- future write path calls these tables as the signed-in user's own
+-- role instead).
+grant execute on function public.is_valid_link_kind(text) to authenticated;

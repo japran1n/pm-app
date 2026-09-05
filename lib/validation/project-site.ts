@@ -13,11 +13,22 @@ const labelSchema = z
   .min(1, "Label is required.")
   .max(200, "Label must be 200 characters or fewer.");
 
+// F113 (client-portal-phase-2-plan.md item B): the credential-shape
+// guard `project_accounts` already applies to `service`/`note`, now also
+// applied to `project_links.url` (20261101020000's
+// `project_links_url_no_secret_shape` CHECK) -- the audit's own
+// "mitigation was only that such links default to invisible" gap.
+// `looksLikeCredential` is declared further down this file; referenced
+// here via a forward function declaration so this schema and the
+// account schemas below share exactly one implementation.
 const urlSchema = z
   .string()
   .trim()
   .min(1, "URL is required.")
-  .max(2000, "URL must be 2000 characters or fewer.");
+  .max(2000, "URL must be 2000 characters or fewer.")
+  .refine((value) => !looksLikeCredential(value), {
+    message: "This looks like a password or API key. Put it in the password manager, not here.",
+  });
 
 // Matches `project_links_kind_check`.
 export const projectLinkKindSchema = z.enum([
