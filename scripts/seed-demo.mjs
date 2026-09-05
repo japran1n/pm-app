@@ -319,11 +319,16 @@ const PROJECTS = [
   {
     // Launched/finished: every task done, dates fully in the past, portal
     // ON with `target_launch_date` already passed and warranty fields
-    // filled in -- "what does done look like" (4.3) gets a real answer via
-    // preview-as-client rather than only ever showing mid-flight projects.
-    // No client account attached (`guestAccess` omitted): staff reach this
-    // one through "Preview as client", the same route the demo script
-    // uses for it.
+    // filled in -- "what does done look like" (4.3) gets a real answer.
+    // F114 (client-portal-phase-2-plan.md, items E-H, coordinator
+    // review): nina IS a member here (`guestAccess: true`) -- the same
+    // client having one mid-flight project (Website Redesign) and one
+    // already-launched project (this one) lets a single sign-in show
+    // both the pre-launch and post-launch shapes of the portal in one
+    // demo, including the link strip's "Not live yet" vs a real live
+    // link, and is the only way the handover doc / doc_links / "at
+    // launch" stage-ordering branch is reachable by any client account
+    // at all.
     name: "Northwind Loyalty App — Phase 1",
     description:
       "Points-based loyalty program for Northwind's storefront: enrollment flow, points ledger, and a rewards catalogue.",
@@ -331,6 +336,8 @@ const PROJECTS = [
     startInDays: -75,
     endInDays: -10,
     launched: true,
+    guestAccess: true, // nina (client) is added to this project too -- F114
+    clientUsername: "nina",
     // clientVisible mix, same rule as Website Redesign: the client-facing
     // work (program rules, enrollment UX, rewards catalogue, go-live) is
     // visible; the purely technical build (ledger schema) and the team's
@@ -1375,10 +1382,9 @@ const NORTHWIND_TASK_PHASES = {
   "Go-live & monitoring": "Launch",
 };
 
-// nina has no seat on this project (no `guestAccess` above -- staff reach
-// it via "Preview as client"), but decision-owner/decided-by rows can
-// still reference her user id directly; neither column is FK-scoped to
-// project membership.
+// nina is a project member here too (F114, guestAccess above), but
+// decision-owner/decided-by rows below reference her user id directly
+// regardless -- neither column is FK-scoped to project membership.
 const NORTHWIND_DECISION_OWNERS = [
   { decisionType: "content", username: "nina" },
   { decisionType: "brand", username: "nina" },
