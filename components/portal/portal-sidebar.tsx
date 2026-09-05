@@ -31,6 +31,7 @@ import {
   Inbox,
   LayoutDashboard,
   ListChecks,
+  MessageSquare,
   ScrollText,
   TrendingUp,
   type LucideIcon,
@@ -124,8 +125,20 @@ export function buildPortalNavItems(
 // own spec, so its row here was removed -- DELETE this function and its
 // remaining call site the moment F016 lands with a real entry point for
 // Requests; do not carry it forward as a permanent nav item.
+//
+// F116 (docs/client-portal-phase-2-plan.md item A): Conversation joins
+// this row too, deliberately NOT as a tenth item in `buildPortalNavItems`.
+// A review already called the eight primary views borderline too many; a
+// ninth item used constantly (chat) belongs in the tier that is already
+// visually secondary, not one that grows the primary set further. Unlike
+// Requests this is NOT temporary -- there is no future feature that gives
+// chat a "real" home elsewhere the way Scope & decisions will eventually
+// absorb Requests, so this row stays.
 export function buildPortalSecondaryNavItems(basePath: string): PortalNavItem[] {
-  return [{ key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox }];
+  return [
+    { key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox },
+    { key: "conversation", label: "Conversation", href: `${basePath}/conversation`, icon: MessageSquare },
+  ];
 }
 
 function isItemActive(pathname: string, item: PortalNavItem): boolean {

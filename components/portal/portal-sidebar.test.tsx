@@ -268,10 +268,13 @@ describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () =
     expect(requestsCurrent).toHaveLength(2); // desktop + mobile renditions
   });
 
-  it("builds exactly the one remaining temporary item, at the given base path", () => {
+  it("builds the temporary Requests item plus the permanent Conversation item, at the given base path", () => {
     const items = buildPortalSecondaryNavItems("/portal/acme/p/proj-1");
 
-    expect(items.map((item) => item.label)).toEqual(["Requests"]);
-    expect(items.map((item) => item.href)).toEqual(["/portal/acme/p/proj-1/requests"]);
+    expect(items.map((item) => item.label)).toEqual(["Requests", "Conversation"]);
+    expect(items.map((item) => item.href)).toEqual([
+      "/portal/acme/p/proj-1/requests",
+      "/portal/acme/p/proj-1/conversation",
+    ]);
   });
 });

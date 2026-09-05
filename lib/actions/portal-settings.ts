@@ -129,6 +129,29 @@ const setPortalEnabledImpl = withAuthz(
       metadata: { projectId: input.projectId, portalEnabled: updated.portal_enabled },
     });
 
+    // F116 (docs/client-portal-phase-2-plan.md item A): the moment the
+    // portal turns ON is this feature's single decision point for when
+    // the project's chat channel comes into existence — never on first
+    // message, never at project creation (both would mean a channel could
+    // exist, empty and unmentioned, for a project whose portal is never
+    // turned on). `ensure_project_channel_atomic` is idempotent (a partial
+    // unique index on `channels(project_id)` backs it), so toggling the
+    // portal off and back on again is a harmless no-op the second time,
+    // not a duplicate channel. Never runs on disable — an existing
+    // conversation is not deleted just because the portal is hidden,
+    // mirroring how disabling the portal doesn't delete shared tasks
+    // either (see lib/queries/portal.ts's own header comment on
+    // `portal_enabled` being a display gate, not a data-retention one).
+    if (updated.portal_enabled) {
+      const { error: ensureError } = await ctx.admin.rpc("ensure_project_channel_atomic", {
+        p_project_id: input.projectId,
+        p_created_by: ctx.user.id,
+      });
+      if (ensureError) {
+        logger.error("setPortalEnabled: failed to ensure project channel", { error: ensureError });
+      }
+    }
+
     await revalidatePortalSettings(ctx.workspaceSlug, ctx.projectId);
 
     return {

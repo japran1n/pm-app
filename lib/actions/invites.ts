@@ -158,6 +158,39 @@ export async function activateInvitedMemberships(
         if (projectMemberError && projectMemberError.code !== "23505") {
           logger.error("activateInvitedMemberships: failed to grant guest project access", { inviteId: row.id, error: projectMemberError });
         }
+
+        // F116 (docs/client-portal-phase-2-plan.md item A): if this
+        // project's portal is ALREADY enabled, its chat channel already
+        // exists (created by setPortalEnabled, see lib/actions/portal-
+        // settings.ts) — a client accepting their invite after that point
+        // must be backfilled onto it, or their first visit to the portal's
+        // conversation view finds a channel with everyone but them in it.
+        // Guest invites don't get this: only a `client` role's project
+        // channel membership is this feature's concern. Deliberately does
+        // NOT create the channel here if the portal isn't enabled yet —
+        // channel creation stays a single decision point (portal-enable
+        // time), not two, so there is never a channel that exists only
+        // because someone happened to accept an invite first.
+        if (row.role === "client") {
+          const { data: projectRow } = await admin
+            .from("projects")
+            .select("portal_enabled")
+            .eq("id", row.invited_project_id)
+            .maybeSingle();
+
+          if (projectRow?.portal_enabled) {
+            const { error: ensureError } = await admin.rpc("ensure_project_channel_atomic", {
+              p_project_id: row.invited_project_id,
+              p_created_by: userId,
+            });
+            if (ensureError) {
+              logger.error("activateInvitedMemberships: failed to backfill client onto project channel", {
+                inviteId: row.id,
+                error: ensureError,
+              });
+            }
+          }
+        }
       }
     }
   }

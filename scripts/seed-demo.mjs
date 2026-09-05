@@ -87,6 +87,41 @@ function daysFromNow(n) {
   return d.toISOString().slice(0, 10);
 }
 
+function daysAgoTimestamp(n) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString();
+}
+
+// F116 (docs/client-portal-phase-2-plan.md item A): seeds a project's chat
+// channel via the same `ensure_project_channel_atomic` RPC the app itself
+// calls from setPortalEnabled/activateInvitedMemberships (never a hand-
+// rolled insert into `channels`, so this seed can never drift from what
+// the real onboarding path produces). Idempotent the same way the rest of
+// this script is idempotent: `main()` deletes the whole demo workspace
+// (cascading through `channels`/`channel_members`/`messages` via their
+// `workspace_id`/`channel_id` foreign keys) before every run, so there is
+// nothing here to de-duplicate against -- a second run recreates the
+// workspace, and therefore the channel and its messages, from scratch.
+async function seedProjectConversation({ projectId, ownerId, userIds, conversation }) {
+  if (!conversation || conversation.length === 0) return;
+
+  const { data: channelId, error: channelError } = await admin.rpc(
+    "ensure_project_channel_atomic",
+    { p_project_id: projectId, p_created_by: ownerId },
+  );
+  check(`ensure project channel ${projectId}`, { error: channelError });
+
+  const rows = conversation.map(({ username, daysAgo, text }) => ({
+    channel_id: channelId,
+    sender_id: userIds[username],
+    body_json: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+    body_text: text,
+    created_at: daysAgoTimestamp(daysAgo),
+  }));
+  check(`conversation messages for project ${projectId}`, await admin.from("messages").insert(rows));
+}
+
 // GoTrue's admin user list supports a `filter` query param (substring match
 // over email), which the JS SDK does not expose. Using it directly avoids
 // paging through every user in the project just to find one demo account.
@@ -224,6 +259,19 @@ const PROJECTS = [
     startInDays: -21,
     endInDays: 30,
     guestAccess: true, // the client account is added to this project
+    // F116 (docs/client-portal-phase-2-plan.md item A): a short, realistic
+    // conversation in the project's chat channel -- proves the portal's
+    // new Conversation view against real data rather than an empty state.
+    // `username: null` sender lines don't occur; every line is either a
+    // teammate or nina (the client). Timestamps are relative days-ago so
+    // re-seeding always reads as "recent" regardless of when it's run.
+    conversation: [
+      { username: "maja", daysAgo: 6, text: "Hi Nina — homepage hi-fi is up for review, and the about page just went live in staging. Both linked from the Pages tab whenever you have a minute." },
+      { username: "nina", daysAgo: 6, text: "Taking a look this afternoon, thank you! The about page staging link works great." },
+      { username: "nina", daysAgo: 5, text: "Left a couple of small notes as an approval on the homepage — mostly copy, nothing structural." },
+      { username: "maja", daysAgo: 5, text: "Got it, thank you — we'll turn those around today." },
+      { username: "luka", daysAgo: 2, text: "Heads up: homepage build is underway now that the hi-fi is approved. Should have something to look at in staging by end of week." },
+    ],
     // The last field is `clientVisible`: what the team has chosen to show
     // the client. Deliberately a MIX across every column rather than a
     // prefix of the list — a portal whose demo data is all-done renders a
@@ -338,6 +386,16 @@ const PROJECTS = [
     launched: true,
     guestAccess: true, // nina (client) is added to this project too -- F114
     clientUsername: "nina",
+    // F116: this project already launched, so its conversation reads as
+    // wrapped-up rather than mid-flight -- the same "recent" relative
+    // framing as Website Redesign's, just aimed at a warranty-period tone.
+    conversation: [
+      { username: "sasa", daysAgo: 12, text: "Loyalty program is fully live now — go-live checklist is closed out. Ping us here anytime during the warranty window if anything on the enrollment flow or ledger looks off." },
+      { username: "nina", daysAgo: 11, text: "Amazing work, thank you all. I'll flag anything I see here." },
+      { username: "nina", daysAgo: 3, text: "Quick one: a customer reported their points balance looked off after a return. Can someone take a look?" },
+      { username: "luka", daysAgo: 3, text: "On it — checking the ledger now." },
+      { username: "luka", daysAgo: 3, text: "Found it, was a rounding edge case on partial refunds. Fixed and deployed, her balance is corrected." },
+    ],
     // clientVisible mix, same rule as Website Redesign: the client-facing
     // work (program rules, enrollment UX, rewards catalogue, go-live) is
     // visible; the purely technical build (ledger schema) and the team's
@@ -2486,6 +2544,16 @@ async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberU
     if (spec.launched) {
       await seedLaunchedPortalData({ projectId: project.id, workspaceId, owner, userIds, taskIdByTitle });
       console.log(`  ✓ ${spec.name} — portal demo data (launched/finished, warranty, phases, approvals, deliverables, metrics, scope, decisions, links, accounts)`);
+    }
+
+    if (spec.conversation) {
+      await seedProjectConversation({
+        projectId: project.id,
+        ownerId: owner,
+        userIds,
+        conversation: spec.conversation,
+      });
+      console.log(`  ✓ ${spec.name} — conversation (${spec.conversation.length} messages)`);
     }
 
     if (spec.archive) {

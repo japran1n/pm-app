@@ -188,7 +188,7 @@ export async function addChannelMember(
 
   const { data: channelRow, error: channelError } = await admin
     .from("channels")
-    .select("id, workspace_id, kind")
+    .select("id, workspace_id, project_id, kind")
     .eq("id", parsed.data.channelId)
     .maybeSingle();
 
@@ -206,14 +206,33 @@ export async function addChannelMember(
   // A workspace-wide 'channel' (not a DM) that's visible to the caller via
   // active workspace membership may be self-joined even without an
   // existing channel_members row yet (auto-enroll / "browse and join" use
-  // case). Anything else (private channel someone else created without
-  // adding the caller, or any DM) requires the caller to already be a
-  // member before they can add anyone, including themselves.
+  // case) -- EXCEPT for a `client`, who has no reason to be browsing
+  // internal team channels at all (F116, docs/client-portal-phase-2-plan.md
+  // item A -- mirrors the same exclusion the
+  // `channels_select_members_or_workspace` RLS policy now enforces). A
+  // project-scoped channel additionally requires the caller to be an
+  // explicit `project_members` row for that project, not merely a visible
+  // (workspace-visibility) project -- same "only project members" decision
+  // as that policy, so a viewer who isn't on the project can't self-join a
+  // client's project channel either. Anything else (private channel
+  // someone else created without adding the caller, or any DM) requires
+  // the caller to already be a member before they can add anyone,
+  // including themselves.
   let callerMayAdd = !!callerMembership;
 
   if (!callerMayAdd && channelRow.kind === "channel" && userId === user.id) {
-    const membership = await requireActiveMembership(admin, channelRow.workspace_id, user.id);
-    callerMayAdd = membership.ok;
+    if (channelRow.project_id) {
+      const { data: projectMemberRow } = await admin
+        .from("project_members")
+        .select("user_id")
+        .eq("project_id", channelRow.project_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      callerMayAdd = !!projectMemberRow;
+    } else {
+      const membership = await requireActiveMembership(admin, channelRow.workspace_id, user.id);
+      callerMayAdd = membership.ok && membership.role !== "client";
+    }
   }
 
   if (!callerMayAdd) {

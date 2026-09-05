@@ -3254,6 +3254,10 @@ export type Database = {
         Args: { p_new_task_id: string; p_source_task_id: string }
         Returns: undefined
       }
+      ensure_project_channel_atomic: {
+        Args: { p_created_by: string; p_project_id: string }
+        Returns: string
+      }
       flag_assumption_atomic: {
         Args: { p_assumption_id: string; p_note: string }
         Returns: {
@@ -3380,6 +3384,10 @@ export type Database = {
       }
       is_active_workspace_member: {
         Args: { target_workspace_id: string }
+        Returns: boolean
+      }
+      is_channel_member: {
+        Args: { target_channel_id: string }
         Returns: boolean
       }
       is_done_status: {
