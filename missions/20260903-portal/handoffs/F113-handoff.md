@@ -27,9 +27,15 @@ client-visible pages of a portal-enabled project. — PASS, verified live:
   credential-shape refusal (page_links AND the retrofit onto project_links.url) and the shared
   kind vocabulary.
 - `npx vitest run components/portal/portal-link-strip.test.tsx components/portal/page-links-menu.test.tsx components/portal/pages-table.test.tsx` — 11/11 (pages-table's own pre-existing 6 tests untouched/still green, proving the new `linksByPageId` prop is backward-compatible).
-- Live curl against the dev server (see Commands run) confirms real markup: the topbar strip
-  renders `portal-link-strip-staging`/`portal-link-strip-live` chips, and every one of the six
-  seeded Website Redesign pages renders exactly one `page-links-menu-trigger`.
+- Live curl against the dev server, AFTER the coordinator's seed-data review and fix (see
+  Commands run), confirms real markup for both demo halves: Website Redesign's Pages route now
+  renders `portal-link-strip-figma`, `portal-link-strip-staging`, AND
+  `portal-link-strip-live-pending` (the honest pre-launch placeholder, no real `-live` chip); the
+  launched Northwind project carries a real `live` project_link plus two Page-type tasks each
+  with a `page_links` row of `kind: "live"`, confirmed via direct REST query since staff can only
+  reach a client-role project's portal view through "Preview as client" rather than a plain
+  dev-login. Every one of the six seeded Website Redesign pages still renders exactly one
+  `page-links-menu-trigger`.
 
 ## Files changed
 supabase/migrations/20261101020000_f113_page_links.sql
@@ -58,8 +64,14 @@ lib/supabase/database.types.ts (regenerated, additive only — includes page_lin
 `npm run db:apply -- supabase/migrations/20261101030000_f113b_link_kind_guard_execute_grant.sql` (0)
 `npm run db:gen-types` (0, run twice, final output clean)
 `npm run migrations:check` (0 — "No migration drift — all migrations present on remote.")
-`npm run seed:demo` (0, run TWICE in a row — both runs produced identical output and identical
-  `page_links` row count of 12 for Website Redesign, 2 per page × 6 pages — proving idempotency)
+`npm run seed:demo` (0, run TWICE in a row in the original pass — identical output, identical
+  `page_links` row count of 12 for Website Redesign; run TWICE AGAIN after the coordinator's seed
+  fix below — identical output both times)
+Direct Supabase REST queries after the seed fix confirming: Website Redesign's `project_links` =
+  `staging`(visible) + `figma`(now visible) + `analytics`(hidden), no `live` row; Northwind's
+  `project_links` still carries its pre-existing real `live` row; Northwind now has two Page-type
+  tasks ("Enrollment", "Rewards catalogue") each with one `page_links` row of `kind: "live",
+  client_visible: true`.
 `npx tsc --noEmit` (0)
 `npm run build` (0 — Turbopack build succeeded; see Notes for a transient unrelated failure)
 `npx vitest run tests/unit/f113-page-links-validation.test.ts tests/integration/f113-page-links-rls.test.ts components/portal/portal-link-strip.test.tsx components/portal/page-links-menu.test.tsx components/portal/pages-table.test.tsx tests/unit/server-client-boundary-imports.test.ts tests/unit/f022-project-accounts-credential-guard.test.ts` (0 — 46/46 passing)
@@ -127,18 +139,22 @@ lib/supabase/database.types.ts (regenerated, additive only — includes page_lin
   `missions/20260903-portal/validation-contract.md` and `plan.md`** if this phase-2 item is meant
   to be tracked by the normal contract/milestone process — I did not do this myself (worker,
   immutable-contract rule).
-- **Demo data nuance, not a defect:** `WEBSITE_LINKS` (pre-existing, F022's own seed data, NOT
-  touched by me) marks Website Redesign's project-level `live` link as `clientVisible: true` even
-  though the project hasn't launched (`target_launch_date` is 30 days out). This means the
-  topbar's "Not live yet" honest placeholder — which I built and unit-tested correctly (see
-  `portal-link-strip.test.tsx`) — will NOT be the state a screenshot of Website Redesign shows;
-  it'll show a real "Live site" chip instead, because the pre-existing seed row says the link
-  already exists. To see the "Not live yet" placeholder live, either seed a project with a
-  portal-enabled, un-launched state and NO `live`-kind `project_links` row, or temporarily delete
-  Website Redesign's `live` row. I did not change `WEBSITE_LINKS` myself since it predates this
-  feature and touching it risks contradicting an earlier feature's own demo narrative.
 - **item C ("What happens next")** and **item A (chat)** from the same plan doc remain entirely
   unimplemented — explicitly out of this feature's scope (item B only).
+- **`figma`'s per-link default stays opt-in (`client_visible` defaults `false` at the column
+  level, unchanged).** The coordinator asked whether this feature reverses that default; it
+  doesn't, and I didn't flip it silently. The seed now opts Website Redesign's own Figma row IN
+  explicitly (`clientVisible: true`), which is a per-project data decision, not a schema change —
+  `project_links_client_visible` still defaults `false` for every future link of every kind,
+  including `figma`, on every other project. If the product intent is "Figma should be
+  client-visible by default project-wide" rather than "this demo project happens to share it",
+  that's a genuine follow-up: either flip the column default (a one-line migration,
+  `alter table project_links alter column client_visible set default true` scoped somehow to
+  `kind = 'figma'` only — which the current schema can't express without a trigger, since a
+  column default can't vary by another column's value) or leave it opt-in and make the team-side
+  "Site" settings panel default the toggle ON specifically when `kind = 'figma'` is selected
+  (a UI-only change, no migration). I did neither — flagging both options rather than picking
+  silently, per the coordinator's own instruction.
 
 ## Blockers
 (none — Status is COMPLETE)
@@ -183,13 +199,24 @@ accommodate this, only the filename's timestamp component.
   `import type` from `lib/queries/page-links.ts` in client components; the one real runtime import
   is in the Server Component `pages/page.tsx`). By the time I re-ran the build a few minutes
   later it passed cleanly, presumably once F112's own worker fixed it.
-- **Screenshot suggestion for the user:** sign in as `nina@demo.test` (dev-login), open
-  `/portal/acme-studio/p/<Website Redesign's id>/pages` — you should see a "Links" column with a
-  small "Links" pill/button on every row; clicking it opens Figma + Staging for that page. Then
-  look at the sticky topbar (visible on that same page, not just "Your site") — it should show a
-  "Staging" chip and a "Live site" chip (see Out-of-scope work needed above for why it's "Live"
-  and not "Not live yet" on this particular demo project). For the team side, sign in as
-  `sasa@demo.test`, open the Website Redesign project's list/board view, open the "Homepage" task
-  — a "Page links" box should appear beneath the existing Page slug/order fields, with three rows
-  (Figma frame / Staging URL / Live URL) pre-filled for Figma and Staging, empty for Live, each
-  with its own "Client-visible" checkbox.
+- **Screenshot suggestion for the user (updated after the coordinator's seed review):**
+  1. Sign in as `nina@demo.test` (dev-login), open
+     `/portal/acme-studio/p/<Website Redesign's id>/pages`. The topbar should now show THREE
+     things: a "Figma" chip, a "Staging" chip, and a dashed "Not live yet" placeholder (NOT a real
+     "Live site" chip) — confirmed live via curl this round: the response markup contains
+     `portal-link-strip-figma`, `portal-link-strip-staging`, and
+     `portal-link-strip-live-pending`, with no `portal-link-strip-live` anywhere. The Pages table
+     itself should show one "Links" pill per row.
+  2. The launched project (`Northwind Loyalty App — Phase 1`) now has two real Page-type tasks
+     ("Enrollment", "Rewards catalogue"), each with a client-visible LIVE page link — confirmed via
+     a direct query against `page_links` this round (see Commands run). Staff can reach its portal
+     view only via "Preview as client" (nina/other client dev-logins aren't members of that
+     project by design) — sign in as `sasa@demo.test`, use "Preview as client" from that project's
+     settings, then open its own Pages route: the topbar should show a real "Live site" chip (not
+     the placeholder), and the two new page rows should each have a "Links" pill opening their own
+     live URL.
+  3. For the team side, sign in as `sasa@demo.test`, open the Website Redesign project's
+     list/board view, open the "Homepage" task — a "Page links" box should appear beneath the
+     existing Page slug/order fields, with three rows (Figma frame / Staging URL / Live URL)
+     pre-filled for Figma and Staging, empty for Live, each with its own "Client-visible"
+     checkbox.
