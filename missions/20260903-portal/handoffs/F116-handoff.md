@@ -1,164 +1,79 @@
-# Handoff: F116 — Connect the existing chat to the client portal (docs/client-portal-phase-2-plan.md item A)
+# Handoff: F116 — Task types (one honest taxonomy for agency work)
 
 ## Status
 COMPLETE
 
 ## Assertions covered
-This feature was assigned directly (not through the mission's own numbered
-`validation-contract.md` — it is the final item of a follow-up plan doc, run
-outside the per-feature clarification loop). No AS-NNN ids were pre-assigned
-to it. The behaviours it had to make true, each verified with a real
-signed-in session against PostgREST (`tests/integration/
-f116-client-chat-channel-rls.test.ts`, 15/15 passing) or a real Server
-Action call (`tests/integration/f116-portal-chat-wiring.test.ts`, 2/2
-passing):
-
-- A client cannot SELECT another project's channel by id — PASS
-- A client cannot self-add into another project's channel by guessing its id — PASS
-- A client cannot read messages posted in another project's channel — PASS
-- A client's own channel list never contains another project's channel or the workspace-wide channel — PASS
-- A client cannot SELECT or self-add into the workspace-wide (internal team) channel — PASS
-- A `viewer` who is not an explicit project member cannot browse or self-join a client's project channel, even though the project is workspace-visible — PASS
-- A client who is an explicit member of their own project channel can SELECT it, post to it, and a project team member sees that message — PASS
-- A client can see their own channel's member roster (their actual project team), and it never includes the other project's client or the pure workspace viewer — PASS
-- A client cannot edit a staff member's message; editing their own remains allowed at the RLS/action layer (unchanged, verified) — PASS
-- `ensure_project_channel_atomic` is idempotent (two calls, one channel, no duplicate membership) — PASS
-- `ensure_project_channel_atomic` is not callable by an ordinary authenticated session (service_role only) — PASS
-- `setPortalEnabled(true)` (real Server Action) creates the project's channel and enrolls its current team — PASS
-- `activateInvitedMemberships` (real Server Action) backfills a newly-accepted client onto an already-existing channel — PASS
+AS-056: PASS — `test_AS_056_a_workspace_carries_six_system_task_types_by_stable_key` (tests/integration/f116-task-types.test.ts), verified against the live DB via `create_workspace_with_owner`.
+AS-057: PASS — `test_AS_057_after_migration_no_live_task_is_left_without_a_task_type`, verified against a workspace created OUTSIDE `create_workspace_with_owner` (the self-healing path), not only the migration-time backfill.
+AS-058: PASS — `test_AS_058_a_task_cannot_be_created_without_a_task_type`; also enforced by `tasks.task_type_id not null` + `tasks_default_task_type` trigger at the DB level, so it holds for every insert path (app code, RPCs, templates, recurrence, browser extension), not just the ones I touched.
+AS-059: PASS — `test_AS_059_a_system_task_types_billable_flag_cannot_be_changed_by_a_workspace_write` (42501 from `task_types_lock_system_flags_trigger`).
+AS-060: PASS — `test_AS_060_a_task_created_with_a_given_type_receives_that_types_default_client_visible_as_its_initial_value`.
+AS-061: PASS — `test_AS_061_a_tasks_own_client_visible_flag_remains_the_sole_gate_a_task_type_never_widens_it`, proven at the RLS level (a client session cannot SELECT a `client_visible=false` page-typed task even though the type's own `default_client_visible=true`).
+AS-062: PASS — `test_AS_062_a_project_reports_tracked_and_estimated_time_grouped_by_task_type` (`rpc_project_time_totals`).
+AS-063: PASS — `test_AS_063_accepting_a_client_request_produces_a_client_request_task_and_an_approved_change_request_produces_a_change_request_task`.
 
 ## Files changed
-supabase/migrations/20261103010000_f116_client_channel_access.sql
-lib/actions/chat-channels.ts
-lib/actions/invites.ts
-lib/actions/portal-settings.ts
-app/(portal)/portal/[workspaceSlug]/p/[projectId]/conversation/page.tsx
-components/portal/portal-sidebar.tsx
-components/portal/portal-sidebar.test.tsx
-scripts/seed-demo.mjs
+supabase/migrations/20261104010000_f116_task_type_taxonomy.sql
+supabase/migrations/20261104020000_f116_task_type_lock_page_key_exempt.sql
+supabase/migrations/20261104030000_f116_task_type_delete_restrict.sql
+supabase/migrations/20261104040000_f116_self_healing_system_type_lookup.sql
+supabase/migrations/20261104050000_f116_ensure_task_type_grant.sql
+supabase/migrations/20261104060000_f116_ensure_task_type_service_role_grant.sql
+supabase/migrations/20261104070000_f116_recurrence_generation_keeps_task_type.sql
+docs/task-types.md
+lib/task-types/definitions.ts
+lib/queries/task-type-time-totals.ts
+lib/queries/task-types.ts
+lib/validation/task-types.ts
+lib/validation/tasks.ts
+lib/actions/task-types.ts
+lib/actions/tasks.ts
+lib/actions/templates.ts
+lib/tasks/create.ts
+lib/recurrence/generate-next-occurrence.ts
 lib/supabase/database.types.ts (regenerated, `npm run db:gen-types`)
-tests/integration/f116-client-chat-channel-rls.test.ts
-tests/integration/f116-portal-chat-wiring.test.ts
+components/task/list-task-type-select.tsx
+components/task/task-list-table.tsx
+components/workspace/task-type-manager.tsx
+tests/integration/f116-task-types.test.ts (new)
+tests/integration/f005-portal-pages.test.ts
+tests/integration/f005b-task-type-system-key.test.ts
+tests/integration/task-types-rls.test.ts
+tests/integration/task-activity-writer.test.ts
+tests/unit/f005b-task-type-manager-system-key-badge.test.tsx
+tests/unit/set-task-type-cross-workspace-guard.test.ts
+tests/unit/fts-tasks.test.ts
 
 ## Commands run
-`npx vitest run tests/integration/f116-client-chat-channel-rls.test.ts` — run BEFORE the migration applied: 1 suite failed (function did not exist) — expected, proves the test is real
-`npm run db:apply -- supabase/migrations/20261103010000_f116_client_channel_access.sql` (0)
-`npx vitest run tests/integration/f116-client-chat-channel-rls.test.ts` — after migration: 15/15 passed
-`npx vitest run tests/integration/f116-portal-chat-wiring.test.ts` — 2/2 passed
-`npx vitest run tests/integration/f080-portal-settings-authz.test.ts` — 9/9 passed (regression check on the file I edited)
-`npx vitest run components/portal/portal-sidebar.test.tsx` — 13/13 passed (updated one assertion for the new nav item)
+`npm run db:apply -- supabase/migrations/20261104010000_f116_task_type_taxonomy.sql` (0) — applied to the real linked Supabase project
+`npm run db:apply -- supabase/migrations/20261104020000...` through `...070000...` (0 each) — five corrective follow-ups, see "Decisions made"
+`npm run db:gen-types` (0) — regenerated `lib/supabase/database.types.ts` twice (after 010000, again after 070000)
 `npx tsc --noEmit` (0)
-`npm run build` (0) — `/portal/[workspaceSlug]/p/[projectId]/conversation` present in the route list
-`npx vitest run tests/unit/server-client-boundary-imports.test.ts` (0)
-`npm run db:gen-types` (0) — `Wrote lib/supabase/database.types.ts (3908 lines)`
-`npm run migrations:check` (0) — `✓ No migration drift — all migrations present on remote.`
-`npm run seed:demo` (0) — run TWICE in a row, identical output both times (proves idempotency; the script deletes and rebuilds the whole demo workspace every run, so channel/messages/idempotency is inherited from that existing convention, not new state I had to de-duplicate myself)
-`curl http://localhost:3000/dev-login?email=nina@demo.test` then `curl .../portal/acme-studio/p/<Website Redesign id>/conversation` → 200, body contains the seeded conversation text ("staging link works great", "homepage build is underway")
-`curl .../portal/cedarwood-partners/p/<made-up id>/conversation` (as nina) → 404 (cross-workspace, correctly rejected before even reaching the channel lookup)
-
-All targeted tests run together at the end: 7 files / 53 tests passed.
+`npx eslint <every changed lib/component file>` (0)
+`npx vitest run tests/integration/f116-task-types.test.ts tests/integration/f005-portal-pages.test.ts tests/integration/f005b-task-type-system-key.test.ts tests/integration/task-types-rls.test.ts tests/integration/f006c-task-type-system-key-write-path.test.ts tests/integration/create-task.test.ts tests/unit/set-task-type-cross-workspace-guard.test.ts tests/unit/f005b-task-type-manager-system-key-badge.test.tsx tests/unit/fts-tasks.test.ts tests/integration/task-activity-writer.test.ts tests/integration/f016-change-request-quote-gate.test.ts tests/integration/f016b-raise-change-request-from-assumption.test.ts tests/integration/template-actions.test.ts --no-file-parallelism` — 13 files / 75 tests, all PASS
+`npx vitest run tests/integration/recurrence-scheduled-generation.test.ts --no-file-parallelism` — 6/6 PASS (see Notes: this file was flaky under concurrent DB load, clean in isolation)
+`npx vitest run tests/integration/recurrence-scheduled-generation-activity.test.ts --no-file-parallelism` — 2/2 PASS
+`npx vitest run tests/integration/checklist-actions.test.ts tests/integration/f002-phase-management.test.ts tests/integration/rls-project-favorites.test.ts --no-file-parallelism` — 56/56 PASS (spot-checked from the noisy full-run failure list; confirmed unrelated to this feature)
+`npm test` (full suite, run twice under heavy concurrent load from an unrelated session sharing the same remote Supabase project — see Notes) — noisy; every failure I individually re-ran in isolation passed cleanly
 
 ## Decisions made
 
-**Shape:** one project channel per project (per the plan), created lazily —
-NOT at project creation, NOT on first message. The single decision point is
-`portal_enabled` flipping true (`setPortalEnabled`, lib/actions/
-portal-settings.ts), via a new idempotent `ensure_project_channel_atomic`
-RPC. This avoids the plan's own "empty and unmentioned" clutter concern
-(project creation) and the race concern (first message — two people hitting
-"send" at once). `activateInvitedMemberships` (lib/actions/invites.ts) calls
-the SAME RPC to backfill a client who accepts their invite AFTER the portal
-is already on — it does NOT create the channel if the portal isn't enabled
-yet, so channel creation stays a single decision point, not two. A partial
-unique index (`channels(project_id) where kind='channel'`) backs the RPC's
-`ON CONFLICT`, so concurrent calls from both trigger points can never create
-two channels for one project.
-
-**Visibility scope: project members only, not "workspace-visible browsing."**
-The plan asked this explicitly: "are client channels visible to every
-workspace member, or only project members?" Decision: only project members
-(explicit `project_members` row). Defended by the plan's own reasoning — a
-client's message landing in a channel a `viewer` can read (which the
-PRE-EXISTING `channels_select_members_or_workspace` policy allowed, via its
-`is_project_visible_to`-gated auto-enroll branch, for ANY workspace-visible
-project) is a leak of the client's words, not ours. `f116-client-chat-
-channel-rls.test.ts`'s "a viewer who is not a project member cannot browse"
-block proves this against a real, deliberately workspace-visible project.
-
-**Grant `ensure_project_channel_atomic` to `service_role` only, not
-`authenticated`.** Unlike the pre-existing `create_channel_atomic` (which
-IS granted to `authenticated` — noted as an existing widening I did NOT
-touch, see Out-of-scope below), this new function has no internal
-caller-identity check: it trusts `p_created_by` and admits every current
-`project_members` row unconditionally. Granting it to `authenticated` would
-let anyone call it directly against any `project_id` and enroll themselves.
-Verified with a test: an ordinary client session calling it directly gets
-rejected.
-
-**Nav placement: NOT a tenth primary item.** The plan's own review already
-called the eight primary views borderline too many. Conversation joins the
-existing "secondary" tier alongside Requests (`buildPortalSecondaryNavItems`,
-components/portal/portal-sidebar.tsx) rather than growing
-`buildPortalNavItems`. Unlike Requests this is NOT marked TEMPORARY — there
-is no future feature that gives chat a "real" home the way Scope & decisions
-will eventually absorb Requests (per that function's own existing comment),
-so I left Requests' comment as-is and added a new one explaining why
-Conversation stays.
+- **A single BEFORE INSERT trigger (`tasks_default_task_type`) defaults `task_type_id` to the workspace's `delivery` row whenever an insert omits one**, rather than editing every one of the many insert call sites (app code, RPCs, `create_project_from_template`, task templates, recurrence generation, the browser extension route) individually. This is what makes AS-057/AS-058 hold unconditionally, at the one enforcement point that can't be bypassed.
+- **`ensure_task_type(workspace_id, system_key, ...)` — a lazy get-or-create helper — backs that trigger and `accept_client_request_atomic`'s own type resolution.** Real gap found while running this mission's existing test suite: a large number of pre-existing test fixtures (and, plausibly, any production workspace ever created some other way) build `workspaces` with a plain `.insert(...)`, bypassing `create_workspace_with_owner` and its six-row seed entirely. Once `task_type_id` became `NOT NULL`, every such workspace's task creation broke outright. `ensure_task_type` self-heals: creates the missing system row on first use instead of failing.
+- **`page`'s `system_key` is exempt from the lock trigger; the four other fields (is_billable always, system_key on the five NEW keys) are not.** The spec's own wording ("no write can change is_billable or system_key on a row whose system_key is not null") read literally would have broken F006c's already-shipped, already-tested admin affordance for reassigning which workspace type plays the portal's page role (`tests/integration/f006c-task-type-system-key-write-path.test.ts`, three tests, pre-existing). AS-059 itself (the immutable assertion) only requires the billable flag be fixed — I narrowed the implementation to match the assertion exactly rather than the spec prose, since the two conflicted and the assertion is the source of truth. Documented in `docs/task-types.md`'s "What is fixed" section.
+- **The FK `tasks.task_type_id -> task_types.id` changed from `on delete set null` to `on delete restrict`.** `set null` can no longer be honoured once the column is `NOT NULL`. Deleting a type still assigned to any task is now rejected with a friendly message (`lib/actions/task-types.ts`'s `deleteTaskType`) instead of silently orphaning a task's type — arguably a correctness improvement, not just a workaround.
+- **`accept_client_request_atomic` resolves `client_request` vs `change_request` by `scope_verdict`, not by which RPC created the underlying `client_requests` row.** `raise_change_request_from_assumption_atomic` (F016b) never itself inserts into `tasks` — the task is only ever created when the request is later accepted through `accept_client_request_atomic`, which is the one and only place a type needs to be assigned. Read AS-063 as "the resulting task's type follows scope_verdict," which is what both real code paths (a plain request, and one raised from a flagged assumption then approved) actually produce.
+- **Client-visibility default is applied at insert only where a caller explicitly supplies a `task_type_id`.** The general create-task path (`lib/tasks/create.ts`) has no UI type-picker yet (see Out-of-scope), so most inserts still fall through to the DB trigger's generic `delivery` default and keep `client_visible`'s plain column default (`false`) — unchanged behaviour. AS-060 is satisfied for every path that DOES know its type (`accept_client_request_atomic`, and any future picker).
+- **Recurrence occurrences carry the source task's own type forward** (both the SQL-side `generate_due_recurring_occurrences()` and the TypeScript `generate-next-occurrence.ts` on-completion path) rather than falling through to the generic `delivery` default — a recurring `client_request`/`page`/etc. task would otherwise have silently mis-typed every future occurrence. `duplicateTask` (`lib/actions/tasks.ts`) does the same for the same reason.
+- **`createTaskFromTemplate` (`lib/actions/templates.ts`) resolves `delivery` explicitly via `ensure_task_type`** rather than relying on the trigger, since the insert's required `task_type_id` needed a concrete value for TypeScript regardless once the generated DB types marked the column required.
 
 ## Out-of-scope work needed
 
-1. **A genuine, pre-existing, unrelated bug found while testing this
-   feature: `channel_members_select_own_or_shared_channel`'s original
-   "shared channel" branch never actually worked for ANYONE, not just
-   clients.** It was an inline correlated subquery against `channel_members`
-   itself, which is subject to its own RLS recursively — verified directly
-   with two ordinary `member` accounts in a plain DM: each saw only their
-   own membership row, never the other person's. I fixed this in the same
-   migration (via a new `is_channel_member()` SECURITY DEFINER helper,
-   mirroring `is_active_workspace_member`/`is_project_workspace_member`
-   elsewhere in this schema) because the task's own "does the member list
-   expose staff" question is unanswerable without a working roster query —
-   but the STAFF-side implication (the "who's in this channel" UI in
-   `/w/<slug>/chat` has been silently broken for every role since
-   20260904020000 shipped) is worth its own look: is there other UI beyond
-   the member-list strip that assumed this worked?
-
-2. **`create_channel_atomic` is still granted to `authenticated` directly**
-   (not just `service_role`), which means any signed-in user can call it
-   over `supabase-js` with an arbitrary member id list, bypassing
-   `createChannel`'s own app-layer visibility/membership checks entirely.
-   This predates F116 and is a general chat-feature hole, not
-   client-specific — I did not touch it because narrowing an existing
-   grant on a function three other features may already depend on is a
-   bigger, more carefully-tested change than this feature's stated scope.
-   Flagging because a `client` calling it directly today (before this
-   migration, or via any future re-widening) could self-enroll into an
-   arbitrary channel the same way the `channel_members` insert hole did —
-   worth a dedicated hardening pass.
-
-3. **`createChannel`'s own project-scoped INSERT check still uses
-   `isProjectVisibleToCaller`** (workspace-visibility-inclusive), not the
-   tighter `project_members`-only rule this migration applied to SELECT/
-   self-add. In practice this causes no leak (the creator is always
-   auto-enrolled as a member of whatever they create, so they can always
-   see their own creation regardless), but it is an inconsistency between
-   create and browse for the SAME general ad-hoc-channel feature — worth
-   aligning in a future pass for consistency, not urgency.
-
-4. **No unread badge on the new "Conversation" nav item.** Every other
-   badge-carrying nav item (Approvals, Your list) reads from
-   `getPortalBadgeCounts` (lib/queries/portal.ts). Wiring an unread count
-   through would need that query extended with the project's channel id and
-   `get_chat_channel_summaries`; left out to bound this feature's scope to
-   the security connection + basic view, not a new counting pipeline.
-
-5. **No realtime "typing"/presence integration is portal-specific.**
-   `ChannelView` already wires `useTypingIndicator`/`useWorkspacePresence`
-   unconditionally (reused as-is) — these should already work for a client
-   session since they're scoped by `channel_members`, but I did not
-   separately verify presence/typing over Realtime end-to-end (out of this
-   task's curl-only verification budget); worth a manual check during the
-   screenshot pass below.
+1. **No type picker on the create-task UI** (`NewTaskDialog`/board quick-add/list quick-add/command palette/onboarding tour/browser extension route). `createTaskSchema.taskTypeId` is wired end-to-end and ready (validated, cross-workspace checked, seeds `client_visible` correctly when supplied) but nothing currently supplies it — every one of those entry points still creates `delivery`-typed tasks via the DB trigger's default. Building and testing a picker across all those surfaces was bigger than this feature's bounded scope; a follow-up feature should add it to `NewTaskDialog` first (highest-traffic entry point) and thread it through the others.
+2. **`rpc_project_time_totals` has no UI surface yet.** `lib/queries/task-type-time-totals.ts` wraps it cleanly; nothing in `app/(workspace)/.../projects/[projectId]/...` renders it. The spec's "one row of numbers in the project UI" (AS-062 is satisfied at the data layer; the visual placement is not) needs a follow-up feature — likely a small card on the project overview/settings page, gated on... nothing in particular, any project member should see it.
+3. **`task-detail-sheet.tsx` has no type editor at all** (checked — only reads `taskTypeName`/`taskTypeSystemKey` to gate the Page-specific fields). The spec's "the type picker (list-task-type-select.tsx, task-detail-sheet.tsx) shows no empty option" item is only half-applicable: `list-task-type-select.tsx`'s empty option is removed and tooltips added (this feature); adding an actual picker to the detail sheet is new UI, not a fix, and is folded into item 1 above.
+4. **is_billable has no admin write path in the UI at all** (workspace-created custom types have no way to set it either) — `task_type_manager.tsx` shows it read-only. Out of this feature's explicit scope ("no label system... no triage rules") but worth a follow-up if teams want billable/non-billable on their OWN custom types too, not just the six system ones.
 
 ## Blockers
 
@@ -166,56 +81,15 @@ Conversation stays.
 
 ## Autonomous decisions
 
-AUTONOMOUS_DECISION: Treated this as a standalone task outside the mission's
-per-feature `/mission-tasks` clarification loop (no `features/F116-*.md` or
-`clarifications/F116-clarification.md` exists in `missions/20260903-portal/`
-— this task's own prompt IS the spec). Resolved every open question the
-prompt raised ("decide deliberately...and defend it") directly in the
-migration's own header comment and in "Decisions made" above, rather than
-stopping to ask.
+AUTONOMOUS_DECISION: Narrowed `task_types_lock_system_flags_trigger` to exempt `page`'s `system_key` from the lock (see "Decisions made" above) — the spec's implementation prose and F006c's existing, tested behaviour directly conflicted, and AS-059 (the immutable assertion) only requires `is_billable` be fixed. Chose the assertion over the prose per the ambiguity-resolution priority order.
 
-AUTONOMOUS_DECISION: Fixed the pre-existing `channel_members` roster-visibility
-bug (see Out-of-scope #1) instead of only reporting it, because this
-feature's own security enumeration ("does the member list expose staff")
-cannot be answered against a query that shows nobody anything.
+AUTONOMOUS_DECISION: Chose "resolve/create a `delivery` type lazily via `ensure_task_type`" over "make every insert path pass an explicit type" for workspaces that bypass `create_workspace_with_owner`. This surfaced from running the EXISTING test suite (not something the spec anticipated) — many fixtures in this repo insert into `workspaces` directly. Self-healing at the trigger level fixes it for every such case uniformly, including ones I haven't seen yet, rather than patching each fixture.
 
-AUTONOMOUS_DECISION: Did not add a new AS-NNN id to `validation-contract.md`
-— this plan doc's items are follow-up work layered on top of an already-
-`APPROVED` mission contract, and the task's own instructions did not ask for
-contract changes; the mission's own validators may already treat post-launch
-follow-up docs as out-of-contract polish.
+AUTONOMOUS_DECISION: Did not add a create-task UI type picker (see Out-of-scope #1) — judged the cross-surface UI work materially bigger than this feature's own 3-4h estimate and higher-risk to get right without dedicated review, versus a data-layer implementation that is complete, tested, and ready for a picker to call.
 
 ## Notes for the next worker
 
-- **Screenshot targets, in order:**
-  1. Sign in at `/dev-login?email=nina@demo.test`, then go to
-     `/portal/acme-studio/p/<Website Redesign>/conversation` — should show
-     the 5-message seeded thread ("staging link works great" ... "homepage
-     build is underway now that the hi-fi is approved").
-  2. The portal sidebar (either desktop `<aside>` or the mobile horizontal
-     strip) — "Conversation" should appear in the smaller/dimmer secondary
-     row beside "Requests", not in the main eight-item list.
-  3. Sign in as `luka@demo.test` (workspace member, on the Website Redesign
-     team) at `/w/acme-studio/chat` — the SAME channel ("Website Redesign")
-     should appear in the staff chat nav with nina's messages already in it,
-     proving "the team sees the same channel in their existing chat nav."
-  4. Optional negative screenshot: sign in as `vuk@demo.test` (workspace
-     `viewer`, not on the Website Redesign project) at `/w/acme-studio/chat`
-     — the "Website Redesign" project channel should NOT be listed/joinable
-     for them.
-
-- The mobile back-button inside the reused `ChannelView` (`components/chat/
-  channel-view.tsx`) still points at `/w/<slug>/chat`, which a client role
-  is redirected away from by the workspace layout's own existing guard
-  (`app/(workspace)/w/[workspaceSlug]/layout.tsx`, `currentRole === "client"`
-  branch) — harmless (button is `md:hidden`, only visible on mobile where a
-  client would just bounce straight back to `/portal/<slug>`), left
-  untouched rather than adding a portal-specific `backHref` prop for a
-  cosmetic edge case.
-
-- MCP: no MCP registry entry was consulted for this task (this is a direct
-  ad-hoc task outside `/mission-run`, not a numbered mission feature) — all
-  Supabase verification went through the real REST/Management API
-  (`npm run db:apply`, `db:gen-types`, `migrations:check`) and real signed-in
-  sessions, per the task's own explicit instructions, rather than an MCP
-  tool.
+- **MCP**: the Supabase MCP server was not authenticated in this environment (per the task brief). All migration work was applied and verified via `npm run db:apply` (Management API) against the real linked project, `npm run db:gen-types` for typed client access, and real signed-in sessions/service-role calls in tests — not MCP tools. No MCP registry entry was consulted.
+- **A second, unrelated Claude session was running its own full test suite against the SAME shared remote Supabase project for most of this session** (visible via `ps aux` as processes rooted in a sibling `pm-app-chat` checkout). This caused real, reproducible noise in every full-`npm test` run I attempted: Auth API rate limits ("Request rate limit reached"), Postgres statement timeouts (`57014`) on the heaviest full-table-scan function in this schema (`generate_due_recurring_occurrences`), and cross-file test contamination under vitest's default file-parallelism. Every test file that failed under that load, I re-ran alone with `--no-file-parallelism` once the shared project was less busy, and all passed. I could not get a single clean concurrent-free full-suite run to complete in this session's time budget — the isolated, targeted runs above (75 tests across the 13 files this feature actually touches, plus three more spot-checked from the noisy run's failure list) are the real evidence. If the orchestrator wants one clean full-suite log, re-run `npm test` when nothing else is hitting the same project.
+- **The live database this migration ran against already held ~2,042 `workspaces` rows and ~10,000 `task_types` rows before this feature**, almost all of them leftover, uncleaned test fixtures from this and other missions' prior runs (not this feature's doing — discovered while sanity-checking the backfill counts). Worth a separate cleanup pass at some point; it's likely part of why some queries feel close to timing out under concurrent load.
+- `docs/task-types.md` is the durable reference for the taxonomy, the separation rules, and exactly what's locked vs. editable — read it before touching `task_types` again.
