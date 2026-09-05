@@ -130,3 +130,8 @@ AS-075: components/editor/rich-text-editor.tsx contains no raw control bytes, so
 AS-076: A chat message containing a bare URL is stored with a link mark that carries a usable href, regardless of whether the client editor already applied a link mark of its own.
 AS-077: A link mark that arrives carrying no usable href is repaired rather than skipped, so the resulting message renders as an anchor.
 AS-078: A message whose stored link mark has no href still renders its text safely with no anchor, and no href is invented for it on read.
+
+## Rich text crosses the server boundary as plain data (F123)
+
+AS-079: A chat message body is serialised to plain JSON on the client before it is passed to a server action, so no server-side code ever dots into a client reference.
+AS-080: Sending a message containing a URL completes without a runtime error and stores a link mark carrying that URL as its href.

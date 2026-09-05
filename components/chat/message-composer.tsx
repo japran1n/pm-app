@@ -25,7 +25,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { docFromPlainText } from "@/lib/comments/rich-text";
+import { docFromPlainText, toPlainJson } from "@/lib/comments/rich-text";
 import {
   uploadChatAttachment,
   removePendingChatAttachment,
@@ -133,7 +133,19 @@ export function MessageComposer({
   function submit() {
     if (!canSubmit || isPending || disabled || isUploading) return;
 
-    const bodyJson = useRichEditor ? richValueRef.current : docFromPlainText(plainValue.trim() || " ");
+    // F123: `richValueRef.current` is Tiptap's live JSONContent, whose
+    // nested `attrs` objects cross the sendMessage server-action boundary
+    // as temporary client references rather than plain data (React RSC
+    // behaviour) -- reading `.attrs.href` on the server then throws, and
+    // before that read existed the href was simply lost silently. Apply
+    // the same `toPlainJson` round-trip the comment composer and task
+    // description editor already use, HERE on the client before the
+    // value ever crosses the boundary -- doing it inside sendMessage
+    // itself (as before) is too late, since serialisation has to happen
+    // before, not after, the RSC boundary is crossed.
+    const bodyJson = useRichEditor
+      ? toPlainJson(richValueRef.current)
+      : docFromPlainText(plainValue.trim() || " ");
     const attachmentIds = pendingAttachments.map((a) => a.id);
 
     setError(null);
