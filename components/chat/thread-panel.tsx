@@ -159,6 +159,17 @@ export function ThreadPanel({
   // Faza A (BUG-2): `attachmentIds` used to be silently dropped here too
   // (same gap as ChannelView's handleSend) -- the composer only gets an
   // attach button at all once `channelId` is passed to it below.
+  //
+  // Bug fix (reported after the merge, duplicate thread replies): this
+  // used to blindly append `result.data` with no id check, unlike
+  // ChannelView's own handleSend. The realtime INSERT event for this
+  // exact message (useChatMessagesRealtime above) can arrive and get
+  // appended (it already deduped by id) BEFORE this awaited sendMessage
+  // call resolves -- realtime push is often faster than the HTTP
+  // round-trip back to the caller that sent it. When that race won, this
+  // function's own append had nothing guarding it from adding the same
+  // message a second time. Same `previous.some(...)` guard as
+  // ChannelView's handleSend closes it.
   async function handleSend(bodyJson: JSONContent, attachmentIds?: string[]) {
     const result = await sendMessage(channelId, bodyJson, parentMessageId, attachmentIds);
     if (!result.ok) {
@@ -166,6 +177,7 @@ export function ThreadPanel({
       return { ok: false, error: result.error };
     }
     setMessages((previous) => {
+      if (previous?.some((m) => m.id === result.data.id)) return previous;
       const next = previous ? [...previous, result.data as ChatMessage] : [result.data as ChatMessage];
       if (previous) {
         const replyCount = next.filter((m) => m.id !== parentMessageId).length;
