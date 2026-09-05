@@ -135,3 +135,11 @@ AS-078: A message whose stored link mark has no href still renders its text safe
 
 AS-079: A chat message body is serialised to plain JSON on the client before it is passed to a server action, so no server-side code ever dots into a client reference.
 AS-080: Sending a message containing a URL completes without a runtime error and stores a link mark carrying that URL as its href.
+
+## Authorization round-trip latency (F124)
+
+AS-081: Authorization checks that do not depend on one another run concurrently, reducing the number of sequential network round trips before a wrapped action's handler runs, with no check removed or weakened.
+AS-082: Every authorization refusal that held before this change still refuses, with the same error message, for every role and visibility combination already covered by tests.
+AS-083: A request resolves the caller's authenticated identity at most once, rather than once per call site.
+AS-084: The caller's identity is still established by the JWT-verifying user lookup; no unverified session read is substituted for it.
+AS-085: A representative set of server actions is measured before and after, and the recorded numbers show the reduction rather than asserting it.
