@@ -23,6 +23,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -75,7 +76,15 @@ describe.skipIf(!haveAdminCreds)("task_templates RLS (F181)", () => {
   let guestUserId: string;
   let otherWorkspaceUserId: string;
 
-  const password = "Test-password-1!";
+  // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+  // below is a slot index into the shared pool, not a fixed "role" — the
+  // actual role each plays is whatever this file's own workspace_members
+  // insert below gives it, scoped to this file's own workspaces.
+  const OWNER = 0;
+  const ADMIN = 1;
+  const MEMBER = 2;
+  const GUEST = 3;
+  const OTHER_WORKSPACE_USER = 4;
   let ownerClient: SupabaseClient;
   let adminMemberClient: SupabaseClient;
   let memberClient: SupabaseClient;
@@ -108,27 +117,13 @@ describe.skipIf(!haveAdminCreds)("task_templates RLS (F181)", () => {
       throw new Error(`Failed to create other workspace: ${otherWsErr?.message}`);
     otherWorkspaceId = otherWs.id;
 
-    async function createUser(label: string) {
-      const email = `f181-${label}-${uniqueSuffix}@example.com`;
-      const { data, error } = await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-      });
-      if (error || !data.user) throw new Error(`Failed to create ${label}: ${error?.message}`);
-      return { email, userId: data.user.id };
-    }
-
-    const owner = await createUser("owner");
-    ownerUserId = owner.userId;
-    const adminUser = await createUser("admin");
-    adminUserId = adminUser.userId;
-    const member = await createUser("member");
-    memberUserId = member.userId;
-    const guest = await createUser("guest");
-    guestUserId = guest.userId;
-    const otherWorkspaceUser = await createUser("otherws");
-    otherWorkspaceUserId = otherWorkspaceUser.userId;
+    // F126: pooled identities (see tests/helpers/auth.ts) — not deleted by
+    // this file's afterAll (see below).
+    ownerUserId = await poolUserId(OWNER);
+    adminUserId = await poolUserId(ADMIN);
+    memberUserId = await poolUserId(MEMBER);
+    guestUserId = await poolUserId(GUEST);
+    otherWorkspaceUserId = await poolUserId(OTHER_WORKSPACE_USER);
 
     const { error: membersErr } = await adminClient.from("workspace_members").insert([
       { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -144,18 +139,11 @@ describe.skipIf(!haveAdminCreds)("task_templates RLS (F181)", () => {
     ]);
     if (membersErr) throw new Error(`Failed to seed workspace members: ${membersErr.message}`);
 
-    async function signIn(email: string) {
-      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await client.auth.signInWithPassword({ email, password });
-      if (error) throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      return client;
-    }
-
-    ownerClient = await signIn(owner.email);
-    adminMemberClient = await signIn(adminUser.email);
-    memberClient = await signIn(member.email);
-    guestClient = await signIn(guest.email);
-    otherWorkspaceClient = await signIn(otherWorkspaceUser.email);
+    ownerClient = await getPoolSession(OWNER);
+    adminMemberClient = await getPoolSession(ADMIN);
+    memberClient = await getPoolSession(MEMBER);
+    guestClient = await getPoolSession(GUEST);
+    otherWorkspaceClient = await getPoolSession(OTHER_WORKSPACE_USER);
   });
 
   afterAll(async () => {
@@ -171,15 +159,10 @@ describe.skipIf(!haveAdminCreds)("task_templates RLS (F181)", () => {
         .eq("workspace_id", otherWorkspaceId);
       await adminClient.from("workspaces").delete().eq("id", otherWorkspaceId);
     }
-    for (const userId of [
-      ownerUserId,
-      adminUserId,
-      memberUserId,
-      guestUserId,
-      otherWorkspaceUserId,
-    ]) {
-      if (userId) await adminClient.auth.admin.deleteUser(userId);
-    }
+    // F126: ownerUserId/adminUserId/memberUserId/guestUserId/
+    // otherWorkspaceUserId are pooled identities (see
+    // tests/helpers/auth.ts) — never deleted by an individual file's
+    // afterAll.
   });
 
   // ---------------------------------------------------------------

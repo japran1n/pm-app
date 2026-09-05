@@ -20,6 +20,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -62,6 +63,15 @@ describe.skipIf(!haveAdminCreds)(
     const createdTaskIds: string[] = [];
 
     let workspaceId: string;
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
+    const OUTSIDER = 1;
+    // Not seeded into this file's workspace_members at all — used only to
+    // prove a caller with no membership row here sees nothing.
+    const STRANGER = 2;
     let ownerUserId: string;
     let outsiderUserId: string;
 
@@ -86,22 +96,10 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f218-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return data.user.id;
-      }
-
-      ownerUserId = await createUser("owner");
-      outsiderUserId = await createUser("outsider");
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      outsiderUserId = await poolUserId(OUTSIDER);
 
       const { error: memberErr } = await adminClient
         .from("workspace_members")
@@ -345,28 +343,9 @@ describe.skipIf(!haveAdminCreds)(
       if (!proj) throw new Error("Failed to create test project");
       createdProjectIds.push(proj.id);
 
-      // A second, unrelated workspace/outsider with no membership row on
-      // this workspace at all.
-      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const { data: strangerAuth, error: strangerErr } =
-        await adminClient.auth.admin.createUser({
-          email: `f218-stranger-${uniqueSuffix}@example.com`,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (strangerErr || !strangerAuth.user) {
-        throw new Error(`Failed to create stranger user: ${strangerErr?.message}`);
-      }
-      createdUserIds.push(strangerAuth.user.id);
-
-      const strangerClient = createClient(SUPABASE_URL!, ANON_KEY!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
-      const { error: signInErr } = await strangerClient.auth.signInWithPassword({
-        email: `f218-stranger-${uniqueSuffix}@example.com`,
-        password: "Test-password-1!",
-      });
-      expect(signInErr).toBeNull();
+      // F126: a pooled identity (see tests/helpers/auth.ts) with no
+      // membership row on this file's workspace at all.
+      const strangerClient = await getPoolSession(STRANGER);
 
       const { data: visible, error: selectErr } = await strangerClient
         .from("project_statuses")

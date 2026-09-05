@@ -35,6 +35,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -96,32 +97,31 @@ describe.skipIf(!haveAdminCreds)(
     let workspaceId: string;
     let projectId: string;
 
-    const password = "Test-password-1!";
-
-    let ownerEmail: string;
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
     let ownerUserId: string;
 
-    let leadEmail: string; // workspace role "member", project_members.role = "lead"
+    const LEAD = 1; // workspace role "member", project_members.role = "lead"
     let leadUserId: string;
 
-    let memberEmail: string; // workspace role "member", NOT a project lead
+    const MEMBER = 2; // workspace role "member", NOT a project lead
     let memberUserId: string;
 
-    let viewerEmail: string;
+    const VIEWER = 3;
     let viewerUserId: string;
 
-    let guestEmail: string;
+    const GUEST = 4;
     let guestUserId: string;
 
-    async function directClientFor(email: string) {
-      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await client.auth.signInWithPassword({ email, password });
-      if (error) throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      return client;
+    async function directClientFor(slot: number) {
+      return getPoolSession(slot);
     }
 
-    async function signInForActions(email: string) {
-      const client = await directClientFor(email);
+    async function signInForActions(slot: number) {
+      const client = await directClientFor(slot);
       currentTestClient = client as unknown as typeof currentTestClient;
     }
 
@@ -150,37 +150,13 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f327-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-        });
-        if (error || !data.user) throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        createdUserIds.push(data.user.id);
-        return { id: data.user.id, email };
-      }
-
-      const owner = await createUser("owner");
-      ownerUserId = owner.id;
-      ownerEmail = owner.email;
-
-      const lead = await createUser("lead");
-      leadUserId = lead.id;
-      leadEmail = lead.email;
-
-      const member = await createUser("member");
-      memberUserId = member.id;
-      memberEmail = member.email;
-
-      const viewer = await createUser("viewer");
-      viewerUserId = viewer.id;
-      viewerEmail = viewer.email;
-
-      const guest = await createUser("guest");
-      guestUserId = guest.id;
-      guestEmail = guest.email;
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      leadUserId = await poolUserId(LEAD);
+      memberUserId = await poolUserId(MEMBER);
+      viewerUserId = await poolUserId(VIEWER);
+      guestUserId = await poolUserId(GUEST);
 
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -245,7 +221,7 @@ describe.skipIf(!haveAdminCreds)(
       const { addColumn, updateColumn, reorderColumn, removeColumn } = await import(
         "@/lib/actions/statuses"
       );
-      await signInForActions(leadEmail);
+      await signInForActions(LEAD);
 
       const added = await addColumn({
         projectId,
@@ -308,7 +284,7 @@ describe.skipIf(!haveAdminCreds)(
     // ------------------------------------------------------------------
 
     it("AS-404/AS-414: a project lead can insert/update/reorder/delete a project_statuses row DIRECTLY under their own session", async () => {
-      const clientLead = await directClientFor(leadEmail);
+      const clientLead = await directClientFor(LEAD);
 
       const { data: inserted, error: insertErr } = await clientLead
         .from("project_statuses")
@@ -370,7 +346,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a workspace owner/admin can still add a column via the Server Action and directly", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInForActions(ownerEmail);
+      await signInForActions(OWNER);
 
       const viaAction = await addColumn({
         projectId,
@@ -380,7 +356,7 @@ describe.skipIf(!haveAdminCreds)(
       });
       expect(viaAction.ok).toBe(true);
 
-      const clientOwner = await directClientFor(ownerEmail);
+      const clientOwner = await directClientFor(OWNER);
       const { error: directErr } = await clientOwner.from("project_statuses").insert({
         project_id: projectId,
         name: `Owner Direct Column ${Date.now()}`,
@@ -399,7 +375,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a plain workspace member who is NOT a project lead cannot add a column via the Server Action; DB state unchanged", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInForActions(memberEmail);
+      await signInForActions(MEMBER);
 
       const result = await addColumn({
         projectId,
@@ -418,7 +394,7 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("AS-414: a plain workspace member who is NOT a project lead cannot insert a project_statuses row directly; DB state unchanged", async () => {
-      const clientMember = await directClientFor(memberEmail);
+      const clientMember = await directClientFor(MEMBER);
 
       const { error } = await clientMember.from("project_statuses").insert({
         project_id: projectId,
@@ -444,7 +420,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a viewer cannot add a column via the Server Action; DB state unchanged", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInForActions(viewerEmail);
+      await signInForActions(VIEWER);
 
       const result = await addColumn({
         projectId,
@@ -463,7 +439,7 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("AS-414: a viewer cannot insert a project_statuses row directly; DB state unchanged", async () => {
-      const clientViewer = await directClientFor(viewerEmail);
+      const clientViewer = await directClientFor(VIEWER);
 
       const { error } = await clientViewer.from("project_statuses").insert({
         project_id: projectId,
@@ -484,7 +460,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a guest cannot add a column via the Server Action; DB state unchanged", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInForActions(guestEmail);
+      await signInForActions(GUEST);
 
       const result = await addColumn({
         projectId,
@@ -503,7 +479,7 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     it("AS-414: a guest cannot insert a project_statuses row directly (even with an explicit project_members row); DB state unchanged", async () => {
-      const clientGuest = await directClientFor(guestEmail);
+      const clientGuest = await directClientFor(GUEST);
 
       const { error } = await clientGuest.from("project_statuses").insert({
         project_id: projectId,

@@ -11,6 +11,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -51,19 +52,19 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
   let otherWorkspaceId: string; // a workspace the owner below is NOT a member of
   let projectId: string;
 
-  let ownerEmail: string;
-  let viewerEmail: string;
-  let guestEmail: string;
-  const password = "Test-password-1!";
+  // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+  // below is a slot index into the shared pool, not a fixed "role" — the
+  // actual role each plays is whatever this file's own workspace_members
+  // insert below gives it, scoped to this file's own workspace.
+  const OWNER = 0;
+  const VIEWER = 1;
+  const GUEST = 2;
   let ownerUserId: string;
   let viewerUserId: string;
   let guestUserId: string;
 
-  async function signInAs(email: string, pwd: string) {
-    const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-    const { error } = await client.auth.signInWithPassword({ email, password: pwd });
-    if (error) throw new Error(`Failed to sign in ${email}: ${error.message}`);
-    return client;
+  async function signInAs(slot: number) {
+    return getPoolSession(slot);
   }
 
   beforeAll(async () => {
@@ -92,29 +93,11 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
     otherWorkspaceId = otherWs.id;
     createdWorkspaceIds.push(otherWorkspaceId);
 
-    async function createUser(label: string) {
-      const email = `f326-${label}-${uniqueSuffix}@example.com`;
-      const { data, error } = await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-      });
-      if (error || !data.user) throw new Error(`Failed to create ${label} user: ${error?.message}`);
-      createdUserIds.push(data.user.id);
-      return { id: data.user.id, email };
-    }
-
-    const owner = await createUser("owner");
-    ownerUserId = owner.id;
-    ownerEmail = owner.email;
-
-    const viewer = await createUser("viewer");
-    viewerUserId = viewer.id;
-    viewerEmail = viewer.email;
-
-    const guest = await createUser("guest");
-    guestUserId = guest.id;
-    guestEmail = guest.email;
+    // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+    // onto createdUserIds, so this file's afterAll never deletes them.
+    ownerUserId = await poolUserId(OWNER);
+    viewerUserId = await poolUserId(VIEWER);
+    guestUserId = await poolUserId(GUEST);
 
     const { error: memberErr } = await adminClient.from("workspace_members").insert([
       { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -168,7 +151,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
   // ---------------------------------------------------------------------
 
   it("AS-414: a signed-in viewer cannot INSERT a project_statuses row directly; DB state unchanged", async () => {
-    const clientViewer = await signInAs(viewerEmail, password);
+    const clientViewer = await signInAs(VIEWER);
 
     const { error } = await clientViewer.from("project_statuses").insert({
       project_id: projectId,
@@ -197,7 +180,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
       .single();
     expect(column).toBeTruthy();
 
-    const clientGuest = await signInAs(guestEmail, password);
+    const clientGuest = await signInAs(GUEST);
     // Postgres RLS convention for UPDATE: when `USING` passes but the new
     // row fails `WITH CHECK`, the write is rejected with a real error
     // for this table (the `is_project_workspace_admin` clause is also in
@@ -225,7 +208,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
       .single();
     expect(column).toBeTruthy();
 
-    const clientViewer = await signInAs(viewerEmail, password);
+    const clientViewer = await signInAs(VIEWER);
     await clientViewer.from("project_statuses").delete().eq("id", column!.id);
 
     const { data: after } = await adminClient
@@ -237,7 +220,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
   });
 
   it("AS-414: a signed-in workspace owner CAN insert/update/delete a project_statuses row directly", async () => {
-    const clientOwner = await signInAs(ownerEmail, password);
+    const clientOwner = await signInAs(OWNER);
 
     const { data: inserted, error: insertErr } = await clientOwner
       .from("project_statuses")
@@ -278,7 +261,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
   // ---------------------------------------------------------------------
 
   it("AS-434: an owner cannot PATCH their saved view's workspace_id into a workspace they aren't a member of; DB state unchanged", async () => {
-    const clientOwner = await signInAs(ownerEmail, password);
+    const clientOwner = await signInAs(OWNER);
 
     const { data: view, error: createErr } = await clientOwner
       .from("saved_views")
@@ -316,7 +299,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
   });
 
   it("AS-434: a legitimate update (rename, config change) by the owner still works", async () => {
-    const clientOwner = await signInAs(ownerEmail, password);
+    const clientOwner = await signInAs(OWNER);
 
     const { data: view, error: createErr } = await clientOwner
       .from("saved_views")
@@ -376,7 +359,7 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
       .eq("project_id", cascadeProjectId);
     expect(seededColumns?.length).toBeGreaterThan(0);
 
-    const clientOwner = await signInAs(ownerEmail, password);
+    const clientOwner = await signInAs(OWNER);
     const { error: viewErr } = await clientOwner.from("saved_views").insert({
       workspace_id: workspaceId,
       project_id: cascadeProjectId,

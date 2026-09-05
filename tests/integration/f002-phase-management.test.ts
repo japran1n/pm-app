@@ -12,6 +12,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -77,21 +78,22 @@ describe.skipIf(!haveAdminCreds)(
     let workspaceId: string;
     let projectId: string;
 
-    let ownerEmail: string;
-    const ownerPassword = "Test-password-1!";
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" —
+    // the actual role each plays is whatever this file's own
+    // workspace_members insert below gives it, scoped to this file's own
+    // workspace, so reuse of the same slot by other test files running
+    // concurrently is safe.
+    const OWNER = 0;
     let ownerUserId: string;
 
-    let viewerEmail: string; // workspace "viewer" — denied by withAuthz's default canWrite gate
-    const viewerPassword = "Test-password-1!";
-
-    let clientEmail: string; // workspace "client" — denied by every predicate this feature uses
-    const clientPassword = "Test-password-1!";
+    const VIEWER = 1; // workspace "viewer" — denied by withAuthz's default canWrite gate
+    const CLIENT = 2; // workspace "client" — denied by every predicate this feature uses
 
     // F006d: a workspace "member" who is NOT an explicit member of a
     // private project — the fixture bulkSetTaskPhase's private-project
     // gate needs, mirroring bulk-update-tasks.test.ts's AS-341 fixture.
-    let memberEmail: string;
-    const memberPassword = "Test-password-1!";
+    const MEMBER = 3;
     let privateProjectId: string;
 
     // F006j: a workspace "member" (not owner/admin, so the role
@@ -101,8 +103,7 @@ describe.skipIf(!haveAdminCreds)(
     // exercise `explicitMemberProjectIds` finding a hit, instead of the
     // owner, whose role alone bypasses the private-project check before
     // that lookup is ever consulted.
-    let explicitMemberEmail: string;
-    const explicitMemberPassword = "Test-password-1!";
+    const EXPLICIT_MEMBER = 4;
 
     // F006m: a workspace "guest" with NO explicit `project_members` row
     // on the shared `projectId` fixture (`visibility: "workspace"`) — the
@@ -111,16 +112,10 @@ describe.skipIf(!haveAdminCreds)(
     // gate both admit on a workspace-visible project, but the SQL
     // `is_project_visible_to` predicate excludes 'guest' from its
     // workspace-visibility branch entirely.
-    let guestEmail: string;
-    const guestPassword = "Test-password-1!";
+    const GUEST = 5;
 
-    async function signInAs(email: string, password: string) {
-      const signInClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await signInClient.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      }
-      currentTestClient = signInClient as unknown as typeof currentTestClient;
+    async function signInAs(slot: number) {
+      currentTestClient = (await getPoolSession(slot)) as unknown as typeof currentTestClient;
     }
 
     function signOut() {
@@ -151,46 +146,22 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f002-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return { id: data.user.id, email };
-      }
-
-      const owner = await createUser("owner");
-      ownerUserId = owner.id;
-      ownerEmail = owner.email;
-
-      const viewer = await createUser("viewer");
-      viewerEmail = viewer.email;
-
-      const clientUser = await createUser("client");
-      clientEmail = clientUser.email;
-
-      const member = await createUser("member");
-      memberEmail = member.email;
-
-      const explicitMember = await createUser("explicit-member");
-      explicitMemberEmail = explicitMember.email;
-
-      const guest = await createUser("guest");
-      guestEmail = guest.email;
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      const viewerId = await poolUserId(VIEWER);
+      const clientUserId = await poolUserId(CLIENT);
+      const memberId = await poolUserId(MEMBER);
+      const explicitMemberId = await poolUserId(EXPLICIT_MEMBER);
+      const guestId = await poolUserId(GUEST);
 
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
-        { workspace_id: workspaceId, user_id: viewer.id, role: "viewer", status: "active" },
-        { workspace_id: workspaceId, user_id: clientUser.id, role: "client", status: "active" },
-        { workspace_id: workspaceId, user_id: member.id, role: "member", status: "active" },
-        { workspace_id: workspaceId, user_id: explicitMember.id, role: "member", status: "active" },
-        { workspace_id: workspaceId, user_id: guest.id, role: "guest", status: "active" },
+        { workspace_id: workspaceId, user_id: viewerId, role: "viewer", status: "active" },
+        { workspace_id: workspaceId, user_id: clientUserId, role: "client", status: "active" },
+        { workspace_id: workspaceId, user_id: memberId, role: "member", status: "active" },
+        { workspace_id: workspaceId, user_id: explicitMemberId, role: "member", status: "active" },
+        { workspace_id: workspaceId, user_id: guestId, role: "guest", status: "active" },
       ]);
       if (memberInsertErr) throw new Error(`Failed to seed members: ${memberInsertErr.message}`);
 
@@ -242,7 +213,7 @@ describe.skipIf(!haveAdminCreds)(
       // describe.
       const { error: pmErr } = await adminClient.from("project_members").insert({
         project_id: privateProjectId,
-        user_id: explicitMember.id,
+        user_id: explicitMemberId,
         project_role: "member",
       });
       if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
@@ -274,7 +245,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-008: an owner can create a phase, and it persists to a fresh read", async () => {
       const { createPhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const result = await createPhase({
         projectId,
@@ -304,7 +275,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-008: an owner can rename a phase and change its state/dates/client-visibility, and it persists", async () => {
       const { createPhase, updatePhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await createPhase({ projectId, name: "Renamable phase" });
       expect(created.ok).toBe(true);
@@ -339,7 +310,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_F109_blocking_a_phase_with_no_reason_is_rejected_and_leaves_the_row_unchanged", async () => {
       const { createPhase, updatePhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await createPhase({ projectId, name: "Needs a reason to block" });
       expect(created.ok).toBe(true);
@@ -368,7 +339,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_F109_blocking_a_phase_with_a_reason_persists_it_and_the_portal_can_read_it_back", async () => {
       const { createPhase, updatePhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await createPhase({ projectId, name: "Blocked with a reason" });
       expect(created.ok).toBe(true);
@@ -399,7 +370,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-008: an owner can reorder two phases, and the swapped positions persist", async () => {
       const { createPhase, reorderPhases } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const first = await createPhase({ projectId, name: "Reorder A" });
       const second = await createPhase({ projectId, name: "Reorder B" });
@@ -425,7 +396,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-008: deleting a phase removes the row but unassigns (does not delete) its tasks", async () => {
       const { createPhase, deletePhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await createPhase({ projectId, name: "Deletable phase" });
       expect(created.ok).toBe(true);
@@ -479,7 +450,7 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       createdProjectIds.push(proj.id);
 
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
       const seeded = await seedDefaultPhases(proj.id);
       expect(seeded.ok).toBe(true);
 
@@ -507,7 +478,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-013: an owner can assign a task to a phase, and the assignment survives a fresh read", async () => {
       const { createPhase, setTaskPhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const phase = await createPhase({ projectId, name: "Assignment phase" });
       expect(phase.ok).toBe(true);
@@ -565,7 +536,7 @@ describe.skipIf(!haveAdminCreds)(
     it("test_AS_013_getTaskDetail_returns_the_phase_a_reload_would_show", async () => {
       const { createPhase, setTaskPhase } = await import("@/lib/actions/phases");
       const { getTaskDetail } = await import("@/lib/actions/tasks");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const phase = await createPhase({ projectId, name: "Read-path phase" });
       expect(phase.ok).toBe(true);
@@ -613,7 +584,7 @@ describe.skipIf(!haveAdminCreds)(
     it("test_AS_013_editTask_can_assign_a_phase_too_and_getTaskDetail_reflects_it", async () => {
       const { createPhase } = await import("@/lib/actions/phases");
       const { editTask, getTaskDetail } = await import("@/lib/actions/tasks");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const phase = await createPhase({ projectId, name: "editTask phase" });
       expect(phase.ok).toBe(true);
@@ -645,7 +616,7 @@ describe.skipIf(!haveAdminCreds)(
     it("test_AS_013_editTask_rejects_a_phase_belonging_to_a_different_project", async () => {
       const { createPhase } = await import("@/lib/actions/phases");
       const { editTask } = await import("@/lib/actions/tasks");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       // A phase that belongs to the PRIVATE project (a different project
       // than the task below), mirroring setTaskPhase's own cross-project
@@ -683,7 +654,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-013: bulkSetTaskPhase moves every selected task to the given phase in one call, and it persists", async () => {
       const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const phase = await createPhase({ projectId, name: "Bulk-move phase" });
       expect(phase.ok).toBe(true);
@@ -731,7 +702,7 @@ describe.skipIf(!haveAdminCreds)(
 
       // The phase must be created by the owner (an explicit private-project
       // member) so the phase itself exists in the private project.
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
       const phase = await createPhase({ projectId: privateProjectId, name: "Private phase" });
       expect(phase.ok).toBe(true);
       if (!phase.ok) return;
@@ -750,7 +721,7 @@ describe.skipIf(!haveAdminCreds)(
 
       // memberEmail is an active workspace member (passes canEditTask) but
       // has no project_members row for privateProjectId.
-      await signInAs(memberEmail, memberPassword);
+      await signInAs(MEMBER);
       const result = await bulkSetTaskPhase([task.id], phase.data.id);
 
       // Same partial-success shape as bulkUpdateTasks: the call itself
@@ -786,7 +757,7 @@ describe.skipIf(!haveAdminCreds)(
     // run against a deliberately broken `project_members` lookup.
     it("F006d/F006j: bulkSetTaskPhase still succeeds for a private-project task a non-owner caller IS an explicit member of", async () => {
       const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const phase = await createPhase({ projectId: privateProjectId, name: "Private phase, permitted" });
       expect(phase.ok).toBe(true);
@@ -808,7 +779,7 @@ describe.skipIf(!haveAdminCreds)(
       // admin) WITH an explicit project_members row for privateProjectId
       // (seeded in beforeAll) — the private-project gate must consult
       // explicitMemberProjectIds, find this row, and not reject.
-      await signInAs(explicitMemberEmail, explicitMemberPassword);
+      await signInAs(EXPLICIT_MEMBER);
       const result = await bulkSetTaskPhase([task.id], phase.data.id);
       expect(result.ok).toBe(true);
       if (!result.ok) return;
@@ -846,12 +817,7 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       createdProjectIds.push(proj.id);
 
-      const viewerClient = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error: signInErr } = await viewerClient.auth.signInWithPassword({
-        email: viewerEmail,
-        password: viewerPassword,
-      });
-      if (signInErr) throw new Error(`Failed to sign in viewer: ${signInErr.message}`);
+      const viewerClient = await getPoolSession(VIEWER);
 
       const { error: rpcError } = await viewerClient.rpc("seed_default_phases", {
         p_project_id: proj.id,
@@ -907,7 +873,7 @@ describe.skipIf(!haveAdminCreds)(
       });
       if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
 
-      await signInAs(memberEmail, memberPassword);
+      await signInAs(MEMBER);
       const memberClient = currentTestClient as unknown as SupabaseClient;
 
       const { error: rpcError } = await memberClient.rpc("seed_default_phases", {
@@ -945,7 +911,7 @@ describe.skipIf(!haveAdminCreds)(
       });
       if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
 
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
       const ownerClient = currentTestClient as unknown as SupabaseClient;
 
       const { error: rpcError } = await ownerClient.rpc("seed_default_phases", {
@@ -975,7 +941,7 @@ describe.skipIf(!haveAdminCreds)(
     // ------------------------------------------------------------------
 
     it("F006m: a guest with no explicit project_members row on a WORKSPACE-visible project can seed_default_phases over RPC, matching the Server Action's own gate", async () => {
-      await signInAs(guestEmail, guestPassword);
+      await signInAs(GUEST);
       const guestClient = currentTestClient as unknown as SupabaseClient;
 
       // Primary success test's counterpart: the guest can create a phase
@@ -1042,7 +1008,7 @@ describe.skipIf(!haveAdminCreds)(
       });
       if (pmErr) throw new Error(`Failed to seed project_members: ${pmErr.message}`);
 
-      await signInAs(guestEmail, guestPassword);
+      await signInAs(GUEST);
       const guestClient = currentTestClient as unknown as SupabaseClient;
 
       const { error: rpcError } = await guestClient.rpc("seed_default_phases", {
@@ -1064,8 +1030,8 @@ describe.skipIf(!haveAdminCreds)(
     // ------------------------------------------------------------------
 
     describe.each([
-      ["viewer", () => signInAs(viewerEmail, viewerPassword)],
-      ["client", () => signInAs(clientEmail, clientPassword)],
+      ["viewer", () => signInAs(VIEWER)],
+      ["client", () => signInAs(CLIENT)],
     ])("failure test: %s is rejected by every phase mutation action", (roleLabel, signIn) => {
       it(`${roleLabel} cannot create a phase; no row is inserted`, async () => {
         const { createPhase } = await import("@/lib/actions/phases");
@@ -1087,7 +1053,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it(`${roleLabel} cannot update a phase; it is genuinely unchanged`, async () => {
         const { createPhase, updatePhase } = await import("@/lib/actions/phases");
-        await signInAs(ownerEmail, ownerPassword);
+        await signInAs(OWNER);
         const created = await createPhase({ projectId, name: `${roleLabel} untouchable` });
         expect(created.ok).toBe(true);
         if (!created.ok) return;
@@ -1116,7 +1082,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it(`${roleLabel} cannot delete a phase; it is genuinely still present`, async () => {
         const { createPhase, deletePhase } = await import("@/lib/actions/phases");
-        await signInAs(ownerEmail, ownerPassword);
+        await signInAs(OWNER);
         const created = await createPhase({ projectId, name: `${roleLabel} guarded` });
         expect(created.ok).toBe(true);
         if (!created.ok) return;
@@ -1135,7 +1101,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it(`${roleLabel} cannot reorder phases; positions are genuinely unchanged`, async () => {
         const { createPhase, reorderPhases } = await import("@/lib/actions/phases");
-        await signInAs(ownerEmail, ownerPassword);
+        await signInAs(OWNER);
         const a = await createPhase({ projectId, name: `${roleLabel} reorder A` });
         const b = await createPhase({ projectId, name: `${roleLabel} reorder B` });
         expect(a.ok).toBe(true);
@@ -1183,7 +1149,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it(`${roleLabel} cannot assign a task to a phase; the task's phase is genuinely unchanged`, async () => {
         const { createPhase, setTaskPhase } = await import("@/lib/actions/phases");
-        await signInAs(ownerEmail, ownerPassword);
+        await signInAs(OWNER);
         const phase = await createPhase({ projectId, name: `${roleLabel} assignment phase` });
         expect(phase.ok).toBe(true);
         if (!phase.ok) return;
@@ -1214,7 +1180,7 @@ describe.skipIf(!haveAdminCreds)(
 
       it(`${roleLabel} cannot bulk-move tasks to a phase; every task's phase is genuinely unchanged`, async () => {
         const { createPhase, bulkSetTaskPhase } = await import("@/lib/actions/phases");
-        await signInAs(ownerEmail, ownerPassword);
+        await signInAs(OWNER);
         const phase = await createPhase({ projectId, name: `${roleLabel} bulk-denied phase` });
         expect(phase.ok).toBe(true);
         if (!phase.ok) return;

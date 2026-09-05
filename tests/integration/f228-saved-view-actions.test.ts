@@ -17,6 +17,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -84,27 +85,24 @@ describe.skipIf(!haveAdminCreds)(
     // the caller claims `otherWorkspaceId`) is rejected.
     let otherWorkspaceId: string;
 
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
     let ownerUserId: string;
 
-    let adminEmail: string; // workspace "admin" role — gets AS-430's admin exception
-    const adminPassword = "Test-password-1!";
+    const ADMIN = 1; // workspace "admin" role — gets AS-430's admin exception
     let adminUserId: string;
 
-    let memberAEmail: string; // owns the personal/shared views under test
-    const memberAPassword = "Test-password-1!";
+    const MEMBER_A = 2; // owns the personal/shared views under test
     let memberAUserId: string;
 
-    let memberBEmail: string; // plain member, NOT owner, NOT admin
-    const memberBPassword = "Test-password-1!";
+    const MEMBER_B = 3; // plain member, NOT owner, NOT admin
     let memberBUserId: string;
 
-    async function signInAs(email: string, password: string) {
-      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await client.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      }
-      currentTestClient = client as unknown as typeof currentTestClient;
+    async function signInAs(slot: number) {
+      currentTestClient = (await getPoolSession(slot)) as unknown as typeof currentTestClient;
     }
 
     function signOut() {
@@ -143,34 +141,12 @@ describe.skipIf(!haveAdminCreds)(
       otherWorkspaceId = otherWs.id;
       createdWorkspaceIds.push(otherWorkspaceId);
 
-      async function createUser(label: string) {
-        const email = `f228-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return { id: data.user.id, email };
-      }
-
-      const owner = await createUser("owner");
-      ownerUserId = owner.id;
-
-      const admin = await createUser("admin");
-      adminUserId = admin.id;
-      adminEmail = admin.email;
-
-      const memberA = await createUser("membera");
-      memberAUserId = memberA.id;
-      memberAEmail = memberA.email;
-
-      const memberB = await createUser("memberb");
-      memberBUserId = memberB.id;
-      memberBEmail = memberB.email;
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      adminUserId = await poolUserId(ADMIN);
+      memberAUserId = await poolUserId(MEMBER_A);
+      memberBUserId = await poolUserId(MEMBER_B);
 
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -227,7 +203,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_428_creating_a_view_and_reading_it_back_restores_filters_sort_and_grouping_exactly", async () => {
       const { createSavedView, getSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const config = {
         filters: [{ field: "status", operator: "eq", value: "in_progress" }],
@@ -265,7 +241,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_426_renaming_and_updating_a_views_config_persists_through_the_real_action", async () => {
       const { createSavedView, updateSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -298,7 +274,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_426_deleting_a_view_through_the_real_action_removes_the_real_row", async () => {
       const { createSavedView, deleteSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -327,7 +303,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_forged_workspace_id_project_id_mismatch_is_rejected_with_the_db_unchanged", async () => {
       const { createSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const { count: before } = await adminClient
         .from("saved_views")
@@ -370,7 +346,7 @@ describe.skipIf(!haveAdminCreds)(
       const { createSavedView, updateSavedView, deleteSavedView } = await import(
         "@/lib/actions/views"
       );
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -382,7 +358,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(adminEmail, adminPassword);
+      await signInAs(ADMIN);
 
       const updated = await updateSavedView({
         viewId: created.data.id,
@@ -407,7 +383,7 @@ describe.skipIf(!haveAdminCreds)(
       const { createSavedView, updateSavedView, deleteSavedView } = await import(
         "@/lib/actions/views"
       );
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -419,7 +395,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(memberBEmail, memberBPassword);
+      await signInAs(MEMBER_B);
 
       const updated = await updateSavedView({
         viewId: created.data.id,
@@ -442,7 +418,7 @@ describe.skipIf(!haveAdminCreds)(
       const { createSavedView, updateSavedView, deleteSavedView } = await import(
         "@/lib/actions/views"
       );
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -457,7 +433,7 @@ describe.skipIf(!haveAdminCreds)(
       // Even a workspace admin has no override for a PERSONAL view — the
       // "creator or admin" exception (AS-430) is scoped to shared views
       // only.
-      await signInAs(adminEmail, adminPassword);
+      await signInAs(ADMIN);
 
       const updated = await updateSavedView({
         viewId: created.data.id,
@@ -482,7 +458,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_431_setting_a_new_default_leaves_exactly_one_default_view_for_that_user_and_project", async () => {
       const { createSavedView, setDefaultSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const first = await createSavedView({
         workspaceId,
@@ -529,7 +505,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_431_only_a_shared_views_owner_can_set_it_as_their_own_default_not_an_admin", async () => {
       const { createSavedView, setDefaultSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -541,7 +517,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(adminEmail, adminPassword);
+      await signInAs(ADMIN);
       const result = await setDefaultSavedView(created.data.id);
       expect(result.ok).toBe(false);
 

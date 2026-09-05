@@ -21,6 +21,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -217,17 +218,12 @@ describe.skipIf(!haveAdminCreds)(
         // the number-assignment trigger, not RLS/FK author semantics —
         // but tasks.author_id is `not null references auth.users(id)`, so
         // a real user is needed to satisfy the FK.
-        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const { data: authorAuth, error: authorErr } =
-          await adminClient.auth.admin.createUser({
-            email: `f145-as259-${uniqueSuffix}@example.com`,
-            password: "Test-password-1!",
-            email_confirm: true,
-          });
-        if (authorErr || !authorAuth.user) {
-          throw new Error(`Failed to create author user: ${authorErr?.message}`);
-        }
-        const authorId = authorAuth.user.id;
+        // F126: pooled identity (see tests/helpers/auth.ts) — this
+        // author's real identity is irrelevant to what each test below
+        // proves (task-number assignment), only that it is a valid
+        // auth.users row to satisfy tasks.author_id's FK. Not deleted at
+        // the end of the test since it belongs to the shared pool.
+        const authorId = await poolUserId(0);
 
         const CONCURRENCY = 25;
 
@@ -270,24 +266,18 @@ describe.skipIf(!haveAdminCreds)(
           Array.from({ length: CONCURRENCY }, (_, i) => i + 1),
         );
 
-        await adminClient.auth.admin.deleteUser(authorId);
       }, 30000);
 
       it("test_AS_259_negative_the_unique_project_id_number_index_independently_rejects_a_forced_duplicate", async () => {
         const workspaceId = await seedWorkspace("F145 AS-259 Negative WS");
         const project = await seedProject(workspaceId, "Duplicate Guard");
 
-        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const { data: authorAuth, error: authorErr } =
-          await adminClient.auth.admin.createUser({
-            email: `f145-as259-neg-${uniqueSuffix}@example.com`,
-            password: "Test-password-1!",
-            email_confirm: true,
-          });
-        if (authorErr || !authorAuth.user) {
-          throw new Error(`Failed to create author user: ${authorErr?.message}`);
-        }
-        const authorId = authorAuth.user.id;
+        // F126: pooled identity (see tests/helpers/auth.ts) — this
+        // author's real identity is irrelevant to what each test below
+        // proves (task-number assignment), only that it is a valid
+        // auth.users row to satisfy tasks.author_id's FK. Not deleted at
+        // the end of the test since it belongs to the shared pool.
+        const authorId = await poolUserId(0);
 
         const { data: firstTask } = await adminClient
           .from("tasks")
@@ -308,7 +298,6 @@ describe.skipIf(!haveAdminCreds)(
 
         expect(error).not.toBeNull();
 
-        await adminClient.auth.admin.deleteUser(authorId);
       });
     });
 
@@ -320,17 +309,12 @@ describe.skipIf(!haveAdminCreds)(
         const workspaceId = await seedWorkspace("F145 AS-260 WS");
         const project = await seedProject(workspaceId, "Reuse Guard");
 
-        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const { data: authorAuth, error: authorErr } =
-          await adminClient.auth.admin.createUser({
-            email: `f145-as260-${uniqueSuffix}@example.com`,
-            password: "Test-password-1!",
-            email_confirm: true,
-          });
-        if (authorErr || !authorAuth.user) {
-          throw new Error(`Failed to create author user: ${authorErr?.message}`);
-        }
-        const authorId = authorAuth.user.id;
+        // F126: pooled identity (see tests/helpers/auth.ts) — this
+        // author's real identity is irrelevant to what each test below
+        // proves (task-number assignment), only that it is a valid
+        // auth.users row to satisfy tasks.author_id's FK. Not deleted at
+        // the end of the test since it belongs to the shared pool.
+        const authorId = await poolUserId(0);
 
         const { data: taskA } = await adminClient
           .from("tasks")
@@ -384,24 +368,18 @@ describe.skipIf(!haveAdminCreds)(
 
         expect(taskC!.number).toBeGreaterThan(taskB!.number);
 
-        await adminClient.auth.admin.deleteUser(authorId);
       });
 
       it("test_AS_260_projects_task_counter_never_decreases_across_deletes", async () => {
         const workspaceId = await seedWorkspace("F145 AS-260 Counter WS");
         const project = await seedProject(workspaceId, "Counter Guard");
 
-        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const { data: authorAuth, error: authorErr } =
-          await adminClient.auth.admin.createUser({
-            email: `f145-as260-counter-${uniqueSuffix}@example.com`,
-            password: "Test-password-1!",
-            email_confirm: true,
-          });
-        if (authorErr || !authorAuth.user) {
-          throw new Error(`Failed to create author user: ${authorErr?.message}`);
-        }
-        const authorId = authorAuth.user.id;
+        // F126: pooled identity (see tests/helpers/auth.ts) — this
+        // author's real identity is irrelevant to what each test below
+        // proves (task-number assignment), only that it is a valid
+        // auth.users row to satisfy tasks.author_id's FK. Not deleted at
+        // the end of the test since it belongs to the shared pool.
+        const authorId = await poolUserId(0);
 
         const { data: task } = await adminClient
           .from("tasks")
@@ -429,7 +407,6 @@ describe.skipIf(!haveAdminCreds)(
           .single();
         expect(counterAfter!.task_counter).toBe(counterBefore!.task_counter);
 
-        await adminClient.auth.admin.deleteUser(authorId);
       });
     });
 
@@ -457,17 +434,12 @@ describe.skipIf(!haveAdminCreds)(
         const workspaceId = await seedWorkspace("F145 AS-261 WS");
         const project = await seedProject(workspaceId, "Ordering Guard");
 
-        const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const { data: authorAuth, error: authorErr } =
-          await adminClient.auth.admin.createUser({
-            email: `f145-as261-${uniqueSuffix}@example.com`,
-            password: "Test-password-1!",
-            email_confirm: true,
-          });
-        if (authorErr || !authorAuth.user) {
-          throw new Error(`Failed to create author user: ${authorErr?.message}`);
-        }
-        const authorId = authorAuth.user.id;
+        // F126: pooled identity (see tests/helpers/auth.ts) — this
+        // author's real identity is irrelevant to what each test below
+        // proves (task-number assignment), only that it is a valid
+        // auth.users row to satisfy tasks.author_id's FK. Not deleted at
+        // the end of the test since it belongs to the shared pool.
+        const authorId = await poolUserId(0);
 
         // Sequential (not concurrent) inserts, same shape as the
         // row_number() over (partition by project_id order by
@@ -505,7 +477,6 @@ describe.skipIf(!haveAdminCreds)(
           );
         }
 
-        await adminClient.auth.admin.deleteUser(authorId);
       });
 
       it("test_AS_261_key_disambiguation_rule_is_deterministic_by_creation_order_same_rule_the_backfill_uses", async () => {

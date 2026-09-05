@@ -29,6 +29,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -123,24 +124,13 @@ describe.skipIf(!haveAdminCreds)("createSampleProject (F254: AS-494)", () => {
     workspaceId = ws.id;
     createdWorkspaceIds.push(workspaceId);
 
-    async function createUser(label: string) {
-      const email = `f254-${label}-${uniqueSuffix}@example.com`;
-      const { data, error } = await adminClient.auth.admin.createUser({
-        email,
-        password: "Test-password-1!",
-        email_confirm: true,
-      });
-      if (error || !data.user) {
-        throw new Error(`Failed to create ${label} user: ${error?.message}`);
-      }
-      createdUserIds.push(data.user.id);
-      return data.user.id;
-    }
-
-    ownerUserId = await createUser("owner");
-    memberUserId = await createUser("member");
-    viewerUserId = await createUser("viewer");
-    outsiderUserId = await createUser("outsider");
+    // F126: these four are pooled identities (see tests/helpers/auth.ts) —
+    // NOT pushed onto createdUserIds, so this file's afterAll never deletes
+    // them (they may be in use by other test files at the same time).
+    ownerUserId = await poolUserId(0);
+    memberUserId = await poolUserId(1);
+    viewerUserId = await poolUserId(2);
+    outsiderUserId = await poolUserId(3);
 
     const { error: memberInsertErr } = await adminClient
       .from("workspace_members")

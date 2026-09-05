@@ -23,6 +23,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -86,31 +87,27 @@ describe.skipIf(!haveAdminCreds)(
     let todoStatusId: string;
     let inProgressStatusId: string;
 
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
     let ownerUserId: string;
 
-    let memberAEmail: string; // owns the personal + shared views under test
-    const memberAPassword = "Test-password-1!";
+    const MEMBER_A = 1; // owns the personal + shared views under test
     let memberAUserId: string;
 
-    let memberBEmail: string; // another real member with project access
-    const memberBPassword = "Test-password-1!";
+    const MEMBER_B = 2; // another real member with project access
     let memberBUserId: string;
 
-    let memberCEmail: string; // a workspace member with NO access to this
+    const MEMBER_C = 3; // a workspace member with NO access to this
     // (private) project — used for the AS-429/AS-434 boundary test
-    const memberCPassword = "Test-password-1!";
     let memberCUserId: string;
 
-    let outsiderEmail: string; // not a member of the workspace at all
-    const outsiderPassword = "Test-password-1!";
+    const OUTSIDER = 4; // not a member of the workspace at all
 
-    async function signInAs(email: string, password: string) {
-      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await client.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      }
-      currentTestClient = client as unknown as typeof currentTestClient;
+    async function signInAs(slot: number) {
+      currentTestClient = (await getPoolSession(slot)) as unknown as typeof currentTestClient;
     }
 
     function signOut() {
@@ -138,37 +135,12 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f229-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return { id: data.user.id, email };
-      }
-
-      const owner = await createUser("owner");
-      ownerUserId = owner.id;
-
-      const memberA = await createUser("membera");
-      memberAUserId = memberA.id;
-      memberAEmail = memberA.email;
-
-      const memberB = await createUser("memberb");
-      memberBUserId = memberB.id;
-      memberBEmail = memberB.email;
-
-      const memberC = await createUser("memberc");
-      memberCUserId = memberC.id;
-      memberCEmail = memberC.email;
-
-      const outsider = await createUser("outsider");
-      outsiderEmail = outsider.email;
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      memberAUserId = await poolUserId(MEMBER_A);
+      memberBUserId = await poolUserId(MEMBER_B);
+      memberCUserId = await poolUserId(MEMBER_C);
 
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -273,7 +245,7 @@ describe.skipIf(!haveAdminCreds)(
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
       const { resolveListViewFilters } = await import("@/lib/views/resolve-view");
 
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -294,7 +266,7 @@ describe.skipIf(!haveAdminCreds)(
       const tasksForA = await getProjectListTasks(projectId, resolvedForA.filters, resolvedForA.sort);
 
       // memberB opens the SAME url (viewId) as a DIFFERENT real member.
-      await signInAs(memberBEmail, memberBPassword);
+      await signInAs(MEMBER_B);
       const opened = await getSavedView(created.data.id);
       expect(opened.ok).toBe(true);
       if (!opened.ok) return;
@@ -317,7 +289,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_429_a_member_without_project_access_is_refused_a_shared_views_link_without_confirming_it_exists", async () => {
       const { createSavedView, getSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -331,7 +303,7 @@ describe.skipIf(!haveAdminCreds)(
 
       // memberC is an active WORKSPACE member but has no project_members
       // row on this PRIVATE project.
-      await signInAs(memberCEmail, memberCPassword);
+      await signInAs(MEMBER_C);
       const opened = await getSavedView(created.data.id);
       expect(opened.ok).toBe(false);
       if (opened.ok) return;
@@ -342,7 +314,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_434_a_link_to_someone_elses_personal_view_is_refused_without_confirming_it_exists", async () => {
       const { createSavedView, getSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -355,7 +327,7 @@ describe.skipIf(!haveAdminCreds)(
 
       // memberB DOES have access to the project itself, but this is a
       // PERSONAL view — access to the project is irrelevant.
-      await signInAs(memberBEmail, memberBPassword);
+      await signInAs(MEMBER_B);
       const opened = await getSavedView(created.data.id);
       expect(opened.ok).toBe(false);
       if (opened.ok) return;
@@ -364,7 +336,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("test_AS_429_an_outsider_with_no_workspace_membership_cannot_open_the_link_either", async () => {
       const { createSavedView, getSavedView } = await import("@/lib/actions/views");
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -375,7 +347,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(outsiderEmail, outsiderPassword);
+      await signInAs(OUTSIDER);
       const opened = await getSavedView(created.data.id);
       expect(opened.ok).toBe(false);
     });
@@ -389,7 +361,7 @@ describe.skipIf(!haveAdminCreds)(
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
       const { resolveListViewFilters } = await import("@/lib/views/resolve-view");
 
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       // A throwaway status that this view will filter by, then gets
       // deleted out from under the view — the exact dangling-reference
@@ -464,7 +436,7 @@ describe.skipIf(!haveAdminCreds)(
       const { getProjectListTasks } = await import("@/lib/queries/tasks");
       const { resolveListViewFilters } = await import("@/lib/views/resolve-view");
 
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const created = await createSavedView({
         workspaceId,
@@ -536,7 +508,7 @@ describe.skipIf(!haveAdminCreds)(
       const { createSavedView, setDefaultSavedView } = await import("@/lib/actions/views");
       const { getMyDefaultSavedView } = await import("@/lib/queries/views");
 
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
 
       const none = await getMyDefaultSavedView(projectId, "list");
       expect(none).toBeNull();
@@ -558,7 +530,7 @@ describe.skipIf(!haveAdminCreds)(
 
       // memberB has never set a default of their own — resolves to null,
       // never memberA's.
-      await signInAs(memberBEmail, memberBPassword);
+      await signInAs(MEMBER_B);
       const forB = await getMyDefaultSavedView(projectId, "list");
       expect(forB).toBeNull();
     });
@@ -567,7 +539,7 @@ describe.skipIf(!haveAdminCreds)(
       const { createSavedView } = await import("@/lib/actions/views");
       const { listSavedViewsForProject } = await import("@/lib/queries/views");
 
-      await signInAs(memberAEmail, memberAPassword);
+      await signInAs(MEMBER_A);
       const created = await createSavedView({
         workspaceId,
         projectId,
@@ -577,7 +549,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(memberBEmail, memberBPassword);
+      await signInAs(MEMBER_B);
       const list = await listSavedViewsForProject(projectId, "list");
       const found = list.find((v) => v.id === created.data.id);
       expect(found).toBeDefined();

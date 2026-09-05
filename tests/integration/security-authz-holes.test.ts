@@ -23,6 +23,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -53,8 +54,6 @@ if (process.env.CI && !haveAdminCreds) {
   );
 }
 
-const PASSWORD = "Test-password-1!";
-
 describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
   let adminClient: SupabaseClient;
   const createdWorkspaceIds: string[] = [];
@@ -77,26 +76,21 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
     }
   });
 
-  async function createUser(prefix: string) {
-    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const email = `sec-audit-${prefix}-${uniqueSuffix}@example.com`;
-    const { data, error } = await adminClient.auth.admin.createUser({
-      email,
-      password: PASSWORD,
-      email_confirm: true,
-    });
-    if (error || !data.user) {
-      throw new Error(`Failed to create test user: ${error?.message}`);
-    }
-    createdUserIds.push(data.user.id);
-    return { userId: data.user.id, email };
+  // F126: pooled identities (see tests/helpers/auth.ts) — reused across
+  // every `it` below instead of a fresh user per hole; each `it` seeds its
+  // own workspace, so reusing the same slot across `it`s is safe. NOT
+  // pushed onto createdUserIds, so this file's afterAll never deletes
+  // them.
+  const OWNER = 0;
+  const VIEWER = 1;
+  const GUEST = 2;
+
+  async function poolUser(slot: number) {
+    return { userId: await poolUserId(slot) };
   }
 
-  async function signIn(email: string) {
-    const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-    const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
-    if (error) throw new Error(`Failed to sign in ${email}: ${error.message}`);
-    return client;
+  async function signIn(slot: number) {
+    return getPoolSession(slot);
   }
 
   async function createWorkspace() {
@@ -130,12 +124,12 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
   // ---------------------------------------------------------------------
   it("hole 1: a viewer CANNOT call transfer_workspace_ownership directly via RPC to take over their own workspace", async () => {
     const workspace = await createWorkspace();
-    const owner = await createUser("h1-owner");
-    const viewer = await createUser("h1-viewer");
+    const owner = await poolUser(OWNER);
+    const viewer = await poolUser(VIEWER);
     const ownerMembershipId = await seedMember(workspace.id, owner.userId, "owner");
     await seedMember(workspace.id, viewer.userId, "viewer");
 
-    const viewerClient = await signIn(viewer.email);
+    const viewerClient = await signIn(VIEWER);
 
     const { error } = await viewerClient.rpc("transfer_workspace_ownership", {
       p_workspace_id: workspace.id,
@@ -161,12 +155,12 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
   // ---------------------------------------------------------------------
   it("hole 2: a viewer CANNOT call remove_workspace_member directly via RPC to evict another member", async () => {
     const workspace = await createWorkspace();
-    const owner = await createUser("h2-owner");
-    const viewer = await createUser("h2-viewer");
+    const owner = await poolUser(OWNER);
+    const viewer = await poolUser(VIEWER);
     await seedMember(workspace.id, owner.userId, "owner");
     const viewerMembershipId = await seedMember(workspace.id, viewer.userId, "viewer");
 
-    const viewerClient = await signIn(viewer.email);
+    const viewerClient = await signIn(VIEWER);
 
     const { error } = await viewerClient.rpc("remove_workspace_member", {
       p_membership_id: viewerMembershipId,
@@ -188,10 +182,10 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
   // ---------------------------------------------------------------------
   it("hole 3: a viewer CANNOT call change_workspace_slug_atomic directly via RPC to rename the workspace", async () => {
     const workspace = await createWorkspace();
-    const viewer = await createUser("h3-viewer");
+    const viewer = await poolUser(VIEWER);
     await seedMember(workspace.id, viewer.userId, "viewer");
 
-    const viewerClient = await signIn(viewer.email);
+    const viewerClient = await signIn(VIEWER);
 
     const { error } = await viewerClient.rpc("change_workspace_slug_atomic", {
       p_workspace_id: workspace.id,
@@ -214,8 +208,8 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
   // ---------------------------------------------------------------------
   it("hole 4: a guest CANNOT write (insert a comment on) a task in a project they were never added to", async () => {
     const workspace = await createWorkspace();
-    const owner = await createUser("h4-owner");
-    const guest = await createUser("h4-guest");
+    const owner = await poolUser(OWNER);
+    const guest = await poolUser(GUEST);
     await seedMember(workspace.id, owner.userId, "owner");
     await seedMember(workspace.id, guest.userId, "guest");
 
@@ -234,7 +228,7 @@ describe.skipIf(!haveAdminCreds)("security audit: authorization holes", () => {
       .single();
     if (taskErr || !task) throw new Error(`task seed failed: ${taskErr?.message}`);
 
-    const guestClient = await signIn(guest.email);
+    const guestClient = await signIn(GUEST);
 
     const { error } = await guestClient.from("comments").insert({
       task_id: task.id,

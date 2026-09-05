@@ -26,6 +26,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -87,25 +88,21 @@ describe.skipIf(!haveAdminCreds)(
     let workspaceId: string;
     let projectId: string;
 
-    let ownerEmail: string;
-    const ownerPassword = "Test-password-1!";
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
     let ownerUserId: string;
 
-    let memberEmail: string; // active workspace member, NOT project lead, NOT admin
-    const memberPassword = "Test-password-1!";
+    const MEMBER = 1; // active workspace member, NOT project lead, NOT admin
     let memberUserId: string;
 
-    let viewerEmail: string; // workspace "viewer" role — explicitly denied by canManageColumns
-    const viewerPassword = "Test-password-1!";
+    const VIEWER = 2; // workspace "viewer" role — explicitly denied by canManageColumns
     let viewerUserId: string;
 
-    async function signInAs(email: string, password: string) {
-      const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-      const { error } = await client.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw new Error(`Failed to sign in ${email}: ${error.message}`);
-      }
-      currentTestClient = client as unknown as typeof currentTestClient;
+    async function signInAs(slot: number) {
+      currentTestClient = (await getPoolSession(slot)) as unknown as typeof currentTestClient;
     }
 
     function signOut() {
@@ -133,31 +130,11 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f219-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return { id: data.user.id, email };
-      }
-
-      const owner = await createUser("owner");
-      ownerUserId = owner.id;
-      ownerEmail = owner.email;
-
-      const member = await createUser("member");
-      memberUserId = member.id;
-      memberEmail = member.email;
-
-      const viewer = await createUser("viewer");
-      viewerUserId = viewer.id;
-      viewerEmail = viewer.email;
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(OWNER);
+      memberUserId = await poolUserId(MEMBER);
+      viewerUserId = await poolUserId(VIEWER);
 
       const { error: memberInsertErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -209,7 +186,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-404/AS-405: an admin can add a board column with a colour and a category", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const result = await addColumn({
         projectId,
@@ -236,7 +213,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-404: an admin can rename a column, and the new name persists to a fresh read", async () => {
       const { addColumn, updateColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -267,7 +244,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-404: an admin can reorder a column, persisting a new position value", async () => {
       const { addColumn, reorderColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -294,7 +271,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-404: an admin can remove an empty column, and it is genuinely gone from the DB", async () => {
       const { addColumn, removeColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -318,7 +295,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-404 negative: removing a column that still has tasks is rejected, and no task is orphaned", async () => {
       const { addColumn, removeColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -373,7 +350,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a plain member (not owner/admin/lead) cannot add a column; the Server Action itself rejects it", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInAs(memberEmail, memberPassword);
+      await signInAs(MEMBER);
 
       const before = await adminClient
         .from("project_statuses")
@@ -398,7 +375,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a workspace viewer cannot rename a column; the column is genuinely unchanged", async () => {
       const { addColumn, updateColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -409,7 +386,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(viewerEmail, viewerPassword);
+      await signInAs(VIEWER);
       const result = await updateColumn({
         columnId: created.data.id,
         name: "Hacked name",
@@ -428,7 +405,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-414: a plain member cannot remove a column; it is genuinely still present", async () => {
       const { addColumn, removeColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,
@@ -439,7 +416,7 @@ describe.skipIf(!haveAdminCreds)(
       expect(created.ok).toBe(true);
       if (!created.ok) return;
 
-      await signInAs(memberEmail, memberPassword);
+      await signInAs(MEMBER);
       const result = await removeColumn(created.data.id);
       expect(result.ok).toBe(false);
 
@@ -492,7 +469,7 @@ describe.skipIf(!haveAdminCreds)(
       const lastColumnId = remaining![0].id;
 
       const { removeColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
       const result = await removeColumn(lastColumnId);
       expect(result.ok).toBe(false);
 
@@ -558,7 +535,7 @@ describe.skipIf(!haveAdminCreds)(
 
     it("critical known issue: renaming a column to a custom name and moving a task into it succeeds (tasks.status CHECK no longer limited to the fixed four)", async () => {
       const { addColumn } = await import("@/lib/actions/statuses");
-      await signInAs(ownerEmail, ownerPassword);
+      await signInAs(OWNER);
 
       const created = await addColumn({
         projectId,

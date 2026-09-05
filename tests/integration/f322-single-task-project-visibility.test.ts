@@ -32,6 +32,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -124,23 +125,11 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      async function createUser(label: string) {
-        const email = `f322-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-        if (error || !data.user) {
-          throw new Error(`Failed to create ${label} user: ${error?.message}`);
-        }
-        createdUserIds.push(data.user.id);
-        return data.user.id;
-      }
-
-      ownerUserId = await createUser("owner");
-      insiderUserId = await createUser("insider");
-      outsiderUserId = await createUser("outsider");
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      ownerUserId = await poolUserId(0);
+      insiderUserId = await poolUserId(1);
+      outsiderUserId = await poolUserId(2);
 
       const { error: memberInsertErr } = await adminClient
         .from("workspace_members")

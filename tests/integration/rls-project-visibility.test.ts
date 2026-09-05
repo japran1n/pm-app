@@ -26,6 +26,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -65,10 +66,13 @@ describe.skipIf(!haveAdminCreds)(
     let ownerUserId: string;
     let memberUserId: string;
     let outsiderUserId: string;
-    let ownerEmail: string;
-    let memberEmail: string;
-    let outsiderEmail: string;
-    const password = "Test-password-1!";
+    // F126: pooled identities (see tests/helpers/auth.ts). Each constant
+    // below is a slot index into the shared pool, not a fixed "role" — the
+    // actual role each plays is whatever this file's own workspace_members
+    // insert below gives it, scoped to this file's own workspace.
+    const OWNER = 0;
+    const MEMBER = 1;
+    const OUTSIDER = 2;
     let ownerClient: SupabaseClient;
     let memberClient: SupabaseClient;
     let outsiderClient: SupabaseClient;
@@ -99,28 +103,11 @@ describe.skipIf(!haveAdminCreds)(
       if (wsErr || !ws) throw new Error(`Failed to create workspace: ${wsErr?.message}`);
       workspaceId = ws.id;
 
-      async function createUser(label: string) {
-        const email = `f132-${label}-${uniqueSuffix}@example.com`;
-        const { data, error } = await adminClient.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-        });
-        if (error || !data.user) throw new Error(`Failed to create ${label}: ${error?.message}`);
-        return { email, userId: data.user.id };
-      }
-
-      const owner = await createUser("owner");
-      ownerEmail = owner.email;
-      ownerUserId = owner.userId;
-
-      const member = await createUser("member");
-      memberEmail = member.email;
-      memberUserId = member.userId;
-
-      const outsider = await createUser("outsider");
-      outsiderEmail = outsider.email;
-      outsiderUserId = outsider.userId;
+      // F126: pooled identities (see tests/helpers/auth.ts) — not deleted
+      // by this file's afterAll (see below).
+      ownerUserId = await poolUserId(OWNER);
+      memberUserId = await poolUserId(MEMBER);
+      outsiderUserId = await poolUserId(OUTSIDER);
 
       const { error: membersErr } = await adminClient.from("workspace_members").insert([
         { workspace_id: workspaceId, user_id: ownerUserId, role: "owner", status: "active" },
@@ -251,16 +238,9 @@ describe.skipIf(!haveAdminCreds)(
         throw new Error(`Failed to seed workspace-wide task: ${wsTaskErr?.message}`);
       workspaceTaskId = wsTask.id;
 
-      async function signIn(email: string) {
-        const client = createClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
-        const { error } = await client.auth.signInWithPassword({ email, password });
-        if (error) throw new Error(`Failed to sign in ${email}: ${error.message}`);
-        return client;
-      }
-
-      ownerClient = await signIn(ownerEmail);
-      memberClient = await signIn(memberEmail);
-      outsiderClient = await signIn(outsiderEmail);
+      ownerClient = await getPoolSession(OWNER);
+      memberClient = await getPoolSession(MEMBER);
+      outsiderClient = await getPoolSession(OUTSIDER);
     });
 
     afterAll(async () => {
@@ -290,9 +270,9 @@ describe.skipIf(!haveAdminCreds)(
         await adminClient.from("workspace_members").delete().eq("workspace_id", workspaceId);
         await adminClient.from("workspaces").delete().eq("id", workspaceId);
       }
-      for (const userId of [ownerUserId, memberUserId, outsiderUserId]) {
-        if (userId) await adminClient.auth.admin.deleteUser(userId);
-      }
+      // F126: ownerUserId/memberUserId/outsiderUserId are pooled identities
+      // (see tests/helpers/auth.ts) — never deleted by an individual
+      // file's afterAll.
     });
 
     // ---------------------------------------------------------------

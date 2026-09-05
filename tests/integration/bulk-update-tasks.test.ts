@@ -18,6 +18,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { poolUserId } from "../helpers/auth";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -112,72 +113,13 @@ describe.skipIf(!haveAdminCreds)(
       workspaceId = ws.id;
       createdWorkspaceIds.push(workspaceId);
 
-      const authorEmail = `f186-author-${uniqueSuffix}@example.com`;
-      const { data: authorAuth, error: authorAuthErr } =
-        await adminClient.auth.admin.createUser({
-          email: authorEmail,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (authorAuthErr || !authorAuth.user) {
-        throw new Error(`Failed to create author user: ${authorAuthErr?.message}`);
-      }
-      authorUserId = authorAuth.user.id;
-      createdUserIds.push(authorUserId);
-
-      const memberEmail = `f186-member-${uniqueSuffix}@example.com`;
-      const { data: memberAuth, error: memberAuthErr } =
-        await adminClient.auth.admin.createUser({
-          email: memberEmail,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (memberAuthErr || !memberAuth.user) {
-        throw new Error(`Failed to create member user: ${memberAuthErr?.message}`);
-      }
-      memberUserId = memberAuth.user.id;
-      createdUserIds.push(memberUserId);
-
-      const assigneeEmail = `f186-assignee-${uniqueSuffix}@example.com`;
-      const { data: assigneeAuth, error: assigneeAuthErr } =
-        await adminClient.auth.admin.createUser({
-          email: assigneeEmail,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (assigneeAuthErr || !assigneeAuth.user) {
-        throw new Error(
-          `Failed to create assignee user: ${assigneeAuthErr?.message}`,
-        );
-      }
-      assigneeUserId = assigneeAuth.user.id;
-      createdUserIds.push(assigneeUserId);
-
-      const outsiderEmail = `f186-outsider-${uniqueSuffix}@example.com`;
-      const { data: outsiderAuth, error: outsiderAuthErr } =
-        await adminClient.auth.admin.createUser({
-          email: outsiderEmail,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (outsiderAuthErr || !outsiderAuth.user) {
-        throw new Error(`Failed to create outsider user: ${outsiderAuthErr?.message}`);
-      }
-      outsiderUserId = outsiderAuth.user.id;
-      createdUserIds.push(outsiderUserId);
-
-      const viewerEmail = `f186-viewer-${uniqueSuffix}@example.com`;
-      const { data: viewerAuth, error: viewerAuthErr } =
-        await adminClient.auth.admin.createUser({
-          email: viewerEmail,
-          password: "Test-password-1!",
-          email_confirm: true,
-        });
-      if (viewerAuthErr || !viewerAuth.user) {
-        throw new Error(`Failed to create viewer user: ${viewerAuthErr?.message}`);
-      }
-      viewerUserId = viewerAuth.user.id;
-      createdUserIds.push(viewerUserId);
+      // F126: pooled identities (see tests/helpers/auth.ts) — NOT pushed
+      // onto createdUserIds, so this file's afterAll never deletes them.
+      authorUserId = await poolUserId(0);
+      memberUserId = await poolUserId(1);
+      assigneeUserId = await poolUserId(2);
+      outsiderUserId = await poolUserId(3);
+      viewerUserId = await poolUserId(4);
 
       const { error: memberInsertErr } = await adminClient
         .from("workspace_members")
