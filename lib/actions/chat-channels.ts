@@ -21,7 +21,6 @@ import {
   removeChannelMemberSchema,
 } from "@/lib/validation/chat";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 
 function revalidateChat() {
   try {
@@ -99,17 +98,32 @@ export async function createChannel(input: {
       return { ok: false, error: "Project not found." };
     }
 
-    const visible = await isProjectVisibleToCaller(
-      admin,
-      {
-        projectId,
-        visibility: (projectRow.visibility as "workspace" | "private") ?? "workspace",
-      },
-      user.id,
-      membership.role,
-    );
+    // F117 hardening: this used to call `isProjectVisibleToCaller`, which
+    // also admits any active member of a 'workspace'-visibility project
+    // (and owners/admins unconditionally) -- the general read-access rule
+    // used throughout lib/actions/* for task/comment/attachment visibility.
+    // Project-scoped CHAT channels are narrower than that everywhere else
+    // in this schema: F116's `channels_select_members_or_workspace` policy
+    // (supabase/migrations/20261103010000_f116_client_channel_access.sql)
+    // and its self-add policy both require an explicit `project_members`
+    // row for a project channel, with no workspace-visibility or
+    // owner/admin bypass, specifically because a client's project channel
+    // must never be reachable by a workspace member who merely has
+    // read-access to the project. Create was the one remaining path that
+    // hadn't been narrowed to match -- in practice a no-op leak (the
+    // creator is always auto-enrolled as a member of whatever they
+    // create), but an inconsistency between "who can create this
+    // project's channel" and "who can ever see it again afterward." Fixed
+    // by requiring the same explicit `project_members` row here, so
+    // create and browse agree for every role including owner/admin.
+    const { data: projectMembership } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (!visible) {
+    if (!projectMembership) {
       return { ok: false, error: "Project not found." };
     }
   }
