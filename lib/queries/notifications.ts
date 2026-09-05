@@ -31,7 +31,19 @@ export type NotificationKind =
   | "comment_reply"
   | "task_assigned"
   | "task_due_soon"
-  | "watcher_update";
+  | "watcher_update"
+  // Faza D (docs/chat-slack-parity-plan.md): a message in a DM channel
+  // (any message, not just an @mention) and a reply in a thread you're
+  // part of -- see lib/actions/chat-messages.ts's
+  // notifyChatMessageRecipients. Every other notification kind this
+  // panel can display (approval_decided, portal_task_decided, etc.) is
+  // written by a SQL function/portal action this query's own `kind as
+  // NotificationKind` cast already widens past this type's literal
+  // union at runtime -- these two are added explicitly so
+  // notification-panel.tsx's actionLabel switch gets real compile-time
+  // coverage for them instead of falling through to its generic default.
+  | "chat_dm"
+  | "chat_thread_reply";
 
 export type NotificationListItem = {
   id: string;
@@ -71,27 +83,46 @@ export type NotificationListItem = {
    * `comment_id` — that column has an FK to `comments`, not `messages`;
    * see lib/notifications/create-notification.ts's doc comment), so
    * `sendMessage` stores `{ channelId, messageId }` in the RPC's existing
-   * `payload` jsonb column instead. Only ever populated for a chat
-   * mention; every other kind's fan-out call site still passes an empty
-   * payload. */
-  chatMention?: { channelId: string; messageId: string } | null;
+   * `payload` jsonb column instead. Faza D: the same payload shape is now
+   * also written for `chat_dm`/`chat_thread_reply` (same routing need,
+   * same "no task_id" reasoning) — the field name predates those two
+   * kinds and is kept as-is rather than renamed, to avoid an unrelated
+   * churn across this query and notification-panel.tsx's
+   * chatMentionHref. Every non-chat kind's fan-out call site still
+   * passes an empty payload, so this stays null for those. */
+  chatMention?: {
+    channelId: string;
+    messageId: string;
+    /** Faza D: only present for `chat_thread_reply` -- `messageId` there
+     * is a REPLY, which never appears in the main channel list
+     * (getChannelMessages filters to parent_message_id is null), so a
+     * link needs this to open the right thread panel instead of landing
+     * on a channel view with nothing to scroll to. */
+    parentMessageId?: string;
+  } | null;
 };
 
 const DEFAULT_LIMIT = 20;
 
-/** F13: reads `{ channelId, messageId }` back out of a row's `payload`
- * jsonb column — the shape `lib/actions/chat-messages.ts`'s `sendMessage`
- * writes for a chat mention (see this file's `chatMention` field doc
- * comment). Returns null for any other shape (every non-chat notification
- * kind's payload is `{}` — F207's fan-out call sites never populate it),
- * never throws on malformed/legacy data. */
+/** F13: reads `{ channelId, messageId, parentMessageId? }` back out of a
+ * row's `payload` jsonb column — the shape `lib/actions/chat-messages.ts`'s
+ * `sendMessage` writes for a chat notification (see this file's
+ * `chatMention` field doc comment). Returns null for any other shape
+ * (every non-chat notification kind's payload is `{}` — F207's fan-out
+ * call sites never populate it), never throws on malformed/legacy data. */
 function resolveChatMention(
   payload: unknown,
-): { channelId: string; messageId: string } | null {
+): { channelId: string; messageId: string; parentMessageId?: string } | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
   if (typeof p.channelId === "string" && typeof p.messageId === "string") {
-    return { channelId: p.channelId, messageId: p.messageId };
+    return {
+      channelId: p.channelId,
+      messageId: p.messageId,
+      ...(typeof p.parentMessageId === "string"
+        ? { parentMessageId: p.parentMessageId }
+        : {}),
+    };
   }
   return null;
 }

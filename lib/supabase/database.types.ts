@@ -1148,12 +1148,17 @@ export type Database = {
       }
       notification_preferences: {
         Row: {
+          chat_dm_in_app: boolean
+          chat_thread_reply_in_app: boolean
           comment_reply_email: boolean
           comment_reply_in_app: boolean
           created_at: string
           email_enabled: boolean
           mention_email: boolean
           mention_in_app: boolean
+          sound_enabled: boolean
+          sound_only_when_unfocused: boolean
+          sound_volume: number
           task_assigned_email: boolean
           task_assigned_in_app: boolean
           task_due_soon_email: boolean
@@ -1164,12 +1169,17 @@ export type Database = {
           watcher_update_in_app: boolean
         }
         Insert: {
+          chat_dm_in_app?: boolean
+          chat_thread_reply_in_app?: boolean
           comment_reply_email?: boolean
           comment_reply_in_app?: boolean
           created_at?: string
           email_enabled?: boolean
           mention_email?: boolean
           mention_in_app?: boolean
+          sound_enabled?: boolean
+          sound_only_when_unfocused?: boolean
+          sound_volume?: number
           task_assigned_email?: boolean
           task_assigned_in_app?: boolean
           task_due_soon_email?: boolean
@@ -1180,12 +1190,17 @@ export type Database = {
           watcher_update_in_app?: boolean
         }
         Update: {
+          chat_dm_in_app?: boolean
+          chat_thread_reply_in_app?: boolean
           comment_reply_email?: boolean
           comment_reply_in_app?: boolean
           created_at?: string
           email_enabled?: boolean
           mention_email?: boolean
           mention_in_app?: boolean
+          sound_enabled?: boolean
+          sound_only_when_unfocused?: boolean
+          sound_volume?: number
           task_assigned_email?: boolean
           task_assigned_in_app?: boolean
           task_due_soon_email?: boolean

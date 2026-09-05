@@ -34,6 +34,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { formatDistanceToNow, format, isAfter, subHours } from "date-fns";
 import { Pencil, Trash2, Reply } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { extractPlainText, docFromPlainText } from "@/lib/comments/rich-text";
 import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 import type { ChatMessage, ChatMessageAttachment } from "@/components/chat/channel-view";
@@ -124,6 +125,7 @@ export function MessageList({
   hasMoreMessages,
   isLoadingMoreMessages,
   onLoadMoreMessages,
+  highlightMessageId,
 }: {
   messages: ChatMessage[];
   members: ChatMember[];
@@ -148,10 +150,18 @@ export function MessageList({
   hasMoreMessages?: boolean;
   isLoadingMoreMessages?: boolean;
   onLoadMoreMessages?: () => void;
+  // Faza D (docs/chat-slack-parity-plan.md): a notification's `?highlight=`
+  // deep link -- scrolled into view and briefly flashed once, instead of
+  // this list's usual "always end up at the bottom" behaviour.
+  highlightMessageId?: string | null;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messageCountRef = useRef(0);
   const firstMessageIdRef = useRef<string | null>(null);
+  const messageRowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [flashedMessageId, setFlashedMessageId] = useState<string | null>(
+    highlightMessageId ?? null,
+  );
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -188,12 +198,30 @@ export function MessageList({
     }
   }, [messages]);
 
-  // Always snap to bottom on the very first render (initial channel open).
+  // Always snap to bottom on the very first render (initial channel open)
+  // -- skipped when a notification link asked to land on a specific
+  // older message instead (the highlight effect below takes over).
   useEffect(() => {
+    if (highlightMessageId) return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Faza D: scrolls the `?highlight=` target into view once and flashes
+  // it briefly. Guarded by a ref (not just re-running when the target
+  // becomes findable) so a later message arriving via realtime doesn't
+  // re-trigger the scroll back to an old highlight.
+  const hasScrolledToHighlightRef = useRef(false);
+  useEffect(() => {
+    if (!highlightMessageId || hasScrolledToHighlightRef.current) return;
+    const el = messageRowRefs.current.get(highlightMessageId);
+    if (!el) return;
+    hasScrolledToHighlightRef.current = true;
+    el.scrollIntoView({ block: "center" });
+    const timer = setTimeout(() => setFlashedMessageId(null), 2000);
+    return () => clearTimeout(timer);
+  }, [highlightMessageId, messages]);
 
   const richText = useRichTextRenderer();
 
@@ -258,6 +286,11 @@ export function MessageList({
             onReactionsChange={onReactionsChange}
             mentionSuggestions={mentionSuggestions}
             RichTextRenderer={richText}
+            isHighlighted={message.id === flashedMessageId}
+            registerRef={(el) => {
+              if (el) messageRowRefs.current.set(message.id, el);
+              else messageRowRefs.current.delete(message.id);
+            }}
           />
         );
       })}
@@ -278,6 +311,8 @@ function MessageRow({
   onReactionsChange,
   mentionSuggestions,
   RichTextRenderer,
+  isHighlighted,
+  registerRef,
 }: {
   message: ChatMessage;
   isOwn: boolean;
@@ -291,6 +326,10 @@ function MessageRow({
   onReactionsChange?: (messageId: string, next: MessageReactionSummary[]) => void;
   mentionSuggestions?: { id: string; label: string }[];
   RichTextRenderer: ReturnType<typeof useRichTextRenderer>;
+  /** Faza D: true for the ~2s window right after scrolling this row into
+   * view from a notification's `?highlight=` link. */
+  isHighlighted?: boolean;
+  registerRef?: (el: HTMLDivElement | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(bodyText);
@@ -316,7 +355,15 @@ function MessageRow({
 
   return (
     <div
-      className={sameSenderAsPrevious ? "group relative flex gap-3 pl-11" : "group relative flex gap-3 pt-3"}
+      ref={registerRef}
+      className={cn(
+        "group relative flex gap-3 rounded-md transition-colors duration-1000",
+        sameSenderAsPrevious ? "pl-11" : "pt-3",
+        // Faza D: a notification's `?highlight=` target briefly flashes
+        // (2s, see the effect in MessageList) so the viewer's eye lands
+        // on the right row instead of just silently scrolling there.
+        isHighlighted && "bg-primary/10",
+      )}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

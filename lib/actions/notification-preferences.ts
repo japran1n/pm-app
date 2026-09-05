@@ -27,6 +27,13 @@ export type NotificationPreferences = {
   taskDueSoonInApp: boolean;
   taskDueSoonEmail: boolean;
   emailEnabled: boolean;
+  // Faza D (docs/chat-slack-parity-plan.md)
+  chatDmInApp: boolean;
+  chatThreadReplyInApp: boolean;
+  soundEnabled: boolean;
+  /** 0-100, applied as the notification sound's playback volume. */
+  soundVolume: number;
+  soundOnlyWhenUnfocused: boolean;
 };
 
 function rowToPreferences(row: {
@@ -41,6 +48,11 @@ function rowToPreferences(row: {
   task_due_soon_in_app: boolean;
   task_due_soon_email: boolean;
   email_enabled: boolean;
+  chat_dm_in_app: boolean;
+  chat_thread_reply_in_app: boolean;
+  sound_enabled: boolean;
+  sound_volume: number;
+  sound_only_when_unfocused: boolean;
 }): NotificationPreferences {
   return {
     mentionInApp: row.mention_in_app,
@@ -54,6 +66,11 @@ function rowToPreferences(row: {
     taskDueSoonInApp: row.task_due_soon_in_app,
     taskDueSoonEmail: row.task_due_soon_email,
     emailEnabled: row.email_enabled,
+    chatDmInApp: row.chat_dm_in_app,
+    chatThreadReplyInApp: row.chat_thread_reply_in_app,
+    soundEnabled: row.sound_enabled,
+    soundVolume: row.sound_volume,
+    soundOnlyWhenUnfocused: row.sound_only_when_unfocused,
   };
 }
 
@@ -71,7 +88,15 @@ const COLUMN_BY_FIELD = {
   taskDueSoonInApp: "task_due_soon_in_app",
   taskDueSoonEmail: "task_due_soon_email",
   emailEnabled: "email_enabled",
+  chatDmInApp: "chat_dm_in_app",
+  chatThreadReplyInApp: "chat_thread_reply_in_app",
+  soundEnabled: "sound_enabled",
+  soundVolume: "sound_volume",
+  soundOnlyWhenUnfocused: "sound_only_when_unfocused",
 } as const;
+
+const SELECT_COLUMNS =
+  "mention_in_app, mention_email, task_assigned_in_app, task_assigned_email, comment_reply_in_app, comment_reply_email, watcher_update_in_app, watcher_update_email, task_due_soon_in_app, task_due_soon_email, email_enabled, chat_dm_in_app, chat_thread_reply_in_app, sound_enabled, sound_volume, sound_only_when_unfocused";
 
 export type GetNotificationPreferencesResult =
   | { ok: true; data: NotificationPreferences }
@@ -92,9 +117,7 @@ export async function getNotificationPreferences(): Promise<GetNotificationPrefe
 
   const { data, error } = await supabase
     .from("notification_preferences")
-    .select(
-      "mention_in_app, mention_email, task_assigned_in_app, task_assigned_email, comment_reply_in_app, comment_reply_email, watcher_update_in_app, watcher_update_email, task_due_soon_in_app, task_due_soon_email, email_enabled",
-    )
+    .select(SELECT_COLUMNS)
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -127,6 +150,11 @@ export async function getNotificationPreferences(): Promise<GetNotificationPrefe
         taskDueSoonInApp: true,
         taskDueSoonEmail: false,
         emailEnabled: true,
+        chatDmInApp: true,
+        chatThreadReplyInApp: true,
+        soundEnabled: true,
+        soundVolume: 60,
+        soundOnlyWhenUnfocused: true,
       },
     };
   }
@@ -164,7 +192,10 @@ export async function updateNotificationPreferences(
     return { ok: false, error: "You must be signed in." };
   }
 
-  const patch: Record<string, boolean> = {};
+  // Faza D: soundVolume is a 0-100 number, every other field is boolean --
+  // widened from `Record<string, boolean>` to admit it without a second,
+  // parallel patch object.
+  const patch: Record<string, boolean | number> = {};
   for (const [field, value] of Object.entries(parsed.data)) {
     if (value === undefined) continue;
     const column = COLUMN_BY_FIELD[field as keyof typeof COLUMN_BY_FIELD];
@@ -180,9 +211,7 @@ export async function updateNotificationPreferences(
   const { data, error } = await supabase
     .from("notification_preferences")
     .upsert({ user_id: user.id, ...patch }, { onConflict: "user_id" })
-    .select(
-      "mention_in_app, mention_email, task_assigned_in_app, task_assigned_email, comment_reply_in_app, comment_reply_email, watcher_update_in_app, watcher_update_email, task_due_soon_in_app, task_due_soon_email, email_enabled",
-    )
+    .select(SELECT_COLUMNS)
     .single();
 
   if (error || !data) {

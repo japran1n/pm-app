@@ -69,6 +69,14 @@ export type PortalNotificationKind =
   // shape as the three kinds above.
   | "approval_owner_nudge";
 
+// Faza D (docs/chat-slack-parity-plan.md): two chat-originated kinds,
+// written directly by lib/actions/chat-messages.ts's
+// notifyChatMessageRecipients -- same "direct call, bypasses this file's
+// computeFanoutRecipients" pattern as PortalNotificationKind above (a
+// chat message isn't one of the four task-shaped FanoutEvent variants
+// below, so it was never going to fit that function either way).
+export type ChatNotificationKind = "chat_dm" | "chat_thread_reply";
+
 // The four event shapes this feature's spec names: assignment, status
 // change, a new comment (which may itself carry mentions), and a
 // description mention (F205's diffed newly-mentioned set). Each event

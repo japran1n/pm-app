@@ -93,6 +93,11 @@ export default async function ProfileSettingsPage() {
         taskDueSoonInApp: true,
         taskDueSoonEmail: false,
         emailEnabled: true,
+        chatDmInApp: true,
+        chatThreadReplyInApp: true,
+        soundEnabled: true,
+        soundVolume: 60,
+        soundOnlyWhenUnfocused: true,
       };
 
   return (

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
 
@@ -255,6 +256,32 @@ export function ChannelView({
   );
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
 
+  // Faza D (docs/chat-slack-parity-plan.md): a notification's deep link
+  // (lib/notifications/chat-link.ts's chatNotificationHref) carries
+  // `?highlight=<messageId>` always, plus `?thread=<parentMessageId>` when
+  // the target is a threaded reply (which never appears in the main list
+  // -- getChannelMessages filters to parent_message_id is null). `thread`
+  // opens the right panel directly; `highlight` is passed to MessageList
+  // to scroll-to/flash whichever top-level message it names (the
+  // highlighted message itself, for a mention/DM, or nothing further here
+  // for a thread reply -- ThreadPanel renders replies oldest-first with
+  // the newest at the bottom, so simply opening it already puts a fresh
+  // reply in view without a separate in-thread highlight).
+  const searchParams = useSearchParams();
+  const highlightMessageId = searchParams.get("highlight");
+  const threadParam = searchParams.get("thread");
+
+  // Adjusted during render (not in a useEffect, per this codebase's own
+  // convention -- see chat-nav-list.tsx's identical "previous value ref,
+  // compared during render" shape) so a fresh `?thread=` opens the panel
+  // in the same render pass as the navigation, not a render -> effect ->
+  // extra render cascade.
+  const [prevThreadParam, setPrevThreadParam] = useState(threadParam);
+  if (threadParam !== prevThreadParam) {
+    setPrevThreadParam(threadParam);
+    if (threadParam) setActiveThreadId(threadParam);
+  }
+
   function handleReplyCountChange(parentMessageId: string, count: number) {
     setReplyCounts((previous) => ({ ...previous, [parentMessageId]: count }));
   }
@@ -393,6 +420,7 @@ export function ChannelView({
         reactions={reactionsByMessage}
         onReactionsChange={handleReactionsChange}
         mentionSuggestions={mentionSuggestions}
+        highlightMessageId={threadParam ? null : highlightMessageId}
       />
       <TypingIndicatorLine typingUsers={typingUsers} />
       <MessageComposer
