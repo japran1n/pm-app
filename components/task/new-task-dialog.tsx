@@ -28,6 +28,12 @@ import { createTask, setTaskAssignees } from "@/lib/actions/tasks";
 // handoff for why phaseId isn't threaded through createTask itself.
 import { getProjectPhaseOptions, setTaskPhase } from "@/lib/actions/phases";
 import type { ProjectPhaseOption } from "@/lib/queries/phases";
+// F118 (AS-064): task type options for this project's own workspace,
+// fetched on demand the same "Server Action called from useEffect while
+// the dialog is open" way phaseOptions above already is.
+import { getProjectTaskTypeOptions } from "@/lib/actions/task-types";
+import type { TaskType } from "@/lib/queries/task-types";
+import { TASK_TYPE_DEFINITIONS } from "@/lib/task-types/definitions";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { Button } from "@/components/ui/button";
@@ -100,6 +106,11 @@ const NO_PRIORITY_VALUE = "__none__";
 // convention as NO_PRIORITY_VALUE above.
 const NO_PHASE_VALUE = "__no_phase__";
 
+// F118 (AS-064): same reserved-sentinel convention — means "don't
+// override the database's own delivery default", not "no type" (every
+// task always has a type per F116/AS-058).
+const NO_TASK_TYPE_VALUE = "__no_task_type_override__";
+
 const PRIORITY_SELECT_LABELS: Record<string, string> = {
   [NO_PRIORITY_VALUE]: "No priority",
   ...PRIORITY_LABELS,
@@ -148,6 +159,16 @@ export function NewTaskDialog({
     null,
   );
   const [phaseId, setPhaseId] = useState<string>(NO_PHASE_VALUE);
+  // F118 (AS-064): this project's own workspace's task types, fetched
+  // only while the dialog is open — `null` (not yet resolved) renders a
+  // disabled Select, same convention `phaseOptions` above uses. `""`
+  // means "let the database default to delivery" (no picker interaction
+  // yet), matching how NO_PRIORITY_VALUE/NO_PHASE_VALUE mean "no
+  // override" for their own fields.
+  const [taskTypeOptions, setTaskTypeOptions] = useState<TaskType[] | null>(
+    null,
+  );
+  const [taskTypeId, setTaskTypeId] = useState<string>(NO_TASK_TYPE_VALUE);
 
   const assigneeLabels: Record<string, string> = {};
   const assigneeAvatarUrls: Record<string, string | null> = {};
@@ -171,6 +192,7 @@ export function NewTaskDialog({
     setAssigneeIds([]);
     setDueDate("");
     setPhaseId(NO_PHASE_VALUE);
+    setTaskTypeId(NO_TASK_TYPE_VALUE);
     setError(null);
   }
 
@@ -230,6 +252,24 @@ export function NewTaskDialog({
     };
   }, [open, projectId]);
 
+  // F118 (AS-064): fetched only while the dialog is open, same rationale
+  // as the phase-options effect immediately above (this dialog is
+  // mounted in up to three places per project at once). No default is
+  // applied here — leaving `taskTypeId` at NO_TASK_TYPE_VALUE means the
+  // database's own `delivery` default still applies, same as before this
+  // feature existed.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    getProjectTaskTypeOptions(projectId).then((result) => {
+      if (cancelled) return;
+      setTaskTypeOptions(result.ok ? result.data.taskTypes : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, projectId]);
+
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     setError(null);
@@ -256,6 +296,11 @@ export function NewTaskDialog({
         // "always mirror the first assignee" rule (F160's handoff).
         assigneeIds[0] ?? null,
         dueDate || null,
+        undefined,
+        // F118 (AS-064): only supplied when the user actually picked a
+        // type — leaving it at NO_TASK_TYPE_VALUE keeps the database's
+        // own delivery default, unchanged from pre-F118 behaviour.
+        taskTypeId !== NO_TASK_TYPE_VALUE ? taskTypeId : undefined,
       );
 
       if (result.ok) {
@@ -481,6 +526,64 @@ export function NewTaskDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            {/* F118 (AS-064): task type picker — reuses the same
+                TASK_TYPE_DEFINITIONS tooltip-per-system-key convention
+                list-task-type-select.tsx already established. Rendered
+                only once taskTypeOptions has resolved to a non-empty
+                list, same "don't show a Select with nothing real to
+                pick" convention the phase Select above uses. Leaving it
+                at NO_TASK_TYPE_VALUE means the database's own `delivery`
+                default still applies (F116). */}
+            {taskTypeOptions && taskTypeOptions.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="task-type">Type (optional)</Label>
+                <Select
+                  value={taskTypeId}
+                  onValueChange={(value) =>
+                    setTaskTypeId(value ?? NO_TASK_TYPE_VALUE)
+                  }
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="task-type" className="w-full">
+                    <SelectValue>
+                      {(value: string) =>
+                        value === NO_TASK_TYPE_VALUE
+                          ? "Delivery (default)"
+                          : (taskTypeOptions.find(
+                              (option) => option.id === value,
+                            )?.name ?? value)
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_TASK_TYPE_VALUE}>
+                      Delivery (default)
+                    </SelectItem>
+                    {taskTypeOptions.map((option) => (
+                      <SelectItem
+                        key={option.id}
+                        value={option.id}
+                        title={
+                          option.systemKey
+                            ? TASK_TYPE_DEFINITIONS[option.systemKey]
+                            : undefined
+                        }
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span
+                            aria-hidden="true"
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: option.color }}
+                          />
+                          {option.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <Label htmlFor="task-due-date">Due date (optional)</Label>
               <Input

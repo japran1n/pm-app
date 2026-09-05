@@ -19,11 +19,14 @@ import { logger } from "@/lib/observability/logger";
 // not a workspace-taxonomy-management action.
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership, requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { canEditTask } from "@/lib/auth/permissions";
+import { withAuthz } from "@/lib/actions/authz";
+import { getTaskTypes, type TaskType } from "@/lib/queries/task-types";
 import {
   createTaskTypeSchema,
   updateTaskTypeSchema,
@@ -281,4 +284,62 @@ export async function setTaskType(input: unknown): Promise<TaskTypeActionResult>
   }
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------
+// F118: getProjectTaskTypeOptions — read path for the New Task dialog and
+// the task detail sheet's type editor, both Client Components that need
+// this project's own workspace's task types on demand. Same
+// "withAuthz + resolveWorkspace by projectId, requireVisibility, no
+// requireWrite" shape as getProjectPhaseOptions (lib/actions/phases.ts) —
+// any active member (including a viewer) may see the type list to know
+// what a task can be typed as. Not a new query: wraps the existing,
+// already-tested getTaskTypes (lib/queries/task-types.ts) F116 shipped
+// for the workspace settings screen, scoped here to a single project's
+// workspace instead of requiring the caller to already know a
+// workspaceId.
+// ---------------------------------------------------------------------
+
+const getProjectTaskTypeOptionsSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+});
+
+export type GetProjectTaskTypeOptionsResult =
+  | { ok: true; data: { taskTypes: TaskType[] } }
+  | { ok: false; error: string };
+
+const getProjectTaskTypeOptionsImpl = withAuthz(
+  getProjectTaskTypeOptionsSchema,
+  {
+    requireVisibility: true,
+    resolveWorkspace: async (input, admin) => {
+      const { data, error } = await admin
+        .from("projects")
+        .select("id, workspace_id, visibility, deleted_at")
+        .eq("id", input.projectId)
+        .maybeSingle();
+
+      if (error || !data || data.deleted_at) {
+        return { ok: false, error: "Project not found." };
+      }
+
+      return {
+        ok: true,
+        workspaceId: data.workspace_id,
+        projectId: data.id,
+        visibility: data.visibility === "private" ? "private" : "workspace",
+        extra: {},
+      };
+    },
+  },
+  async (_input, ctx): Promise<GetProjectTaskTypeOptionsResult> => {
+    const taskTypes = await getTaskTypes(ctx.workspaceId);
+    return { ok: true, data: { taskTypes } };
+  },
+);
+
+export async function getProjectTaskTypeOptions(
+  projectId: string,
+): Promise<GetProjectTaskTypeOptionsResult> {
+  return getProjectTaskTypeOptionsImpl({ projectId });
 }

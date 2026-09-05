@@ -157,6 +157,11 @@ export async function createTask(
   assigneeId?: string | null,
   dueDate?: string | null,
   parentTaskId?: string | null,
+  // F118 (AS-064): optional — omitted means "let createTaskForUser/the
+  // DB trigger resolve this workspace's delivery type", exactly as every
+  // pre-F118 caller (quick-add, templates, recurrence, the extension
+  // route) already relies on. Only the New Task dialog supplies this.
+  taskTypeId?: string | null,
 ): Promise<CreateTaskResult> {
   const supabase = await createClient();
   const {
@@ -178,6 +183,7 @@ export async function createTask(
       assigneeId,
       dueDate,
       parentTaskId,
+      taskTypeId,
     },
     // F306 (D9/FU-3 scrutiny fix, AS-380): the caller's own authenticated
     // session, so a task created with an initial assignee can notify that
@@ -2836,7 +2842,11 @@ export async function getTaskDetail(
       // since F002, but nothing ever read it back until now, which is
       // exactly why AS-013 never actually held (see this feature's
       // spec/handoff).
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      // F118 (AS-066): `task_type_id` added so the detail sheet's type
+      // editor has a real value to hand to setTaskType — task_types(...)
+      // below already carries the display name/system_key but not the
+      // id itself.
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3298,6 +3308,10 @@ export async function getTaskDetail(
         // inline fields directly, no local re-derivation.
         pageSlug: taskRow.page_slug,
         pageOrder: taskRow.page_order,
+        // F118 (AS-066): the raw id, so the detail sheet's type editor
+        // can call setTaskType with it directly — taskTypeName/
+        // taskTypeSystemKey below remain display/gating-only, unchanged.
+        taskTypeId: taskRow.task_type_id ?? null,
         taskTypeName:
           (Array.isArray(taskRow.task_types)
             ? taskRow.task_types[0]

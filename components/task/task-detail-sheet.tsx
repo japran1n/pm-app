@@ -144,6 +144,14 @@ import { getMentionCandidates } from "@/lib/actions/comments";
 // write path for the Select's own onValueChange.
 import { getProjectPhaseOptions, setTaskPhase } from "@/lib/actions/phases";
 import type { ProjectPhaseOption } from "@/lib/queries/phases";
+// F118 (AS-066, AS-067): the type editor's own options fetch + write
+// path. setTaskType (lib/actions/task-types.ts, F116) only ever touches
+// `tasks.task_type_id` — it never reads or writes `client_visible`, so
+// calling it here cannot regress AS-067 by construction.
+import { getProjectTaskTypeOptions } from "@/lib/actions/task-types";
+import { setTaskType } from "@/lib/actions/task-types";
+import type { TaskType } from "@/lib/queries/task-types";
+import { TASK_TYPE_DEFINITIONS } from "@/lib/task-types/definitions";
 import { toPlainJson } from "@/lib/comments/rich-text";
 // F196 (AS-358, AS-361): the Comments/Activity toggle — see
 // components/task/activity-feed.tsx's own doc comment for why a toggle
@@ -414,6 +422,13 @@ export type TaskDetailSheetTask = {
    * order fields. Optional/null both mean "no type set" — same "safe
    * default" convention as every other optional field on this type. */
   taskTypeName?: string | null;
+  /** F118 (AS-066): this task's own type row id — write path for the
+   * type editor below (`setTaskType`, lib/actions/task-types.ts).
+   * Optional/null both mean "not loaded/known" — same "safe default"
+   * convention as every other optional field on this type; a caller
+   * that hasn't been updated yet (existing tests/fixtures) simply never
+   * shows the type editor as populated. */
+  taskTypeId?: string | null;
   /** F006c (missions/20260903-portal, AS-014): this task's type's stable
    * `system_key` (supabase/migrations/20260912010000_task_type_system_key.sql),
    * independent of its human-editable name — THIS, not `taskTypeName`,
@@ -749,6 +764,22 @@ export function TaskDetailSheet({
   );
   const [syncedPhaseOptionsProjectId, setSyncedPhaseOptionsProjectId] =
     useState<string | null>(null);
+  // F118 (AS-066): the Task Type Select's own optimistic + confirmed
+  // mirror and options fetch, same shape as Phase's above. `undefined`
+  // baseline means "no override yet"; a task's type is never null (every
+  // task always has one, F116/AS-058), so there is no "clear" case to
+  // model here unlike Priority/Phase.
+  const [optimisticTaskTypeId, setOptimisticTaskTypeId] = useOptimistic<
+    string | undefined
+  >(undefined);
+  const [confirmedTaskTypeId, setConfirmedTaskTypeId] = useState<
+    string | undefined
+  >(undefined);
+  const [taskTypeOptions, setTaskTypeOptions] = useState<TaskType[] | null>(
+    null,
+  );
+  const [syncedTaskTypeOptionsProjectId, setSyncedTaskTypeOptionsProjectId] =
+    useState<string | null>(null);
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
@@ -1039,6 +1070,27 @@ export function TaskDetailSheet({
     };
   }, [projectIdForPhaseOptions]);
 
+  // F118 (AS-066): same "adjust state while rendering" re-sync convention
+  // as the phase-options block immediately above — the option LIST is
+  // per-project (a workspace's task types), not per-task.
+  if (task?.projectId && task.projectId !== syncedTaskTypeOptionsProjectId) {
+    setSyncedTaskTypeOptionsProjectId(task.projectId);
+    setTaskTypeOptions(null);
+  }
+
+  const projectIdForTaskTypeOptions = task?.projectId;
+  useEffect(() => {
+    if (!projectIdForTaskTypeOptions) return;
+    let cancelled = false;
+    getProjectTaskTypeOptions(projectIdForTaskTypeOptions).then((result) => {
+      if (cancelled) return;
+      setTaskTypeOptions(result.ok ? result.data.taskTypes : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectIdForTaskTypeOptions]);
+
   const descriptionMentionSuggestions = members
     .filter(
       (member) =>
@@ -1226,6 +1278,40 @@ export function TaskDetailSheet({
         }
       } catch {
         toast.error(`Failed to set phase to ${nextLabel}`);
+      }
+    });
+  }
+
+  // F118 (AS-066, AS-067): mirrors handlePhaseChange above, minus the
+  // "clear to none" case — a task always has a type. Calls setTaskType
+  // (lib/actions/task-types.ts, F116's existing write path), which only
+  // ever updates `tasks.task_type_id` — never `client_visible` — so
+  // AS-067 holds by construction, not by anything checked here.
+  function handleTaskTypeChange(value: string | null) {
+    if (!task || !value) return;
+    const currentTaskTypeId =
+      confirmedTaskTypeId !== undefined
+        ? confirmedTaskTypeId
+        : optimisticTaskTypeId !== undefined
+          ? optimisticTaskTypeId
+          : (task.taskTypeId ?? undefined);
+    if (value === currentTaskTypeId) return;
+
+    const nextLabel =
+      taskTypeOptions?.find((option) => option.id === value)?.name ?? "type";
+    setConfirmedTaskTypeId(undefined);
+    startSaveTransition(async () => {
+      setOptimisticTaskTypeId(value);
+      try {
+        const result = await setTaskType({ taskId: task.id, taskTypeId: value });
+        if (result.ok) {
+          setConfirmedTaskTypeId(value);
+          toast.success("Task type updated.");
+        } else {
+          toast.error(result.error || `Failed to set type to ${nextLabel}`);
+        }
+      } catch {
+        toast.error(`Failed to set type to ${nextLabel}`);
       }
     });
   }
@@ -1823,6 +1909,63 @@ export function TaskDetailSheet({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* F118 (AS-066): task type editor — same Select shape
+                    as Priority/Phase above. Rendered only once
+                    taskTypeOptions has resolved to a non-empty list AND
+                    this task's own current type id is known, so it
+                    never flashes an empty/wrong Select before real data
+                    arrives. */}
+                {taskTypeOptions && taskTypeOptions.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`task-type-${task.id}`}>Type</Label>
+                    <Select
+                      value={
+                        confirmedTaskTypeId !== undefined
+                          ? confirmedTaskTypeId
+                          : optimisticTaskTypeId !== undefined
+                            ? optimisticTaskTypeId
+                            : (task.taskTypeId ?? undefined)
+                      }
+                      onValueChange={handleTaskTypeChange}
+                      disabled={isSavingField || !canEdit}
+                    >
+                      <SelectTrigger
+                        id={`task-type-${task.id}`}
+                        className="w-full"
+                      >
+                        <SelectValue>
+                          {(value: string) =>
+                            taskTypeOptions.find((option) => option.id === value)
+                              ?.name ?? task.taskTypeName ?? "—"
+                          }
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {taskTypeOptions.map((option) => (
+                          <SelectItem
+                            key={option.id}
+                            value={option.id}
+                            title={
+                              option.systemKey
+                                ? TASK_TYPE_DEFINITIONS[option.systemKey]
+                                : undefined
+                            }
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span
+                                aria-hidden="true"
+                                className="size-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: option.color }}
+                              />
+                              {option.name}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-2">
                 <Label id={`task-assignee-label-${task.id}`}>Assignees</Label>

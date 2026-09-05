@@ -6,6 +6,11 @@ import { getProjectHoursTeam } from "@/lib/queries/hours";
 import { getProjectBudgets } from "@/lib/queries/project-budgets";
 import { resolvePeople } from "@/lib/queries/people";
 import { TeamHoursView } from "@/components/project/team-hours-view";
+// F118 (AS-068): the one compact time-by-type card this feature adds —
+// rendered on this project-team-only surface, same visibility gate
+// (client role -> notFound() above) as everything else on this page.
+import { getProjectTaskTypeTimeTotals } from "@/lib/queries/task-type-time-totals";
+import { TaskTypeTimeCard } from "@/components/task/task-type-time-card";
 
 // F018 (missions/20260903-portal): the team hours view (AS-038) --
 // "the full picture: by person, by category, billable and not, with the
@@ -104,6 +109,12 @@ export default async function ProjectHoursPage({
 
   const canManage = canWrite({ role: workspaceRole });
 
+  // F118 (AS-068): the whole project's time-by-type breakdown, not
+  // scoped to the `from`/`to` window above — rpc_project_time_totals
+  // (F116) reports a project's full totals, no date filter, per its own
+  // spec ("one row of numbers, no charts, no trends").
+  const taskTypeTotals = await getProjectTaskTypeTimeTotals(project.id);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -114,6 +125,8 @@ export default async function ProjectHoursPage({
           what shows up in the portal&apos;s hours chart.
         </p>
       </div>
+
+      <TaskTypeTimeCard totals={taskTypeTotals} />
 
       <TeamHoursView
         entries={entries}
