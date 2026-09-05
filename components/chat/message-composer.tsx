@@ -89,6 +89,17 @@ export function MessageComposer({
   const [isPending, startTransition] = useTransition();
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // F122: `RichTextEditor.onUpdate` fires (and applies Tiptap's own
+  // autolink mark, WITH a real href) from inside the native "Enter"
+  // keydown's own synchronous ProseMirror dispatch, which runs before the
+  // React-synthetic `onKeyDown` below (attached via root-level delegation)
+  // ever sees the same event. `submit()` used to read the `richValue`
+  // React state directly, which is only guaranteed up to date as of the
+  // last committed render — a plain function closure captured before this
+  // keystroke's own state update has flushed. Mirroring every `onChange`
+  // into a ref read synchronously by `submit()` means Enter always sends
+  // the just-linked document, never a one-keystroke-stale one.
+  const richValueRef = useRef<JSONContent>(EMPTY_DOC);
 
   const useRichEditor = !!richText && mentionSuggestions !== undefined;
   const canSubmit = (useRichEditor ? !isEmptyDoc(richValue) : !!plainValue.trim()) || pendingAttachments.length > 0;
@@ -122,7 +133,7 @@ export function MessageComposer({
   function submit() {
     if (!canSubmit || isPending || disabled || isUploading) return;
 
-    const bodyJson = useRichEditor ? richValue : docFromPlainText(plainValue.trim() || " ");
+    const bodyJson = useRichEditor ? richValueRef.current : docFromPlainText(plainValue.trim() || " ");
     const attachmentIds = pendingAttachments.map((a) => a.id);
 
     setError(null);
@@ -131,6 +142,7 @@ export function MessageComposer({
       if (result.ok) {
         setPlainValue("");
         setRichValue(EMPTY_DOC);
+        richValueRef.current = EMPTY_DOC;
         setPendingAttachments([]);
       } else {
         setError(result.error ?? "Something went wrong. Please try again.");
@@ -170,6 +182,7 @@ export function MessageComposer({
             <richText.RichTextEditor
               content={richValue}
               onChange={(content) => {
+                richValueRef.current = content;
                 setRichValue(content);
                 onTyping?.();
               }}

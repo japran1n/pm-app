@@ -39,16 +39,43 @@ function splitTrailingPunctuation(raw: string): { url: string; trail: string } {
   return { url: match[1] ?? raw, trail: match[2] ?? "" };
 }
 
+/** A link mark only counts as "already linked" when it carries a usable
+ * href (a non-empty string). F122: the client can emit `{"type":"link"}`
+ * with no `attrs`/`href` at all (see autolinkBody's own doc comment
+ * below); treating that href-less mark as already-linked was the bug —
+ * it made this function skip exactly the nodes that most needed fixing,
+ * leaving a mark with no destination for the renderer's sanitiser to
+ * correctly strip. */
+function hasUsableLinkHref(mark: { type?: unknown; attrs?: Record<string, unknown> }): boolean {
+  const href = mark.attrs?.href;
+  return typeof href === "string" && href.trim().length > 0;
+}
+
 function autolinkTextNode(node: JSONContent): JSONContent[] {
   if (node.type !== "text" || typeof node.text !== "string") return [node];
-  // Already explicitly marked (the toolbar's manual Link button, or a
-  // previous pass of this same function) — never re-wrap already-linked
-  // text.
-  if (node.marks?.some((m) => m.type === "link")) return [node];
+  // Already explicitly marked with a real destination (the toolbar's
+  // manual Link button, or a previous pass of this same function) —
+  // never re-wrap already-linked text. A link mark with no usable href
+  // does NOT count as already-linked; fall through so it gets linkified
+  // normally below.
+  const existingLinkMark = node.marks?.find((m) => m.type === "link");
+  if (existingLinkMark && hasUsableLinkHref(existingLinkMark)) return [node];
+
+  // Strip a href-less link mark (if any) before matching/rewrapping, so
+  // we repair the existing mark in place rather than ever ending up with
+  // two link marks on one node.
+  const baseMarks = existingLinkMark
+    ? node.marks?.filter((m) => m !== existingLinkMark)
+    : node.marks;
 
   const text = node.text;
   const matches = Array.from(text.matchAll(URL_PATTERN));
-  if (matches.length === 0) return [node];
+  // No URL found: if this node had a href-less link mark, still strip it
+  // (there is nothing to linkify, and a mark with no destination must
+  // never survive to the renderer's sanitiser).
+  if (matches.length === 0) {
+    return existingLinkMark ? [{ ...node, marks: baseMarks }] : [node];
+  }
 
   const parts: JSONContent[] = [];
   let cursor = 0;
@@ -58,22 +85,22 @@ function autolinkTextNode(node: JSONContent): JSONContent[] {
     const { url, trail } = splitTrailingPunctuation(raw);
     if (!url) continue;
     if (start > cursor) {
-      parts.push({ ...node, text: text.slice(cursor, start) });
+      parts.push({ ...node, marks: baseMarks, text: text.slice(cursor, start) });
     }
     parts.push({
       ...node,
       text: url,
-      marks: [...(node.marks ?? []), { type: "link", attrs: { href: url } }],
+      marks: [...(baseMarks ?? []), { type: "link", attrs: { href: url } }],
     });
     if (trail) {
-      parts.push({ ...node, text: trail });
+      parts.push({ ...node, marks: baseMarks, text: trail });
     }
     cursor = start + raw.length;
   }
   if (cursor < text.length) {
-    parts.push({ ...node, text: text.slice(cursor) });
+    parts.push({ ...node, marks: baseMarks, text: text.slice(cursor) });
   }
-  return parts.length > 0 ? parts : [node];
+  return parts.length > 0 ? parts : [existingLinkMark ? { ...node, marks: baseMarks } : node];
 }
 
 function autolinkNode(node: JSONContent): JSONContent {
