@@ -306,7 +306,7 @@ describe.skipIf(!haveAdminCreds)(
           recurrence: { freq: "daily", interval: 1 },
         })
         .select(
-          "id, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id",
+          "id, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, task_type_id",
         )
         .single();
       if (sourceErr || !sourceTask) {

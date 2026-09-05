@@ -34,6 +34,10 @@ export type SourceTaskForRecurrence = {
   due_date: string | null;
   recurrence: unknown | null;
   recurrence_parent_id: string | null;
+  // F116 (AS-058): carried straight through to the generated occurrence
+  // — never re-defaulted to 'delivery' (see this file's own insert
+  // below).
+  task_type_id: string;
 };
 
 export type GenerateNextOccurrenceResult =
@@ -176,6 +180,7 @@ export async function generateNextOccurrence(
         position: newPosition,
         recurrence: source.recurrence as Json,
         recurrence_parent_id: rootParentId,
+        task_type_id: source.task_type_id,
       },
       {
         onConflict: "recurrence_parent_id,due_date",

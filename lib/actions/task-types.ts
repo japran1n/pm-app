@@ -145,6 +145,16 @@ export async function updateTaskType(input: unknown): Promise<TaskTypeActionResu
           }
         : { ok: false, error: "A task type with that name already exists." };
     }
+    // F116: task_types_lock_system_flags_trigger rejects any change to
+    // is_billable, or to system_key on one of the five business keys
+    // this feature seeds (delivery/qa/client_request/change_request/
+    // improvement) — 'page' is exempt (F006c's own affordance).
+    if (error.code === "42501") {
+      return {
+        ok: false,
+        error: "This is a fixed system task type — that field can't be changed.",
+      };
+    }
     logger.error("updateTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
@@ -162,14 +172,23 @@ export async function deleteTaskType(input: unknown): Promise<TaskTypeActionResu
   const auth = await requireTaskTypeAdmin(parsed.data.taskTypeId);
   if (!auth.ok) return { ok: false, error: PERMISSION_DENIED_ERROR };
 
-  // AS-579 (docs/plan-daily-work-followups.md): deleting a task type in
-  // use sets task_type_id to null on affected tasks — `on delete set
-  // null` on the FK (20260903040000_task_types.sql) does this for free,
-  // no application-level cleanup needed.
+  // AS-579 (docs/plan-daily-work-followups.md) originally relied on `on
+  // delete set null` here so an in-use type could be deleted for free.
+  // F116 made `tasks.task_type_id` required (AS-058), which the FK's own
+  // `on delete restrict` (20261104010000/20261104030000_f116_task_type_
+  // taxonomy.sql) now enforces: a type still assigned to any task cannot
+  // be deleted until those tasks are re-typed, rather than silently
+  // leaving one typeless.
   const supabase = await createClient();
   const { error } = await supabase.from("task_types").delete().eq("id", parsed.data.taskTypeId);
 
   if (error) {
+    if (error.code === "23503") {
+      return {
+        ok: false,
+        error: "This task type is still used by at least one task. Re-type those tasks first.",
+      };
+    }
     logger.error("deleteTaskType failed", { error: error });
     return { ok: false, error: GENERIC_ERROR };
   }
@@ -236,20 +255,18 @@ export async function setTaskType(input: unknown): Promise<TaskTypeActionResult>
     return { ok: false, error: "You don't have permission to edit this task." };
   }
 
-  // If a task type id was given, it must belong to THIS task's own
-  // workspace — otherwise a caller could tag a task with another
-  // workspace's taxonomy row (harmless data-wise since it's just a label,
-  // but still a cross-tenant reference this action should refuse outright
-  // rather than silently allow).
-  if (parsed.data.taskTypeId) {
-    const { data: taskType } = await admin
-      .from("task_types")
-      .select("workspace_id")
-      .eq("id", parsed.data.taskTypeId)
-      .maybeSingle();
-    if (!taskType || taskType.workspace_id !== workspaceId) {
-      return { ok: false, error: "Task type not found." };
-    }
+  // The chosen task type must belong to THIS task's own workspace —
+  // otherwise a caller could tag a task with another workspace's
+  // taxonomy row (harmless data-wise since it's just a label, but still
+  // a cross-tenant reference this action should refuse outright rather
+  // than silently allow).
+  const { data: taskType } = await admin
+    .from("task_types")
+    .select("workspace_id")
+    .eq("id", parsed.data.taskTypeId)
+    .maybeSingle();
+  if (!taskType || taskType.workspace_id !== workspaceId) {
+    return { ok: false, error: "Task type not found." };
   }
 
   const supabase = await createClient();

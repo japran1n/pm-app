@@ -74,6 +74,11 @@ export async function createTaskForUser(
     assigneeId?: string | null;
     dueDate?: string | null;
     parentTaskId?: string | null;
+    // F116 (AS-058): optional here — omitted means "let the database's
+    // own `tasks_default_task_type` trigger resolve this workspace's
+    // `delivery` type", exactly as every other insert path that doesn't
+    // (yet) offer a picker already relies on.
+    taskTypeId?: string | null;
   },
   // F306 (D9/FU-3 scrutiny fix, AS-380): optional caller-session client,
   // used ONLY to fan out a `task_assigned` notification when this call
@@ -95,6 +100,7 @@ export async function createTaskForUser(
     assigneeId: input.assigneeId ?? null,
     dueDate: input.dueDate ?? null,
     parentTaskId: input.parentTaskId ?? null,
+    taskTypeId: input.taskTypeId ?? undefined,
   });
 
   if (!parsed.success) {
@@ -225,6 +231,25 @@ export async function createTaskForUser(
     }
   }
 
+  // F116: when a caller DOES supply a task_type_id, it must belong to
+  // this task's own workspace — same cross-tenant guard setTaskType
+  // already applies (lib/actions/task-types.ts). Its
+  // `default_client_visible` is also resolved here so it can seed the
+  // new task's OWN `client_visible` at insert (AS-060: initial value
+  // only — never read again after this).
+  let defaultClientVisible: boolean | null = null;
+  if (parsed.data.taskTypeId) {
+    const { data: taskTypeRow } = await admin
+      .from("task_types")
+      .select("workspace_id, default_client_visible")
+      .eq("id", parsed.data.taskTypeId)
+      .maybeSingle();
+    if (!taskTypeRow || taskTypeRow.workspace_id !== projectRow.workspace_id) {
+      return { ok: false, error: "Task type not found." };
+    }
+    defaultClientVisible = taskTypeRow.default_client_visible;
+  }
+
   // F248 (AS-479): `parsed.data.status` must name one of THIS project's
   // real board columns — same guard moveTaskStatus already applies (see
   // that action's own doc comment above its matching lookup), now shared
@@ -273,6 +298,36 @@ export async function createTaskForUser(
     null,
   );
 
+  // F116 (AS-058): `task_type_id` is required at the database level. When
+  // a caller doesn't (yet) supply one, this resolves (or lazily creates,
+  // for a workspace that predates the seed) the workspace's own
+  // `delivery` row explicitly, via the same `ensure_task_type` helper
+  // `tasks_default_task_type` uses internally — done here rather than
+  // left to that trigger only so the value is known and can seed
+  // `client_visible` correctly below.
+  let resolvedTaskTypeId = parsed.data.taskTypeId ?? null;
+  if (!resolvedTaskTypeId) {
+    const { data: ensuredId, error: ensureError } = await admin.rpc(
+      "ensure_task_type",
+      {
+        p_workspace_id: projectRow.workspace_id,
+        p_system_key: "delivery",
+        p_name: "Delivery",
+        p_color: "#6b7280",
+        p_is_billable: true,
+        p_default_client_visible: false,
+      },
+    );
+    if (ensureError || !ensuredId) {
+      logger.error("createTaskForUser: failed to resolve default task type", { error: ensureError });
+      return {
+        ok: false,
+        error: "Something went wrong. Please try again in a moment.",
+      };
+    }
+    resolvedTaskTypeId = ensuredId;
+  }
+
   const { data: inserted, error: insertError } = await admin
     .from("tasks")
     .insert({
@@ -286,6 +341,14 @@ export async function createTaskForUser(
       author_id: user.id,
       position: newTaskPosition,
       parent_task_id: parsed.data.parentTaskId ?? null,
+      task_type_id: resolvedTaskTypeId,
+      // AS-060: a real F116 client_visible default is applied only when
+      // a type IS explicitly supplied by the caller, per "as its initial
+      // value only" — an insert that fell through to the generic
+      // `delivery` default above keeps `client_visible`'s own plain
+      // column default (false), same as every pre-F116 insert already
+      // did.
+      ...(defaultClientVisible !== null ? { client_visible: defaultClientVisible } : {}),
     })
     .select(
       "id, project_id, title, description, status, priority, assignee_id, due_date, author_id, position, created_at, parent_task_id, number",

@@ -2444,7 +2444,9 @@ export type Database = {
         Row: {
           color: string
           created_at: string
+          default_client_visible: boolean
           id: string
+          is_billable: boolean
           name: string
           position: number
           system_key: string | null
@@ -2453,7 +2455,9 @@ export type Database = {
         Insert: {
           color: string
           created_at?: string
+          default_client_visible?: boolean
           id?: string
+          is_billable?: boolean
           name: string
           position?: number
           system_key?: string | null
@@ -2462,7 +2466,9 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string
+          default_client_visible?: boolean
           id?: string
+          is_billable?: boolean
           name?: string
           position?: number
           system_key?: string | null
@@ -2547,7 +2553,7 @@ export type Database = {
           status: string
           status_id: string | null
           tags: string[]
-          task_type_id: string | null
+          task_type_id: string
           title: string
           updated_at: string
         }
@@ -2583,7 +2589,7 @@ export type Database = {
           status?: string
           status_id?: string | null
           tags?: string[]
-          task_type_id?: string | null
+          task_type_id: string
           title: string
           updated_at?: string
         }
@@ -2619,7 +2625,7 @@ export type Database = {
           status?: string
           status_id?: string | null
           tags?: string[]
-          task_type_id?: string | null
+          task_type_id?: string
           title?: string
           updated_at?: string
         }
@@ -3258,6 +3264,17 @@ export type Database = {
         Args: { p_created_by: string; p_project_id: string }
         Returns: string
       }
+      ensure_task_type: {
+        Args: {
+          p_color: string
+          p_default_client_visible: boolean
+          p_is_billable: boolean
+          p_name: string
+          p_system_key: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
       flag_assumption_atomic: {
         Args: { p_assumption_id: string; p_note: string }
         Returns: {
@@ -3547,6 +3564,17 @@ export type Database = {
           status_was_reset: boolean
         }[]
       }
+      rpc_project_time_totals: {
+        Args: { p_project_id: string }
+        Returns: {
+          estimated_minutes: number
+          is_billable: boolean
+          system_key: string
+          task_type_id: string
+          task_type_name: string
+          tracked_minutes: number
+        }[]
+      }
       search_tasks: {
         Args: { p_project_id: string; p_query: string }
         Returns: {
@@ -3581,7 +3609,7 @@ export type Database = {
           status: string
           status_id: string | null
           tags: string[]
-          task_type_id: string | null
+          task_type_id: string
           title: string
           updated_at: string
         }[]
@@ -3626,7 +3654,7 @@ export type Database = {
           status: string
           status_id: string | null
           tags: string[]
-          task_type_id: string | null
+          task_type_id: string
           title: string
           updated_at: string
         }[]

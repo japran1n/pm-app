@@ -108,7 +108,7 @@ export function TaskListTable({
    * renders no Type cell/column control at all (nothing to pick from),
    * same "empty means the feature quietly steps aside" convention
    * list-filters.tsx's own taskTypeOptions follows. */
-  taskTypeOptions?: { id: string; name: string; color: string }[];
+  taskTypeOptions?: { id: string; name: string; color: string; systemKey?: string | null }[];
   /** F122 (AS-214): taskAssigneeId -> resolved person (name/email/
    * avatarUrl), resolved server-side. Renamed from F053's original
    * `assigneeNames: Map<string, string>` now that the Assignee column

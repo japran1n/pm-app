@@ -24,12 +24,17 @@ export const createTaskTypeSchema = z.object({
 });
 export type CreateTaskTypeInput = z.infer<typeof createTaskTypeSchema>;
 
-// F006c (missions/20260903-portal, AS-014): the closed set of stable
-// roles a task type ROW can carry, independent of its human-editable
-// `name` — mirrors `task_types_system_key_check`
-// (supabase/migrations/20260912010000_task_type_system_key.sql) exactly.
-// `null` clears the tag (a type carrying no portal role); only `page` is
-// wired to anything today (getPortalPages), the rest are reserved.
+// F006c (missions/20260903-portal, AS-014) / F116: the closed set of
+// stable roles a task type ROW can carry, independent of its
+// human-editable `name` — mirrors `task_types_system_key_check`
+// (supabase/migrations/20260912010000_task_type_system_key.sql,
+// widened by 20261104010000_f116_task_type_taxonomy.sql) exactly.
+// `null` clears the tag. Only `page` is reassignable through this write
+// path (F006c's own affordance) — the five F116 business keys
+// (delivery/qa/client_request/change_request/improvement) are seeded
+// once per workspace and locked at the database level
+// (task_types_lock_system_flags_trigger); offering them here would only
+// produce a friendly-looking option that always 42501s.
 const systemKeySchema = z
   .enum(["page", "qa", "component", "content", "seo"])
   .nullable();
@@ -53,8 +58,11 @@ export const reorderTaskTypeSchema = z.object({
 });
 export type ReorderTaskTypeInput = z.infer<typeof reorderTaskTypeSchema>;
 
+// F116 (AS-058): a task's type is required, so this can no longer clear
+// it to null — every task type change is one system-or-custom type
+// swapped for another, never "no type".
 export const setTaskTypeSchema = z.object({
   taskId: z.string().uuid("Invalid task."),
-  taskTypeId: z.string().uuid("Invalid task type.").nullable(),
+  taskTypeId: z.string().uuid("Invalid task type."),
 });
 export type SetTaskTypeInput = z.infer<typeof setTaskTypeSchema>;

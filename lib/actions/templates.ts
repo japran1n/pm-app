@@ -430,6 +430,31 @@ export async function createTaskFromTemplate(
     }
   }
 
+  // F116 (AS-058): a template has no type of its own to carry over, so
+  // this resolves (or lazily creates, for a workspace that predates the
+  // seed) the target workspace's `delivery` type explicitly — the same
+  // value `tasks_default_task_type` would apply automatically, done here
+  // so the insert's own required `task_type_id` is satisfied without an
+  // extra round trip through that trigger.
+  const { data: defaultTaskTypeId, error: taskTypeError } = await admin.rpc(
+    "ensure_task_type",
+    {
+      p_workspace_id: projectRow.workspace_id,
+      p_system_key: "delivery",
+      p_name: "Delivery",
+      p_color: "#6b7280",
+      p_is_billable: true,
+      p_default_client_visible: false,
+    },
+  );
+  if (taskTypeError || !defaultTaskTypeId) {
+    logger.error("createTaskFromTemplate: failed to resolve default task type", { error: taskTypeError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
   const { data: inserted, error: insertError } = await admin
     .from("tasks")
     .insert({
@@ -443,6 +468,7 @@ export async function createTaskFromTemplate(
       estimate_minutes: payload.estimate_minutes,
       author_id: user.id,
       position: newTaskPosition,
+      task_type_id: defaultTaskTypeId,
       // No `number`/key supplied: F145's assign_task_key trigger assigns
       // this new row its own project-sequential number on insert — the
       // template payload never carries a key/number to copy (it isn't in

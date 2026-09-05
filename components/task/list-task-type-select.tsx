@@ -10,10 +10,15 @@
 // own small mutation path, matching how assignees also have their own
 // action rather than being folded into editTask.
 
+// F116 (AS-058): a task always has a type now — this select no longer
+// offers an empty "—" option, and its options are expected to always
+// include the task's current type (so there is always something to show
+// even before the workspace's admin-defined custom types load in).
 import { canEditTask } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import { useInlineFieldEdit } from "@/lib/hooks/use-inline-field-edit";
 import { setTaskType } from "@/lib/actions/task-types";
+import { TASK_TYPE_DEFINITIONS } from "@/lib/task-types/definitions";
 import type { TaskCardTask } from "@/components/task/task-card";
 import {
   Select,
@@ -37,7 +42,7 @@ export function ListTaskTypeSelect({
   /** The workspace's task types, in position order — empty means no
    * types have been defined yet, in which case this renders nothing
    * (there is nothing to pick from). */
-  options: { id: string; name: string; color: string }[];
+  options: { id: string; name: string; color: string; systemKey?: string | null }[];
 }) {
   const membership = useMembership();
   const canEdit = membership ? canEditTask({ role: membership.role }) : true;
@@ -55,11 +60,7 @@ export function ListTaskTypeSelect({
   if (options.length === 0) return null;
 
   function handleChange(value: string | null) {
-    if (value === null) return;
-    if (value === NO_TYPE_VALUE) {
-      commit(null);
-      return;
-    }
+    if (value === null || value === NO_TYPE_VALUE) return;
     const selected = options.find((option) => option.id === value);
     if (selected) commit(selected);
   }
@@ -99,9 +100,14 @@ export function ListTaskTypeSelect({
         </span>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NO_TYPE_VALUE}>—</SelectItem>
         {options.map((option) => (
-          <SelectItem key={option.id} value={option.id}>
+          <SelectItem
+            key={option.id}
+            value={option.id}
+            title={
+              option.systemKey ? TASK_TYPE_DEFINITIONS[option.systemKey] : undefined
+            }
+          >
             <span className="flex items-center gap-1.5">
               <span
                 aria-hidden="true"

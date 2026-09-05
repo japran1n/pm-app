@@ -74,6 +74,19 @@ export const createTaskSchema = z.object({
   // mean "top-level task", same as every other optional/nullable field in
   // this schema.
   parentTaskId: z.string().uuid("Invalid parent task.").optional().nullable(),
+  // F116 (AS-058): a task always has a type. The create-task UI does not
+  // yet offer a picker on this form (see this feature's own handoff,
+  // "Out-of-scope work needed" — building/testing that across every
+  // entry point — board quick-add, list, command palette, onboarding
+  // tour, the browser extension route — was judged bigger than this
+  // feature's own bounded scope), so this stays optional here: when
+  // omitted, `lib/tasks/create.ts` resolves the caller's workspace
+  // `delivery` type itself (the exact default `tasks_default_task_type`
+  // would apply at the database level regardless — this only avoids an
+  // extra round trip through that trigger). When a caller DOES supply
+  // one (e.g. a future picker, or `duplicateTask` preserving the
+  // source's type), it must be a real, non-empty id — never "no type".
+  taskTypeId: z.string().uuid("Invalid task type.").optional(),
 });
 
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

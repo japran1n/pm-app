@@ -35,6 +35,7 @@ const PAGE_TYPE: TaskType = {
   color: "#3670e1",
   position: 0,
   systemKey: "page",
+  isBillable: true,
 };
 
 const PLAIN_TYPE: TaskType = {
@@ -43,6 +44,7 @@ const PLAIN_TYPE: TaskType = {
   color: "#b57a00",
   position: 1,
   systemKey: null,
+  isBillable: true,
 };
 
 describe("TaskTypeManager system_key badge (F005b)", () => {

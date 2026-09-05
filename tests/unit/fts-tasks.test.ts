@@ -67,6 +67,7 @@ describeIfEnv("F068 full-text search (AS-117, AS-123, AS-124)", () => {
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let userId: string;
   let workspaceId: string;
+  let defaultTaskTypeId: string;
   let projectId: string;
   let titleTaskId: string;
   let descriptionTaskId: string;
@@ -103,6 +104,26 @@ describeIfEnv("F068 full-text search (AS-117, AS-123, AS-124)", () => {
     }
     projectId = project.id;
 
+    // F116: task_type_id is required — this workspace was created
+    // directly (bypassing create_workspace_with_owner's seed), so
+    // ensure_task_type resolves/creates its 'delivery' row the same way
+    // `tasks_default_task_type` would at insert time.
+    const { data: taskTypeId, error: taskTypeErr } = await admin.rpc(
+      "ensure_task_type",
+      {
+        p_workspace_id: workspaceId,
+        p_system_key: "delivery",
+        p_name: "Delivery",
+        p_color: "#6b7280",
+        p_is_billable: true,
+        p_default_client_visible: false,
+      },
+    );
+    if (taskTypeErr || !taskTypeId) {
+      throw new Error(`failed to resolve task type: ${taskTypeErr?.message}`);
+    }
+    defaultTaskTypeId = taskTypeId;
+
     // Title-only match: "urgentword" appears only in the title.
     const { data: titleTask, error: titleErr } = await admin
       .from("tasks")
@@ -111,6 +132,7 @@ describeIfEnv("F068 full-text search (AS-117, AS-123, AS-124)", () => {
         author_id: userId,
         title: `Fixthingnow urgentword task ${runId}`,
         description: "nothing relevant here",
+        task_type_id: defaultTaskTypeId,
       })
       .select("id")
       .single();
@@ -128,6 +150,7 @@ describeIfEnv("F068 full-text search (AS-117, AS-123, AS-124)", () => {
         author_id: userId,
         title: `Unrelated task title ${runId}`,
         description: "this description mentions urgentword in passing",
+        task_type_id: defaultTaskTypeId,
       })
       .select("id")
       .single();
@@ -146,6 +169,7 @@ describeIfEnv("F068 full-text search (AS-117, AS-123, AS-124)", () => {
         author_id: userId,
         title: `urgent fix ${runId}`,
         description: null,
+        task_type_id: defaultTaskTypeId,
       })
       .select("id")
       .single();

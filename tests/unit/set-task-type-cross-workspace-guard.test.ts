@@ -120,11 +120,14 @@ describe("setTaskType: cross-workspace task type guard", () => {
     expect(updateCalled).toBe(true);
   });
 
-  it("clearing a task's type (null) never needs the cross-workspace check", async () => {
+  // F116 (AS-058): task_type_id is required — setTaskTypeSchema no
+  // longer accepts null, so this parses to a validation error rather
+  // than reaching the cross-workspace check at all.
+  it("rejects clearing a task's type to null now that a type is required", async () => {
     const { setTaskType } = await import("@/lib/actions/task-types");
     const result = await setTaskType({ taskId: TASK_ID, taskTypeId: null });
 
-    expect(result.ok).toBe(true);
-    expect(updateCalled).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(updateCalled).toBe(false);
   });
 });

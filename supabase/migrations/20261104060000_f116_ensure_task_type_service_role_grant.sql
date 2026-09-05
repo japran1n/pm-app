@@ -1,0 +1,12 @@
+-- F116 follow-up: 20261104050000 granted EXECUTE on ensure_task_type to
+-- `authenticated` only. Several existing task-creation paths run under
+-- `service_role` instead — the recurrence-generation SQL function
+-- (`generate_due_recurring_occurrences`, called directly via the service
+-- key in tests/integration/recurrence-scheduled-generation.test.ts) and
+-- any other service-role-driven insert into a workspace that predates
+-- the F116 seed. `service_role` is not automatically covered by a grant
+-- to `authenticated`, and REVOKE ALL FROM PUBLIC (20261104040000) does
+-- not leave it with an implicit grant either — it needs its own,
+-- exactly like every other SECURITY DEFINER function in this schema
+-- that both roles can reach.
+grant execute on function public.ensure_task_type(uuid, text, text, text, boolean, boolean) to service_role;

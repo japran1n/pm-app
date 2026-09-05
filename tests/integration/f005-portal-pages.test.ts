@@ -186,6 +186,19 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     if (pageTypeError || !pageType) throw new Error(`task type: ${pageTypeError?.message}`);
     pageTypeId = pageType.id;
 
+    // F116: task_type_id is NOT NULL as of this feature — the "not a
+    // page task" fixture below needs some non-page type to satisfy that
+    // constraint, deliberately not the page type itself so it still
+    // proves getPortalPages filters by system_key, not merely "has a
+    // type".
+    const { data: deliveryType, error: deliveryTypeError } = await admin
+      .from("task_types")
+      .insert({ workspace_id: workspaceId, name: "Delivery", color: "#6b7280", system_key: "delivery" })
+      .select("id")
+      .single();
+    if (deliveryTypeError || !deliveryType) throw new Error(`task type: ${deliveryTypeError?.message}`);
+    const deliveryTypeId = deliveryType.id;
+
     const insertStatus = async (
       name: string,
       category: "not_started" | "in_progress" | "done",
@@ -357,7 +370,7 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
       projectId: projectAId,
       title: "Not a page task",
       statusId: notStartedStatusId,
-      taskTypeId: null,
+      taskTypeId: deliveryTypeId,
       clientVisible: true,
       pageSlug: null,
       pageOrder: null,

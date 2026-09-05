@@ -1994,6 +1994,7 @@ type MoveTaskStatusTaskRow = {
   recurrence: unknown;
   recurrence_parent_id: string | null;
   status: string;
+  task_type_id: string;
 };
 
 // W11: migrated onto withAuthz — see deleteTaskImpl above and
@@ -2014,7 +2015,7 @@ const moveTaskStatusImpl = withAuthz(
       const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
-          "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, projects!inner(id, workspace_id, visibility)",
+          "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, task_type_id, projects!inner(id, workspace_id, visibility)",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -2161,6 +2162,11 @@ const moveTaskStatusImpl = withAuthz(
             due_date: taskRow.due_date,
             recurrence: taskRow.recurrence,
             recurrence_parent_id: taskRow.recurrence_parent_id,
+            // F116: the generated occurrence keeps the source's own
+            // type — never re-defaulted, so a recurring 'client_request'
+            // or 'page' task doesn't silently start generating
+            // 'delivery'-typed occurrences.
+            task_type_id: taskRow.task_type_id,
           },
           ctx.user.id,
           timezone,
@@ -3662,6 +3668,10 @@ type DuplicateTaskSourceRow = {
   tags: string[] | null;
   position: number;
   estimate_minutes: number | null;
+  // F116 (AS-058): a duplicate keeps the source's own type — never
+  // re-defaulted to 'delivery', since that would silently misclassify a
+  // duplicated Page/QA-issue/etc. task.
+  task_type_id: string;
 };
 
 // W11: migrated onto withAuthz — see deleteTaskImpl above and
@@ -3682,7 +3692,7 @@ const duplicateTaskImpl = withAuthz(
       const { data: sourceRow, error } = await admin
         .from("tasks")
         .select(
-          "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, deleted_at, projects(workspace_id, visibility)",
+          "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, task_type_id, deleted_at, projects(workspace_id, visibility)",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -3782,6 +3792,8 @@ const duplicateTaskImpl = withAuthz(
         estimate_minutes: cloned.estimate_minutes,
         author_id: ctx.user.id,
         position: newPosition,
+        // F116: carried over from the source, never re-defaulted.
+        task_type_id: sourceRow.task_type_id,
         // No `number`/key supplied: F145's assign_task_key trigger assigns
         // this new row its OWN project-sequential number on insert, exactly
         // like every other task-creation path in this file

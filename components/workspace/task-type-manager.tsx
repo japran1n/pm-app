@@ -40,8 +40,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 // (`getPortalPages`) — the other four values the migration's check
 // constraint allows are reserved for future features, so they fall back
 // to a generic explanation rather than a dedicated one per key.
+// F116 (docs/task-types.md): the five business-taxonomy keys this
+// feature seeds, each with its own fixed meaning and (per
+// task_types_lock_system_flags_trigger) a billable flag and role that
+// can never be changed from here — renaming and recolouring stay
+// editable, only is_billable/system_key are locked.
 const SYSTEM_KEY_EXPLANATIONS: Record<string, string> = {
   page: "The portal's Pages view lists every task of this type. Renaming it here is safe — the portal follows this type by its role, not its name.",
+  delivery: "Any other agreed-scope work with no URL of its own. Billable — fixed.",
+  qa: "Something we delivered does not work as agreed — our fault. Not billable — fixed.",
+  client_request: "Client asks for something after delivery, small enough to absorb. Billable — fixed.",
+  change_request: "Client asks for something outside agreed scope — goes to quote. Billable — fixed.",
+  improvement: "Our own idea; nobody asked. Not billable — fixed.",
 };
 const DEFAULT_SYSTEM_KEY_EXPLANATION =
   "The portal uses this type automatically. Renaming it here is safe — the portal follows this type by its role, not its name.";
@@ -115,6 +125,15 @@ function TaskTypeRow({
             {SYSTEM_KEY_EXPLANATIONS[taskType.systemKey] ?? DEFAULT_SYSTEM_KEY_EXPLANATION}
           </TooltipContent>
         </Tooltip>
+      )}
+
+      {/* F116: read-only — is_billable is fixed on every system-keyed
+          row (task_types_lock_system_flags_trigger), so this is never
+          an editable control, just a label. */}
+      {taskType.systemKey && (
+        <Badge variant={taskType.isBillable ? "secondary" : "outline"}>
+          {taskType.isBillable ? "Billable" : "Not billable"}
+        </Badge>
       )}
 
       {/* F006c (missions/20260903-portal, AS-014): the write path

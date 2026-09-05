@@ -17,6 +17,10 @@ export type TaskType = {
   color: string;
   position: number;
   systemKey: string | null;
+  // F116: whether time against this type is normally billable — fixed
+  // (not workspace-editable) on any system-keyed row, per
+  // task_types_lock_system_flags_trigger.
+  isBillable: boolean;
 };
 
 export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
@@ -24,7 +28,7 @@ export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
 
   const { data, error } = await supabase
     .from("task_types")
-    .select("id, name, color, position, system_key")
+    .select("id, name, color, position, system_key, is_billable")
     .eq("workspace_id", workspaceId)
     .order("position");
 
@@ -39,5 +43,6 @@ export async function getTaskTypes(workspaceId: string): Promise<TaskType[]> {
     color: row.color,
     position: row.position,
     systemKey: row.system_key,
+    isBillable: row.is_billable,
   }));
 }

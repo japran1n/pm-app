@@ -144,7 +144,12 @@ describe.skipIf(!haveCreds)("task types — RLS write scope", () => {
     if (data) createdTaskTypeIds.push(data.id);
   });
 
-  it("deleting a task type in use sets the task's task_type_id to null, not a cascade delete", async () => {
+  // F116: task_type_id became required (AS-058), so the FK backing it
+  // changed from `on delete set null` to `on delete restrict`
+  // (20261104010000_f116_task_type_taxonomy.sql) — deleting a type still
+  // in use is now rejected outright rather than silently leaving a task
+  // typeless.
+  it("deleting a task type in use is rejected, not a cascade delete or a silent null-out", async () => {
     const { data: project, error: projectErr } = await admin
       .from("projects")
       .insert({ workspace_id: workspaceId, name: "RLS test project", visibility: "workspace" })
@@ -165,8 +170,12 @@ describe.skipIf(!haveCreds)("task types — RLS write scope", () => {
       .single();
     expect(taskErr).toBeNull();
 
-    await admin.from("task_types").delete().eq("id", createdTaskTypeIds[0]);
-    createdTaskTypeIds.shift();
+    const { error: deleteError } = await admin
+      .from("task_types")
+      .delete()
+      .eq("id", createdTaskTypeIds[0]);
+    expect(deleteError).not.toBeNull();
+    expect(deleteError?.code).toBe("23503");
 
     const { data: reloadedTask, error: reloadErr } = await admin
       .from("tasks")
@@ -175,9 +184,11 @@ describe.skipIf(!haveCreds)("task types — RLS write scope", () => {
       .single();
 
     expect(reloadErr).toBeNull();
-    expect(reloadedTask?.task_type_id).toBeNull();
+    expect(reloadedTask?.task_type_id).toBe(createdTaskTypeIds[0]);
 
     await admin.from("tasks").delete().eq("id", task!.id);
     await admin.from("projects").delete().eq("id", project!.id);
+    await admin.from("task_types").delete().eq("id", createdTaskTypeIds[0]);
+    createdTaskTypeIds.shift();
   });
 });

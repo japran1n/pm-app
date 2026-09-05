@@ -252,9 +252,13 @@ describe.skipIf(!haveCreds)("task type system_key (F005b: AS-014)", () => {
       .select("name, system_key")
       .eq("workspace_id", row.id);
 
+    // F116: create_workspace_with_owner now seeds all six system task
+    // types, not only 'page' — this test's own concern (a page type is
+    // seeded, keyed 'page', named 'Page') still holds, it's just no
+    // longer the ONLY row seeded.
     expect(seededTypesError).toBeNull();
-    expect(seededTypes).toHaveLength(1);
-    expect(seededTypes![0]!.system_key).toBe("page");
-    expect(seededTypes![0]!.name).toBe("Page");
+    expect(seededTypes).toHaveLength(6);
+    const pageRow = seededTypes!.find((t) => t.system_key === "page");
+    expect(pageRow?.name).toBe("Page");
   });
 });
