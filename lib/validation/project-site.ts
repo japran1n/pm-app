@@ -159,8 +159,31 @@ export type ReorderProjectAccountInput = z.infer<typeof reorderProjectAccountSch
 // docs: client_visible / doc_kind (F022's extension of the docs system)
 // ---------------------------------------------------------------------
 
-// Matches `docs_doc_kind_check`.
-export const docKindSchema = z.enum(["note", "training", "process", "handover"]);
+// Matches `docs_doc_kind_check`. F114 (client-portal-phase-2-plan.md,
+// items E-H) widened this vocabulary with three "How we work" kinds
+// (onboarding, feedback, portal_guide) alongside the four F022 already
+// had — `training`'s own "Guides" list (project-guides-list.tsx) keeps
+// filtering to exactly `training`, so this widening does not change what
+// already renders there.
+export const docKindSchema = z.enum([
+  "note",
+  "training",
+  "process",
+  "handover",
+  "onboarding",
+  "feedback",
+  "portal_guide",
+]);
+
+// F114: the "How we work" kinds, in the order the plan's own table lists
+// them (onboarding, feedback, portal_guide, handover).
+export const howWeWorkDocKinds = [
+  "onboarding",
+  "feedback",
+  "portal_guide",
+  "handover",
+] as const;
+export type HowWeWorkDocKind = (typeof howWeWorkDocKinds)[number];
 
 export const setDocClientVisibilitySchema = z.object({
   docId: z.string().uuid("Invalid document."),
@@ -173,3 +196,61 @@ export const setDocKindSchema = z.object({
   kind: docKindSchema,
 });
 export type SetDocKindInput = z.infer<typeof setDocKindSchema>;
+
+// F114: matches `docs_relevant_from_check`. Null ("Always relevant") is a
+// distinct, explicit choice from the app's point of view — not an
+// unset/loading state — so it's modelled as its own enum member here
+// rather than `.nullable()` leaking that ambiguity into every caller.
+export const relevantFromSchema = z.enum(["kickoff", "ongoing", "launch", "always"]);
+export type RelevantFrom = z.infer<typeof relevantFromSchema>;
+
+export const setDocRelevantFromSchema = z.object({
+  docId: z.string().uuid("Invalid document."),
+  relevantFrom: relevantFromSchema,
+});
+export type SetDocRelevantFromInput = z.infer<typeof setDocRelevantFromSchema>;
+
+// ---------------------------------------------------------------------
+// doc_links: manual title/description/thumbnail preview rows (F114)
+// ---------------------------------------------------------------------
+// Manual fields, not a server-side Open Graph fetch — see this feature's
+// handoff "Decisions made" for the explicit SSRF call the plan asked for.
+
+export const docLinkUrlSchema = urlSchema;
+
+export const docLinkTitleSchema = z
+  .string()
+  .trim()
+  .min(1, "Title is required.")
+  .max(200, "Title must be 200 characters or fewer.");
+
+export const docLinkDescriptionSchema = z
+  .string()
+  .trim()
+  .max(500, "Description must be 500 characters or fewer.")
+  .refine((value) => !looksLikeCredential(value), {
+    message: "This looks like a password or API key. Put it in the password manager, not here.",
+  })
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+export const docLinkThumbnailUrlSchema = z
+  .string()
+  .trim()
+  .max(2000, "Thumbnail URL must be 2000 characters or fewer.")
+  .optional()
+  .or(z.literal("").transform(() => undefined));
+
+export const addDocLinkSchema = z.object({
+  docId: z.string().uuid("Invalid document."),
+  url: docLinkUrlSchema,
+  title: docLinkTitleSchema,
+  description: docLinkDescriptionSchema,
+  thumbnailUrl: docLinkThumbnailUrlSchema,
+});
+export type AddDocLinkInput = z.infer<typeof addDocLinkSchema>;
+
+export const deleteDocLinkSchema = z.object({
+  linkId: z.string().uuid("Invalid link."),
+});
+export type DeleteDocLinkInput = z.infer<typeof deleteDocLinkSchema>;

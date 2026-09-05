@@ -5,12 +5,14 @@ import { AlertTriangle, Paperclip, Inbox } from "lucide-react";
 import { getPortalProjects } from "@/lib/queries/portal";
 import { getClientVisiblePortalLinks, getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
 import { getClientVisibleDocs } from "@/lib/queries/docs";
+import { getHowWeWorkEntries } from "@/lib/queries/how-we-work";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { LaunchDayCard } from "@/components/portal/launch-day-card";
 import { ProjectLinksList } from "@/components/portal/project-links-list";
 import { ProjectAccountsTable } from "@/components/portal/project-accounts-table";
 import { ProjectGuidesList } from "@/components/portal/project-guides-list";
+import { HowWeWorkList } from "@/components/portal/how-we-work-list";
 
 // F023 (missions/20260903-portal, AS-049, AS-050, AS-051): replaces
 // F003's `PortalComingSoon` stub. Reads `getClientVisiblePortalLinks`/
@@ -65,10 +67,16 @@ export default async function PortalSitePage({
     .eq("id", projectId)
     .maybeSingle();
 
-  const [linksResult, accountsResult, guidesRaw] = await Promise.all([
+  const [linksResult, accountsResult, guidesRaw, howWeWork] = await Promise.all([
     getClientVisiblePortalLinks(projectId),
     getClientVisiblePortalAccounts(projectId),
     getClientVisibleDocs(workspace.id, projectId).catch(() => null),
+    // F114 (client-portal-phase-2-plan.md, items E-H): a failed read here
+    // renders the same honest "couldn't load" branch below, same
+    // convention as every other read on this page — never falls through
+    // to the empty-section state, which would read as "nothing shared
+    // yet" rather than "something broke".
+    getHowWeWorkEntries(workspace.id, projectId).catch(() => null),
   ]);
 
   // A failed links/accounts read renders an honest "couldn't load" state,
@@ -76,7 +84,7 @@ export default async function PortalSitePage({
   // nothing shared yet" -- the same failure-as-reassuring-fact defect
   // results/page.tsx's own header comment describes and fixes for this
   // view's neighbour.
-  if (!linksResult.ok || !accountsResult.ok || guidesRaw === null) {
+  if (!linksResult.ok || !accountsResult.ok || guidesRaw === null || howWeWork === null) {
     return (
       <EmptyState
         icon={AlertTriangle}
@@ -116,6 +124,11 @@ export default async function PortalSitePage({
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">Guides</h2>
         <ProjectGuidesList guides={guides} />
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-foreground">How we work</h2>
+        <HowWeWorkList entries={howWeWork.entries} />
       </section>
 
       {/* F023's own spec: Files (relocated by F003b) and Requests both

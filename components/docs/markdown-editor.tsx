@@ -55,9 +55,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { updateDoc, setDocKind } from "@/lib/actions/docs";
+import { updateDoc, setDocKind, setDocRelevantFrom } from "@/lib/actions/docs";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
-import { docKindSchema, type SetDocKindInput } from "@/lib/validation/project-site";
+import { DocLinksEditor } from "@/components/docs/doc-links-editor";
+import {
+  docKindSchema,
+  howWeWorkDocKinds,
+  relevantFromSchema,
+  type RelevantFrom,
+  type SetDocKindInput,
+} from "@/lib/validation/project-site";
+import type { DocLink } from "@/lib/queries/docs";
 import { toast } from "sonner";
 // F008 (missions/20260903-portal, AS-019): the doc header's "Request
 // client approval" entry point. Only meaningful for a PROJECT-scoped doc —
@@ -75,6 +83,20 @@ const DOC_KIND_LABELS: Record<SetDocKindInput["kind"], string> = {
   training: "Training",
   process: "Process",
   handover: "Handover",
+  onboarding: "Onboarding",
+  feedback: "Feedback",
+  portal_guide: "Portal guide",
+};
+
+// F114 (client-portal-phase-2-plan.md, items E-H): the "when does this
+// become relevant" selector, only meaningful for a "How we work" kind
+// (onboarding/feedback/portal_guide/handover) — a plain note or training
+// guide has no equivalent concept, so the selector is hidden for those.
+const RELEVANT_FROM_LABELS: Record<RelevantFrom, string> = {
+  always: "Always",
+  kickoff: "Project start",
+  ongoing: "Throughout",
+  launch: "At launch",
 };
 
 export type MarkdownEditorProps = {
@@ -102,6 +124,15 @@ export type MarkdownEditorProps = {
    * both project doc pages below always pass real values. */
   initialClientVisible?: boolean;
   initialDocKind?: SetDocKindInput["kind"];
+  /** F114: null (the DB's "always relevant") maps to the app-level
+   * "always" enum member right at this prop boundary — see
+   * relevantFromSchema's own comment. Undefined (a caller that hasn't
+   * been updated) hides the selector entirely, same convention as
+   * initialClientVisible/initialDocKind above. */
+  initialRelevantFrom?: "kickoff" | "ongoing" | "launch" | null;
+  /** F114: this doc's video/document link previews. Undefined hides the
+   * links editor, same convention as the props above. */
+  initialDocLinks?: DocLink[];
 };
 
 export function MarkdownEditor({
@@ -112,6 +143,8 @@ export function MarkdownEditor({
   projectId,
   initialClientVisible,
   initialDocKind,
+  initialRelevantFrom,
+  initialDocLinks,
   currentUserRole,
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
@@ -120,6 +153,10 @@ export function MarkdownEditor({
     initialDocKind ?? "note",
   );
   const [isKindPending, startKindTransition] = useTransition();
+  const [relevantFrom, setRelevantFromState] = useState<RelevantFrom>(
+    initialRelevantFrom ?? "always",
+  );
+  const [isRelevantFromPending, startRelevantFromTransition] = useTransition();
 
   function handleKindChange(value: string | null) {
     const parsed = docKindSchema.safeParse(value);
@@ -134,6 +171,22 @@ export function MarkdownEditor({
       }
     });
   }
+
+  function handleRelevantFromChange(value: string | null) {
+    const parsed = relevantFromSchema.safeParse(value);
+    if (!parsed.success) return;
+    const previous = relevantFrom;
+    setRelevantFromState(parsed.data);
+    startRelevantFromTransition(async () => {
+      const result = await setDocRelevantFrom(docId, parsed.data);
+      if (!result.ok) {
+        setRelevantFromState(previous);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  const isHowWeWorkKind = (howWeWorkDocKinds as readonly string[]).includes(docKind);
 
   // Debounced auto-save (plan: 800ms after the user stops typing, no manual
   // Save button). A plain setTimeout ref is used rather than pulling in a
@@ -233,6 +286,24 @@ export function MarkdownEditor({
                 ))}
               </SelectContent>
             </Select>
+            {isHowWeWorkKind && (
+              <Select
+                value={relevantFrom}
+                onValueChange={handleRelevantFromChange}
+                disabled={isRelevantFromPending}
+              >
+                <SelectTrigger className="w-36 shrink-0" aria-label="Relevant from">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {relevantFromSchema.options.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {RELEVANT_FROM_LABELS[value]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <DocClientVisibilityToggle
               docId={docId}
               clientVisible={initialClientVisible ?? false}
@@ -260,6 +331,10 @@ export function MarkdownEditor({
           </>
         )}
       </div>
+
+      {isHowWeWorkKind && initialDocLinks !== undefined && (
+        <DocLinksEditor docId={docId} initialLinks={initialDocLinks} />
+      )}
 
       <Toolbar editor={editor} />
 

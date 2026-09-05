@@ -835,6 +835,50 @@ export type Database = {
           },
         ]
       }
+      doc_links: {
+        Row: {
+          created_at: string
+          description: string | null
+          doc_id: string
+          id: string
+          position: number
+          thumbnail_url: string | null
+          title: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          doc_id: string
+          id?: string
+          position?: number
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          doc_id?: string
+          id?: string
+          position?: number
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doc_links_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "docs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       docs: {
         Row: {
           client_visible: boolean
@@ -846,6 +890,7 @@ export type Database = {
           id: string
           position: number
           project_id: string | null
+          relevant_from: string | null
           title: string
           updated_at: string
           updated_by: string | null
@@ -861,6 +906,7 @@ export type Database = {
           id?: string
           position?: number
           project_id?: string | null
+          relevant_from?: string | null
           title?: string
           updated_at?: string
           updated_by?: string | null
@@ -876,6 +922,7 @@ export type Database = {
           id?: string
           position?: number
           project_id?: string | null
+          relevant_from?: string | null
           title?: string
           updated_at?: string
           updated_by?: string | null

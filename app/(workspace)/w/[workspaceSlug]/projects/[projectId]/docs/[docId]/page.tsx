@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
-import { getDocById } from "@/lib/queries/docs";
+import { getDocById, getDocLinks } from "@/lib/queries/docs";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import { MarkdownEditor } from "@/components/docs/markdown-editor";
 
@@ -50,6 +50,12 @@ export default async function ProjectDocEditorPage({
     user.id,
   );
 
+  // F114 (client-portal-phase-2-plan.md, items E-H): video/document link
+  // previews only ever matter for a project-scoped doc (same reasoning
+  // as DocClientVisibilityToggle's own comment) — this page is already
+  // project-scoped, so it always fetches them.
+  const docLinks = await getDocLinks(doc.id);
+
   return (
     <div className="flex flex-col gap-4">
       <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -78,6 +84,8 @@ export default async function ProjectDocEditorPage({
         projectId={project.id}
         initialClientVisible={doc.clientVisible}
         initialDocKind={doc.docKind}
+        initialRelevantFrom={doc.relevantFrom}
+        initialDocLinks={docLinks}
         currentUserRole={
           (currentUserRole ?? undefined) as
             | "owner"

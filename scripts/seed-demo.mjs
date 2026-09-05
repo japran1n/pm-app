@@ -883,6 +883,34 @@ const WEBSITE_TRAINING_DOC = {
     "1. Open the Pages tab in your client portal.\n2. Click a page to see its current status and the team's notes.\n3. When a page reaches \"Waiting on you\", open the linked approval and choose Approve or Request changes.\n4. Leave a note either way — it saves everyone a follow-up call.",
 };
 
+// F114 (client-portal-phase-2-plan.md, items E-H): Website Redesign is
+// mid-project, well before launch (target_launch_date is 30 days out) —
+// this is the onboarding note and portal guide a client actually needs
+// right now, plus the feedback rules that apply from day one.
+const WEBSITE_HOW_WE_WORK_DOCS = [
+  {
+    kind: "onboarding",
+    relevantFrom: "kickoff",
+    title: "How this project runs",
+    content:
+      "We work in weekly sprints. Every Monday you'll see this portal update with what moved last week and what's planned for this one — you don't need to ask, it's always current.\n\nWhat we'll ask of you: a same-week turnaround on approvals (Pages tab, anything marked \"Waiting on you\") and a single point of contact for sign-off, so we're not waiting on internal alignment on your side mid-sprint. If that's not realistic some weeks, tell us — a known delay is fine, a silent one costs a sprint.\n\nWhat to expect week to week: design and copy review in weeks 1–4, build and integration from week 3 onward (overlap is deliberate, not a mistake), then UAT and handover in the final two weeks. Rollout & handover in your phase list is where that last stretch shows up.",
+  },
+  {
+    kind: "feedback",
+    relevantFrom: "ongoing",
+    title: "How to give feedback we can act on",
+    content:
+      "Leave feedback on the specific page it's about, from the Pages tab — click through to the page and add your note there, not in a general email. It keeps the context attached and means we don't have to ask \"which page did you mean\".\n\nWhat makes a good note: be specific about what's wrong and, if you have one, what you'd want instead. \"The header feels off\" takes a call to clarify; \"the header logo looks too small on mobile, can it match the size on desktop\" we can just fix.\n\nWhat happens after: every note gets a response within one business day, either a fix, a question, or — if it's new scope rather than a change to something already planned — a change request so you can see the cost and timeline impact before we start.",
+  },
+  {
+    kind: "portal_guide",
+    relevantFrom: "always",
+    title: "Using this dashboard",
+    content:
+      "Overview is the fastest way to check in: current phase, anything waiting on you, and the target launch date.\n\nPages is where the actual site lives in progress — each page shows its status (in progress, waiting on you, blocked, done) and a preview link once there's something to look at.\n\nYour site is where your training guides, site accounts, and the handover material will collect as the project moves toward launch — mostly empty for now, that's expected this early.\n\nScope & decisions is your record of what's in scope, what's been decided, and any change requests — check here before assuming something extra was included.\n\n\"Waiting on you\" always means we're blocked until you act on something specific; anything else is normal in-progress work.",
+  },
+];
+
 // F005b's `task_types` (20260912010000_task_type_system_key.sql:89): the
 // stable-key row the Pages view matches on, never a name/string match.
 const PAGE_TASK_TYPE = { name: "Page", color: "#3670e1", systemKey: "page" };
@@ -1211,6 +1239,24 @@ async function seedPortalDemoData({ projectId, workspaceId, owner, userIds, task
       created_by: owner,
     }),
   );
+
+  // 12b. "How we work" — onboarding, feedback, portal guide (F114,
+  // client-portal-phase-2-plan.md items E-H).
+  for (const doc of WEBSITE_HOW_WE_WORK_DOCS) {
+    check(
+      `docs ${doc.kind} Website Redesign`,
+      await admin.from("docs").insert({
+        workspace_id: workspaceId,
+        project_id: projectId,
+        title: doc.title,
+        content: doc.content,
+        doc_kind: doc.kind,
+        client_visible: true,
+        relevant_from: doc.relevantFrom === "always" ? null : doc.relevantFrom,
+        created_by: owner,
+      }),
+    );
+  }
 
   // 13. Pages — a custom "Blocked" board column (client_bucket override,
   // 20260911010000_status_client_bucket.sql) plus the page tasks
@@ -1555,6 +1601,40 @@ const NORTHWIND_ACCOUNTS = [
   { service: "Rewards fulfillment vendor account", owner: "client", status: "pending", clientVisible: true, note: "Client is finalising the vendor contract renewal for year two." },
 ];
 
+// F114 (client-portal-phase-2-plan.md, items E-H): Northwind has already
+// launched (warranty window, see seedLaunchedPortalData's own
+// `target_launch_date: daysFromNow(-10)`), so this is the "How we work"
+// content that's actually relevant to them right now — the handover
+// walkthroughs, not a kickoff onboarding note nobody needs anymore.
+const NORTHWIND_HOW_WE_WORK_DOCS = [
+  {
+    kind: "handover",
+    relevantFrom: "launch",
+    title: "Running the loyalty app day to day",
+    content:
+      "You now own the Northwind Loyalty App outright. This page is your reference for the handful of things you'll actually touch post-launch: publishing a new rewards tier, checking the points ledger, and who to call if something looks wrong.\n\nThe two walkthroughs below cover the admin console and the points ledger. Both run about five minutes. Everything else — hosting, the storefront API keys, the domain — is already transferred; see Your site for the full account list.\n\nWarranty: we're covering bug fixes on the enrollment flow and points ledger for 30 days from launch (see the banner above). After that, ongoing changes go through a normal change request, same as any other work.",
+    links: [
+      {
+        url: "https://www.loom.com/share/northwind-admin-console-walkthrough",
+        title: "Admin console walkthrough",
+        description: "Publishing a rewards tier, adjusting point values, and pausing a promotion.",
+        thumbnailUrl: "https://cdn.loom.com/sessions/thumbnails/northwind-admin-console-walkthrough.jpg",
+      },
+      {
+        url: "https://www.loom.com/share/northwind-points-ledger-walkthrough",
+        title: "Points ledger walkthrough",
+        description: "Looking up a customer's balance and correcting a mis-issued reward.",
+        thumbnailUrl: "https://cdn.loom.com/sessions/thumbnails/northwind-points-ledger-walkthrough.jpg",
+      },
+      {
+        url: "https://docs.google.com/document/d/northwind-loyalty-runbook",
+        title: "Loyalty app runbook (PDF)",
+        description: "Escalation contacts, the warranty terms in full, and what to do if the points job fails overnight.",
+      },
+    ],
+  },
+];
+
 // --- portal demo data: Meridian Ops Dashboard (mid-flight, over budget) -----
 //
 // The other half of the "one mid-flight, one finished" contrast: real work
@@ -1798,6 +1878,28 @@ const MERIDIAN_ACCOUNTS = [
   { service: "Client SSO integration", owner: "client", status: "transferred", clientVisible: true },
 ];
 
+// F114 (client-portal-phase-2-plan.md, items E-H): Meridian is mid-flight
+// and over budget (see WORKSPACE2_BUDGET) — the content that matters here
+// is "how do we give feedback that lands" and "how do I read this
+// dashboard", not onboarding (they're long past kickoff) or handover
+// (nothing has shipped yet).
+const MERIDIAN_HOW_WE_WORK_DOCS = [
+  {
+    kind: "feedback",
+    relevantFrom: "ongoing",
+    title: "Giving us feedback we can actually act on",
+    content:
+      "Leave feedback directly on the page or metric it's about, not in a separate email or Slack thread — the note stays attached to the thing you're commenting on, and we won't lose track of it between sprints.\n\nWhat makes a good note: say what you saw and what you expected instead. \"The retention chart looks wrong\" sends us hunting; \"the retention chart shows 140% for March, should be under 100%\" gets fixed the same day.\n\nWhat happens after: every note becomes a task on our board within one business day. If it needs a scope conversation (most \"can you also add...\" requests do, given where the budget sits right now), we'll turn it into a change request in Scope & decisions so the cost is visible before we start, not after.",
+  },
+  {
+    kind: "portal_guide",
+    relevantFrom: "ongoing",
+    title: "Reading this dashboard",
+    content:
+      "Overview is your five-second check: is the project on track, and is anything waiting on you.\n\nHours shows the budget burn-down. Given where this project sits, expect that chart to look tight — we flag it the moment a category is projected to run over, we don't wait for the invoice to surprise you.\n\nResults is the metrics we agreed to move (retention, activation, the ones from your original brief) plotted against the baseline we captured before we touched anything.\n\nScope & decisions is where change requests and the assumptions we're building against live — check here before assuming something is in scope.\n\nA status like \"Waiting on you\" means the team is blocked until you act; everything else is normal in-progress work, not a problem to chase.",
+  },
+];
+
 // Shared portal-table seeder for a project that already has its own tasks
 // created (`taskIdByTitle`). Generalises the phases/decision-owners/
 // approvals/deliverables/metrics/scope/decisions/links/accounts blocks
@@ -1824,6 +1926,8 @@ async function seedProjectPortalTables({
   accounts,
   budget,
   label,
+  workspaceId,
+  howWeWorkDocs,
 }) {
   const { data: phaseRows, error: phasesError } = await admin
     .from("project_phases")
@@ -2037,6 +2141,48 @@ async function seedProjectPortalTables({
       })),
     ),
   );
+
+  // F114 (client-portal-phase-2-plan.md, items E-H): "How we work" —
+  // real onboarding/feedback/portal-guide/handover content, in the
+  // agency's own voice, not placeholder text. `howWeWorkDocs` is
+  // optional so callers that predate this feature (none left, but kept
+  // consistent with every other optional-until-passed param in this
+  // function) don't need updating.
+  if (howWeWorkDocs && howWeWorkDocs.length > 0) {
+    for (const doc of howWeWorkDocs) {
+      const { data: docRow, error: docError } = await admin
+        .from("docs")
+        .insert({
+          workspace_id: workspaceId,
+          project_id: projectId,
+          title: doc.title,
+          content: doc.content,
+          doc_kind: doc.kind,
+          client_visible: true,
+          relevant_from: doc.relevantFrom ?? null,
+          created_by: owner,
+        })
+        .select("id")
+        .single();
+      check(`docs ${doc.kind} ${label}`, { error: docError });
+
+      if (doc.links && doc.links.length > 0 && docRow) {
+        check(
+          `doc_links ${doc.kind} ${label}`,
+          await admin.from("doc_links").insert(
+            doc.links.map((l, index) => ({
+              doc_id: docRow.id,
+              url: l.url,
+              title: l.title,
+              description: l.description ?? null,
+              thumbnail_url: l.thumbnailUrl ?? null,
+              position: (index + 1) * 1000,
+            })),
+          ),
+        );
+      }
+    }
+  }
 }
 
 // Northwind Loyalty App — launch header fields (F001) + warranty window
@@ -2076,6 +2222,8 @@ async function seedLaunchedPortalData({ projectId, workspaceId, owner, userIds, 
     links: NORTHWIND_LINKS,
     accounts: NORTHWIND_ACCOUNTS,
     label: "Northwind Loyalty App",
+    workspaceId,
+    howWeWorkDocs: NORTHWIND_HOW_WE_WORK_DOCS,
   });
 
   // F113 (docs/client-portal-phase-2-plan.md item B, coordinator
@@ -2135,7 +2283,7 @@ async function seedLaunchedPortalData({ projectId, workspaceId, owner, userIds, 
 // stays WORKSPACE2_BUDGET (unchanged from earlier rounds): sold less than
 // this project's own logged minutes already total, so the burn-down's red
 // path is real.
-async function seedWorkspace2Budget({ projectId, owner, userIds, taskIdByTitle }) {
+async function seedWorkspace2Budget({ projectId, workspaceId, owner, userIds, taskIdByTitle }) {
   check(
     "portal_enabled Meridian Ops Dashboard",
     await admin
@@ -2162,6 +2310,8 @@ async function seedWorkspace2Budget({ projectId, owner, userIds, taskIdByTitle }
     accounts: MERIDIAN_ACCOUNTS,
     budget: WORKSPACE2_BUDGET,
     label: "Meridian Ops Dashboard",
+    workspaceId,
+    howWeWorkDocs: MERIDIAN_HOW_WE_WORK_DOCS,
   });
 }
 
@@ -2344,7 +2494,7 @@ async function seedProjects({ workspaceId, owner, userIds, projectSpecs, memberU
     }
 
     if (portalSeeder && spec.name === WORKSPACE2_CLIENT_PROJECT) {
-      await portalSeeder({ projectId: project.id, owner, userIds, taskIdByTitle });
+      await portalSeeder({ projectId: project.id, workspaceId, owner, userIds, taskIdByTitle });
       console.log(`  ✓ ${spec.name} — portal demo data (over budget, phases, approvals, deliverables, metrics, scope, decisions, links, accounts)`);
     }
   }

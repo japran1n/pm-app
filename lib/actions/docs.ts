@@ -388,3 +388,123 @@ export async function setDocKind(
 
   return { ok: true, data: { docId: parsed.data.docId, kind: parsed.data.kind } };
 }
+
+// ---------------------------------------------------------------------
+// F114 (client-portal-phase-2-plan.md, items E-H): "How we work" —
+// when a doc becomes relevant, and its video/document link previews.
+// Same "any active workspace member may edit" RLS-as-enforcement-
+// boundary posture as setDocKind/setDocClientVisibility above.
+// ---------------------------------------------------------------------
+
+import {
+  addDocLinkSchema,
+  setDocRelevantFromSchema,
+  deleteDocLinkSchema,
+  type AddDocLinkInput,
+  type DeleteDocLinkInput,
+  type SetDocRelevantFromInput,
+} from "@/lib/validation/project-site";
+
+export type SetDocRelevantFromResult =
+  | { ok: true; data: { docId: string; relevantFrom: SetDocRelevantFromInput["relevantFrom"] } }
+  | { ok: false; error: string };
+
+// The app's "always" maps to the DB's `null` (docs_relevant_from_check)
+// at this exact boundary — see relevantFromSchema's own comment for why
+// this isn't modelled as `.nullable()` further up the stack.
+export async function setDocRelevantFrom(
+  docId: string,
+  relevantFrom: SetDocRelevantFromInput["relevantFrom"],
+): Promise<SetDocRelevantFromResult> {
+  const parsed = setDocRelevantFromSchema.safeParse({
+    docId,
+    relevantFrom,
+  } satisfies SetDocRelevantFromInput);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid document." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const dbValue = parsed.data.relevantFrom === "always" ? null : parsed.data.relevantFrom;
+
+  const { error } = await supabase
+    .from("docs")
+    .update({ relevant_from: dbValue, updated_by: user.id })
+    .eq("id", parsed.data.docId);
+
+  if (error) {
+    logger.error("setDocRelevantFrom: update failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { ok: true, data: { docId: parsed.data.docId, relevantFrom: parsed.data.relevantFrom } };
+}
+
+export type AddDocLinkResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+
+export async function addDocLink(input: AddDocLinkInput): Promise<AddDocLinkResult> {
+  const parsed = addDocLinkSchema.safeParse(input);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid link." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { data, error } = await supabase
+    .from("doc_links")
+    .insert({
+      doc_id: parsed.data.docId,
+      url: parsed.data.url,
+      title: parsed.data.title,
+      description: parsed.data.description ?? null,
+      thumbnail_url: parsed.data.thumbnailUrl ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    logger.error("addDocLink: insert failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { ok: true, data: { id: data.id } };
+}
+
+export type DeleteDocLinkResult = { ok: true } | { ok: false; error: string };
+
+export async function deleteDocLink(linkId: string): Promise<DeleteDocLinkResult> {
+  const parsed = deleteDocLinkSchema.safeParse({ linkId } satisfies DeleteDocLinkInput);
+
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid link." };
+  }
+
+  const { supabase, user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const { error } = await supabase.from("doc_links").delete().eq("id", parsed.data.linkId);
+
+  if (error) {
+    logger.error("deleteDocLink: delete failed", { error });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateDocs();
+
+  return { ok: true };
+}

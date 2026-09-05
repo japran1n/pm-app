@@ -27,7 +27,14 @@ export type DocFolder = {
   createdAt: string;
 };
 
-export type DocKind = "note" | "training" | "process" | "handover";
+export type DocKind =
+  | "note"
+  | "training"
+  | "process"
+  | "handover"
+  | "onboarding"
+  | "feedback"
+  | "portal_guide";
 
 export type Doc = {
   id: string;
@@ -45,6 +52,11 @@ export type Doc = {
   // to the client portal's guides list, and what kind of guide it is.
   clientVisible: boolean;
   docKind: DocKind;
+  // F114 (client-portal-phase-2-plan.md, items E-H): null means "always
+  // relevant" (the app layer's own "always" is mapped to/from this null
+  // at the query/action boundary, never leaked past it — see
+  // lib/validation/project-site.ts's relevantFromSchema comment).
+  relevantFrom: "kickoff" | "ongoing" | "launch" | null;
 };
 
 function mapFolderRow(row: {
@@ -83,6 +95,7 @@ function mapDocRow(row: {
   updated_at: string;
   client_visible: boolean;
   doc_kind: string;
+  relevant_from: string | null;
 }): Doc {
   return {
     id: row.id,
@@ -98,6 +111,7 @@ function mapDocRow(row: {
     updatedAt: row.updated_at,
     clientVisible: row.client_visible,
     docKind: row.doc_kind as DocKind,
+    relevantFrom: row.relevant_from as "kickoff" | "ongoing" | "launch" | null,
   };
 }
 
@@ -116,7 +130,7 @@ function docFoldersBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>)
 
 function docsBaseQuery(supabase: Awaited<ReturnType<typeof createClient>>) {
   return supabase.from("docs").select(
-    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind",
+    "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind, relevant_from",
   );
 }
 
@@ -268,7 +282,7 @@ export async function getDocById(docId: string): Promise<Doc | null> {
   const { data, error } = await supabase
     .from("docs")
     .select(
-      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind",
+      "id, workspace_id, project_id, folder_id, title, content, position, created_by, updated_by, created_at, updated_at, client_visible, doc_kind, relevant_from",
     )
     .eq("id", docId)
     .maybeSingle();
@@ -278,4 +292,102 @@ export async function getDocById(docId: string): Promise<Doc | null> {
   }
 
   return mapDocRow(data);
+}
+
+// ---------------------------------------------------------------------
+// doc_links (F114): manual title/description/thumbnail preview rows for
+// video/document entries, e.g. a handover doc's Loom walkthroughs.
+// ---------------------------------------------------------------------
+
+export type DocLink = {
+  id: string;
+  docId: string;
+  url: string;
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function mapDocLinkRow(row: {
+  id: string;
+  doc_id: string;
+  url: string;
+  title: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}): DocLink {
+  return {
+    id: row.id,
+    docId: row.doc_id,
+    url: row.url,
+    title: row.title,
+    description: row.description,
+    thumbnailUrl: row.thumbnail_url,
+    position: row.position,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+const DOC_LINK_COLUMNS =
+  "id, doc_id, url, title, description, thumbnail_url, position, created_at, updated_at";
+
+// Every link belonging to one doc, ordered for display. RLS
+// (doc_links_select_team / doc_links_select_client, 20261102010000)
+// already scopes what comes back for the caller — this is a plain pass-
+// through, same posture as getDocsInFolder etc. in this file.
+export async function getDocLinks(docId: string): Promise<DocLink[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("doc_links")
+    .select(DOC_LINK_COLUMNS)
+    .eq("doc_id", docId)
+    .order("position", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []).map(mapDocLinkRow);
+}
+
+// Every link belonging to any of the given docs, grouped by doc id — used
+// by the portal's "How we work" section, which reads several docs' links
+// in one round trip rather than one query per card.
+export async function getDocLinksForDocs(
+  docIds: string[],
+): Promise<Map<string, DocLink[]>> {
+  const result = new Map<string, DocLink[]>();
+  if (docIds.length === 0) return result;
+
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("doc_links")
+    .select(DOC_LINK_COLUMNS)
+    .in("doc_id", docIds)
+    .order("position", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  for (const row of data ?? []) {
+    const link = mapDocLinkRow(row);
+    const existing = result.get(link.docId);
+    if (existing) {
+      existing.push(link);
+    } else {
+      result.set(link.docId, [link]);
+    }
+  }
+
+  return result;
 }
