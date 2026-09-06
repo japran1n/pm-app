@@ -14,12 +14,17 @@ import { DecisionOwnersGrid } from "@/components/portal/decision-owners-grid";
 import { EmptyState } from "@/components/empty-state";
 
 // F009 (missions/20260903-portal, AS-021, AS-022, AS-023, AS-026):
-// replaces the `PortalComingSoon` stub. Three sections, in the order the
-// spec's own scope lists them: open approvals (what needs a decision
-// right now), decision history (the record of what was decided, worth
-// more than the open list per this feature's own scope note), and "who
-// approves what" (project_decision_owners, so a client can see who to
-// chase if a decision is stuck on a teammate).
+// replaces the `PortalComingSoon` stub. Three sections: open approvals
+// (what needs a decision right now), decision history (the record of
+// what was decided), and "who approves what" (project_decision_owners,
+// so a client can see who to chase if a decision is stuck on a
+// teammate).
+//
+// Redesign (2026-09-07, user request): "who approves what" moved to the
+// top of the page, above "Open approvals" -- a client orienting on this
+// page benefits from seeing who owns each decision type before looking
+// at what's currently open, and the compact `DecisionOwnersGrid` strip
+// no longer costs enough vertical space to justify placing it last.
 //
 // Project resolution reuses `getPortalProjects`, same pattern as every
 // other route under this project-scoped shell (p/[projectId]/page.tsx,
@@ -78,8 +83,26 @@ export default async function PortalApprovalsPage({
 
   return (
     <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+          Who approves what
+        </h2>
+        {!ownersResult.ok ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load decision owners"
+            description="Something went wrong loading who approves what for this project. Try refreshing the page."
+            testId="decision-owners-error"
+          />
+        ) : (
+          <DecisionOwnersGrid owners={ownersResult.data} />
+        )}
+      </div>
+
       <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Open approvals</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+          Open approvals
+        </h2>
         {!openApprovalsResult.ok ? (
           <EmptyState
             icon={AlertTriangle}
@@ -115,7 +138,9 @@ export default async function PortalApprovalsPage({
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Decision history</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+          Decision history
+        </h2>
         {!historyResult.ok ? (
           <EmptyState
             icon={AlertTriangle}
@@ -125,20 +150,6 @@ export default async function PortalApprovalsPage({
           />
         ) : (
           <ApprovalHistory entries={historyResult.data} />
-        )}
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold">Who approves what</h2>
-        {!ownersResult.ok ? (
-          <EmptyState
-            icon={AlertTriangle}
-            title="Couldn't load decision owners"
-            description="Something went wrong loading who approves what for this project. Try refreshing the page."
-            testId="decision-owners-error"
-          />
-        ) : (
-          <DecisionOwnersGrid owners={ownersResult.data} />
         )}
       </div>
     </div>

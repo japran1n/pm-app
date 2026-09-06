@@ -9,6 +9,12 @@
 // actually assign one. There is no per-type contact to name (that is
 // exactly what's missing), so the honest next line names the team, not
 // an individual, as who to raise it with.
+//
+// Redesign (2026-09-07, user request): four full-width cards took up a
+// lot of vertical space to convey four short facts. This renders the
+// same data as a single compact, wrapping row -- "Content -> Nina Maric"
+// style chips -- so it reads at a glance and can sit above "Open
+// approvals" without pushing it down the page.
 import type { PortalDecisionOwner } from "@/lib/queries/approvals";
 import { UserAvatar, personLabel } from "@/components/user-avatar";
 
@@ -30,17 +36,22 @@ export function DecisionOwnersGrid({ owners }: { owners: PortalDecisionOwner[] }
   const ownerByType = new Map(owners.map((owner) => [owner.decisionType, owner]));
 
   return (
-    <div data-testid="decision-owners-grid" className="grid gap-3 sm:grid-cols-2">
+    <div
+      data-testid="decision-owners-grid"
+      className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5"
+    >
       {DECISION_TYPES.map((type) => {
         const owner = ownerByType.get(type);
         return (
-          <div
-            key={type}
-            className="flex items-center justify-between gap-3 rounded-lg border border-border p-4"
-          >
-            <span className="text-sm font-medium">{DECISION_TYPE_LABEL[type]}</span>
+          <div key={type} className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <span className="font-medium text-muted-foreground">
+              {DECISION_TYPE_LABEL[type]}
+            </span>
+            <span aria-hidden className="text-muted-foreground">
+              →
+            </span>
             {owner ? (
-              <span className="flex items-center gap-2 text-sm">
+              <span className="flex items-center gap-1.5 font-medium">
                 <UserAvatar
                   person={{
                     id: owner.userId,
@@ -53,9 +64,9 @@ export function DecisionOwnersGrid({ owners }: { owners: PortalDecisionOwner[] }
                 {personLabel({ id: owner.userId, name: owner.name, email: null })}
               </span>
             ) : (
-              <span className="flex flex-col text-right text-sm text-muted-foreground">
+              <span className="flex items-center gap-1 text-muted-foreground">
                 <span>No owner assigned</span>
-                <span className="text-xs">Raise it with your project team.</span>
+                <span className="hidden sm:inline">— raise it with your project team.</span>
               </span>
             )}
           </div>
