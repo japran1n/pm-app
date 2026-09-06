@@ -30,7 +30,6 @@ import TrashLoading from "@/app/(workspace)/w/[workspaceSlug]/trash/loading";
 import SearchLoading from "@/app/(workspace)/w/[workspaceSlug]/search/loading";
 import MyTasksLoading from "@/app/(workspace)/w/[workspaceSlug]/my-tasks/loading";
 import CalendarLoading from "@/app/(workspace)/w/[workspaceSlug]/calendar/loading";
-import TimelineLoading from "@/app/(workspace)/w/[workspaceSlug]/timeline/loading";
 import BoardLoading from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/board/loading";
 import ListLoading from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/list/loading";
 import ProjectSettingsLoading from "@/app/(workspace)/w/[workspaceSlug]/projects/[projectId]/settings/loading";
@@ -55,7 +54,6 @@ const routes: Array<{ name: string; Component: () => React.ReactElement; minSkel
   { name: "search", Component: SearchLoading, minSkeletons: 4 },
   { name: "my-tasks", Component: MyTasksLoading, minSkeletons: 6 },
   { name: "calendar", Component: CalendarLoading, minSkeletons: 35 },
-  { name: "timeline", Component: TimelineLoading, minSkeletons: 6 },
   { name: "project board", Component: BoardLoading, minSkeletons: 10 },
   { name: "project list", Component: ListLoading, minSkeletons: 7 },
   { name: "project settings", Component: ProjectSettingsLoading, minSkeletons: 5 },

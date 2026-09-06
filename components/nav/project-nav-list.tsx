@@ -166,7 +166,7 @@ export function ProjectNavList({
           // app-sidebar.tsx (this row renders inside the same `md:hidden`
           // mobile Sheet), bumping this row to the 44px touch-target
           // minimum on mobile without affecting its desktop sizing.
-          "group flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors max-md:min-h-11",
+          "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
           isActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -229,6 +229,16 @@ export function ProjectNavList({
       // projects past the first couple rows were simply invisible with no
       // scroll affordance (F119, AS-069).
       className="flex min-h-0 flex-1 flex-col border-t"
+      // UX: `min-h-[140px]` gives the Projects section real, always-visible
+      // breathing room even alongside a full primary-nav block above it --
+      // it was previously free to be squeezed down to a sliver (or fully
+      // 0-height, per AS-512's "last resort" comment above) whenever the
+      // combined content of both sections slightly exceeded the sidebar's
+      // available height, which read as "barely any room for projects"
+      // even on an ordinary-height viewport. This floor only ever engages
+      // in that edge case; a normal viewport already gives this section
+      // more room than the floor via its own `flex-1`.
+      style={{ minHeight: 140 }}
     >
       <CollapsibleTrigger
         render={
@@ -237,7 +247,7 @@ export function ProjectNavList({
             // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
             // same breakpoint convention as the other mobile-Sheet nav
             // controls in this file/app-sidebar.tsx.
-            className="flex min-h-9 shrink-0 items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
+            className="flex min-h-10 shrink-0 items-center justify-between px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/70 hover:text-sidebar-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown

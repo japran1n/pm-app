@@ -296,7 +296,6 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
       { label: "list", path: `/w/${workspaceSlug}/projects/${projectId}/list` },
       { label: "my-tasks", path: `/w/${workspaceSlug}/my-tasks` },
       { label: "calendar", path: `/w/${workspaceSlug}/calendar` },
-      { label: "timeline", path: `/w/${workspaceSlug}/timeline` },
       { label: "search", path: `/w/${workspaceSlug}/search?q=long` },
       { label: "trash", path: `/w/${workspaceSlug}/trash` },
       { label: "archive", path: `/w/${workspaceSlug}/archive` },

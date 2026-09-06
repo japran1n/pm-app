@@ -23,7 +23,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   "my-tasks": "My Tasks",
   projects: "Projects",
   calendar: "Calendar",
-  timeline: "Timeline",
   search: "Search",
   time: "Time",
   requests: "Client requests",

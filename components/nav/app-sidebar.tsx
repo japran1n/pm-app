@@ -17,7 +17,6 @@ import {
   Trash2,
   ListChecks,
   CalendarDays,
-  GanttChartSquare,
   Inbox,
   MessageCircle,
   CheckSquare,
@@ -123,11 +122,12 @@ function navGroups(
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle },
   ];
 
-  // F241: Calendar/Timeline are workspace-wide, RLS-scoped views with no
-  // guest gate of their own, same as Work above -- visible to everyone.
+  // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
+  // of its own, same as Work above -- visible to everyone.
+  // Timeline was removed entirely (dedicated feature request) -- its own
+  // nav item, route, and dedicated components/queries no longer exist.
   const plan: NavItem[] = [
     { href: `/w/${workspaceSlug}/calendar`, label: "Calendar", icon: CalendarDays },
-    { href: `/w/${workspaceSlug}/timeline`, label: "Timeline", icon: GanttChartSquare },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
   ];
 
@@ -393,7 +393,17 @@ function SidebarContent({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 border-t p-3">
+      {/* UX: `shrink-0` makes explicit what was already true structurally
+          (this footer is a sibling of the `flex-1 min-h-0` middle wrapper
+          above, inside the `h-svh flex-col` <aside>, so it was never
+          actually pushed off-screen by a long Projects list) -- but the
+          plain `border-t` alone read as an afterthought tacked onto the
+          bottom of a scrolling list rather than a deliberate, anchored
+          section. `bg-sidebar-accent/40` gives it its own visually
+          distinct surface (same idea as portal-sidebar.tsx's own footer)
+          so identity + sign-out reads as a permanent block of the shell,
+          not content that happened to land at the bottom. */}
+      <div className="flex shrink-0 flex-col gap-2 border-t bg-sidebar-accent/40 p-3">
         {/* F273 (AS-202): the only in-app entry point to the profile
             settings page (F123) — without this a user has no way to set a
             display name except by typing the URL by hand. Reuses

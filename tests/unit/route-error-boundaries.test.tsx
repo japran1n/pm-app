@@ -30,7 +30,6 @@ import MembersError from "@/app/(workspace)/w/[workspaceSlug]/settings/members/e
 import ProfileError from "@/app/(workspace)/w/[workspaceSlug]/settings/profile/error";
 import TemplatesError from "@/app/(workspace)/w/[workspaceSlug]/templates/error";
 import TimeReportError from "@/app/(workspace)/w/[workspaceSlug]/time/error";
-import TimelineError from "@/app/(workspace)/w/[workspaceSlug]/timeline/error";
 import TrashError from "@/app/(workspace)/w/[workspaceSlug]/trash/error";
 import RootError from "@/app/error";
 
@@ -85,7 +84,6 @@ const routeErrorBoundaries: Array<{
   { name: "settings profile", Component: ProfileError },
   { name: "templates", Component: TemplatesError },
   { name: "time report", Component: TimeReportError },
-  { name: "timeline", Component: TimelineError },
   { name: "trash", Component: TrashError },
   { name: "root app shell (app/error.tsx)", Component: RootError },
   // F083 additions:
