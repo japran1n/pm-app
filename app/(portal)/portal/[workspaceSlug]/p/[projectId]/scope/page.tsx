@@ -1,19 +1,21 @@
 import { notFound } from "next/navigation";
 import { ScrollText } from "lucide-react";
 
-import { getPortalProjects } from "@/lib/queries/portal";
+import { getPortalProjects, getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
 import {
   getProjectAssumptions,
   getProjectChangeRequests,
   getProjectDecisions,
   getProjectScopeItems,
 } from "@/lib/queries/project-records";
+import { getProjectScopeDocuments } from "@/lib/queries/project-scope-documents";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { ScopeLists } from "@/components/portal/scope-lists";
 import { ChangeRequestsTable } from "@/components/portal/change-requests-table";
 import { DecisionLog } from "@/components/portal/decision-log";
 import { AssumptionList } from "@/components/portal/assumption-list";
+import { ScopeDocuments } from "@/components/portal/scope-documents";
 import { Separator } from "@/components/ui/separator";
 
 // F015 (missions/20260903-portal, AS-043, AS-044, AS-045, AS-046): the
@@ -46,15 +48,34 @@ export default async function PortalScopePage({
 
   if (!project) notFound();
 
-  const [scopeResult, decisionsResult, assumptionsResult, changeRequestsResult] =
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [scopeResult, decisionsResult, assumptionsResult, changeRequestsResult, documentsResult, role] =
     await Promise.all([
       getProjectScopeItems(projectId),
       getProjectDecisions(projectId),
       getProjectAssumptions(projectId),
       getProjectChangeRequests(projectId),
+      getProjectScopeDocuments(projectId),
+      user ? getWorkspaceRoleForCurrentUser(workspace.id, user.id) : Promise.resolve(null),
     ]);
 
-  if (!scopeResult.ok || !decisionsResult.ok || !assumptionsResult.ok || !changeRequestsResult.ok) {
+  // A team member (any role other than 'client') may attach/remove
+  // documents from this page; a client caller only ever sees the
+  // read-only list — RLS (project_scope_documents_insert_team,
+  // 20261106010000) enforces the same rule server-side regardless of
+  // what this flag renders.
+  const canManageDocuments = role !== null && role !== "client";
+
+  if (
+    !scopeResult.ok ||
+    !decisionsResult.ok ||
+    !assumptionsResult.ok ||
+    !changeRequestsResult.ok ||
+    !documentsResult.ok
+  ) {
     return (
       <EmptyState
         icon={ScrollText}
@@ -93,6 +114,14 @@ export default async function PortalScopePage({
         <h2 className="text-sm font-semibold text-foreground">Assumptions</h2>
         <AssumptionList assumptions={assumptionsResult.data} />
       </div>
+
+      <Separator />
+
+      <ScopeDocuments
+        projectId={projectId}
+        documents={documentsResult.data}
+        canManage={canManageDocuments}
+      />
     </div>
   );
 }

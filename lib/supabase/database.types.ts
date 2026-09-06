@@ -325,6 +325,77 @@ export type Database = {
           },
         ]
       }
+      calendar_blocks: {
+        Row: {
+          color: string | null
+          created_at: string
+          ends_at: string
+          id: string
+          project_id: string | null
+          starts_at: string
+          task_id: string | null
+          title: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          ends_at: string
+          id?: string
+          project_id?: string | null
+          starts_at: string
+          task_id?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          ends_at?: string
+          id?: string
+          project_id?: string | null
+          starts_at?: string
+          task_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_blocks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_blocks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_blocks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_blocks_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_members: {
         Row: {
           channel_id: string
@@ -358,6 +429,8 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          dm_user_high: string | null
+          dm_user_low: string | null
           id: string
           kind: string
           name: string | null
@@ -367,6 +440,8 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          dm_user_high?: string | null
+          dm_user_low?: string | null
           id?: string
           kind: string
           name?: string | null
@@ -376,6 +451,8 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          dm_user_high?: string | null
+          dm_user_low?: string | null
           id?: string
           kind?: string
           name?: string | null
@@ -1968,6 +2045,47 @@ export type Database = {
           },
         ]
       }
+      project_scope_documents: {
+        Row: {
+          created_at: string
+          file_path: string | null
+          id: string
+          kind: string
+          project_id: string
+          title: string
+          uploaded_by: string
+          url: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_path?: string | null
+          id?: string
+          kind: string
+          project_id: string
+          title: string
+          uploaded_by: string
+          url?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_path?: string | null
+          id?: string
+          kind?: string
+          project_id?: string
+          title?: string
+          uploaded_by?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_scope_documents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_scope_items: {
         Row: {
           change_request_id: string | null
@@ -3289,6 +3407,15 @@ export type Database = {
           p_is_billable: boolean
           p_name: string
           p_system_key: string
+          p_workspace_id: string
+        }
+        Returns: string
+      }
+      find_or_create_dm_channel_atomic: {
+        Args: {
+          p_created_by: string
+          p_user_a: string
+          p_user_b: string
           p_workspace_id: string
         }
         Returns: string
