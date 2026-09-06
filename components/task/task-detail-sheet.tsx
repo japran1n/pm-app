@@ -125,12 +125,9 @@ import {
   type SubtaskListChildTask,
 } from "@/components/task/subtask-list";
 import { Checklist, type ChecklistListItem } from "@/components/task/checklist";
-import {
-  Dependencies,
-  type DependencyRelatedTask,
-} from "@/components/task/dependencies";
+import { type DependencyRelatedTask } from "@/components/task/dependencies";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
-import { CommentList, type TaskComment } from "@/components/task/comment-list";
+import { type TaskComment } from "@/components/task/comment-list";
 // F205 (AS-378): reuses the SAME Server Action F204 built for the comment
 // composer's mention picker (lib/actions/comments.ts's getMentionCandidates
 // is generic over `taskId`, not comment-specific — it already narrows to
@@ -157,7 +154,6 @@ import { toPlainJson } from "@/lib/comments/rich-text";
 // components/task/activity-feed.tsx's own doc comment for why a toggle
 // was chosen over interleaving the two into one feed.
 import { ActivityFeed } from "@/components/task/activity-feed";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AttachmentList,
   type AttachmentListHandle,
@@ -561,7 +557,6 @@ function MobileCollapsibleSection({
 export function TaskDetailSheet({
   task,
   members,
-  comments = [],
   attachments = [],
   timeEntries = [],
   activeTimer = null,
@@ -575,7 +570,6 @@ export function TaskDetailSheet({
   currentUserRole,
   timezone,
   onOpenTask,
-  highlightCommentId,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -2236,6 +2230,7 @@ export function TaskDetailSheet({
                   placeholder="Add a description..."
                   aria-label={`Description for ${task.title}`}
                   mentionSuggestions={descriptionMentionSuggestions}
+                  mode="plain"
                 />
                 {/* F171 (AS-307, AS-309): the safe, formatted rendering of
                    the same description, sourced from `description_json`.
@@ -2301,44 +2296,23 @@ export function TaskDetailSheet({
 
               <Separator />
 
-              <Dependencies
-                taskId={task.id}
-                blockedBy={task.dependencies?.blockedBy ?? []}
-                blocks={task.dependencies?.blocks ?? []}
-                onOpenTask={onOpenTask}
-              />
+              {/* Dependencies ("Blocked by"/"Blocks") UI removed from this
+                  view per product decision — `blocked-done-guard.tsx` still
+                  enforces the underlying block on marking a task Done using
+                  the same `lib/actions/dependencies.ts` data, unaffected by
+                  removing this display. */}
 
-              <Separator />
-
-              {/* F196 (AS-358, AS-361): "Comments" keeps CommentList's
-                  existing full-featured rendering unchanged; "Activity"
-                  is the read-only day-grouped chronicle of every
-                  task_activity entry (field changes, plus comment
-                  add/delete EVENTS per AS-356 — not their content). */}
-              <MobileCollapsibleSection title="Comments & activity">
-                <Tabs defaultValue="comments">
-                  <TabsList>
-                    <TabsTrigger value="comments">Comments</TabsTrigger>
-                    <TabsTrigger value="activity">Activity</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="comments">
-                    <CommentList
-                      taskId={task.id}
-                      comments={comments}
-                      members={members}
-                      currentUserId={currentUserId}
-                      currentUserRole={currentUserRole}
-                      highlightCommentId={highlightCommentId}
-                    />
-                  </TabsContent>
-                  <TabsContent value="activity">
-                    <ActivityFeed
-                      taskId={task.id}
-                      timezone={timezone}
-                      members={members}
-                    />
-                  </TabsContent>
-                </Tabs>
+              {/* F196 (AS-358, AS-361) Comments tab removed from this view
+                  per product decision — only the read-only day-grouped
+                  Activity chronicle remains. Comment data/actions
+                  (lib/actions/comments.ts) are untouched; comments still
+                  exist in the database, just not surfaced here. */}
+              <MobileCollapsibleSection title="Activity">
+                <ActivityFeed
+                  taskId={task.id}
+                  timezone={timezone}
+                  members={members}
+                />
               </MobileCollapsibleSection>
 
               <Separator />

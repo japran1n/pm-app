@@ -229,7 +229,7 @@ describe("Task detail Sheet is full-screen on phone widths (F265, AS-516)", () =
       "Description",
       "Subtasks",
       "Checklist",
-      "Comments & activity",
+      "Activity",
       "Time tracking",
     ]) {
       // F095: `getByRole("button", { name: title })` alone is ambiguous

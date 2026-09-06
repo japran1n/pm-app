@@ -142,6 +142,7 @@ function sharedExtensions({
   onReadOnlyChecked,
   getMentionItems,
   linksClickable = false,
+  mode = "full",
 }: {
   assignTaskItemIds?: boolean
   /** F173 (AS-311): fired when a checkbox is clicked in a non-editable
@@ -162,6 +163,11 @@ function sharedExtensions({
    * `true`, links open safely in a new tab (`target="_blank"`,
    * `rel="noopener noreferrer"`). */
   linksClickable?: boolean
+  /** Task-detail description editor: plain multiline text only (paragraph
+   * + hardBreak + link autolink + image paste), with bold/italic/code/
+   * headings/lists/blockquote/taskList/mention all disabled. Default
+   * `"full"` preserves every existing caller's behaviour unchanged. */
+  mode?: "full" | "plain"
 } = {}) {
   const taskItemExtension = assignTaskItemIds
     ? TaskItemWithId.extend({
@@ -171,20 +177,43 @@ function sharedExtensions({
       })
     : TaskItemWithId
 
+  const linkConfig = {
+    openOnClick: linksClickable,
+    autolink: true,
+    ...(linksClickable
+      ? {
+          HTMLAttributes: {
+            target: "_blank",
+            rel: "noopener noreferrer",
+          },
+        }
+      : {}),
+  }
+
+  if (mode === "plain") {
+    // Plain mode: only paragraph/text/hardBreak + link autolink survive —
+    // no bold/italic/code/headings/lists/blockquote/taskList/mention.
+    return [
+      StarterKit.configure({
+        link: linkConfig,
+        bold: false,
+        italic: false,
+        code: false,
+        codeBlock: false,
+        heading: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        blockquote: false,
+        horizontalRule: false,
+        strike: false,
+      }),
+    ]
+  }
+
   return [
     StarterKit.configure({
-      link: {
-        openOnClick: linksClickable,
-        autolink: true,
-        ...(linksClickable
-          ? {
-              HTMLAttributes: {
-                target: "_blank",
-                rel: "noopener noreferrer",
-              },
-            }
-          : {}),
-      },
+      link: linkConfig,
     }),
     TaskList,
     taskItemExtension.configure(
@@ -228,6 +257,12 @@ export interface RichTextEditorProps {
    * `alt` text (if any) via `transformPastedHtml`, exactly as before this
    * feature. */
   onImagePaste?: (files: File[]) => void
+  /** Task description editor uses `"plain"`: plain multiline text (Enter
+   * for new lines, links auto-detected, image paste preserved) with no
+   * formatting toolbar and no bold/italic/code/headings/lists/blockquote/
+   * checklist/mention support. Default `"full"` is the existing rich-text
+   * behaviour used by chat/comments — unchanged. */
+  mode?: "full" | "plain"
 }
 
 /**
@@ -373,6 +408,7 @@ export function RichTextEditor({
   "aria-label": ariaLabel = "Rich text editor",
   mentionSuggestions,
   onImagePaste,
+  mode = "full",
 }: RichTextEditorProps) {
   // F172 (AS-308): Cmd/Ctrl+Shift+V is the standard "paste as plain text"
   // override. Modifier state isn't exposed on the native `paste` event, so
@@ -455,16 +491,17 @@ export function RichTextEditor({
   // decided once per editor instance — every real caller in this codebase
   // passes an array (even initially empty), never `undefined` transitioning
   // to an array after mount — see comment-list.tsx / task-detail-sheet.tsx.
-  const mentionsEnabled = mentionSuggestions !== undefined
+  const mentionsEnabled = mode !== "plain" && mentionSuggestions !== undefined
 
   const editor = useEditor({
     extensions: sharedExtensions({
-      assignTaskItemIds: true,
+      assignTaskItemIds: mode !== "plain",
       // F310/F317: this closure is rebuilt (and the editor instance
       // recreated) whenever `computedMentionSuggestionsKey` changes below —
       // see the comment above for why an always-live mutable box was
       // rejected in favour of this recreation-based approach.
       getMentionItems: mentionsEnabled ? () => mentionSuggestions : undefined,
+      mode,
     }),
     content: content ?? undefined,
     editable: !disabled,
@@ -647,7 +684,7 @@ export function RichTextEditor({
         className
       )}
     >
-      <Toolbar editor={editor} disabled={disabled} />
+      {mode === "full" && <Toolbar editor={editor} disabled={disabled} />}
       <EditorContent editor={editor} />
     </div>
   )

@@ -247,3 +247,124 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     expect(container.textContent).toContain("keep me too");
   });
 });
+
+// Task detail description editor: `mode="plain"` restricts the shared
+// RichTextEditor to plain multiline text (paragraph/hardBreak/link
+// autolink/image paste), matching the product decision to drop rich
+// formatting from the task description field while leaving every other
+// caller (chat/comments) on the default `mode="full"` behaviour untouched.
+describe("mode=\"plain\": task description editor has no rich-text toolbar or formatting", () => {
+  it("test_plain_mode_renders_no_formatting_toolbar", () => {
+    render(
+      createElement(RichTextEditor, {
+        content: { type: "doc", content: [] },
+        "aria-label": "Description",
+        mode: "plain",
+      })
+    );
+
+    // No toolbar role at all in plain mode.
+    expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
+    // None of the rich-text toggle buttons exist.
+    for (const name of [
+      "Bold",
+      "Italic",
+      "Code",
+      "Heading 1",
+      "Heading 2",
+      "Bullet list",
+      "Ordered list",
+      "Checklist",
+      "Link",
+    ]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("test_plain_mode_default_mode_full_still_renders_the_toolbar_unchanged", () => {
+    render(
+      createElement(RichTextEditor, {
+        content: { type: "doc", content: [] },
+        "aria-label": "Comment composer",
+      })
+    );
+
+    // Default (no `mode` prop) is unchanged for every existing caller
+    // (comments/chat) — the toolbar is still present.
+    expect(screen.getByRole("toolbar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
+  });
+
+  it("test_plain_mode_bold_italic_headings_lists_and_blockquote_marks_are_stripped_from_stored_content", () => {
+    // A previously-stored document carrying rich marks/nodes must degrade
+    // to plain paragraphs/text when displayed through the plain-mode
+    // editor's own schema (bold/italic/heading/lists are not part of the
+    // plain-mode extension set at all, so Tiptap drops them on load).
+    const richContent: JSONContent = {
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Title" }] },
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", marks: [{ type: "bold" }], text: "bold text" },
+          ],
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "item" }] }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const { container } = render(
+      createElement(RichTextEditor, {
+        content: richContent,
+        "aria-label": "Description",
+        mode: "plain",
+      })
+    );
+
+    // The text content still comes through (schema degrades unknown node
+    // types to their text where possible), but none of the rich markup
+    // survives.
+    expect(container.querySelector("strong")).not.toBeInTheDocument();
+    expect(container.querySelector("h1")).not.toBeInTheDocument();
+    expect(container.querySelector("ul")).not.toBeInTheDocument();
+  });
+
+  it("test_plain_mode_still_autodetects_links", () => {
+    const content: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              marks: [{ type: "link", attrs: { href: "https://example.com" } }],
+              text: "a link",
+            },
+          ],
+        },
+      ],
+    };
+
+    const { container } = render(
+      createElement(RichTextEditor, {
+        content,
+        "aria-label": "Description",
+        mode: "plain",
+      })
+    );
+
+    const link = container.querySelector("a[href='https://example.com']");
+    expect(link).toBeInTheDocument();
+    expect(link?.textContent).toBe("a link");
+  });
+});
