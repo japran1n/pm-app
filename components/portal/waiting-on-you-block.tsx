@@ -5,7 +5,7 @@
 // number the tile above still carries (that tile is untouched -- see
 // overview-tiles.tsx's own header for why the count stays there too).
 import Link from "next/link";
-import { ClipboardCheck, PackageX, Stamp } from "lucide-react";
+import { ClipboardCheck, KeyRound, PackageX, Stamp } from "lucide-react";
 
 import type {
   WaitingOnYouItem,
@@ -29,9 +29,16 @@ const KIND_ICON: Record<WaitingOnYouItemKind, typeof Stamp> = {
   // A past-due deliverable -- something missing/overdue, not a decision
   // to render.
   deliverable: PackageX,
+  // A `project_accounts` row the client owns but hasn't provisioned yet
+  // -- access to hand over, not a review or an overdue file.
+  account: KeyRound,
 };
 
 function agedLabel(daysWaiting: number, kind: WaitingOnYouItemKind): string {
+  // Accounts carry no "raised at" timestamp in the current schema (see
+  // `buildWaitingOnYouItems`'s own comment) -- always render the neutral
+  // "Needs access" copy rather than an age claim the data can't back up.
+  if (kind === "account") return "Needs access";
   const noun = kind === "deliverable" ? "overdue" : "waiting";
   if (daysWaiting === 0) return kind === "deliverable" ? "Due today" : "Asked today";
   if (daysWaiting === 1) return `1 day ${noun}`;

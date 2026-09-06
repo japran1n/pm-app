@@ -747,7 +747,28 @@ export async function getPortalWaitingOnYouCount(
     }
   }
 
-  return { ok: true, data: keys.size + overdueResult.data };
+  // F-Package-C: accounts the client owns but has not provisioned yet are
+  // their own obligation, distinct from tasks/approvals/deliverables --
+  // same "waiting on you" bucket, counted here so the tile and the
+  // `buildWaitingOnYouItems` list (which applies the identical
+  // `owner === "client" && status === "pending"` predicate) can never
+  // disagree.
+  const { data: accountRows, error: accountError } = await supabase
+    .from("project_accounts")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("owner", "client")
+    .eq("status", "pending")
+    .eq("client_visible", true);
+
+  if (accountError) {
+    logger.error("getPortalWaitingOnYouCount: failed to load pending client accounts", {
+      error: accountError,
+    });
+    return { ok: false, error: accountError.message };
+  }
+
+  return { ok: true, data: keys.size + overdueResult.data + (accountRows ?? []).length };
 }
 
 // F006f (missions/20260903-portal, AS-002): the Overview page's own

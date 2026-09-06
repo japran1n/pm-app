@@ -25,8 +25,9 @@
 import type { PortalApproval } from "@/lib/queries/approvals";
 import type { PortalOverviewTask } from "@/lib/queries/portal";
 import { isDeliverablePastDue, type ClientDeliverable } from "@/lib/queries/deliverables";
+import type { ProjectAccount } from "@/lib/queries/project-site";
 
-export type WaitingOnYouItemKind = "approval" | "task" | "deliverable";
+export type WaitingOnYouItemKind = "approval" | "task" | "deliverable" | "account";
 
 export type WaitingOnYouItem = {
   key: string;
@@ -49,6 +50,7 @@ export function buildWaitingOnYouItems({
   approvals,
   tasks,
   deliverables,
+  accounts,
   workspaceSlug,
   projectId,
   todayIso,
@@ -56,12 +58,14 @@ export function buildWaitingOnYouItems({
   approvals: PortalApproval[];
   tasks: PortalOverviewTask[];
   deliverables: ClientDeliverable[];
+  accounts: ProjectAccount[];
   workspaceSlug: string;
   projectId: string;
   todayIso: string;
 }): WaitingOnYouItem[] {
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
   const approvalsHref = `${basePath}/approvals`;
+  const siteHref = `${basePath}/site`;
   const items: WaitingOnYouItem[] = [];
   const claimedTaskIds = new Set<string>();
 
@@ -114,6 +118,25 @@ export function buildWaitingOnYouItems({
       href: `${basePath}/your-list`,
       daysWaiting: daysBetween(deliverable.dueAt as string, todayIso),
       actionLabel: "Open",
+    });
+  }
+
+  // F-Package-C: accounts the client owns but hasn't provisioned yet
+  // (`owner === "client" && status === "pending"`) live in the same
+  // "waiting on you" bucket as tasks/approvals/deliverables, matching the
+  // predicate `getPortalWaitingOnYouCount` now applies. Accounts have no
+  // "raised at" timestamp in the current schema, so daysWaiting is 0
+  // rather than a fabricated value -- the row still surfaces, just
+  // without an age claim it can't back up.
+  for (const account of accounts) {
+    if (account.owner !== "client" || account.status !== "pending") continue;
+    items.push({
+      key: `account:${account.id}`,
+      kind: "account",
+      title: account.service,
+      href: siteHref,
+      daysWaiting: 0,
+      actionLabel: "Provide access",
     });
   }
 

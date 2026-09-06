@@ -26,6 +26,8 @@ let approvalRows: Row[];
 let approvalError: { message: string } | null;
 let deliverableRows: Row[];
 let deliverableError: { message: string } | null;
+let accountRows: Row[];
+let accountError: { message: string } | null;
 
 function applyEq(rows: Row[], filters: [string, unknown][]): Row[] {
   return rows.filter((row) => filters.every(([col, val]) => row[col] === val));
@@ -115,6 +117,27 @@ vi.mock("@/lib/supabase/server", () => ({
           })),
         };
       }
+      if (table === "project_accounts") {
+        return {
+          select: vi.fn(() => {
+            const filters: [string, unknown][] = [];
+            const builder = {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push([col, val]);
+                return builder;
+              }),
+              then: (resolve: (v: { data: Row[] | null; error: unknown }) => void) => {
+                if (accountError) {
+                  resolve({ data: null, error: accountError });
+                  return;
+                }
+                resolve({ data: applyEq(accountRows, filters), error: null });
+              },
+            };
+            return builder;
+          }),
+        };
+      }
       throw new Error(`unexpected table ${table}`);
     }),
   })),
@@ -135,6 +158,8 @@ beforeEach(() => {
   approvalError = null;
   deliverableRows = [];
   deliverableError = null;
+  accountRows = [];
+  accountError = null;
 });
 
 describe("getPortalWaitingOnYouCount (F085, missions/20260903-portal audit, defect 2)", () => {

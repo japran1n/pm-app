@@ -4,6 +4,7 @@ import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items"
 import type { PortalApproval } from "@/lib/queries/approvals";
 import type { PortalOverviewTask } from "@/lib/queries/portal";
 import type { ClientDeliverable } from "@/lib/queries/deliverables";
+import type { ProjectAccount } from "@/lib/queries/project-site";
 
 const TODAY = "2026-09-05";
 
@@ -63,7 +64,47 @@ function deliverable(overrides: Partial<ClientDeliverable>): ClientDeliverable {
   };
 }
 
+function account(overrides: Partial<ProjectAccount>): ProjectAccount {
+  return {
+    id: "account-1",
+    projectId: "project-1",
+    service: "Domain registrar",
+    owner: "client",
+    status: "pending",
+    renewalDate: null,
+    note: null,
+    clientVisible: true,
+    position: 0,
+    ...overrides,
+  };
+}
+
 describe("buildWaitingOnYouItems", () => {
+  it("test_AS_account_includes_a_pending_client_owned_account_but_not_provisioned_or_agency_owned", () => {
+    const items = buildWaitingOnYouItems({
+      approvals: [],
+      tasks: [],
+      deliverables: [],
+      accounts: [
+        account({ id: "a-pending-client", service: "Domain registrar", owner: "client", status: "pending" }),
+        account({ id: "a-provisioned", service: "Hosting", owner: "client", status: "provisioned" }),
+        account({ id: "a-agency", service: "Email", owner: "agency", status: "pending" }),
+      ],
+      workspaceSlug: "acme",
+      projectId: "project-1",
+      todayIso: TODAY,
+    });
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      key: "account:a-pending-client",
+      kind: "account",
+      title: "Domain registrar",
+      href: "/portal/acme/p/project-1/site",
+    });
+  });
+
+
   it("test_AS_002_dedupes_a_task_subject_approval_against_its_pending_client_approval_task_row", () => {
     const items = buildWaitingOnYouItems({
       approvals: [
@@ -76,6 +117,7 @@ describe("buildWaitingOnYouItems", () => {
       ],
       tasks: [task({ id: "task-1", title: "Homepage hero copy" })],
       deliverables: [],
+      accounts: [],
       workspaceSlug: "acme",
       projectId: "project-1",
       todayIso: TODAY,
@@ -98,6 +140,7 @@ describe("buildWaitingOnYouItems", () => {
       ],
       tasks: [],
       deliverables: [],
+      accounts: [],
       workspaceSlug: "acme",
       projectId: "project-1",
       todayIso: TODAY,
@@ -122,6 +165,7 @@ describe("buildWaitingOnYouItems", () => {
         deliverable({ id: "d-accepted", title: "Brand palette", state: "accepted", dueAt: "2026-08-01" }),
         deliverable({ id: "d-future", title: "Site copy", state: "not_started", dueAt: "2026-12-01" }),
       ],
+      accounts: [],
       workspaceSlug: "acme",
       projectId: "project-1",
       todayIso: TODAY,
@@ -141,6 +185,7 @@ describe("buildWaitingOnYouItems", () => {
       approvals: [],
       tasks: [],
       deliverables: [],
+      accounts: [],
       workspaceSlug: "acme",
       projectId: "project-1",
       todayIso: TODAY,
@@ -157,6 +202,7 @@ describe("buildWaitingOnYouItems", () => {
       ],
       tasks: [],
       deliverables: [],
+      accounts: [],
       workspaceSlug: "acme",
       projectId: "project-1",
       todayIso: TODAY,

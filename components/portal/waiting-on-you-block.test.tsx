@@ -113,4 +113,41 @@ describe("WaitingOnYouBlock", () => {
     expect(taskIcon.outerHTML).not.toEqual(deliverableIcon.outerHTML);
     expect(approvalIcon.outerHTML).not.toEqual(deliverableIcon.outerHTML);
   });
+
+  it("test_waiting_on_you_renders_an_account_item_with_its_own_icon_and_action_label", () => {
+    render(
+      <WaitingOnYouBlock
+        items={[
+          {
+            key: "account:account-1",
+            kind: "account",
+            title: "Domain registrar",
+            href: "/portal/acme/p/project-1/site",
+            daysWaiting: 0,
+            actionLabel: "Provide access",
+          },
+          {
+            key: "task:task-1",
+            kind: "task",
+            title: "Homepage hero copy",
+            href: "/portal/acme/p/project-1/t/task-1",
+            daysWaiting: 3,
+            actionLabel: "Review",
+          },
+        ]}
+      />,
+    );
+
+    const accountItem = screen.getByTestId("waiting-on-you-item-account:account-1");
+    expect(accountItem).toHaveTextContent("Domain registrar");
+    expect(accountItem).toHaveTextContent("Needs access");
+    expect(accountItem).toHaveTextContent("Provide access");
+    expect(accountItem).toHaveAttribute("href", "/portal/acme/p/project-1/site");
+
+    const accountIcon = accountItem.querySelector("svg")!;
+    const taskIcon = screen
+      .getByTestId("waiting-on-you-item-task:task-1")
+      .querySelector("svg")!;
+    expect(accountIcon.outerHTML).not.toEqual(taskIcon.outerHTML);
+  });
 });
