@@ -26,12 +26,35 @@
 // comment) so there's no per-card variance to map -- every card gets the
 // same `GraduationCap` glyph rather than inventing a kind that doesn't
 // exist in the schema.
+//
+// Follow-up fix ("Guides kartica - popravi tekst i ucini klikabilnom"): the
+// preview text used to be a raw `.slice(0, 140)` -- a mid-word cut with no
+// visual truncation cue, so long descriptions looked broken/cut off. That's
+// replaced with a proper `line-clamp-3` on the untruncated content (CSS
+// ellipsis, not a hard slice). Since (per this file's own header comment
+// above) there's still no per-guide portal route to link to, the whole card
+// is now a `<button>` that opens a Dialog (components/ui/dialog.tsx) showing
+// the guide's full title + full content -- same "no dead-end editor link"
+// reasoning as before, but the full text is now actually reachable instead
+// of permanently truncated.
+"use client";
+
+import { useState } from "react";
 import { GraduationCap } from "lucide-react";
 
 import type { Doc } from "@/lib/queries/docs";
 import { EmptyState } from "@/components/empty-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
+  const [openGuide, setOpenGuide] = useState<Doc | null>(null);
+
   if (guides.length === 0) {
     return (
       <EmptyState
@@ -44,26 +67,49 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
   }
 
   return (
-    <ul
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-      data-testid="project-guides-list"
-    >
-      {guides.map((doc) => (
-        <li
-          key={doc.id}
-          className="flex h-full flex-col gap-2 rounded-lg border border-border p-4"
-          data-testid="project-guide-card"
-        >
-          <GraduationCap
-            className="size-6 text-muted-foreground"
-            aria-hidden="true"
-          />
-          <span className="text-sm font-medium text-foreground">{doc.title}</span>
-          <span className="line-clamp-2 text-tag text-muted-foreground">
-            {doc.content ? doc.content.slice(0, 140) : "No description yet."}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        data-testid="project-guides-list"
+      >
+        {guides.map((doc) => (
+          <li key={doc.id}>
+            <button
+              type="button"
+              onClick={() => setOpenGuide(doc)}
+              className="hover-surface flex h-full w-full flex-col gap-2 rounded-lg border border-border p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:shadow-sm"
+              data-testid="project-guide-card"
+            >
+              <GraduationCap
+                className="size-6 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <span className="text-sm font-medium text-foreground">
+                {doc.title}
+              </span>
+              <span className="line-clamp-3 text-tag text-muted-foreground">
+                {doc.content ? doc.content : "No description yet."}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <Dialog
+        open={openGuide !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenGuide(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{openGuide?.title}</DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap text-foreground">
+              {openGuide?.content || "No description yet."}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -46,6 +46,11 @@ describe("ProjectLinksList", () => {
     expect(screen.queryByText("https://staging.example.com/path?x=1")).not.toBeInTheDocument();
   });
 
+  it("shows contextual copy for where the link opens", () => {
+    render(<ProjectLinksList links={[makeLink({ kind: "figma", label: "Design file" })]} />);
+    expect(screen.getByText("Opens in Figma")).toBeInTheDocument();
+  });
+
   it("renders multiple links as a grid of cards", () => {
     render(
       <ProjectLinksList

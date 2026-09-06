@@ -3,7 +3,7 @@
 // Paket F (client-portal-phase plan, "Your site" scan/nav redesign):
 // guides render as a grid of cards, each with a leading icon, matching
 // the Links section's visual language.
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -63,5 +63,27 @@ describe("ProjectGuidesList", () => {
     render(<ProjectGuidesList guides={[]} />);
     expect(screen.getByTestId("project-guides-empty")).toBeInTheDocument();
     expect(screen.getByText("Training guides arrive at handover.")).toBeInTheDocument();
+  });
+
+  it("renders the guide card as a clickable button", () => {
+    render(<ProjectGuidesList guides={[makeDoc()]} />);
+    const card = screen.getByTestId("project-guide-card");
+    expect(card.tagName).toBe("BUTTON");
+  });
+
+  it("opens a dialog with the full title and full content when the card is clicked", async () => {
+    const longContent =
+      "Step one: log in with the credentials we sent you. Step two: open the pages editor. Step three: click publish once you're happy with your changes.";
+    render(
+      <ProjectGuidesList
+        guides={[makeDoc({ title: "How to review and approve a page", content: longContent })]}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("project-guide-card"));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("How to review and approve a page");
+    expect(dialog).toHaveTextContent(longContent);
   });
 });
