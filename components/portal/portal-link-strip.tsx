@@ -16,7 +16,9 @@
 // yet". Figma/staging slots are omitted entirely when absent — unlike
 // live, there's no launch-relative honesty question for a link that
 // simply hasn't been shared yet.
-import { ExternalLink, Frame } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+
+import { LinkKindIcon } from "@/components/portal/link-kind-icon";
 
 export type PortalKeyLink = {
   kind: "figma" | "staging" | "live";
@@ -39,11 +41,7 @@ function LinkChip({ kind, url }: { kind: PortalKeyLink["kind"]; url: string }) {
       data-testid={`portal-link-strip-${kind}`}
       className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover-surface"
     >
-      {kind === "figma" ? (
-        <Frame className="size-3.5 text-muted-foreground" aria-hidden="true" />
-      ) : (
-        <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
-      )}
+      <LinkKindIcon kind={kind} />
       {KIND_LABEL[kind]}
     </a>
   );

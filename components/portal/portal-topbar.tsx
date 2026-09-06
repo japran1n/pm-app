@@ -74,6 +74,7 @@ const STATIC_ROUTE_TITLES: Record<string, string> = {
   // `portal-sidebar.tsx`. Remove alongside that function.
   files: "Files",
   requests: "Requests",
+  "how-we-work": "How we work",
 };
 
 // A path segment humanizes into a Title Case guess ("deliverables" ->

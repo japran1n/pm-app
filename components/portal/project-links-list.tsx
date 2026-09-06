@@ -15,6 +15,7 @@ import { ExternalLink } from "lucide-react";
 
 import type { ProjectLink, ProjectLinkKind } from "@/lib/queries/project-site";
 import { EmptyState } from "@/components/empty-state";
+import { LinkKindIcon } from "@/components/portal/link-kind-icon";
 
 const KIND_LABEL: Record<ProjectLinkKind, string> = {
   staging: "Staging",
@@ -62,6 +63,7 @@ export function ProjectLinksList({ links }: { links: ProjectLink[] }) {
           >
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <LinkKindIcon kind={link.kind} />
                 {link.label}
                 <span className="rounded bg-muted px-1.5 py-0.5 text-tag text-muted-foreground">
                   {KIND_LABEL[link.kind]}

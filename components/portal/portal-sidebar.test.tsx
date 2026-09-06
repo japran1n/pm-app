@@ -37,7 +37,6 @@ const EXPECTED_LABELS = [
   "Your list",
   "Pages",
   "Hours",
-  "Results",
   "Scope & decisions",
   "Your site",
 ];
@@ -57,7 +56,7 @@ function anchorTags(html: string): string[] {
 }
 
 describe("PortalSidebar (F003)", () => {
-  it("test_AS_001_lists_all_eight_views_in_order", () => {
+  it("test_AS_001_lists_all_seven_views_in_order", () => {
     const items = buildPortalNavItems("/portal/acme/p/proj-1", {
       approvalsAwaiting: { ok: true, data: 0 },
       deliverablesPastDue: 0,
@@ -76,7 +75,6 @@ describe("PortalSidebar (F003)", () => {
       "/portal/acme/p/proj-1/your-list",
       "/portal/acme/p/proj-1/pages",
       "/portal/acme/p/proj-1/hours",
-      "/portal/acme/p/proj-1/results",
       "/portal/acme/p/proj-1/scope",
       "/portal/acme/p/proj-1/site",
     ];
@@ -219,17 +217,17 @@ describe("PortalSidebar (F003)", () => {
 // spec) and removed its row here; Requests still awaits F016's "Scope &
 // decisions" view, so its temporary row stays. These tests now assert
 // the reduced, one-item stopgap and that `buildPortalNavItems`'s own
-// eight-item contract is still untouched (so
-// `test_AS_001_lists_all_eight_views_in_order` above keeps asserting
+// seven-item contract (Results removed by Paket A) is still untouched
+// (so `test_AS_001_lists_all_seven_views_in_order` above keeps asserting
 // exactly what AS-001's text says, unchanged).
 describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () => {
-  it("test_AS_001_the_primary_eight_item_list_does_not_grow_to_include_the_temporary_entry", () => {
+  it("test_AS_001_the_primary_item_list_does_not_grow_to_include_the_temporary_entry", () => {
     const items = buildPortalNavItems("/portal/acme/p/proj-1", {
       approvalsAwaiting: { ok: true, data: 0 },
       deliverablesPastDue: 0,
     });
 
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(7);
     expect(items.map((item) => item.label)).not.toContain("Files");
     expect(items.map((item) => item.label)).not.toContain("Requests");
   });
@@ -268,13 +266,18 @@ describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () =
     expect(requestsCurrent).toHaveLength(2); // desktop + mobile renditions
   });
 
-  it("builds the temporary Requests item plus the permanent Conversation item, at the given base path", () => {
+  it("builds the temporary Requests item plus the permanent Conversation and How we work items, at the given base path", () => {
     const items = buildPortalSecondaryNavItems("/portal/acme/p/proj-1");
 
-    expect(items.map((item) => item.label)).toEqual(["Requests", "Conversation"]);
+    expect(items.map((item) => item.label)).toEqual([
+      "Requests",
+      "Conversation",
+      "How we work",
+    ]);
     expect(items.map((item) => item.href)).toEqual([
       "/portal/acme/p/proj-1/requests",
       "/portal/acme/p/proj-1/conversation",
+      "/portal/acme/p/proj-1/how-we-work",
     ]);
   });
 });

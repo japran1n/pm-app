@@ -24,6 +24,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpen,
   CheckCircle2,
   Clock,
   FileText,
@@ -33,7 +34,6 @@ import {
   ListChecks,
   MessageSquare,
   ScrollText,
-  TrendingUp,
   type LucideIcon,
 } from "lucide-react";
 
@@ -105,7 +105,6 @@ export function buildPortalNavItems(
     },
     { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
     { key: "hours", label: "Hours", href: `${basePath}/hours`, icon: Clock },
-    { key: "results", label: "Results", href: `${basePath}/results`, icon: TrendingUp },
     { key: "scope", label: "Scope & decisions", href: `${basePath}/scope`, icon: ScrollText },
     { key: "site", label: "Your site", href: `${basePath}/site`, icon: Globe },
   ];
@@ -137,6 +136,12 @@ export function buildPortalSecondaryNavItems(basePath: string): PortalNavItem[] 
   return [
     { key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox },
     { key: "conversation", label: "Conversation", href: `${basePath}/conversation`, icon: MessageSquare },
+    // A3 (Paket A, client-portal redesign): "How we work" moved out of
+    // "Your site" into its own route -- secondary tier, same reasoning
+    // as Requests/Conversation above: useful but not one of the eight
+    // views reviewed constantly, and content here rarely changes once a
+    // project is underway.
+    { key: "how-we-work", label: "How we work", href: `${basePath}/how-we-work`, icon: BookOpen },
   ];
 }
 
