@@ -499,7 +499,13 @@ export async function getWorkspaceListTasks(
       // board/list views.
       // F222 (AS-410): see getProjectListTasks above for the rationale.
       // F083: see getProjectListTasks above for the rationale.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, client_visible, pending_client_approval, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category)",
+      // Portal-parity fix: `task_type_id`/`task_types(...)` and
+      // `parent_task_id` added so the workspace-wide dashboard table gets
+      // the same Type column data and subtask nesting the per-project List
+      // view (getProjectListTasks) already has — see this feature's
+      // handoff for why the dashboard table silently rendered an empty
+      // Type column before this.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -609,6 +615,9 @@ export async function getWorkspaceListTasks(
     // F083: see this function's select above.
     clientVisible: task.client_visible ?? false,
     pendingClientApproval: task.pending_client_approval ?? false,
+    // Portal-parity fix: see this function's select above.
+    parentTaskId: task.parent_task_id,
+    taskType: firstRelated(task.task_types) ?? null,
   }));
 
   // UX-20: "overdue"/"due_soon"/"completed" aren't filterable columns —

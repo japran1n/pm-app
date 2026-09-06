@@ -24,6 +24,13 @@
 
 import { getWorkspaceListTasks } from "@/lib/queries/tasks";
 import { getWorkspaceMembers } from "@/lib/queries/members";
+// Portal-parity fix: the dashboard's Type column was always empty because
+// this Server Component never fetched the workspace's task types (the
+// per-project List page always has, via getTaskTypes — see that page's own
+// comment). <TaskListTable>'s Type cell (ListTaskTypeSelect) already
+// quietly renders nothing when handed an empty array, which is exactly
+// what made this bug silent instead of a crash.
+import { getTaskTypes } from "@/lib/queries/task-types";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -90,9 +97,10 @@ export async function DashboardTaskTable({
   );
   const clearFiltersHref = `/w/${workspaceSlug}`;
 
-  const [tasks, members] = await Promise.all([
+  const [tasks, members, taskTypes] = await Promise.all([
     getWorkspaceListTasks(workspaceId, filters, timezone),
     getWorkspaceMembers(workspaceId),
+    getTaskTypes(workspaceId),
   ]);
   const assigneeOptions = members.active.map((member) => ({
     id: member.userId,
@@ -126,6 +134,7 @@ export async function DashboardTaskTable({
         hasActiveFilters={hasActiveFilters}
         clearFiltersHref={clearFiltersHref}
         timezone={timezone}
+        taskTypeOptions={taskTypes}
       />
     </div>
   );

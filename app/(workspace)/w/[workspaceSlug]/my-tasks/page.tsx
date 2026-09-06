@@ -14,20 +14,24 @@
 // <ListStatusSelect>.
 
 import Link from "next/link";
-import { CircleDot, Eye } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
-import { getMyTasks, type MyTaskRow, type MyTasksBuckets } from "@/lib/queries/my-tasks";
-import { formatTaskKey } from "@/lib/tasks/task-key";
-import { formatDueDate } from "@/lib/time/user-timezone";
-import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
-import { Badge } from "@/components/ui/badge";
+import { getMyTasks, type MyTasksBuckets } from "@/lib/queries/my-tasks";
 import { Button } from "@/components/ui/button";
-import { MyTaskStatusCell } from "@/components/task/my-task-status-cell";
+import {
+  Table,
+  TableBody,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+// Portal-parity fix: the row itself now lives in its own Client Component
+// so this page can stay a Server Component — same "row is the only
+// interactive part" boundary <TaskListTable> uses for its own rows.
+import { MyTaskRowItem } from "@/components/task/my-task-row";
 import { PersonalTodoList } from "@/components/my-tasks/personal-todo-list";
 import { getPersonalTodos } from "@/lib/queries/personal-todos";
-import type { TaskCardTask } from "@/components/task/task-card";
 
 const BUCKET_ORDER: { key: keyof MyTasksBuckets; label: string }[] = [
   { key: "overdue", label: "Overdue" },
@@ -202,110 +206,39 @@ export default async function MyTasksPage({
             <h2 className="text-sm font-medium text-muted-foreground">
               {label} ({rows.length})
             </h2>
-            <div className="rounded-lg border border-border/60 bg-card divide-y">
-              {rows.map((row) => (
-                <MyTaskRowItem
-                  key={row.id}
-                  row={row}
-                  workspaceSlug={workspaceSlug}
-                  timezone={timezone}
-                  statusOptions={statusOptionsByProject.get(row.projectId)}
-                />
-              ))}
+            {/* Portal-parity fix ("My Tasks should look like Dashboard"):
+                the same rounded-border <Table> wrapper + header row
+                <TaskListTable> uses, instead of the previous bespoke
+                divide-y flex list — one row now looks/behaves the same
+                whether it's shown here, in the per-project List view, or
+                in the workspace Dashboard table. */}
+            <div className="rounded-lg border border-border/60 bg-card">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Key</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead className="text-right">Due date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <MyTaskRowItem
+                      key={row.id}
+                      row={row}
+                      workspaceSlug={workspaceSlug}
+                      timezone={timezone}
+                      statusOptions={statusOptionsByProject.get(row.projectId)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </section>
         );
       })}
-    </div>
-  );
-}
-
-function MyTaskRowItem({
-  row,
-  workspaceSlug,
-  timezone,
-  statusOptions,
-}: {
-  row: MyTaskRow;
-  workspaceSlug: string;
-  timezone: string;
-  statusOptions?: MyTaskStatusOption[];
-}) {
-  const key = formatTaskKey(row.projectKey, row.number);
-  const priority = (row.priority ?? "none") as keyof typeof PRIORITY_LABELS;
-
-  return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50">
-      <Link
-        href={`/w/${workspaceSlug}/projects/${row.projectId}/board?taskId=${row.id}`}
-        className="flex min-w-0 flex-1 items-center gap-3"
-      >
-        {key && (
-          <span className="font-mono text-xs text-muted-foreground">{key}</span>
-        )}
-        <span className="min-w-0 flex-1 truncate font-medium">{row.title}</span>
-      </Link>
-      {/* AS-439: which project this task belongs to. */}
-      <Badge variant="outline" className="shrink-0">
-        {row.projectName}
-      </Badge>
-      {/* F231 (AS-441): visually distinguish a watched-only row (not
-          assigned) from an assigned one, per the clarified answer. A task
-          that is both assigned and watched shows only the assigned
-          styling (assignment is the primary reason it's on this page). */}
-      {row.isWatched && !row.isAssigned && (
-        <Badge variant="secondary" className="shrink-0">
-          Watching
-        </Badge>
-      )}
-      <Badge
-        variant="outline"
-        // F338 (M18 scrutiny MAJ-3/FU-G, AS-526): PRIORITY_COLORS as TEXT
-        // color on this text-xs badge fails 4.5:1 for urgent/high/low
-        // (3.76/3.56/3.68:1 on the white card). Keep the colour-coded
-        // border (3:1 threshold, already passing) but use the theme's
-        // default foreground for the text itself.
-        className="shrink-0 text-foreground"
-        style={{ borderColor: PRIORITY_COLORS[priority] }}
-      >
-        {PRIORITY_LABELS[priority]}
-      </Badge>
-      {/* F083: same icon+text client-visible/awaiting-client indicators
-          as the board's TaskCard (components/task/task-card.tsx) — "which
-          of my tasks is the client watching" is one of the two questions
-          the portal creates that My Tasks couldn't answer before this. */}
-      {row.clientVisible && (
-        <span
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
-          data-testid="client-visible-indicator"
-        >
-          <Eye className="size-3" aria-hidden="true" />
-          <span className="sr-only">Client can see this task</span>
-          Client-visible
-        </span>
-      )}
-      {row.pendingClientApproval && (
-        <span
-          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700"
-          data-testid="awaiting-client-indicator"
-        >
-          <CircleDot className="size-3" aria-hidden="true" />
-          <span className="sr-only">Awaiting client decision</span>
-          Awaiting client
-        </span>
-      )}
-      {/* F231 (AS-438): inline status change, resolved against THIS row's
-          own project's columns. */}
-      <MyTaskStatusCell
-        taskId={row.id}
-        status={row.status as TaskCardTask["status"]}
-        statusOptions={statusOptions}
-      />
-      {row.dueDate && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {formatDueDate(row.dueDate, timezone)}
-        </span>
-      )}
     </div>
   );
 }
