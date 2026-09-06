@@ -367,4 +367,37 @@ describe("mode=\"plain\": task description editor has no rich-text toolbar or fo
     expect(link).toBeInTheDocument();
     expect(link?.textContent).toBe("a link");
   });
+
+  it("test_plain_mode_field_is_taller_and_manually_resizable", () => {
+    // Product feedback: the task description needs a single, larger field
+    // the user can manually resize, replacing the removed duplicate
+    // read-only "Preview" panel that used to sit underneath it.
+    render(
+      createElement(RichTextEditor, {
+        content: { type: "doc", content: [] },
+        "aria-label": "Description",
+        mode: "plain",
+      })
+    );
+
+    const textbox = screen.getByRole("textbox", { name: "Description" });
+    expect(textbox.className).toMatch(/resize-y/);
+    expect(textbox.className).toMatch(/overflow-auto/);
+    expect(textbox.className).toMatch(/min-h-\[220px\]/);
+  });
+
+  it("test_plain_mode_full_mode_is_not_resizable_by_default", () => {
+    // The resize/min-height treatment is specific to the task description
+    // field (`mode="plain"`) — every existing `mode="full"` caller
+    // (comments/chat) keeps its original, non-resizable sizing.
+    render(
+      createElement(RichTextEditor, {
+        content: { type: "doc", content: [] },
+        "aria-label": "Comment composer",
+      })
+    );
+
+    const textbox = screen.getByRole("textbox", { name: "Comment composer" });
+    expect(textbox.className).not.toMatch(/resize-y/);
+  });
 });

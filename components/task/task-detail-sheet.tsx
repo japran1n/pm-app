@@ -59,45 +59,12 @@ import type { JSONContent } from "@/components/editor/rich-text-editor";
 // Sheet) reacting instead because this Sheet never registered.
 import { useEscapeLayer } from "@/lib/hooks/use-shortcut";
 
-// F173 (AS-311): client-side mirror of lib/actions/tasks.ts's
-// (unexported) `setTaskItemChecked` — duplicated rather than imported
-// because the source of truth lives in a `"use server"` file, which can
-// only export async Server Actions; a second, identical helper here is
-// the simpler option (no shared non-server module to introduce just for
-// one small pure function) for what's only ever used to compute the
-// OPTIMISTIC preview before the real Server Action call resolves — the
-// server's own copy is what actually persists.
-function setJsonTaskItemChecked(
-  doc: JSONContent | null | undefined,
-  itemId: string,
-  checked: boolean,
-): JSONContent | null {
-  if (!doc) return null;
-  if (
-    doc.type === "taskItem" &&
-    (doc.attrs as { id?: unknown } | undefined)?.id === itemId
-  ) {
-    return { ...doc, attrs: { ...doc.attrs, checked } };
-  }
-  if (!Array.isArray(doc.content)) return null;
-  for (let i = 0; i < doc.content.length; i++) {
-    const updatedChild = setJsonTaskItemChecked(doc.content[i], itemId, checked);
-    if (updatedChild) {
-      const content = doc.content.slice();
-      content[i] = updatedChild;
-      return { ...doc, content };
-    }
-  }
-  return null;
-}
-
 import {
   deleteTask,
   restoreTask,
   editTask,
   moveTaskStatus,
   setTaskAssignees,
-  toggleDescriptionChecklistItem,
 } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
@@ -223,19 +190,6 @@ import { UserAvatar, type UserAvatarPerson } from "@/components/user-avatar";
 // F161 (AS-287, AS-288): stacked avatar group for this task's full
 // assignee set, header + trigger.
 import { UserAvatarGroup } from "@/components/user-avatar-group";
-// F171 (AS-307, AS-309): read-only rendering of the stored Tiptap document
-// via F169's shared, allow-listed renderer — dynamically imported with
-// `{ ssr: false }` per that component's own doc comment, since Tiptap's
-// `useEditor` touches the DOM and this Sheet is otherwise SSR-eligible as
-// a Client Component.
-const RichTextRenderer = dynamic(
-  () =>
-    import("@/components/editor/rich-text-editor").then(
-      (mod) => mod.RichTextRenderer,
-    ),
-  { ssr: false },
-);
-
 // F205 (AS-378): the SAME editable component F174 already wired into the
 // comment composer (components/task/comment-list.tsx), dynamically
 // imported the same "{ ssr: false }" way as RichTextRenderer above, for
@@ -1096,42 +1050,6 @@ export function TaskDetailSheet({
       label: member.name || member.email || member.userId,
     }));
 
-  // F173 (AS-311): inline toggle for a checkbox inside the description's
-  // rich-text Preview — permission-checked (`canEdit`, same gate as every
-  // other field on this Sheet) and persisted through a dedicated Server
-  // Action, WITHOUT opening a full editor. Optimistic: the local
-  // `descriptionJson` mirror is updated immediately (so `RichTextRenderer`
-  // re-syncs and the checkbox visually reflects the click right away,
-  // per that component's own optimistic-by-design `onReadOnlyChecked`
-  // contract), then rolled back with a toast if the Server Action fails.
-  async function handleToggleDescriptionChecklistItem(
-    itemId: string | null,
-    checked: boolean,
-  ): Promise<boolean> {
-    if (!task || !canEdit || !itemId) return false;
-
-    const previous = descriptionJson;
-    const optimistic = setJsonTaskItemChecked(previous, itemId, checked);
-    if (optimistic) setDescriptionJson(optimistic);
-
-    const result = await toggleDescriptionChecklistItem(
-      task.id,
-      itemId,
-      checked,
-    );
-
-    if (result.ok) {
-      setDescriptionJson(result.data.descriptionJson);
-      return true;
-    }
-
-    // Roll back to the last-known-good document and surface why, per the
-    // clarified failure-handling answer ("the optimistic change reverts
-    // and a sonner toast states what failed in plain language").
-    setDescriptionJson(previous);
-    toast.error(result.error);
-    return false;
-  }
 
   // F158 (AS-280, AS-281): status editing ships with this feature — see
   // this file's own former comment on the Select below (now removed) for
@@ -2218,10 +2136,13 @@ export function TaskDetailSheet({
                    @-mention picker (F203) for descriptions, with the same
                    server-side visibility enforcement (F204's
                    sanitiseMentionsForVisibility, reused unchanged by
-                   editTask) protecting it. The read-only Preview below is
-                   UNCHANGED from F173 (AS-311) — this feature does not
-                   touch its inline checkbox-toggle behaviour, only the
-                   editing surface above it. */}
+                   editTask) protecting it. A single editable field only —
+                   the separate read-only "Preview" render that used to sit
+                   below this (F171/F173) has been removed per product
+                   feedback that it duplicated the same text right under the
+                   editable field; `resize-y overflow-auto` on the editor's
+                   own contenteditable lets the user manually grow/shrink
+                   the one remaining field instead. */}
                 <RichTextEditor
                   content={descriptionJson}
                   onChange={setDescriptionJson}
@@ -2232,30 +2153,6 @@ export function TaskDetailSheet({
                   mentionSuggestions={descriptionMentionSuggestions}
                   mode="plain"
                 />
-                {/* F171 (AS-307, AS-309): the safe, formatted rendering of
-                   the same description, sourced from `description_json`.
-                   Only shown when there is real content beyond an empty
-                   doc. F173 (AS-311): checkboxes inside this preview are
-                   toggle-able right here — unchanged by this feature. */}
-                {descriptionJson &&
-                  Array.isArray(descriptionJson.content) &&
-                  descriptionJson.content.length > 0 && (
-                    <div className="rounded-lg border border-input bg-muted/30 px-3 py-2">
-                      <p className="mb-1 text-xs font-medium text-muted-foreground">
-                        Preview
-                      </p>
-                      <RichTextRenderer
-                        content={descriptionJson}
-                        aria-label="Description preview"
-                        mentionSuggestions={descriptionMentionSuggestions}
-                        onToggleTaskItem={
-                          canEdit
-                            ? handleToggleDescriptionChecklistItem
-                            : undefined
-                        }
-                      />
-                    </div>
-                  )}
               </MobileCollapsibleSection>
 
               <TagsEditor

@@ -516,7 +516,15 @@ export function RichTextEditor({
         class: cn(
           "prose prose-sm max-w-none px-3 py-2 outline-none",
           "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-b-lg",
-          placeholder && "empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]"
+          placeholder && "empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",
+          // Task-detail description editor ("plain" mode): a single,
+          // larger field the user can manually resize instead of the
+          // fixed-height box a duplicate read-only "Preview" used to sit
+          // under. `resize-y` only takes effect on a `display: block`
+          // element with `overflow` set to something other than
+          // `visible` (the CSS spec's own requirement for the resize
+          // handle to render), hence `overflow-auto` alongside it.
+          mode === "plain" && "min-h-[220px] resize-y overflow-auto block"
         ),
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
       },
