@@ -46,7 +46,7 @@
 // "not-started phases are muted" instruction. Every bar's state is also
 // stated in the row's own text label -- colour is never the only signal
 // (plan.md's Design constraint #4).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { PortalPhase, PortalPhaseState } from "@/lib/queries/portal";
@@ -266,6 +266,19 @@ export type PhaseTimelineLayout = {
 export function computePhaseTimelineLayout(
   phases: PortalPhase[],
   todayIso: string,
+  /** F131: the plot area's real, measured container width in pixels, when
+   * known. When provided (and there is at least one dated phase, so
+   * there is a real day axis to stretch), the whole axis -- from the
+   * project's own start date to its own end/launch date -- is scaled to
+   * fill exactly this width, replacing the previous fixed
+   * `PX_PER_DAY`-per-day width that left empty space (or required
+   * horizontal scroll) whenever the container was wider than the
+   * computed day count warranted. Omitted (or `undefined`) on the
+   * server-rendered first pass, before the client has measured its own
+   * container, and in every existing unit test that calls this function
+   * directly -- both keep the previous fixed-width behaviour so neither
+   * SSR output nor test expectations shift. */
+  targetWidthPx?: number,
 ): PhaseTimelineLayout {
   const datedPhases = phases.filter((p) => p.plannedStart && p.plannedEnd);
 
@@ -319,7 +332,20 @@ export function computePhaseTimelineLayout(
   // far past the last bar on short projects.
   const totalDaysRaw = diffDays(rangeStart, rangeEnd);
   const totalDays = Math.max(totalDaysRaw, Math.ceil(MIN_CHART_DAYS * 0.6));
-  const chartWidthPx = Math.max(totalDays * PX_PER_DAY + RANGE_END_PAD_PX, 1);
+  // F131: when a real measured container width is available, the axis's
+  // pixels-per-day is DERIVED from it (chartWidthPx fills the container
+  // exactly, pxPerDay is whatever that implies) instead of pxPerDay being
+  // the fixed constant and chartWidthPx following from it -- the fix for
+  // "this only fills half the wrapper" has to make the WIDTH the fixed
+  // quantity, not the day-scale.
+  const chartWidthPx =
+    targetWidthPx !== undefined
+      ? Math.max(targetWidthPx, MIN_BAR_WIDTH_PX + RANGE_END_PAD_PX)
+      : Math.max(totalDays * PX_PER_DAY + RANGE_END_PAD_PX, 1);
+  const pxPerDay =
+    targetWidthPx !== undefined
+      ? Math.max(chartWidthPx - RANGE_END_PAD_PX, MIN_BAR_WIDTH_PX) / totalDays
+      : PX_PER_DAY;
 
   const datelessPhases = phases.filter((p) => !(p.plannedStart && p.plannedEnd));
   const datelessSlotWidth =
@@ -335,8 +361,8 @@ export function computePhaseTimelineLayout(
     if (phase.plannedStart && phase.plannedEnd) {
       const start = parseDateOnly(phase.plannedStart)!;
       const end = parseDateOnly(phase.plannedEnd)!;
-      const xPx = diffDays(rangeStart, start) * PX_PER_DAY;
-      const widthPx = Math.max(diffDays(start, end) * PX_PER_DAY, MIN_BAR_WIDTH_PX);
+      const xPx = diffDays(rangeStart, start) * pxPerDay;
+      const widthPx = Math.max(diffDays(start, end) * pxPerDay, MIN_BAR_WIDTH_PX);
       return { phase, xPx, widthPx, fallback: false, yPx, heightPx };
     }
 
@@ -358,7 +384,7 @@ export function computePhaseTimelineLayout(
   for (let offset = 0; offset <= totalDays; offset += 7) {
     const markDate = new Date(rangeStart.getTime() + offset * MS_PER_DAY);
     weekMarks.push({
-      xPx: offset * PX_PER_DAY,
+      xPx: offset * pxPerDay,
       // Label every OTHER week -- this feature's own explicit
       // instruction, so the axis stays readable at the chart's actual
       // pixel density instead of a label every 6px-scaled week.
@@ -367,7 +393,7 @@ export function computePhaseTimelineLayout(
     weekIndex += 1;
   }
 
-  const todayXPx = diffDays(rangeStart, today) * PX_PER_DAY;
+  const todayXPx = diffDays(rangeStart, today) * pxPerDay;
 
   return { rows, chartWidthPx, contentHeightPx, weekMarks, todayXPx };
 }
@@ -461,6 +487,32 @@ export function PhaseTimeline({
   today: string;
 }) {
   const [hoveredPhaseId, setHoveredPhaseId] = useState<string | null>(null);
+  // F131: the plot's own measured width, read from the scroll/plot
+  // container itself via ResizeObserver rather than assumed from the
+  // viewport -- the label column beside it (`w-56`/`sm:w-72`) and any
+  // future breakpoint change to it both shrink or grow how much width is
+  // actually left for the plot, and this must always reflect that real
+  // remaining width, not a guess. `null` until the first observation
+  // fires (server render and the very first client paint), during which
+  // `computePhaseTimelineLayout` below falls back to its previous fixed
+  // day-based width so nothing is ever zero-width or absent.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidthPx, setContainerWidthPx] = useState<number | null>(null);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    // Guard for a test environment (jsdom) with no `ResizeObserver` global
+    // at all -- the fixed-width fallback in `computePhaseTimelineLayout`
+    // then stays in effect for the whole test, exactly as it did before
+    // this feature, rather than throwing.
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width) setContainerWidthPx(width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   // AS-010's own failure case: a project with no phases renders the rest
   // of the overview without the timeline and without an error -- this
@@ -469,7 +521,7 @@ export function PhaseTimeline({
     return null;
   }
 
-  const layout = computePhaseTimelineLayout(phases, today);
+  const layout = computePhaseTimelineLayout(phases, today, containerWidthPx ?? undefined);
   const hoveredRow = layout.rows.find((row) => row.phase.id === hoveredPhaseId) ?? null;
   const chartHeightPx = HEADER_HEIGHT_PX + layout.contentHeightPx;
 
@@ -585,12 +637,28 @@ export function PhaseTimeline({
           })}
         </div>
 
-        {/* Bar area: this is the ONLY part of the chart that scrolls --
-            the page body itself never scrolls sideways (this feature's
-            own explicit instruction). */}
+        {/* Bar area: the plot area now always fills 100% of the available
+            width instead of rendering at a fixed day-count-derived width
+            and leaving empty space when the container is wider than that.
+            `containerWidthPx` (measured below via ResizeObserver) is fed
+            back into `computePhaseTimelineLayout` as `targetWidthPx`, so
+            every x-coordinate -- bars, week grid, today line -- is
+            computed directly in real container pixels (day-per-pixel
+            scales up or down to fit), rather than stretched afterwards
+            with an SVG `viewBox` transform, which would have distorted
+            (horizontally stretched) the week-label text along with the
+            bars. Falls back to the old fixed day-based width for the one
+            render before the ResizeObserver reports a size (or in a test
+            environment with no layout at all), so there is no flash of
+            an unstyled/zero-width chart. There is nothing left to
+            horizontally scroll once the plot always matches its
+            container, so the old `overflow-x-auto` scroll wrapper is now
+            a plain full-width block (test id kept for existing test
+            hooks). */}
         <div
+          ref={scrollRef}
           data-testid="phase-timeline-scroll"
-          className="min-w-0 flex-1 overflow-x-auto"
+          className="min-w-0 flex-1"
         >
           <svg
             width={layout.chartWidthPx}

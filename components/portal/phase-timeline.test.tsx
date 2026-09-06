@@ -755,6 +755,49 @@ describe("PhaseTimeline", () => {
     // dead space.
     expect(layout.chartWidthPx - barEndPx).toBeLessThan(80);
   });
+
+  it("test_F131_a_measured_container_width_stretches_the_whole_axis_to_fill_it_instead_of_a_fixed_day_based_width", () => {
+    // Without a measured container width, the axis is only as wide as
+    // the fixed pixels-per-day constant implies for this short project --
+    // narrower than a wide desktop wrapper, which is exactly the "fills
+    // only half the wrapper" defect this feature fixes.
+    const phases = [
+      makePhase({
+        id: "p1",
+        name: "Discovery",
+        state: "done",
+        plannedStart: "2026-06-01",
+        plannedEnd: "2026-06-08",
+      }),
+      makePhase({
+        id: "p2",
+        name: "Build",
+        state: "active",
+        plannedStart: "2026-06-08",
+        plannedEnd: "2026-06-20",
+      }),
+    ];
+
+    const unmeasured = computePhaseTimelineLayout(phases, TODAY);
+    const wideContainerPx = 1200;
+    const stretched = computePhaseTimelineLayout(phases, TODAY, wideContainerPx);
+
+    // The chart now reports exactly the measured container's width, not
+    // its own fixed day-based width.
+    expect(stretched.chartWidthPx).toBe(wideContainerPx);
+    expect(stretched.chartWidthPx).toBeGreaterThan(unmeasured.chartWidthPx);
+
+    // Every row's bar is scaled up proportionally to fill that width --
+    // the last phase's bar now ends near the full measured width, not
+    // stranded at the old fixed-width position.
+    const lastRow = stretched.rows[stretched.rows.length - 1]!;
+    const barEndPx = lastRow.xPx + lastRow.widthPx;
+    expect(stretched.chartWidthPx - barEndPx).toBeLessThan(80);
+
+    // The vertical layout (row heights/offsets) is untouched by the
+    // width stretch -- only the x-axis scales.
+    expect(stretched.contentHeightPx).toBe(unmeasured.contentHeightPx);
+  });
 });
 
 describe("PhaseTimeline — mobile layout (F104 round 4)", () => {

@@ -11,7 +11,6 @@ import {
   getPortalRisks,
   getPortalTeam,
   getPortalWaitingOnYou,
-  getPortalWeeklyDelivery,
   getProjectPhases,
 } from "@/lib/queries/portal";
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
@@ -27,7 +26,6 @@ import { RiskBanner } from "@/components/portal/risk-banner";
 import { LiveNow } from "@/components/portal/live-now";
 import { TeamCard } from "@/components/portal/team-card";
 import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
-import { WeeklyDeliveryChart } from "@/components/portal/weekly-delivery-chart";
 import { LaunchHeadline } from "@/components/portal/launch-headline";
 import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
 import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items";
@@ -117,7 +115,6 @@ export default async function PortalOverviewPage({
     openApprovalsResult,
     deliverablesResult,
     accountsResult,
-    weeklyDeliveryResult,
     warrantyRow,
   ] = await Promise.all([
     getProjectPhases(project.id),
@@ -164,11 +161,6 @@ export default async function PortalOverviewPage({
     // the "Your site" accounts table renders, reused here rather than a
     // second query. See `buildWaitingOnYouItems`'s own header.
     getClientVisiblePortalAccounts(project.id),
-    // F111 (missions/20260903-portal, docs/client-portal-visual-plan.md
-    // 3.6): the weekly delivery rhythm's own read -- see
-    // lib/queries/portal.ts's own header on getPortalWeeklyDelivery for
-    // the two reads (tasks, task_activity) this needs and why.
-    getPortalWeeklyDelivery(project.id, project.startDate, today),
     // F115 round 2 (coordinator review, docs/client-portal-phase-2-plan.md
     // C): case 4's warranty-window fallback and the headline's own
     // "Launched"/"Launching" tense both need `warranty_until` -- not
@@ -350,31 +342,6 @@ export default async function PortalOverviewPage({
           component tracks that would need to survive the gate. */}
       {project.billingModel === "hourly" && (
         <BudgetBar usedMinutes={usedMinutes} soldMinutes={hoursSummary.soldMinutes} />
-      )}
-
-      {/* F111 (missions/20260903-portal, docs/client-portal-visual-plan.md
-          3.6): placed here, immediately after the budget bar and before
-          the phase-by-phase grid below, rather than at the very bottom of
-          the page (the plan's own "3.6" ordering is a section number, not
-          a layout instruction -- see this feature's own handoff for why
-          the bottom isn't assumed correct just because it's last in the
-          plan). This is the second full-width, single-scale, one-glance
-          figure on the page after the budget bar -- both answer "and is
-          that good?" without a click, before the client drops into the
-          phase-level detail in the grid below. It is proof of PAST
-          motion (evidence, not a claim) that pairs with the phase
-          timeline's proof of CURRENT motion right beneath it, rather than
-          competing with the tiles above (which are current-state numbers,
-          not history) for the same slot. */}
-      {weeklyDeliveryResult.ok ? (
-        <WeeklyDeliveryChart weeks={weeklyDeliveryResult.data} />
-      ) : (
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load delivery history"
-          description="Something went wrong loading this project's weekly delivery chart. Try refreshing the page."
-          testId="weekly-delivery-chart-error"
-        />
       )}
 
       <div className="grid gap-8 lg:grid-cols-3">
