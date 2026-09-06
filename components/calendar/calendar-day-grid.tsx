@@ -59,20 +59,31 @@ import {
 } from "@dnd-kit/core";
 import { toast } from "sonner";
 
+import { toast as sonnerToast } from "sonner";
+
 import { editTask } from "@/lib/actions/tasks";
+import {
+  createCalendarBlock,
+  updateCalendarBlock,
+  deleteCalendarBlock,
+} from "@/lib/actions/calendar-blocks";
 import { canWrite } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import { planReschedule } from "@/lib/calendar/reschedule";
 import { reconcileCalendarRealtimeEvent } from "@/lib/calendar/reconcile-realtime-task";
 import type { CalendarTask } from "@/lib/queries/calendar";
+import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import { moveIsoToDate, isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import type { DateOnly } from "@/lib/time/user-timezone";
 import { DayCell } from "@/components/calendar/day-cell";
+import { CALENDAR_BLOCK_DRAG_PREFIX } from "@/components/calendar/calendar-block-chip";
 import { useCalendarRealtime } from "@/components/calendar/use-calendar-realtime";
 
 export function CalendarDayGrid({
   days,
   tasksByDate,
+  blocksByDate = {},
   workspaceSlug,
   workspaceId,
   projectIds,
@@ -83,6 +94,10 @@ export function CalendarDayGrid({
    * shape before crossing the client-component boundary (a `Map` isn't a
    * serializable RSC prop). */
   tasksByDate: Record<string, CalendarTask[]>;
+  /** Planner feature: same "Map -> plain object" conversion, keyed by the
+   * block's own local calendar day. Optional so any existing test that
+   * renders this component without blocks keeps working unchanged. */
+  blocksByDate?: Record<string, CalendarBlock[]>;
   workspaceSlug: string;
   /** F009 (AS-019..AS-022): the current workspace's id (Realtime channel
    * scope) and the caller's own visible project id set (client-side
@@ -95,6 +110,7 @@ export function CalendarDayGrid({
   projectIds?: string[];
 }) {
   const [byDate, setByDate] = useState(tasksByDate);
+  const [blocksState, setBlocksState] = useState(blocksByDate);
 
   // F009 (AS-019, AS-020, AS-021, AS-022): live updates from other users
   // -- due-date changes, new dated tasks, and due-date removals/deletes --
@@ -137,12 +153,123 @@ export function CalendarDayGrid({
     useSensor(KeyboardSensor),
   );
 
+  // Planner feature: create/update/delete for calendar_blocks, mirroring
+  // the day-cell-local optimistic-update-then-persist shape this file's
+  // task drag handler already uses, but scoped to `blocksState` instead
+  // of `byDate`.
+  function findBlockDate(blockId: string): string | null {
+    for (const [date, blocks] of Object.entries(blocksState)) {
+      if (blocks.some((b) => b.id === blockId)) return date;
+    }
+    return null;
+  }
+
+  async function handleCreateBlock(
+    date: string,
+    values: { title: string; startsAt: string; endsAt: string },
+  ) {
+    if (!workspaceId) return;
+    const result = await createCalendarBlock({
+      workspaceId,
+      title: values.title,
+      startsAt: values.startsAt,
+      endsAt: values.endsAt,
+    });
+    if (!result.ok) {
+      sonnerToast.error(result.error);
+      return;
+    }
+    setBlocksState((current) => ({
+      ...current,
+      [date]: [...(current[date] ?? []), result.data],
+    }));
+  }
+
+  async function handleUpdateBlock(
+    blockId: string,
+    values: { title: string; startsAt: string; endsAt: string },
+  ) {
+    const result = await updateCalendarBlock({
+      blockId,
+      title: values.title,
+      startsAt: values.startsAt,
+      endsAt: values.endsAt,
+    });
+    if (!result.ok) {
+      sonnerToast.error(result.error);
+      return;
+    }
+    const oldDate = findBlockDate(blockId);
+    const newDate = isoToLocalDateOnly(values.startsAt);
+    setBlocksState((current) => {
+      const next = { ...current };
+      if (oldDate) {
+        next[oldDate] = (next[oldDate] ?? []).filter((b) => b.id !== blockId);
+      }
+      next[newDate] = [...(next[newDate] ?? []), result.data];
+      return next;
+    });
+  }
+
+  async function handleDeleteBlock(blockId: string) {
+    const result = await deleteCalendarBlock({ blockId });
+    if (!result.ok) {
+      sonnerToast.error(result.error);
+      return;
+    }
+    setBlocksState((current) => {
+      const next: typeof current = {};
+      for (const [date, blocks] of Object.entries(current)) {
+        next[date] = blocks.filter((b) => b.id !== blockId);
+      }
+      return next;
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
 
-    const taskId = String(active.id);
+    const activeId = String(active.id);
     const targetDate = String(over.id) as DateOnly;
+
+    if (activeId.startsWith(CALENDAR_BLOCK_DRAG_PREFIX)) {
+      const blockId = activeId.slice(CALENDAR_BLOCK_DRAG_PREFIX.length);
+      const sourceDate = findBlockDate(blockId);
+      if (!sourceDate || sourceDate === targetDate) return;
+      const block = blocksState[sourceDate]?.find((b) => b.id === blockId);
+      if (!block) return;
+
+      const snapshot = blocksState;
+      const newStartsAt = moveIsoToDate(block.startsAt, targetDate);
+      const newEndsAt = moveIsoToDate(block.endsAt, targetDate);
+      setBlocksState((current) => {
+        const next = { ...current };
+        next[sourceDate] = (next[sourceDate] ?? []).filter((b) => b.id !== blockId);
+        next[targetDate] = [
+          ...(next[targetDate] ?? []),
+          { ...block, startsAt: newStartsAt, endsAt: newEndsAt },
+        ];
+        return next;
+      });
+
+      updateCalendarBlock({ blockId, startsAt: newStartsAt, endsAt: newEndsAt })
+        .then((result) => {
+          if (!result.ok) {
+            setBlocksState(snapshot);
+            sonnerToast.error(result.error);
+          }
+        })
+        .catch(() => {
+          setBlocksState(snapshot);
+          sonnerToast.error(
+            "Something went wrong moving that block. Please try again.",
+          );
+        });
+      return;
+    }
+
+    const taskId = activeId;
 
     // F234 (AS-445): the pure planning step lives in lib/calendar/
     // reschedule.ts, unit-tested independently of React/dnd-kit/Supabase
@@ -185,8 +312,16 @@ export function CalendarDayGrid({
             key={day.date}
             day={day}
             tasks={byDate[day.date] ?? []}
+            blocks={blocksState[day.date] ?? []}
             workspaceSlug={workspaceSlug}
             canDrag={canDrag}
+            onCreateBlock={
+              canDrag && workspaceId
+                ? (values) => handleCreateBlock(day.date, values)
+                : undefined
+            }
+            onUpdateBlock={canDrag ? handleUpdateBlock : undefined}
+            onDeleteBlock={canDrag ? handleDeleteBlock : undefined}
           />
         ))}
       </div>

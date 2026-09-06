@@ -41,10 +41,13 @@ import { CSS } from "@dnd-kit/utilities";
 
 import type { CalendarDay } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
+import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
 import { UserAvatarGroup } from "@/components/user-avatar-group";
 import { DayOverflow } from "@/components/calendar/day-overflow";
+import { CalendarBlockChip } from "@/components/calendar/calendar-block-chip";
+import { AddBlockPopover } from "@/components/calendar/add-block-popover";
 import { cn } from "@/lib/utils";
 
 const DAY_CELL_VISIBLE_TASKS = 3;
@@ -52,6 +55,7 @@ const DAY_CELL_VISIBLE_TASKS = 3;
 export function DayCell({
   day,
   tasks,
+  blocks = [],
   workspaceSlug,
   // F234 (AS-445): defaults to `true` so every existing/not-yet-updated
   // caller (this file's own pre-F234 tests included) keeps rendering a
@@ -59,11 +63,29 @@ export function DayCell({
   // BoardColumn use the identical `canDrag = true` default for the same
   // reason (see sortable-task-card.tsx's own doc comment).
   canDrag = true,
+  onCreateBlock,
+  onUpdateBlock,
+  onDeleteBlock,
 }: {
   day: CalendarDay;
   tasks: CalendarTask[];
+  /** Planner feature: freeform time blocks anchored to this cell's own
+   * date -- optional so any existing caller/test that doesn't pass these
+   * keeps rendering exactly as before (same convention `workspaceId`/
+   * `projectIds` already use one level up). */
+  blocks?: CalendarBlock[];
   workspaceSlug: string;
   canDrag?: boolean;
+  onCreateBlock?: (values: {
+    title: string;
+    startsAt: string;
+    endsAt: string;
+  }) => Promise<void> | void;
+  onUpdateBlock?: (
+    blockId: string,
+    values: { title: string; startsAt: string; endsAt: string },
+  ) => Promise<void> | void;
+  onDeleteBlock?: (blockId: string) => Promise<void> | void;
 }) {
   const dayNumber = Number(day.date.slice(-2));
   const visibleTasks = tasks.slice(0, DAY_CELL_VISIBLE_TASKS);
@@ -81,19 +103,22 @@ export function DayCell({
       data-date={day.date}
       data-testid={`calendar-day-cell-${day.date}`}
       className={cn(
-        "flex min-h-[7rem] flex-col gap-1 border-b border-r border-border/60 p-1.5 text-xs",
+        "group flex min-h-[7rem] flex-col gap-1 border-b border-r border-border/60 p-1.5 text-xs",
         !day.isCurrentMonth && "bg-muted/30 text-muted-foreground",
         isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}
     >
-      <span
-        className={cn(
-          "flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium",
-          day.isToday && "bg-primary text-primary-foreground",
-        )}
-      >
-        {dayNumber}
-      </span>
+      <div className="flex items-center justify-between">
+        <span
+          className={cn(
+            "flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium",
+            day.isToday && "bg-primary text-primary-foreground",
+          )}
+        >
+          {dayNumber}
+        </span>
+        {onCreateBlock && <AddBlockPopover date={day.date} onCreate={onCreateBlock} />}
+      </div>
       <div className="flex flex-col gap-1 overflow-hidden">
         {visibleTasks.map((task) => (
           <DraggableTaskChip
@@ -104,6 +129,15 @@ export function DayCell({
           />
         ))}
         <DayOverflow tasks={overflowTasks} workspaceSlug={workspaceSlug} />
+        {blocks.map((block) => (
+          <CalendarBlockChip
+            key={block.id}
+            block={block}
+            canDrag={canDrag}
+            onUpdate={onUpdateBlock ?? (() => {})}
+            onDelete={onDeleteBlock ?? (() => {})}
+          />
+        ))}
       </div>
     </div>
   );

@@ -39,6 +39,7 @@ import {
   getWorkspaceStatusOptions,
   type CalendarTask,
 } from "@/lib/queries/calendar";
+import { getCalendarBlocks } from "@/lib/queries/calendar-blocks";
 import { getWorkspaceProjects } from "@/lib/queries/projects";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
@@ -247,9 +248,16 @@ async function CalendarGridSection({
   // Perf (W9): undatedCount is batched here -- it only depends on
   // `workspaceId`, same as `getCalendarTasks`, not on the resolved
   // filters.
-  const [tasks, undatedCount] = await Promise.all([
+  // Planner feature: the block range query wants a half-open ISO window
+  // ([rangeStart, rangeEndExclusive)) -- `end` is an inclusive
+  // "YYYY-MM-DD", so the exclusive bound is midnight the day AFTER it.
+  const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
+  rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
+
+  const [tasks, undatedCount, blocks] = await Promise.all([
     getCalendarTasks(workspaceId, start, end, filters),
     getUndatedTaskCount(workspaceId),
+    getCalendarBlocks(workspaceId, `${start}T00:00:00.000Z`, rangeEndExclusive.toISOString()),
   ]);
 
   // F233 (AS-446): tasks with no due date are excluded from the grid by
@@ -275,6 +283,7 @@ async function CalendarGridSection({
         <MonthGrid
           grid={grid}
           tasksByDate={tasksByDate}
+          blocks={blocks}
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
           projectIds={projectIds}
@@ -307,6 +316,7 @@ async function CalendarGridSection({
       <MonthGrid
         grid={grid}
         tasksByDate={tasksByDate}
+        blocks={blocks}
         workspaceSlug={workspaceSlug}
         workspaceId={workspaceId}
         projectIds={projectIds}

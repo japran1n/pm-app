@@ -20,6 +20,8 @@ import Link from "next/link";
 
 import type { CalendarMonth } from "@/lib/calendar/month-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
+import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import { isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import { CalendarDayGrid } from "@/components/calendar/calendar-day-grid";
 import { AgendaList } from "@/components/calendar/agenda-list";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 export function MonthGrid({
   grid,
   tasksByDate,
+  blocks = [],
   workspaceSlug,
   workspaceId,
   projectIds,
@@ -39,6 +42,11 @@ export function MonthGrid({
 }: {
   grid: CalendarMonth;
   tasksByDate: Map<string, CalendarTask[]>;
+  /** Planner feature: every visible calendar block in the current window
+   * -- bucketed into `blocksByDate` below the same way the caller already
+   * buckets tasks. Optional so any existing caller/test keeps rendering
+   * unchanged without blocks. */
+  blocks?: CalendarBlock[];
   workspaceSlug: string;
   /** F009 (AS-019..AS-022): threaded straight through to
    * `CalendarDayGrid`'s Realtime subscription -- see that component's own
@@ -75,6 +83,12 @@ export function MonthGrid({
   const tasksByDateObject: Record<string, CalendarTask[]> = Object.fromEntries(
     tasksByDate,
   );
+
+  const blocksByDate: Record<string, CalendarBlock[]> = {};
+  for (const block of blocks) {
+    const date = isoToLocalDateOnly(block.startsAt);
+    blocksByDate[date] = [...(blocksByDate[date] ?? []), block];
+  }
 
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-month-grid">
@@ -135,6 +149,7 @@ export function MonthGrid({
           key={dataKey}
           days={grid.days}
           tasksByDate={tasksByDateObject}
+          blocksByDate={blocksByDate}
           workspaceSlug={workspaceSlug}
           workspaceId={workspaceId}
           projectIds={projectIds}
