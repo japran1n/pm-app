@@ -31,10 +31,21 @@ const STATUS_LABEL: Record<ProjectAccountStatus, string> = {
   transferred: "Transferred",
 };
 
+// Paket F (client-portal-phase plan, "Your site" scan/nav redesign):
+// status badges get a color per state (amber=pending, green=provisioned,
+// blue/gray=transferred) via className overrides on the shared `Badge`,
+// whose own variants don't carry those specific colors -- variant only
+// controls shape/base styling here, the color classes layer on top.
 const STATUS_VARIANT: Record<ProjectAccountStatus, "secondary" | "default" | "outline"> = {
   pending: "outline",
   provisioned: "secondary",
   transferred: "default",
+};
+
+const STATUS_COLOR_CLASS: Record<ProjectAccountStatus, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-700",
+  provisioned: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  transferred: "border-slate-300 bg-slate-100 text-slate-700",
 };
 
 function formatDate(iso: string): string {
@@ -59,32 +70,40 @@ export function ProjectAccountsTable({ accounts }: { accounts: ProjectAccount[] 
   }
 
   return (
-    <ul className="flex flex-col gap-2" data-testid="project-accounts-table">
-      {accounts.map((account) => (
-        <li
-          key={account.id}
-          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3"
-          data-testid="project-account-row"
-        >
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="text-sm font-medium text-foreground">{account.service}</p>
-            <p className="text-tag text-muted-foreground">{OWNER_LABEL[account.owner]}</p>
-            {account.note && (
-              <p className="text-tag text-muted-foreground">{account.note}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {account.renewalDate && (
-              <span className="text-tag text-muted-foreground">
-                Renews {formatDate(account.renewalDate)}
-              </span>
-            )}
-            <Badge variant={STATUS_VARIANT[account.status]}>
-              {STATUS_LABEL[account.status]}
-            </Badge>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="overflow-x-auto">
+      <ul
+        className="flex min-w-full flex-col gap-2"
+        data-testid="project-accounts-table"
+      >
+        {accounts.map((account) => (
+          <li
+            key={account.id}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2.5"
+            data-testid="project-account-row"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-sm font-medium text-foreground">{account.service}</p>
+              <p className="text-tag text-muted-foreground">{OWNER_LABEL[account.owner]}</p>
+              {account.note && (
+                <p className="text-tag text-muted-foreground">{account.note}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {account.renewalDate && (
+                <span className="text-tag text-muted-foreground">
+                  Renews {formatDate(account.renewalDate)}
+                </span>
+              )}
+              <Badge
+                variant={STATUS_VARIANT[account.status]}
+                className={STATUS_COLOR_CLASS[account.status]}
+              >
+                {STATUS_LABEL[account.status]}
+              </Badge>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

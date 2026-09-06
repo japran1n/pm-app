@@ -18,6 +18,14 @@
 // (title + a content preview) rather than linking to the team-only doc
 // editor a client session cannot reach; building that route is out of
 // this feature's own scope.
+//
+// Paket F (client-portal-phase plan, "Your site" scan/nav redesign):
+// cards get a leading icon to match the Links section's visual language.
+// `docKind` is always "training" on every guide reaching this component
+// (the caller pre-filters to that one kind, per this file's own header
+// comment) so there's no per-card variance to map -- every card gets the
+// same `GraduationCap` glyph rather than inventing a kind that doesn't
+// exist in the schema.
 import { GraduationCap } from "lucide-react";
 
 import type { Doc } from "@/lib/queries/docs";
@@ -37,15 +45,19 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
 
   return (
     <ul
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
       data-testid="project-guides-list"
     >
       {guides.map((doc) => (
         <li
           key={doc.id}
-          className="flex h-full flex-col gap-1 rounded-md border border-border p-3"
+          className="flex h-full flex-col gap-2 rounded-lg border border-border p-4"
           data-testid="project-guide-card"
         >
+          <GraduationCap
+            className="size-6 text-muted-foreground"
+            aria-hidden="true"
+          />
           <span className="text-sm font-medium text-foreground">{doc.title}</span>
           <span className="line-clamp-2 text-tag text-muted-foreground">
             {doc.content ? doc.content.slice(0, 140) : "No description yet."}

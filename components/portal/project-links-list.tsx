@@ -11,6 +11,12 @@
 // `new URL(url).hostname`, not the raw URL, so a long query string or
 // path doesn't dominate the row; falls back to the raw string if the URL
 // somehow fails to parse (never throw rendering a list).
+//
+// Paket F (client-portal-phase plan, "Your site" scan/nav redesign):
+// rendered as a grid of clickable cards (matching `team-card.tsx`'s
+// border/radius/spacing conventions) rather than a plain list, with the
+// `LinkKindIcon` scaled up as the card's visual anchor -- same data,
+// same empty state, purely a markup/visual change.
 import { ExternalLink } from "lucide-react";
 
 import type { ProjectLink, ProjectLinkKind } from "@/lib/queries/project-site";
@@ -51,29 +57,37 @@ export function ProjectLinksList({ links }: { links: ProjectLink[] }) {
   }
 
   return (
-    <ul className="flex flex-col gap-2" data-testid="project-links-list">
+    <ul
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+      data-testid="project-links-list"
+    >
       {links.map((link) => (
-        <li key={link.id} className="rounded-md border border-border p-3">
+        <li key={link.id}>
           <a
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-wrap items-center justify-between gap-2 hover:underline"
+            className="hover-surface flex h-full flex-col gap-2 rounded-lg border border-border p-4 transition-shadow hover:shadow-sm"
             data-testid="project-link-row"
           >
+            <span className="flex items-start justify-between gap-2">
+              <LinkKindIcon kind={link.kind} className="size-6" />
+              <ExternalLink
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            </span>
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                <LinkKindIcon kind={link.kind} />
                 {link.label}
-                <span className="rounded bg-muted px-1.5 py-0.5 text-tag text-muted-foreground">
-                  {KIND_LABEL[link.kind]}
-                </span>
+              </span>
+              <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-tag text-muted-foreground">
+                {KIND_LABEL[link.kind]}
               </span>
               <span className="truncate font-mono text-tag text-muted-foreground">
                 {hostLabel(link.url)}
               </span>
             </span>
-            <ExternalLink className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </a>
         </li>
       ))}
