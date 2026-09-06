@@ -13,9 +13,10 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceChannels } from "@/lib/queries/chat";
+import { getWorkspaceChannels, getDmCandidates } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
 import { ChatMessageSearch } from "@/components/chat/chat-message-search";
+import { DmStarterList } from "@/components/chat/dm-starter-list";
 
 export default async function ChatLayout({
   children,
@@ -37,7 +38,14 @@ export default async function ChatLayout({
     redirect(`/w/${workspaceSlug}`);
   }
 
-  const channels = await getWorkspaceChannels(workspace.id);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [channels, dmCandidates] = await Promise.all([
+    getWorkspaceChannels(workspace.id),
+    user ? getDmCandidates(workspace.id, user.id) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -52,6 +60,11 @@ export default async function ChatLayout({
             kind: c.kind,
             unreadCount: c.unreadCount,
           }))}
+        />
+        <DmStarterList
+          workspaceSlug={workspaceSlug}
+          workspaceId={workspace.id}
+          candidates={dmCandidates}
         />
       </aside>
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>

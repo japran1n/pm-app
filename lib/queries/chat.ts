@@ -235,13 +235,42 @@ export async function getWorkspaceChannels(
     unreadCountByChannel.set(row.channel_id, Number(row.unread_count ?? 0));
   }
 
+  // DM rows carry no `name` (channels_channel_kind_requires_name only
+  // applies to kind='channel') -- resolve the other member's display name
+  // here so the sidebar shows a person, not a generic "Direct message"
+  // label, mirroring the same resolution the
+  // `app/(workspace)/w/[workspaceSlug]/chat/[channelId]/page.tsx` thread
+  // view already does for the open channel.
+  const dmChannelIds = channelRows.filter((row) => row.kind === "dm").map((row) => row.id);
+  const dmOtherNameByChannel = new Map<string, string>();
+  if (dmChannelIds.length > 0) {
+    const currentUserId = (await supabase.auth.getUser()).data.user?.id ?? "";
+    const { data: dmMemberRows } = await supabase
+      .from("channel_members")
+      .select("channel_id, user_id")
+      .in("channel_id", dmChannelIds);
+
+    const otherUserIdByChannel = new Map<string, string>();
+    for (const row of dmMemberRows ?? []) {
+      if (row.user_id !== currentUserId) {
+        otherUserIdByChannel.set(row.channel_id, row.user_id);
+      }
+    }
+    const otherUserIds = Array.from(new Set(otherUserIdByChannel.values()));
+    const people = await resolvePeople(otherUserIds);
+    for (const [channelId, otherUserId] of otherUserIdByChannel) {
+      const person = people.get(otherUserId);
+      dmOtherNameByChannel.set(channelId, person?.name ?? person?.email ?? "Direct message");
+    }
+  }
+
   return channelRows
     .map((row) => ({
       id: row.id,
       workspaceId: row.workspace_id,
       projectId: row.project_id,
       kind: row.kind as "channel" | "dm",
-      name: row.name,
+      name: row.kind === "dm" ? (dmOtherNameByChannel.get(row.id) ?? row.name) : row.name,
       createdAt: row.created_at,
       lastMessageAt: lastMessageAtByChannel.get(row.id) ?? null,
       unreadCount: unreadCountByChannel.get(row.id) ?? 0,
@@ -498,4 +527,53 @@ export async function getChannelMembers(
     userId,
     ...(people.get(userId) ?? { name: null, email: null, avatarUrl: null }),
   }));
+}
+
+// ---------------------------------------------------------------------
+// Team 1:1 DMs: "who can I start a direct message with" candidate list.
+// ---------------------------------------------------------------------
+
+export type DmCandidate = ChannelMemberSummary;
+
+/**
+ * Every active workspace member except the caller and except `client`
+ * role members -- a DM is a team-internal 1:1, not a client-facing
+ * surface (mirrors `channels_select_members_or_workspace`'s own
+ * "workspace-wide chat is a team space, never a client" exclusion for
+ * plain channels). Runs through the caller's own session:
+ * `workspace_members_select_fellow_members` RLS is the real access
+ * boundary, same convention `getWorkspaceMembers` (lib/queries/members.ts)
+ * documents for itself.
+ */
+export async function getDmCandidates(
+  workspaceId: string,
+  currentUserId: string,
+): Promise<DmCandidate[]> {
+  const supabase = await createClient();
+
+  const { data: rows, error } = await supabase
+    .from("workspace_members")
+    .select("user_id, role")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active");
+
+  if (error) {
+    logger.error("getDmCandidates: query failed", { error: error });
+    return [];
+  }
+
+  const userIds = (rows ?? [])
+    .filter((row) => row.user_id && row.user_id !== currentUserId && row.role !== "client")
+    .map((row) => row.user_id as string);
+
+  if (userIds.length === 0) return [];
+
+  const people = await resolvePeople(userIds);
+
+  return userIds
+    .map((userId) => ({
+      userId,
+      ...(people.get(userId) ?? { name: null, email: null, avatarUrl: null }),
+    }))
+    .sort((a, b) => (a.name ?? a.email ?? "").localeCompare(b.name ?? b.email ?? ""));
 }

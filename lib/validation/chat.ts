@@ -42,6 +42,13 @@ export const removeChannelMemberSchema = z.object({
   userId: z.string().uuid("Invalid member."),
 });
 
+// Team 1:1 DM find-or-create (lib/actions/chat-channels.ts's
+// findOrCreateDirectMessage).
+export const findOrCreateDmSchema = z.object({
+  workspaceId: z.string().uuid("Invalid workspace."),
+  otherUserId: z.string().uuid("Invalid member."),
+});
+
 // F3: loose structural validation of a message's Tiptap-shaped JSON body.
 // Mirrors lib/validation/comments.ts's commentBodyJsonSchema -- not a full
 // allow-list re-implementation, just enough to reject an obviously

@@ -19,6 +19,7 @@ import {
   createChannelSchema,
   addChannelMemberSchema,
   removeChannelMemberSchema,
+  findOrCreateDmSchema,
 } from "@/lib/validation/chat";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 
@@ -272,6 +273,69 @@ export async function addChannelMember(
   revalidateChat();
 
   return { ok: true };
+}
+
+export type FindOrCreateDmResult =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: string };
+
+// Team 1:1 DM ("privatni chat" feature): find-or-create the DM channel
+// between the caller and `otherUserId` in `workspaceId`, rather than the
+// generic `createChannel` above minting a brand-new `kind='dm'` channel
+// every time -- clicking "message" on the same person twice must land on
+// the same conversation, never a second empty one. Both users must be
+// active members of the same workspace (defense in depth: the RPC itself
+// only trusts its arguments, it does not re-check membership -- see its
+// own doc comment in 20261108010000_dm_find_or_create.sql for why it's
+// service_role-only).
+export async function findOrCreateDirectMessage(
+  workspaceId: string,
+  otherUserId: string,
+): Promise<FindOrCreateDmResult> {
+  const parsed = findOrCreateDmSchema.safeParse({ workspaceId, otherUserId });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request." };
+  }
+
+  const { user } = await requireUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to start a direct message." };
+  }
+
+  if (user.id === otherUserId) {
+    return { ok: false, error: "You can't start a direct message with yourself." };
+  }
+
+  const admin = createAdminClient();
+
+  const callerMembership = await requireActiveMembership(admin, workspaceId, user.id);
+  if (!callerMembership.ok) {
+    return { ok: false, error: "You don't have permission to message in this workspace." };
+  }
+
+  const otherMembership = await requireActiveMembership(admin, workspaceId, otherUserId);
+  if (!otherMembership.ok) {
+    return { ok: false, error: "That person isn't a member of this workspace." };
+  }
+
+  const { data: channelId, error: rpcError } = await admin.rpc(
+    "find_or_create_dm_channel_atomic",
+    {
+      p_workspace_id: workspaceId,
+      p_user_a: user.id,
+      p_user_b: otherUserId,
+      p_created_by: user.id,
+    },
+  );
+
+  if (rpcError || !channelId) {
+    logger.error("findOrCreateDirectMessage: RPC failed", { error: rpcError });
+    return { ok: false, error: "Something went wrong. Please try again in a moment." };
+  }
+
+  revalidateChat();
+
+  return { ok: true, data: { id: channelId as string } };
 }
 
 export type RemoveChannelMemberResult = { ok: true } | { ok: false; error: string };

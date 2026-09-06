@@ -10,10 +10,11 @@
 // "back to channel list" link in channel-view.tsx has somewhere stable to
 // return to instead of being bounced straight back into the same channel.
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceChannels } from "@/lib/queries/chat";
+import { getWorkspaceChannels, getDmCandidates } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
 import { ChatMessageSearch } from "@/components/chat/chat-message-search";
 import { DesktopAutoRedirect } from "@/components/chat/desktop-auto-redirect";
+import { DmStarterList } from "@/components/chat/dm-starter-list";
 
 export default async function ChatIndexPage({
   params,
@@ -29,7 +30,14 @@ export default async function ChatIndexPage({
     .eq("slug", workspaceSlug)
     .maybeSingle();
 
-  const channels = workspace ? await getWorkspaceChannels(workspace.id) : [];
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [channels, dmCandidates] = await Promise.all([
+    workspace ? getWorkspaceChannels(workspace.id) : Promise.resolve([]),
+    workspace && user ? getDmCandidates(workspace.id, user.id) : Promise.resolve([]),
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col md:hidden">
@@ -49,6 +57,13 @@ export default async function ChatIndexPage({
           unreadCount: c.unreadCount,
         }))}
       />
+      {workspace && (
+        <DmStarterList
+          workspaceSlug={workspaceSlug}
+          workspaceId={workspace.id}
+          candidates={dmCandidates}
+        />
+      )}
     </div>
   );
 }
