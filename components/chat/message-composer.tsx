@@ -75,16 +75,27 @@ export function MessageComposer({
   disabled,
   mentionSuggestions,
   channelId,
+  initialDraft,
 }: {
   onSend: (bodyJson: JSONContent, attachmentIds?: string[]) => Promise<{ ok: boolean; error?: string }>;
   onTyping?: () => void;
   disabled?: boolean;
   mentionSuggestions?: MentionSuggestionItem[];
   channelId?: string;
+  // Paket E ("Piši nam"): plain-text draft (e.g. "@Name ") to prefill the
+  // composer with on first render -- ChannelView's own initialMentionName
+  // prop, already turned into "@Name " there. Deliberately plain text,
+  // not a real Tiptap mention node: this only needs to land the cursor
+  // after a name the sender can keep typing after, same "minimal
+  // mechanism" the feature asked for, not a full mention-suggestion
+  // auto-resolve on load.
+  initialDraft?: string;
 }) {
   const richText = useRichTextModule();
-  const [plainValue, setPlainValue] = useState("");
-  const [richValue, setRichValue] = useState<JSONContent>(EMPTY_DOC);
+  const [plainValue, setPlainValue] = useState(initialDraft ?? "");
+  const [richValue, setRichValue] = useState<JSONContent>(() =>
+    initialDraft ? docFromPlainText(initialDraft) : EMPTY_DOC,
+  );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -99,7 +110,9 @@ export function MessageComposer({
   // keystroke's own state update has flushed. Mirroring every `onChange`
   // into a ref read synchronously by `submit()` means Enter always sends
   // the just-linked document, never a one-keystroke-stale one.
-  const richValueRef = useRef<JSONContent>(EMPTY_DOC);
+  const richValueRef = useRef<JSONContent>(
+    initialDraft ? docFromPlainText(initialDraft) : EMPTY_DOC,
+  );
 
   const useRichEditor = !!richText && mentionSuggestions !== undefined;
   const canSubmit = (useRichEditor ? !isEmptyDoc(richValue) : !!plainValue.trim()) || pendingAttachments.length > 0;

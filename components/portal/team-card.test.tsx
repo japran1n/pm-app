@@ -76,4 +76,50 @@ describe("TeamCard", () => {
       screen.getByText("No team members assigned to this project yet."),
     ).toBeInTheDocument();
   });
+
+  // Paket E ("Piši nam"): the team card links to the project's existing
+  // conversation channel, prefilled with a mention of that member.
+  it("renders a 'Piši nam' link to the project conversation with a mention query param, when workspaceSlug/projectId are provided", () => {
+    render(
+      <TeamCard
+        workspaceSlug="acme"
+        projectId="proj-1"
+        members={[
+          {
+            id: "u1",
+            userId: "u1",
+            name: "Ana Petrović",
+            avatarUrl: null,
+            roleLabel: "Project lead",
+            note: null,
+            email: "ana@agency.test",
+          },
+        ]}
+      />,
+    );
+    const link = screen.getByText("Piši nam");
+    expect(link.closest("a")).toHaveAttribute(
+      "href",
+      "/portal/acme/p/proj-1/conversation?mention=u1",
+    );
+  });
+
+  it("does not render the 'Piši nam' link when workspaceSlug/projectId are missing", () => {
+    render(
+      <TeamCard
+        members={[
+          {
+            id: "u1",
+            userId: "u1",
+            name: "Ana Petrović",
+            avatarUrl: null,
+            roleLabel: "Project lead",
+            note: null,
+            email: "ana@agency.test",
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText("Piši nam")).not.toBeInTheDocument();
+  });
 });

@@ -82,6 +82,7 @@ export function ChannelView({
   initialReplyCounts,
   initialReactions,
   initialAttachments,
+  initialMentionName,
 }: {
   workspaceSlug: string;
   channelId: string;
@@ -99,6 +100,14 @@ export function ChannelView({
   // Component prop, same convention initialReplyCounts already uses.
   initialReactions?: Record<string, MessageReactionSummary[]>;
   initialAttachments?: Record<string, ChatMessageAttachment[]>;
+  // Paket E ("Piši nam" on the portal team card): the display name to
+  // prefill the composer with as "@Name " on first render, resolved
+  // server-side by the caller from a `?mention=<userId>` query param
+  // (see app/(portal)/.../conversation/page.tsx). Undefined for every
+  // other caller of this shared component (the staff-side chat route
+  // never passes it), so the composer's default (empty) behaviour is
+  // unchanged there.
+  initialMentionName?: string;
 }) {
   // Initial page load is newest-first (getChannelMessages, F3), reversed
   // here to oldest-first for top-to-bottom rendering, same convention
@@ -427,6 +436,7 @@ export function ChannelView({
         onSend={handleSend}
         onTyping={sendTyping}
         mentionSuggestions={mentionSuggestions}
+        initialDraft={initialMentionName ? `@${initialMentionName} ` : undefined}
       />
     </div>
     {activeThreadId && (

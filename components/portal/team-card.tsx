@@ -7,10 +7,28 @@
 // own (`note`), and how to reach them (email). Team lead first is
 // `getPortalTeam`'s own sort order, not this component's -- this just
 // renders in the order it receives.
+// Paket E (client-portal-phase plan, "Piši nam"): each member row now
+// links to the project's existing conversation channel (already built by
+// F116, app/(portal)/.../conversation/page.tsx) with `?mention=<userId>`,
+// rather than only offering a mailto link. `workspaceSlug`/`projectId` are
+// optional so existing callers/tests that only care about the read-only
+// member list keep working unchanged -- the button simply doesn't render
+// without them.
+import Link from "next/link";
+import { MessageCircle } from "lucide-react";
+
 import { UserAvatar } from "@/components/user-avatar";
 import type { PortalTeamMember } from "@/lib/queries/portal";
 
-export function TeamCard({ members }: { members: PortalTeamMember[] }) {
+export function TeamCard({
+  members,
+  workspaceSlug,
+  projectId,
+}: {
+  members: PortalTeamMember[];
+  workspaceSlug?: string;
+  projectId?: string;
+}) {
   return (
     <div
       data-testid="team-card"
@@ -48,6 +66,15 @@ export function TeamCard({ members }: { members: PortalTeamMember[] }) {
                   >
                     {member.email}
                   </a>
+                )}
+                {workspaceSlug && projectId && (
+                  <Link
+                    href={`/portal/${workspaceSlug}/p/${projectId}/conversation?mention=${member.userId}`}
+                    className="mt-1 flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+                  >
+                    <MessageCircle aria-hidden="true" className="size-3" />
+                    Piši nam
+                  </Link>
                 )}
               </div>
             </li>

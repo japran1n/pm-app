@@ -34,10 +34,13 @@ import { EmptyState } from "@/components/empty-state";
 // silence here reads as "not started yet", not as broken.
 export default async function PortalConversationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
+  searchParams: Promise<{ mention?: string }>;
 }) {
   const { workspaceSlug, projectId } = await params;
+  const { mention: mentionUserId } = await searchParams;
 
   const supabase = await createClient();
   const {
@@ -80,6 +83,16 @@ export default async function PortalConversationPage({
     getReplyCounts(channel.id),
   ]);
 
+  // "Piši nam" (Paket E): resolve the ?mention=<userId> query param (the
+  // team card's own link shape) against this channel's already-fetched
+  // member list, so ChannelView can prefill "@Name " without a second
+  // lookup. An unknown/stale id (member removed since the link was
+  // generated) just falls back to no prefill, same "silence over broken
+  // state" convention as this page's own notFound()-vs-empty-state calls.
+  const mentionMember = mentionUserId
+    ? members.find((m) => m.userId === mentionUserId)
+    : undefined;
+
   return (
     <ChannelView
       workspaceSlug={workspaceSlug}
@@ -89,6 +102,7 @@ export default async function PortalConversationPage({
       members={members}
       currentUserId={user.id}
       initialReplyCounts={replyCounts}
+      initialMentionName={mentionMember?.name ?? mentionMember?.email ?? undefined}
     />
   );
 }

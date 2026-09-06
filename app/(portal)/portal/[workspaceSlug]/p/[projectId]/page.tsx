@@ -17,6 +17,7 @@ import {
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
 import { getOpenApprovalsForClient } from "@/lib/queries/approvals";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
+import { getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
@@ -115,6 +116,7 @@ export default async function PortalOverviewPage({
     currentPeriod,
     openApprovalsResult,
     deliverablesResult,
+    accountsResult,
     weeklyDeliveryResult,
     warrantyRow,
   ] = await Promise.all([
@@ -157,6 +159,11 @@ export default async function PortalOverviewPage({
     // F107 (2.2): the exact read the Your list view renders -- reused
     // here (filtered to past-due) for the same reason.
     getClientDeliverables(project.id),
+    // Package C: accounts the client owns but hasn't provisioned yet are
+    // their own "waiting on you" obligation -- same client-visible read
+    // the "Your site" accounts table renders, reused here rather than a
+    // second query. See `buildWaitingOnYouItems`'s own header.
+    getClientVisiblePortalAccounts(project.id),
     // F111 (missions/20260903-portal, docs/client-portal-visual-plan.md
     // 3.6): the weekly delivery rhythm's own read -- see
     // lib/queries/portal.ts's own header on getPortalWeeklyDelivery for
@@ -227,6 +234,7 @@ export default async function PortalOverviewPage({
     approvals: openApprovalsResult.ok ? openApprovalsResult.data : [],
     tasks: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
     deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
+    accounts: accountsResult.ok ? accountsResult.data : [],
     workspaceSlug: workspace.slug,
     projectId: project.id,
     todayIso: today,
@@ -458,7 +466,7 @@ export default async function PortalOverviewPage({
               is deleted rather than duplicated, per this feature's own
               "wire both to the real query, or delete them" instruction. */}
 
-          <TeamCard members={team} />
+          <TeamCard members={team} workspaceSlug={workspace.slug} projectId={project.id} />
         </div>
       </div>
     </div>
