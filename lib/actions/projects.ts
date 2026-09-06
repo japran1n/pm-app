@@ -150,6 +150,85 @@ export async function createProject(
     metadata: { name: inserted.name },
   });
 
+  // Internal team chat: every project gets its own chat channel from the
+  // moment it's created, not only once its portal is turned on (F116's
+  // `ensure_project_channel_atomic` was originally wired only to
+  // `setPortalEnabled`/`activateInvitedMemberships` for the client-portal
+  // "Conversation" tab — see those call sites' own comments). Reusing the
+  // exact same idempotent RPC here means the workspace-side chat sidebar
+  // (app/(workspace)/w/[workspaceSlug]/chat/) and the portal's Conversation
+  // tab (app/(portal)/portal/[workspaceSlug]/p/[projectId]/conversation/)
+  // are backed by the identical `channels` row per project — same data,
+  // different UI wrapper — rather than two separate channel concepts. Best
+  // effort: a failure here must not fail project creation itself (the
+  // project row above already committed), so it's logged, not returned as
+  // an error; a project without a channel yet just falls back to
+  // `setPortalEnabled`'s own call to the same RPC (or a later retry) to
+  // backfill it.
+  const { data: projectChannelId, error: ensureChannelError } = await admin.rpc(
+    "ensure_project_channel_atomic",
+    {
+      p_project_id: inserted.id,
+      p_created_by: user.id,
+    },
+  );
+  if (ensureChannelError) {
+    logger.error("createProject: ensure_project_channel_atomic failed (non-fatal)", {
+      error: ensureChannelError,
+    });
+  } else if (projectChannelId) {
+    // `ensure_project_channel_atomic` only enrolls existing
+    // `project_members` rows, and project creation deliberately does not
+    // insert one for the creator (most projects default to
+    // workspace-visibility, no explicit `project_members` row needed for
+    // that) -- explicitly add the creator as a `channel_members` row here
+    // so the project's channel shows up in their own chat sidebar
+    // (lib/queries/chat.ts's getWorkspaceChannels) immediately, not only
+    // once someone is later added via `project_members`.
+    const { error: memberError } = await admin
+      .from("channel_members")
+      .insert({ channel_id: projectChannelId, user_id: user.id })
+      .select("channel_id")
+      .maybeSingle();
+    if (memberError && memberError.code !== "23505") {
+      logger.error("createProject: failed to enroll creator on project channel (non-fatal)", {
+        error: memberError,
+      });
+    }
+  }
+
+  // Default view tabs (Setup/Design/Dev/QA): every new project gets these
+  // four SHARED list-type saved views out of the box, matching the
+  // ClickUp-style "Design"/"Dev" list convention the workspace was
+  // modelled after. Deliberately an EMPTY filter set (`config.filters: []`)
+  // rather than any real predicate -- these are meant as manually-curated
+  // buckets a member fills in themselves (per this feature's own scope
+  // note), not smart filters, and the saved_views schema (F227/F228) has
+  // no task<->view membership concept to assign tasks into one of these
+  // automatically (out of scope here -- see this action's own comment
+  // above the insert for the full rationale). Best-effort, like the
+  // chat-channel provisioning above: a failure here must never fail
+  // project creation itself.
+  const DEFAULT_VIEW_NAMES = ["Setup", "Design", "Dev", "QA"];
+  const { error: defaultViewsError } = await admin.from("saved_views").insert(
+    DEFAULT_VIEW_NAMES.map((name, index) => ({
+      workspace_id: parsed.data.workspaceId,
+      project_id: inserted.id,
+      owner_id: user.id,
+      name,
+      scope: "shared" as const,
+      view_type: "list" as const,
+      config: { filters: [], sort: [], groupBy: null },
+      is_default: false,
+      position: (index + 1) * 1000,
+    })),
+  );
+  if (defaultViewsError) {
+    logger.error("createProject: default view tabs insert failed (non-fatal)", {
+      error: defaultViewsError,
+    });
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")

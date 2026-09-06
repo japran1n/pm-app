@@ -70,7 +70,17 @@ export function ViewTabs({
     const swapWith = direction === "left" ? index - 1 : index + 1;
     if (swapWith < 0 || swapWith >= tabs.length) return;
 
-    const before = direction === "left" ? tabs[swapWith - 1] : tabs[index];
+    // BUGFIX: the "move right" branch previously used `tabs[index]` (the
+    // tab's OWN current position) as `before` instead of `tabs[swapWith]`
+    // (the tab it's swapping past). That computed a midpoint between the
+    // tab's old position and the one two slots ahead, which could still
+    // land BEFORE `tabs[swapWith]`'s position for non-evenly-spaced
+    // fractional positions -- silently failing to move the tab at all
+    // (or even reordering it wrong) instead of throwing, which is why it
+    // slipped past manual testing. Both branches now consistently use
+    // "the tab currently occupying the slot we're moving into" as
+    // `before`/`after`.
+    const before = direction === "left" ? tabs[swapWith - 1] : tabs[swapWith];
     const after = direction === "left" ? tabs[swapWith] : tabs[swapWith + 1];
     const newPosition = calculatePosition(
       before?.position ?? null,

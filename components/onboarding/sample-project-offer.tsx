@@ -57,7 +57,7 @@ export function SampleProjectOffer({
       toast.success(
         `${result.data.projectName} created with ${result.data.tasksCreated} sample tasks.`,
       );
-      router.push(`/w/${workspaceSlug}/projects/${result.data.projectId}/board`);
+      router.push(`/w/${workspaceSlug}/projects/${result.data.projectId}/list`);
       router.refresh();
     });
   }

@@ -149,7 +149,7 @@ export function ProjectNavList({
   );
 
   function renderProjectRow(project: SidebarProjectItem) {
-    const href = `/w/${workspaceSlug}/projects/${project.id}/board`;
+    const href = `/w/${workspaceSlug}/projects/${project.id}/list`;
     const isActive =
       pathname === href ||
       pathname.startsWith(`/w/${workspaceSlug}/projects/${project.id}/`);

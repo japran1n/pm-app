@@ -1180,6 +1180,34 @@ export async function createProjectFromTemplate(
     };
   }
 
+  // Default view tabs (Setup/Design/Dev/QA): same best-effort provisioning
+  // as lib/actions/projects.ts's createProject -- see that function's own
+  // comment for the full rationale (empty-filter shared list views, no
+  // task<->view membership yet). Duplicated rather than factored into a
+  // shared helper purely because this is the ONLY other real
+  // project-creation entry point in the codebase (confirmed by grep for
+  // `createProject(` call sites) and a two-line duplication is cheaper
+  // than a new shared module for exactly two callers.
+  const DEFAULT_VIEW_NAMES = ["Setup", "Design", "Dev", "QA"];
+  const { error: defaultViewsError } = await admin.from("saved_views").insert(
+    DEFAULT_VIEW_NAMES.map((name, index) => ({
+      workspace_id: parsed.data.workspaceId,
+      project_id: created.project_id as string,
+      owner_id: user.id,
+      name,
+      scope: "shared" as const,
+      view_type: "list" as const,
+      config: { filters: [], sort: [], groupBy: null },
+      is_default: false,
+      position: (index + 1) * 1000,
+    })),
+  );
+  if (defaultViewsError) {
+    logger.error("createProjectFromTemplate: default view tabs insert failed (non-fatal)", {
+      error: defaultViewsError,
+    });
+  }
+
   // AS-376 (F316, follow-up to F313): `create_project_from_template`
   // (supabase/migrations/20260822190000_rpc_create_project_from_template.sql)
   // copies each template task's description_json directly in its SQL body,

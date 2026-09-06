@@ -133,6 +133,7 @@ describe.skipIf(!haveAdminCreds)(
 
     afterAll(async () => {
       for (const projectId of createdProjectIds) {
+        await adminClient.from("saved_views").delete().eq("project_id", projectId);
         await adminClient.from("projects").delete().eq("id", projectId);
       }
       for (const wsId of createdWorkspaceIds) {
@@ -179,6 +180,36 @@ describe.skipIf(!haveAdminCreds)(
       expect(row?.workspace_id).toBe(workspaceId);
       expect(row?.created_by).toBe(memberUserId);
       expect(row?.created_at).toBeTruthy();
+    });
+
+    it("test_new_project_gets_four_default_shared_view_tabs_Setup_Design_Dev_QA", async () => {
+      const { createProject } = await import("@/lib/actions/projects");
+
+      currentTestUserId = memberUserId;
+
+      const uniqueName = `F026 Project (default views) ${Date.now()}`;
+      const result = await createProject(workspaceId, uniqueName);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      createdProjectIds.push(result.data.id);
+
+      const { data: views, error } = await adminClient
+        .from("saved_views")
+        .select("name, scope, view_type, config, position")
+        .eq("project_id", result.data.id)
+        .order("position", { ascending: true });
+
+      expect(error).toBeNull();
+      expect(views?.map((v) => v.name)).toEqual(["Setup", "Design", "Dev", "QA"]);
+      for (const view of views ?? []) {
+        expect(view.scope).toBe("shared");
+        expect(view.view_type).toBe("list");
+        // Empty filter set: these are manually-curated buckets, not smart
+        // filters (per this feature's own scope note) -- every task in the
+        // project stays visible until a member filters further themselves.
+        expect((view.config as { filters: unknown[] }).filters).toEqual([]);
+      }
     });
 
     it("AS-026: an empty name is rejected before reaching the database", async () => {

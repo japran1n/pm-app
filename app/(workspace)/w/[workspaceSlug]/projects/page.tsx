@@ -212,7 +212,7 @@ async function ProjectsGridSection({
             <Card key={project.id}>
               <CardHeader className="flex flex-row items-start justify-between gap-2">
                 <Link
-                  href={`/w/${workspaceSlug}/projects/${project.id}/board`}
+                  href={`/w/${workspaceSlug}/projects/${project.id}/list`}
                   className="flex flex-1 flex-col gap-1.5"
                 >
                   <CardTitle className="line-clamp-1">{project.name}</CardTitle>
