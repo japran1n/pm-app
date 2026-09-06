@@ -4,12 +4,9 @@
 // a colour AS-526's contrast requirement hasn't already vetted (per this
 // feature's clarified "the picker must only offer AA-safe values, which
 // is a design constraint, not a runtime check" resolution). This test
-// enforces that design constraint against BOTH the light theme's white
-// column background and the dark theme's own column background (the
-// board column renders this dot directly on `bg-muted/30` layered over
-// `.dark { --card: oklch(0.205 0 0); }`, approximately #1f1f1f) — it
-// caught the "Slate (dark)" entry (#475569, slate-600) failing at 2.18:1
-// on dark before the fix in this feature.
+// enforces that design constraint against the app's single light theme's
+// white column background (the board column renders this dot directly on
+// `bg-muted/30` layered over `--card`).
 
 import { describe, expect, it } from "vitest";
 
@@ -37,23 +34,13 @@ function contrastRatio(hexA: string, hexB: string): number {
 }
 
 const WHITE = "#ffffff";
-const DARK_CARD = "#1f1f1f"; // app/globals.css .dark --card: oklch(0.205 0 0)
 const AA_UI_COMPONENT_MIN_RATIO = 3;
 
-describe("test_AS_526_column_color_palette_meets_wcag_aa_contrast_both_themes", () => {
+describe("test_AS_526_column_color_palette_meets_wcag_aa_contrast", () => {
   it.each(COLUMN_COLOR_PALETTE)(
     "$label ($value) clears 3:1 against a white column background",
     ({ value }) => {
       expect(contrastRatio(value, WHITE)).toBeGreaterThanOrEqual(
-        AA_UI_COMPONENT_MIN_RATIO,
-      );
-    },
-  );
-
-  it.each(COLUMN_COLOR_PALETTE)(
-    "$label ($value) clears 3:1 against the dark theme's column background",
-    ({ value }) => {
-      expect(contrastRatio(value, DARK_CARD)).toBeGreaterThanOrEqual(
         AA_UI_COMPONENT_MIN_RATIO,
       );
     },

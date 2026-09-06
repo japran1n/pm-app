@@ -185,7 +185,7 @@ export function PortalOverviewLive({
         <div className="flex items-center gap-2">
           <Clock3
             aria-hidden="true"
-            className="size-4 text-amber-600 dark:text-amber-400"
+            className="size-4 text-amber-600"
           />
           <h2 className="text-sm font-semibold">Waiting on you</h2>
         </div>
@@ -218,7 +218,7 @@ export function PortalOverviewLive({
         <div className="flex items-center gap-2">
           <CheckCircle2
             aria-hidden="true"
-            className="size-4 text-emerald-600 dark:text-emerald-400"
+            className="size-4 text-emerald-600"
           />
           <h2 className="text-sm font-semibold">Delivered this week</h2>
         </div>

@@ -21,14 +21,12 @@
 // directly on `--card` -- every call site (task-card.tsx:276,
 // subtask-list.tsx:248, dependencies.tsx:394, bulk-status-action.tsx:123,
 // search/page.tsx:207) wraps the dot in `<Badge variant="secondary">`,
-// whose real background is `--secondary` (`#f4f4f5` light /
-// `#262626` dark, oklch(0.967 0.001 286.375) / oklch(0.269 0 0) converted
-// to sRGB -- see app/globals.css), not `--card`. This test now measures
-// against the real rendering surface. Re-measuring surfaced two genuine
-// failures: STATUS_COLORS.in_review amber (#d97706) is 2.90:1 against
-// light `--secondary`, and STATUS_COLORS.done green-600 (#16a34a) is
-// 2.998:1 -- just under the 3:1 threshold -- so both colours were swapped
-// (see lib/task-colors.ts).
+// whose real background is `--secondary` (see app/globals.css), not
+// `--card`. This test now measures against the real rendering surface.
+// Re-measuring surfaced two genuine failures: STATUS_COLORS.in_review
+// amber (#d97706) is 2.90:1 against `--secondary`, and STATUS_COLORS.done
+// green-600 (#16a34a) is 2.998:1 -- just under the 3:1 threshold -- so
+// both colours were swapped (see lib/task-colors.ts).
 
 import { describe, expect, it } from "vitest";
 
@@ -57,16 +55,15 @@ function contrastRatio(hexA: string, hexB: string): number {
 
 // F338 (M18 scrutiny MAJ-3/FU-G): the real surface, not --card. See the
 // header comment above.
-const SECONDARY_LIGHT = "#f4f4f5"; // app/globals.css :root --secondary
-const SECONDARY_DARK = "#262626"; // app/globals.css .dark --secondary/--muted
+const SECONDARY = "#eef0f4"; // app/globals.css :root --secondary / --gg-gray-100
 // WCAG AA, non-text UI components / graphical objects (SC 1.4.11).
 const AA_UI_COMPONENT_MIN_RATIO = 3;
 
-describe("test_AS_154_task_colors_meet_wcag_aa_contrast_on_light_theme", () => {
+describe("test_AS_154_task_colors_meet_wcag_aa_contrast", () => {
   it.each(Object.entries(STATUS_COLORS))(
     "STATUS_COLORS.%s clears 3:1 against the badge's real secondary background",
     (_status, hex) => {
-      expect(contrastRatio(hex, SECONDARY_LIGHT)).toBeGreaterThanOrEqual(
+      expect(contrastRatio(hex, SECONDARY)).toBeGreaterThanOrEqual(
         AA_UI_COMPONENT_MIN_RATIO,
       );
     },
@@ -75,40 +72,15 @@ describe("test_AS_154_task_colors_meet_wcag_aa_contrast_on_light_theme", () => {
   it.each(Object.entries(PRIORITY_COLORS))(
     "PRIORITY_COLORS.%s clears 3:1 against the badge's real secondary background",
     (_priority, hex) => {
-      expect(contrastRatio(hex, SECONDARY_LIGHT)).toBeGreaterThanOrEqual(
+      expect(contrastRatio(hex, SECONDARY)).toBeGreaterThanOrEqual(
         AA_UI_COMPONENT_MIN_RATIO,
       );
     },
   );
 
   it("the previous in_review amber (#d97706) would have FAILED 3:1 on the real secondary background (regression guard)", () => {
-    expect(contrastRatio("#d97706", SECONDARY_LIGHT)).toBeLessThan(
+    expect(contrastRatio("#d97706", SECONDARY)).toBeLessThan(
       AA_UI_COMPONENT_MIN_RATIO,
     );
   });
-});
-
-// F269 (AS-526): STATUS_COLORS/PRIORITY_COLORS are fixed hex values (see
-// this file's header comment) rendered UNCHANGED in both the light and
-// dark theme, directly on the badge's `--secondary` background in dark
-// mode too — so the same 3:1 non-text threshold must ALSO hold against
-// that surface, independently of the light-theme check above.
-describe("test_AS_526_task_colors_meet_wcag_aa_contrast_on_dark_theme", () => {
-  it.each(Object.entries(STATUS_COLORS))(
-    "STATUS_COLORS.%s clears 3:1 against the badge's real secondary background (dark)",
-    (_status, hex) => {
-      expect(contrastRatio(hex, SECONDARY_DARK)).toBeGreaterThanOrEqual(
-        AA_UI_COMPONENT_MIN_RATIO,
-      );
-    },
-  );
-
-  it.each(Object.entries(PRIORITY_COLORS))(
-    "PRIORITY_COLORS.%s clears 3:1 against the badge's real secondary background (dark)",
-    (_priority, hex) => {
-      expect(contrastRatio(hex, SECONDARY_DARK)).toBeGreaterThanOrEqual(
-        AA_UI_COMPONENT_MIN_RATIO,
-      );
-    },
-  );
 });

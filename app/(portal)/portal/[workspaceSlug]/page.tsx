@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/server";
 import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
 // F008 (AS-018, AS-019, AS-020, AS-024): the only two regions on this page
 // that need to update live -- see that component's own header comment for
@@ -101,7 +100,6 @@ export default async function PortalOverviewPage({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>

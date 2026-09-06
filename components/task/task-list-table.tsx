@@ -498,7 +498,7 @@ export function TaskListTable({
                     )}
                     {task.pendingClientApproval && (
                       <span
-                        className="inline-flex shrink-0 items-center text-amber-700 dark:text-amber-500"
+                        className="inline-flex shrink-0 items-center text-amber-700"
                         data-testid="awaiting-client-indicator"
                       >
                         <CircleDot className="size-3.5" aria-hidden="true" />

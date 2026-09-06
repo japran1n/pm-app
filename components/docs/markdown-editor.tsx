@@ -235,7 +235,7 @@ export function MarkdownEditor({
         role: "textbox",
         "aria-multiline": "true",
         "aria-label": "Document content",
-        class: "prose dark:prose-invert max-w-none px-1 py-2 outline-none",
+        class: "prose max-w-none px-1 py-2 outline-none",
       },
     },
     onUpdate: ({ editor: updatedEditor }) => {

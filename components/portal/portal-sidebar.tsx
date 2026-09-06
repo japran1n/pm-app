@@ -39,7 +39,6 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
@@ -316,8 +315,7 @@ export function PortalSidebar({
 
         <div className="flex flex-col gap-3 border-t border-sidebar-border p-3">
           {identity}
-          <div className="flex items-center justify-between gap-2">
-            <ThemeToggle />
+          <div className="flex items-center justify-end gap-2">
             <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>
@@ -332,7 +330,6 @@ export function PortalSidebar({
         <div className="flex items-center justify-between gap-2 px-3 py-2">
           {brand}
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             <SignOutButton workspaceSlug={workspaceSlug} />
           </div>
         </div>

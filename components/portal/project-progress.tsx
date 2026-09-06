@@ -2,8 +2,8 @@ import type { PortalProject } from "@/lib/queries/portal";
 import { projectHealthLabel } from "@/components/portal/status-label";
 
 const TONE_CLASS: Record<"ok" | "warn" | "crit", string> = {
-  ok: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  warn: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  ok: "bg-emerald-500/10 text-emerald-700",
+  warn: "bg-amber-500/10 text-amber-700",
   crit: "bg-destructive/10 text-destructive",
 };
 

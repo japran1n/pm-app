@@ -180,7 +180,7 @@ describe("CommandPalette search results (F242)", () => {
 
   it("test_AS_466_empty_query_shows_neutral_prompt_not_no_results", async () => {
     // F243 (AS-462, AS-465): an empty query now shows quick actions
-    // (always at least "Toggle theme") instead of the old bare "Type to
+    // ("Create task"/"Create project") instead of the old bare "Type to
     // search..." text — updated here to match that intentional change.
     // The assertion this test protects (AS-466: an empty query must never
     // show the "no results" state, which is reserved for a query that

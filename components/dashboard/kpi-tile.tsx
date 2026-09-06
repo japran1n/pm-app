@@ -6,9 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const TONE_CLASS: Record<"neutral" | "warn" | "crit" | "ok", string> = {
   neutral: "",
-  warn: "text-amber-600 dark:text-amber-400",
+  warn: "text-amber-600",
   crit: "text-destructive",
-  ok: "text-emerald-600 dark:text-emerald-400",
+  ok: "text-emerald-600",
 };
 
 // UX-20: the dashboard's KPI row used to be a single `<OverdueTile>`

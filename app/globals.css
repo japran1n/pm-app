@@ -2,8 +2,6 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -62,44 +60,56 @@
 }
 
 :root {
-  /* Good Guys 3.0 design system — Figma "💠 Colors" style-guide page.
-     The palette is deliberately eight tokens: two darks, three lights and a
-     single blue accent. Everything below maps a shadcn role onto one of
-     them, so the app inherits the brand without any component knowing the
-     hex values. Raw values are kept as hex/rgb (not oklch) so a designer can
-     diff this file against the Figma swatches directly. */
-  --gg-dark-900: #010101;
-  --gg-dark-800: #0a0a0a;
+  /* Good Guys 3.0 design system — single-theme consolidation. There is
+     only one theme now (no `.dark`, no toggle), so this block owns the
+     whole palette outright: a real neutral gray ramp instead of the old
+     two-dark/two-light "eight token" set, plus more use of the brand
+     blue (--gg-brand-500) as an active/ring colour rather than a rare
+     accent. Token NAMES are unchanged from the two-theme era so no
+     component needed to be touched — only the values moved. */
+  --gg-gray-50: #f7f8fa;
+  --gg-gray-100: #eef0f4;
+  --gg-gray-200: #e3e6ec;
+  --gg-gray-300: #cfd3dc;
+  --gg-gray-400: #a7adba;
+  --gg-gray-500: #7b8291;
+  --gg-gray-600: #5a6070;
+  --gg-gray-700: #3f4451;
+  --gg-gray-800: #262a33;
+  --gg-gray-900: #0f1115;
   --gg-light-100: #ffffff;
-  --gg-light-200: #f0f0ef;
   --gg-brand-500: #3670e1;
 
-  --background: var(--gg-light-100);
-  --foreground: var(--gg-dark-900);
+  --background: var(--gg-gray-50);
+  --foreground: var(--gg-gray-900);
+  /* Cards/popovers sit a full step lighter than the page background so
+     surfaces visibly lift off the ground instead of blending into it. */
   --card: var(--gg-light-100);
-  --card-foreground: var(--gg-dark-900);
+  --card-foreground: var(--gg-gray-900);
   --popover: var(--gg-light-100);
-  --popover-foreground: var(--gg-dark-900);
-  /* Figma's primary button is Style=Primary, Color=Dark: dark-900 fill,
-     light-100 label. The blue is an accent (ring/links/charts), never the
-     default button fill. */
-  --primary: var(--gg-dark-900);
+  --popover-foreground: var(--gg-gray-900);
+  /* Figma's primary button is Style=Primary, Color=Dark: dark fill,
+     light label. The blue is an accent (ring/links/charts/active-nav),
+     never the default button fill. */
+  --primary: var(--gg-gray-900);
   --primary-foreground: var(--gg-light-100);
-  --secondary: var(--gg-light-200);
-  --secondary-foreground: var(--gg-dark-900);
-  --muted: var(--gg-light-200);
-  --muted-foreground: rgb(1 1 1 / 0.6); /* dark-900-o60 */
-  --accent: var(--gg-light-200);
-  --accent-foreground: var(--gg-dark-900);
+  --secondary: var(--gg-gray-100);
+  --secondary-foreground: var(--gg-gray-900);
+  --muted: var(--gg-gray-100);
+  /* A real gray step rather than a black-alpha wash — reads consistently
+     over both --background and --card instead of getting darker/lighter
+     depending on what's underneath it. */
+  --muted-foreground: var(--gg-gray-600);
+  --accent: var(--gg-gray-200);
+  --accent-foreground: var(--gg-gray-900);
   --brand: var(--gg-brand-500);
   --brand-foreground: var(--gg-light-100);
   /* F004 (missions/20260903-portal): the four client-facing status
      buckets (waiting / in progress / blocked / done) a project status
      maps to (components/portal/status-label.ts's `resolveClientBucket`).
-     Not in the Figma "💠 Colors" page -- these four hex values were
-     independently validated for contrast and colour-vision separation on
-     both the portal ground and the team board's ground. Do not re-pick
-     them per component; add new semantics here, once. */
+     Unchanged by the single-theme consolidation — these were
+     independently validated for contrast and colour-vision separation
+     and there is now only ever one ground for them to sit on. */
   --status-waiting: #b57a00;
   --status-progress: #3670e1;
   --status-blocked: #b8332a;
@@ -115,86 +125,26 @@
   --destructive: oklch(
     0.577 0.245 27.325
   ); /* not in the Figma palette; kept from the shadcn base */
-  --border: rgb(1 1 1 / 0.1); /* dark-900-o10 */
-  --input: rgb(1 1 1 / 0.1);
+  --border: var(--gg-gray-200);
+  --input: var(--gg-gray-300);
   --ring: var(--gg-brand-500);
   --chart-1: var(--gg-brand-500);
-  --chart-2: rgb(1 1 1 / 0.6);
-  --chart-3: rgb(1 1 1 / 0.4);
-  --chart-4: rgb(1 1 1 / 0.25);
-  --chart-5: rgb(1 1 1 / 0.1);
+  --chart-2: var(--gg-gray-600);
+  --chart-3: var(--gg-gray-500);
+  --chart-4: var(--gg-gray-400);
+  --chart-5: var(--gg-gray-300);
   /* Figma buttons and tags are rounded-[2px]; the whole system is that sharp. */
   --radius: 0.125rem;
-  --sidebar: var(--gg-light-200);
-  --sidebar-foreground: var(--gg-dark-900);
-  --sidebar-primary: var(--gg-dark-900);
+  /* Sidebar is its own "chrome" step: cooler and a shade deeper than the
+     page background (never dark) so it reads as a distinct panel, with
+     the brand blue driving the active item instead of another gray. */
+  --sidebar: var(--gg-gray-100);
+  --sidebar-foreground: var(--gg-gray-900);
+  --sidebar-primary: var(--gg-brand-500);
   --sidebar-primary-foreground: var(--gg-light-100);
-  --sidebar-accent: var(--gg-light-100);
-  --sidebar-accent-foreground: var(--gg-dark-900);
-  --sidebar-border: rgb(1 1 1 / 0.1);
-  --sidebar-ring: var(--gg-brand-500);
-}
-
-.dark {
-  /* Mirror of :root using the Figma "Color=Light" button treatment: the
-     surface goes dark-900, panels lift to dark-800, and the o60/o10 alpha
-     tokens flip to light-100 alphas. */
-  --background: var(--gg-dark-900);
-  --foreground: var(--gg-light-100);
-  --card: var(--gg-dark-800);
-  --card-foreground: var(--gg-light-100);
-  --popover: var(--gg-dark-800);
-  --popover-foreground: var(--gg-light-100);
-  --primary: var(--gg-light-100);
-  --primary-foreground: var(--gg-dark-900);
-  --secondary: var(--gg-dark-800);
-  --secondary-foreground: var(--gg-light-100);
-  --muted: var(--gg-dark-800);
-  --muted-foreground: rgb(255 255 255 / 0.6); /* light-100-o60 */
-  --accent: var(--gg-dark-800);
-  --accent-foreground: var(--gg-light-100);
-  --brand: var(--gg-brand-500);
-  --brand-foreground: var(--gg-light-100);
-  /* F004: dark-theme half of the same validated four (see :root's
-     comment above), re-stepped for F110 (missions/20260903-portal): OKLCH
-     lightness has to sit in [0.48, 0.67] against this surface (the
-     validator's dark-mode band -- NOT the light-mode band above, which is
-     wider), and #7aa5f3/#dbb03e both sat above that ceiling. The fix
-     deliberately keeps waiting/progress on the darker side of the band
-     rather than the lighter side: pushing amber toward the middle of the
-     band cut its CVD (colour-blind) separation from #dd5560 (worst
-     adjacent pair, deuteranopia) from a comfortable ΔE 15.8 down to a
-     WARN-band 6.6 -- legal per the validator but a real loss for a
-     deuteranopic reader on tokens this page now leans on hard (bars,
-     pipelines, bullet charts). Darkening amber further, toward the low
-     end of the band, recovers full separation (ΔE 8.1, back above the
-     validator's own PASS target of 8.0) with normal-vision and contrast
-     margins intact -- see F110's handoff for the full set of validator
-     runs this was chosen from. */
-  --status-waiting: #996c1a;
-  --status-progress: #2d75a9;
-  --status-blocked: #dd5560;
-  --status-done: #2f9e73;
-  --status-waiting-bg: color-mix(in srgb, var(--status-waiting) 18%, transparent);
-  --status-progress-bg: color-mix(in srgb, var(--status-progress) 18%, transparent);
-  --status-blocked-bg: color-mix(in srgb, var(--status-blocked) 18%, transparent);
-  --status-done-bg: color-mix(in srgb, var(--status-done) 18%, transparent);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: rgb(255 255 255 / 0.1);
-  --input: rgb(255 255 255 / 0.15);
-  --ring: var(--gg-brand-500);
-  --chart-1: var(--gg-brand-500);
-  --chart-2: rgb(255 255 255 / 0.6);
-  --chart-3: rgb(255 255 255 / 0.4);
-  --chart-4: rgb(255 255 255 / 0.25);
-  --chart-5: rgb(255 255 255 / 0.12);
-  --sidebar: var(--gg-dark-800);
-  --sidebar-foreground: var(--gg-light-100);
-  --sidebar-primary: var(--gg-light-100);
-  --sidebar-primary-foreground: var(--gg-dark-900);
-  --sidebar-accent: var(--gg-dark-900);
-  --sidebar-accent-foreground: var(--gg-light-100);
-  --sidebar-border: rgb(255 255 255 / 0.1);
+  --sidebar-accent: color-mix(in srgb, var(--gg-brand-500) 12%, var(--gg-light-100));
+  --sidebar-accent-foreground: var(--gg-brand-500);
+  --sidebar-border: var(--gg-gray-200);
   --sidebar-ring: var(--gg-brand-500);
 }
 
@@ -417,14 +367,6 @@
     box-shadow:
       0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 20%),
       0 2px 8px rgb(1 1 1 / 0.06);
-  }
-  .dark .hover-lift {
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  }
-  .dark .hover-lift:hover {
-    box-shadow:
-      0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 25%),
-      0 2px 8px rgb(0 0 0 / 0.4);
   }
 }
 

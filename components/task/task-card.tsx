@@ -348,12 +348,11 @@ export function TaskCard({
         {/* F083: "waiting on the client" — icon + text, never colour
             alone, same pairing convention. Uses the same amber
             "informing, not alarming" treatment the over-estimate badge
-            above uses (F269's AS-526-hardened `text-amber-700`/
-            `dark:text-amber-500` contrast pair), since this is a fact
-            about the task, not an error. */}
+            above uses (F269's AS-526-hardened `text-amber-700`),
+            since this is a fact about the task, not an error. */}
         {task.pendingClientApproval && (
           <span
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
             data-testid="awaiting-client-indicator"
           >
             <CircleDot className="size-3" aria-hidden="true" />
@@ -374,16 +373,15 @@ export function TaskCard({
             than the destructive-red overdue uses, since going over
             estimate is a fact, not an error.
             F269 (AS-526): `text-amber-600` (#d97706) only clears 3.19:1
-            against the light theme's white card — below the 4.5:1 normal-
+            against the card's white ground — below the 4.5:1 normal-
             text threshold this `text-xs` badge text requires (large-text's
             3:1 exemption needs >=18pt/24px, or >=14pt/18.66px bold; this is
             12px, not bold). Swapped for `text-amber-700` (#b45309,
-            5.02:1). `dark:text-amber-500` was already fine (7.67:1 against
-            the dark card) and is unchanged — see
+            5.02:1) — see
             tests/unit/task-card-badge-text-contrast.test.ts. */}
         {estimateProgress?.isOverEstimate && (
           <span
-            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
             data-testid="over-estimate-badge"
           >
             <TriangleAlert className="size-3" aria-hidden="true" />

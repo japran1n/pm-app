@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { FileText, FolderKanban, History, Loader2, User, Zap } from "lucide-react";
 
 import {
@@ -119,7 +118,6 @@ export function CommandPalette({
   workspaceSlug: string;
 }) {
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
   const membership = useMembership();
   const { pointers: recentPointers, addRecent } = useRecentItems(workspaceId);
   const [open, setOpen] = React.useState(false);
@@ -398,7 +396,6 @@ export function CommandPalette({
     action.isVisible({
       role: membership?.role ?? null,
       workspaceSlug,
-      theme,
     }),
   );
 
@@ -435,8 +432,6 @@ export function CommandPalette({
                     const { navigateTo } = action.run({
                       role: membership?.role ?? null,
                       workspaceSlug,
-                      theme,
-                      setTheme,
                     });
                     if (navigateTo) {
                       navigate(navigateTo);

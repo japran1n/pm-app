@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/sheet";
 import { WorkspaceSwitcher, type SwitcherWorkspace } from "@/components/workspace-switcher";
 import { Badge } from "@/components/ui/badge";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { signOut } from "@/lib/actions/auth";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 // F208 (AS-379): the notification bell — mounted here since this app has
@@ -423,14 +422,6 @@ function SidebarContent({
             {personLabel(currentUser)}
           </span>
         </Link>
-        {/* F125 (AS-211): theme toggle, next to sign-out per the feature
-            spec's Files list. */}
-        <div className="flex items-center justify-between px-1">
-          <span className="text-xs font-medium text-sidebar-foreground/70">
-            Theme
-          </span>
-          <ThemeToggle />
-        </div>
         {/* F256 (AS-499): plain `<form action={signOut}>` had no pending
             state, so a fast double-click fired signOut() twice — harmless
             given signOut()'s own idempotent redirect, but not the

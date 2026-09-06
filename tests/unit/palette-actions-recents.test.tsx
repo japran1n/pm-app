@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
 // F243 (AS-462, AS-465): the command palette's quick actions ("Create
-// task", "Create project", "Toggle theme", permission-filtered) and
-// recents (visibility-checked project/task items shown for an empty
-// query).
+// task", "Create project", permission-filtered) and recents
+// (visibility-checked project/task items shown for an empty query).
 
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -89,12 +88,6 @@ vi.mock("@/lib/actions/palette-search", () => ({
     resolveRecentItems(workspaceId, pointers),
 }));
 
-const setTheme = vi.fn();
-let mockTheme: string | undefined = "light";
-vi.mock("next-themes", () => ({
-  useTheme: () => ({ theme: mockTheme, setTheme }),
-}));
-
 let mockRole: "owner" | "admin" | "member" | "viewer" | "guest" | null = "member";
 vi.mock("@/components/auth/membership-provider", () => ({
   useMembership: () =>
@@ -142,7 +135,6 @@ function openPalette() {
 beforeEach(() => {
   window.localStorage.clear();
   mockRole = "member";
-  mockTheme = "light";
 });
 
 afterEach(() => {
@@ -150,11 +142,10 @@ afterEach(() => {
   push.mockClear();
   searchPalette.mockClear();
   resolveRecentItems.mockClear();
-  setTheme.mockClear();
 });
 
 describe("CommandPalette actions (F243, AS-462)", () => {
-  it("test_AS_462_actions_group_offers_create_task_create_project_toggle_theme_for_a_member", async () => {
+  it("test_AS_462_actions_group_offers_create_task_create_project_for_a_member", async () => {
     const input = await openPalette();
     void input;
 
@@ -164,7 +155,6 @@ describe("CommandPalette actions (F243, AS-462)", () => {
 
     expect(screen.getByText("Create task")).toBeInTheDocument();
     expect(screen.getByText("Create project")).toBeInTheDocument();
-    expect(screen.getByText("Toggle theme")).toBeInTheDocument();
   });
 
   it("test_AS_462_selecting_create_project_navigates_to_the_projects_page", async () => {
@@ -181,33 +171,16 @@ describe("CommandPalette actions (F243, AS-462)", () => {
     });
   });
 
-  it("test_AS_462_selecting_toggle_theme_calls_setTheme_and_does_not_navigate", async () => {
-    mockTheme = "light";
-    await openPalette();
-
-    await waitFor(() => {
-      expect(screen.getByText("Toggle theme")).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText("Toggle theme"));
-
-    await waitFor(() => {
-      expect(setTheme).toHaveBeenCalledWith("dark");
-    });
-    expect(push).not.toHaveBeenCalled();
-  });
-
   // Negative case: a viewer is read-only (lib/auth/permissions.ts's
   // `canWrite`) — the palette must not offer "Create task"/"Create
   // project" to a viewer, matching `createTask`/`createProject`'s own
   // server-side "Viewers don't have permission to create..." rejection.
-  // The theme toggle (not a workspace write) remains offered.
-  it("test_AS_462_viewer_does_not_see_create_task_or_create_project_but_still_sees_toggle_theme", async () => {
+  it("test_AS_462_viewer_does_not_see_create_task_or_create_project", async () => {
     mockRole = "viewer";
     await openPalette();
 
     await waitFor(() => {
-      expect(screen.getByText("Toggle theme")).toBeInTheDocument();
+      expect(screen.queryByText("Actions")).not.toBeInTheDocument();
     });
 
     expect(screen.queryByText("Create task")).not.toBeInTheDocument();
@@ -225,10 +198,9 @@ describe("CommandPalette actions (F243, AS-462)", () => {
     await openPalette();
 
     await waitFor(() => {
-      expect(screen.getByText("Toggle theme")).toBeInTheDocument();
+      expect(screen.getByText("Create task")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Create task")).toBeInTheDocument();
     expect(screen.getByText("Create project")).toBeInTheDocument();
   });
 
@@ -328,12 +300,10 @@ describe("CommandPalette recents (F243, AS-465)", () => {
   });
 
   it("test_AS_465_no_recents_and_no_actions_falls_back_to_the_neutral_prompt", async () => {
-    // No actions offered (guest sees only "Toggle theme" normally, so
-    // force an edge case with an empty registry-equivalent state isn't
-    // directly reachable -- instead assert the ordinary "no recents yet"
-    // case still shows the Recent-less, Actions-only view without a
-    // crash, and that the bare neutral prompt only appears when NEITHER
-    // actions nor recents exist).
+    // Assert the ordinary "no recents yet" case still shows the
+    // Recent-less, Actions-only view without a crash, and that the bare
+    // neutral prompt only appears when NEITHER actions nor recents
+    // exist.
     resolveRecentItems.mockResolvedValue({ projects: [], tasks: [] });
 
     await openPalette();

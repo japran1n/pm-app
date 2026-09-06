@@ -80,9 +80,9 @@ export function useRecentItems(workspaceId: string) {
   // render — not in an effect) rather than useEffect+setState: this
   // hook's result is never rendered before the palette is first opened
   // (see components/command/command-palette.tsx's `hasRecents` gating),
-  // so there is no server/client markup to keep in sync the way
-  // components/theme-toggle.tsx's useSyncExternalStore trick guards
-  // against for a value painted on every page. `window === undefined` on
+  // so there is no server/client markup to keep in sync the way a
+  // useSyncExternalStore hydration guard protects against for a value
+  // painted on every page. `window === undefined` on
   // the server simply yields `[]`, identical to the pre-hydration value a
   // useEffect-based read would have produced anyway.
   // `workspaceId` is not expected to change across this component's

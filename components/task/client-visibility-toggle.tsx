@@ -83,7 +83,7 @@ export function ClientVisibilityToggle({
       onClick={handleToggle}
       disabled={disabled || isPending}
       aria-pressed={isShared}
-      className={isShared ? "text-emerald-600 dark:text-emerald-400" : undefined}
+      className={isShared ? "text-emerald-600" : undefined}
     >
       {isPending ? (
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />

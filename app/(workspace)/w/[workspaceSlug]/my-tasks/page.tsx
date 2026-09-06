@@ -286,7 +286,7 @@ function MyTaskRowItem({
       )}
       {row.pendingClientApproval && (
         <span
-          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-500"
+          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700"
           data-testid="awaiting-client-indicator"
         >
           <CircleDot className="size-3" aria-hidden="true" />

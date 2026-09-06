@@ -42,8 +42,8 @@ const STATUS_LABEL: Record<PortalRequest["status"], string> = {
 
 const STATUS_CLASS: Record<PortalRequest["status"], string> = {
   submitted: "text-muted-foreground",
-  in_review: "text-blue-600 dark:text-blue-400",
-  accepted: "text-emerald-600 dark:text-emerald-400",
+  in_review: "text-blue-600",
+  accepted: "text-emerald-600",
   declined: "text-destructive",
 };
 

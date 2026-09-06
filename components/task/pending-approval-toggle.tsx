@@ -72,7 +72,7 @@ export function PendingApprovalToggle({
       disabled={disabled || isPending}
       aria-pressed={isPendingApproval}
       className={
-        isPendingApproval ? "text-amber-600 dark:text-amber-400" : undefined
+        isPendingApproval ? "text-amber-600" : undefined
       }
     >
       {isPending ? (

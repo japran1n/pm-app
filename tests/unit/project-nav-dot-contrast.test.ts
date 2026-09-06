@@ -1,21 +1,17 @@
 // F269 (AS-526): components/nav/project-nav-list.tsx's per-project nav
 // dot (`colorForProjectId`/`DOT_COLORS`) is a fixed Tailwind class chosen
 // deterministically from the project id, rendered directly on the
-// sidebar's own background in both themes (app/globals.css `--sidebar` /
-// `.dark --sidebar`). This test resolves each class to its Tailwind hex
-// value and checks 3:1 against BOTH the light sidebar (near-white) and
-// the dark sidebar (near-black, same value as `.dark --card`) — it caught
-// the original -500 shades (amber-500 2.08:1, teal-500 2.41:1, sky-500
-// 2.68:1, emerald-500 2.45:1, orange-500 2.71:1 on the light sidebar)
-// failing before the fix in this feature.
+// sidebar's own background (app/globals.css `--sidebar`). This test
+// resolves each class to its Tailwind hex value and checks 3:1 against
+// the sidebar background — it caught the original -500 shades (amber-500
+// 2.08:1, teal-500 2.41:1, sky-500 2.68:1, emerald-500 2.45:1, orange-500
+// 2.71:1 on the sidebar) failing before the fix in this feature.
 //
 // F338 (M18 scrutiny MAJ-3/FU-G, AS-526): the row is not always plain
 // `--sidebar` -- the active/hover row applies `bg-sidebar-accent`
-// (project-nav-list.tsx's className), a genuinely different surface
-// (#f5f5f5 light / #262626 dark) the dot also renders directly on. This
-// test now additionally checks that surface; it caught `bg-amber-600`
-// (2.92:1 on the light accent row) and `bg-purple-600` (2.81:1 on the
-// dark accent row) failing before the fix in this feature.
+// (project-nav-list.tsx's className), a genuinely different surface the
+// dot also renders directly on. This test now additionally checks that
+// surface.
 
 import { describe, expect, it } from "vitest";
 
@@ -57,59 +53,34 @@ const DOT_COLOR_HEX: Record<string, string> = {
   "bg-orange-600": "#ea580c",
 };
 
-const SIDEBAR_LIGHT = "#fbfbfb"; // app/globals.css :root --sidebar: oklch(0.985 0 0)
-const SIDEBAR_DARK = "#1f1f1f"; // app/globals.css .dark --sidebar: oklch(0.205 0 0)
+const SIDEBAR = "#eef0f4"; // app/globals.css :root --sidebar / --gg-gray-100
 // F338 (M18 scrutiny MAJ-3/FU-G): the row's real background in its
-// active/hover state -- see header comment.
-const SIDEBAR_ACCENT_LIGHT = "#f5f5f5"; // app/globals.css :root --sidebar-accent: oklch(0.97 0 0)
-const SIDEBAR_ACCENT_DARK = "#262626"; // app/globals.css .dark --sidebar-accent: oklch(0.269 0 0)
+// active/hover state -- see header comment. --sidebar-accent is now a
+// brand-blue tint over white (see app/globals.css).
+const SIDEBAR_ACCENT = "#e7eefb"; // color-mix(in srgb, #3670e1 12%, #ffffff)
 const AA_UI_COMPONENT_MIN_RATIO = 3;
 
-describe("test_AS_526_project_nav_dots_meet_wcag_aa_contrast_both_themes", () => {
+describe("test_AS_526_project_nav_dots_meet_wcag_aa_contrast", () => {
   it.each(Object.entries(DOT_COLOR_HEX))(
-    "%s clears 3:1 against the light sidebar background",
+    "%s clears 3:1 against the sidebar background",
     (_className, hex) => {
-      expect(contrastRatio(hex, SIDEBAR_LIGHT)).toBeGreaterThanOrEqual(
+      expect(contrastRatio(hex, SIDEBAR)).toBeGreaterThanOrEqual(
         AA_UI_COMPONENT_MIN_RATIO,
       );
     },
   );
 
   it.each(Object.entries(DOT_COLOR_HEX))(
-    "%s clears 3:1 against the dark sidebar background",
+    "%s clears 3:1 against the sidebar-accent (hover/active row) background",
     (_className, hex) => {
-      expect(contrastRatio(hex, SIDEBAR_DARK)).toBeGreaterThanOrEqual(
+      expect(contrastRatio(hex, SIDEBAR_ACCENT)).toBeGreaterThanOrEqual(
         AA_UI_COMPONENT_MIN_RATIO,
       );
     },
   );
 
-  it.each(Object.entries(DOT_COLOR_HEX))(
-    "%s clears 3:1 against the light sidebar-accent (hover/active row) background",
-    (_className, hex) => {
-      expect(contrastRatio(hex, SIDEBAR_ACCENT_LIGHT)).toBeGreaterThanOrEqual(
-        AA_UI_COMPONENT_MIN_RATIO,
-      );
-    },
-  );
-
-  it.each(Object.entries(DOT_COLOR_HEX))(
-    "%s clears 3:1 against the dark sidebar-accent (hover/active row) background",
-    (_className, hex) => {
-      expect(contrastRatio(hex, SIDEBAR_ACCENT_DARK)).toBeGreaterThanOrEqual(
-        AA_UI_COMPONENT_MIN_RATIO,
-      );
-    },
-  );
-
-  it("the previous bg-amber-600 would have FAILED 3:1 on the light accent row (regression guard)", () => {
-    expect(contrastRatio("#d97706", SIDEBAR_ACCENT_LIGHT)).toBeLessThan(
-      AA_UI_COMPONENT_MIN_RATIO,
-    );
-  });
-
-  it("the previous bg-purple-600 would have FAILED 3:1 on the dark accent row (regression guard)", () => {
-    expect(contrastRatio("#9333ea", SIDEBAR_ACCENT_DARK)).toBeLessThan(
+  it("the previous bg-amber-600 would have FAILED 3:1 on the accent row (regression guard)", () => {
+    expect(contrastRatio("#d97706", SIDEBAR_ACCENT)).toBeLessThan(
       AA_UI_COMPONENT_MIN_RATIO,
     );
   });

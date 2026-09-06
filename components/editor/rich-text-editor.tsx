@@ -477,7 +477,7 @@ export function RichTextEditor({
         // Matches this codebase's existing focus-visible convention
         // (see components/ui/button.tsx / toggle.tsx).
         class: cn(
-          "prose prose-sm dark:prose-invert max-w-none px-3 py-2 outline-none",
+          "prose prose-sm max-w-none px-3 py-2 outline-none",
           "focus-visible:ring-3 focus-visible:ring-ring/50 rounded-b-lg",
           placeholder && "empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]"
         ),
@@ -935,7 +935,7 @@ export function RichTextRenderer({
     editorProps: {
       attributes: {
         "aria-label": ariaLabel,
-        class: "prose prose-sm dark:prose-invert max-w-none",
+        class: "prose prose-sm max-w-none",
       },
     },
   }, [mentionSuggestionsKey])

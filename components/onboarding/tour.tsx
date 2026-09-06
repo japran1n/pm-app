@@ -131,8 +131,9 @@ export function OnboardingTour({
   // render path at all. `useSyncExternalStore` with a `getServerSnapshot`
   // that differs from `getSnapshot` is the React-documented way to do
   // this without a `useEffect` + `setState` pair (which would itself trip
-  // this repo's react-hooks set-state-in-effect lint rule) -- same
-  // pattern/rationale as components/theme-toggle.tsx's own `isClient`.
+  // this repo's react-hooks set-state-in-effect lint rule) -- the
+  // established pattern for hydration-safe client-only state in this
+  // codebase.
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -171,9 +172,8 @@ export function OnboardingTour({
   // not stored in state set from inside an effect -- `resizeTick` below
   // only exists to force a re-render on resize/scroll, never to hold the
   // rect value itself, keeping this off the react-hooks
-  // set-state-in-effect rule this repo lints with (see
-  // components/theme-toggle.tsx's own comment on the same rule for the
-  // established pattern of avoiding it rather than suppressing it).
+  // set-state-in-effect rule this repo lints with (avoiding it rather
+  // than suppressing it).
   const [, setResizeTick] = useState(0);
   const rect: DOMRect | null =
     step?.targetSelector && typeof document !== "undefined"
