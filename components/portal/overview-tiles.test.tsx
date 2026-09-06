@@ -177,4 +177,39 @@ describe("OverviewTiles", () => {
     const pagesTile = screen.getByTestId("tile-pages-ready");
     expect(pagesTile.querySelector('[data-testid="tile-pages-distribution"]')).toBeNull();
   });
+
+  // Paket D (billing_model gating follow-up): a fixed-price project has
+  // no hourly billing to show a client -- the Hours tile, the same leak
+  // BudgetBar was flagged for on this same Overview page, is omitted
+  // entirely rather than rendered with hidden/zeroed numbers.
+  describe("fixed-price billing (showHoursTile=false)", () => {
+    it("does not render the Hours used tile", () => {
+      render(<OverviewTiles {...BASE_PROPS} showHoursTile={false} />);
+
+      expect(screen.queryByTestId("tile-hours-used")).toBeNull();
+    });
+
+    it("still renders the other two tiles", () => {
+      render(<OverviewTiles {...BASE_PROPS} showHoursTile={false} />);
+
+      expect(screen.getByTestId("tile-pages-ready")).toBeInTheDocument();
+      expect(screen.getByTestId("tile-days-to-launch")).toBeInTheDocument();
+      const strip = screen.getByTestId("overview-tiles");
+      expect(strip.children).toHaveLength(2);
+    });
+
+    it("uses a two-column grid, never a three-column class, with only two tiles", () => {
+      render(<OverviewTiles {...BASE_PROPS} showHoursTile={false} />);
+
+      const strip = screen.getByTestId("overview-tiles");
+      expect(strip.className).toMatch(/grid-cols-2\b/);
+      expect(strip.className).not.toMatch(/grid-cols-3\b/);
+    });
+
+    it("defaults to showing the Hours tile when showHoursTile is omitted (hourly projects unaffected)", () => {
+      render(<OverviewTiles {...BASE_PROPS} />);
+
+      expect(screen.getByTestId("tile-hours-used")).toBeInTheDocument();
+    });
+  });
 });

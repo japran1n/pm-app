@@ -326,6 +326,11 @@ export default async function PortalOverviewPage({
         hoursHref={`/portal/${workspace.slug}/p/${project.id}/hours`}
         daysToLaunch={daysToLaunch}
         launchConfidence={project.launchConfidence}
+        // Paket D (billing_model gating follow-up): time/hours are never
+        // shown to a `fixed_price` client anywhere in the portal -- the
+        // Hours tile is the same leak `BudgetBar` below was flagged for,
+        // gated the same way.
+        showHoursTile={project.billingModel === "hourly"}
       />
 
       {/* F108 (missions/20260903-portal, docs/client-portal-visual-plan.md
@@ -338,7 +343,14 @@ export default async function PortalOverviewPage({
           card for the identical reason. `usedMinutes`/`soldMinutes` are
           the exact same numbers the tile above already reads, never a
           second query. */}
-      <BudgetBar usedMinutes={usedMinutes} soldMinutes={hoursSummary.soldMinutes} />
+      {/* Paket D (billing_model gating follow-up): `BudgetBar` is entirely
+          hours-denominated (used/sold minutes, no non-hour data) -- a
+          `fixed_price` project omits it outright rather than rendering a
+          version of it, since there is no budget-in-money figure this
+          component tracks that would need to survive the gate. */}
+      {project.billingModel === "hourly" && (
+        <BudgetBar usedMinutes={usedMinutes} soldMinutes={hoursSummary.soldMinutes} />
+      )}
 
       {/* F111 (missions/20260903-portal, docs/client-portal-visual-plan.md
           3.6): placed here, immediately after the budget bar and before

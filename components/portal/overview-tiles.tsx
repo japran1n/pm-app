@@ -271,6 +271,7 @@ export function OverviewTiles({
   hoursHref,
   daysToLaunch,
   launchConfidence,
+  showHoursTile = true,
 }: {
   pagesReadyCount: number;
   pagesTotalCount: number;
@@ -296,6 +297,12 @@ export function OverviewTiles({
    * been set yet -- rendered as an honest "-", never a default. */
   daysToLaunch: number | null;
   launchConfidence: PortalLaunchConfidence | null;
+  /** Paket D (billing_model gating follow-up): `false` for a
+   * `fixed_price` project -- time/hours are never surfaced to a
+   * fixed-price client anywhere in the portal, including this tile
+   * strip. Defaults to `true` so every existing hourly caller keeps its
+   * current three-tile layout unchanged. */
+  showHoursTile?: boolean;
 }) {
   return (
     <div
@@ -310,7 +317,16 @@ export function OverviewTiles({
       // fourth tile was considered and rejected -- see this file's own
       // header comment for why nothing on this page currently qualifies
       // as new information rather than a restated one.
-      className="grid grid-cols-1 gap-4 sm:grid-cols-3"
+      //
+      // Paket D: a fixed-price project drops the Hours tile entirely, so
+      // the same "no orphan at any width" reasoning applies to the
+      // remaining TWO tiles -- `sm:grid-cols-2`, still one column on
+      // mobile.
+      className={
+        showHoursTile
+          ? "grid grid-cols-1 gap-4 sm:grid-cols-3"
+          : "grid grid-cols-1 gap-4 sm:grid-cols-2"
+      }
     >
       <Tile
         testId="tile-pages-ready"
@@ -323,20 +339,22 @@ export function OverviewTiles({
           ) : undefined
         }
       />
-      <Tile
-        testId="tile-hours-used"
-        label="Hours used"
-        href={hoursHref}
-        value={usedMinutes === null ? "—" : minutesToHours(usedMinutes)}
-        footnote={
-          usedMinutes === null
-            ? "No billable hours yet"
-            : soldMinutes === null
-              ? "No budget set yet"
-              : `Of ${minutesToHours(soldMinutes)} budgeted`
-        }
-        chart={<Sparkline values={usedMinutesSeries} />}
-      />
+      {showHoursTile && (
+        <Tile
+          testId="tile-hours-used"
+          label="Hours used"
+          href={hoursHref}
+          value={usedMinutes === null ? "—" : minutesToHours(usedMinutes)}
+          footnote={
+            usedMinutes === null
+              ? "No billable hours yet"
+              : soldMinutes === null
+                ? "No budget set yet"
+                : `Of ${minutesToHours(soldMinutes)} budgeted`
+          }
+          chart={<Sparkline values={usedMinutesSeries} />}
+        />
+      )}
       <Tile
         testId="tile-days-to-launch"
         label={daysToLaunch !== null && daysToLaunch < 0 ? "Days since launch" : "Days to launch"}
