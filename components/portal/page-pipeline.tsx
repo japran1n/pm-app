@@ -108,6 +108,17 @@ const BUCKET_TEXT_CLASS: Record<ClientBucket, string> = {
   done: "text-status-done",
 };
 
+// F-visual-redesign: a bigger, colour-tinted icon "chip" behind each step's
+// glyph — the same "colour + icon, never colour alone" pairing the pill
+// dots already used, just given more visual weight so the pipeline reads at
+// a glance instead of needing the label text to carry all of it.
+const BUCKET_ICON_BG_CLASS: Record<ClientBucket, string> = {
+  waiting: "bg-status-waiting-bg",
+  progress: "bg-status-progress-bg",
+  blocked: "bg-status-blocked-bg",
+  done: "bg-status-done-bg",
+};
+
 function PipelineStep({
   bucket,
   count,
@@ -123,25 +134,33 @@ function PipelineStep({
       data-testid={`page-pipeline-step-${bucket}`}
       data-highlighted={isClientBucket ? "true" : "false"}
       className={cn(
-        "flex min-w-28 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border px-3 py-2.5 text-center",
-        isClientBucket ? "border-status-waiting bg-status-waiting-bg" : "border-border bg-muted/40",
+        "flex min-w-32 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-center transition-colors",
+        isClientBucket
+          ? "border-status-waiting bg-status-waiting-bg shadow-sm"
+          : "border-border bg-muted/40",
       )}
     >
-      <span className="flex items-center gap-1.5">
-        <Icon aria-hidden={true} className={cn("size-3.5 shrink-0", BUCKET_TEXT_CLASS[bucket])} />
-        <span
-          className={cn(
-            "text-xs font-medium",
-            isClientBucket ? "text-status-waiting" : "text-muted-foreground",
-          )}
-        >
-          {CLIENT_BUCKET_LABELS[bucket]}
-        </span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-full",
+          BUCKET_ICON_BG_CLASS[bucket],
+        )}
+      >
+        <Icon aria-hidden={true} className={cn("size-5 shrink-0", BUCKET_TEXT_CLASS[bucket])} />
       </span>
-      <span className="text-lg font-semibold tabular-nums text-foreground" data-testid={`page-pipeline-count-${bucket}`}>
+      <span className="text-2xl font-semibold tabular-nums text-foreground" data-testid={`page-pipeline-count-${bucket}`}>
         {count}
       </span>
-      <span aria-hidden="true" className={cn("h-1 w-8 rounded-full", BUCKET_DOT_CLASS[bucket])} />
+      <span
+        className={cn(
+          "flex items-center gap-1.5 text-xs font-medium",
+          isClientBucket ? "text-status-waiting" : "text-muted-foreground",
+        )}
+      >
+        <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", BUCKET_DOT_CLASS[bucket])} />
+        {CLIENT_BUCKET_LABELS[bucket]}
+      </span>
     </div>
   );
 }
@@ -190,7 +209,10 @@ export function PagePipeline({
                 <li key={bucket} className="flex shrink-0 items-stretch gap-1">
                   <PipelineStep bucket={bucket} count={counts[bucket]} />
                   {index < FLOW_ORDER.length - 1 && (
-                    <span aria-hidden="true" className="flex shrink-0 items-center text-muted-foreground">
+                    <span
+                      aria-hidden="true"
+                      className="flex shrink-0 items-center px-1 text-lg text-muted-foreground/70"
+                    >
                       →
                     </span>
                   )}

@@ -36,7 +36,7 @@ import { formatTaskKey } from "@/lib/tasks/task-key";
 // Intl.DateTimeFormat" naively.
 import { formatDueDate } from "@/lib/time/user-timezone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 // F073 (AS-135): PRIORITY_LABELS/colors now live in lib/task-colors.ts as
 // the single shared color-coding source, reused here and by the dashboard
 // charts, instead of this component defining its own local copy.
@@ -299,18 +299,11 @@ export function TaskCard({
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-2">
         {task.priority && (
-          <Badge
-            variant="secondary"
-            className="gap-1.5"
-            style={{ borderColor: PRIORITY_COLORS[task.priority] }}
-          >
-            <span
-              aria-hidden="true"
-              className="size-1.5 rounded-full"
-              style={{ backgroundColor: PRIORITY_COLORS[task.priority] }}
-            />
-            {PRIORITY_LABELS[task.priority]}
-          </Badge>
+          <StatusBadge
+            label={PRIORITY_LABELS[task.priority]}
+            color={PRIORITY_COLORS[task.priority]}
+            data-testid="task-card-priority-badge"
+          />
         )}
         {task.dueDate && (
           <span

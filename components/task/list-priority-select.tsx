@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PRIORITY_COLORS, PRIORITY_LABELS } from "@/lib/task-colors";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 const NO_PRIORITY_VALUE = "__none__";
 
@@ -108,15 +109,12 @@ export function ListPrioritySelect({
   // the real boundary either way; this is UX only.
   if (!canEdit) {
     return (
-      <span className="flex items-center gap-1.5 px-2 text-sm">
-        {localValue && (
-          <span
-            aria-hidden="true"
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: PRIORITY_COLORS[localValue] }}
-          />
+      <span className="flex items-center px-2">
+        {localValue ? (
+          <StatusBadge label={PRIORITY_LABELS[localValue]} color={PRIORITY_COLORS[localValue]} />
+        ) : (
+          <span className="text-sm text-muted-foreground">No priority</span>
         )}
-        {localValue ? PRIORITY_LABELS[localValue] : "No priority"}
       </span>
     );
   }

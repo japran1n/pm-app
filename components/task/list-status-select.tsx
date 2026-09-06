@@ -40,6 +40,7 @@ import {
 // and the dashboard's status pie chart) instead of this component's own
 // local STATUS_OPTIONS labels, which previously rendered no color at all.
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
+import { StatusBadge } from "@/components/ui/status-badge";
 
 // F223 (AS-411): the legacy fixed four, kept only as the fallback for
 // callers that don't have a single project's real columns to hand (the
@@ -158,13 +159,8 @@ export function ListStatusSelect({
   // boundary either way; this is UX only.
   if (!canChangeStatus) {
     return (
-      <span className="flex items-center gap-1.5 px-2 text-sm">
-        <span
-          aria-hidden="true"
-          className="size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: currentColor }}
-        />
-        {currentLabel}
+      <span className="flex items-center px-2">
+        <StatusBadge label={currentLabel} color={currentColor} />
       </span>
     );
   }
