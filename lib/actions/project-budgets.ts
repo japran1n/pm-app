@@ -23,6 +23,8 @@ import {
   updateProjectBudgetSchema,
   deleteProjectBudgetSchema,
   previewProjectBudgetSpentSchema,
+  updateProjectBillingModelSchema,
+  type UpdateProjectBillingModelInput,
 } from "@/lib/validation/project-budgets";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type { ProjectBudget, BudgetRollover } from "@/lib/queries/project-budgets";
@@ -512,4 +514,65 @@ export async function previewProjectBudgetSpent(
   periodEnd: string,
 ): Promise<PreviewProjectBudgetSpentResult> {
   return previewProjectBudgetSpentImpl({ projectId, periodStart, periodEnd });
+}
+
+// ---------------------------------------------------------------------
+// updateProjectBillingModel (Paket B, client-portal redesign)
+// ---------------------------------------------------------------------
+// Team-side toggle for `projects.billing_model`
+// (20261105010000_project_billing_model.sql) -- governs whether the
+// CLIENT PORTAL shows the Hours nav item/route at all (see
+// components/portal/portal-sidebar.tsx and the portal /hours route's own
+// guard). Internal time tracking is unaffected either way. Same
+// `withAuthz` pipeline and `canWrite` gate as every other mutation in
+// this file -- a viewer/client cannot flip this any more than they can
+// edit a budget period.
+export type UpdateProjectBillingModelResult =
+  | { ok: true; data: { billingModel: "hourly" | "fixed_price" } }
+  | { ok: false; error: string };
+
+const updateProjectBillingModelImpl = withAuthz(
+  updateProjectBillingModelSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's budget.",
+    writeError: "Viewers and clients don't have permission to manage the budget.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's budget.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<UpdateProjectBillingModelResult> => {
+    const { data: updated, error: updateError } = await ctx.admin
+      .from("projects")
+      .update({ billing_model: input.billingModel })
+      .eq("id", ctx.projectId)
+      .select("billing_model")
+      .single();
+
+    if (updateError || !updated) {
+      logger.error("updateProjectBillingModel: update failed", { error: updateError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await writeAudit(ctx.supabase, {
+      workspaceId: ctx.workspaceId,
+      action: "project.billing_model_updated",
+      targetType: "project",
+      targetId: ctx.projectId,
+      metadata: { billingModel: updated.billing_model },
+    });
+
+    await revalidateBudgetSettings(ctx.workspaceSlug, ctx.projectId);
+
+    return {
+      ok: true,
+      data: { billingModel: updated.billing_model as "hourly" | "fixed_price" },
+    };
+  },
+);
+
+export async function updateProjectBillingModel(
+  input: UpdateProjectBillingModelInput,
+): Promise<UpdateProjectBillingModelResult> {
+  return updateProjectBillingModelImpl(input);
 }

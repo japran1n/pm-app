@@ -103,3 +103,16 @@ export const previewProjectBudgetSpentSchema = z.object({
 export type PreviewProjectBudgetSpentInput = z.infer<
   typeof previewProjectBudgetSpentSchema
 >;
+
+// Paket B (client-portal redesign): matches `project_billing_model`
+// (20261105010000_project_billing_model.sql).
+export const projectBillingModelSchema = z.enum(["hourly", "fixed_price"]);
+
+export const updateProjectBillingModelSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  billingModel: projectBillingModelSchema,
+});
+
+export type UpdateProjectBillingModelInput = z.infer<
+  typeof updateProjectBillingModelSchema
+>;

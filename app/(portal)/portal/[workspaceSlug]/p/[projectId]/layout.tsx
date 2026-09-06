@@ -105,6 +105,7 @@ export default async function PortalProjectLayout({
           projectName={project.name}
           hasMultipleProjects={projects.length > 1}
           badges={badges}
+          billingModel={project.billingModel}
           currentUser={{
             id: user.id,
             name: profile?.displayName ?? null,

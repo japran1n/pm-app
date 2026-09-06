@@ -42,7 +42,7 @@ import { Badge } from "@/components/ui/badge";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
-import type { PortalBadgeCounts } from "@/lib/queries/portal";
+import type { PortalBadgeCounts, PortalBillingModel } from "@/lib/queries/portal";
 
 // F006f (missions/20260903-portal, AS-002): re-exported, not redefined --
 // `lib/queries/portal.ts` is this shape's one source of truth (its
@@ -76,9 +76,16 @@ export type PortalNavItem = {
 // `/portal/<slug>/p/<projectId>` -- Overview is that path's INDEX route
 // (see p/[projectId]/page.tsx), not a `/overview` sub-route, so its
 // `href` is `basePath` itself and its match is `exact`.
+// Paket B (client-portal redesign, `projects.billing_model`): defaults
+// to "fixed_price" (the DB column's own default) when a caller doesn't
+// pass one, so any test/call site written before this parameter existed
+// keeps its old seven-item behaviour rather than silently losing Hours --
+// but every real call site now threads the project's actual value
+// through instead of relying on this fallback.
 export function buildPortalNavItems(
   basePath: string,
   badges: PortalBadgeCounts,
+  billingModel: PortalBillingModel = "fixed_price",
 ): PortalNavItem[] {
   return [
     { key: "overview", label: "Overview", href: basePath, icon: LayoutDashboard, exact: true },
@@ -104,7 +111,12 @@ export function buildPortalNavItems(
       badgeTone: "danger",
     },
     { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
-    { key: "hours", label: "Hours", href: `${basePath}/hours`, icon: Clock },
+    // Paket B: a fixed-price project has no hourly billing to show the
+    // client -- Hours is omitted from the nav entirely (not shown
+    // disabled/greyed) rather than pointing at a route that 404s.
+    ...(billingModel === "hourly"
+      ? [{ key: "hours", label: "Hours", href: `${basePath}/hours`, icon: Clock }]
+      : []),
     { key: "scope", label: "Scope & decisions", href: `${basePath}/scope`, icon: ScrollText },
     { key: "site", label: "Your site", href: `${basePath}/site`, icon: Globe },
   ];
@@ -227,6 +239,7 @@ export function PortalSidebar({
   projectName,
   hasMultipleProjects,
   badges,
+  billingModel,
   currentUser,
 }: {
   workspaceSlug: string;
@@ -237,11 +250,12 @@ export function PortalSidebar({
   projectName: string;
   hasMultipleProjects: boolean;
   badges: PortalBadgeCounts;
+  billingModel: PortalBillingModel;
   currentUser: UserAvatarPerson;
 }) {
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
-  const items = buildPortalNavItems(basePath, badges);
+  const items = buildPortalNavItems(basePath, badges, billingModel);
   // TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s own comment.
   const secondaryItems = buildPortalSecondaryNavItems(basePath);
 

@@ -40,6 +40,14 @@ export type StatusCategory = "not_started" | "in_progress" | "done";
 // rather than a fake default.
 export type PortalLaunchConfidence = "on_track" | "at_risk" | "slipped";
 
+// Paket B (client-portal redesign, `projects.billing_model` /
+// 20261105010000_project_billing_model.sql): governs whether the
+// PORTAL's Hours nav item and `/hours` route are shown to this client at
+// all. Internal (non-portal) time tracking never reads this field --
+// the team keeps logging hours on every project regardless of how it's
+// billed; this only gates what the client sees.
+export type PortalBillingModel = "hourly" | "fixed_price";
+
 export type PortalTask = {
   id: string;
   title: string;
@@ -73,6 +81,10 @@ export type PortalProject = {
   targetLaunchDate: string | null;
   launchConfidence: PortalLaunchConfidence | null;
   launchNote: string | null;
+  // Paket B: 'fixed_price' (the DB default) hides Hours in the portal;
+  // 'hourly' shows it. Never null -- the column itself is `not null
+  // default 'fixed_price'`.
+  billingModel: PortalBillingModel;
   tasks: PortalTask[];
   // Counts by the *category* of the task's board column, not by the column
   // name: a team can rename or add columns freely (F218 project_statuses),
@@ -125,7 +137,7 @@ export async function getPortalProjects(
   const { data: projects, error: projectsError } = await supabase
     .from("projects")
     .select(
-      "id, name, description, start_date, end_date, target_launch_date, launch_confidence, launch_note",
+      "id, name, description, start_date, end_date, target_launch_date, launch_confidence, launch_note, billing_model",
     )
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
@@ -242,6 +254,7 @@ export async function getPortalProjects(
       targetLaunchDate: project.target_launch_date,
       launchConfidence: project.launch_confidence as PortalLaunchConfidence | null,
       launchNote: project.launch_note,
+      billingModel: (project.billing_model as PortalBillingModel | null) ?? "fixed_price",
       tasks: mapped,
       notStarted,
       inProgress,

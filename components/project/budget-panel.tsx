@@ -23,6 +23,7 @@ import {
   deleteProjectBudget,
   previewProjectBudgetSpent,
   restoreProjectBudget,
+  updateProjectBillingModel,
   updateProjectBudget,
 } from "@/lib/actions/project-budgets";
 import { showUndoToast } from "@/lib/toast/undo-toast";
@@ -48,6 +49,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+// Paket B (client-portal redesign): matches `project_billing_model`
+// (20261105010000_project_billing_model.sql).
+export type ProjectBillingModel = "hourly" | "fixed_price";
+
+const BILLING_MODEL_LABELS: Record<ProjectBillingModel, string> = {
+  hourly: "Hourly — client sees the Hours view in the portal",
+  fixed_price: "Fixed price — Hours is hidden from the client portal",
+};
 
 const ROLLOVER_LABELS: Record<BudgetRollover, string> = {
   none: "No rollover — unused hours expire",
@@ -353,16 +363,79 @@ function BudgetRow({
   );
 }
 
+// Paket B (client-portal redesign): the PM-facing toggle that sets
+// `projects.billing_model`. This ONLY changes what the client portal
+// shows -- internal time tracking is unaffected either way, so the copy
+// here is explicit about that (a PM flipping this should not think it
+// stops the team logging hours).
+function BillingModelToggle({
+  projectId,
+  billingModel,
+  canManage,
+  onChanged,
+}: {
+  projectId: string;
+  billingModel: ProjectBillingModel;
+  canManage: boolean;
+  onChanged: (billingModel: ProjectBillingModel) => void;
+}) {
+  const [isSaving, startSaveTransition] = useTransition();
+
+  function handleChange(value: ProjectBillingModel) {
+    if (value === billingModel) return;
+    startSaveTransition(async () => {
+      const result = await updateProjectBillingModel({ projectId, billingModel: value });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      onChanged(result.data.billingModel);
+      toast.success("Billing model updated.");
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border/60 p-3">
+      <Label htmlFor="project-billing-model" className="text-sm font-medium">
+        Billing model
+      </Label>
+      <p className="text-xs text-muted-foreground">
+        Fixed-price projects hide the Hours view from the client portal.
+        The team still logs and sees hours internally either way.
+      </p>
+      <Select
+        value={billingModel}
+        onValueChange={(value) => handleChange(value as ProjectBillingModel)}
+        disabled={!canManage || isSaving}
+      >
+        <SelectTrigger id="project-billing-model" className="w-full sm:w-96" data-testid="billing-model-select">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {(Object.keys(BILLING_MODEL_LABELS) as ProjectBillingModel[]).map((value) => (
+            <SelectItem key={value} value={value}>
+              {BILLING_MODEL_LABELS[value]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export function BudgetPanel({
   projectId,
   initialBudgets,
+  billingModel: initialBillingModel,
   canManage,
 }: {
   projectId: string;
   initialBudgets: ProjectBudget[];
+  billingModel: ProjectBillingModel;
   canManage: boolean;
 }) {
   const [budgets, setBudgets] = useState<ProjectBudget[]>(initialBudgets);
+  const [billingModel, setBillingModel] = useState<ProjectBillingModel>(initialBillingModel);
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
   const [soldHours, setSoldHours] = useState("");
@@ -429,6 +502,13 @@ export function BudgetPanel({
 
   return (
     <div className="flex flex-col gap-4">
+      <BillingModelToggle
+        projectId={projectId}
+        billingModel={billingModel}
+        canManage={canManage}
+        onChanged={setBillingModel}
+      />
+
       {budgets.length === 0 ? (
         <p className="text-sm text-muted-foreground">No budget periods yet.</p>
       ) : (

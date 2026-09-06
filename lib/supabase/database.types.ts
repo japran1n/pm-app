@@ -2074,6 +2074,7 @@ export type Database = {
         Row: {
           archived_by: string | null
           baseline_frozen_at: string | null
+          billing_model: Database["public"]["Enums"]["project_billing_model"]
           created_at: string
           created_by: string | null
           deleted_at: string | null
@@ -2098,6 +2099,7 @@ export type Database = {
         Insert: {
           archived_by?: string | null
           baseline_frozen_at?: string | null
+          billing_model?: Database["public"]["Enums"]["project_billing_model"]
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -2122,6 +2124,7 @@ export type Database = {
         Update: {
           archived_by?: string | null
           baseline_frozen_at?: string | null
+          billing_model?: Database["public"]["Enums"]["project_billing_model"]
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
@@ -3815,7 +3818,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      project_billing_model: "hourly" | "fixed_price"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -3945,6 +3948,8 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {},
+    Enums: {
+      project_billing_model: ["hourly", "fixed_price"],
+    },
   },
 } as const

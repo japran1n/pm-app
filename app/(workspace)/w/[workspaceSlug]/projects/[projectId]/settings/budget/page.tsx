@@ -41,7 +41,7 @@ export default async function ProjectBudgetSettingsPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, workspace_id, name")
+    .select("id, workspace_id, name, billing_model")
     .eq("id", projectId)
     .eq("workspace_id", workspace.id)
     .is("deleted_at", null)
@@ -82,7 +82,12 @@ export default async function ProjectBudgetSettingsPage({
 
       <Separator />
 
-      <BudgetPanel projectId={project.id} initialBudgets={budgets} canManage={canManage} />
+      <BudgetPanel
+        projectId={project.id}
+        initialBudgets={budgets}
+        billingModel={(project.billing_model as "hourly" | "fixed_price" | null) ?? "fixed_price"}
+        canManage={canManage}
+      />
     </div>
   );
 }

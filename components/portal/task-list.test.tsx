@@ -112,6 +112,10 @@ const project: PortalProject = {
   targetLaunchDate: null,
   launchConfidence: null,
   launchNote: null,
+  // Paket B (client-portal redesign): PortalProject's billing_model field --
+  // "hourly" here since none of this file's assertions concern Hours
+  // visibility.
+  billingModel: "hourly",
   tasks: [
     {
       id: "task-1",

@@ -72,6 +72,14 @@ export default async function PortalHoursPage({
 
   if (!project) notFound();
 
+  // Paket B (client-portal redesign, `projects.billing_model`): a
+  // fixed-price project has no hourly billing to show the client -- the
+  // sidebar already omits the nav item, but this route must also reject
+  // a direct/bookmarked visit the same way the enclosing layout already
+  // 404s for an unshared/portal-disabled project (see this file's own
+  // header comment on that convention).
+  if (project.billingModel !== "hourly") notFound();
+
   const today = todayIso();
   const currentPeriod = await getProjectCurrentBudgetPeriod(project.id);
   const summary = await getProjectHoursClient(

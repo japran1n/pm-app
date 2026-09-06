@@ -28,6 +28,7 @@ const baseProps = {
   projectName: "Website redesign",
   hasMultipleProjects: false,
   badges: { approvalsAwaiting: { ok: true as const, data: 0 }, deliverablesPastDue: 0 },
+  billingModel: "hourly" as const,
   currentUser: { id: "u1", name: "Jamie Client", email: "jamie@example.com", avatarUrl: null },
 };
 
@@ -57,10 +58,14 @@ function anchorTags(html: string): string[] {
 
 describe("PortalSidebar (F003)", () => {
   it("test_AS_001_lists_all_seven_views_in_order", () => {
-    const items = buildPortalNavItems("/portal/acme/p/proj-1", {
-      approvalsAwaiting: { ok: true, data: 0 },
-      deliverablesPastDue: 0,
-    });
+    const items = buildPortalNavItems(
+      "/portal/acme/p/proj-1",
+      {
+        approvalsAwaiting: { ok: true, data: 0 },
+        deliverablesPastDue: 0,
+      },
+      "hourly",
+    );
 
     expect(items.map((item) => item.label)).toEqual(EXPECTED_LABELS);
   });
@@ -222,10 +227,14 @@ describe("PortalSidebar (F003)", () => {
 // exactly what AS-001's text says, unchanged).
 describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () => {
   it("test_AS_001_the_primary_item_list_does_not_grow_to_include_the_temporary_entry", () => {
-    const items = buildPortalNavItems("/portal/acme/p/proj-1", {
-      approvalsAwaiting: { ok: true, data: 0 },
-      deliverablesPastDue: 0,
-    });
+    const items = buildPortalNavItems(
+      "/portal/acme/p/proj-1",
+      {
+        approvalsAwaiting: { ok: true, data: 0 },
+        deliverablesPastDue: 0,
+      },
+      "hourly",
+    );
 
     expect(items).toHaveLength(7);
     expect(items.map((item) => item.label)).not.toContain("Files");
@@ -279,5 +288,48 @@ describe("PortalSidebar temporary Requests entry (F006e, reduced by F023)", () =
       "/portal/acme/p/proj-1/conversation",
       "/portal/acme/p/proj-1/how-we-work",
     ]);
+  });
+});
+
+// Paket B (client-portal redesign, `projects.billing_model`): the Hours
+// nav item is a portal-only concern -- a fixed-price project has nothing
+// hourly to show a client, so it's omitted entirely rather than shown
+// disabled/greyed (which would still invite a click into a route that
+// 404s).
+describe("PortalSidebar billing model gating (Paket B)", () => {
+  const badges = { approvalsAwaiting: { ok: true as const, data: 0 }, deliverablesPastDue: 0 };
+
+  it("includes Hours when billingModel is hourly", () => {
+    const items = buildPortalNavItems("/portal/acme/p/proj-1", badges, "hourly");
+    expect(items.map((item) => item.label)).toContain("Hours");
+  });
+
+  it("omits Hours when billingModel is fixed_price", () => {
+    const items = buildPortalNavItems("/portal/acme/p/proj-1", badges, "fixed_price");
+    expect(items.map((item) => item.label)).not.toContain("Hours");
+    expect(items).toHaveLength(6);
+  });
+
+  it("defaults to fixed_price (Hours omitted) when no billingModel is passed", () => {
+    const items = buildPortalNavItems("/portal/acme/p/proj-1", badges);
+    expect(items.map((item) => item.label)).not.toContain("Hours");
+  });
+
+  it("renders no /hours link in the sidebar for a fixed_price project", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(
+      createElement(PortalSidebar, { ...baseProps, billingModel: "fixed_price" }),
+    );
+    const anchors = anchorTags(html);
+    expect(anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/hours"'))).toBe(false);
+  });
+
+  it("renders the /hours link in the sidebar for an hourly project", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(
+      createElement(PortalSidebar, { ...baseProps, billingModel: "hourly" }),
+    );
+    const anchors = anchorTags(html);
+    expect(anchors.some((tag) => tag.includes('href="/portal/acme/p/proj-1/hours"'))).toBe(true);
   });
 });
