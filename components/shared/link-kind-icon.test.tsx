@@ -9,7 +9,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-import { LinkKindIcon } from "@/components/portal/link-kind-icon";
+import { LinkKindIcon } from "@/components/shared/link-kind-icon";
 import type { ProjectLinkKind } from "@/lib/queries/project-site";
 
 afterEach(() => {

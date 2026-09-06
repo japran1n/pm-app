@@ -8,9 +8,11 @@ import {
   getProjectTimeTotals,
 } from "@/lib/queries/time-entries";
 import { resolvePeople } from "@/lib/queries/people";
+import { getProjectLinks } from "@/lib/queries/project-site";
 import { PersonEstimateRollup } from "@/components/project/person-estimate-rollup";
 import { ProjectTabs } from "@/components/project-tabs";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
+import { ProjectLinkStrip } from "@/components/project/project-link-strip";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
@@ -90,10 +92,18 @@ export default async function ProjectDetailLayout({
   // soft-deleted task's estimate) is likewise enforced inside the RPC.
   // timeTotals and personRollup are independent of each other — run in
   // parallel (P4: eliminates one serial round-trip per project page load).
-  const [timeTotals, personRollup] = await Promise.all([
+  // Internal "quick links" strip (Figma/staging/live/etc): fetched
+  // alongside the other independent per-project reads already made here.
+  // Unfiltered by client_visible (getProjectLinks, not
+  // getClientVisiblePortalLinks) -- this is the team's own surface, so a
+  // link the team hasn't yet marked client-visible should still be one
+  // click away for the team itself.
+  const [timeTotals, personRollup, linksResult] = await Promise.all([
     getProjectTimeTotals(project.id),
     getProjectEstimateAndLoggedByPerson(project.id),
+    getProjectLinks(project.id),
   ]);
+  const projectLinks = linksResult.ok ? linksResult.data : [];
   const totalMinutes =
     timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
   // F414: per-person rollup display names — depends on personRollup, so serial.
@@ -173,6 +183,8 @@ export default async function ProjectDetailLayout({
         {personRollup.length > 0 && (
           <PersonEstimateRollup rows={personRollup} names={personNames} />
         )}
+
+        <ProjectLinkStrip links={projectLinks} />
 
         <Separator />
 

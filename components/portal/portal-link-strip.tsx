@@ -18,7 +18,7 @@
 // simply hasn't been shared yet.
 import { ExternalLink } from "lucide-react";
 
-import { LinkKindIcon } from "@/components/portal/link-kind-icon";
+import { LinkKindIcon } from "@/components/shared/link-kind-icon";
 
 export type PortalKeyLink = {
   kind: "figma" | "staging" | "live";

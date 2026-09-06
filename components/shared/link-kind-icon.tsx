@@ -1,8 +1,16 @@
 // A1 (Paket A, client-portal redesign): shared brand-adjacent icon per
 // `ProjectLinkKind` (lib/queries/project-site.ts), used everywhere a
-// project link is rendered (`PortalLinkStrip`, `ProjectLinksList`) so the
-// mapping lives in exactly one place instead of drifting between two
-// generic-icon call sites.
+// project link is rendered (`PortalLinkStrip`, `ProjectLinksList`,
+// `ProjectLinkStrip` under the workspace/internal side) so the mapping
+// lives in exactly one place instead of drifting between two generic-icon
+// call sites.
+//
+// Moved out of components/portal/ into components/shared/ (internal
+// "quick links" feature): this icon set is not portal-specific -- it's
+// keyed only on `ProjectLinkKind`, which is itself a plain data type from
+// lib/queries/project-site.ts -- so importing it from workspace-side code
+// under app/(workspace)/... no longer means an odd portal-namespaced
+// import for code that has nothing else to do with the portal.
 //
 // Figma and Google Drive now render their real, multi-color brand marks
 // as inline SVG (per explicit user request + user-supplied Figma SVG

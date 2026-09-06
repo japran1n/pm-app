@@ -21,7 +21,7 @@ import { ExternalLink } from "lucide-react";
 
 import type { ProjectLink, ProjectLinkKind } from "@/lib/queries/project-site";
 import { EmptyState } from "@/components/empty-state";
-import { LinkKindIcon } from "@/components/portal/link-kind-icon";
+import { LinkKindIcon } from "@/components/shared/link-kind-icon";
 
 const KIND_LABEL: Record<ProjectLinkKind, string> = {
   staging: "Staging",

@@ -17,6 +17,24 @@
 // the select is interactive; the action itself independently re-checks
 // (same "hiding the control is the UX half" convention this mission uses
 // everywhere else).
+//
+// Visual redesign (internal Hours tab, "make it clearer/cleaner"): same
+// data and props as before, restructured for hierarchy --
+//   1. a single prominent budget-usage stat + progress bar up top
+//      (Card, using components/ui/card + components/ui/progress, this
+//      codebase's own primitives for exactly this "one number, then a
+//      bar" pattern);
+//   2. "By person" / "By category" as Card-bordered lists with a visible
+//      divider between rows instead of a bare bulleted <ul>, so ten
+//      people don't read as one dense paragraph;
+//   3. "All entries" as a real Table (components/ui/table) instead of a
+//      <ul> of bordered <li>s, so date/duration/category line up in
+//      columns.
+// This component is workspace-only (app/(workspace)/.../hours/page.tsx is
+// its only caller) -- the portal's own Hours view
+// (app/(portal)/.../hours/page.tsx) renders a structurally different set
+// of components (HoursTiles/HoursBurndownChart/HoursByCategory, all under
+// components/portal/), so this redesign has no effect on the portal.
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -26,7 +44,18 @@ import type { WorkCategory } from "@/lib/validation/time-entries";
 import type { TeamHoursEntry } from "@/lib/queries/hours";
 import type { ProjectBudget } from "@/lib/queries/project-budgets";
 import { formatDuration } from "@/lib/time/format-duration";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress, ProgressTrack, ProgressIndicator } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -103,6 +132,30 @@ function CategoryCell({
   );
 }
 
+function BucketRow({
+  label,
+  total,
+  billable,
+}: {
+  label: string;
+  total: number;
+  billable: number;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <span className="text-sm font-medium">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {formatDuration(total)} total
+        </span>
+        <Badge variant="secondary" className="text-xs">
+          {formatDuration(billable)} client sees this
+        </Badge>
+      </div>
+    </div>
+  );
+}
+
 export function TeamHoursView({
   entries,
   people,
@@ -143,91 +196,137 @@ export function TeamHoursView({
     byCategory.set(categoryKey, categoryBucket);
   }
 
+  const usagePercent = budget
+    ? Math.min(100, Math.round((billableMinutes / budget.soldMinutes) * 100))
+    : null;
+  const isOverBudget = budget !== null && billableMinutes > budget.soldMinutes;
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       {budget && (
-        <div className="rounded-md border border-border/60 p-3 text-sm">
-          <span className="font-medium">
-            {minutesToHoursLabel(billableMinutes)} of {minutesToHoursLabel(budget.soldMinutes)} sold
-            hours used
-          </span>
-          <span className="ml-2 text-muted-foreground">
-            ({Math.round((billableMinutes / budget.soldMinutes) * 100)}%)
-          </span>
-        </div>
+        <Card data-testid="hours-budget-summary">
+          <CardHeader>
+            <CardTitle>Budget usage</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span
+                className={cn(
+                  "text-3xl font-semibold tracking-tight tabular-nums",
+                  isOverBudget && "text-destructive",
+                )}
+              >
+                {minutesToHoursLabel(billableMinutes)}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                of {minutesToHoursLabel(budget.soldMinutes)} sold hours used
+                {isOverBudget && " · over budget"}
+              </span>
+            </div>
+            <Progress value={usagePercent ?? 0}>
+              <ProgressTrack className={cn(isOverBudget && "bg-destructive/15")}>
+                <ProgressIndicator className={cn(isOverBudget && "bg-destructive")} />
+              </ProgressTrack>
+            </Progress>
+            <span className="text-xs text-muted-foreground">{usagePercent}% of budget</span>
+          </CardContent>
+        </Card>
       )}
 
-      <section className="flex flex-col gap-2" aria-label="Hours by person">
-        <h2 className="text-sm font-semibold">By person</h2>
-        {byPerson.size === 0 ? (
-          <p className="text-sm text-muted-foreground">No time logged in this period.</p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {Array.from(byPerson.entries()).map(([userId, bucket]) => (
-              <li key={userId} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-medium">{people[userId] ?? userId}</span>
-                <span className="text-muted-foreground">{formatDuration(bucket.total)} total</span>
-                <Badge variant="secondary" className="text-xs">
-                  {formatDuration(bucket.billable)} client sees this
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card aria-label="Hours by person">
+        <CardHeader>
+          <CardTitle>By person</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0">
+          {byPerson.size === 0 ? (
+            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
+              {Array.from(byPerson.entries()).map(([userId, bucket]) => (
+                <BucketRow
+                  key={userId}
+                  label={people[userId] ?? userId}
+                  total={bucket.total}
+                  billable={bucket.billable}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <section className="flex flex-col gap-2" aria-label="Hours by category">
-        <h2 className="text-sm font-semibold">By category</h2>
-        {byCategory.size === 0 ? (
-          <p className="text-sm text-muted-foreground">No time logged in this period.</p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {Array.from(byCategory.entries()).map(([key, bucket]) => (
-              <li key={key} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-medium">
-                  {categoryLabel(key === "__uncategorised__" ? null : key)}
-                </span>
-                <span className="text-muted-foreground">{formatDuration(bucket.total)} total</span>
-                <Badge variant="secondary" className="text-xs">
-                  {formatDuration(bucket.billable)} client sees this
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card aria-label="Hours by category">
+        <CardHeader>
+          <CardTitle>By category</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0">
+          {byCategory.size === 0 ? (
+            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
+              {Array.from(byCategory.entries()).map(([key, bucket]) => (
+                <BucketRow
+                  key={key}
+                  label={categoryLabel(key === "__uncategorised__" ? null : key)}
+                  total={bucket.total}
+                  billable={bucket.billable}
+                />
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <section className="flex flex-col gap-2" aria-label="All time entries">
-        <h2 className="text-sm font-semibold">All entries ({formatDuration(totalMinutes)})</h2>
-        {localEntries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No time logged in this period.</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {localEntries.map((entry) => (
-              <li
-                key={entry.entryId}
-                className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 p-2 text-sm"
-              >
-                <span className="font-medium">{people[entry.userId] ?? entry.userId}</span>
-                <span className="text-muted-foreground">{entry.taskTitle}</span>
-                <span className="text-muted-foreground">{formatDuration(entry.minutes)}</span>
-                <Badge variant="secondary" className="text-xs">
-                  {entry.billable ? "Billable · client sees this" : "Non-billable"}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{entry.entryDate}</span>
-                <div className="ml-auto">
-                  <CategoryCell
-                    entryId={entry.entryId}
-                    workCategory={entry.workCategory}
-                    canManage={canManage}
-                    onChanged={handleCategoryChanged}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Card aria-label="All time entries">
+        <CardHeader>
+          <CardTitle>All entries ({formatDuration(totalMinutes)})</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0">
+          {localEntries.length === 0 ? (
+            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Person</TableHead>
+                  <TableHead>Task</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Billing</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Category</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {localEntries.map((entry) => (
+                  <TableRow key={entry.entryId} data-testid="hours-entry-row">
+                    <TableCell className="font-medium whitespace-normal">
+                      {people[entry.userId] ?? entry.userId}
+                    </TableCell>
+                    <TableCell className="max-w-60 truncate whitespace-normal text-muted-foreground">
+                      {entry.taskTitle}
+                    </TableCell>
+                    <TableCell className="tabular-nums">{formatDuration(entry.minutes)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {entry.billable ? "Billable · client sees this" : "Non-billable"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{entry.entryDate}</TableCell>
+                    <TableCell>
+                      <CategoryCell
+                        entryId={entry.entryId}
+                        workCategory={entry.workCategory}
+                        canManage={canManage}
+                        onChanged={handleCategoryChanged}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

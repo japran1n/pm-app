@@ -7,7 +7,13 @@
 
 import { formatDuration } from "@/lib/time/format-duration";
 import type { ProjectTaskTypeTimeTotal } from "@/lib/queries/task-type-time-totals";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
+// Visual redesign (internal Hours tab, "make it clearer/cleaner"): same
+// markup shape as before (still a plain Server Component, no chart, no
+// filtering UI, per this feature's own spec) but on the shared `Card`
+// primitive with a visible row divider, matching `TeamHoursView`'s own
+// redesign below it on the same page.
 export function TaskTypeTimeCard({
   totals,
 }: {
@@ -18,27 +24,29 @@ export function TaskTypeTimeCard({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border p-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-sm font-semibold">Time by task type</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle>Time by task type</CardTitle>
         <p className="text-xs text-muted-foreground">
           Tracked and estimated hours grouped by task type.
         </p>
-      </div>
-      <div className="flex flex-col gap-2">
-        {totals.map((total) => (
-          <div
-            key={total.taskTypeId}
-            className="flex items-center justify-between gap-4 text-sm"
-          >
-            <span className="truncate">{total.taskTypeName}</span>
-            <span className="shrink-0 text-muted-foreground">
-              {formatDuration(total.trackedMinutes)} tracked &middot;{" "}
-              {formatDuration(total.estimatedMinutes)} estimated
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
+      </CardHeader>
+      <CardContent className="px-0">
+        <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
+          {totals.map((total) => (
+            <div
+              key={total.taskTypeId}
+              className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm"
+            >
+              <span className="truncate font-medium">{total.taskTypeName}</span>
+              <span className="shrink-0 text-muted-foreground tabular-nums">
+                {formatDuration(total.trackedMinutes)} tracked &middot;{" "}
+                {formatDuration(total.estimatedMinutes)} estimated
+              </span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
