@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "@/components/profile/profile-form";
+import { StatusNoteForm } from "@/components/profile/status-note-form";
 import { NotificationPreferencesForm } from "@/components/notifications/preferences-form";
 import { getNotificationPreferences } from "@/lib/actions/notification-preferences";
 import { ReplayTourButton } from "@/components/onboarding/replay-tour-button";
@@ -21,7 +22,12 @@ import { logger } from "@/lib/observability/logger";
 // the same row regardless of which workspace's settings URL they reached
 // it through), it just lives under this workspace's settings path per the
 // mission's file layout.
-export default async function ProfileSettingsPage() {
+export default async function ProfileSettingsPage({
+  params,
+}: {
+  params: Promise<{ workspaceSlug: string }>;
+}) {
+  const { workspaceSlug } = await params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -29,6 +35,41 @@ export default async function ProfileSettingsPage() {
 
   if (!user) {
     redirect("/sign-in");
+  }
+
+  // Out-of-office status note: scoped to workspace_members (per-workspace),
+  // not the cross-workspace `profiles` row -- see
+  // supabase/migrations/20261114020000_workspace_members_status_note.sql.
+  // RLS-scoped lookup (workspace_members_select_fellow_members) -- same
+  // "reaching this page already means active membership" posture the
+  // calendar page's own workspace-by-slug lookup relies on.
+  const { data: workspaceRow } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+
+  let statusNote: string | null = null;
+  let statusNoteUntil: string | null = null;
+  if (workspaceRow) {
+    const { data: memberRow, error: memberError } = await supabase
+      .from("workspace_members")
+      .select("status_note, status_note_until")
+      .eq("workspace_id", workspaceRow.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (memberError) {
+      logger.error("ProfileSettingsPage: failed to load status note", { error: memberError });
+    } else if (memberRow) {
+      // This is the EDIT surface, not a display surface -- the raw saved
+      // value is shown/editable here regardless of whether
+      // isStatusNoteActive would currently treat it as expired (a member
+      // should still see and be able to clear/update their own already-
+      // expired note). isStatusNoteActive gates every *display* surface
+      // instead (UserAvatar tooltips, getWorkspaceMembers).
+      statusNote = memberRow.status_note;
+      statusNoteUntil = memberRow.status_note_until;
+    }
   }
 
   const { data: profile, error } = await supabase
@@ -118,6 +159,25 @@ export default async function ProfileSettingsPage() {
         timezone={timezone}
         timezones={timezones}
       />
+
+      {workspaceRow ? (
+        <>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold">Status note</h2>
+            <p className="text-sm text-muted-foreground">
+              Let your teammates know when you&rsquo;re out of office. Shown in a
+              tooltip when someone hovers your avatar, until the date you pick
+              (or indefinitely if you leave it blank).
+            </p>
+          </div>
+
+          <StatusNoteForm
+            workspaceId={workspaceRow.id}
+            statusNote={statusNote}
+            statusNoteUntil={statusNoteUntil}
+          />
+        </>
+      ) : null}
 
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-semibold">Notifications</h2>

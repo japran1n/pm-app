@@ -36,6 +36,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { getCalendarTasks, getWorkspaceStatusOptions, type CalendarTask } from "@/lib/queries/calendar";
 import { getCalendarBlocks } from "@/lib/queries/calendar-blocks";
+import { getTimeOffEntries } from "@/lib/queries/time-off";
 import { getWorkspaceProjects } from "@/lib/queries/projects";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
@@ -209,9 +210,12 @@ async function WeekGridSection({
   const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
   rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
 
-  const [tasks, blocks] = await Promise.all([
+  const rangeEndExclusiveDateOnly = rangeEndExclusive.toISOString().slice(0, 10);
+
+  const [tasks, blocks, timeOffEntries] = await Promise.all([
     getCalendarTasks(workspaceId, start, end, filters),
     getCalendarBlocks(workspaceId, `${start}T00:00:00.000Z`, rangeEndExclusive.toISOString()),
+    getTimeOffEntries(workspaceId, start, rangeEndExclusiveDateOnly),
   ]);
 
   const tasksByDate = new Map<string, CalendarTask[]>();
@@ -226,6 +230,7 @@ async function WeekGridSection({
       week={week}
       tasksByDate={tasksByDate}
       blocks={blocks}
+      timeOffEntries={timeOffEntries}
       workspaceSlug={workspaceSlug}
       workspaceId={workspaceId}
       prevHref={weekHrefFor(previousWeekKey(weekKey))}

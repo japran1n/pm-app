@@ -1645,6 +1645,41 @@ export type Database = {
           },
         ]
       }
+      project_custom_fields: {
+        Row: {
+          created_at: string
+          field_type: string
+          id: string
+          name: string
+          position: number
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          field_type: string
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          field_type?: string
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_custom_fields_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_decision_owners: {
         Row: {
           created_at: string
@@ -2201,6 +2236,7 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           end_date: string | null
+          icon: string | null
           id: string
           key: string
           launch_confidence: string | null
@@ -2208,6 +2244,7 @@ export type Database = {
           name: string
           portal_enabled: boolean
           portal_enabled_at: string | null
+          sidebar_position: number | null
           start_date: string | null
           target_launch_date: string | null
           task_counter: number
@@ -2226,6 +2263,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           end_date?: string | null
+          icon?: string | null
           id?: string
           key?: string
           launch_confidence?: string | null
@@ -2233,6 +2271,7 @@ export type Database = {
           name: string
           portal_enabled?: boolean
           portal_enabled_at?: string | null
+          sidebar_position?: number | null
           start_date?: string | null
           target_launch_date?: string | null
           task_counter?: number
@@ -2251,6 +2290,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           end_date?: string | null
+          icon?: string | null
           id?: string
           key?: string
           launch_confidence?: string | null
@@ -2258,6 +2298,7 @@ export type Database = {
           name?: string
           portal_enabled?: boolean
           portal_enabled_at?: string | null
+          sidebar_position?: number | null
           start_date?: string | null
           target_launch_date?: string | null
           task_counter?: number
@@ -2270,6 +2311,71 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "projects_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quick_notes: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          is_done: boolean
+          project_id: string | null
+          task_id: string | null
+          text: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_done?: boolean
+          project_id?: string | null
+          task_id?: string | null
+          text: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          is_done?: boolean
+          project_id?: string | null
+          task_id?: string | null
+          text?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_notes_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quick_notes_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quick_notes_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quick_notes_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -2333,48 +2439,6 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      view_tasks: {
-        Row: {
-          added_at: string
-          added_by: string | null
-          id: string
-          position: number
-          task_id: string
-          view_id: string
-        }
-        Insert: {
-          added_at?: string
-          added_by?: string | null
-          id?: string
-          position?: number
-          task_id: string
-          view_id: string
-        }
-        Update: {
-          added_at?: string
-          added_by?: string | null
-          id?: string
-          position?: number
-          task_id?: string
-          view_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "view_tasks_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "view_tasks_view_id_fkey"
-            columns: ["view_id"]
-            isOneToOne: false
-            referencedRelation: "saved_views"
             referencedColumns: ["id"]
           },
         ]
@@ -2523,6 +2587,52 @@ export type Database = {
           },
           {
             foreignKeyName: "task_assignees_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_custom_field_values: {
+        Row: {
+          created_at: string
+          field_id: string
+          task_id: string
+          updated_at: string
+          value: string | null
+        }
+        Insert: {
+          created_at?: string
+          field_id: string
+          task_id: string
+          updated_at?: string
+          value?: string | null
+        }
+        Update: {
+          created_at?: string
+          field_id?: string
+          task_id?: string
+          updated_at?: string
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_custom_field_values_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "project_custom_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_custom_field_values_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_custom_field_values_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "tasks"
@@ -2705,6 +2815,7 @@ export type Database = {
         Row: {
           assignee_id: string | null
           author_id: string
+          blocked_reason: string | null
           client_visible: boolean
           created_at: string
           deleted_at: string | null
@@ -2741,6 +2852,7 @@ export type Database = {
         Insert: {
           assignee_id?: string | null
           author_id: string
+          blocked_reason?: string | null
           client_visible?: boolean
           created_at?: string
           deleted_at?: string | null
@@ -2777,6 +2889,7 @@ export type Database = {
         Update: {
           assignee_id?: string | null
           author_id?: string
+          blocked_reason?: string | null
           client_visible?: boolean
           created_at?: string
           deleted_at?: string | null
@@ -2937,6 +3050,93 @@ export type Database = {
           },
         ]
       }
+      time_off_entries: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          note: string | null
+          start_date: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          note?: string | null
+          start_date: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          note?: string | null
+          start_date?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_off_entries_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      view_tasks: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          id: string
+          position: number
+          task_id: string
+          view_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          position?: number
+          task_id: string
+          view_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          position?: number
+          task_id?: string
+          view_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "view_tasks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "view_tasks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "view_tasks_view_id_fkey"
+            columns: ["view_id"]
+            isOneToOne: false
+            referencedRelation: "saved_views"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           created_at: string
@@ -2946,6 +3146,8 @@ export type Database = {
           portal_last_seen_at: string | null
           role: string
           status: string
+          status_note: string | null
+          status_note_until: string | null
           user_id: string | null
           workspace_id: string
         }
@@ -2957,6 +3159,8 @@ export type Database = {
           portal_last_seen_at?: string | null
           role?: string
           status?: string
+          status_note?: string | null
+          status_note_until?: string | null
           user_id?: string | null
           workspace_id: string
         }
@@ -2968,6 +3172,8 @@ export type Database = {
           portal_last_seen_at?: string | null
           role?: string
           status?: string
+          status_note?: string | null
+          status_note_until?: string | null
           user_id?: string | null
           workspace_id?: string
         }
@@ -3517,6 +3723,23 @@ export type Database = {
         Args: { p_timezone?: string; p_workspace_id: string }
         Returns: number
       }
+      get_person_time_by_project: {
+        Args: { p_end_date: string; p_start_date: string; p_user_id: string }
+        Returns: {
+          billable_minutes: number
+          project_id: string
+          project_name: string
+          total_minutes: number
+        }[]
+      }
+      get_person_time_daily: {
+        Args: { p_end_date: string; p_start_date: string; p_user_id: string }
+        Returns: {
+          billable_minutes: number
+          entry_date: string
+          total_minutes: number
+        }[]
+      }
       get_priority_counts: {
         Args: { p_workspace_id: string }
         Returns: {
@@ -3586,6 +3809,20 @@ export type Database = {
         Returns: {
           billable_minutes: number
           non_billable_minutes: number
+          user_id: string
+        }[]
+      }
+      get_workspace_time_by_person_and_project: {
+        Args: {
+          p_end_date: string
+          p_start_date: string
+          p_workspace_id: string
+        }
+        Returns: {
+          billable_minutes: number
+          non_billable_minutes: number
+          project_id: string
+          project_name: string
           user_id: string
         }[]
       }
@@ -3770,6 +4007,7 @@ export type Database = {
         Returns: {
           assignee_id: string | null
           author_id: string
+          blocked_reason: string | null
           client_visible: boolean
           created_at: string
           deleted_at: string | null
@@ -3815,6 +4053,7 @@ export type Database = {
         Returns: {
           assignee_id: string | null
           author_id: string
+          blocked_reason: string | null
           client_visible: boolean
           created_at: string
           deleted_at: string | null

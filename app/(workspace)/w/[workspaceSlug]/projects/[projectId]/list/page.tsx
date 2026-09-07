@@ -317,6 +317,8 @@ export default async function ProjectListPage({
     email: member.email,
     name: member.name,
     avatarUrl: member.avatarUrl,
+    statusNote: member.statusNote,
+    statusNoteUntil: member.statusNoteUntil,
   }));
 
   // F122 (AS-214): taskAssigneeId -> resolved person, built from the same
@@ -330,6 +332,8 @@ export default async function ProjectListPage({
         name: member.name,
         email: member.email,
         avatarUrl: member.avatarUrl,
+        statusNote: member.statusNote,
+        statusNoteUntil: member.statusNoteUntil,
       },
     ]),
   );

@@ -14,10 +14,15 @@
 // alone — cheap to add now, and correct from the start rather than a
 // retrofit later.
 
-import { Ban, Clock, Eye, ListTree, CircleDot, Repeat, TriangleAlert } from "lucide-react";
+import { AlertTriangle, Ban, Clock, Eye, ListTree, CircleDot, Repeat, TriangleAlert } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { isOverdue } from "@/lib/tasks/is-overdue";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 // F167 (AS-300, AS-301, AS-302): the single ratio/flag source shared with
 // TimeTracking's estimate row — see that file's doc comment for the
 // null-means-no-estimate contract.
@@ -202,6 +207,17 @@ export type TaskCardTask = {
   // sheet's PendingApprovalToggle reads/writes. Optional/undefined, same
   // "safe default" convention as `clientVisible` above.
   pendingClientApproval?: boolean;
+  // Free-text "why is this blocked" reason (`tasks.blocked_reason`) — the
+  // small icon+tooltip below only renders when BOTH this is set AND
+  // `status` case-insensitively equals "blocked" (a project's own
+  // free-text board-column name, not a fixed enum — see
+  // task-detail-sheet.tsx's identical check). Distinct from the
+  // `openBlockerCount` indicator above (F157): that one is about
+  // DEPENDENCIES blocking this task; this one is the task's own
+  // workflow status and a PM-entered explanation. Optional/undefined/null
+  // all mean "no reason recorded" and hide the indicator, same "safe
+  // default" convention as every other optional field on this type.
+  blockedReason?: string | null;
 };
 
 export function TaskCard({
@@ -416,6 +432,29 @@ export function TaskCard({
             <Ban className="size-3" aria-hidden="true" />
             Blocked
           </span>
+        )}
+        {/* This task's own "Blocked" workflow status with a PM-entered
+            reason — distinct from the open-blocker indicator above (that
+            one is about dependencies, this one is a status + free-text
+            explanation). Icon + tooltip text, never colour alone. Only
+            renders when the task currently sits in a column named
+            "blocked" (case-insensitive) AND has a reason recorded. */}
+        {String(task.status).trim().toLowerCase() === "blocked" && task.blockedReason && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
+                  data-testid="blocked-reason-indicator"
+                >
+                  <AlertTriangle className="size-3" aria-hidden="true" />
+                  <span className="sr-only">Blocked: </span>
+                  Blocked
+                </span>
+              }
+            />
+            <TooltipContent>{task.blockedReason}</TooltipContent>
+          </Tooltip>
         )}
         {/* F154 (AS-272, AS-273, AS-525): the completion percentage, only
             rendered when task.completion is non-null — a task with no

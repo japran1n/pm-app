@@ -103,6 +103,8 @@ export default async function ProjectBoardPage({
     email: member.email,
     name: member.name,
     avatarUrl: member.avatarUrl,
+    statusNote: member.statusNote,
+    statusNoteUntil: member.statusNoteUntil,
   }));
 
   // F122 (AS-214): every valid assignee is, by construction, an active
@@ -118,6 +120,8 @@ export default async function ProjectBoardPage({
         name: member.name,
         email: member.email,
         avatarUrl: member.avatarUrl,
+        statusNote: member.statusNote,
+        statusNoteUntil: member.statusNoteUntil,
       },
     ]),
   );

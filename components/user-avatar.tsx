@@ -30,6 +30,7 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar";
 import { getUserColor } from "@/lib/user-color";
+import { isStatusNoteActive } from "@/lib/status-note";
 
 export type UserAvatarPerson = {
   /** auth user id — the deterministic colour hash key (AS-204). */
@@ -37,6 +38,14 @@ export type UserAvatarPerson = {
   name?: string | null;
   email?: string | null;
   avatarUrl?: string | null;
+  /** Out-of-office status note (workspace_members.status_note) — shown
+   * in a hover tooltip alongside the person's name when non-expired.
+   * Callers that already filter to active-only (e.g.
+   * `getWorkspaceMembers`) may pass an already-expired-filtered value
+   * here; `isStatusNoteActive` is re-checked regardless, so a stale
+   * prop can never leak an expired note into the tooltip. */
+  statusNote?: string | null;
+  statusNoteUntil?: string | null;
 };
 
 // F277: `Array.from(string)` (not `.charAt`/`.slice`, which index by UTF-16
@@ -96,4 +105,21 @@ export function UserAvatar({
       </AvatarFallback>
     </Avatar>
   );
+}
+
+/**
+ * Out-of-office status note: everywhere a person's avatar is hovered
+ * (assignee avatar groups, single-avatar call sites), the tooltip text
+ * shown when an active note exists — `"<name>: <note>"` — or null when
+ * there's nothing to show (no note, or its `statusNoteUntil` date has
+ * already passed), so callers can conditionally render/suppress a
+ * tooltip trigger entirely rather than showing an empty one. Re-checks
+ * expiry itself (never trusts an unfiltered `statusNote` prop) via
+ * `isStatusNoteActive`.
+ */
+export function statusNoteTooltipLabel(
+  person: Pick<UserAvatarPerson, "id" | "name" | "email" | "statusNote" | "statusNoteUntil">,
+): string | null {
+  if (!isStatusNoteActive(person.statusNote, person.statusNoteUntil)) return null;
+  return `${personLabel(person)}: ${person.statusNote}`;
 }

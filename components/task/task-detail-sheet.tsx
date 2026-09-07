@@ -137,6 +137,8 @@ import { Watchers } from "@/components/task/watchers";
 import { ClientVisibilityToggle } from "@/components/task/client-visibility-toggle";
 import { PendingApprovalToggle } from "@/components/task/pending-approval-toggle";
 import { PageLinksEditor } from "@/components/task/page-links-editor";
+import { CustomFieldsSection } from "@/components/task/custom-fields-section";
+import { setTaskBlockedReason } from "@/lib/actions/tasks";
 // F008 (missions/20260903-portal, AS-019): the richer "raise a real
 // approval request" path, shown beside PendingApprovalToggle rather than
 // replacing it — that toggle stays the quick "waiting on client" flag,
@@ -154,6 +156,7 @@ import type { RecurrenceRule } from "@/lib/recurrence/next-date";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -399,6 +402,12 @@ export type TaskDetailSheetTask = {
    * portal Pages view — the Pages view sorts by this (nulls last), never
    * by creation date. Same visibility gate as `pageSlug` above. */
   pageOrder?: number | null;
+  /** Free-text "why is this blocked" reason (`tasks.blocked_reason`),
+   * shown/editable only while this task's own `status` case-insensitively
+   * equals "blocked". Optional/null both mean "no reason recorded" — same
+   * "safe default" convention as every other optional field on this
+   * type. */
+  blockedReason?: string | null;
 };
 
 export type TaskDetailSheetMember = {
@@ -409,6 +418,10 @@ export type TaskDetailSheetMember = {
    * updated) don't have to pass it — a missing avatarUrl just means the
    * initials fallback renders instead of an image. */
   avatarUrl?: string | null;
+  /** Out-of-office status note: optional for the same reason avatarUrl
+   * is — existing callers not yet updated simply render no tooltip. */
+  statusNote?: string | null;
+  statusNoteUntil?: string | null;
 };
 
 const STATUS_LABELS: Record<TaskDetailSheetTask["status"], string> = {
@@ -622,6 +635,7 @@ export function TaskDetailSheet({
   // own shape below, minus that field's dedicated transition/Escape
   // handling, which nothing here needs (see handlePageSlugBlur's own doc
   // comment).
+  const [blockedReason, setBlockedReason] = useState(task?.blockedReason ?? "");
   const [pageSlug, setPageSlug] = useState(task?.pageSlug ?? "");
   const [pageOrder, setPageOrder] = useState(
     task?.pageOrder != null ? String(task.pageOrder) : "",
@@ -814,6 +828,7 @@ export function TaskDetailSheet({
     // F005 (AS-014): same re-sync convention as dueDate/startDate above.
     setPageSlug(task.pageSlug ?? "");
     setPageOrder(task.pageOrder != null ? String(task.pageOrder) : "");
+    setBlockedReason(task.blockedReason ?? "");
     setDescriptionJson(task.descriptionJson);
     // F023: a newly opened task must never show a confirmed value carried
     // over from whatever task was previously open in this same Sheet.
@@ -1281,6 +1296,26 @@ export function TaskDetailSheet({
   // not title's dedicated transition — nothing here needs a per-field
   // spinner or Escape-to-cancel, so the simpler of this file's two
   // existing commit patterns is the one actually reused.
+  // Own dedicated action (setTaskBlockedReason, lib/actions/tasks.ts)
+  // rather than `saveField`/`editTask` — `blocked_reason` isn't part of
+  // editTaskSchema's editable-fields set (this is a single, narrowly-
+  // scoped column, not a general task edit). Same commit-on-blur, shared
+  // `isSavingField` transition convention as pageSlug/pageOrder above.
+  function handleBlockedReasonBlur() {
+    if (!task) return;
+    const trimmed = blockedReason.trim();
+    const next = trimmed === "" ? null : trimmed;
+    if (next === (task.blockedReason ?? null)) return;
+    startSaveTransition(async () => {
+      const result = await setTaskBlockedReason(task.id, next);
+      if (result.ok) {
+        toast.success("Blocked reason updated.");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
   function handlePageSlugBlur() {
     if (!task) return;
     const trimmed = pageSlug.trim().toLowerCase();
@@ -1950,6 +1985,8 @@ export function TaskDetailSheet({
                         name: member?.name ?? null,
                         email: member?.email ?? null,
                         avatarUrl: member?.avatarUrl ?? null,
+                        statusNote: member?.statusNote ?? null,
+                        statusNoteUntil: member?.statusNoteUntil ?? null,
                       };
                     },
                   );
@@ -2102,6 +2139,35 @@ export function TaskDetailSheet({
                 </div>
               </div>
 
+              {/* Blocked reason: free text, shown only while this task's
+                  own status name case-insensitively equals "blocked" —
+                  `tasks.status` is a project's own free-text board-column
+                  name (project_statuses, not a fixed enum), so there is
+                  no single literal "blocked" every project is guaranteed
+                  to have; this is a best-effort match against whatever a
+                  project actually names that column. Same "free text,
+                  the app never invents a reason" convention as
+                  `project_phases.blocked_reason`
+                  (20261031010000_f109_phase_blocked_reason.sql). */}
+              {String(task.status).trim().toLowerCase() === "blocked" && (
+                <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4">
+                  <Label htmlFor={`task-blocked-reason-${task.id}`}>
+                    Why is this blocked?
+                  </Label>
+                  <Textarea
+                    id={`task-blocked-reason-${task.id}`}
+                    value={blockedReason ?? ""}
+                    disabled={isSavingField || !canEdit}
+                    title={editDisabledTitle}
+                    placeholder="e.g. Waiting on final copy from the client"
+                    rows={2}
+                    data-testid="task-blocked-reason-input"
+                    onChange={(changeEvent) => setBlockedReason(changeEvent.target.value)}
+                    onBlur={handleBlockedReasonBlur}
+                  />
+                </div>
+              )}
+
               {/* F006c (missions/20260903-portal, AS-014): Page slug/
                   order only render for a task whose own task type
                   carries `system_key = 'page'` — NOT a name match.
@@ -2168,6 +2234,15 @@ export function TaskDetailSheet({
               {task.taskTypeSystemKey === "page" && (
                 <PageLinksEditor taskId={task.id} canEdit={canEdit} />
               )}
+
+              {/* Project custom fields: flexible, project-scoped extra
+                  fields (lib/actions/custom-fields.ts) — not gated by
+                  task type, unlike the Page-only sections above, since
+                  a project's PM-defined fields apply to every task in
+                  that project. Renders nothing at all when the project
+                  has no custom fields defined (CustomFieldsSection's own
+                  "empty means no section" contract). */}
+              <CustomFieldsSection taskId={task.id} canEdit={canEdit} />
 
               <MobileCollapsibleSection title="Description">
                 <Label htmlFor={`task-description-${task.id}`}>

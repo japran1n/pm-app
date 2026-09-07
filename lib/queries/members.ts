@@ -24,6 +24,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { createClient } from "@/lib/supabase/server";
 import { resolvePeople } from "@/lib/queries/people";
+import { isStatusNoteActive } from "@/lib/status-note";
 
 export type ActiveMember = {
   id: string;
@@ -34,6 +35,13 @@ export type ActiveMember = {
   /** F122 (AS-214): the member's uploaded avatar, or null for the
    * initials-avatar fallback — sourced from `profiles.avatar_url`. */
   avatarUrl: string | null;
+  /** Out-of-office status note: null when the member has none set, OR
+   * when their `status_note_until` date has already passed
+   * (isStatusNoteActive) -- an expired note is never surfaced here, so
+   * every caller of this field gets "already filtered to active" for
+   * free without re-checking expiry itself. */
+  statusNote: string | null;
+  statusNoteUntil: string | null;
 };
 
 export type PendingInvite = {
@@ -54,7 +62,9 @@ export async function getWorkspaceMembers(
 
   const { data: rows, error } = await supabase
     .from("workspace_members")
-    .select("id, user_id, role, status, invited_email, created_at")
+    .select(
+      "id, user_id, role, status, invited_email, created_at, status_note, status_note_until",
+    )
     .eq("workspace_id", workspaceId)
     .order("created_at", { ascending: true });
 
@@ -74,6 +84,10 @@ export async function getWorkspaceMembers(
   const active: ActiveMember[] = activeRows.map((row) => {
     const userId = row.user_id as string;
     const person = people.get(userId);
+    const isNoteActive = isStatusNoteActive(
+      row.status_note as string | null,
+      row.status_note_until as string | null,
+    );
     return {
       id: row.id,
       userId,
@@ -81,6 +95,8 @@ export async function getWorkspaceMembers(
       email: person?.email ?? null,
       name: person?.name ?? null,
       avatarUrl: person?.avatarUrl ?? null,
+      statusNote: isNoteActive ? (row.status_note as string) : null,
+      statusNoteUntil: isNoteActive ? (row.status_note_until as string | null) : null,
     };
   });
 

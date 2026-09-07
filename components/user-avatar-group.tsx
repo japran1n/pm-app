@@ -19,7 +19,12 @@ export const AVATAR_GROUP_LIMIT = 3;
 
 import { Fragment } from "react";
 
-import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
+import {
+  UserAvatar,
+  personLabel,
+  statusNoteTooltipLabel,
+  type UserAvatarPerson,
+} from "@/components/user-avatar";
 import {
   Tooltip,
   TooltipContent,
@@ -113,7 +118,9 @@ export function UserAvatarGroup({
                 >
                   <UserAvatar person={person} size={size} />
                 </TooltipTrigger>
-                <TooltipContent>{personLabel(person)}</TooltipContent>
+                <TooltipContent>
+                  {statusNoteTooltipLabel(person) ?? personLabel(person)}
+                </TooltipContent>
               </Tooltip>
             </Fragment>
           ) : (

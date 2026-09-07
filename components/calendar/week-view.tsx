@@ -10,14 +10,19 @@ import Link from "next/link";
 import type { CalendarWeek } from "@/lib/calendar/week-grid";
 import type { CalendarTask } from "@/lib/queries/calendar";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { TimeOffEntry } from "@/lib/queries/time-off";
+import { eachDateInRange } from "@/lib/queries/time-off";
 import { isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
+import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
+import { AddTimeOffDialog } from "@/components/calendar/add-time-off-dialog";
 import { Button } from "@/components/ui/button";
 
 export function WeekView({
   week,
   tasksByDate,
   blocks,
+  timeOffEntries,
   workspaceSlug,
   workspaceId,
   prevHref,
@@ -27,6 +32,11 @@ export function WeekView({
   week: CalendarWeek;
   tasksByDate: Map<string, CalendarTask[]>;
   blocks: CalendarBlock[];
+  /** F(PTO): every PTO entry overlapping the visible week -- see
+   * lib/queries/time-off.ts's own doc comment for RLS/visibility. Empty
+   * array (default) means no PTO strip renders at all, so existing
+   * callers/tests that don't pass this keep behaving exactly as before. */
+  timeOffEntries?: TimeOffEntry[];
   workspaceSlug: string;
   workspaceId?: string;
   prevHref: string;
@@ -43,6 +53,17 @@ export function WeekView({
     blocksByDate[date] = [...(blocksByDate[date] ?? []), block];
   }
 
+  // Bucket each PTO entry onto every DateOnly it covers (inclusive range,
+  // not just its start date) so a 5-day PTO period shows a strip on each
+  // of those 5 day columns, same "one row per date it touches" posture
+  // blocksByDate already uses for calendar_blocks.
+  const timeOffByDate: Record<string, TimeOffEntry[]> = {};
+  for (const entry of timeOffEntries ?? []) {
+    for (const date of eachDateInRange(entry.startDate, entry.endDate)) {
+      timeOffByDate[date] = [...(timeOffByDate[date] ?? []), entry];
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-week-view">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -50,6 +71,7 @@ export function WeekView({
           {rangeLabel}
         </h1>
         <div className="flex items-center gap-1">
+          {workspaceId ? <AddTimeOffDialog workspaceId={workspaceId} /> : null}
           <Button
             variant="outline"
             size="sm"
@@ -86,6 +108,17 @@ export function WeekView({
           </div>
         ))}
       </div>
+      {Object.keys(timeOffByDate).length > 0 && (
+        <div
+          className="hidden grid-cols-[3.5rem_repeat(7,1fr)] gap-px md:grid"
+          data-testid="calendar-week-time-off-row"
+        >
+          <div />
+          {week.days.map((day) => (
+            <TimeOffDayStrip key={day.date} entries={timeOffByDate[day.date] ?? []} />
+          ))}
+        </div>
+      )}
       <div className="hidden md:block">
         <WeekTimeGrid
           days={week.days}
