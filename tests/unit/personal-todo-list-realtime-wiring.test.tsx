@@ -118,10 +118,25 @@ afterEach(() => {
 // as a stand-in for a `tasks.id`. AS-016/AS-018 seed the realtime hook's
 // tracked-id set from `initialTaskIds` (real task ids, e.g. "task-1"), NOT
 // from the personal-todo ids rendered by this component.
-const initialTodos: PersonalTodo[] = [{ id: "todo-1", title: "First reminder", isDone: false, position: 0 }];
+const NO_LINK = {
+  taskId: null,
+  taskKey: null,
+  taskTitle: null,
+  projectId: null,
+  projectName: null,
+} as const;
+const initialTodos: PersonalTodo[] = [
+  { id: "todo-1", title: "First reminder", isDone: false, position: 0, ...NO_LINK },
+];
 const updatedTodos: PersonalTodo[] = [
-  { id: "todo-1", title: "First reminder", isDone: false, position: 0 },
-  { id: "todo-2", title: "Second reminder (arrived live)", isDone: false, position: 1 },
+  { id: "todo-1", title: "First reminder", isDone: false, position: 0, ...NO_LINK },
+  {
+    id: "todo-2",
+    title: "Second reminder (arrived live)",
+    isDone: false,
+    position: 1,
+    ...NO_LINK,
+  },
 ];
 
 // Test harness: owns the "server" state that a real router.refresh() would

@@ -148,6 +148,7 @@ export default async function MyTasksPage({
         <h1 className="text-2xl font-semibold">My Tasks</h1>
         <PersonalTodoList
           workspaceId={workspace.id}
+          workspaceSlug={workspaceSlug}
           initialTodos={personalTodos}
           currentUserId={user.id}
           initialTaskIds={allTaskIds}
@@ -201,6 +202,7 @@ export default async function MyTasksPage({
       </div>
       <PersonalTodoList
         workspaceId={workspace.id}
+        workspaceSlug={workspaceSlug}
         initialTodos={personalTodos}
         currentUserId={user.id}
         initialTaskIds={allTaskIds}

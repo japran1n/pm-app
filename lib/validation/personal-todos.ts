@@ -12,6 +12,8 @@ const titleSchema = z
 export const createPersonalTodoSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),
   title: titleSchema,
+  taskId: z.string().uuid("Invalid task.").nullable().optional(),
+  projectId: z.string().uuid("Invalid project.").nullable().optional(),
 });
 export type CreatePersonalTodoInput = z.infer<typeof createPersonalTodoSchema>;
 

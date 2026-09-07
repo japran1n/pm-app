@@ -15,8 +15,8 @@ import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
 import { DashboardContentLazy as DashboardContent } from "@/components/dashboard/dashboard-content-lazy";
-import { QuickNotesWidget } from "@/components/dashboard/quick-notes-widget";
-import { getMyQuickNotes } from "@/lib/queries/quick-notes";
+import { PersonalTodoList } from "@/components/my-tasks/personal-todo-list";
+import { getPersonalTodos } from "@/lib/queries/personal-todos";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
 // the workspace home dashboard — a priority bar chart (F071's
@@ -85,10 +85,12 @@ export default async function WorkspacePage({
     getCurrentUserTimezone(supabase),
   ]);
 
-  // Quick notes: always-visible personal reminder widget, fetched here
-  // once workspace.id is known (below the redirect guard) and passed down
-  // as a plain prop, matching the my-tasks page's PersonalTodoList pattern.
-  const quickNotes = workspace ? await getMyQuickNotes(workspace.id) : [];
+  // Consolidation (20261116010000): the personal to-do list — not a
+  // separate "quick notes" entity — is the always-visible personal
+  // reminder widget, fetched here once workspace.id is known (below the
+  // redirect guard) and passed down as a plain prop, same table and same
+  // component the My Tasks page uses.
+  const personalTodos = workspace ? await getPersonalTodos(workspace.id) : [];
 
   // The layout above already redirects away when the workspace can't be
   // resolved, so this is just a defensive fallback, not the primary guard.
@@ -188,10 +190,10 @@ export default async function WorkspacePage({
         </p>
       </div>
 
-      <QuickNotesWidget
+      <PersonalTodoList
         workspaceId={workspace.id}
         workspaceSlug={workspaceSlug}
-        initialNotes={quickNotes}
+        initialTodos={personalTodos}
       />
 
       <DashboardContent

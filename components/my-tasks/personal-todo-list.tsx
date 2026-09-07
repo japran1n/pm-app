@@ -6,6 +6,7 @@
 
 import { startTransition, useOptimistic, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,11 +19,17 @@ import { useMyTasksRealtime } from "@/components/my-tasks/use-my-tasks-realtime"
 
 export function PersonalTodoList({
   workspaceId,
+  workspaceSlug,
   initialTodos,
   currentUserId,
   initialTaskIds,
 }: {
   workspaceId: string;
+  // Consolidation (20261116010000): optional -- only needed to link the
+  // "on task: ..."/"on project: ..." chip. Absent on any render (e.g. a
+  // future embed) that doesn't have a workspace slug handy; the chip is
+  // simply not rendered as a link in that case.
+  workspaceSlug?: string;
   initialTodos: PersonalTodo[];
   // F008 (AS-015, AS-016, AS-017): optional -- absent in any test/story
   // render that doesn't care about live task assignment updates. When
@@ -158,7 +165,20 @@ export function PersonalTodoList({
     // trip cost of waiting for revalidation before showing what was just
     // typed would be the most noticeable lag on the whole page.
     const tempId = `temp-${Date.now()}`;
-    setTodos((current) => [...current, { id: tempId, title, isDone: false, position: 0 }]);
+    setTodos((current) => [
+      ...current,
+      {
+        id: tempId,
+        title,
+        isDone: false,
+        position: 0,
+        taskId: null,
+        taskKey: null,
+        taskTitle: null,
+        projectId: null,
+        projectName: null,
+      },
+    ]);
     setNewTitle("");
 
     const result = await createPersonalTodo({ workspaceId, title });
@@ -293,15 +313,33 @@ export function PersonalTodoList({
               onCheckedChange={() => handleToggle(todo)}
               aria-label={`Mark "${todo.title}" ${todo.isDone ? "not done" : "done"}`}
             />
-            <span
-              className={
-                todo.isDone
-                  ? "flex-1 text-sm text-muted-foreground line-through"
-                  : "flex-1 text-sm"
-              }
-            >
-              {todo.title}
-            </span>
+            <div className="flex flex-1 flex-col">
+              <span
+                className={
+                  todo.isDone
+                    ? "text-sm text-muted-foreground line-through"
+                    : "text-sm"
+                }
+              >
+                {todo.title}
+              </span>
+              {todo.taskId && workspaceSlug && (
+                <Link
+                  href={`/w/${workspaceSlug}/t/${todo.taskKey ?? todo.taskId}`}
+                  className="text-xs text-primary hover:underline"
+                >
+                  on task: {todo.taskTitle ?? todo.taskKey}
+                </Link>
+              )}
+              {!todo.taskId && todo.projectId && workspaceSlug && (
+                <Link
+                  href={`/w/${workspaceSlug}/projects/${todo.projectId}/list`}
+                  className="text-xs text-primary hover:underline"
+                >
+                  on project: {todo.projectName ?? "project"}
+                </Link>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => handleDelete(todo.id)}

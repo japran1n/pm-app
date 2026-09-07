@@ -52,6 +52,8 @@ export async function createPersonalTodo(
     workspace_id: parsed.data.workspaceId,
     title: parsed.data.title,
     position: nextPosition,
+    task_id: parsed.data.taskId ?? null,
+    project_id: parsed.data.projectId ?? null,
   });
 
   if (error) {
@@ -60,6 +62,7 @@ export async function createPersonalTodo(
   }
 
   revalidatePath("/w/[workspaceSlug]/my-tasks", "page");
+  revalidatePath("/w/[workspaceSlug]", "page");
   return { ok: true };
 }
 
@@ -81,6 +84,7 @@ export async function toggleTodo(input: unknown): Promise<PersonalTodoActionResu
   }
 
   revalidatePath("/w/[workspaceSlug]/my-tasks", "page");
+  revalidatePath("/w/[workspaceSlug]", "page");
   return { ok: true };
 }
 
@@ -102,5 +106,6 @@ export async function deleteTodo(input: unknown): Promise<PersonalTodoActionResu
   }
 
   revalidatePath("/w/[workspaceSlug]/my-tasks", "page");
+  revalidatePath("/w/[workspaceSlug]", "page");
   return { ok: true };
 }
