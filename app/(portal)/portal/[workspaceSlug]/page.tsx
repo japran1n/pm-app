@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Clock3 } from "lucide-react";
 
 import {
   getPortalProjects,
@@ -12,10 +12,7 @@ import { ProjectProgress } from "@/components/portal/project-progress";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
-// F008 (AS-018, AS-019, AS-020, AS-024): the only two regions on this page
-// that need to update live -- see that component's own header comment for
-// why the rest of the page stays a plain server-rendered RSC.
-import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
+import { countWaitingOnYouByProject } from "@/lib/portal/waiting-on-you-by-project";
 
 function formatDate(iso: string): string {
   // Same fixed en-GB short form as project-progress.tsx, for the same
@@ -36,6 +33,17 @@ function formatDate(iso: string): string {
 // overview (`p/[projectId]/page.tsx`, the index route under the new
 // per-project shell) rather than making every client click through a
 // chooser of one.
+//
+// Redesign (2026-09-07, client feedback on the multi-project screenshot):
+// most clients have exactly one project (handled by the redirect above),
+// so this page only exists for the minority with several. It used to lead
+// with a workspace-wide "Waiting on you" / "Delivered this week" task
+// list and only then a row of small, mostly-identical project cards —
+// exactly backwards for a screen whose only job is "which project do you
+// want." The project cards are now the primary content (bigger, with a
+// launch date and a per-project "N waiting on you" badge instead of a
+// separate list), so picking a project needs one glance and one click,
+// not cross-referencing a list against a card grid below it.
 //
 // This page keeps its own minimal header (brand, theme toggle, sign-out)
 // because the outer layout no longer renders any chrome of its own (see
@@ -80,6 +88,27 @@ export default async function PortalOverviewPage({
       ? getPortalActivitySummary(workspace.id, user.id)
       : Promise.resolve(null),
   ]);
+
+  // Multi-project chooser redesign: this page only ever renders once a
+  // client has EITHER zero OR two-plus portal-enabled projects (see the
+  // single-project redirect above), so its whole job here is "help a
+  // client with several projects pick the right one," not "explain a
+  // client's one project to them" — that explanation is the per-project
+  // overview's job. Previously this page showed a full, workspace-wide
+  // "Waiting on you" / "Delivered this week" task list ABOVE small project
+  // cards; a client with several projects had to cross-reference each
+  // list row's project-name tag back to a card below just to know where
+  // to click, and the two cards' own "% complete" figures said nothing
+  // about which project actually needed the client's attention right now.
+  // The redesign leads with the cards (bigger, so the launch date/health
+  // badge is legible at a glance) and folds "is anything waiting on me on
+  // THIS project" into a single count badge per card instead — the same
+  // fact, at the resolution this chooser screen actually needs. The full
+  // task-level list still exists, scoped to one project, on that
+  // project's own overview page (`p/[projectId]/page.tsx`).
+  const waitingCountByProject = countWaitingOnYouByProject(
+    overview.waitingOnYou,
+  );
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -145,18 +174,6 @@ export default async function PortalOverviewPage({
           </div>
         )}
 
-        {/* UX-22: the two questions a client actually opens the portal to
-            answer — "is anything waiting on me?" and "what shipped
-            recently?" — surfaced above the project grid instead of buried
-            inside each project's own task list. */}
-        {projects.length > 0 && (
-          <PortalOverviewLive
-            workspaceId={workspace.id}
-            workspaceSlug={workspace.slug}
-            initialOverview={overview}
-          />
-        )}
-
         {projects.length === 0 ? (
           <EmptyState
             icon={CheckCircle2}
@@ -164,25 +181,47 @@ export default async function PortalOverviewPage({
             description={`When ${workspace.name} shares a project with you, it will appear here.`}
           />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {projects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/portal/${workspace.slug}/p/${project.id}`}
-                className="hover-lift flex flex-col gap-4 rounded-lg border border-border p-5"
-              >
-                <div className="flex flex-col gap-1">
-                  <span className="font-medium">{project.name}</span>
-                  {project.description && (
-                    <span className="line-clamp-2 text-sm text-muted-foreground">
-                      {project.description}
+          <div className="grid gap-5 sm:grid-cols-2">
+            {projects.map((project) => {
+              const waitingCount = waitingCountByProject.get(project.id) ?? 0;
+              return (
+                <Link
+                  key={project.id}
+                  href={`/portal/${workspace.slug}/p/${project.id}`}
+                  className="hover-lift flex flex-col gap-4 rounded-xl border border-border p-6"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-lg font-semibold tracking-tight">
+                        {project.name}
+                      </span>
+                      {project.description && (
+                        <span className="line-clamp-2 text-sm text-muted-foreground">
+                          {project.description}
+                        </span>
+                      )}
+                    </div>
+                    {/* A single per-project signal instead of a duplicate
+                        workspace-wide list — see the comment above this
+                        section's data prep for why. */}
+                    {waitingCount > 0 && (
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700">
+                        <Clock3 aria-hidden className="size-3.5" />
+                        {waitingCount} waiting on you
+                      </span>
+                    )}
+                  </div>
+
+                  {project.targetLaunchDate && (
+                    <span className="text-xs text-muted-foreground">
+                      Target launch: {formatDate(project.targetLaunchDate)}
                     </span>
                   )}
-                </div>
 
-                <ProjectProgress project={project} />
-              </Link>
-            ))}
+                  <ProjectProgress project={project} />
+                </Link>
+              );
+            })}
           </div>
         )}
       </main>
