@@ -58,6 +58,11 @@ export interface PermissionContext {
   // The id of the user performing the action. Required whenever
   // `resourceOwnerId` is supplied, so ownership can be compared.
   callerId?: string | null;
+  // True when the caller holds `project_members.project_role = 'lead'` on
+  // at least one project relevant to the resource being viewed (e.g. any
+  // project the target person logged time against). Optional/omitted for
+  // predicates that don't need a project-lead carve-out.
+  isProjectLeadOnResource?: boolean;
 }
 
 // True when the caller is the same identity as the resource owner. Pure
@@ -272,4 +277,21 @@ export function canChangeProjectVisibility(ctx: PermissionContext): boolean {
 // own pre-check, same AS-230 convention as every other predicate here.
 export function canManagePortalSettings(ctx: PermissionContext): boolean {
   return ctx.role === "owner" || ctx.role === "admin";
+}
+
+// The per-person time drill-down (app/(workspace)/w/[workspaceSlug]/
+// time/[userId]/page.tsx) shows two tiers of detail for the SAME date
+// range: workspace-visible aggregates (totals, per-project breakdown, the
+// daily bar chart — anyone with `isResourceOwner` false may still see
+// these per the clarified spec's "aggregates stay visible to all active
+// members" rule, enforced by the page, not this predicate) and the
+// individual time-entry rows WITH their free-text notes, which are more
+// sensitive (a note can describe exactly what someone worked on/struggled
+// with). Notes for another person's entries are gated to
+// owner/admin/project-lead; a caller viewing their OWN drill-down
+// (`isResourceOwner`) always sees their own notes regardless of role.
+export function canViewIndividualTimeEntryNotes(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
+  if (isResourceOwner(ctx)) return true;
+  return ctx.role === "owner" || ctx.role === "admin" || Boolean(ctx.isProjectLeadOnResource);
 }
