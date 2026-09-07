@@ -16,8 +16,11 @@
 
 import { HeaderSearch } from "@/components/nav/header-search";
 import { AppBreadcrumb } from "@/components/nav/app-breadcrumb";
+import { GlobalTimeTracker } from "@/components/time/global-time-tracker";
+import { createClient } from "@/lib/supabase/server";
+import { getActiveTimer, getMyRecentTimeEntries } from "@/lib/queries/time-entries";
 
-export function AppHeader({
+export async function AppHeader({
   workspaceId,
   workspaceSlug,
   workspaceName,
@@ -26,6 +29,25 @@ export function AppHeader({
   workspaceSlug: string;
   workspaceName: string;
 }) {
+  // Global "Track Time" widget: fetched once here on the header's initial
+  // Server Component render (same convention as the sidebar's own
+  // server-fetched props one level up) so the popover opens with real data
+  // immediately, rather than a client-side loading flash. A signed-out
+  // caller never reaches this layout (workspace layout guard), but the
+  // lookups are defensive against a null user regardless, same as every
+  // other query in lib/queries/time-entries.ts.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [activeTimer, recentEntries] = user
+    ? await Promise.all([
+        getActiveTimer(),
+        getMyRecentTimeEntries(user.id),
+      ])
+    : [null, []];
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-4 border-b bg-background px-4">
       <div className="min-w-0 flex-1">
@@ -35,6 +57,21 @@ export function AppHeader({
         />
       </div>
       <HeaderSearch workspaceId={workspaceId} workspaceSlug={workspaceSlug} />
+      <GlobalTimeTracker
+        workspaceId={workspaceId}
+        workspaceSlug={workspaceSlug}
+        initialActiveTimer={
+          activeTimer
+            ? {
+                id: activeTimer.id,
+                taskId: activeTimer.taskId,
+                taskTitle: activeTimer.task.title,
+                startedAt: activeTimer.startedAt,
+              }
+            : null
+        }
+        initialRecentEntries={recentEntries}
+      />
     </header>
   );
 }

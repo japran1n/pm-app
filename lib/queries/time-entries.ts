@@ -228,6 +228,76 @@ export async function getWorkspaceTimeByPersonAndProject(
   );
 }
 
+export type PersonTimeEntry = {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  projectId: string | null;
+  minutes: number;
+  billable: boolean;
+  entryDate: string;
+  note: string | null;
+};
+
+// getPersonTimeEntriesInRange: individual time-entry rows (including
+// notes) for ONE person within an explicit date range — powers the
+// per-person drill-down page's entry list
+// (app/(workspace)/w/[workspaceSlug]/time/[userId]/page.tsx). Unlike
+// `getMyRecentTimeEntries` (a fixed lookback window, capped days, built
+// for the caller's own global "Track Time" widget), this takes an
+// explicit `userId` and `startDate`/`endDate` so it can show any workspace
+// member's entries for the SAME range the page's aggregates use. Uses the
+// request-scoped (RLS-respecting) client — `time_entries_select_active_
+// members` (supabase/migrations/20260902020000_client_role_read_scope_
+// hardening.sql) scopes visibility by TASK visibility, not by
+// "row.user_id === caller", so this naturally returns another member's
+// entries for tasks the caller can see, and nothing for tasks it can't
+// (e.g. a client-hidden task). The caller (the page) is responsible for
+// deciding whether to render the `note` field at all for a non-self
+// target — see `canViewIndividualTimeEntryNotes`
+// (lib/auth/permissions.ts) — this query does not itself redact notes,
+// since RLS already governs row-level access and note-level redaction is
+// a UI/business-rule concern, not a data-access one.
+export async function getPersonTimeEntriesInRange(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<PersonTimeEntry[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id)")
+    .eq("user_id", userId)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    logger.error("getPersonTimeEntriesInRange: query failed", { error: error });
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const task = row.tasks as
+      | { id: string; title: string; project_id: string }
+      | { id: string; title: string; project_id: string }[]
+      | null;
+    const taskRow = Array.isArray(task) ? task[0] : task;
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      taskTitle: taskRow?.title ?? "Untitled task",
+      projectId: taskRow?.project_id ?? null,
+      minutes: row.minutes,
+      billable: row.billable,
+      entryDate: row.entry_date,
+      note: row.note,
+    };
+  });
+}
+
 export type ActiveTimer = {
   id: string;
   taskId: string;
@@ -382,6 +452,80 @@ export async function getMyRecentTimeEntries(
       id: row.id,
       taskId: row.task_id,
       taskTitle: taskRow?.title ?? "Untitled task",
+      minutes: row.minutes,
+      billable: row.billable,
+      entryDate: row.entry_date,
+      note: row.note,
+    };
+  });
+}
+
+export type MyTimeEntryInRange = {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  projectId: string | null;
+  projectName: string | null;
+  minutes: number;
+  billable: boolean;
+  entryDate: string;
+  note: string | null;
+};
+
+// getMyTimeEntriesInRange: the caller's own raw time_entries rows within an
+// inclusive [startDate, endDate] window, each carrying its task's title and
+// owning project's id/name — powers the "My time" personal dashboard
+// (/time/me)'s Daily list and Weekly grid cells, which both need real,
+// individually addressable entry rows (not a pre-aggregated total) so an
+// entry can be grouped by task/day client-side. Deliberately a separate
+// function from `getMyRecentTimeEntries` above (which is capped to a
+// "days back from now" lookback for the global Track Time widget) — this
+// one takes an explicit inclusive date range so it can serve past AND
+// future-dated ranges (e.g. a Monthly view navigated forward) without
+// reinterpreting `days` as a signed offset. Uses the request-scoped
+// (RLS-respecting) client, same convention as every other query in this
+// file — `time_entries_select_active_members` RLS is what actually
+// restricts this to entries the caller may see.
+export async function getMyTimeEntriesInRange(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<MyTimeEntryInRange[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select(
+      "id, task_id, minutes, billable, entry_date, note, tasks(id, title, project_id, projects(id, name))",
+    )
+    .eq("user_id", userId)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate)
+    .order("entry_date", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logger.error("getMyTimeEntriesInRange: query failed", { error: error });
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const task = row.tasks as
+      | { id: string; title: string; project_id: string; projects: { id: string; name: string } | { id: string; name: string }[] | null }
+      | { id: string; title: string; project_id: string; projects: { id: string; name: string } | { id: string; name: string }[] | null }[]
+      | null;
+    const taskRow = Array.isArray(task) ? task[0] : task;
+    const project = taskRow?.projects
+      ? Array.isArray(taskRow.projects)
+        ? taskRow.projects[0]
+        : taskRow.projects
+      : null;
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      taskTitle: taskRow?.title ?? "Untitled task",
+      projectId: project?.id ?? null,
+      projectName: project?.name ?? null,
       minutes: row.minutes,
       billable: row.billable,
       entryDate: row.entry_date,
