@@ -157,6 +157,36 @@ describe("F6: subtask nesting in the List view", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("test_a_subtask_row_has_a_distinct_background_tint_and_the_parent_does_not", () => {
+    renderTable([task("parent", "Parent task"), task("child", "Child task", "parent")]);
+
+    const parentRow = screen.getByText("Parent task").closest("tr");
+    const childRow = screen.getByText("Child task").closest("tr");
+
+    expect(childRow).toHaveAttribute("data-subtask-row", "true");
+    expect(childRow?.className).toMatch(/bg-muted\/30/);
+    expect(parentRow).not.toHaveAttribute("data-subtask-row");
+    expect(parentRow?.className).not.toMatch(/bg-muted\/30/);
+  });
+
+  it("test_the_expand_collapse_chevron_rotates_to_reflect_open_and_closed_state", () => {
+    renderTable([task("parent", "Parent task"), task("child", "Child task", "parent")]);
+
+    const toggle = screen.getByRole("button", {
+      name: "Hide subtasks of Parent task",
+    });
+    const expandedIcon = toggle.querySelector("svg");
+    expect(expandedIcon?.getAttribute("class")).toMatch(/rotate-90/);
+
+    fireEvent.click(toggle);
+
+    const collapsedToggle = screen.getByRole("button", {
+      name: "Show subtasks of Parent task",
+    });
+    const collapsedIcon = collapsedToggle.querySelector("svg");
+    expect(collapsedIcon?.getAttribute("class")).not.toMatch(/rotate-90/);
+  });
+
   it("test_select_all_only_selects_currently_visible_expanded_rows", () => {
     renderTable([task("parent", "Parent task"), task("child", "Child task", "parent")]);
 

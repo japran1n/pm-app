@@ -28,7 +28,7 @@
 
 import Link from "next/link";
 import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronDown, ChevronRight, CircleDot, Eye, TriangleAlert } from "lucide-react";
+import { ChevronRight, TriangleAlert } from "lucide-react";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { formatDuration } from "@/lib/time/format-duration";
@@ -92,6 +92,15 @@ import { ListTaskTypeSelect } from "@/components/task/list-task-type-select";
 // Follow-up (manual view membership): lets a row be manually added to one
 // of the project's saved list views, independent of that view's filter.
 import { AddToViewMenu } from "@/components/task/add-to-view-menu";
+// Follow-up (drag-and-drop view membership): a small per-row drag handle,
+// dropped onto a <ViewDropTab> in the view tab row above the table to add
+// this task to that view -- an addition alongside AddToViewMenu's dropdown,
+// not a replacement. Both write through the same addTaskToView action.
+import { TaskDragHandle } from "@/components/views/view-drop-context";
+// Shared with My Tasks (components/task/my-task-row.tsx) so a task row's
+// key/title markup is genuinely the same component, not two hand-matched
+// className strings — see task-title-cell.tsx's own doc comment.
+import { TaskKeyCell, TaskTitleCell } from "@/components/task/task-title-cell";
 
 export function TaskListTable({
   tasks: tasksProp,
@@ -421,9 +430,14 @@ export function TaskListTable({
                 key={task.id}
                 data-task-id={task.id}
                 data-selected={isSelected || undefined}
+                data-subtask-row={isChild || undefined}
                 role="button"
                 tabIndex={0}
-                className="cursor-pointer"
+                className={
+                  isChild
+                    ? "cursor-pointer bg-muted/30 hover:bg-muted/50"
+                    : "cursor-pointer"
+                }
                 onClick={() => taskDetailSheet.openTask(task.id)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -458,74 +472,80 @@ export function TaskListTable({
                   className="font-mono text-xs text-muted-foreground"
                   onClick={(event) => event.stopPropagation()}
                 >
-                  <div className="flex items-center gap-1">
-                    <span>{taskKey ?? "—"}</span>
-                    <AddToViewMenu taskId={task.id} views={savedViews} />
-                  </div>
+                  <TaskKeyCell
+                    taskKey={taskKey}
+                    leading={
+                      savedViews.length > 0 ? (
+                        <TaskDragHandle taskId={task.id} />
+                      ) : undefined
+                    }
+                    trailing={<AddToViewMenu taskId={task.id} views={savedViews} />}
+                  />
                 </TableCell>
                 <TableCell className="font-medium">
+                  {/* Subtask visual hierarchy: a wider indent (2rem, up
+                      from the previous 1.5rem) plus a thin connector line
+                      running down from the parent row, tree-style (à la
+                      Linear/ClickUp) — makes "this row belongs to the task
+                      above it" legible at a glance instead of relying on
+                      indent alone. The row itself also gets a faint
+                      `bg-muted/30` tint (see the TableRow className above)
+                      so subtask rows read as a visually distinct group
+                      even before you notice the indent. */}
                   <div
-                    className="flex items-center gap-1"
-                    style={isChild ? { paddingLeft: "1.5rem" } : undefined}
+                    className={
+                      isChild
+                        ? "relative flex items-center gap-1 border-l-2 border-border pl-4"
+                        : "flex items-center gap-1"
+                    }
+                    style={isChild ? { marginLeft: "1.5rem" } : undefined}
                   >
-                    {childCountByParentId.has(task.id) ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toggleParentCollapsed(task.id);
-                        }}
-                        aria-label={
-                          collapsedParentIds.has(task.id)
-                            ? `Show subtasks of ${task.title}`
-                            : `Hide subtasks of ${task.title}`
-                        }
-                        aria-expanded={!collapsedParentIds.has(task.id)}
-                        className="hover-surface -ml-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground"
-                      >
-                        {collapsedParentIds.has(task.id) ? (
-                          <ChevronRight className="size-3.5" aria-hidden="true" />
+                    <TaskTitleCell
+                      title={task.title}
+                      clientVisible={task.clientVisible}
+                      pendingClientApproval={task.pendingClientApproval}
+                      leading={
+                        childCountByParentId.has(task.id) ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleParentCollapsed(task.id);
+                            }}
+                            aria-label={
+                              collapsedParentIds.has(task.id)
+                                ? `Show subtasks of ${task.title}`
+                                : `Hide subtasks of ${task.title}`
+                            }
+                            aria-expanded={!collapsedParentIds.has(task.id)}
+                            className="hover-surface -ml-1 flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground"
+                          >
+                            <ChevronRight
+                              className={
+                                collapsedParentIds.has(task.id)
+                                  ? "size-3.5 shrink-0 transition-transform"
+                                  : "size-3.5 shrink-0 rotate-90 transition-transform"
+                              }
+                              aria-hidden="true"
+                            />
+                          </button>
                         ) : (
-                          <ChevronDown className="size-3.5" aria-hidden="true" />
-                        )}
-                      </button>
-                    ) : (
-                      // Reserves the chevron's width so a leaf row's title
-                      // still aligns with a parent row's title above/below
-                      // it, rather than every non-parent row's text
-                      // shifting left by the chevron's width.
-                      <span aria-hidden="true" className="size-5 shrink-0" />
-                    )}
-                    <span>{task.title}</span>
-                    {/* F083: same icon+text indicators as the board's
-                        TaskCard (components/task/task-card.tsx) — see
-                        that file's own comment for the pairing
-                        rationale. Compact icon-only here (list row is
-                        already dense); the sr-only text still carries
-                        the same meaning for assistive tech. */}
-                    {task.clientVisible && (
-                      <span
-                        className="inline-flex shrink-0 items-center text-muted-foreground"
-                        data-testid="client-visible-indicator"
-                      >
-                        <Eye className="size-3.5" aria-hidden="true" />
-                        <span className="sr-only">Client can see this task</span>
-                      </span>
-                    )}
-                    {task.pendingClientApproval && (
-                      <span
-                        className="inline-flex shrink-0 items-center text-amber-700"
-                        data-testid="awaiting-client-indicator"
-                      >
-                        <CircleDot className="size-3.5" aria-hidden="true" />
-                        <span className="sr-only">Awaiting client decision</span>
-                      </span>
-                    )}
-                    {childCountByParentId.has(task.id) && (
-                      <span className="text-xs text-muted-foreground">
-                        {childCountByParentId.get(task.id)}
-                      </span>
-                    )}
+                          // Reserves the chevron's width so a leaf row's
+                          // title still aligns with a parent row's title
+                          // above/below it, rather than every non-parent
+                          // row's text shifting left by the chevron's
+                          // width.
+                          <span aria-hidden="true" className="size-5 shrink-0" />
+                        )
+                      }
+                      trailing={
+                        childCountByParentId.has(task.id) ? (
+                          <span className="text-xs text-muted-foreground">
+                            {childCountByParentId.get(task.id)}
+                          </span>
+                        ) : undefined
+                      }
+                    />
                   </div>
                 </TableCell>
                 {/* stopPropagation: interacting with the status dropdown

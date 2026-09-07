@@ -23,7 +23,6 @@
 // parity, not just a lookalike.
 
 import { useRouter } from "next/navigation";
-import { CircleDot, Eye } from "lucide-react";
 
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import { formatDueDate } from "@/lib/time/user-timezone";
@@ -31,6 +30,10 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { ListPrioritySelect } from "@/components/task/list-priority-select";
 import { MyTaskStatusCell } from "@/components/task/my-task-status-cell";
+// Same shared key/title cell markup TaskListTable itself uses (Dashboard +
+// Project List) — see task-title-cell.tsx's own doc comment for why this
+// is genuine reuse rather than two independently hand-matched components.
+import { TaskKeyCell, TaskTitleCell } from "@/components/task/task-title-cell";
 import type { TaskCardTask } from "@/components/task/task-card";
 import type { MyTaskRow } from "@/lib/queries/my-tasks";
 import type { MyTaskStatusOption } from "@/app/(workspace)/w/[workspaceSlug]/my-tasks/page";
@@ -65,42 +68,31 @@ export function MyTaskRowItem({
       }}
     >
       <TableCell className="font-mono text-xs text-muted-foreground">
-        {key ?? "—"}
+        <TaskKeyCell taskKey={key} />
       </TableCell>
       <TableCell className="font-medium">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="truncate">{row.title}</span>
-          {/* AS-439: which project this task belongs to. */}
-          <Badge variant="outline" className="shrink-0">
-            {row.projectName}
-          </Badge>
-          {/* F231 (AS-441): visually distinguish a watched-only row (not
-              assigned) from an assigned one — a task that is both
-              assigned and watched shows only the assigned styling. */}
-          {row.isWatched && !row.isAssigned && (
-            <Badge variant="secondary" className="shrink-0">
-              Watching
-            </Badge>
-          )}
-          {row.clientVisible && (
-            <span
-              className="inline-flex shrink-0 items-center text-muted-foreground"
-              data-testid="client-visible-indicator"
-            >
-              <Eye className="size-3.5" aria-hidden="true" />
-              <span className="sr-only">Client can see this task</span>
-            </span>
-          )}
-          {row.pendingClientApproval && (
-            <span
-              className="inline-flex shrink-0 items-center text-amber-700"
-              data-testid="awaiting-client-indicator"
-            >
-              <CircleDot className="size-3.5" aria-hidden="true" />
-              <span className="sr-only">Awaiting client decision</span>
-            </span>
-          )}
-        </div>
+        <TaskTitleCell
+          title={row.title}
+          clientVisible={row.clientVisible}
+          pendingClientApproval={row.pendingClientApproval}
+          trailing={
+            <>
+              {/* AS-439: which project this task belongs to. */}
+              <Badge variant="outline" className="shrink-0">
+                {row.projectName}
+              </Badge>
+              {/* F231 (AS-441): visually distinguish a watched-only row
+                  (not assigned) from an assigned one — a task that is
+                  both assigned and watched shows only the assigned
+                  styling. */}
+              {row.isWatched && !row.isAssigned && (
+                <Badge variant="secondary" className="shrink-0">
+                  Watching
+                </Badge>
+              )}
+            </>
+          }
+        />
       </TableCell>
       {/* stopPropagation: same convention as TaskListTable's Status
           cell — interacting with the dropdown changes status, it doesn't
