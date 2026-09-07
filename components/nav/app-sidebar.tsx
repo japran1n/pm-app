@@ -21,6 +21,7 @@ import {
   MessageCircle,
   CheckSquare,
   Eye,
+  HelpCircle,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -188,6 +189,14 @@ function navGroups(
     // F188 (AS-343..352): same gating pattern (mirrors F142's archive
     // page).
     { href: `/w/${workspaceSlug}/trash`, label: "Trash", icon: Trash2 },
+    // Internal "how this dashboard works" docs page — placed in the same
+    // secondary "Other" band as Archive/Templates/Trash (an
+    // occasionally-visited reference page, not a daily-driver screen),
+    // same pattern as the portal's own "How we work" secondary-nav entry.
+    // Not guest-gated (unlike the items above): a guest benefits from this
+    // orientation page at least as much as a full member does, and it has
+    // no workspace data of its own to leak.
+    { href: `/w/${workspaceSlug}/help`, label: "How this works", icon: HelpCircle },
     ...(canManageWorkspace
       ? [{ href: `/w/${workspaceSlug}/settings`, label: "Settings", icon: Settings, exact: true }]
       : []),
