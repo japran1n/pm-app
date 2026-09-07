@@ -13,10 +13,12 @@ import { Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import { editProject } from "@/lib/actions/projects";
+import { PROJECT_ICON_ALLOWLIST } from "@/lib/validation/project-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogClose,
@@ -39,6 +41,7 @@ export function EditProjectDialog({
     description: string | null;
     startDate: string | null;
     endDate: string | null;
+    icon?: string | null;
   };
 }) {
   const router = useRouter();
@@ -47,6 +50,7 @@ export function EditProjectDialog({
   const [description, setDescription] = useState(project.description ?? "");
   const [startDate, setStartDate] = useState(project.startDate ?? "");
   const [endDate, setEndDate] = useState(project.endDate ?? "");
+  const [icon, setIcon] = useState<string | null>(project.icon ?? null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -60,6 +64,7 @@ export function EditProjectDialog({
       setDescription(project.description ?? "");
       setStartDate(project.startDate ?? "");
       setEndDate(project.endDate ?? "");
+      setIcon(project.icon ?? null);
       setError(null);
     }
   }
@@ -74,6 +79,7 @@ export function EditProjectDialog({
         description: description || null,
         startDate: startDate || null,
         endDate: endDate || null,
+        icon,
       });
 
       if (result.ok) {
@@ -134,6 +140,46 @@ export function EditProjectDialog({
                 setDescription(changeEvent.target.value)
               }
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label id={`edit-project-icon-label-${project.id}`}>
+              Icon (optional)
+            </Label>
+            <div
+              role="group"
+              aria-labelledby={`edit-project-icon-label-${project.id}`}
+              className="grid grid-cols-8 gap-1"
+            >
+              <button
+                type="button"
+                disabled={isPending}
+                aria-pressed={icon === null}
+                aria-label="No icon"
+                onClick={() => setIcon(null)}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md border text-xs text-muted-foreground hover:bg-accent",
+                  icon === null && "border-primary bg-primary/10",
+                )}
+              >
+                None
+              </button>
+              {PROJECT_ICON_ALLOWLIST.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  disabled={isPending}
+                  aria-pressed={icon === emoji}
+                  aria-label={`Use ${emoji} as the project icon`}
+                  onClick={() => setIcon(emoji)}
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-md border text-base hover:bg-accent",
+                    icon === emoji && "border-primary bg-primary/10",
+                  )}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">

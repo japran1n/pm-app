@@ -1,0 +1,19 @@
+-- Feature request: "Project ikonica/emoji" — adds a nullable `icon` text
+-- column to `projects` that stores a single emoji unicode character (e.g.
+-- "🚀") chosen from a small fixed picker in project settings (UI: see
+-- components/edit-project-dialog.tsx). Nullable, no default: an existing
+-- project without an icon keeps falling back to its current
+-- first-letter-of-name treatment (unchanged rendering for every
+-- pre-existing project).
+--
+-- No CHECK constraint on the value: this is a cosmetic, non-security field
+-- (same trust level as `projects.name`/`description`, both free text
+-- already), and emoji strings can be multi-codepoint (skin tone
+-- modifiers, ZWJ sequences), so a naive single-codepoint length check
+-- would reject valid emoji. The app layer (lib/validation/projects.ts)
+-- restricts input to a fixed allow-list picked from the UI, mirroring the
+-- REACTION_EMOJI_ALLOWLIST convention (lib/validation/comment-reactions.ts)
+-- used for chat/comment reactions — the DB column itself stays a plain,
+-- unconstrained `text` so that allow-list can grow later without a
+-- migration.
+alter table projects add column if not exists icon text;

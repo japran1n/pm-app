@@ -3,7 +3,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
+import {
+  getWorkspaceProjects,
+  getFavoriteProjectIds,
+  getProjectHealthInputs,
+  type ProjectHealthQueryInput,
+} from "@/lib/queries/projects";
+import { computeProjectHealth } from "@/lib/projects/compute-health";
+import { ProjectHealthBadge } from "@/components/projects/project-health-badge";
 import { getWorkspaceProjectTemplateOptions } from "@/lib/queries/templates";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { EditProjectDialog } from "@/components/edit-project-dialog";
@@ -183,6 +190,19 @@ async function ProjectsGridSection({
   const projects = projectsResult.projects;
   const loadError = projectsResult.error !== null;
 
+  // Feature request "Project health badge": one batched query for every
+  // returned project's overdue-task/phase inputs, same "never per-card"
+  // performance convention as `getOpenTaskCounts`/`getFavoriteProjectIds`
+  // above. Best-effort: a failure here must not break the rest of the
+  // page -- an empty map just makes every project's badge fall back to
+  // "on_track" (nothing detected), never a thrown error.
+  const healthInputsByProject: Map<string, ProjectHealthQueryInput> = projects
+    ? await getProjectHealthInputs(projects.map((project) => project.id)).catch((error) => {
+        logger.error("ProjectsPage: failed to load project health inputs", { error });
+        return new Map<string, ProjectHealthQueryInput>();
+      })
+    : new Map<string, ProjectHealthQueryInput>();
+
   return (
     <>
       {loadError && (
@@ -215,7 +235,16 @@ async function ProjectsGridSection({
                   href={`/w/${workspaceSlug}/projects/${project.id}/list`}
                   className="flex flex-1 flex-col gap-1.5"
                 >
-                  <CardTitle className="line-clamp-1">{project.name}</CardTitle>
+                  <CardTitle className="line-clamp-1 flex items-center gap-1.5">
+                    {/* Feature request "Project ikonica/emoji": falls back
+                        to the first letter of the name when no icon is
+                        set, same fallback convention every other
+                        project-name display in the app already uses. */}
+                    <span aria-hidden="true">
+                      {project.icon || project.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span>{project.name}</span>
+                  </CardTitle>
                   <CardDescription className="line-clamp-2">
                     {project.description || "No description."}
                   </CardDescription>
@@ -240,6 +269,7 @@ async function ProjectsGridSection({
                       description: project.description,
                       startDate: project.startDate,
                       endDate: project.endDate,
+                      icon: project.icon,
                     }}
                   />
                   {canArchive && (
@@ -250,7 +280,7 @@ async function ProjectsGridSection({
                   )}
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="flex flex-wrap items-center gap-2">
                 {/* AS-034: open (not "done"-category) task count,
                     batched in getWorkspaceProjects. `null` only if that
                     count query itself failed — an explicit "pending"
@@ -265,6 +295,18 @@ async function ProjectsGridSection({
                     {project.openTaskCount === 1 ? "" : "s"}
                   </Badge>
                 )}
+                {/* Feature request "Project health badge": automatic
+                    on_track/at_risk/overdue rollup, computed from the
+                    batched inputs fetched above. */}
+                <ProjectHealthBadge
+                  health={computeProjectHealth(
+                    healthInputsByProject.get(project.id) ?? {
+                      overdueTaskCount: 0,
+                      totalTaskCount: 0,
+                      currentPhase: null,
+                    },
+                  )}
+                />
               </CardContent>
             </Card>
           ))}

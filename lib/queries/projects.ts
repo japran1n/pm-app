@@ -39,6 +39,17 @@ export type ProjectListItem = {
   // against any pre-F145 row that predates the column (none exist in
   // practice; the trigger backfills every insert going forward).
   key: string | null;
+  // Feature request "Project ikonica/emoji": nullable single-emoji icon
+  // (see supabase/migrations/20261113010000_project_icon.sql). `null`
+  // means every caller falls back to its own existing
+  // first-letter-of-name treatment.
+  icon: string | null;
+  // Sidebar drag-and-drop reorder: the project's manually-set position
+  // within its workspace's sidebar list (0-based, global per workspace —
+  // not per-member). `null` for a project that has never been dragged
+  // (renders after every positioned project, per this list's `order`
+  // clause below).
+  sidebarPosition: number | null;
   // AS-034: count of this project's non-deleted, not-"done"-category
   // tasks. `null` only if the batched count query itself failed (fails
   // open to "not yet supported" rather than a fake 0); otherwise always a
@@ -57,12 +68,36 @@ export async function getWorkspaceProjects(
 ): Promise<ProjectListItem[]> {
   const supabase = await createClient();
 
+  // Sidebar drag-and-drop reorder: ordered by `sidebar_position` first
+  // (nulls last, via `nullsFirst: false`) so a row with an explicit
+  // manual position always wins, falling back to the original
+  // `created_at desc` order for anything not yet positioned -- same
+  // "never visibly reorders anyone's existing sidebar" backfill guarantee
+  // the migration's own comment documents.
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, description, start_date, end_date, created_at, key")
+    // `sidebar_position` selected via `returns<>` below rather than a
+    // typed column reference — see the same not-yet-regenerated
+    // `Database` type note in lib/actions/projects.ts's
+    // `ProjectsRowWithSidebarPosition`.
+    .select("id, name, description, start_date, end_date, created_at, key, icon, sidebar_position")
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+    .order("sidebar_position", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .returns<
+      Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        start_date: string | null;
+        end_date: string | null;
+        created_at: string;
+        key: string | null;
+        icon: string | null;
+        sidebar_position: number | null;
+      }>
+    >();
 
   if (error) {
     throw error;
@@ -82,6 +117,8 @@ export async function getWorkspaceProjects(
     endDate: project.end_date,
     createdAt: project.created_at,
     key: project.key ?? null,
+    icon: project.icon ?? null,
+    sidebarPosition: project.sidebar_position ?? null,
     // `null` (the count query itself failed) is passed through as-is —
     // NOT coalesced to 0 — so the UI's existing "pending" state stays
     // truthful. A failed count must never look identical to a genuinely
@@ -379,4 +416,95 @@ export async function getArchivedWorkspaceProjects(
       : null,
     taskCount: taskCountByProject.get(row.id) ?? 0,
   }));
+}
+
+// Feature request "Project health badge": batched per-project inputs to
+// `computeProjectHealth` (lib/projects/compute-health.ts) for every
+// project id passed in — one query for overdue/total task counts and one
+// for each project's current `active` phase, never a per-project N+1,
+// same performance convention as `getOpenTaskCounts` above.
+export type ProjectHealthQueryInput = {
+  overdueTaskCount: number;
+  totalTaskCount: number;
+  currentPhase: {
+    state: "not_started" | "active" | "blocked" | "done";
+    plannedStart: string | null;
+    plannedEnd: string | null;
+  } | null;
+};
+
+export async function getProjectHealthInputs(
+  projectIds: string[],
+): Promise<Map<string, ProjectHealthQueryInput>> {
+  const result = new Map<string, ProjectHealthQueryInput>();
+  if (projectIds.length === 0) return result;
+
+  const supabase = await createClient();
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  // One query for every project's non-deleted, non-"done" tasks' id +
+  // due_date -- counted in JS below into overdue/total per project,
+  // mirroring getArchivedWorkspaceProjects's own "one batched select,
+  // reduce in JS" convention rather than a second RPC just for this.
+  const { data: taskRows, error: taskError } = await supabase
+    .from("tasks")
+    .select("project_id, due_date, status")
+    .in("project_id", projectIds)
+    .is("deleted_at", null);
+
+  if (taskError) {
+    logger.error("getProjectHealthInputs: task query failed", { error: taskError });
+  }
+
+  const totalByProject = new Map<string, number>();
+  const overdueByProject = new Map<string, number>();
+  for (const task of taskRows ?? []) {
+    totalByProject.set(task.project_id, (totalByProject.get(task.project_id) ?? 0) + 1);
+    const isOverdue =
+      task.status !== "done" &&
+      typeof task.due_date === "string" &&
+      task.due_date < todayIso;
+    if (isOverdue) {
+      overdueByProject.set(task.project_id, (overdueByProject.get(task.project_id) ?? 0) + 1);
+    }
+  }
+
+  // One query for every project's phases -- the "current" phase is the
+  // first `active` phase by position; a project with no active phase
+  // (everything not_started/blocked/done, or no phases at all) has no
+  // current phase to evaluate, which computeProjectHealth already treats
+  // as "nothing to be at risk of from a phase".
+  const { data: phaseRows, error: phaseError } = await supabase
+    .from("project_phases")
+    .select("project_id, state, planned_start, planned_end, position")
+    .in("project_id", projectIds)
+    .eq("state", "active")
+    .order("position", { ascending: true });
+
+  if (phaseError) {
+    logger.error("getProjectHealthInputs: phase query failed", { error: phaseError });
+  }
+
+  const currentPhaseByProject = new Map<
+    string,
+    { state: "not_started" | "active" | "blocked" | "done"; plannedStart: string | null; plannedEnd: string | null }
+  >();
+  for (const phase of phaseRows ?? []) {
+    if (currentPhaseByProject.has(phase.project_id)) continue;
+    currentPhaseByProject.set(phase.project_id, {
+      state: phase.state as "not_started" | "active" | "blocked" | "done",
+      plannedStart: phase.planned_start,
+      plannedEnd: phase.planned_end,
+    });
+  }
+
+  for (const projectId of projectIds) {
+    result.set(projectId, {
+      overdueTaskCount: overdueByProject.get(projectId) ?? 0,
+      totalTaskCount: totalByProject.get(projectId) ?? 0,
+      currentPhase: currentPhaseByProject.get(projectId) ?? null,
+    });
+  }
+
+  return result;
 }

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { PROJECT_ICON_ALLOWLIST } from "@/lib/validation/project-icons";
+
 // Validates create-project input (AS-025, AS-026, AS-035). Mirrors the
 // tech-decisions.md file-layout convention established by
 // lib/validation/workspaces.ts.
@@ -85,6 +87,18 @@ export const editProjectSchema = z
       .string()
       .trim()
       .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid end date (YYYY-MM-DD).")
+      .optional()
+      .nullable(),
+    // Feature request "Project ikonica/emoji": restricted to the fixed
+    // PROJECT_ICON_ALLOWLIST picker, same allow-list-at-the-Zod-boundary
+    // convention as toggleReactionSchema's `emoji` field
+    // (lib/validation/comment-reactions.ts) — `null` clears the icon
+    // (falls back to the first-letter-of-name treatment everywhere the
+    // icon is displayed).
+    icon: z
+      .enum(PROJECT_ICON_ALLOWLIST, {
+        message: "That icon isn't available.",
+      })
       .optional()
       .nullable(),
   })

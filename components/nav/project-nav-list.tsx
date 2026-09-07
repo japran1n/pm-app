@@ -16,7 +16,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ChevronDown, FolderKanban } from "lucide-react";
+import { ChevronDown, FolderKanban, GripVertical } from "lucide-react";
+import { toast } from "sonner";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 import { cn } from "@/lib/utils";
 import {
@@ -26,11 +44,18 @@ import {
 } from "@/components/ui/collapsible";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectFavoriteButton } from "@/components/project-favorite-button";
+import { reorderProject } from "@/lib/actions/projects";
+import { useMembership } from "@/components/auth/membership-provider";
+import { canWrite } from "@/lib/auth/permissions";
 
 export type SidebarProjectItem = {
   id: string;
   name: string;
   key: string | null;
+  // Feature request "Project ikonica/emoji": optional so every pre-existing
+  // caller/test that builds a SidebarProjectItem without this field keeps
+  // compiling and falls back to the key/folder-icon treatment below.
+  icon?: string | null;
   // F263 (AS-510): whether the SIGNED-IN caller has favourited this
   // project -- server-fetched once alongside the rest of this list
   // (app/(workspace)/w/[workspaceSlug]/layout.tsx's getFavoriteProjectIds
@@ -103,6 +128,13 @@ export function ProjectNavList({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(true);
+  const membership = useMembership();
+  // Same "no provider in the tree is a permissive default" convention
+  // membership-provider.tsx documents on its own `useMembership` — a
+  // viewer/guest (canWrite === false) can still see the list but can't
+  // drag; every other caller (including every test that doesn't wrap
+  // this in a MembershipProvider) can.
+  const canReorder = membership ? canWrite({ role: membership.role }) : true;
 
   // F263 (AS-510): local, optimistic mirror of each project's favourite
   // status -- re-synced whenever the SET of project ids changes (a
@@ -118,10 +150,29 @@ export function ProjectNavList({
     () => new Set(projects.filter((p) => p.isFavorite).map((p) => p.id)),
   );
 
+  // Drag-and-drop sidebar reorder: local, optimistic mirror of the
+  // WORKSPACE-GLOBAL project order (`projects.sidebar_position` — see
+  // supabase/migrations/20261111010000_projects_sidebar_position.sql and
+  // lib/actions/projects.ts's `reorderProject`), re-synced on the exact
+  // same "the underlying SET of project ids changed" condition as
+  // `favoriteIds` above, for the same reason: a real navigation/refetch
+  // should always win over a stale local drag, but a toggle elsewhere in
+  // this same render pass (e.g. favouriting) must not stomp an
+  // in-flight reorder.
+  const [orderedIds, setOrderedIds] = useState<string[]>(() =>
+    projects.map((p) => p.id),
+  );
+
   if (projectIdsKey !== syncedProjectIdsKey) {
     setSyncedProjectIdsKey(projectIdsKey);
     setFavoriteIds(new Set(projects.filter((p) => p.isFavorite).map((p) => p.id)));
+    setOrderedIds(projects.map((p) => p.id));
   }
+
+  const projectsById = new Map(projects.map((p) => [p.id, p]));
+  const orderedProjects = orderedIds
+    .map((id) => projectsById.get(id))
+    .filter((p): p is SidebarProjectItem => Boolean(p));
 
   function handleFavoriteChange(projectId: string, nextIsFavorite: boolean) {
     setFavoriteIds((previous) => {
@@ -141,18 +192,149 @@ export function ProjectNavList({
   // non-favourite group keeps this list's existing order (most-recently-
   // created first, per getWorkspaceProjects) -- favouriting a project only
   // changes WHERE it renders, not the relative order of everything else.
-  const favoriteProjects = projects
+  const favoriteProjects = orderedProjects
     .filter((project) => favoriteIds.has(project.id))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const otherProjects = projects.filter(
+  // The non-favourite group IS drag-reorderable (this feature) — its
+  // order is `orderedIds` (the local, optimistic mirror of
+  // `sidebar_position`), not the raw prop order, so a completed drag
+  // renders in its new position immediately, before the server round
+  // trip resolves.
+  const otherProjects = orderedProjects.filter(
     (project) => !favoriteIds.has(project.id),
   );
 
-  function renderProjectRow(project: SidebarProjectItem) {
+  // dnd-kit setup, same PointerSensor+KeyboardSensor pairing as the board
+  // (components/board/board.tsx) for consistency — see that file's own
+  // header comment for why both sensors are required, not optional.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const otherIds = otherProjects.map((p) => p.id);
+    const oldIndex = otherIds.indexOf(String(active.id));
+    const newIndex = otherIds.indexOf(String(over.id));
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const nextOtherIds = arrayMove(otherIds, oldIndex, newIndex);
+
+    // Rebuild the full workspace order: favourites keep their existing
+    // slot in `orderedIds` (dragging only ever happens within the
+    // non-favourite group), the non-favourite slots are replaced in
+    // place with the freshly reordered sequence above.
+    let cursor = 0;
+    const nextOrderedIds = orderedIds.map((id) =>
+      favoriteIds.has(id) ? id : nextOtherIds[cursor++],
+    );
+
+    const previousOrderedIds = orderedIds;
+    setOrderedIds(nextOrderedIds);
+
+    // The dragged project's index in the REBUILT full order is exactly
+    // the `newPosition` `reorderProject` expects — see that action's own
+    // comment for why (removing the target then reinserting it at index
+    // `i` into the remaining n-1 siblings puts it at index `i` in the
+    // resulting n-length order, which is precisely
+    // `nextOrderedIds.indexOf(...)` here).
+    const newPosition = nextOrderedIds.indexOf(String(active.id));
+
+    reorderProject(String(active.id), newPosition).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error);
+        setOrderedIds(previousOrderedIds);
+      }
+    });
+  }
+
+  function renderProjectRow(
+    project: SidebarProjectItem,
+    dragHandleProps?: {
+      attributes: ReturnType<typeof useSortable>["attributes"];
+      listeners: ReturnType<typeof useSortable>["listeners"];
+    },
+  ) {
     const href = `/w/${workspaceSlug}/projects/${project.id}/list`;
     const isActive =
       pathname === href ||
       pathname.startsWith(`/w/${workspaceSlug}/projects/${project.id}/`);
+
+    const content = (
+      <>
+        {dragHandleProps && canReorder && (
+          // Sidebar drag-and-drop reorder: a dedicated handle rather than
+          // making the whole row draggable — the row is a `Link` (its own
+          // click target for navigation), and dnd-kit's listeners on the
+          // full row would otherwise compete with that click, same
+          // reasoning `sortable-task-card.tsx` documents for its own
+          // handle-vs-click tradeoffs. Hidden until hover/focus like the
+          // favourite button beside it, and gated to `canReorder` so a
+          // viewer/guest never sees an affordance for a mutation the
+          // server would reject anyway (AS-231's "never a control that
+          // will fail" convention).
+          <button
+            type="button"
+            aria-label={`Reorder ${project.name}`}
+            className="shrink-0 cursor-grab touch-none text-sidebar-foreground/30 opacity-0 hover:text-sidebar-foreground/70 focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+            onClick={(event) => event.preventDefault()}
+            {...dragHandleProps.attributes}
+            {...dragHandleProps.listeners}
+          >
+            <GripVertical className="size-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {project.icon ? (
+          // Feature request "Project ikonica/emoji": the icon replaces
+          // both the colour dot AND the key/folder-icon treatment below
+          // when set — it's already a distinct-enough visual identifier
+          // on its own.
+          <span aria-hidden="true" className="shrink-0 text-sm leading-none">
+            {project.icon}
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              colorForProjectId(project.id),
+            )}
+          />
+        )}
+        {!project.icon &&
+          (project.key ? (
+            <span className="shrink-0 text-xs font-semibold text-sidebar-foreground/50">
+              {project.key}
+            </span>
+          ) : (
+            <FolderKanban
+              className="size-3.5 shrink-0 text-sidebar-foreground/50"
+              aria-hidden="true"
+            />
+          ))}
+        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+        <ProjectFavoriteButton
+          projectId={project.id}
+          projectName={project.name}
+          isFavorite={favoriteIds.has(project.id)}
+          onChange={(nextIsFavorite) =>
+            handleFavoriteChange(project.id, nextIsFavorite)
+          }
+          size="icon"
+          // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:size-11` --
+          // ProjectFavoriteButton appends this className after its own
+          // `size === "icon" ? "size-7" : ...` base via cn(), so this wins
+          // on mobile widths only, matching the same breakpoint convention
+          // used elsewhere in this file/app-sidebar.tsx for the F265 bump.
+          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100 aria-[pressed=true]:opacity-100 max-md:size-11"
+        />
+      </>
+    );
 
     return (
       <Link
@@ -172,40 +354,30 @@ export function ProjectNavList({
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         )}
       >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "size-2 shrink-0 rounded-full",
-            colorForProjectId(project.id),
-          )}
-        />
-        {project.key ? (
-          <span className="shrink-0 text-xs font-semibold text-sidebar-foreground/50">
-            {project.key}
-          </span>
-        ) : (
-          <FolderKanban
-            className="size-3.5 shrink-0 text-sidebar-foreground/50"
-            aria-hidden="true"
-          />
-        )}
-        <span className="min-w-0 flex-1 truncate">{project.name}</span>
-        <ProjectFavoriteButton
-          projectId={project.id}
-          projectName={project.name}
-          isFavorite={favoriteIds.has(project.id)}
-          onChange={(nextIsFavorite) =>
-            handleFavoriteChange(project.id, nextIsFavorite)
-          }
-          size="icon"
-          // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:size-11` --
-          // ProjectFavoriteButton appends this className after its own
-          // `size === "icon" ? "size-7" : ...` base via cn(), so this wins
-          // on mobile widths only, matching the same breakpoint convention
-          // used elsewhere in this file/app-sidebar.tsx for the F265 bump.
-          className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100 aria-[pressed=true]:opacity-100 max-md:size-11"
-        />
+        {content}
       </Link>
+    );
+  }
+
+  // dnd-kit sortable wrapper for a single non-favourite row -- mirrors
+  // `components/board/sortable-task-card.tsx`'s pattern (useSortable +
+  // CSS.Transform.toString for the drag transform), except only the
+  // handle itself carries the drag listeners (see `renderProjectRow`'s
+  // own comment on why the whole row can't).
+  function SortableProjectRow({ project }: { project: SidebarProjectItem }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+      useSortable({ id: project.id, disabled: !canReorder });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+      <div ref={setNodeRef} style={style}>
+        {renderProjectRow(project, { attributes, listeners })}
+      </div>
     );
   }
 
@@ -301,10 +473,28 @@ export function ProjectNavList({
                 <p className="px-2.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
                   Favourites
                 </p>
-                {favoriteProjects.map(renderProjectRow)}
+                {favoriteProjects.map((project) => renderProjectRow(project))}
               </div>
             )}
-            {otherProjects.map(renderProjectRow)}
+            {/* Sidebar drag-and-drop reorder: only the non-favourite
+                group is a dnd-kit sortable list -- favourites stay
+                alphabetically sorted (manual ordering explicitly out of
+                scope for that group per AS-510's own clarification,
+                above). */}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={otherProjects.map((p) => p.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {otherProjects.map((project) => (
+                  <SortableProjectRow key={project.id} project={project} />
+                ))}
+              </SortableContext>
+            </DndContext>
           </nav>
         )}
       </CollapsibleContent>
