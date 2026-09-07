@@ -394,9 +394,25 @@ export default async function ProjectListPage({
           }))}
         />
         </div>
+        {/* UX fix (list page audit, Nalaz 1): the quick-add row above the
+            table (task-list-table.tsx's "+ Add task") is now the ONE
+            primary create-task entry point for this page — it's faster
+            and covers the common case. The full dialog still has genuine
+            extra value this quick-add row can't cover (description,
+            priority, phase, task type, and multiple assignees set up
+            front, plus "New from template"), so it's kept rather than
+            removed, but demoted to a small, secondary "Advanced..."
+            trigger instead of a second equally-weighted "+ New Task" CTA
+            competing with quick-add for the same action. */}
         <div className="flex items-center gap-2">
           <NewFromTemplateButton projectId={projectId} templates={templates} />
-          <NewTaskDialog projectId={projectId} assigneeOptions={assigneeOptions} />
+          <NewTaskDialog
+            projectId={projectId}
+            assigneeOptions={assigneeOptions}
+            variant="outline"
+            size="sm"
+            triggerLabel="Advanced..."
+          />
         </div>
       </div>
       {/* AS-433: non-blocking notice — the view's tasks still render below
