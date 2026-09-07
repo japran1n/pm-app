@@ -70,6 +70,34 @@ import { cn } from "@/lib/utils";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
+// jsdom (our test environment) and a handful of older WebKit builds don't
+// implement the Pointer Events capture methods at all -- guard every call
+// so drag-to-create/resize degrade to "works, just without capture" there
+// instead of throwing and aborting the gesture.
+function safeSetPointerCapture(el: Element, pointerId: number) {
+  if (typeof el.setPointerCapture === "function") {
+    try {
+      el.setPointerCapture(pointerId);
+    } catch {
+      // Some browsers throw if the pointer already went away; ignore.
+    }
+  }
+}
+
+function safeReleasePointerCapture(el: Element, pointerId: number) {
+  if (
+    typeof el.hasPointerCapture === "function" &&
+    typeof el.releasePointerCapture === "function" &&
+    el.hasPointerCapture(pointerId)
+  ) {
+    try {
+      el.releasePointerCapture(pointerId);
+    } catch {
+      // Ignore -- capture may already have been released implicitly.
+    }
+  }
+}
+
 type DragCreateState = {
   date: string;
   startPx: number;
@@ -122,25 +150,36 @@ export function WeekTimeGrid({
     return clientY - rect.top;
   }
 
-  function handleColumnMouseDown(date: string, event: React.MouseEvent) {
+  function handleColumnPointerDown(date: string, event: React.PointerEvent) {
     if (!canDrag || !workspaceId) return;
     // Only start a create-drag on the empty grid surface itself, not on a
-    // block chip (chips stop propagation in their own onMouseDown below).
+    // block chip (chips stop propagation in their own onPointerDown below).
+    //
+    // Pointer Events (rather than raw Mouse Events) cover mouse, touch, AND
+    // stylus input through the SAME handler -- this is the minimal change
+    // needed to make drag-to-create/resize work on tablet/mobile without
+    // reaching for a heavier drag library (dnd-kit et al) just for this
+    // view. `setPointerCapture` pins all subsequent pointermove/pointerup
+    // events to THIS element regardless of where the finger/cursor
+    // physically travels, so a fast touch-drag that strays outside the
+    // column's bounding box doesn't silently drop the gesture the way a
+    // plain mouseleave-based approach would.
+    safeSetPointerCapture(event.currentTarget, event.pointerId);
     const offset = offsetForEvent(date, event.clientY);
     setDragCreate({ date, startPx: offset, currentPx: offset });
   }
 
-  function handleGridMouseMove(event: React.MouseEvent) {
+  function handleGridPointerMove(event: React.PointerEvent) {
     if (dragCreate) {
       const offset = offsetForEvent(dragCreate.date, event.clientY);
       setDragCreate({ ...dragCreate, currentPx: offset });
     }
     if (resize) {
-      // Live sync (per this feature's own spec): every mousemove while a
+      // Live sync (per this feature's own spec): every pointermove while a
       // handle is held updates `resizePreviewPx`, which both `liveResize`
       // below (visual height/position) and the floating time label derive
-      // from -- the block visibly tracks the pointer in real time, not
-      // only once at mouseup.
+      // from -- the block visibly tracks the pointer/finger in real time,
+      // not only once at pointerup.
       setResizePreviewPx(offsetForEvent(resize.date, event.clientY));
     }
   }
@@ -153,7 +192,12 @@ export function WeekTimeGrid({
     return undefined;
   }
 
-  function handleGridMouseUp() {
+  function handleGridPointerUp(event: React.PointerEvent) {
+    safeReleasePointerCapture(event.currentTarget, event.pointerId);
+    commitPointerGesture();
+  }
+
+  function commitPointerGesture() {
     if (dragCreate) {
       const { startTime, endTime } = dragRangeToTimes(dragCreate.startPx, dragCreate.currentPx);
       setPendingCreate({ date: dragCreate.date, startTime, endTime });
@@ -336,13 +380,11 @@ export function WeekTimeGrid({
               "relative border-l border-border/40",
               day.isToday && "bg-primary/5",
             )}
-            style={{ height: gridHeight }}
-            onMouseDown={(event) => handleColumnMouseDown(day.date, event)}
-            onMouseMove={handleGridMouseMove}
-            onMouseUp={handleGridMouseUp}
-            onMouseLeave={() => {
-              if (dragCreate?.date === day.date) setDragCreate(null);
-            }}
+            style={{ height: gridHeight, touchAction: "none" }}
+            onPointerDown={(event) => handleColumnPointerDown(day.date, event)}
+            onPointerMove={handleGridPointerMove}
+            onPointerUp={handleGridPointerUp}
+            onPointerCancel={handleGridPointerUp}
           >
             {HOURS.map((hour) => (
               <div
@@ -500,6 +542,7 @@ function WeekBlockChip({
             style={{
               top,
               height,
+              touchAction: "none",
               ...(hasColor
                 ? {
                     backgroundColor: `${block.color}1a`,
@@ -509,7 +552,7 @@ function WeekBlockChip({
                   }
                 : {}),
             }}
-            onMouseDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
             title={block.title}
           >
             {canDrag && (
@@ -517,8 +560,10 @@ function WeekBlockChip({
                 data-testid={`calendar-week-resize-start-${block.id}`}
                 aria-hidden="true"
                 className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize"
-                onMouseDown={(event) => {
+                style={{ touchAction: "none" }}
+                onPointerDown={(event) => {
                   event.stopPropagation();
+                  safeSetPointerCapture(event.currentTarget, event.pointerId);
                   onStartResize("start");
                 }}
               />
@@ -537,8 +582,10 @@ function WeekBlockChip({
                 data-testid={`calendar-week-resize-end-${block.id}`}
                 aria-hidden="true"
                 className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize"
-                onMouseDown={(event) => {
+                style={{ touchAction: "none" }}
+                onPointerDown={(event) => {
                   event.stopPropagation();
+                  safeSetPointerCapture(event.currentTarget, event.pointerId);
                   onStartResize("end");
                 }}
               />

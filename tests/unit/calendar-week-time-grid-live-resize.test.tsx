@@ -77,11 +77,11 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     });
 
     const endHandle = screen.getByTestId("calendar-week-resize-end-block-1");
-    fireEvent.mouseDown(endHandle);
+    fireEvent.pointerDown(endHandle, { pointerId: 1 });
 
     // Drag the end handle down to 12:00 -- still mid-drag, mouseup NOT
     // fired yet.
-    fireEvent.mouseMove(column, { clientY: 12 * PX_PER_HOUR });
+    fireEvent.pointerMove(column, { clientY: 12 * PX_PER_HOUR, pointerId: 1 });
 
     // Live sync (the actual assertion): the label reflects the DRAGGED-TO
     // time immediately, before the mouse is released.
@@ -113,11 +113,11 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     });
 
     const endHandle = screen.getByTestId("calendar-week-resize-end-block-1");
-    fireEvent.mouseDown(endHandle);
+    fireEvent.pointerDown(endHandle, { pointerId: 1 });
 
     // 12:07 in pixels -- should snap to 12:00, never show an unsnapped
     // "12:07".
-    fireEvent.mouseMove(column, { clientY: (12 * 60 + 7) * (PX_PER_HOUR / 60) });
+    fireEvent.pointerMove(column, { clientY: (12 * 60 + 7) * (PX_PER_HOUR / 60), pointerId: 1 });
 
     expect(screen.getByTestId("calendar-week-block-time-block-1")).toHaveTextContent("9:00 AM–12:00 PM");
   });
@@ -149,9 +149,9 @@ describe("Week time-grid live-synced resize (AS: resize is synced with time as i
     });
 
     const endHandle = screen.getByTestId("calendar-week-resize-end-block-1");
-    fireEvent.mouseDown(endHandle);
-    fireEvent.mouseMove(column, { clientY: 12 * PX_PER_HOUR });
-    fireEvent.mouseUp(column);
+    fireEvent.pointerDown(endHandle, { pointerId: 1 });
+    fireEvent.pointerMove(column, { clientY: 12 * PX_PER_HOUR, pointerId: 1 });
+    fireEvent.pointerUp(column, { pointerId: 1 });
 
     expect(updateCalendarBlock).toHaveBeenCalledWith(
       expect.objectContaining({ blockId: "block-1" }),
