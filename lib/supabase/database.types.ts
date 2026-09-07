@@ -327,6 +327,7 @@ export type Database = {
       }
       calendar_blocks: {
         Row: {
+          block_type: string
           color: string | null
           created_at: string
           ends_at: string
@@ -340,6 +341,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          block_type?: string
           color?: string | null
           created_at?: string
           ends_at: string
@@ -353,6 +355,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          block_type?: string
           color?: string | null
           created_at?: string
           ends_at?: string

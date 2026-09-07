@@ -43,7 +43,13 @@ export function CalendarBlockChip({
   canDrag: boolean;
   onUpdate: (
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string; color: string },
+    values: {
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      color: string;
+      blockType: CalendarBlockFormValues["blockType"];
+    },
   ) => Promise<void> | void;
   onDelete: (blockId: string) => Promise<void> | void;
 }) {
@@ -75,7 +81,13 @@ export function CalendarBlockChip({
     const endsAt = combineDateAndTime(dateOnly, values.endTime);
     setPending(true);
     try {
-      await onUpdate(block.id, { title: values.title, startsAt, endsAt, color: values.color });
+      await onUpdate(block.id, {
+        title: values.title,
+        startsAt,
+        endsAt,
+        color: values.color,
+        blockType: values.blockType,
+      });
       setOpen(false);
     } finally {
       setPending(false);
@@ -108,6 +120,11 @@ export function CalendarBlockChip({
             )}
             title={block.title}
           >
+            {block.blockType === "client_presentation" && (
+              <span aria-hidden className="shrink-0" title="Client presentation">
+                🔴
+              </span>
+            )}
             <span className="min-w-0 flex-1 truncate">{block.title}</span>
             <span className="shrink-0 text-[10px] text-muted-foreground">
               {formatBlockTimeRange(block.startsAt, block.endsAt)}
@@ -122,6 +139,7 @@ export function CalendarBlockChip({
             startTime: isoToLocalTime(block.startsAt),
             endTime: isoToLocalTime(block.endsAt),
             color: block.color,
+            blockType: block.blockType,
           }}
           submitLabel="Save"
           onSubmit={handleSubmit}

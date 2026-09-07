@@ -46,6 +46,7 @@ export function AddBlockPopover({
     startsAt: string;
     endsAt: string;
     color: string;
+    blockType: CalendarBlockFormValues["blockType"];
   }) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
@@ -59,6 +60,7 @@ export function AddBlockPopover({
         startsAt: combineDateAndTime(date, values.startTime),
         endsAt: combineDateAndTime(date, values.endTime),
         color: values.color,
+        blockType: values.blockType,
       });
       setOpen(false);
     } finally {
@@ -84,7 +86,7 @@ export function AddBlockPopover({
       />
       <PopoverContent>
         <CalendarBlockPopoverForm
-          initial={{ title: "", startTime: "09:00", endTime: "10:00" }}
+          initial={{ title: "", startTime: "09:00", endTime: "10:00", blockType: "general" }}
           submitLabel="Add block"
           onSubmit={handleSubmit}
           pending={pending}

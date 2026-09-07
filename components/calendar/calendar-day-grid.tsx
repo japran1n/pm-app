@@ -166,7 +166,13 @@ export function CalendarDayGrid({
 
   async function handleCreateBlock(
     date: string,
-    values: { title: string; startsAt: string; endsAt: string; color: string },
+    values: {
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      color: string;
+      blockType: "general" | "client_presentation";
+    },
   ) {
     if (!workspaceId) return;
     const result = await createCalendarBlock({
@@ -175,6 +181,7 @@ export function CalendarDayGrid({
       startsAt: values.startsAt,
       endsAt: values.endsAt,
       color: values.color,
+      blockType: values.blockType,
     });
     if (!result.ok) {
       sonnerToast.error(result.error);
@@ -188,7 +195,13 @@ export function CalendarDayGrid({
 
   async function handleUpdateBlock(
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string; color: string },
+    values: {
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      color: string;
+      blockType: "general" | "client_presentation";
+    },
   ) {
     const result = await updateCalendarBlock({
       blockId,
@@ -196,6 +209,7 @@ export function CalendarDayGrid({
       startsAt: values.startsAt,
       endsAt: values.endsAt,
       color: values.color,
+      blockType: values.blockType,
     });
     if (!result.ok) {
       sonnerToast.error(result.error);

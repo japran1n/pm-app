@@ -10,6 +10,8 @@ const isoDateTime = z
   .min(1, "A start/end time is required.")
   .refine((value) => !Number.isNaN(Date.parse(value)), "Enter a valid date/time.");
 
+const blockType = z.enum(["general", "client_presentation"]);
+
 export const createCalendarBlockSchema = z
   .object({
     workspaceId: z.string().uuid("Invalid workspace."),
@@ -23,6 +25,7 @@ export const createCalendarBlockSchema = z
     startsAt: isoDateTime,
     endsAt: isoDateTime,
     color: z.string().trim().max(50).nullable().optional(),
+    blockType: blockType.optional(),
   })
   .refine((input) => Date.parse(input.endsAt) > Date.parse(input.startsAt), {
     message: "End time must be after the start time.",
@@ -44,6 +47,7 @@ export const updateCalendarBlockSchema = z
     endsAt: isoDateTime.optional(),
     taskId: z.string().uuid("Invalid task.").nullable().optional(),
     color: z.string().trim().max(50).nullable().optional(),
+    blockType: blockType.optional(),
   })
   .refine(
     (input) =>
@@ -51,7 +55,8 @@ export const updateCalendarBlockSchema = z
       input.startsAt !== undefined ||
       input.endsAt !== undefined ||
       input.taskId !== undefined ||
-      input.color !== undefined,
+      input.color !== undefined ||
+      input.blockType !== undefined,
     { message: "Choose at least one field to update." },
   );
 

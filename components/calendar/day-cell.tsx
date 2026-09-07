@@ -81,10 +81,17 @@ export function DayCell({
     startsAt: string;
     endsAt: string;
     color: string;
+    blockType: "general" | "client_presentation";
   }) => Promise<void> | void;
   onUpdateBlock?: (
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string; color: string },
+    values: {
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      color: string;
+      blockType: "general" | "client_presentation";
+    },
   ) => Promise<void> | void;
   onDeleteBlock?: (blockId: string) => Promise<void> | void;
 }) {

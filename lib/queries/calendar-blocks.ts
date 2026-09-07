@@ -14,6 +14,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 
+/** "client_presentation" drives both the block's own alarming-red chip
+ * default (lib/calendar/block-colors.ts) and the workspace-wide advance
+ * notice banner (lib/calendar/client-presentation.ts). See
+ * supabase/migrations/20261112010000_calendar_block_client_presentation.sql. */
+export type CalendarBlockType = "general" | "client_presentation";
+
 export type CalendarBlock = {
   id: string;
   workspaceId: string;
@@ -24,6 +30,7 @@ export type CalendarBlock = {
   startsAt: string;
   endsAt: string;
   color: string | null;
+  blockType: CalendarBlockType;
 };
 
 type CalendarBlockRow = {
@@ -36,6 +43,7 @@ type CalendarBlockRow = {
   starts_at: string;
   ends_at: string;
   color: string | null;
+  block_type?: string | null;
 };
 
 function toCalendarBlock(row: CalendarBlockRow): CalendarBlock {
@@ -49,6 +57,7 @@ function toCalendarBlock(row: CalendarBlockRow): CalendarBlock {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     color: row.color,
+    blockType: row.block_type === "client_presentation" ? "client_presentation" : "general",
   };
 }
 
@@ -68,7 +77,7 @@ export async function getCalendarBlocks(
   const { data, error } = await supabase
     .from("calendar_blocks")
     .select(
-      "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color",
+      "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color, block_type",
     )
     .eq("workspace_id", workspaceId)
     .lt("starts_at", rangeEndIsoExclusive)

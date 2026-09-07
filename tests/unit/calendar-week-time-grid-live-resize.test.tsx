@@ -45,6 +45,7 @@ function makeBlock(): CalendarBlock {
     startsAt: new Date(2026, 5, 1, 9, 0, 0, 0).toISOString(),
     endsAt: new Date(2026, 5, 1, 10, 0, 0, 0).toISOString(),
     color: null,
+    blockType: "general",
   };
 }
 

@@ -14,6 +14,16 @@
 // always renders with a visible color from the moment it's created,
 // matching how the chip components (calendar-block-chip.tsx,
 // week-time-grid.tsx's WeekBlockChip) style themselves off `block.color`.
+//
+// Client Presentation toggle: a plain checkbox that flips `blockType`
+// between "general" and "client_presentation" -- see
+// supabase/migrations/20261112010000_calendar_block_client_presentation.sql
+// for the schema this feeds and lib/calendar/client-presentation.ts for
+// the workspace-wide advance-notice banner it drives. Checking it also
+// switches the color swatch to CLIENT_PRESENTATION_DEFAULT_COLOR (red) so
+// the block visually stands out on the calendar -- but only when the
+// color is still at its own default, never clobbering a color the member
+// already picked deliberately.
 
 "use client";
 
@@ -25,8 +35,11 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   CALENDAR_BLOCK_COLORS,
+  CLIENT_PRESENTATION_DEFAULT_COLOR,
   DEFAULT_CALENDAR_BLOCK_COLOR,
 } from "@/lib/calendar/block-colors";
+
+export type CalendarBlockType = "general" | "client_presentation";
 
 export type CalendarBlockFormValues = {
   title: string;
@@ -36,6 +49,9 @@ export type CalendarBlockFormValues = {
   endTime: string;
   /** One of CALENDAR_BLOCK_COLORS' own `value`s. */
   color: string;
+  /** "client_presentation" marks this block for the workspace-wide
+   * advance-notice banner (lib/calendar/client-presentation.ts). */
+  blockType: CalendarBlockType;
 };
 
 export function CalendarBlockPopoverForm({
@@ -45,7 +61,10 @@ export function CalendarBlockPopoverForm({
   onDelete,
   pending,
 }: {
-  initial: Omit<CalendarBlockFormValues, "color"> & { color?: string | null };
+  initial: Omit<CalendarBlockFormValues, "color" | "blockType"> & {
+    color?: string | null;
+    blockType?: CalendarBlockType | null;
+  };
   submitLabel: string;
   onSubmit: (values: CalendarBlockFormValues) => void;
   onDelete?: () => void;
@@ -55,7 +74,17 @@ export function CalendarBlockPopoverForm({
   const [startTime, setStartTime] = useState(initial.startTime);
   const [endTime, setEndTime] = useState(initial.endTime);
   const [color, setColor] = useState(initial.color || DEFAULT_CALENDAR_BLOCK_COLOR);
+  const [blockType, setBlockType] = useState<CalendarBlockType>(
+    initial.blockType === "client_presentation" ? "client_presentation" : "general",
+  );
   const [error, setError] = useState<string | null>(null);
+
+  function handleClientPresentationToggle(checked: boolean) {
+    setBlockType(checked ? "client_presentation" : "general");
+    if (checked && (color === DEFAULT_CALENDAR_BLOCK_COLOR || !color)) {
+      setColor(CLIENT_PRESENTATION_DEFAULT_COLOR);
+    }
+  }
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -68,7 +97,7 @@ export function CalendarBlockPopoverForm({
       return;
     }
     setError(null);
-    onSubmit({ title: title.trim(), startTime, endTime, color });
+    onSubmit({ title: title.trim(), startTime, endTime, color, blockType });
   }
 
   return (
@@ -103,6 +132,16 @@ export function CalendarBlockPopoverForm({
           />
         </div>
       </div>
+      <label className="flex cursor-pointer items-center gap-2 text-xs">
+        <input
+          type="checkbox"
+          data-testid="calendar-block-client-presentation-toggle"
+          checked={blockType === "client_presentation"}
+          onChange={(e) => handleClientPresentationToggle(e.target.checked)}
+          className="h-3.5 w-3.5"
+        />
+        This is a client presentation
+      </label>
       <div className="flex flex-col gap-1">
         <Label>Color</Label>
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Block color">

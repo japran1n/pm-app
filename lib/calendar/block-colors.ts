@@ -34,6 +34,15 @@ export const CALENDAR_BLOCK_COLORS: CalendarBlockColor[] = [
 
 export const DEFAULT_CALENDAR_BLOCK_COLOR = CALENDAR_BLOCK_COLORS[0]!.value;
 
+// Client Presentation blocks default to Red -- deliberately the most
+// visually alarming swatch already in the fixed set above, so a
+// presentation block reads as "different" from an ordinary meeting block
+// at a glance on the calendar, per this feature's own clarified answer
+// ("promeni default boju bloka na nesto upadljivo"). Still just a member
+// of CALENDAR_BLOCK_COLORS -- not a new swatch -- so it stays selectable/
+// deselectable through the same color row every other block uses.
+export const CLIENT_PRESENTATION_DEFAULT_COLOR = "#ef4444";
+
 /** True for any value in the fixed swatch set -- everything else (a
  * legacy null/unset block, or a value that somehow doesn't match) falls
  * back to the chip's own default dashed-primary styling rather than

@@ -406,4 +406,51 @@ describe.skipIf(!haveAdminCreds)("Planner calendar_blocks CRUD + RLS", () => {
     expect(ids).toContain(inRange.data.id);
     expect(ids).not.toContain(outOfRange.data.id);
   });
+
+  // Client Presentation feature (supabase/migrations/
+  // 20261112010000_calendar_block_client_presentation.sql): block_type
+  // defaults to 'general' and round-trips through create/update exactly
+  // like every other column this action already covers.
+  it("test_calendar_blocks_block_type_defaults_to_general_when_not_specified", async () => {
+    currentTestUserId = memberUserId;
+    const { createCalendarBlock } = await import("@/lib/actions/calendar-blocks");
+
+    const created = await createCalendarBlock({
+      workspaceId,
+      title: "Ordinary block",
+      startsAt: "2026-04-07T08:00:00.000Z",
+      endsAt: "2026-04-07T09:00:00.000Z",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    createdBlockIds.push(created.data.id);
+    expect(created.data.blockType).toBe("general");
+  });
+
+  it("test_calendar_blocks_can_be_created_and_updated_as_a_client_presentation", async () => {
+    currentTestUserId = memberUserId;
+    const { createCalendarBlock, updateCalendarBlock } = await import(
+      "@/lib/actions/calendar-blocks"
+    );
+
+    const created = await createCalendarBlock({
+      workspaceId,
+      title: "Client call",
+      startsAt: "2026-04-08T08:00:00.000Z",
+      endsAt: "2026-04-08T09:00:00.000Z",
+      blockType: "client_presentation",
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    createdBlockIds.push(created.data.id);
+    expect(created.data.blockType).toBe("client_presentation");
+
+    const updated = await updateCalendarBlock({
+      blockId: created.data.id,
+      blockType: "general",
+    });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.data.blockType).toBe("general");
+  });
 });

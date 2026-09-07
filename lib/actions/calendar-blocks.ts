@@ -48,6 +48,7 @@ function toBlock(row: {
   starts_at: string;
   ends_at: string;
   color: string | null;
+  block_type?: string | null;
 }): CalendarBlock {
   return {
     id: row.id,
@@ -59,11 +60,12 @@ function toBlock(row: {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     color: row.color,
+    blockType: row.block_type === "client_presentation" ? "client_presentation" : "general",
   };
 }
 
 const SELECT_COLUMNS =
-  "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color";
+  "id, workspace_id, project_id, user_id, task_id, title, starts_at, ends_at, color, block_type";
 
 type LoadedProject = { id: string; workspaceId: string; visibility: "workspace" | "private" };
 
@@ -198,6 +200,7 @@ export async function createCalendarBlock(
       starts_at: parsed.data.startsAt,
       ends_at: parsed.data.endsAt,
       color: parsed.data.color ?? null,
+      block_type: parsed.data.blockType ?? "general",
     })
     .select(SELECT_COLUMNS)
     .single();
@@ -273,12 +276,14 @@ export async function updateCalendarBlock(
     ends_at?: string;
     task_id?: string | null;
     color?: string | null;
+    block_type?: string;
   } = {};
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.startsAt !== undefined) patch.starts_at = parsed.data.startsAt;
   if (parsed.data.endsAt !== undefined) patch.ends_at = parsed.data.endsAt;
   if (parsed.data.taskId !== undefined) patch.task_id = parsed.data.taskId;
   if (parsed.data.color !== undefined) patch.color = parsed.data.color;
+  if (parsed.data.blockType !== undefined) patch.block_type = parsed.data.blockType;
 
   const { data: updated, error: updateError } = await supabase
     .from("calendar_blocks")

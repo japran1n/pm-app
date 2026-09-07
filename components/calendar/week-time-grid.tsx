@@ -257,6 +257,7 @@ export function WeekTimeGrid({
       startsAt,
       endsAt,
       color: values.color,
+      blockType: values.blockType,
     });
     if (!result.ok) {
       sonnerToast.error(result.error);
@@ -272,7 +273,13 @@ export function WeekTimeGrid({
   async function handleUpdate(
     date: string,
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string; color: string },
+    values: {
+      title: string;
+      startsAt: string;
+      endsAt: string;
+      color: string;
+      blockType: "general" | "client_presentation";
+    },
   ) {
     const result = await updateCalendarBlock({ blockId, ...values });
     if (!result.ok) {
@@ -465,7 +472,12 @@ function PendingCreatePopover({
       <PopoverTrigger render={<span className="sr-only" />} />
       <PopoverContent data-testid="calendar-week-create-popover">
         <CalendarBlockPopoverForm
-          initial={{ title: "", startTime: pendingCreate.startTime, endTime: pendingCreate.endTime }}
+          initial={{
+            title: "",
+            startTime: pendingCreate.startTime,
+            endTime: pendingCreate.endTime,
+            blockType: "general",
+          }}
           submitLabel="Add block"
           onSubmit={handleSubmit}
           pending={pending}
@@ -498,7 +510,13 @@ function WeekBlockChip({
   isResizing?: boolean;
   canDrag: boolean;
   onStartResize: (edge: "start" | "end") => void;
-  onUpdate: (values: { title: string; startsAt: string; endsAt: string; color: string }) => Promise<void> | void;
+  onUpdate: (values: {
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    color: string;
+    blockType: "general" | "client_presentation";
+  }) => Promise<void> | void;
   onDelete: () => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
@@ -511,7 +529,13 @@ function WeekBlockChip({
     const endsAt = combineDateAndTime(date, values.endTime);
     setPending(true);
     try {
-      await onUpdate({ title: values.title, startsAt, endsAt, color: values.color });
+      await onUpdate({
+        title: values.title,
+        startsAt,
+        endsAt,
+        color: values.color,
+        blockType: values.blockType,
+      });
       setOpen(false);
     } finally {
       setPending(false);
@@ -568,7 +592,14 @@ function WeekBlockChip({
                 }}
               />
             )}
-            <span className="truncate font-medium">{block.title}</span>
+            <span className="truncate font-medium">
+              {block.blockType === "client_presentation" && (
+                <span aria-hidden title="Client presentation">
+                  🔴{" "}
+                </span>
+              )}
+              {block.title}
+            </span>
             <span className="truncate text-muted-foreground" data-testid={`calendar-week-block-time-${block.id}`}>
               {/* Live sync during resize (this feature's own spec): the
                   displayed time range updates on every mousemove to the
@@ -600,6 +631,7 @@ function WeekBlockChip({
             startTime: formatHHMMLocal(block.startsAt),
             endTime: formatHHMMLocal(block.endsAt),
             color: block.color,
+            blockType: block.blockType,
           }}
           submitLabel="Save"
           onSubmit={handleSubmit}
