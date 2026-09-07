@@ -27,10 +27,30 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ChevronRight, TriangleAlert } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { ChevronRight, Plus, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
 
 import { isOverdue } from "@/lib/tasks/is-overdue";
+// Quick-add bar (item 1) + row context menu (item 3, Rename/Duplicate/
+// Delete): reuses the existing createTask/editTask/duplicateTask/
+// deleteTask Server Actions directly — no new server actions were needed
+// for either of these two UI features.
+import { createTask, editTask, duplicateTask, deleteTask } from "@/lib/actions/tasks";
+import { Input } from "@/components/ui/input";
+// Follow-up (j/k list navigation): the same "is the user typing right now"
+// guard the global shortcut provider uses (lib/hooks/use-shortcut.ts) — this
+// table's own j/k/Enter navigation must stay silent while focus is inside a
+// search/quick-add input elsewhere on the page, exactly like every other
+// bare-single-key shortcut in this app.
+import { isEditableTarget } from "@/lib/hooks/use-shortcut";
 import { formatDuration } from "@/lib/time/format-duration";
 // F146 (AS-258): the single "KEY-NUMBER" formatter — reused for the Key
 // column below by both callers of this table (the per-project List view
@@ -294,6 +314,75 @@ export function TaskListTable({
     setSelectedIds(new Set());
   }
 
+  // Follow-up (j/k list navigation): "focused row" is a separate concept
+  // from row SELECTION above (checkbox multi-select for bulk actions) — this
+  // is purely a keyboard cursor, highlighted visually, that `j`/`ArrowDown`
+  // and `k`/`ArrowUp` move one row at a time, with `Enter` opening that
+  // row's detail sheet (the same sheet a click already opens). Kept as
+  // local index state (not a row id) since it needs to clamp against
+  // `orderedRows.length` on every keystroke regardless of which row's id
+  // that currently resolves to.
+  const [focusedIndex, setFocusedIndexRaw] = useState<number | null>(null);
+
+  // A row list that gets shorter than the last-set focused index (e.g. a
+  // realtime delete, or a filter navigation) must not leave a stale, out-
+  // of-range highlight/Enter target pointing at nothing — every setter call
+  // clamps against `orderedRows.length` inline instead of a separate effect
+  // reacting to that clamp (an effect calling setState purely to correct a
+  // derived value is exactly the "you might not need an effect" case; this
+  // keeps the correction co-located with the one place the value changes).
+  function setFocusedIndex(updater: (current: number | null) => number | null) {
+    setFocusedIndexRaw((current) => {
+      const next = updater(current);
+      if (next === null) return null;
+      if (orderedRows.length === 0) return null;
+      return Math.min(Math.max(next, 0), orderedRows.length - 1);
+    });
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.repeat) return;
+      // Never steal `j`/`k`/Enter from an input, textarea, or contentEditable
+      // surface elsewhere on the page (e.g. the search/quick-add field) —
+      // same guard the global single-key shortcut listener uses.
+      if (isEditableTarget(event.target)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (event.key === "j" || event.key === "ArrowDown") {
+        if (orderedRows.length === 0) return;
+        event.preventDefault();
+        setFocusedIndex((current) => {
+          const next = current === null ? 0 : Math.min(current + 1, orderedRows.length - 1);
+          return next;
+        });
+        return;
+      }
+
+      if (event.key === "k" || event.key === "ArrowUp") {
+        if (orderedRows.length === 0) return;
+        event.preventDefault();
+        setFocusedIndex((current) => {
+          const next = current === null ? 0 : Math.max(current - 1, 0);
+          return next;
+        });
+        return;
+      }
+
+      if (event.key === "Enter") {
+        if (focusedIndex === null) return;
+        const row = orderedRows[focusedIndex];
+        if (!row) return;
+        event.preventDefault();
+        taskDetailSheet.openTask(row.task.id);
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedRows, focusedIndex]);
+
   function toggleRow(taskId: string, index: number, shiftKey: boolean) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -348,34 +437,206 @@ export function TaskListTable({
     void deletedTaskId;
   }
 
+  // Item 1: quick-add bar. Local optimistic append so the newly created
+  // task shows up immediately — the parent Server Component page's own
+  // revalidatePath (triggered inside createTask) reconciles the "real"
+  // list shortly after, exactly like every other mutation on this table.
+  const [isQuickAdding, setIsQuickAdding] = useState(false);
+  const [quickAddValue, setQuickAddValue] = useState("");
+  const [isQuickAddPending, startQuickAddTransition] = useTransition();
+  const quickAddInputRef = useRef<HTMLInputElement | null>(null);
+
+  function submitQuickAdd() {
+    const title = quickAddValue.trim();
+    if (!title || !projectId || isQuickAddPending) return;
+    startQuickAddTransition(async () => {
+      const result = await createTask(projectId, title);
+      if (result.ok) {
+        setTasks((current) => [
+          ...current,
+          {
+            ...result.data,
+            projectKey: current[0]?.projectKey ?? "",
+            tags: [],
+            assigneeIds: result.data.assigneeId ? [result.data.assigneeId] : [],
+            taskType: null,
+            clientVisible: false,
+            pendingClientApproval: false,
+            estimateMinutes: null,
+            totalMinutes: null,
+          } as unknown as TaskCardTask,
+        ]);
+        setQuickAddValue("");
+        // Stays focused/empty for the next entry — the Linear-style
+        // "quick add" convention this feature's spec calls for.
+        quickAddInputRef.current?.focus();
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  // Item 3: right-click row context menu. `contextMenu` holds the
+  // clicked task id plus the click's viewport coordinates, so the menu
+  // renders as a small fixed-position popup anchored exactly where the
+  // user right-clicked, rather than anchored to the row itself.
+  const [contextMenu, setContextMenu] = useState<{
+    taskId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [renamingTaskId, setRenamingTaskId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRenamePending, startRenameTransition] = useTransition();
+  const [, startRowActionTransition] = useTransition();
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    function closeMenu() {
+      setContextMenu(null);
+    }
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("contextmenu", closeMenu);
+    document.addEventListener("keydown", closeMenu);
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("contextmenu", closeMenu);
+      document.removeEventListener("keydown", closeMenu);
+    };
+  }, [contextMenu]);
+
+  function startRename(task: TaskCardTask) {
+    setRenamingTaskId(task.id);
+    setRenameValue(task.title);
+    setContextMenu(null);
+  }
+
+  function submitRename(taskId: string) {
+    const title = renameValue.trim();
+    if (!title) {
+      setRenamingTaskId(null);
+      return;
+    }
+    startRenameTransition(async () => {
+      const result = await editTask(taskId, { title });
+      if (result.ok) {
+        setTasks((current) =>
+          current.map((task) =>
+            task.id === taskId ? { ...task, title: result.data.title } : task,
+          ),
+        );
+      } else {
+        toast.error(result.error);
+      }
+      setRenamingTaskId(null);
+    });
+  }
+
+  function handleDuplicateRow(taskId: string) {
+    setContextMenu(null);
+    startRowActionTransition(async () => {
+      const result = await duplicateTask(taskId);
+      if (result.ok) {
+        toast.success("Task duplicated.");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function handleDeleteRow(taskId: string) {
+    setContextMenu(null);
+    startRowActionTransition(async () => {
+      const result = await deleteTask(taskId);
+      if (result.ok) {
+        setTasks((current) => current.filter((task) => task.id !== taskId));
+        toast.success("Task deleted.");
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
+
+  // Item 1: quick-add bar markup, shared across every render branch
+  // (populated table, empty-by-filter, and genuinely-empty states) — a
+  // project with zero tasks (or zero matching a filter) should still let
+  // the user add the first one without leaving the List view. Omitted
+  // when this table has no `projectId` (the workspace-wide dashboard
+  // table caller spans multiple projects and has no single project to
+  // create into).
+  const quickAddBar = projectId ? (
+    <div className="border-b border-border/60 px-3 py-2">
+      {isQuickAdding ? (
+        <Input
+          ref={quickAddInputRef}
+          autoFocus
+          placeholder="Task title"
+          value={quickAddValue}
+          disabled={isQuickAddPending}
+          onChange={(event) => setQuickAddValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              submitQuickAdd();
+            }
+            if (event.key === "Escape") {
+              setIsQuickAdding(false);
+              setQuickAddValue("");
+            }
+          }}
+          onBlur={() => {
+            if (!quickAddValue.trim()) setIsQuickAdding(false);
+          }}
+          className="h-8"
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsQuickAdding(true)}
+          className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-sm text-muted-foreground hover-surface"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          Add task
+        </button>
+      )}
+    </div>
+  ) : null;
+
   if (tasks.length === 0) {
     if (hasActiveFilters) {
       return (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No tasks match your filters.
-          </p>
-          {clearFiltersHref && (
-            <Link
-              href={clearFiltersHref}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Clear filters
-            </Link>
-          )}
-        </div>
+        <>
+          {quickAddBar}
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              No tasks match your filters.
+            </p>
+            {clearFiltersHref && (
+              <Link
+                href={clearFiltersHref}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                Clear filters
+              </Link>
+            )}
+          </div>
+        </>
       );
     }
     return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-        No tasks yet in this project.
-      </p>
+      <>
+        {quickAddBar}
+        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+          No tasks yet in this project.
+        </p>
+      </>
     );
   }
 
   return (
     <>
     <div className="rounded-lg border border-border/60 bg-card">
+      {quickAddBar}
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -431,19 +692,37 @@ export function TaskListTable({
                 data-task-id={task.id}
                 data-selected={isSelected || undefined}
                 data-subtask-row={isChild || undefined}
+                data-focused={index === focusedIndex || undefined}
                 role="button"
                 tabIndex={0}
-                className={
-                  isChild
-                    ? "cursor-pointer bg-muted/30 hover:bg-muted/50"
-                    : "cursor-pointer"
-                }
-                onClick={() => taskDetailSheet.openTask(task.id)}
+                className={[
+                  "cursor-pointer",
+                  isChild ? "bg-muted/30 hover:bg-muted/50" : "",
+                  // j/k navigation: the same visible "current row" ring
+                  // convention used elsewhere for keyboard focus state,
+                  // distinct from row selection's checkbox highlighting.
+                  index === focusedIndex
+                    ? "ring-2 ring-inset ring-ring bg-accent"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => {
+                  setFocusedIndex(() => index);
+                  taskDetailSheet.openTask(task.id);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     taskDetailSheet.openTask(task.id);
                   }
+                }}
+                onContextMenu={(event) => {
+                  // Item 3: right-click context menu — opens instead of
+                  // the browser's native one, anchored at the cursor.
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setContextMenu({ taskId: task.id, x: event.clientX, y: event.clientY });
                 }}
               >
                 {/* F185 (AS-334): row checkbox — stops propagation so
@@ -500,6 +779,28 @@ export function TaskListTable({
                     }
                     style={isChild ? { marginLeft: "1.5rem" } : undefined}
                   >
+                    {renamingTaskId === task.id ? (
+                      // Item 3: inline rename — Enter commits, Escape
+                      // cancels, same convention as the quick-add bar.
+                      <Input
+                        autoFocus
+                        value={renameValue}
+                        disabled={isRenamePending}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            submitRename(task.id);
+                          }
+                          if (event.key === "Escape") {
+                            setRenamingTaskId(null);
+                          }
+                        }}
+                        onBlur={() => submitRename(task.id)}
+                        className="h-7"
+                      />
+                    ) : (
                     <TaskTitleCell
                       title={task.title}
                       clientVisible={task.clientVisible}
@@ -546,6 +847,7 @@ export function TaskListTable({
                         ) : undefined
                       }
                     />
+                    )}
                   </div>
                 </TableCell>
                 {/* stopPropagation: interacting with the status dropdown
@@ -669,6 +971,46 @@ export function TaskListTable({
         onDone={clearSelection}
       />
     </BulkActionBar>
+
+    {/* Item 3: right-click row context menu, a small fixed-position
+        popup at the click coordinates — not Radix DropdownMenu, since
+        that component anchors to a trigger element rather than an
+        arbitrary point; a plain fixed div with the same visual language
+        (rounded-lg bg-popover shadow-md ring-1) is simpler here and
+        closes itself on any click/keydown/right-click elsewhere
+        (see the effect above). */}
+    {contextMenu && (
+      <div
+        className="fixed z-50 min-w-40 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/15"
+        style={{ top: contextMenu.y, left: contextMenu.x }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover-surface"
+          onClick={() => {
+            const task = tasks.find((candidate) => candidate.id === contextMenu.taskId);
+            if (task) startRename(task);
+          }}
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover-surface"
+          onClick={() => handleDuplicateRow(contextMenu.taskId)}
+        >
+          Duplicate
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-destructive hover-surface"
+          onClick={() => handleDeleteRow(contextMenu.taskId)}
+        >
+          Delete
+        </button>
+      </div>
+    )}
     </>
   );
 }

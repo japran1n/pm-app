@@ -69,6 +69,16 @@ export function ShortcutHelpDialog() {
               {mod}K
             </kbd>
           </li>
+          {/* Follow-up (Cmd+P project switcher): same "modified-key chord,
+              documented as its own row rather than in SHORTCUT_REGISTRY"
+              convention as the Cmd+K row above — see that component's
+              own file-header comment. */}
+          <li className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground">Switch project</span>
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+              {mod}P
+            </kbd>
+          </li>
           {SHORTCUT_REGISTRY.map((entry) => (
             <li key={entry.id} className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">{entry.description}</span>

@@ -28,6 +28,12 @@ import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
 // persistent workspace chrome, so a single global Cmd+K/Ctrl+K listener
 // owns the shortcut rather than one instance fighting another per page.
 import { CommandPalette } from "@/components/command/command-palette";
+// Follow-up (Cmd+P project switcher): mounted alongside CommandPalette —
+// see that component's own file-header comment for why it owns a separate
+// Cmd+P `document` keydown listener rather than being folded into
+// CommandPalette's Cmd+K modal or ShortcutProvider's bare-single-key
+// listener.
+import { ProjectSwitcher } from "@/components/command/project-switcher";
 // F244 (AS-467, AS-468, AS-470, AS-471): the global single-key shortcut
 // listener (n, /, Escape) — mounted alongside CommandPalette, see that
 // component's own file-header comment for why these stay as two separate
@@ -55,6 +61,13 @@ import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/proje
 import { getOpenApprovalsForWorkspace } from "@/lib/queries/approvals";
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
+// Client Presentation feature: computed fresh on every layout render
+// (see lib/calendar/client-presentation.ts's own file-header comment for
+// why this is a page-load-triggered check rather than a real scheduled
+// job) so the banner below is visible on every page under this workspace,
+// not just the calendar.
+import { getUpcomingClientPresentations } from "@/lib/calendar/client-presentation";
+import { ClientPresentationBanner } from "@/components/calendar/client-presentation-banner";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -185,6 +198,7 @@ export default async function WorkspaceLayout({
     { data: projectMemberRows, error: projectMemberRowsError },
     openApprovals,
     openClientRequestCount,
+    upcomingClientPresentations,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -247,6 +261,12 @@ export default async function WorkspaceLayout({
     // sidebar's "Client requests" badge — same "non-fatal, fails open to
     // 0" convention as openApprovals above.
     getOpenClientRequestCountForWorkspace(activeWorkspace.id),
+
+    // Client Presentation feature: "today"/"tomorrow" advance-notice
+    // banner data. Already fails open to [] internally (see
+    // getUpcomingClientPresentations' own doc comment), same "non-fatal"
+    // convention as every other sidebar figure above.
+    getUpcomingClientPresentations(supabase, activeWorkspace.id),
   ]);
 
   if (membershipsError) {
@@ -348,6 +368,14 @@ export default async function WorkspaceLayout({
         workspaceId={activeWorkspace.id}
         workspaceSlug={workspaceSlug}
       />
+      <ProjectSwitcher
+        workspaceSlug={workspaceSlug}
+        projects={sidebarProjects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          key: project.key,
+        }))}
+      />
       <ShortcutProvider />
       <ShortcutHelpDialog />
       <OnboardingTour initialDismissed={tourDismissed} />
@@ -393,12 +421,17 @@ export default async function WorkspaceLayout({
             id: project.id,
             name: project.name,
             key: project.key,
+            icon: project.icon,
             isFavorite: favoriteProjectIds.has(project.id),
           }))}
           approvalsCount={openApprovals.length}
           requestsCount={openClientRequestCount}
         />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <ClientPresentationBanner
+            presentations={upcomingClientPresentations}
+            workspaceSlug={workspaceSlug}
+          />
           <AppHeader
             workspaceId={activeWorkspace.id}
             workspaceSlug={workspaceSlug}

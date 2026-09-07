@@ -145,6 +145,15 @@ export const SHORTCUT_REGISTRY: readonly ShortcutRegistryEntry[] = [
   { id: "open-search", key: "/", keyLabel: "/", description: "Open search" },
   { id: "open-help", key: "?", keyLabel: "?", description: "Show keyboard shortcuts" },
   { id: "close", key: "Escape", keyLabel: "Esc", description: "Close the topmost dialog or panel" },
+  // Follow-up (j/k list navigation): documented here even though the
+  // listener itself lives locally in components/task/task-list-table.tsx
+  // (not this file's single global keydown listener) — the help dialog
+  // renders straight from this ONE array (see shortcut-help.tsx's own
+  // header comment), so a list-scoped shortcut still needs an entry here
+  // to show up in "?" at all.
+  { id: "list-down", key: "j", keyLabel: "J", description: "Move focus to the next row in a task list" },
+  { id: "list-up", key: "k", keyLabel: "K", description: "Move focus to the previous row in a task list" },
+  { id: "list-open", key: "Enter", keyLabel: "Enter", description: "Open the focused task" },
 ] as const;
 
 // ---------------------------------------------------------------------
