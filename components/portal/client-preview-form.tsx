@@ -47,6 +47,9 @@ export function ClientPreviewForm({
   const [clientUserId, setClientUserId] = useState<string | undefined>(
     clients[0]?.userId,
   );
+  const selectedClient = clients.find(
+    (client) => client.userId === clientUserId,
+  );
   const [projectId, setProjectId] = useState<string | undefined>(
     initialProjectId,
   );
@@ -86,7 +89,22 @@ export function ClientPreviewForm({
           onValueChange={(value) => setClientUserId(value ?? undefined)}
         >
           <SelectTrigger id="preview-client" aria-label="Client">
-            <SelectValue placeholder="Choose a client" />
+            <SelectValue placeholder="Choose a client">
+              {selectedClient ? (
+                <span className="flex items-center gap-2">
+                  <UserAvatar
+                    person={{
+                      id: selectedClient.userId,
+                      name: selectedClient.name,
+                      email: selectedClient.email,
+                      avatarUrl: selectedClient.avatarUrl,
+                    }}
+                    size="sm"
+                  />
+                  {selectedClient.name ?? selectedClient.email ?? selectedClient.userId}
+                </span>
+              ) : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {clients.map((client) => (
