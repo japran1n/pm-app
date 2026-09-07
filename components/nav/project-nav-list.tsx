@@ -482,6 +482,15 @@ export function ProjectNavList({
                 scope for that group per AS-510's own clarification,
                 above). */}
             <DndContext
+              // F272 (part 3): explicit, stable id -- see
+              // components/board/board.tsx's `DndContext` for the full
+              // rationale (dnd-kit's counter-based auto-id otherwise
+              // drifts between the server's per-request-fresh counter and
+              // the client's already-incremented one whenever more than
+              // one `DndContext` mounts across the app in a given
+              // session, producing a hydration `aria-describedby`
+              // mismatch on every page that renders this sidebar).
+              id="sidebar-project-reorder"
               sensors={sensors}
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}

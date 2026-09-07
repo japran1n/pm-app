@@ -11,7 +11,7 @@
 // (a real `workspace_members.last_seen_whats_new_at` column was the other
 // option this feature's own note raised; skipped for the same reason no
 // migration/DB round-trip is worth it for a purely cosmetic dot).
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -101,12 +101,27 @@ function markWhatsNewSeen(): void {
 
 export function WhatsNewPanel() {
   const [open, setOpen] = useState(false);
-  // Lazy initializer (not useEffect+setState) -- same convention
-  // lib/hooks/use-recent-items.ts documents for its own localStorage read:
-  // `hasUnseenWhatsNew()` already guards on `typeof window === "undefined"`
-  // (false during SSR), so this reads real per-browser state on first
-  // client render without an extra effect-triggered re-render.
-  const [unseen, setUnseen] = useState(() => hasUnseenWhatsNew());
+  // BUGFIX (hydration mismatch): a lazy `useState(() => hasUnseenWhatsNew())`
+  // initializer still reads real per-browser localStorage on the FIRST
+  // CLIENT render pass, which never matches the server's render (no
+  // localStorage there, so the server always renders the "seen" default)
+  // -- a classic SSR/CSR mismatch React has to discard-and-regenerate the
+  // whole subtree for. Fixed with the standard "mounted" guard: start at
+  // the same default the server used (`false`, i.e. "nothing unseen") and
+  // only flip to the real value in a `useEffect`, which never runs during
+  // SSR and never runs on the client until AFTER hydration has already
+  // committed a matching tree.
+  const [unseen, setUnseen] = useState(false);
+
+  useEffect(() => {
+    // This is the standard "mounted guard" escape hatch for exactly one
+    // synchronous read of an external (non-React) source of truth right
+    // after the mismatch-free initial commit -- there is no cascading
+    // render risk `react-hooks/set-state-in-effect` otherwise warns about
+    // (this effect has no dependencies and runs exactly once per mount).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUnseen(hasUnseenWhatsNew());
+  }, []);
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);

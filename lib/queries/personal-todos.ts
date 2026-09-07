@@ -11,6 +11,7 @@ import { logger } from "@/lib/observability/logger";
 // parallel personal-reminder tables.
 
 import { createClient } from "@/lib/supabase/server";
+import { formatTaskKey } from "@/lib/tasks/task-key";
 
 export type PersonalTodo = {
   id: string;
@@ -34,7 +35,17 @@ type PersonalTodoRow = {
   position: number;
   task_id: string | null;
   project_id: string | null;
-  tasks: { key: string | null; title: string | null } | null;
+  // `tasks` has no `key` column -- a task's displayed "KEY-NUMBER"
+  // identifier (e.g. "PM-142") is derived at read time via formatTaskKey
+  // from the owning project's `key` plus this task's own `number`
+  // (lib/tasks/task-key.ts, same convention every other surface that
+  // displays a task identity already follows -- see that file's own
+  // header comment for why this is the ONLY place that should assemble
+  // that string). Explicit `task_id` FK hint on the embed disambiguates
+  // from `personal_todos.project_id -> projects -> ...` style ambiguity
+  // PostgREST otherwise has to guess at (the "tasks_1" auto-alias seen in
+  // the bug report is exactly that guess landing on the wrong shape).
+  tasks: { number: number | null; title: string | null; projects: { key: string | null } | null } | null;
   projects: { name: string | null } | null;
 };
 
@@ -46,7 +57,7 @@ export async function getPersonalTodos(
   const { data, error } = await supabase
     .from("personal_todos")
     .select(
-      "id, title, is_done, position, task_id, project_id, tasks(key, title), projects(name)",
+      "id, title, is_done, position, task_id, project_id, tasks!personal_todos_task_id_fkey(number, title, projects(key)), projects!personal_todos_project_id_fkey(name)",
     )
     .eq("workspace_id", workspaceId)
     .order("position");
@@ -62,7 +73,7 @@ export async function getPersonalTodos(
     isDone: row.is_done,
     position: row.position,
     taskId: row.task_id,
-    taskKey: row.tasks?.key ?? null,
+    taskKey: formatTaskKey(row.tasks?.projects?.key ?? null, row.tasks?.number ?? null),
     taskTitle: row.tasks?.title ?? null,
     projectId: row.project_id,
     projectName: row.projects?.name ?? null,

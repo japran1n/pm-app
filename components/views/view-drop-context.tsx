@@ -142,6 +142,13 @@ export function ViewDropContext({ children }: { children: React.ReactNode }) {
 
   return (
     <DndContext
+      // F272 (part 3): explicit, stable id -- see
+      // components/board/board.tsx's `DndContext` for the full rationale
+      // (dnd-kit's counter-based auto-id otherwise drifts between the
+      // server's per-request-fresh counter and the client's
+      // already-incremented one whenever more than one `DndContext`
+      // mounts across the app in a given session).
+      id="view-tab-drop-context"
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
