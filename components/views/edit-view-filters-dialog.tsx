@@ -27,7 +27,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FilterBuilder, type FilterFieldOption } from "@/components/views/filter-builder";
-import type { SavedViewConfig } from "@/lib/validation/views";
+import type { FilterGroup, SavedViewConfig } from "@/lib/validation/views";
+import { resolveEffectiveFilterGroup } from "@/lib/validation/views";
 
 export function EditViewFiltersDialog({
   viewId,
@@ -42,7 +43,7 @@ export function EditViewFiltersDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [filters, setFilters] = useState<SavedViewConfig["filters"]>(config.filters);
+  const [filterGroup, setFilterGroup] = useState<FilterGroup>(() => resolveEffectiveFilterGroup(config));
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
@@ -50,7 +51,7 @@ export function EditViewFiltersDialog({
       // Re-seed from the latest saved config every time the dialog opens,
       // so a stale local edit from a previous open (that was cancelled,
       // not saved) never leaks into the next session.
-      setFilters(config.filters);
+      setFilterGroup(resolveEffectiveFilterGroup(config));
     }
     setOpen(next);
   }
@@ -59,7 +60,10 @@ export function EditViewFiltersDialog({
     startTransition(async () => {
       const result = await updateSavedView({
         viewId,
-        config: { filters, sort: config.sort, groupBy: config.groupBy },
+        // `filters` is left empty -- `filterGroup` is the source of truth
+        // once a view has been through this dialog; `resolveEffectiveFilterGroup`
+        // prefers it over the legacy flat array on every future read.
+        config: { filters: [], filterGroup, sort: config.sort, groupBy: config.groupBy },
       });
       if (result.ok) {
         toast.success(`Updated filters for "${viewName}".`);
@@ -92,11 +96,12 @@ export function EditViewFiltersDialog({
         <DialogHeader>
           <DialogTitle>Edit filters &mdash; {viewName}</DialogTitle>
           <DialogDescription>
-            Every condition below must match (AND). Choose &quot;is any of&quot; on a
-            condition to match several values at once.
+            Choose whether a group must match all (AND) or any (OR) of its conditions.
+            Add a group to nest AND/OR logic; choose &quot;is any of&quot; on a condition
+            to match several values at once.
           </DialogDescription>
         </DialogHeader>
-        <FilterBuilder filters={filters} onChange={setFilters} fieldOptions={fieldOptions} />
+        <FilterBuilder filterGroup={filterGroup} onChange={setFilterGroup} fieldOptions={fieldOptions} />
         <DialogFooter>
           <DialogClose
             render={

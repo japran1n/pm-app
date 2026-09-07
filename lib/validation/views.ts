@@ -43,19 +43,127 @@ const savedViewFilterSchema = z
   })
   .passthrough();
 
+export type FilterCondition = {
+  field: string;
+  operator: "eq" | "in";
+  value: string | string[];
+};
+
+// Follow-up (nested AND/OR groups): a `FilterGroup` recursively contains
+// either leaf `FilterCondition`s or further `FilterGroup`s, combined with
+// its own `combinator`. This is the shape `lib/views/resolve-view.ts`'s
+// recursive evaluator understands. `z.lazy()` is required because the
+// schema references itself (a group's `conditions` array can itself hold
+// groups) -- Zod can't infer a self-referential type without an explicit
+// type annotation on the lazy schema.
+export type FilterGroup = {
+  combinator: "and" | "or";
+  conditions: (FilterCondition | FilterGroup)[];
+};
+
+const filterConditionSchema: z.ZodType<FilterCondition> = z.object({
+  field: z.string().trim().min(1, "Filter field is required."),
+  operator: z.enum(["eq", "in"]),
+  value: z.union([z.string(), z.array(z.string())]),
+});
+
+function isFilterGroupShape(value: unknown): value is { combinator: unknown; conditions: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "combinator" in value &&
+    "conditions" in value
+  );
+}
+
+// Recursive: a node in `conditions` is either a leaf condition (has
+// `operator`/`value`) or another group (has `combinator`/`conditions`).
+// `z.lazy()` defers evaluating `filterGroupSchema` until it's actually
+// called, breaking the otherwise-infinite compile-time recursion.
+export const filterGroupSchema: z.ZodType<FilterGroup> = z.lazy(() =>
+  z.object({
+    combinator: z.enum(["and", "or"]),
+    conditions: z.array(z.union([filterConditionSchema, filterGroupSchema])),
+  }),
+);
+
+// Backward compatibility: every `saved_views` row written before nested
+// groups existed stores `config.filters` as a flat array of
+// `{ field, operator, value }` conditions (implicitly AND-ed, per the old
+// `savedViewFilterSchema`/`resolveListViewFilters` comments). Rather than
+// migrating those rows, this adapter is called at READ time (wherever a
+// config is consumed) to lift that flat array into the trivial
+// `{ combinator: "and", conditions: [...] }` group shape the new recursive
+// evaluator expects -- a flat array IS just a one-level "and" group, so no
+// information is lost and no DB migration is needed.
+export function normalizeFilterGroup(
+  filters: unknown,
+): FilterGroup {
+  if (isFilterGroupShape(filters)) {
+    const parsed = filterGroupSchema.safeParse(filters);
+    if (parsed.success) return parsed.data;
+  }
+
+  if (Array.isArray(filters)) {
+    const conditions: FilterCondition[] = [];
+    for (const raw of filters) {
+      if (
+        raw &&
+        typeof raw === "object" &&
+        "field" in raw &&
+        "operator" in raw &&
+        (raw.operator === "eq" || raw.operator === "in")
+      ) {
+        const value = (raw as { value: unknown }).value;
+        if (raw.operator === "in" && Array.isArray(value)) {
+          conditions.push({
+            field: String((raw as { field: unknown }).field),
+            operator: "in",
+            value: value.map((v) => String(v)),
+          });
+        } else if (raw.operator === "eq" && value != null) {
+          conditions.push({
+            field: String((raw as { field: unknown }).field),
+            operator: "eq",
+            value: String(value),
+          });
+        }
+      }
+    }
+    return { combinator: "and", conditions };
+  }
+
+  return { combinator: "and", conditions: [] };
+}
+
 const savedViewSortSchema = z.object({
   field: z.string().trim().min(1, "Sort field is required."),
   direction: z.enum(["asc", "desc"]),
 });
 
 // AS-426: filters, sort, and grouping are all part of what a view saves.
+// `filters` is kept for backward compatibility with every row written
+// before nested groups existed (see `normalizeFilterGroup` above); new
+// writers that need AND/OR nesting set `filterGroup` instead. Both are
+// optional/defaulted so neither writer breaks the other -- a reader always
+// goes through `normalizeFilterGroup`/`resolveEffectiveFilterGroup`, which
+// prefers `filterGroup` when present and otherwise lifts `filters`.
 export const savedViewConfigSchema = z.object({
   filters: z.array(savedViewFilterSchema).default([]),
+  filterGroup: filterGroupSchema.optional(),
   sort: z.array(savedViewSortSchema).default([]),
   groupBy: z.string().trim().nullable().default(null),
 });
 
 export type SavedViewConfig = z.infer<typeof savedViewConfigSchema>;
+
+// Single entry point every reader should call to get a config's effective
+// filter tree, regardless of whether it was written before or after
+// nested groups existed.
+export function resolveEffectiveFilterGroup(config: SavedViewConfig): FilterGroup {
+  if (config.filterGroup) return config.filterGroup;
+  return normalizeFilterGroup(config.filters);
+}
 
 export const createSavedViewSchema = z.object({
   workspaceId: z.string().uuid("Invalid workspace."),

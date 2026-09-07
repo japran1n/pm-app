@@ -39,7 +39,8 @@
 //      erroring" wording.
 
 import type { ProjectListTaskFilters, ProjectListTaskSort } from "@/lib/queries/tasks";
-import type { SavedViewConfig } from "@/lib/validation/views";
+import type { FilterCondition, FilterGroup, SavedViewConfig } from "@/lib/validation/views";
+import { resolveEffectiveFilterGroup } from "@/lib/validation/views";
 
 const SORT_PARAM_TO_FIELD: Record<string, { field: string; direction: "asc" | "desc" }> = {
   due_date_asc: { field: "dueDate", direction: "asc" },
@@ -53,7 +54,72 @@ export type ResolvedListViewFilters = {
    * dropped because they no longer resolve to something real -- surfaced
    * as the UI's non-blocking "N filters no longer apply" notice. */
   droppedCount: number;
+  /** The config's effective filter tree (AS-426/nested-groups follow-up),
+   * with dangling status/assignee references pruned the same way `filters`
+   * above is. `filters`/`sort` remain the flat SQL-friendly projection for
+   * the trivial (single "and" group, no nesting) case; `filterGroup` is
+   * the full tree a caller needs for anything `isTrivial` says the SQL
+   * path can't express (an "or" anywhere, or a nested group). */
+  filterGroup: FilterGroup;
+  /** True when `filterGroup` is a single, non-nested "and" -- i.e. exactly
+   * what `filters` already expresses, so the caller can keep using the
+   * existing SQL-level filtering instead of fetching every row and
+   * filtering in memory. */
+  isTrivial: boolean;
 };
+
+// Recursively prunes dangling `status`/`assigneeId` references out of a
+// `FilterGroup`, the same validity rules the flat loop below applies, so
+// `resolveListViewFilters`'s "stale reference is dropped, never silently
+// mis-applied" guarantee (AS-433) also holds for nested/OR'd conditions.
+// An emptied-out group (every condition dropped) is left as an empty "and"
+// group, which `evaluateFilterGroup` treats as "always matches" -- same
+// "an unresolvable filter is removed, not turned into zero results"
+// posture as the flat path.
+function pruneFilterGroup(
+  group: FilterGroup,
+  opts: { validStatusNames: Set<string>; validAssigneeIds: Set<string> },
+  onDrop: () => void,
+): FilterGroup {
+  const conditions: (FilterCondition | FilterGroup)[] = [];
+
+  for (const node of group.conditions) {
+    if (isFilterGroupNode(node)) {
+      conditions.push(pruneFilterGroup(node, opts, onDrop));
+      continue;
+    }
+
+    if (node.operator !== "eq" && node.operator !== "in") {
+      onDrop();
+      continue;
+    }
+
+    const rawValues = Array.isArray(node.value) ? node.value : [node.value];
+    const stringValues = rawValues.map((v) => String(v ?? ""));
+
+    let valid = stringValues;
+    if (node.field === "status") {
+      valid = stringValues.filter((v) => v && opts.validStatusNames.has(v));
+    } else if (node.field === "priority") {
+      valid = stringValues.filter((v) => v && VALID_PRIORITIES.has(v));
+    } else if (node.field === "assigneeId") {
+      valid = stringValues.filter((v) => v && opts.validAssigneeIds.has(v));
+    }
+
+    if (valid.length !== stringValues.length || valid.length === 0) {
+      onDrop();
+    }
+    if (valid.length > 0) {
+      conditions.push({
+        field: node.field,
+        operator: node.operator === "in" ? "in" : "eq",
+        value: node.operator === "in" ? valid : valid[0],
+      });
+    }
+  }
+
+  return { combinator: group.combinator, conditions };
+}
 
 const VALID_PRIORITIES = new Set(["urgent", "high", "medium", "low", "backlog"]);
 
@@ -143,5 +209,115 @@ export function resolveListViewFilters(
     }
   }
 
-  return { filters, sort, droppedCount };
+  const effectiveGroup = resolveEffectiveFilterGroup(config);
+  const prunedGroup = pruneFilterGroup(
+    effectiveGroup,
+    opts,
+    () => {
+      // Dangling references inside `filterGroup` are counted separately
+      // from the flat-loop drops above only when `filterGroup` carries
+      // MORE structure than the flat `filters` array already covered
+      // (i.e. it actually has an "or" or nesting) -- otherwise the two
+      // loops are walking equivalent data and would double-count the same
+      // drop. Simplest correct rule: only bump `droppedCount` here when
+      // the effective group isn't trivial (the flat loop above didn't see
+      // this data at all in that case).
+      if (!isTrivialAndGroup(effectiveGroup)) droppedCount += 1;
+    },
+  );
+
+  return {
+    filters,
+    sort,
+    droppedCount,
+    filterGroup: prunedGroup,
+    isTrivial: isTrivialAndGroup(prunedGroup),
+  };
 }
+
+// Follow-up (nested AND/OR groups): a generic, field-agnostic recursive
+// evaluator for a `FilterGroup` tree. `evaluateCondition` is the only
+// caller-supplied piece -- it decides what a single leaf `FilterCondition`
+// means against one record -- so this function itself has no idea what a
+// "task" or a "status" is; it only knows how to combine boolean results
+// with "and"/"or" at every level of nesting, recursively, to whatever
+// depth the tree has. This is what makes "AND inside OR" and "OR inside
+// AND" both fall out of the same code path instead of needing separate
+// handling per depth.
+function isFilterGroupNode(node: FilterCondition | FilterGroup): node is FilterGroup {
+  return (node as FilterGroup).combinator !== undefined && Array.isArray((node as FilterGroup).conditions);
+}
+
+export function evaluateFilterGroup(
+  group: FilterGroup,
+  evaluateCondition: (condition: FilterCondition) => boolean,
+): boolean {
+  // An empty group vacuously matches everything -- consistent with the old
+  // flat behaviour, where zero filters meant "no constraint."
+  if (group.conditions.length === 0) return true;
+
+  if (group.combinator === "and") {
+    return group.conditions.every((node) =>
+      isFilterGroupNode(node) ? evaluateFilterGroup(node, evaluateCondition) : evaluateCondition(node),
+    );
+  }
+
+  return group.conditions.some((node) =>
+    isFilterGroupNode(node) ? evaluateFilterGroup(node, evaluateCondition) : evaluateCondition(node),
+  );
+}
+
+// A group is "trivial" when it's a single, non-nested "and" of leaf
+// conditions -- the exact shape `resolveListViewFilters`'s flat
+// `ProjectListTaskFilters` (and therefore `getProjectListTasks`'s SQL
+// `.eq()`/`.in()` calls) already knows how to express directly. Anything
+// else (an "or" anywhere, or a nested group at any depth) needs the
+// generic in-memory evaluator above instead, since PostgREST has no
+// simple way to express arbitrary nested AND/OR without hand-built
+// `.or()` filter strings this codebase doesn't otherwise use.
+export function isTrivialAndGroup(group: FilterGroup): boolean {
+  return (
+    group.combinator === "and" && group.conditions.every((node) => !isFilterGroupNode(node))
+  );
+}
+
+// Task-specific leaf condition matcher, used by `filterTasksByGroup`
+// below. Understands the same three fields `resolveListViewFilters`
+// understands (`status`, `priority`, `assigneeId`); any other field name
+// simply never matches (same "unrecognised field is inert, not an error"
+// posture as the rest of this module).
+export function taskMatchesCondition<
+  T extends { status?: unknown; priority?: unknown; assigneeIds?: string[] },
+>(task: T, condition: FilterCondition, opts?: { assigneeAccessor?: (task: T) => string[] }): boolean {
+  const values = Array.isArray(condition.value) ? condition.value : [condition.value];
+
+  if (condition.field === "status") {
+    return values.includes(String(task.status ?? ""));
+  }
+  if (condition.field === "priority") {
+    return values.includes(String(task.priority ?? ""));
+  }
+  if (condition.field === "assigneeId") {
+    const assigneeIds = opts?.assigneeAccessor ? opts.assigneeAccessor(task) : (task.assigneeIds ?? []);
+    return values.some((v) => assigneeIds.includes(v));
+  }
+
+  return false;
+}
+
+// Filters an already-fetched task list in memory against a (possibly
+// nested, possibly OR-containing) `FilterGroup`. Intended for the cases
+// `isTrivialAndGroup` says the SQL path can't express -- callers should
+// still prefer passing a trivial group's equivalent through
+// `resolveListViewFilters`'s flat filters to `getProjectListTasks` for the
+// common case, since that lets Postgres do the filtering instead of
+// fetching every row.
+export function filterTasksByGroup<
+  T extends { status?: unknown; priority?: unknown; assigneeIds?: string[] },
+>(tasks: T[], group: FilterGroup, opts?: { assigneeAccessor?: (task: T) => string[] }): T[] {
+  return tasks.filter((task) =>
+    evaluateFilterGroup(group, (condition) => taskMatchesCondition(task, condition, opts)),
+  );
+}
+
+export { resolveEffectiveFilterGroup };

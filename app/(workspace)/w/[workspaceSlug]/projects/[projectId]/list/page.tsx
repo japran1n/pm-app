@@ -69,7 +69,8 @@ import type { TaskCardTask } from "@/components/task/task-card";
 import { listSavedViewsForProject, getMyDefaultSavedView } from "@/lib/queries/views";
 import { getSavedView } from "@/lib/actions/views";
 import { listViewTaskIds } from "@/lib/actions/view-tasks";
-import { resolveListViewFilters } from "@/lib/views/resolve-view";
+import { resolveListViewFilters, filterTasksByGroup } from "@/lib/views/resolve-view";
+import type { FilterGroup } from "@/lib/validation/views";
 import { mergeManualTaskIds } from "@/lib/views/apply-view";
 import { ViewSwitcher } from "@/components/views/view-switcher";
 import { ViewTabs } from "@/components/views/view-tabs";
@@ -183,6 +184,13 @@ export default async function ProjectListPage({
   let droppedFilterCount = 0;
   let viewFilters: ProjectListTaskFilters | undefined;
   let viewSort: ProjectListTaskSort | undefined;
+  // Follow-up (nested AND/OR groups): set only when the view's effective
+  // filter tree is NOT a trivial single "and" -- i.e. it has an "or"
+  // somewhere, or a nested group -- which the SQL-level `viewFilters`
+  // above can't express. When set, `getProjectListTasks` below is called
+  // with NO filters (fetch everything for the project) and this group is
+  // applied in memory afterward instead.
+  let nonTrivialFilterGroup: FilterGroup | undefined;
 
   if (query.viewId) {
     const viewResult = await getSavedView(query.viewId);
@@ -192,9 +200,18 @@ export default async function ProjectListPage({
         validStatusNames,
         validAssigneeIds,
       });
-      viewFilters = resolved.filters;
-      viewSort = resolved.sort;
       droppedFilterCount = resolved.droppedCount;
+      if (resolved.isTrivial) {
+        viewFilters = resolved.filters;
+        viewSort = resolved.sort;
+      } else {
+        nonTrivialFilterGroup = resolved.filterGroup;
+        viewSort = resolved.sort;
+        // Give getProjectListTasks an always-true SQL filter set so
+        // the in-memory filterTasksByGroup pass below sees every task
+        // for this project, not a pre-narrowed subset.
+        viewFilters = {};
+      }
     }
   }
 
@@ -241,7 +258,7 @@ export default async function ProjectListPage({
   // project's saved views (listSavedViewsForProject) join the same
   // independent-fetches batch — RLS-scoped, so this never returns a view
   // the caller shouldn't see (AS-429/AS-434).
-  const [filteredTasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
+  const [rawFilteredTasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
     getCurrentUserTimezone(supabase),
     // F434-F440: fetched alongside the rest of this page's independent
@@ -252,6 +269,15 @@ export default async function ProjectListPage({
     workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
     listSavedViewsForProject(projectId, "list"),
   ]);
+
+  // Follow-up (nested AND/OR groups): when the applied view's filter tree
+  // has an "or" or nesting the SQL path above couldn't express, `filters`
+  // was intentionally left empty (fetch everything) and the real
+  // narrowing happens here, in memory, via the same recursive evaluator
+  // `lib/views/resolve-view.ts` uses.
+  const filteredTasks = nonTrivialFilterGroup
+    ? filterTasksByGroup(rawFilteredTasks, nonTrivialFilterGroup)
+    : rawFilteredTasks;
 
   // Follow-up (manual view membership): a view's effective task list is
   // filter-matched UNION manually-added (lib/views/apply-view.ts's
