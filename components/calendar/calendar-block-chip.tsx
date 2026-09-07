@@ -19,7 +19,7 @@ import {
   isoToLocalDateOnly,
   isoToLocalTime,
 } from "@/lib/calendar/block-datetime";
-import { isKnownCalendarBlockColor } from "@/lib/calendar/block-colors";
+import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
 import {
   Popover,
   PopoverContent,
@@ -61,18 +61,15 @@ export function CalendarBlockChip({
     disabled: !canDrag,
   });
 
-  const hasColor = isKnownCalendarBlockColor(block.color);
+  const displayColor = getCalendarBlockDisplayColor(block.color);
 
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
-    ...(hasColor
-      ? {
-          backgroundColor: `${block.color}1a`,
-          borderColor: block.color as string,
-          borderLeftWidth: "3px",
-        }
-      : {}),
+    backgroundColor: `${displayColor}1a`,
+    borderColor: displayColor,
+    borderStyle: "solid",
+    borderLeftWidth: "3px",
   };
 
   async function handleSubmit(values: CalendarBlockFormValues) {
@@ -116,7 +113,7 @@ export function CalendarBlockChip({
             type="button"
             data-testid={`calendar-block-chip-${block.id}`}
             className={cn(
-              "flex min-w-0 items-center gap-1 truncate rounded border border-dashed border-primary/50 bg-primary/5 px-1.5 py-0.5 text-left hover:bg-primary/10",
+              "flex min-w-0 items-center gap-1 truncate rounded border px-1.5 py-0.5 text-left hover:brightness-95",
             )}
             title={block.title}
           >

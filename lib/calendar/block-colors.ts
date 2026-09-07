@@ -51,3 +51,13 @@ export function isKnownCalendarBlockColor(value: string | null | undefined): val
   if (!value) return false;
   return CALENDAR_BLOCK_COLORS.some((c) => c.value === value);
 }
+
+/** Resolves the color a saved block should render with: its own stored
+ * value if it's a known swatch, otherwise `DEFAULT_CALENDAR_BLOCK_COLOR`.
+ * Every *saved* block (including legacy blocks created before the color
+ * picker existed) always resolves to a real, solid color here -- the
+ * dashed/"ghost" outline is reserved for the in-progress drag-create
+ * preview, never for a persisted block. */
+export function getCalendarBlockDisplayColor(value: string | null | undefined): string {
+  return isKnownCalendarBlockColor(value) ? value : DEFAULT_CALENDAR_BLOCK_COLOR;
+}

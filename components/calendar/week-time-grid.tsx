@@ -52,7 +52,7 @@ import {
   dragRangeToTimes,
 } from "@/lib/calendar/time-grid-layout";
 import { combineDateAndTime, formatBlockTimeRange } from "@/lib/calendar/block-datetime";
-import { isKnownCalendarBlockColor } from "@/lib/calendar/block-colors";
+import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
 import {
   Popover,
   PopoverContent,
@@ -529,7 +529,7 @@ function WeekBlockChip({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const hasColor = isKnownCalendarBlockColor(block.color);
+  const displayColor = getCalendarBlockDisplayColor(block.color);
 
   async function handleSubmit(values: CalendarBlockFormValues) {
     const startsAt = combineDateAndTime(date, values.startTime);
@@ -567,21 +567,17 @@ function WeekBlockChip({
             type="button"
             data-testid={`calendar-week-block-chip-${block.id}`}
             className={cn(
-              "absolute left-0.5 right-0.5 flex flex-col overflow-hidden rounded border border-dashed border-primary/50 bg-primary/10 px-1 py-0.5 text-left text-[10px] hover:bg-primary/20",
+              "absolute left-0.5 right-0.5 flex flex-col overflow-hidden rounded border px-1 py-0.5 text-left text-[10px] hover:brightness-95",
               isResizing && "z-10 shadow-md ring-1 ring-primary",
             )}
             style={{
               top,
               height,
               touchAction: "none",
-              ...(hasColor
-                ? {
-                    backgroundColor: `${block.color}1a`,
-                    borderColor: block.color as string,
-                    borderStyle: "solid",
-                    borderLeftWidth: "3px",
-                  }
-                : {}),
+              backgroundColor: `${displayColor}1a`,
+              borderColor: displayColor,
+              borderStyle: "solid",
+              borderLeftWidth: "3px",
             }}
             onPointerDown={(event) => event.stopPropagation()}
             title={block.title}
