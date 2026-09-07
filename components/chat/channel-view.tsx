@@ -17,6 +17,8 @@ import { sendMessage, getChannelMessagesAction } from "@/lib/actions/chat-messag
 import { markChannelRead } from "@/lib/actions/chat-read";
 import { useChatMessagesRealtime } from "@/components/chat/use-chat-messages-realtime";
 import { useMessageReactionsRealtime } from "@/components/chat/use-message-reactions-realtime";
+import { useReadReceiptsRealtime } from "@/components/chat/use-read-receipts-realtime";
+import { computeLastMessageSeenBy } from "@/lib/chat/read-receipts";
 import { useTypingIndicator } from "@/components/chat/use-typing-indicator";
 import { MessageList } from "@/components/chat/message-list";
 import { MessageComposer } from "@/components/chat/message-composer";
@@ -83,6 +85,7 @@ export function ChannelView({
   initialReactions,
   initialAttachments,
   initialMentionName,
+  initialReadReceipts,
 }: {
   workspaceSlug: string;
   channelId: string;
@@ -108,6 +111,13 @@ export function ChannelView({
   // never passes it), so the composer's default (empty) behaviour is
   // unchanged there.
   initialMentionName?: string;
+  // Read receipts: each member's `channel_members.last_read_at` read
+  // cursor, keyed by user id -- seeds the "Seen by" avatar strip under the
+  // channel's last message, kept current afterwards by
+  // useReadReceiptsRealtime below. Optional so any other caller of this
+  // shared component that doesn't fetch it (there are none today) simply
+  // renders no "Seen by" strip rather than crashing.
+  initialReadReceipts?: Record<string, string | null>;
 }) {
   // Initial page load is newest-first (getChannelMessages, F3), reversed
   // here to oldest-first for top-to-bottom rendering, same convention
@@ -179,6 +189,24 @@ export function ChannelView({
       event.userId,
       event.eventType === "INSERT",
     );
+  });
+
+  // Read receipts: each member's read cursor, seeded from the page's
+  // initial fetch and kept current by every other member's
+  // markChannelRead calls (which UPDATE their own channel_members row)
+  // arriving over useReadReceiptsRealtime below. Used only to render a
+  // "Seen by" avatar strip under the channel's LAST message -- per-message
+  // receipts would be too noisy, same reasoning F7's online-dot strip
+  // documents for scoping presence to the header instead of every row.
+  const [readReceipts, setReadReceipts] = useState<Record<string, string | null>>(
+    () => initialReadReceipts ?? {},
+  );
+
+  useReadReceiptsRealtime(channelId, (event) => {
+    setReadReceipts((previous) => ({
+      ...previous,
+      [event.userId]: event.lastReadAt,
+    }));
   });
 
   function handleReactionsChange(
@@ -355,6 +383,14 @@ export function ChannelView({
     label: m.name || m.email || m.userId,
   }));
 
+  // Read receipts: which OTHER members have a read cursor at or after the
+  // channel's last (top-level) message -- rendered as an avatar strip
+  // under only that message (see MessageList's `lastMessageSeenBy` prop).
+  const lastMessage = messages[messages.length - 1];
+  const lastMessageSeenBy = lastMessage
+    ? computeLastMessageSeenBy(members, readReceipts, currentUserId, lastMessage)
+    : [];
+
   // Faza A (BUG-2): `attachmentIds` used to be silently dropped here --
   // the composer already uploaded the files and passed their ids, but
   // this function's signature only accepted `bodyJson`, so `sendMessage`
@@ -430,6 +466,7 @@ export function ChannelView({
         onReactionsChange={handleReactionsChange}
         mentionSuggestions={mentionSuggestions}
         highlightMessageId={threadParam ? null : highlightMessageId}
+        lastMessageSeenBy={lastMessageSeenBy}
       />
       <TypingIndicatorLine typingUsers={typingUsers} />
       <MessageComposer

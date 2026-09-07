@@ -128,6 +128,7 @@ export function MessageList({
   isLoadingMoreMessages,
   onLoadMoreMessages,
   highlightMessageId,
+  lastMessageSeenBy,
 }: {
   messages: ChatMessage[];
   members: ChatMember[];
@@ -156,6 +157,12 @@ export function MessageList({
   // deep link -- scrolled into view and briefly flashed once, instead of
   // this list's usual "always end up at the bottom" behaviour.
   highlightMessageId?: string | null;
+  // Read receipts: OTHER members whose read cursor is at or after the
+  // channel's last message, resolved by ChannelView (which owns the
+  // `channel_members.last_read_at` state) -- rendered as a small avatar
+  // strip under only that last message, never per-message, per this
+  // feature's own "too much noise" scoping.
+  lastMessageSeenBy?: ChatMember[];
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const messageCountRef = useRef(0);
@@ -293,6 +300,7 @@ export function MessageList({
               if (el) messageRowRefs.current.set(message.id, el);
               else messageRowRefs.current.delete(message.id);
             }}
+            seenBy={index === messages.length - 1 ? lastMessageSeenBy : undefined}
           />
         );
       })}
@@ -315,6 +323,7 @@ function MessageRow({
   RichTextRenderer,
   isHighlighted,
   registerRef,
+  seenBy,
 }: {
   message: ChatMessage;
   isOwn: boolean;
@@ -332,6 +341,8 @@ function MessageRow({
    * view from a notification's `?highlight=` link. */
   isHighlighted?: boolean;
   registerRef?: (el: HTMLDivElement | null) => void;
+  /** Read receipts: only set on the channel's last message. */
+  seenBy?: ChatMember[];
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(bodyText);
@@ -464,6 +475,26 @@ function MessageRow({
                 {replyCounts[message.id] === 1 ? "reply" : "replies"}
               </button>
             )}
+          </div>
+        )}
+        {!!seenBy?.length && (
+          <div
+            className="mt-1 flex items-center gap-1"
+            aria-label={`Seen by ${seenBy.map((m) => m.name ?? m.email ?? "someone").join(", ")}`}
+            title={`Seen by ${seenBy.map((m) => m.name ?? m.email ?? "someone").join(", ")}`}
+          >
+            <div className="flex -space-x-1.5">
+              {seenBy.slice(0, 5).map((m) => (
+                <UserAvatar
+                  key={m.userId}
+                  person={{ id: m.userId, name: m.name, email: m.email, avatarUrl: m.avatarUrl }}
+                  className="size-4 border border-background"
+                />
+              ))}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Seen{seenBy.length > 5 ? ` by ${seenBy.length}` : ""}
+            </span>
           </div>
         )}
       </div>

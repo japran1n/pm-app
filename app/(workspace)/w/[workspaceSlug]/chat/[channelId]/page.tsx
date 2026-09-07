@@ -14,6 +14,7 @@ import {
   getReplyCounts,
   getMessageReactions,
   getMessageAttachments,
+  getChannelReadReceipts,
 } from "@/lib/queries/chat";
 import { ChannelView } from "@/components/chat/channel-view";
 
@@ -52,11 +53,13 @@ export default async function ChatChannelPage({
     notFound();
   }
 
-  const [messages, members, replyCounts] = await Promise.all([
+  const [messages, members, replyCounts, readReceiptsByUser] = await Promise.all([
     getChannelMessages(channelId),
     getChannelMembers(channelId),
     getReplyCounts(channelId),
+    getChannelReadReceipts(channelId),
   ]);
+  const initialReadReceipts = Object.fromEntries(readReceiptsByUser);
 
   // Faza A (docs/chat-slack-parity-plan.md, BUG-2/3/4/5): reactions and
   // attachments for this page's own top-level messages, batched in one
@@ -91,6 +94,7 @@ export default async function ChatChannelPage({
       initialReplyCounts={replyCounts}
       initialReactions={initialReactions}
       initialAttachments={initialAttachments}
+      initialReadReceipts={initialReadReceipts}
     />
   );
 }
