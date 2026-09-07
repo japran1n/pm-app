@@ -28,7 +28,17 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
+        // UX audit (Nalaz 1): bg-black/10 left the background content
+        // almost undimmed, giving the open Sheet no clear visual focus
+        // against the board/list behind it. bg-black/40 is dark enough to
+        // read as "background is now inert" without going fully opaque
+        // (still shows a hint of what's behind, matching every other
+        // overlay pattern in this app). Applies to every Sheet in the
+        // app (task detail, mobile sidebar nav, attachment dropzone) —
+        // deliberately global rather than per-caller, since a dim,
+        // inert background while ANY Sheet is open is the correct
+        // behavior everywhere it's used, not a task-detail-specific one.
+        "fixed inset-0 z-50 bg-black/40 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
         className
       )}
       {...props}
@@ -41,14 +51,21 @@ function SheetContent({
   children,
   side = "right",
   showCloseButton = true,
+  overlayClassName,
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
+  /** Escape hatch for a caller that needs a different overlay treatment
+   * than the shared default above (e.g. a lighter overlay for a
+   * non-modal utility Sheet). No current caller in this codebase needs
+   * this — it exists so a future one-off doesn't have to fork
+   * SheetOverlay's own default to get a different dimming level. */
+  overlayClassName?: string
 }) {
   return (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Popup
         data-slot="sheet-content"
         data-side={side}

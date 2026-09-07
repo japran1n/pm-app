@@ -1926,9 +1926,15 @@ export function TaskDetailSheet({
                         className="w-full"
                       >
                         <SelectValue>
+                          {/* UX audit (Nalaz 4): a bare "—" with nothing
+                              else on the line reads as a rendering
+                              glitch, not an intentional empty state --
+                              even though the "Type" Label sits above this
+                              Select, the fallback text itself should
+                              stand on its own and say what's missing. */}
                           {(value: string) =>
                             taskTypeOptions.find((option) => option.id === value)
-                              ?.name ?? task.taskTypeName ?? "—"
+                              ?.name ?? task.taskTypeName ?? "No type set"
                           }
                         </SelectValue>
                       </SelectTrigger>
@@ -1958,7 +1964,14 @@ export function TaskDetailSheet({
                   </div>
                 )}
 
-                <div className="flex flex-col gap-2">
+                {/* UX audit (Nalaz 2): Assignees shared the same 1-column
+                    width as every other field in this 5-column grid, so a
+                    full name (e.g. a long first+last name) truncated
+                    aggressively even though the Sheet itself
+                    (`sm:max-w-2xl`) has plenty of spare width. col-span-2
+                    gives it roughly double the room without touching any
+                    other field's width. */}
+                <div className="flex flex-col gap-2 sm:col-span-2">
                 <Label id={`task-assignee-label-${task.id}`}>Assignees</Label>
                 {/* F161 (AS-287, AS-288): multi-select assignee picker —
                     replaces the old single-value Select. Current set is
@@ -2400,9 +2413,23 @@ export function TaskDetailSheet({
                   </>
                 )}
               </Button>
+              {/* UX audit (Nalaz 5): "Delete task" is destructive and
+                  irreversible, but sat stacked directly against
+                  "Duplicate"/"Save as template" with identical spacing,
+                  inviting an accidental click straight after one of those.
+                  A Separator plus extra top margin gives it its own visual
+                  group -- same destructive-action-gets-a-gap pattern this
+                  codebase doesn't otherwise have a precedent for, so a
+                  plain Separator (already used throughout this Sheet) was
+                  reused rather than introducing a new pattern. The button
+                  itself is untouched (still `variant="destructive"`,
+                  still full-width, still the same click target) -- only
+                  its position relative to the other two changed. */}
+              <Separator className="mt-2" />
               <Button
                 type="button"
                 variant="destructive"
+                className="mt-2"
                 disabled={isDeleting || !canDelete}
                 title={canDelete ? undefined : "You don't have permission to delete this task."}
                 onClick={handleDelete}

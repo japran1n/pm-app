@@ -121,6 +121,17 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
         }
 
         const draft = draftValues[field.id] ?? field.value ?? "";
+        // UX audit (Nalaz 3): an empty input with no placeholder is
+        // indistinguishable from a disabled/non-interactive one at a
+        // glance. One generic placeholder per field type, not per-field
+        // custom text -- these are project-defined fields with no
+        // authored placeholder copy of their own.
+        const placeholder =
+          field.fieldType === "number"
+            ? "0"
+            : field.fieldType === "url"
+              ? "https://..."
+              : "Enter value...";
 
         return (
           <div key={field.id} className="flex flex-col gap-1.5">
@@ -129,6 +140,7 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
               id={inputId}
               type={field.fieldType === "number" ? "number" : field.fieldType === "url" ? "url" : "text"}
               value={draft}
+              placeholder={placeholder}
               disabled={!canEdit || isPending}
               data-testid={`custom-field-input-${field.id}`}
               onChange={(event) =>
