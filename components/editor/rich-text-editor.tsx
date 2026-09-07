@@ -257,6 +257,34 @@ export interface RichTextEditorProps {
    * `alt` text (if any) via `transformPastedHtml`, exactly as before this
    * feature. */
   onImagePaste?: (files: File[]) => void
+  /** Enter-to-submit callers (e.g. the chat message composer) only. When
+   * provided, a plain Enter (no Shift) is intercepted INSIDE Tiptap's own
+   * `editorProps.handleKeyDown` -- which ProseMirror invokes before its
+   * built-in `Enter` keymap binding (splitBlock) ever runs -- rather than
+   * relying on a `onKeyDown` handler on some ancestor DOM node. That
+   * ancestor-level approach is what a caller reaching for the obvious fix
+   * would try first, and it is provably too late: ProseMirror's own
+   * keydown listener is attached directly on the contenteditable DOM node
+   * and runs synchronously (splitting the current block, updating the
+   * document, firing `onUpdate`) entirely before the native event ever
+   * bubbles up to an ancestor's React `onKeyDown` -- so by the time that
+   * ancestor handler's own `event.preventDefault()` runs, the split
+   * already happened and can't be undone by it. Concretely this is what
+   * produced "an empty message is sent and the typed text stays stuck in
+   * the composer": the ancestor handler read a document that ProseMirror
+   * had already mutated (or, depending on timing, a value captured a
+   * render behind it), not what the user actually typed.
+   *
+   * Called with `view.state.doc.toJSON()` captured at the very moment
+   * this handler runs -- i.e. BEFORE any Enter-driven mutation has been
+   * applied to the document -- so the caller always receives exactly what
+   * was on screen when Enter was pressed, never a stale render-behind
+   * value and never a value already corrupted by the default split.
+   * `event.stopPropagation()` is called alongside `preventDefault()` so an
+   * ancestor's own `onKeyDown` (kept, for callers/tests that don't wire
+   * this prop, e.g. the plain-textarea fallback and the pre-hydration
+   * stub) never ALSO fires for the same keypress and double-submits. */
+  onEnterSubmit?: (content: JSONContent) => void
   /** Task description editor uses `"plain"`: plain multiline text (Enter
    * for new lines, links auto-detected, image paste preserved) with no
    * formatting toolbar and no bold/italic/code/headings/lists/blockquote/
@@ -408,6 +436,7 @@ export function RichTextEditor({
   "aria-label": ariaLabel = "Rich text editor",
   mentionSuggestions,
   onImagePaste,
+  onEnterSubmit,
   mode = "full",
 }: RichTextEditorProps) {
   // F172 (AS-308): Cmd/Ctrl+Shift+V is the standard "paste as plain text"
@@ -566,6 +595,23 @@ export function RichTextEditor({
           // `onBlur`, so calling it a second time here would fire it
           // twice per Escape press.
           view.dom.blur()
+          return true
+        }
+        // Enter-to-submit (chat message composer): see `onEnterSubmit`'s
+        // doc comment on `RichTextEditorProps` above for the full race this
+        // avoids by intercepting HERE, before ProseMirror's own `Enter`
+        // keymap binding (splitBlock) ever runs, rather than downstream in
+        // some ancestor's `onKeyDown`.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          onEnterSubmit
+        ) {
+          event.preventDefault()
+          event.stopPropagation()
+          onEnterSubmit(view.state.doc.toJSON())
           return true
         }
         // F172 (AS-308): record the plain-text-paste override so the next

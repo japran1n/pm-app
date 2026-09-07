@@ -42,6 +42,7 @@ type RichTextEditorModule = {
     "aria-label"?: string;
     className?: string;
     mentionSuggestions?: MentionSuggestionItem[];
+    onEnterSubmit?: (content: JSONContent) => void;
   }) => React.ReactElement | null;
 };
 
@@ -144,7 +145,24 @@ export function MessageComposer({
   }
 
   function submit() {
-    if (!canSubmit || isPending || disabled || isUploading) return;
+    if (isPending || disabled || isUploading) return;
+
+    // Re-derive "is there anything to send" from the FRESHEST known
+    // content (`richValueRef.current`, kept in sync by both `onChange` and
+    // `onEnterSubmit` below) rather than trusting the `canSubmit` variable
+    // captured in this render's closure -- `canSubmit` is only guaranteed
+    // accurate as of the last completed render, and `submit()` itself can
+    // run from a raw DOM-level event handler (`onEnterSubmit`, invoked
+    // synchronously inside Tiptap's `handleKeyDown`, before React has had
+    // a chance to re-render). This is also where an empty message (just
+    // whitespace / Tiptap's empty-doc shape) is rejected outright: no
+    // server action call, editor untouched, exactly per this bug's fix
+    // requirement that an empty Enter/click is silently ignored.
+    const hasContent = useRichEditor
+      ? !isEmptyDoc(richValueRef.current)
+      : !!plainValue.trim();
+    const hasAttachments = pendingAttachments.length > 0;
+    if (!hasContent && !hasAttachments) return;
 
     // F123: `richValueRef.current` is Tiptap's live JSONContent, whose
     // nested `attrs` objects cross the sendMessage server-action boundary
@@ -215,6 +233,16 @@ export function MessageComposer({
               placeholder="Message..."
               aria-label="Message"
               mentionSuggestions={mentionSuggestions}
+              onEnterSubmit={(content) => {
+                // Fresh straight from ProseMirror's own state at the exact
+                // moment Enter was pressed -- see rich-text-editor.tsx's
+                // `onEnterSubmit` doc comment. Mirror it into the ref
+                // `submit()` reads so both paths (Enter and the Send
+                // button) always send/clear the same, current content.
+                richValueRef.current = content;
+                setRichValue(content);
+                submit();
+              }}
             />
           </div>
         ) : (
