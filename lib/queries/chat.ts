@@ -611,9 +611,41 @@ export async function getDmCandidates(
 
   if (userIds.length === 0) return [];
 
-  const people = await resolvePeople(userIds);
+  // Bug fix: a workspace member the caller already has a `kind='dm'`
+  // channel with must not show up again here as a "start a new DM"
+  // candidate -- that existing conversation is already listed (as its own
+  // channel) by getWorkspaceChannels/the sidebar's Direct Messages
+  // section. Without this exclusion the same person appeared twice in the
+  // sidebar: once as an open DM channel, once as a "start DM" candidate.
+  const { data: dmChannelRows, error: dmChannelError } = await supabase
+    .from("channels")
+    .select("id, channel_members!inner(user_id)")
+    .eq("workspace_id", workspaceId)
+    .eq("kind", "dm");
 
-  return userIds
+  if (dmChannelError) {
+    logger.error("getDmCandidates: existing-dm query failed", { error: dmChannelError });
+  }
+
+  const existingDmUserIds = new Set<string>();
+  for (const row of dmChannelRows ?? []) {
+    const members = (row as { channel_members?: { user_id: string }[] }).channel_members ?? [];
+    if (members.some((member) => member.user_id === currentUserId)) {
+      for (const member of members) {
+        if (member.user_id !== currentUserId) {
+          existingDmUserIds.add(member.user_id);
+        }
+      }
+    }
+  }
+
+  const candidateUserIds = userIds.filter((id) => !existingDmUserIds.has(id));
+
+  if (candidateUserIds.length === 0) return [];
+
+  const people = await resolvePeople(candidateUserIds);
+
+  return candidateUserIds
     .map((userId) => ({
       userId,
       ...(people.get(userId) ?? { name: null, email: null, avatarUrl: null }),

@@ -8,11 +8,13 @@
 // into it -- same "server action, then router.push the returned id"
 // pattern components/chat's own create-channel dialog uses.
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { MessageCircle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,16 +29,33 @@ export type DmCandidateSummary = {
   email: string | null;
 };
 
+// Bug fix: an already-open DM (a `kind='dm'` channel the caller belongs
+// to) used to also render here as a "start a new DM" candidate button
+// via getDmCandidates -- same person shown twice in the sidebar (once as
+// the open channel under "Chat", once as a candidate here). Existing DMs
+// now render here (their proper "Direct Messages" home) as ordinary
+// channel links, and getDmCandidates itself excludes anyone the caller
+// already has a DM channel with, so no person can appear in both this
+// list's candidates and its existing-conversations links.
+export type ExistingDmSummary = {
+  id: string;
+  name: string | null;
+  unreadCount: number;
+};
+
 export function DmStarterList({
   workspaceSlug,
   workspaceId,
+  existingDms = [],
   candidates,
 }: {
   workspaceSlug: string;
   workspaceId: string;
+  existingDms?: ExistingDmSummary[];
   candidates: DmCandidateSummary[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(true);
   const [pendingUserId, setPendingUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -85,12 +104,45 @@ export function DmStarterList({
             {error}
           </p>
         )}
-        {candidates.length === 0 ? (
+        {existingDms.length === 0 && candidates.length === 0 ? (
           <p className="px-3 pb-3 text-sm text-sidebar-foreground/60">
             No other team members yet.
           </p>
         ) : (
-          <nav aria-label="Start a direct message" className="flex flex-col gap-0.5 px-2 pb-2">
+          <nav aria-label="Direct messages" className="flex flex-col gap-0.5 px-2 pb-2">
+            {existingDms.map((dm) => {
+              const href = `/w/${workspaceSlug}/chat/${dm.id}`;
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={dm.id}
+                  href={href}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors max-md:min-h-11",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <MessageCircle
+                    className="size-3.5 shrink-0 text-sidebar-foreground/50"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {dm.name ?? "Direct message"}
+                  </span>
+                  {dm.unreadCount > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="h-4 min-w-4 shrink-0 rounded-full px-1 text-[10px] leading-none"
+                    >
+                      {dm.unreadCount > 99 ? "99+" : dm.unreadCount}
+                    </Badge>
+                  )}
+                </Link>
+              );
+            })}
             {candidates.map((candidate) => (
               <button
                 key={candidate.userId}

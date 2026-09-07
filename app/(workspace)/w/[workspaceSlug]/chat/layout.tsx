@@ -54,16 +54,21 @@ export default async function ChatLayout({
         <ChatNavList
           workspaceSlug={workspaceSlug}
           workspaceId={workspace.id}
-          channels={channels.map((c) => ({
-            id: c.id,
-            name: c.name,
-            kind: c.kind,
-            unreadCount: c.unreadCount,
-          }))}
+          channels={channels
+            .filter((c) => c.kind === "channel")
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              kind: c.kind,
+              unreadCount: c.unreadCount,
+            }))}
         />
         <DmStarterList
           workspaceSlug={workspaceSlug}
           workspaceId={workspace.id}
+          existingDms={channels
+            .filter((c) => c.kind === "dm")
+            .map((c) => ({ id: c.id, name: c.name, unreadCount: c.unreadCount }))}
           candidates={dmCandidates}
         />
       </aside>

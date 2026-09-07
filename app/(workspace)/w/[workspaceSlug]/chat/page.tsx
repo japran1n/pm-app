@@ -9,6 +9,8 @@
 // done client-side (not a server redirect) specifically so the mobile
 // "back to channel list" link in channel-view.tsx has somewhere stable to
 // return to instead of being bounced straight back into the same channel.
+import { MessageCircle } from "lucide-react";
+
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceChannels, getDmCandidates } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
@@ -40,30 +42,49 @@ export default async function ChatIndexPage({
   ]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col md:hidden">
-      {channels.length > 0 && (
-        <DesktopAutoRedirect href={`/w/${workspaceSlug}/chat/${channels[0].id}`} />
-      )}
-      {workspace && (
-        <ChatMessageSearch workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
-      )}
-      <ChatNavList
-        workspaceSlug={workspaceSlug}
-        workspaceId={workspace?.id ?? null}
-        channels={channels.map((c) => ({
-          id: c.id,
-          name: c.name,
-          kind: c.kind,
-          unreadCount: c.unreadCount,
-        }))}
-      />
-      {workspace && (
-        <DmStarterList
+    <>
+      <div className="flex min-h-0 flex-1 flex-col md:hidden">
+        {channels.length > 0 && (
+          <DesktopAutoRedirect href={`/w/${workspaceSlug}/chat/${channels[0].id}`} />
+        )}
+        {workspace && (
+          <ChatMessageSearch workspaceSlug={workspaceSlug} workspaceId={workspace.id} />
+        )}
+        <ChatNavList
           workspaceSlug={workspaceSlug}
-          workspaceId={workspace.id}
-          candidates={dmCandidates}
+          workspaceId={workspace?.id ?? null}
+          channels={channels
+            .filter((c) => c.kind === "channel")
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              kind: c.kind,
+              unreadCount: c.unreadCount,
+            }))}
         />
-      )}
-    </div>
+        {workspace && (
+          <DmStarterList
+            workspaceSlug={workspaceSlug}
+            workspaceId={workspace.id}
+            existingDms={channels
+              .filter((c) => c.kind === "dm")
+              .map((c) => ({ id: c.id, name: c.name, unreadCount: c.unreadCount }))}
+            candidates={dmCandidates}
+          />
+        )}
+      </div>
+      {/* Desktop (layout.tsx's aside is always visible there, this route
+       * only ever renders when no channel is selected): empty state
+       * instead of a blank thread pane. */}
+      <div className="hidden min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center md:flex">
+        <MessageCircle
+          className="size-10 text-muted-foreground/40"
+          aria-hidden="true"
+        />
+        <p className="text-sm text-muted-foreground">
+          Select a conversation to start messaging
+        </p>
+      </div>
+    </>
   );
 }
