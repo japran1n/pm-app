@@ -65,6 +65,7 @@ import {
   editTask,
   moveTaskStatus,
   setTaskAssignees,
+  duplicateTask,
 } from "@/lib/actions/tasks";
 import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
@@ -730,6 +731,27 @@ export function TaskDetailSheet({
     useState<string | null>(null);
   const [isAssigning, startAssignTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  // Duplicate action: reuses the existing F180 duplicateTask Server Action
+  // (lib/actions/tasks.ts) — copies title (-> "Copy of <title>"),
+  // description, priority, task_type, checklist items and assignees into a
+  // NEW task in the SAME project. This Sheet only wires the button + result
+  // handling; no new server action was written since duplicateTask already
+  // implements exactly this.
+  const [isDuplicating, startDuplicateTransition] = useTransition();
+
+  function handleDuplicate() {
+    if (!task) return;
+    const sourceTaskId = task.id;
+    startDuplicateTransition(async () => {
+      const result = await duplicateTask(sourceTaskId);
+      if (result.ok) {
+        toast.success("Task duplicated.");
+        onOpenTask?.(result.data.id);
+      } else {
+        toast.error(result.error);
+      }
+    });
+  }
   // F158 (AS-280, AS-281): the shared guard — see lib/tasks/
   // blocked-guard.ts's isDoneStatus doc comment for the full list of
   // callers this same hook is shared with.
@@ -2284,6 +2306,25 @@ export function TaskDetailSheet({
                 disabled={!canSaveTemplate}
                 disabledTitle={saveTemplateDisabledTitle}
               />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isDuplicating || !canEdit}
+                title={canEdit ? undefined : "You don't have permission to duplicate this task."}
+                onClick={handleDuplicate}
+              >
+                {isDuplicating ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    Duplicating...
+                  </>
+                ) : (
+                  <>
+                    <Copy className="size-4" aria-hidden="true" />
+                    Duplicate
+                  </>
+                )}
+              </Button>
               <Button
                 type="button"
                 variant="destructive"
