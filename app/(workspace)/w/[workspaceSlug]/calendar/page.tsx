@@ -51,9 +51,19 @@ import {
   previousMonthKey,
   toMonthKey,
 } from "@/lib/calendar/month-grid";
+import {
+  buildCalendarWeek,
+  currentWeekKey,
+  nextWeekKey,
+  parseWeekKey,
+  previousWeekKey,
+  weekDateRange,
+} from "@/lib/calendar/week-grid";
 import { resolveCalendarFilters } from "@/lib/calendar/resolve-filters";
 import { MonthGrid } from "@/components/calendar/month-grid";
+import { WeekView } from "@/components/calendar/week-view";
 import { CalendarFilters } from "@/components/calendar/calendar-filters";
+import { CalendarViewToggle } from "@/components/calendar/calendar-view-toggle";
 
 export default async function CalendarPage({
   params,
@@ -62,6 +72,8 @@ export default async function CalendarPage({
   params: Promise<{ workspaceSlug: string }>;
   searchParams: Promise<{
     month?: string;
+    week?: string;
+    view?: string;
     status?: string;
     priority?: string;
     assigneeId?: string;
@@ -71,11 +83,20 @@ export default async function CalendarPage({
   const { workspaceSlug } = await params;
   const {
     month: monthParam,
+    week: weekParam,
+    view: viewParam,
     status: statusParam,
     priority: priorityParam,
     assigneeId: assigneeIdParam,
     projectId: projectIdParam,
   } = await searchParams;
+
+  // Week/Planner follow-up: "?view=week" opts into the new time-grid week
+  // view; anything else (including absent, the existing default) keeps
+  // the month grid exactly as before -- an additive toggle, not a
+  // replacement (this feature's own spec: "Zadrži postojeći mesečni
+  // prikaz ... netaknut").
+  const view: "month" | "week" = viewParam === "week" ? "week" : "month";
 
   const supabase = await createClient();
 
@@ -166,20 +187,36 @@ export default async function CalendarPage({
     filters.status || filters.priority || filters.assigneeId || filters.projectId,
   );
 
+  // Week/Planner follow-up: the week the "?week=" param resolves to (or
+  // "today"'s own week, same fallback convention as the month grid's
+  // `currentMonthKey`), computed regardless of which view is currently
+  // active so the Month<->Week toggle links below always land on a real
+  // week, not just when the week view happens to be the active one.
+  const weekKey = parseWeekKey(weekParam) ?? currentWeekKey(timezone);
+  const week = buildCalendarWeek(weekKey, timezone);
+  const weekRange = weekDateRange(weekKey);
+  const weekHrefFor = (key: string) =>
+    `/w/${workspaceSlug}/calendar?view=week&week=${key}${filterSuffix}`;
+  const monthToggleHref = `/w/${workspaceSlug}/calendar?view=month&month=${toMonthKey(year, month)}${filterSuffix}`;
+  const weekToggleHref = weekHrefFor(weekKey);
+
   const filtersBar = (
-    <CalendarFilters
-      statusOptions={statusOptions.map((s) => ({
-        value: s.name,
-        label: s.name,
-        color: s.color,
-      }))}
-      projectOptions={projects.map((p) => ({ value: p.id, label: p.name }))}
-      assigneeOptions={workspaceMembers.active.map((m) => ({
-        id: m.userId,
-        label: m.name ?? m.email ?? m.userId,
-        avatarUrl: m.avatarUrl,
-      }))}
-    />
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <CalendarFilters
+        statusOptions={statusOptions.map((s) => ({
+          value: s.name,
+          label: s.name,
+          color: s.color,
+        }))}
+        projectOptions={projects.map((p) => ({ value: p.id, label: p.name }))}
+        assigneeOptions={workspaceMembers.active.map((m) => ({
+          id: m.userId,
+          label: m.name ?? m.email ?? m.userId,
+          avatarUrl: m.avatarUrl,
+        }))}
+      />
+      <CalendarViewToggle view={view} monthHref={monthToggleHref} weekHref={weekToggleHref} />
+    </div>
   );
 
   return (
@@ -190,23 +227,89 @@ export default async function CalendarPage({
           grid + undated-count footer stream in separately via Suspense
           instead of blocking the filters from appearing. */}
       <Suspense fallback={<div className="animate-pulse h-32 rounded-lg bg-muted" />}>
-        <CalendarGridSection
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          projectIds={projects.map((p) => p.id)}
-          start={start}
-          end={end}
-          filters={filters}
-          grid={grid}
-          dataKey={dataKey}
-          hrefFor={hrefFor}
-          prev={prev}
-          next={next}
-          today={today}
-          hasActiveFilters={hasActiveFilters}
-        />
+        {view === "week" ? (
+          <WeekGridSection
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            start={weekRange.start}
+            end={weekRange.end}
+            filters={filters}
+            week={week}
+            weekKey={weekKey}
+            weekHrefFor={weekHrefFor}
+          />
+        ) : (
+          <CalendarGridSection
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            projectIds={projects.map((p) => p.id)}
+            start={start}
+            end={end}
+            filters={filters}
+            grid={grid}
+            dataKey={dataKey}
+            hrefFor={hrefFor}
+            prev={prev}
+            next={next}
+            today={today}
+            hasActiveFilters={hasActiveFilters}
+          />
+        )}
       </Suspense>
     </div>
+  );
+}
+
+// Week/Planner follow-up: mirrors CalendarGridSection's own extraction
+// (streams behind the filters bar, same Suspense boundary) but for the
+// week view's own data window and block query -- reuses the SAME
+// getCalendarTasks/getCalendarBlocks queries the month grid uses, just
+// bounded to the 7-day week window instead of the whole visible month.
+async function WeekGridSection({
+  workspaceId,
+  workspaceSlug,
+  start,
+  end,
+  filters,
+  week,
+  weekKey,
+  weekHrefFor,
+}: {
+  workspaceId: string;
+  workspaceSlug: string;
+  start: string;
+  end: string;
+  filters: ReturnType<typeof resolveCalendarFilters>["filters"];
+  week: ReturnType<typeof buildCalendarWeek>;
+  weekKey: string;
+  weekHrefFor: (key: string) => string;
+}) {
+  const rangeEndExclusive = new Date(`${end}T00:00:00.000Z`);
+  rangeEndExclusive.setUTCDate(rangeEndExclusive.getUTCDate() + 1);
+
+  const [tasks, blocks] = await Promise.all([
+    getCalendarTasks(workspaceId, start, end, filters),
+    getCalendarBlocks(workspaceId, `${start}T00:00:00.000Z`, rangeEndExclusive.toISOString()),
+  ]);
+
+  const tasksByDate = new Map<string, CalendarTask[]>();
+  for (const task of tasks) {
+    const list = tasksByDate.get(task.dueDate) ?? [];
+    list.push(task);
+    tasksByDate.set(task.dueDate, list);
+  }
+
+  return (
+    <WeekView
+      week={week}
+      tasksByDate={tasksByDate}
+      blocks={blocks}
+      workspaceSlug={workspaceSlug}
+      workspaceId={workspaceId}
+      prevHref={weekHrefFor(previousWeekKey(weekKey))}
+      nextHref={weekHrefFor(nextWeekKey(weekKey))}
+      todayHref={`/w/${workspaceSlug}/calendar?view=week`}
+    />
   );
 }
 
