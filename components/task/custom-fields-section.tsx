@@ -25,9 +25,20 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
 
+  // Reset state during render when `taskId` changes, rather than
+  // synchronously inside the effect below -- this is React's recommended
+  // pattern for "adjusting state when a prop changes" and avoids the
+  // cascading-render lint error that a same-tick setState-in-effect
+  // (react-hooks/set-state-in-effect) would trigger. See
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [prevTaskId, setPrevTaskId] = useState(taskId);
+  if (taskId !== prevTaskId) {
+    setPrevTaskId(taskId);
+    setFields(null);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    setFields(null);
     getCustomFieldsForTaskAction(taskId).then((result) => {
       if (cancelled) return;
       if (result.ok) {
