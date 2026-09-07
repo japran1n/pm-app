@@ -1,0 +1,173 @@
+/* Print/export project summary — internal-meeting handout, not a
+   client-facing invoice document. Screen styles here are intentionally
+   minimal (this route is meant to be opened, then immediately sent to
+   the browser's print dialog / "Print to PDF" — no interactive UI is
+   rendered on this route at all, so there's nothing to hide on screen),
+   the real work is the @media print block below. */
+
+.print-summary-page {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  color: #111;
+  background: #fff;
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+.print-summary-header h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+}
+
+.print-summary-eyebrow {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #555;
+  margin: 0;
+}
+
+.print-summary-description {
+  color: #333;
+  margin: 0.25rem 0;
+}
+
+.print-summary-meta {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0.25rem 0 1.5rem 0;
+}
+
+.print-summary-section {
+  margin-bottom: 2rem;
+}
+
+.print-summary-section h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.print-summary-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin: 0;
+}
+
+.print-summary-status-grid dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: #666;
+  margin: 0;
+}
+
+.print-summary-status-grid dd {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.print-summary-task-group {
+  margin-bottom: 1.25rem;
+}
+
+.print-summary-task-group h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem 0;
+}
+
+.print-summary-task-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.print-summary-task-table th,
+.print-summary-task-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.print-summary-team-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.print-summary-team-list li {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #eee;
+  padding: 0.25rem 0;
+}
+
+.print-summary-team-role {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.print-summary-empty {
+  color: #666;
+  font-style: italic;
+}
+
+/* Print-only rules: bigger, high-contrast text for paper, and page-break
+   control so a task group / the team list never gets sliced across a
+   page boundary mid-section. */
+@media print {
+  @page {
+    margin: 1.5cm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .print-summary-page {
+    max-width: none;
+    padding: 0;
+  }
+
+  .print-summary-header h1 {
+    font-size: 22pt;
+  }
+
+  .print-summary-section h2 {
+    font-size: 14pt;
+  }
+
+  .print-summary-task-table,
+  .print-summary-task-table th,
+  .print-summary-task-table td {
+    font-size: 11pt;
+  }
+
+  .print-summary-section,
+  .print-summary-task-group,
+  .print-summary-status-grid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-summary-header {
+    break-after: avoid;
+  }
+
+  /* Belt-and-braces: hide any button/nav/link elements that might end up
+     inside this tree (e.g. from a shared layout wrapping this route) so a
+     printed page never shows interactive chrome. */
+  button,
+  nav,
+  a[href] {
+    display: none !important;
+  }
+}

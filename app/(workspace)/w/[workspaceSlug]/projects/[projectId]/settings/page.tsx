@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
+import { buttonVariants } from "@/components/ui/button";
 import {
   canChangeProjectVisibility,
   canManageProjectMembers,
@@ -202,11 +204,26 @@ export default async function ProjectSettingsPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Project settings</h1>
-        <p className="text-sm text-muted-foreground">
-          Members and visibility for {project.name}.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-lg font-semibold">Project settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Members and visibility for {project.name}.
+          </p>
+        </div>
+        {/* Internal-meeting print/export snapshot — NOT a client invoicing
+            artifact (this feature's own spec). Opens the print-optimized
+            /print route in a new tab; the browser's own "Print to PDF"
+            (Cmd+P) is how the user saves it, so this is a plain link, no
+            server-side PDF generation. */}
+        <Link
+          href={`/w/${workspaceSlug}/projects/${project.id}/print`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          Print/Export summary
+        </Link>
       </div>
 
       <ProjectSettingsNav workspaceSlug={workspaceSlug} projectId={project.id} />
