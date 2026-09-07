@@ -8,6 +8,13 @@
 // coverage here is: every stage renders, in the documented order, and the
 // component never reaches for live phase/task data the way
 // `phase-timeline.tsx` ("Where we are") does.
+//
+// Second pass (client feedback): the layout changed from a vertical
+// stacked list to a single HORIZONTAL flow/track (same axis idea as
+// `phase-timeline.tsx`'s "Where we are", just bigger and static). The
+// content contract (one step per phase, in order, each with a "what" and
+// "why" line) is unchanged and still covered below; this pass adds
+// coverage for the new horizontal-track structure itself.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -57,5 +64,25 @@ describe("HowWeWorkProcess", () => {
     expect(
       screen.getByRole("region", { name: /our process, from setup to handover/i }),
     ).toBeInTheDocument();
+  });
+
+  it("lays the steps out along a single horizontal track, not a vertical stack", () => {
+    render(<HowWeWorkProcess />);
+
+    const track = screen.getByTestId("how-we-work-process-track");
+    // A horizontal flow scrolls sideways along one row rather than
+    // wrapping into a vertical list -- this is the structural difference
+    // the client's feedback was about, so it is asserted directly rather
+    // than only re-checking step count/order (which the rejected vertical
+    // version also satisfied).
+    expect(track.className).toMatch(/overflow-x-auto/);
+    expect(track.tagName).toBe("OL");
+
+    const steps = screen.getAllByTestId("how-we-work-process-step");
+    // Every step sits in the track as a direct flow item (not nested one
+    // inside another), i.e. all are the track's own children.
+    for (const step of steps) {
+      expect(step.parentElement).toBe(track);
+    }
   });
 });

@@ -100,6 +100,21 @@ const ACCENT_CLASSES = [
   "bg-status-blocked-bg text-status-blocked",
 ];
 
+// F-redo (client feedback, second pass): the first version stacked every
+// step in a vertical list (alternating left/right cards, but still one
+// beneath the next). The client's own reference was "Where we are"
+// (`phase-timeline.tsx`) -- a HORIZONTAL axis with phases laid out left to
+// right along one line -- "just here bigger and end to end." This rebuild
+// keeps every existing content field (icon, title, what, why) and test
+// hook, but lays the eight steps out along a single horizontal flow
+// instead: one connecting line running left to right behind every node,
+// each phase its own column (icon node on the line, title, then its two
+// text lines underneath), the whole row scrolling horizontally rather than
+// wrapping into a second visual row -- the same shape as a roadmap/Gantt
+// flow, matching what "Where we are" already does with dated bars, but
+// static/narrative instead of data-driven.
+const NODE_COLUMN_WIDTH_PX = 208;
+
 export function HowWeWorkProcess() {
   return (
     <section
@@ -107,28 +122,48 @@ export function HowWeWorkProcess() {
       aria-label="Our process, from setup to handover"
       className="flex flex-col gap-2"
     >
-      <ol className="relative flex flex-col gap-8 sm:gap-10">
-        {/* A single connecting spine behind every step, running the full
-            height of the list -- this is the "full cycle, start to finish"
-            visual the redesign asked for, deliberately bigger and more
-            illustrative than the compact bar-chart "Where we are" timeline
-            (which is task-progress-driven and lives on Overview). */}
+      {/* Horizontal scroller: on a wide screen the eight columns below may
+          exceed the viewport, and on a phone they always will -- rather
+          than collapsing back into a vertical stack (the exact shape the
+          client rejected), this scrolls sideways, the same tradeoff any
+          Gantt/roadmap chart makes. `snap-x` lets a touch swipe land on
+          one phase at a time instead of stopping mid-column. */}
+      <ol
+        data-testid="how-we-work-process-track"
+        className="relative flex snap-x snap-mandatory gap-0 overflow-x-auto pb-4 pt-8"
+      >
+        {/* The connecting spine: one continuous horizontal line running
+            through every node's own centre, the "full cycle, start to
+            finish, along one axis" visual the client asked for -- the
+            direct horizontal counterpart of `phase-timeline.tsx`'s vertical
+            stack-of-rows-on-a-shared-axis idea. Positioned at the node
+            circle's vertical centre (see the `top` below, matching half of
+            the sm:size-16 / 64px circle plus its container's own top
+            offset) and drawn once, behind every node, rather than as N
+            separate connector segments that could drift out of alignment
+            with each other. */}
         <div
           aria-hidden="true"
-          className="absolute left-6 top-6 bottom-6 hidden w-px bg-border sm:left-8 sm:block"
+          className="pointer-events-none absolute left-0 right-0 top-14 hidden h-px bg-border sm:top-16 sm:block"
+          style={{ minWidth: MACRO_PHASES.length * NODE_COLUMN_WIDTH_PX }}
         />
+
         {MACRO_PHASES.map((phase, index) => {
           const Icon = phase.icon;
           const accent = ACCENT_CLASSES[index % ACCENT_CLASSES.length];
-          const alignEnd = index % 2 === 1;
+          const isLast = index === MACRO_PHASES.length - 1;
+
           return (
             <li
               key={phase.id}
               data-testid="how-we-work-process-step"
-              className={`relative flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6 ${
-                alignEnd ? "sm:flex-row-reverse sm:text-right" : ""
-              }`}
+              className="relative flex shrink-0 snap-start flex-col items-center gap-4 px-3 text-center"
+              style={{ width: NODE_COLUMN_WIDTH_PX }}
             >
+              {/* The node itself: sits directly on the connecting spine,
+                  same colour language as the old vertical version (per-
+                  phase accent + numbered badge), just centred in its own
+                  column instead of offset to one side of a card. */}
               <div
                 className={`relative z-10 flex size-12 shrink-0 items-center justify-center rounded-full ring-4 ring-background sm:size-16 ${accent}`}
               >
@@ -141,16 +176,35 @@ export function HowWeWorkProcess() {
                 </span>
               </div>
 
-              <div
-                className={`flex-1 rounded-lg border border-border bg-card p-5 shadow-sm sm:p-6 ${
-                  alignEnd ? "sm:mr-2" : "sm:ml-2"
-                }`}
-              >
-                <h3 className="text-base font-semibold text-foreground sm:text-lg">
+              {/* Directional arrowhead between this node and the next,
+                  drawn only between nodes (never after the last one) --
+                  the "flowchart", not just "a line", cue the client's
+                  reference had. Hidden below `sm` along with the spine
+                  itself, where the column stacks under its own node
+                  instead of sitting beside the next one. */}
+              {!isLast && (
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-14 right-0 z-10 hidden -translate-y-1/2 translate-x-1/2 text-border sm:top-16 sm:block"
+                >
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M1 1L9 6L1 11"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <h3 className="text-sm font-semibold text-foreground sm:text-base">
                   {phase.title}
                 </h3>
-                <p className="mt-2 text-sm text-foreground/90">{phase.what}</p>
-                <p className="mt-2 text-sm italic text-muted-foreground">{phase.why}</p>
+                <p className="text-xs text-foreground/90 sm:text-sm">{phase.what}</p>
+                <p className="text-xs italic text-muted-foreground sm:text-sm">{phase.why}</p>
               </div>
             </li>
           );
