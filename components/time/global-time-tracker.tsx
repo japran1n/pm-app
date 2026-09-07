@@ -588,13 +588,13 @@ export function GlobalTimeTracker({
 
           <div className="flex items-center justify-between border-t pt-2 text-sm">
             <a
-              href={`/w/${workspaceSlug}/time/me`}
+              href={`/w/${workspaceSlug}/time/me?view=weekly`}
               className="text-muted-foreground hover:text-foreground hover:underline"
             >
               My Timesheet
             </a>
             <a
-              href={`/w/${workspaceSlug}/time/me?view=dashboard`}
+              href={`/w/${workspaceSlug}/time/me`}
               className="text-muted-foreground hover:text-foreground hover:underline"
             >
               Dashboard

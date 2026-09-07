@@ -132,11 +132,11 @@ describe("GlobalTimeTracker", () => {
     await openPanel();
     expect(screen.getByRole("link", { name: "My Timesheet" })).toHaveAttribute(
       "href",
-      "/w/acme/time/me",
+      "/w/acme/time/me?view=weekly",
     );
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
       "href",
-      "/w/acme/time/me?view=dashboard",
+      "/w/acme/time/me",
     );
   });
 
