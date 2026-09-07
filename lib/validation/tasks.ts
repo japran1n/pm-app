@@ -550,3 +550,21 @@ export const bulkDeleteTasksSchema = z.object({
 });
 
 export type BulkDeleteTasksInput = z.infer<typeof bulkDeleteTasksSchema>;
+
+// Validates setTaskBlockedReason input. Free-text, mirrors
+// project_phases.blocked_reason's own 500-char DB CHECK
+// (20261031010000_f109_phase_blocked_reason.sql applied the same limit to
+// tasks.blocked_reason, 20261115020000_tasks_blocked_reason.sql). `null`
+// explicitly clears a previously recorded reason, same nullable-field
+// convention as every other clearable field in this file (e.g.
+// updateTaskTagsSchema's tags, dueDate/startDate above).
+export const setTaskBlockedReasonSchema = z.object({
+  taskId: z.string().uuid("Invalid task."),
+  blockedReason: z
+    .string()
+    .trim()
+    .max(500, "Blocked reason must be 500 characters or fewer.")
+    .nullable(),
+});
+
+export type SetTaskBlockedReasonInput = z.infer<typeof setTaskBlockedReasonSchema>;

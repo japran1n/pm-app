@@ -342,7 +342,7 @@ export async function getProjectListTasks(
       // indicators, same as the detail sheet's own toggles read/write —
       // see TaskCardTask.clientVisible/pendingClientApproval's own
       // comments.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, projects(key), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, blocked_reason, projects(key), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .eq("project_id", projectId)
     .is("deleted_at", null);
@@ -454,6 +454,9 @@ export async function getProjectListTasks(
     // F083: see this function's select above.
     clientVisible: task.client_visible ?? false,
     pendingClientApproval: task.pending_client_approval ?? false,
+    // Free-text "why is this blocked" reason — see this function's select
+    // above and TaskCardTask.blockedReason's own comment.
+    blockedReason: task.blocked_reason ?? null,
   }));
 }
 
@@ -523,7 +526,7 @@ export async function getWorkspaceListTasks(
       // view (getProjectListTasks) already has — see this feature's
       // handoff for why the dashboard table silently rendered an empty
       // Type column before this.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, blocked_reason, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
@@ -636,6 +639,9 @@ export async function getWorkspaceListTasks(
     // Portal-parity fix: see this function's select above.
     parentTaskId: task.parent_task_id,
     taskType: firstRelated(task.task_types) ?? null,
+    // Free-text "why is this blocked" reason — see this function's select
+    // above and TaskCardTask.blockedReason's own comment.
+    blockedReason: task.blocked_reason ?? null,
   }));
 
   // UX-20: "overdue"/"due_soon"/"completed" aren't filterable columns —

@@ -8,18 +8,30 @@
 // page lives here.
 
 import type { ReactNode } from "react";
-import { CircleDot, Eye } from "lucide-react";
+import { AlertTriangle, CircleDot, Eye } from "lucide-react";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function TaskTitleCell({
   title,
   clientVisible,
   pendingClientApproval,
+  blockedReason,
   leading,
   trailing,
 }: {
   title: string;
   clientVisible?: boolean;
   pendingClientApproval?: boolean;
+  /** This task's own `blocked_reason` — the icon+tooltip indicator below
+   * only renders when this is set (callers only pass it through when the
+   * task's own status already reads "blocked" — see task-list-table.tsx's
+   * call site). */
+  blockedReason?: string | null;
   /** Rendered before the title text — e.g. TaskListTable's expand/collapse
    * chevron (or its width-reserving spacer for leaf rows). */
   leading?: ReactNode;
@@ -53,6 +65,22 @@ export function TaskTitleCell({
           <CircleDot className="size-3.5" aria-hidden="true" />
           <span className="sr-only">Awaiting client decision</span>
         </span>
+      )}
+      {blockedReason && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="inline-flex shrink-0 items-center text-amber-700"
+                data-testid="blocked-reason-indicator"
+              >
+                <AlertTriangle className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Blocked: {blockedReason}</span>
+              </span>
+            }
+          />
+          <TooltipContent>{blockedReason}</TooltipContent>
+        </Tooltip>
       )}
     </div>
   );

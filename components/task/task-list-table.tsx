@@ -805,6 +805,11 @@ export function TaskListTable({
                       title={task.title}
                       clientVisible={task.clientVisible}
                       pendingClientApproval={task.pendingClientApproval}
+                      blockedReason={
+                        String(task.status).trim().toLowerCase() === "blocked"
+                          ? task.blockedReason
+                          : null
+                      }
                       leading={
                         childCountByParentId.has(task.id) ? (
                           <button

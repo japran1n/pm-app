@@ -22,6 +22,7 @@ import {
   duplicateTaskSchema,
   bulkUpdateTasksSchema,
   bulkDeleteTasksSchema,
+  setTaskBlockedReasonSchema,
   type EditTaskUpdates,
   type BulkUpdateTasksUpdates,
 } from "@/lib/validation/tasks";
@@ -2846,7 +2847,7 @@ export async function getTaskDetail(
       // editor has a real value to hand to setTaskType — task_types(...)
       // below already carries the display name/system_key but not the
       // id itself.
-      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
+      "id, title, description, description_json, status, status_id, priority, assignee_id, due_date, start_date, tags, number, project_id, parent_task_id, deleted_at, estimate_minutes, recurrence, recurrence_parent_id, client_visible, pending_client_approval, page_slug, page_order, phase_id, task_type_id, blocked_reason, task_types(name, system_key), projects!inner(key, workspace_id, visibility), project_statuses(category)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -3308,6 +3309,9 @@ export async function getTaskDetail(
         // inline fields directly, no local re-derivation.
         pageSlug: taskRow.page_slug,
         pageOrder: taskRow.page_order,
+        // Free-text "why is this blocked" reason — see this function's
+        // task select above.
+        blockedReason: taskRow.blocked_reason ?? null,
         // F118 (AS-066): the raw id, so the detail sheet's type editor
         // can call setTaskType with it directly — taskTypeName/
         // taskTypeSystemKey below remain display/gating-only, unchanged.
@@ -4586,4 +4590,85 @@ export async function bulkRestoreTasks(
   }
 
   return { ok: true, data: { succeededIds, failedIds } };
+}
+
+// ---------------------------------------------------------------------
+// setTaskBlockedReason — free-text "why is this blocked" reason
+// (`tasks.blocked_reason`, 20261115020000_tasks_blocked_reason.sql).
+// A dedicated action rather than folding this into `editTask`'s
+// `EditTaskUpdates` set: this is a single, narrowly-scoped column shown
+// only while the task's own `status` reads "blocked", not a general task
+// edit field. Built on `withAuthz` (lib/actions/authz.ts), same
+// membership/write/visibility pipeline every other migrated action in
+// this file already uses.
+// ---------------------------------------------------------------------
+
+export type SetTaskBlockedReasonResult =
+  | { ok: true; data: { id: string; blockedReason: string | null } }
+  | { ok: false; error: string };
+
+async function loadTaskForBlockedReason(
+  admin: ReturnType<typeof createAdminClient>,
+  taskId: string,
+) {
+  const { data, error } = await admin
+    .from("tasks")
+    .select(
+      "id, deleted_at, projects!inner(id, workspace_id, visibility, deleted_at)",
+    )
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (error || !data) {
+    return { ok: false as const, error: "Task not found." };
+  }
+
+  const project = Array.isArray(data.projects) ? data.projects[0] : data.projects;
+  if (!project?.workspace_id || project.deleted_at) {
+    return { ok: false as const, error: "Task not found." };
+  }
+
+  return {
+    ok: true as const,
+    workspaceId: project.workspace_id,
+    projectId: project.id,
+    visibility: (project.visibility === "private" ? "private" : "workspace") as ProjectVisibility,
+    extra: { taskId: data.id },
+  };
+}
+
+const setTaskBlockedReasonImpl = withAuthz(
+  setTaskBlockedReasonSchema,
+  {
+    requireWrite: true,
+    writeCheck: canEditTask,
+    requireVisibility: true,
+    membershipError: "You don't have permission to edit this task.",
+    writeError: "You don't have permission to edit this task.",
+    visibilityError: "You don't have permission to edit this task.",
+    resolveWorkspace: (input, admin) => loadTaskForBlockedReason(admin, input.taskId),
+  },
+  async (input, ctx): Promise<SetTaskBlockedReasonResult> => {
+    const { data: updated, error } = await ctx.admin
+      .from("tasks")
+      .update({ blocked_reason: input.blockedReason })
+      .eq("id", input.taskId)
+      .select("id, blocked_reason")
+      .single();
+
+    if (error || !updated) {
+      logger.error("setTaskBlockedReason: update failed", { error });
+      return { ok: false, error: "Something went wrong. Please try again in a moment." };
+    }
+
+    return { ok: true, data: { id: updated.id, blockedReason: updated.blocked_reason } };
+  },
+);
+
+export async function setTaskBlockedReason(
+  taskId: string,
+  blockedReason: string | null,
+): Promise<SetTaskBlockedReasonResult> {
+  return setTaskBlockedReasonImpl({ taskId, blockedReason });
 }

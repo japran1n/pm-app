@@ -27,6 +27,10 @@ import { cn } from "@/lib/utils";
 const ENTRIES = [
   { slug: "", label: "Members" },
   { slug: "columns", label: "Board columns" },
+  // Custom fields: flexible, project-scoped extra fields on tasks, edited
+  // once per project setup like board columns — same settings sub-nav
+  // placement immediately beside it.
+  { slug: "custom-fields", label: "Custom fields" },
   { slug: "phases", label: "Phases" },
   // F013 (missions/20260903-portal): "What we need from the client" — a
   // tab beside the phases settings, per that feature's own spec, reached
