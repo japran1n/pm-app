@@ -85,6 +85,149 @@ export async function getWorkspaceTimeByPerson(
   );
 }
 
+export type PersonTimeByProject = {
+  projectId: string;
+  projectName: string;
+  totalMinutes: number;
+  billableMinutes: number;
+};
+
+// getPersonTimeByProject: thin wrapper around the `get_person_time_by_project`
+// RPC (supabase/migrations/20261109010000_rpc_person_time_reports.sql),
+// following the same thin-wrapper convention as `getWorkspaceTimeByPerson`
+// above. Uses the request-scoped (RLS-respecting) client — the RPC itself
+// is `security invoker`, so RLS on `time_entries`/`tasks`/`projects`
+// applies exactly as it would for any direct SELECT. The RPC's own
+// `t.deleted_at is null` filter excludes a soft-deleted task's logged
+// time; `startDate`/`endDate` are inclusive on both ends.
+export async function getPersonTimeByProject(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<PersonTimeByProject[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_person_time_by_project", {
+    p_user_id: userId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+
+  if (error || !data) {
+    if (error) {
+      logger.error("getPersonTimeByProject: rpc failed", { error: error });
+    }
+    return [];
+  }
+
+  return data.map(
+    (row: {
+      project_id: string;
+      project_name: string;
+      total_minutes: number;
+      billable_minutes: number;
+    }) => ({
+      projectId: row.project_id,
+      projectName: row.project_name,
+      totalMinutes: Number(row.total_minutes ?? 0),
+      billableMinutes: Number(row.billable_minutes ?? 0),
+    }),
+  );
+}
+
+export type PersonTimeDaily = {
+  entryDate: string;
+  totalMinutes: number;
+  billableMinutes: number;
+};
+
+// getPersonTimeDaily: thin wrapper around the `get_person_time_daily` RPC
+// (supabase/migrations/20261109010000_rpc_person_time_reports.sql).
+// Grouped only by entry_date (no project dimension) for bar
+// chart/calendar-grid displays of a single person's logged time.
+export async function getPersonTimeDaily(
+  userId: string,
+  startDate: string,
+  endDate: string,
+): Promise<PersonTimeDaily[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_person_time_daily", {
+    p_user_id: userId,
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+
+  if (error || !data) {
+    if (error) {
+      logger.error("getPersonTimeDaily: rpc failed", { error: error });
+    }
+    return [];
+  }
+
+  return data.map(
+    (row: { entry_date: string; total_minutes: number; billable_minutes: number }) => ({
+      entryDate: row.entry_date,
+      totalMinutes: Number(row.total_minutes ?? 0),
+      billableMinutes: Number(row.billable_minutes ?? 0),
+    }),
+  );
+}
+
+export type WorkspaceTimeByPersonAndProject = {
+  userId: string;
+  projectId: string;
+  projectName: string;
+  billableMinutes: number;
+  nonBillableMinutes: number;
+};
+
+// getWorkspaceTimeByPersonAndProject: thin wrapper around the
+// `get_workspace_time_by_person_and_project` RPC
+// (supabase/migrations/20261109010000_rpc_person_time_reports.sql), an
+// extension of `getWorkspaceTimeByPerson` above that adds a project
+// dimension for heatmap/drill-down views on the workspace time report
+// page.
+export async function getWorkspaceTimeByPersonAndProject(
+  workspaceId: string,
+  startDate: string,
+  endDate: string,
+): Promise<WorkspaceTimeByPersonAndProject[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc(
+    "get_workspace_time_by_person_and_project",
+    {
+      p_workspace_id: workspaceId,
+      p_start_date: startDate,
+      p_end_date: endDate,
+    },
+  );
+
+  if (error || !data) {
+    if (error) {
+      logger.error("getWorkspaceTimeByPersonAndProject: rpc failed", { error: error });
+    }
+    return [];
+  }
+
+  return data.map(
+    (row: {
+      user_id: string;
+      project_id: string;
+      project_name: string;
+      billable_minutes: number;
+      non_billable_minutes: number;
+    }) => ({
+      userId: row.user_id,
+      projectId: row.project_id,
+      projectName: row.project_name,
+      billableMinutes: Number(row.billable_minutes ?? 0),
+      nonBillableMinutes: Number(row.non_billable_minutes ?? 0),
+    }),
+  );
+}
+
 export type ActiveTimer = {
   id: string;
   taskId: string;
@@ -184,6 +327,67 @@ export async function getTaskLoggedMinutes(
   }
 
   return totals;
+}
+
+export type MyRecentTimeEntry = {
+  id: string;
+  taskId: string;
+  taskTitle: string;
+  minutes: number;
+  billable: boolean;
+  entryDate: string;
+  note: string | null;
+};
+
+// getMyRecentTimeEntries: powers the global "Track Time" header widget's
+// entry list (grouped by day client-side) — the caller's own time entries
+// across the whole workspace, most recent first, capped to a short lookback
+// window (`days`) so the popover never has to render a caller's entire
+// history. Uses the request-scoped (RLS-respecting) client, same convention
+// as getTaskLoggedMinutes/getActiveTimer above: a signed-out caller gets an
+// empty array, and `time_entries_select_active_members` RLS is what
+// actually restricts this to entries the caller may see (a client account
+// with client_visible=false on a task never surfaces it here either, same
+// hardening as getTaskLoggedMinutes documents).
+export async function getMyRecentTimeEntries(
+  userId: string,
+  days = 14,
+): Promise<MyRecentTimeEntry[]> {
+  const supabase = await createClient();
+
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceDate = since.toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select("id, task_id, minutes, billable, entry_date, note, tasks(id, title)")
+    .eq("user_id", userId)
+    .gte("entry_date", sinceDate)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    logger.error("getMyRecentTimeEntries: query failed", { error: error });
+    return [];
+  }
+
+  return (data ?? []).map((row) => {
+    const task = row.tasks as
+      | { id: string; title: string }
+      | { id: string; title: string }[]
+      | null;
+    const taskRow = Array.isArray(task) ? task[0] : task;
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      taskTitle: taskRow?.title ?? "Untitled task",
+      minutes: row.minutes,
+      billable: row.billable,
+      entryDate: row.entry_date,
+      note: row.note,
+    };
+  });
 }
 
 export type PersonEstimateVsLogged = {
