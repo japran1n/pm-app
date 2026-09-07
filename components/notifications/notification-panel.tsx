@@ -41,8 +41,14 @@ function actionLabel(kind: NotificationKind): string {
       return "replied on";
     case "task_assigned":
       return "assigned you to";
+    // task_due_soon is rendered by a dedicated branch below (it has no
+    // actor -- F212's hourly pg_cron sweep always inserts it with
+    // `p_actor_id => null`, a genuine system-generated reminder, not a
+    // person-caused event) and never reaches this switch, but the case is
+    // kept here so `NotificationKind`'s exhaustiveness isn't silently
+    // broken by removing it.
     case "task_due_soon":
-      return "a task you're watching is due soon:";
+      return "is due soon:";
     case "watcher_update":
       return "updated a task you're watching:";
     // Faza D (docs/chat-slack-parity-plan.md): composes with itemLabel
@@ -288,6 +294,13 @@ export function NotificationPanel({
               chatNotificationHref(workspaceSlug, notification.chatMention ?? null);
             const isUnread = !notification.readAt;
 
+            // task_due_soon is system-generated (F212's hourly pg_cron
+            // sweep always inserts it with `p_actor_id => null` -- no
+            // person triggered it), so it gets its own sentence with no
+            // "Someone"/actor prefix instead of being forced through the
+            // actor+action+item template every person-caused kind uses.
+            const isSystemNotification = notification.kind === "task_due_soon";
+
             const content = (
               <div
                 className={`flex items-start gap-2.5 rounded-md px-2 py-2 text-sm ${
@@ -307,15 +320,26 @@ export function NotificationPanel({
                 />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <p className="text-sm leading-snug">
-                    <span className="font-medium">
-                      {notification.actor?.name ??
-                        notification.actor?.email ??
-                        "Someone"}
-                    </span>{" "}
-                    {actionLabel(notification.kind)}{" "}
-                    <span className="font-medium">
-                      {itemLabel(notification)}
-                    </span>
+                    {isSystemNotification ? (
+                      <>
+                        A task you&apos;re watching {actionLabel(notification.kind)}{" "}
+                        <span className="font-medium">
+                          {itemLabel(notification)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-medium">
+                          {notification.actor?.name ??
+                            notification.actor?.email ??
+                            "Someone"}
+                        </span>{" "}
+                        {actionLabel(notification.kind)}{" "}
+                        <span className="font-medium">
+                          {itemLabel(notification)}
+                        </span>
+                      </>
+                    )}
                   </p>
                   <span className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(notification.createdAt), {
