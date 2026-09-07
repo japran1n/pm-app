@@ -154,7 +154,7 @@ export default async function ProjectsPage({
 // Perf (W9b): extracted so the header/New Project controls above can
 // stream ahead of the project list + favourite ids fetch this component
 // owns — see the `<Suspense>` call site in `ProjectsPage` above for why.
-async function ProjectsGridSection({
+export async function ProjectsGridSection({
   workspaceId,
   workspaceSlug,
   canArchive,
@@ -183,8 +183,18 @@ async function ProjectsGridSection({
     // F263 (AS-510): server-fetched alongside the project list above,
     // same "one fetch, passed down as props" convention this page already
     // follows for `projects`/`projectTemplateOptions` — not a per-card
-    // client fetch.
-    getFavoriteProjectIds(workspaceId),
+    // client fetch. `getFavoriteProjectIds` already fails open to an
+    // empty Set on a query error internally, but a `.catch()` is added
+    // here too (same defense-in-depth reasoning as the health-inputs
+    // `.catch()` below) so that even a failure BEFORE its own internal
+    // try/catch (e.g. `createClient()` itself throwing) can never reject
+    // this whole `Promise.all` and take down project list rendering with
+    // it — a favourites failure must only ever cost the favourite star,
+    // never the page.
+    getFavoriteProjectIds(workspaceId).catch((error) => {
+      logger.error("ProjectsPage: failed to load favourite project ids", { error });
+      return new Set<string>();
+    }),
   ]);
 
   const projects = projectsResult.projects;
