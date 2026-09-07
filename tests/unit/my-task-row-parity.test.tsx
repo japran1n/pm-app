@@ -55,11 +55,17 @@ function makeRow(overrides: Partial<MyTaskRow> = {}): MyTaskRow {
     isAssigned: true,
     clientVisible: false,
     pendingClientApproval: false,
+    taskType: null,
+    estimateMinutes: null,
+    totalMinutes: 0,
     ...overrides,
   } as MyTaskRow;
 }
 
-function renderRow(row: MyTaskRow) {
+function renderRow(
+  row: MyTaskRow,
+  taskTypeOptions: { id: string; name: string; color: string }[] = [],
+) {
   return render(
     createElement(
       Table,
@@ -71,6 +77,7 @@ function renderRow(row: MyTaskRow) {
           row,
           workspaceSlug: "acme",
           timezone: "UTC",
+          taskTypeOptions,
         }),
       ),
     ),
@@ -119,5 +126,41 @@ describe("Portal-parity: My Tasks row uses the shared table row primitives", () 
     renderRow(makeRow({ isWatched: true, isAssigned: true }));
 
     expect(screen.queryByText("Watching")).not.toBeInTheDocument();
+  });
+
+  // Dashboard/Project List parity follow-up: My Tasks previously omitted
+  // the Type/Estimate/Logged columns TaskListTable's own row always shows —
+  // these assert the same cells now render here too, using the identical
+  // shared components (ListTaskTypeSelect, formatDuration), not lookalikes.
+  it("test_my_task_row_renders_a_type_column_using_the_shared_type_select", () => {
+    renderRow(makeRow({ taskType: { id: "type-1", name: "Bug", color: "#f00" } }), [
+      { id: "type-1", name: "Bug", color: "#f00" },
+    ]);
+
+    expect(
+      screen.getByLabelText(/Change task type for task task-1/i),
+    ).toBeInTheDocument();
+  });
+
+  it("test_my_task_row_renders_estimate_and_logged_columns", () => {
+    renderRow(makeRow({ estimateMinutes: 120, totalMinutes: 60 }));
+
+    expect(screen.getByText("2h")).toBeInTheDocument();
+    expect(screen.getByText("1h")).toBeInTheDocument();
+  });
+
+  it("test_my_task_row_renders_dash_when_no_estimate_or_logged_time", () => {
+    renderRow(makeRow({ estimateMinutes: null, totalMinutes: 0 }));
+
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("test_my_task_row_does_not_render_an_assignee_column", () => {
+    // Intentionally omitted: every row on this page belongs to the current
+    // user by definition, so an Assignee column would repeat the same
+    // person on every row — see this feature's handoff for the rationale.
+    renderRow(makeRow());
+
+    expect(screen.queryByLabelText(/Change assignee/i)).not.toBeInTheDocument();
   });
 });

@@ -32,6 +32,9 @@ import {
 import { MyTaskRowItem } from "@/components/task/my-task-row";
 import { PersonalTodoList } from "@/components/my-tasks/personal-todo-list";
 import { getPersonalTodos } from "@/lib/queries/personal-todos";
+// Portal-parity fix (Type column): the same workspace-scoped task types
+// query the project List page uses for its own taskTypeOptions prop.
+import { getTaskTypes } from "@/lib/queries/task-types";
 
 const BUCKET_ORDER: { key: keyof MyTasksBuckets; label: string }[] = [
   { key: "overdue", label: "Overdue" },
@@ -87,13 +90,17 @@ export default async function MyTasksPage({
     );
   }
 
-  const [realBuckets, personalTodos] = await Promise.all([
+  const [realBuckets, personalTodos, taskTypes] = await Promise.all([
     getMyTasks(workspace.id, user.id, timezone, includeWatched),
     // F416-F418: fetched alongside the task buckets, not as a second
     // client round trip -- same "everything this page needs, in one
     // server render" convention as every other independent-fetches batch
     // in this codebase.
     getPersonalTodos(workspace.id),
+    // Portal-parity fix (Type column): fetched alongside the rest of this
+    // independent-fetches batch, same as the project List page's own
+    // taskTypes fetch.
+    getTaskTypes(workspace.id),
   ]);
 
   const totalCount = BUCKET_ORDER.reduce(
@@ -220,7 +227,17 @@ export default async function MyTasksPage({
                     <TableHead>Title</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Priority</TableHead>
+                    {/* Portal-parity fix: Type/Estimate/Logged added to
+                        match TaskListTable's header exactly. Assignee is
+                        intentionally omitted here — every row on this page
+                        is already the caller's own task, so an Assignee
+                        column would show the same person on every row
+                        (same "my X" convention Linear/ClickUp/etc follow
+                        for their own "assigned to me" views). */}
+                    <TableHead>Type</TableHead>
                     <TableHead className="text-right">Due date</TableHead>
+                    <TableHead className="text-right">Estimate</TableHead>
+                    <TableHead className="text-right">Logged</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -231,6 +248,7 @@ export default async function MyTasksPage({
                       workspaceSlug={workspaceSlug}
                       timezone={timezone}
                       statusOptions={statusOptionsByProject.get(row.projectId)}
+                      taskTypeOptions={taskTypes}
                     />
                   ))}
                 </TableBody>

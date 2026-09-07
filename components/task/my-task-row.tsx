@@ -25,10 +25,12 @@
 import { useRouter } from "next/navigation";
 
 import { formatTaskKey } from "@/lib/tasks/task-key";
+import { formatDuration } from "@/lib/time/format-duration";
 import { formatDueDate } from "@/lib/time/user-timezone";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { ListPrioritySelect } from "@/components/task/list-priority-select";
+import { ListTaskTypeSelect } from "@/components/task/list-task-type-select";
 import { MyTaskStatusCell } from "@/components/task/my-task-status-cell";
 // Same shared key/title cell markup TaskListTable itself uses (Dashboard +
 // Project List) — see task-title-cell.tsx's own doc comment for why this
@@ -43,11 +45,17 @@ export function MyTaskRowItem({
   workspaceSlug,
   timezone,
   statusOptions,
+  taskTypeOptions = [],
 }: {
   row: MyTaskRow;
   workspaceSlug: string;
   timezone: string;
   statusOptions?: MyTaskStatusOption[];
+  /** Portal-parity fix (Type column): the workspace's task types, same
+   * shape/source (getTaskTypes) TaskListTable's own taskTypeOptions prop
+   * uses — see that component's own comment for the "empty means the
+   * feature quietly steps aside" convention this follows too. */
+  taskTypeOptions?: { id: string; name: string; color: string; systemKey?: string | null }[];
 }) {
   const router = useRouter();
   const key = formatTaskKey(row.projectKey, row.number);
@@ -110,8 +118,32 @@ export function MyTaskRowItem({
           priority={row.priority as TaskCardTask["priority"]}
         />
       </TableCell>
+      {/* Portal-parity fix (Type column): same <ListTaskTypeSelect> cell
+          TaskListTable's own Type column uses. */}
+      <TableCell onClick={(event) => event.stopPropagation()}>
+        <ListTaskTypeSelect
+          taskId={row.id}
+          taskType={row.taskType}
+          options={taskTypeOptions}
+        />
+      </TableCell>
       <TableCell className="text-right text-xs text-muted-foreground">
         {row.dueDate ? formatDueDate(row.dueDate, timezone) : "—"}
+      </TableCell>
+      {/* Portal-parity fix (Estimate/Logged columns): identical "—" for
+          no estimate / plain formatDuration rendering TaskListTable's own
+          Estimate/Logged cells use — see that component's own comment. */}
+      <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+        {row.estimateMinutes ? formatDuration(row.estimateMinutes) : "—"}
+      </TableCell>
+      <TableCell
+        className={
+          row.estimateMinutes && row.totalMinutes > row.estimateMinutes
+            ? "text-right font-mono text-xs tabular-nums text-destructive"
+            : "text-right font-mono text-xs tabular-nums text-muted-foreground"
+        }
+      >
+        {row.totalMinutes ? formatDuration(row.totalMinutes) : "—"}
       </TableCell>
     </TableRow>
   );

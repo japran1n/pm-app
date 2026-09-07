@@ -56,6 +56,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { isDoneStatus } from "@/lib/tasks/status-category";
 import { bucketForDueDate, type MyTasksBucket } from "@/lib/my-tasks/bucket";
+// Portal-parity fix (My Tasks Type/Estimate/Logged columns): the exact
+// same batched logged-minutes helper the project List view/dashboard table
+// use (lib/queries/tasks.ts) — one round trip for the whole page, never a
+// per-row fetch.
+import { getTaskLoggedMinutes } from "@/lib/queries/time-entries";
 
 export type MyTaskRow = {
   id: string;
@@ -85,6 +90,13 @@ export type MyTaskRow = {
   // My Tasks needs to answer without opening every row.
   clientVisible: boolean;
   pendingClientApproval: boolean;
+  // Portal-parity fix (My Tasks Type/Estimate/Logged columns): the same
+  // three fields TaskListTable's row already carries (task-list-table.tsx),
+  // so <MyTaskRowItem> can render the identical <ListTaskTypeSelect> and
+  // estimate/logged cells rather than a lookalike.
+  taskType: { id: string; name: string; color: string } | null;
+  estimateMinutes: number | null;
+  totalMinutes: number;
 };
 
 export type MyTasksBuckets = {
@@ -102,7 +114,10 @@ function firstRelated<T>(relation: T | T[] | null | undefined): T | null {
 const TASK_SELECT_COLUMNS =
   // F083: `client_visible, pending_client_approval` added — see
   // MyTaskRow.clientVisible/pendingClientApproval's own comment.
-  "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, client_visible, pending_client_approval, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category)";
+  // Portal-parity fix: `estimate_minutes, task_type_id, task_types(...)`
+  // added so this row carries the same Type/Estimate data TaskListTable's
+  // row already does — see MyTaskRow.taskType/estimateMinutes comments.
+  "id, title, status, status_id, priority, due_date, number, project_id, deleted_at, client_visible, pending_client_approval, estimate_minutes, task_type_id, projects!inner(id, key, name, workspace_id, deleted_at), project_statuses(category), task_types(id, name, color)";
 
 function toRow(
   task: {
@@ -115,10 +130,16 @@ function toRow(
     project_id: string;
     client_visible?: boolean | null;
     pending_client_approval?: boolean | null;
+    estimate_minutes?: number | null;
     projects: { id: string; key: string | null; name: string } | { id: string; key: string | null; name: string }[] | null;
     project_statuses: { category: string } | { category: string }[] | null;
+    task_types?:
+      | { id: string; name: string; color: string }
+      | { id: string; name: string; color: string }[]
+      | null;
   },
   timeZone: string,
+  loggedMinutes: number,
 ): MyTaskRow {
   const project = firstRelated(task.projects);
   const category = firstRelated(task.project_statuses)?.category ?? null;
@@ -139,6 +160,9 @@ function toRow(
     isAssigned: false,
     clientVisible: task.client_visible ?? false,
     pendingClientApproval: task.pending_client_approval ?? false,
+    taskType: firstRelated(task.task_types) ?? null,
+    estimateMinutes: task.estimate_minutes ?? null,
+    totalMinutes: loggedMinutes,
   };
 }
 
@@ -170,8 +194,15 @@ export async function getMyTasks(
 
   const rowsById = new Map<string, MyTaskRow>();
 
+  // Portal-parity fix: one batched sum of logged time for the assigned set
+  // — same "batch once, never per-row" rationale getTaskLoggedMinutes's own
+  // doc comment documents for the project List view.
+  const assignedLoggedMinutes = await getTaskLoggedMinutes(
+    (data ?? []).map((task) => task.id),
+  );
+
   for (const task of data ?? []) {
-    const row = toRow(task, timeZone);
+    const row = toRow(task, timeZone, assignedLoggedMinutes.get(task.id) ?? 0);
     row.isAssigned = true;
     rowsById.set(row.id, row);
   }
@@ -208,12 +239,20 @@ export async function getMyTasks(
         throw watchedError;
       }
 
+      const watchedLoggedMinutes = await getTaskLoggedMinutes(
+        (watchedData ?? []).map((task) => task.id),
+      );
+
       for (const task of watchedData ?? []) {
         const existing = rowsById.get(task.id);
         if (existing) {
           existing.isWatched = true;
         } else {
-          const row = toRow(task, timeZone);
+          const row = toRow(
+            task,
+            timeZone,
+            watchedLoggedMinutes.get(task.id) ?? 0,
+          );
           row.isWatched = true;
           rowsById.set(row.id, row);
         }
