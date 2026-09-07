@@ -6,6 +6,14 @@
 // create-block-popover.tsx's own header comment for why): the "drag"
 // affordance here is a lightweight "+ add block" trigger on the day cell
 // that opens this exact form, defaulted to that day.
+//
+// Color picker: a fixed row of 8 predefined swatches (lib/calendar/
+// block-colors.ts) -- clicking one selects it, no custom/freeform color
+// input, per this feature's own clarified answer. Defaults to the FIRST
+// swatch for a brand-new block (never null/unset) so every new block
+// always renders with a visible color from the moment it's created,
+// matching how the chip components (calendar-block-chip.tsx,
+// week-time-grid.tsx's WeekBlockChip) style themselves off `block.color`.
 
 "use client";
 
@@ -14,6 +22,11 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import {
+  CALENDAR_BLOCK_COLORS,
+  DEFAULT_CALENDAR_BLOCK_COLOR,
+} from "@/lib/calendar/block-colors";
 
 export type CalendarBlockFormValues = {
   title: string;
@@ -21,6 +34,8 @@ export type CalendarBlockFormValues = {
    * date before being sent to the server action as a full ISO string. */
   startTime: string;
   endTime: string;
+  /** One of CALENDAR_BLOCK_COLORS' own `value`s. */
+  color: string;
 };
 
 export function CalendarBlockPopoverForm({
@@ -30,7 +45,7 @@ export function CalendarBlockPopoverForm({
   onDelete,
   pending,
 }: {
-  initial: CalendarBlockFormValues;
+  initial: Omit<CalendarBlockFormValues, "color"> & { color?: string | null };
   submitLabel: string;
   onSubmit: (values: CalendarBlockFormValues) => void;
   onDelete?: () => void;
@@ -39,6 +54,7 @@ export function CalendarBlockPopoverForm({
   const [title, setTitle] = useState(initial.title);
   const [startTime, setStartTime] = useState(initial.startTime);
   const [endTime, setEndTime] = useState(initial.endTime);
+  const [color, setColor] = useState(initial.color || DEFAULT_CALENDAR_BLOCK_COLOR);
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent) {
@@ -52,7 +68,7 @@ export function CalendarBlockPopoverForm({
       return;
     }
     setError(null);
-    onSubmit({ title: title.trim(), startTime, endTime });
+    onSubmit({ title: title.trim(), startTime, endTime, color });
   }
 
   return (
@@ -85,6 +101,29 @@ export function CalendarBlockPopoverForm({
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
           />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1">
+        <Label>Color</Label>
+        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Block color">
+          {CALENDAR_BLOCK_COLORS.map((swatch) => (
+            <button
+              key={swatch.value}
+              type="button"
+              role="radio"
+              aria-checked={color === swatch.value}
+              aria-label={swatch.label}
+              data-testid={`calendar-block-color-${swatch.value.replace("#", "")}`}
+              onClick={() => setColor(swatch.value)}
+              className={cn(
+                "h-6 w-6 shrink-0 rounded-full border-2 transition-transform",
+                color === swatch.value
+                  ? "border-foreground scale-110"
+                  : "border-transparent hover:scale-105",
+              )}
+              style={{ backgroundColor: swatch.value }}
+            />
+          ))}
         </div>
       </div>
       {error && (

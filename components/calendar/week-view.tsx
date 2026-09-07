@@ -96,7 +96,9 @@ export function WeekView({
         />
       </div>
       <p className="text-xs text-muted-foreground md:hidden" data-testid="calendar-week-mobile-fallback">
-        Week view is available on wider screens. Switch to Month view to see this week&apos;s tasks here.
+        The time-grid week view is available on wider screens. Rotate your
+        device or use a larger screen to see this week&apos;s tasks and
+        blocks here.
       </p>
     </div>
   );

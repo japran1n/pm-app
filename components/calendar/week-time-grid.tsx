@@ -7,6 +7,15 @@
 // top/bottom edge can be dragged to resize it (`applyResize`) instead of
 // only being retimed through the popover form.
 //
+// Live-synced resize: the block's own visual height/position is
+// recomputed on EVERY mousemove while a resize handle is held (not just
+// once at mouseup) via the `liveResize` memo below, using the exact same
+// pure `applyResize`/`blockLayoutForDay` maths the mouseup commit uses --
+// so what's on screen while dragging is never an approximation of the
+// final result, and a floating "HH:MM - HH:MM" label tracks the resized
+// edge the whole time so the member can see precisely what they're about
+// to commit before releasing the mouse.
+//
 // Mirrors calendar-day-grid.tsx's ownership split: this client component
 // owns the local optimistic `blocksState` copy and the create/update/
 // delete calls into the SAME Server Actions (lib/actions/calendar-blocks)
@@ -43,6 +52,7 @@ import {
   dragRangeToTimes,
 } from "@/lib/calendar/time-grid-layout";
 import { combineDateAndTime, formatBlockTimeRange } from "@/lib/calendar/block-datetime";
+import { isKnownCalendarBlockColor } from "@/lib/calendar/block-colors";
 import {
   Popover,
   PopoverContent,
@@ -126,8 +136,21 @@ export function WeekTimeGrid({
       setDragCreate({ ...dragCreate, currentPx: offset });
     }
     if (resize) {
+      // Live sync (per this feature's own spec): every mousemove while a
+      // handle is held updates `resizePreviewPx`, which both `liveResize`
+      // below (visual height/position) and the floating time label derive
+      // from -- the block visibly tracks the pointer in real time, not
+      // only once at mouseup.
       setResizePreviewPx(offsetForEvent(resize.date, event.clientY));
     }
+  }
+
+  function findBlock(blockId: string): CalendarBlock | undefined {
+    for (const blocks of Object.values(blocksState)) {
+      const found = blocks.find((b) => b.id === blockId);
+      if (found) return found;
+    }
+    return undefined;
   }
 
   function handleGridMouseUp() {
@@ -152,14 +175,6 @@ export function WeekTimeGrid({
       setResize(null);
       setResizePreviewPx(null);
     }
-  }
-
-  function findBlock(blockId: string): CalendarBlock | undefined {
-    for (const blocks of Object.values(blocksState)) {
-      const found = blocks.find((b) => b.id === blockId);
-      if (found) return found;
-    }
-    return undefined;
   }
 
   function applyOptimisticResize(
@@ -197,6 +212,7 @@ export function WeekTimeGrid({
       title: values.title,
       startsAt,
       endsAt,
+      color: values.color,
     });
     if (!result.ok) {
       sonnerToast.error(result.error);
@@ -212,7 +228,7 @@ export function WeekTimeGrid({
   async function handleUpdate(
     date: string,
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string },
+    values: { title: string; startsAt: string; endsAt: string; color: string },
   ) {
     const result = await updateCalendarBlock({ blockId, ...values });
     if (!result.ok) {
@@ -243,6 +259,35 @@ export function WeekTimeGrid({
     const height = Math.max(Math.abs(dragCreate.currentPx - dragCreate.startPx), 4);
     return { date: dragCreate.date, top, height };
   }, [dragCreate]);
+
+  // Live resize preview: recomputed on every mousemove (not just at
+  // mouseup) so the block's own visual height/position is synced with the
+  // pointer in real time, and a "HH:MM - HH:MM" label can be shown while
+  // the handle is still being dragged -- both directly reuse the SAME
+  // pure `applyResize` snap-to-15-minutes maths the eventual mouseup
+  // commit uses, so what the user sees while dragging is exactly what
+  // gets persisted, never an approximation.
+  const liveResize = useMemo(() => {
+    if (!resize || resizePreviewPx === null) return null;
+    const block = findBlock(resize.blockId);
+    if (!block) return null;
+    const { startsAt, endsAt } = applyResize(
+      resize.edge,
+      block.startsAt,
+      block.endsAt,
+      resize.date,
+      resizePreviewPx,
+    );
+    const layout = blockLayoutForDay(startsAt, endsAt, resize.date);
+    if (!layout) return null;
+    return {
+      blockId: resize.blockId,
+      date: resize.date,
+      top: layout.top,
+      height: layout.height,
+      label: formatBlockTimeRange(startsAt, endsAt),
+    };
+  }, [resize, resizePreviewPx, blocksState]);
 
   return (
     <div className="flex flex-col gap-2" data-testid="calendar-week-time-grid">
@@ -310,13 +355,17 @@ export function WeekTimeGrid({
             {(blocksState[day.date] ?? []).map((block) => {
               const layout = blockLayoutForDay(block.startsAt, block.endsAt, day.date);
               if (!layout) return null;
+              const isResizingThis =
+                liveResize !== null && liveResize.blockId === block.id && liveResize.date === day.date;
               return (
                 <WeekBlockChip
                   key={block.id}
                   block={block}
                   date={day.date}
-                  top={layout.top}
-                  height={layout.height}
+                  top={isResizingThis ? liveResize!.top : layout.top}
+                  height={isResizingThis ? liveResize!.height : layout.height}
+                  liveTimeLabel={isResizingThis ? liveResize!.label : null}
+                  isResizing={isResizingThis}
                   canDrag={canDrag}
                   onStartResize={(edge) =>
                     setResize({ blockId: block.id, edge, date: day.date })
@@ -389,6 +438,8 @@ function WeekBlockChip({
   date,
   top,
   height,
+  liveTimeLabel = null,
+  isResizing = false,
   canDrag,
   onStartResize,
   onUpdate,
@@ -398,20 +449,27 @@ function WeekBlockChip({
   date: string;
   top: number;
   height: number;
+  /** Live-synced "HH:MM - HH:MM" label shown WHILE a resize handle is
+   * being dragged (before mouseup commits it) -- null the rest of the
+   * time, when the chip's own static time range (below) is shown instead. */
+  liveTimeLabel?: string | null;
+  isResizing?: boolean;
   canDrag: boolean;
   onStartResize: (edge: "start" | "end") => void;
-  onUpdate: (values: { title: string; startsAt: string; endsAt: string }) => Promise<void> | void;
+  onUpdate: (values: { title: string; startsAt: string; endsAt: string; color: string }) => Promise<void> | void;
   onDelete: () => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+
+  const hasColor = isKnownCalendarBlockColor(block.color);
 
   async function handleSubmit(values: CalendarBlockFormValues) {
     const startsAt = combineDateAndTime(date, values.startTime);
     const endsAt = combineDateAndTime(date, values.endTime);
     setPending(true);
     try {
-      await onUpdate({ title: values.title, startsAt, endsAt });
+      await onUpdate({ title: values.title, startsAt, endsAt, color: values.color });
       setOpen(false);
     } finally {
       setPending(false);
@@ -435,8 +493,22 @@ function WeekBlockChip({
           <button
             type="button"
             data-testid={`calendar-week-block-chip-${block.id}`}
-            className="absolute left-0.5 right-0.5 flex flex-col overflow-hidden rounded border border-dashed border-primary/50 bg-primary/10 px-1 py-0.5 text-left text-[10px] hover:bg-primary/20"
-            style={{ top, height }}
+            className={cn(
+              "absolute left-0.5 right-0.5 flex flex-col overflow-hidden rounded border border-dashed border-primary/50 bg-primary/10 px-1 py-0.5 text-left text-[10px] hover:bg-primary/20",
+              isResizing && "z-10 shadow-md ring-1 ring-primary",
+            )}
+            style={{
+              top,
+              height,
+              ...(hasColor
+                ? {
+                    backgroundColor: `${block.color}1a`,
+                    borderColor: block.color as string,
+                    borderStyle: "solid",
+                    borderLeftWidth: "3px",
+                  }
+                : {}),
+            }}
             onMouseDown={(event) => event.stopPropagation()}
             title={block.title}
           >
@@ -452,8 +524,13 @@ function WeekBlockChip({
               />
             )}
             <span className="truncate font-medium">{block.title}</span>
-            <span className="truncate text-muted-foreground">
-              {formatBlockTimeRange(block.startsAt, block.endsAt)}
+            <span className="truncate text-muted-foreground" data-testid={`calendar-week-block-time-${block.id}`}>
+              {/* Live sync during resize (this feature's own spec): the
+                  displayed time range updates on every mousemove to the
+                  exact snapped value the handle is currently over, so the
+                  member sees precisely what they're about to commit
+                  before releasing the mouse. */}
+              {liveTimeLabel ?? formatBlockTimeRange(block.startsAt, block.endsAt)}
             </span>
             {canDrag && (
               <span
@@ -475,6 +552,7 @@ function WeekBlockChip({
             title: block.title,
             startTime: formatHHMMLocal(block.startsAt),
             endTime: formatHHMMLocal(block.endsAt),
+            color: block.color,
           }}
           submitLabel="Save"
           onSubmit={handleSubmit}

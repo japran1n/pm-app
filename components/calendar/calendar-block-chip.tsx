@@ -19,6 +19,7 @@ import {
   isoToLocalDateOnly,
   isoToLocalTime,
 } from "@/lib/calendar/block-datetime";
+import { isKnownCalendarBlockColor } from "@/lib/calendar/block-colors";
 import {
   Popover,
   PopoverContent,
@@ -42,7 +43,7 @@ export function CalendarBlockChip({
   canDrag: boolean;
   onUpdate: (
     blockId: string,
-    values: { title: string; startsAt: string; endsAt: string },
+    values: { title: string; startsAt: string; endsAt: string; color: string },
   ) => Promise<void> | void;
   onDelete: (blockId: string) => Promise<void> | void;
 }) {
@@ -54,9 +55,18 @@ export function CalendarBlockChip({
     disabled: !canDrag,
   });
 
+  const hasColor = isKnownCalendarBlockColor(block.color);
+
   const style = {
     transform: CSS.Translate.toString(transform),
     opacity: isDragging ? 0.5 : 1,
+    ...(hasColor
+      ? {
+          backgroundColor: `${block.color}1a`,
+          borderColor: block.color as string,
+          borderLeftWidth: "3px",
+        }
+      : {}),
   };
 
   async function handleSubmit(values: CalendarBlockFormValues) {
@@ -65,7 +75,7 @@ export function CalendarBlockChip({
     const endsAt = combineDateAndTime(dateOnly, values.endTime);
     setPending(true);
     try {
-      await onUpdate(block.id, { title: values.title, startsAt, endsAt });
+      await onUpdate(block.id, { title: values.title, startsAt, endsAt, color: values.color });
       setOpen(false);
     } finally {
       setPending(false);
@@ -111,6 +121,7 @@ export function CalendarBlockChip({
             title: block.title,
             startTime: isoToLocalTime(block.startsAt),
             endTime: isoToLocalTime(block.endsAt),
+            color: block.color,
           }}
           submitLabel="Save"
           onSubmit={handleSubmit}

@@ -41,7 +41,12 @@ export function AddBlockPopover({
 }: {
   /** The cell's own "YYYY-MM-DD" -- the new block is anchored to this day. */
   date: string;
-  onCreate: (values: { title: string; startsAt: string; endsAt: string }) => Promise<void> | void;
+  onCreate: (values: {
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    color: string;
+  }) => Promise<void> | void;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -53,6 +58,7 @@ export function AddBlockPopover({
         title: values.title,
         startsAt: combineDateAndTime(date, values.startTime),
         endsAt: combineDateAndTime(date, values.endTime),
+        color: values.color,
       });
       setOpen(false);
     } finally {
