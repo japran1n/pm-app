@@ -148,7 +148,7 @@ export function EditProjectDialog({
             <div
               role="group"
               aria-labelledby={`edit-project-icon-label-${project.id}`}
-              className="grid grid-cols-8 gap-1"
+              className="grid grid-cols-4 gap-1 sm:grid-cols-8"
             >
               <button
                 type="button"
