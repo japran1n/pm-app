@@ -225,8 +225,12 @@ export async function getProjectBoardTasks(
 // how "Clear filters" restores the full list (AS-090): the list page just
 // calls this with no filters again.
 export type ProjectListTaskFilters = {
-  status?: TaskCardTask["status"];
-  priority?: NonNullable<TaskCardTask["priority"]>;
+  // Follow-up (advanced filtering, partial): a single value keeps the
+  // existing "eq" semantics; an array matches ANY of the given values
+  // (SQL IN), for a saved view's multi-select filter
+  // (lib/validation/views.ts's `savedViewFilterSchema` "in" operator).
+  status?: TaskCardTask["status"] | TaskCardTask["status"][];
+  priority?: NonNullable<TaskCardTask["priority"]> | NonNullable<TaskCardTask["priority"]>[];
   // F162 (AS-291): a single id (the URL-driven `<ListFilters>` shape today)
   // or an array of ids (for callers/tests that need to filter by several
   // assignees at once) — either way this now matches ANY of a task's
@@ -240,6 +244,13 @@ export type ProjectListTaskFilters = {
   assigneeId?: string | string[];
   // F434-F440: matches tasks whose task_type_id equals this id.
   taskTypeId?: string;
+  // Follow-up (manual view membership): an explicit id allow-list, used
+  // by list/page.tsx to fetch the tasks manually pinned into a view (via
+  // `view_tasks`) so they can be unioned onto the filter-matched set --
+  // see lib/views/apply-view.ts's `mergeManualTaskIds`. Combines with
+  // AND semantics like every other key here, but the only caller that
+  // sets this passes no other filter at the same time.
+  taskIds?: string[];
 };
 
 // F055 (AS-091): due-date sort, applied AFTER filtering — same query, just
@@ -337,14 +348,21 @@ export async function getProjectListTasks(
     .is("deleted_at", null);
 
   if (filters?.status) {
-    query = query.eq("status", filters.status);
+    query = Array.isArray(filters.status)
+      ? query.in("status", filters.status)
+      : query.eq("status", filters.status);
   }
 
   if (filters?.taskTypeId) {
     query = query.eq("task_type_id", filters.taskTypeId);
   }
   if (filters?.priority) {
-    query = query.eq("priority", filters.priority);
+    query = Array.isArray(filters.priority)
+      ? query.in("priority", filters.priority)
+      : query.eq("priority", filters.priority);
+  }
+  if (filters?.taskIds) {
+    query = query.in("id", filters.taskIds.length > 0 ? filters.taskIds : ["00000000-0000-0000-0000-000000000000"]);
   }
   // F162 (AS-291): matches ANY of a task's current assignees via
   // `task_assignees`, not the deprecated single `assignee_id` column — see

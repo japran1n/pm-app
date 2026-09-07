@@ -89,6 +89,9 @@ import { BulkDeleteAction } from "@/components/task/bulk-delete-action";
 // BulkStatusAction's own wiring exactly.
 import { BulkPhaseAction } from "@/components/task/bulk-phase-action";
 import { ListTaskTypeSelect } from "@/components/task/list-task-type-select";
+// Follow-up (manual view membership): lets a row be manually added to one
+// of the project's saved list views, independent of that view's filter.
+import { AddToViewMenu } from "@/components/task/add-to-view-menu";
 
 export function TaskListTable({
   tasks: tasksProp,
@@ -101,6 +104,7 @@ export function TaskListTable({
   statusOptions,
   projectId,
   taskTypeOptions = [],
+  savedViews = [],
 }: {
   tasks: TaskCardTask[];
   /** F434-F440: the workspace's task types, for the inline per-row
@@ -166,6 +170,12 @@ export function TaskListTable({
    * it omits this prop and this table's Realtime subscription is a
    * documented no-op for that caller — see this feature's handoff. */
   projectId?: string;
+  /** Follow-up (manual view membership): the project's saved list views,
+   * offered as targets for the row's "Add to view" menu. Defaults to
+   * empty, in which case that affordance renders nothing (same "empty
+   * means the feature quietly steps aside" convention as taskTypeOptions
+   * above). */
+  savedViews?: { id: string; name: string }[];
 }) {
   const taskDetailSheet = useTaskDetailSheet();
 
@@ -444,8 +454,14 @@ export function TaskListTable({
                     }}
                   />
                 </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {taskKey ?? "—"}
+                <TableCell
+                  className="font-mono text-xs text-muted-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{taskKey ?? "—"}</span>
+                    <AddToViewMenu taskId={task.id} views={savedViews} />
+                  </div>
                 </TableCell>
                 <TableCell className="font-medium">
                   <div

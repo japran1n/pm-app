@@ -74,6 +74,30 @@ export function buildViewSearchParams(config: SavedViewConfig): URLSearchParams 
   return params;
 }
 
+// Follow-up (manual view membership): a view's effective task list is the
+// UNION of (a) whatever its filter config matches and (b) whatever has
+// been manually pinned into it via `view_tasks`
+// (lib/actions/view-tasks.ts, supabase/migrations/20260907010000_create_view_tasks.sql).
+// This module owns that union so every reader (today: the List page) gets
+// the same "filter-matched OR manually-added" semantics without
+// duplicating the merge/dedup logic. `filteredTasks` wins ties (its order
+// is preserved first); manually-added tasks not already present are
+// appended in their own manual position order.
+export function mergeManualTaskIds<T extends { id: string }>(
+  filteredTasks: T[],
+  manualTasksInOrder: T[],
+): T[] {
+  const seen = new Set(filteredTasks.map((task) => task.id));
+  const merged = [...filteredTasks];
+  for (const task of manualTasksInOrder) {
+    if (!seen.has(task.id)) {
+      seen.add(task.id);
+      merged.push(task);
+    }
+  }
+  return merged;
+}
+
 // Inverse of buildViewSearchParams -- reconstructs a SavedViewConfig
 // (with an "eq" operator, matching what buildViewSearchParams produced)
 // from a URL's search params. Used by F229's UI layer to restore a view

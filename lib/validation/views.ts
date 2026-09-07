@@ -27,6 +27,14 @@ export type SavedViewType = z.infer<typeof savedViewTypeSchema>;
 // fields are added by later features (F228/F229) without a DB migration
 // each time, but the top-level shape (array of objects) is still checked
 // so a malformed payload never silently persists.
+// Follow-up (advanced filtering, partial): `operator` stays a loose string
+// (not a strict enum) for the same forward-compatibility reason as the
+// rest of this schema, but "eq" and "in" are the two operators this
+// codebase's readers (lib/views/resolve-view.ts, lib/views/apply-view.ts)
+// actually understand today -- "in" carries an array `value` for a
+// multi-select filter (e.g. `status IN ['todo', 'in_progress']`).
+// Full AND/OR condition-group nesting was NOT implemented in this pass;
+// see this feature's follow-up notes for what's still needed.
 const savedViewFilterSchema = z
   .object({
     field: z.string().trim().min(1, "Filter field is required."),

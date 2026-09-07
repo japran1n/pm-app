@@ -2334,6 +2334,48 @@ export type Database = {
           },
         ]
       }
+      view_tasks: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          id: string
+          position: number
+          task_id: string
+          view_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          position?: number
+          task_id: string
+          view_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          position?: number
+          task_id?: string
+          view_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "view_tasks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "view_tasks_view_id_fkey"
+            columns: ["view_id"]
+            isOneToOne: false
+            referencedRelation: "saved_views"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       status_template_items: {
         Row: {
           category: string

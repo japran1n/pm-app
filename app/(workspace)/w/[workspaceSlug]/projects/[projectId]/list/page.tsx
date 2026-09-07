@@ -59,6 +59,7 @@ import { NewTaskDialog } from "@/components/task/new-task-dialog";
 import { NewFromTemplateButton } from "@/components/task/new-from-template-button";
 import { getWorkspaceTaskTemplateOptions } from "@/lib/queries/templates";
 import type { UserAvatarPerson } from "@/components/user-avatar";
+import type { TaskCardTask } from "@/components/task/task-card";
 // F229 (AS-429, AS-431, AS-432, AS-433): saved views for this project's
 // List view — server-fetched (RLS-scoped, per this feature's data-shape
 // answer) and passed down to the Client Component picker; `getSavedView`
@@ -67,7 +68,9 @@ import type { UserAvatarPerson } from "@/components/user-avatar";
 // rather than erroring.
 import { listSavedViewsForProject, getMyDefaultSavedView } from "@/lib/queries/views";
 import { getSavedView } from "@/lib/actions/views";
+import { listViewTaskIds } from "@/lib/actions/view-tasks";
 import { resolveListViewFilters } from "@/lib/views/resolve-view";
+import { mergeManualTaskIds } from "@/lib/views/apply-view";
 import { ViewSwitcher } from "@/components/views/view-switcher";
 import { ViewTabs } from "@/components/views/view-tabs";
 import { SaveViewDialog } from "@/components/views/save-view-dialog";
@@ -120,11 +123,11 @@ export default async function ProjectListPage({
   // legacy fixed-four `TaskCardTask["status"]` union — see
   // components/board/board.tsx's `as TaskCardTask["status"]` cast.
   const statusOptions: {
-    value: NonNullable<ProjectListTaskFilters["status"]>;
+    value: NonNullable<TaskCardTask["status"]>;
     label: string;
     color: string;
   }[] = columns.map((column) => ({
-    value: column.name as NonNullable<ProjectListTaskFilters["status"]>,
+    value: column.name as NonNullable<TaskCardTask["status"]>,
     label:
       STATUS_LABELS[column.name as keyof typeof STATUS_LABELS] ??
       column.name,
@@ -233,7 +236,7 @@ export default async function ProjectListPage({
   // project's saved views (listSavedViewsForProject) join the same
   // independent-fetches batch — RLS-scoped, so this never returns a view
   // the caller shouldn't see (AS-429/AS-434).
-  const [tasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
+  const [filteredTasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
     getCurrentUserTimezone(supabase),
     // F434-F440: fetched alongside the rest of this page's independent
@@ -244,6 +247,29 @@ export default async function ProjectListPage({
     workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
     listSavedViewsForProject(projectId, "list"),
   ]);
+
+  // Follow-up (manual view membership): a view's effective task list is
+  // filter-matched UNION manually-added (lib/views/apply-view.ts's
+  // mergeManualTaskIds) -- fetched only when a view is actually applied,
+  // since an unfiltered/no-view page has no manual-membership concept.
+  let tasks = filteredTasks;
+  if (appliedViewId) {
+    const manualIdsResult = await listViewTaskIds(appliedViewId);
+    const manualIds = manualIdsResult.ok ? manualIdsResult.data : [];
+    const missingIds = manualIds.filter(
+      (id) => !filteredTasks.some((task) => task.id === id),
+    );
+    const manualExtraTasks =
+      missingIds.length > 0
+        ? await getProjectListTasks(projectId, { taskIds: missingIds })
+        : [];
+    tasks = mergeManualTaskIds(
+      filteredTasks,
+      manualIds
+        .map((id) => manualExtraTasks.find((task) => task.id === id))
+        .filter((task): task is (typeof manualExtraTasks)[number] => Boolean(task)),
+    );
+  }
 
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,
@@ -328,6 +354,7 @@ export default async function ProjectListPage({
         statusOptions={statusOptions}
         projectId={projectId}
         taskTypeOptions={taskTypes}
+        savedViews={savedViews.map((view) => ({ id: view.id, name: view.name }))}
       />
     </div>
   );

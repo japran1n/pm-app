@@ -65,34 +65,59 @@ export function resolveListViewFilters(
   let droppedCount = 0;
 
   for (const filter of config.filters) {
-    if (filter.operator !== "eq") {
+    // Follow-up (advanced filtering, partial): "in" carries an array
+    // value for a multi-select filter -- each entry is validated exactly
+    // like a single "eq" value would be, and the whole filter is dropped
+    // (not partially applied) if it resolves to zero valid entries, same
+    // "never silently produce a different filter than what was saved"
+    // posture as a single dangling "eq" value.
+    if (filter.operator !== "eq" && filter.operator !== "in") {
       droppedCount += 1;
       continue;
     }
-    const value = typeof filter.value === "string" ? filter.value : String(filter.value ?? "");
+
+    const rawValues: unknown[] =
+      filter.operator === "in"
+        ? Array.isArray(filter.value)
+          ? filter.value
+          : []
+        : [filter.value];
+    const stringValues = rawValues.map((v) => (typeof v === "string" ? v : String(v ?? "")));
 
     if (filter.field === "status") {
-      if (value && opts.validStatusNames.has(value)) {
-        filters.status = value as ProjectListTaskFilters["status"];
-      } else {
+      const valid = stringValues.filter((v) => v && opts.validStatusNames.has(v));
+      if (valid.length > 0) {
+        filters.status =
+          filter.operator === "in"
+            ? (valid as unknown as ProjectListTaskFilters["status"])
+            : (valid[0] as ProjectListTaskFilters["status"]);
+      }
+      if (valid.length !== stringValues.length || valid.length === 0) {
         droppedCount += 1;
       }
       continue;
     }
 
     if (filter.field === "priority") {
-      if (value && VALID_PRIORITIES.has(value)) {
-        filters.priority = value as ProjectListTaskFilters["priority"];
-      } else {
+      const valid = stringValues.filter((v) => v && VALID_PRIORITIES.has(v));
+      if (valid.length > 0) {
+        filters.priority =
+          filter.operator === "in"
+            ? (valid as unknown as ProjectListTaskFilters["priority"])
+            : (valid[0] as ProjectListTaskFilters["priority"]);
+      }
+      if (valid.length !== stringValues.length || valid.length === 0) {
         droppedCount += 1;
       }
       continue;
     }
 
     if (filter.field === "assigneeId") {
-      if (value && opts.validAssigneeIds.has(value)) {
-        filters.assigneeId = value;
-      } else {
+      const valid = stringValues.filter((v) => v && opts.validAssigneeIds.has(v));
+      if (valid.length > 0) {
+        filters.assigneeId = filter.operator === "in" ? valid : valid[0];
+      }
+      if (valid.length !== stringValues.length || valid.length === 0) {
         droppedCount += 1;
       }
       continue;
