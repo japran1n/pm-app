@@ -25,7 +25,7 @@ describe("TeamHeatmap", () => {
     render(
       <TeamHeatmap grid={grid} people={[{ userId: "u1", label: "Ana Anić" }]} />,
     );
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("2.0")).toBeInTheDocument();
   });
 
   it("gives every cell an aria-label with name, date, and hours", () => {
@@ -48,6 +48,26 @@ describe("TeamHeatmap", () => {
     render(
       <TeamHeatmap grid={grid} people={[{ userId: "u1", label: "Ana Anić" }]} />,
     );
-    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("0.0")).toBeInTheDocument();
+  });
+
+  it("uses the same one-decimal format for zero and non-zero hour cells", () => {
+    const grid = buildTeamHeatmapGrid(
+      ["u1", "u2"],
+      [{ userId: "u1", entryDate: "2026-09-01", totalMinutes: 60 }],
+      "2026-09-01",
+      "2026-09-01",
+    );
+    render(
+      <TeamHeatmap
+        grid={grid}
+        people={[
+          { userId: "u1", label: "Ana Anić" },
+          { userId: "u2", label: "Ivo Ivić" },
+        ]}
+      />,
+    );
+    expect(screen.getByText("1.0")).toBeInTheDocument();
+    expect(screen.getByText("0.0")).toBeInTheDocument();
   });
 });

@@ -20,10 +20,15 @@ export type TeamHeatmapPerson = {
   label: string;
 };
 
+// Always renders one decimal place so every cell (including true zero-hour
+// cells) uses the same number format -- previously whole-hour values (and
+// exact zero) printed without a decimal ("0", "2") while partial hours
+// printed with one ("1.5"), which made "0" and near-zero-but-nonzero
+// values ("0.0") look like two different concepts side by side in the
+// same table.
 function formatHours(minutes: number): string {
   const hours = minutes / 60;
-  if (hours === 0) return "0";
-  return hours % 1 === 0 ? String(hours) : hours.toFixed(1);
+  return hours.toFixed(1);
 }
 
 export function TeamHeatmap({

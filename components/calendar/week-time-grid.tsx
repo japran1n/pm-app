@@ -385,7 +385,14 @@ export function WeekTimeGrid({
             data-testid={`calendar-week-column-${day.date}`}
             className={cn(
               "relative border-l border-border/40",
-              day.isToday && "bg-primary/5",
+              // Previously a full-column-height `bg-primary/5` wash, which
+              // (since --primary resolves to a dark gray, not a tint) read
+              // as a solid gray rectangle behind every hour row and made
+              // blocks/events inside today's column look washed out next
+              // to the same blocks in other days' columns. A thin colored
+              // top border matches how most calendar apps mark "today"
+              // without touching the contrast of anything drawn on top.
+              day.isToday && "border-t-2 border-t-primary",
             )}
             style={{ height: gridHeight, touchAction: "none" }}
             onPointerDown={(event) => handleColumnPointerDown(day.date, event)}
