@@ -295,3 +295,23 @@ export function canViewIndividualTimeEntryNotes(ctx: PermissionContext): boolean
   if (isResourceOwner(ctx)) return true;
   return ctx.role === "owner" || ctx.role === "admin" || Boolean(ctx.isProjectLeadOnResource);
 }
+
+// Team member profile page (app/(workspace)/w/[workspaceSlug]/team/
+// [userId]/page.tsx): mirrors `canViewIndividualTimeEntryNotes` exactly —
+// same two-tier split. Basic identity (avatar/name/role) and the list of
+// projects a person belongs to are workspace-wide, visible to any active
+// member regardless of this predicate (enforced by the page itself, not
+// here). This predicate only gates the SENSITIVE detail tier on that same
+// page: the person's currently assigned task list across every project,
+// which can reveal what someone is working on beyond what a plain
+// "who's on this project" view would. A caller always sees this detail
+// for their OWN profile; for anyone else's, only owner/admin, or a lead
+// on at least one project the target person has tasks assigned in, may
+// see it — reusing the identical `isProjectLeadOnResource` convention
+// `canViewIndividualTimeEntryNotes` already established so the two
+// "sensitive personal detail" gates in this app never drift apart.
+export function canViewTeamMemberTaskDetail(ctx: PermissionContext): boolean {
+  if (isClient(ctx)) return false;
+  if (isResourceOwner(ctx)) return true;
+  return ctx.role === "owner" || ctx.role === "admin" || Boolean(ctx.isProjectLeadOnResource);
+}

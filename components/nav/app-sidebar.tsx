@@ -133,6 +133,13 @@ function navGroups(
   ];
 
   const team: NavItem[] = [
+    // Team directory: a member profile page per person (avatar/name/role,
+    // their projects, assigned tasks, and a link to their time report) —
+    // distinct from "Members" below, which is the admin-facing
+    // invite/role-management table. Same non-guest gating as Members
+    // (the destination page's own `canViewMembersList` redirect mirrors
+    // it), placed just above it in this same "Team" nav group.
+    { href: `/w/${workspaceSlug}/team`, label: "Team", icon: Users },
     { href: `/w/${workspaceSlug}/settings/members`, label: "Members", icon: Users },
     // C5: the client-request inbox. Only present when the workspace has a
     // client at all — a permanent empty inbox for the majority of teams
@@ -183,6 +190,15 @@ function navGroups(
   ];
 
   const other: NavItem[] = [
+    // Feature request "Watching feed": every task the caller is watching,
+    // sorted by most recent activity. Placed in the same secondary
+    // "Other" band as Archive/Templates/Trash — an occasionally-visited
+    // reference view, not a daily-driver screen. Not guest-gated (same
+    // reasoning as "How this works" below): watching is a personal
+    // notification preference any active member (including a guest) can
+    // use, per lib/actions/watchers.ts's own "any active member" access
+    // rule.
+    { href: `/w/${workspaceSlug}/watching`, label: "Watching", icon: Eye },
     { href: `/w/${workspaceSlug}/archive`, label: "Archive", icon: Archive },
     // F183: gated to non-guests the same way Members/Archive already are.
     { href: `/w/${workspaceSlug}/templates`, label: "Templates", icon: LayoutTemplate },
@@ -203,6 +219,7 @@ function navGroups(
   ];
 
   const guestExcluded = new Set([
+    "Team",
     "Members",
     "Client requests",
     "Approvals",
