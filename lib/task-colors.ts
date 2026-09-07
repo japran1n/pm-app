@@ -68,6 +68,20 @@ export const STATUS_LABELS: Record<TaskCardTask["status"], string> = {
   done: "Done",
 };
 
+// Krug 2 UX audit fix: a project's real `project_statuses.name` column
+// value (F221/F223) is used verbatim as both the select `value` AND, until
+// now, inconsistently as the display `label` -- the project List view (list/
+// page.tsx) already ran a project's column name through STATUS_LABELS
+// before falling back to the raw name, but My Tasks (my-tasks/page.tsx)
+// built its own per-project statusOptions map with `label: row.name`
+// directly, so a project still on the default (un-renamed) seed columns
+// showed raw values like "done"/"in_progress" there while the exact same
+// task's status showed "Done"/"In Progress" in the List view. Both call
+// sites now share this one lookup so they can never diverge again.
+export function statusLabelFor(name: string): string {
+  return STATUS_LABELS[name as keyof typeof STATUS_LABELS] ?? name;
+}
+
 // Priority is nullable on the task row (see F071 handoff notes); "no
 // priority" gets its own bucket/color so a chart never has to drop a row
 // or misrepresent it as belonging to a fixed priority.

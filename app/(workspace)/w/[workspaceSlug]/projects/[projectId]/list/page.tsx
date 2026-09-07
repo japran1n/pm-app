@@ -51,7 +51,7 @@ import { getProjectColumns } from "@/lib/queries/statuses";
 // options previously used the raw column name unconditionally, which
 // meant a stock "todo" column showed as "todo" here while the board
 // correctly showed "To Do" for the exact same column.
-import { STATUS_LABELS } from "@/lib/task-colors";
+import { statusLabelFor } from "@/lib/task-colors";
 import { TaskListTable } from "@/components/task/task-list-table";
 import { ListFilters } from "@/components/task/list-filters";
 import { getTaskTypes } from "@/lib/queries/task-types";
@@ -134,9 +134,7 @@ export default async function ProjectListPage({
     color: string;
   }[] = columns.map((column) => ({
     value: column.name as NonNullable<TaskCardTask["status"]>,
-    label:
-      STATUS_LABELS[column.name as keyof typeof STATUS_LABELS] ??
-      column.name,
+    label: statusLabelFor(column.name),
     color: column.color,
   }));
   // F229 (AS-433 dangling-member class): the set of assignee ids a

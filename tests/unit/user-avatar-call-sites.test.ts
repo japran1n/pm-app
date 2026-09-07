@@ -34,6 +34,18 @@ const SURFACES: { label: string; path: string }[] = [
     path: "app/(workspace)/w/[workspaceSlug]/settings/members/page.tsx",
   },
   {
+    // Krug 2 UX audit fix: the Team directory grid was never in this
+    // surface list, so a regression here (e.g. a member card rendered
+    // without `avatarUrl`, falling back to initials for a member who
+    // does have an uploaded photo) had no source-level coverage at all.
+    label: "team directory grid",
+    path: "app/(workspace)/w/[workspaceSlug]/team/page.tsx",
+  },
+  {
+    label: "team member profile",
+    path: "app/(workspace)/w/[workspaceSlug]/team/[userId]/page.tsx",
+  },
+  {
     label: "the list/dashboard filter's assignee picker",
     path: "components/task/list-filters.tsx",
   },

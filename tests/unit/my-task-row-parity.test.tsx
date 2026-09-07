@@ -163,4 +163,30 @@ describe("Portal-parity: My Tasks row uses the shared table row primitives", () 
 
     expect(screen.queryByLabelText(/Change assignee/i)).not.toBeInTheDocument();
   });
+
+  // Krug 2 UX audit fix: My Tasks previously showed the raw DB status
+  // value ("done", "in_progress", "todo") in this column while the
+  // project List view, rendering the exact same task, showed the
+  // formatted label ("Done", "In Progress", "To Do") -- both now flow
+  // through the single shared statusLabelFor lookup (lib/task-colors.ts).
+  it("test_my_task_row_status_column_shows_the_formatted_label_not_the_raw_db_value", () => {
+    renderRow(makeRow({ status: "in_progress" }));
+
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
+    expect(screen.queryByText("in_progress")).not.toBeInTheDocument();
+  });
+
+  it("test_my_task_row_status_column_formats_a_projects_real_column_name_the_same_way_the_list_view_does", () => {
+    // Mirrors my-tasks/page.tsx's per-project statusOptionsByProject map,
+    // built from `project_statuses.name` -- for a project still on the
+    // default (un-renamed) seed columns, that raw column name is the same
+    // lowercase snake_case value as the legacy fixed-four status union.
+    renderRow(
+      makeRow({ status: "done" }),
+      [],
+    );
+
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(screen.queryByText("done")).not.toBeInTheDocument();
+  });
 });

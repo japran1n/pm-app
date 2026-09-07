@@ -35,6 +35,12 @@ import { getPersonalTodos } from "@/lib/queries/personal-todos";
 // Portal-parity fix (Type column): the same workspace-scoped task types
 // query the project List page uses for its own taskTypeOptions prop.
 import { getTaskTypes } from "@/lib/queries/task-types";
+// Bug fix (Krug 2 UX audit): status labels must go through the same
+// STATUS_LABELS fallback the project List view uses (list/page.tsx) so a
+// project's default `project_statuses.name` values ("todo", "in_progress",
+// "done" -- the raw seed values, not yet renamed by the project) render as
+// "To Do" / "In Progress" / "Done" here too, instead of the raw DB value.
+import { statusLabelFor } from "@/lib/task-colors";
 
 const BUCKET_ORDER: { key: keyof MyTasksBuckets; label: string }[] = [
   { key: "overdue", label: "Overdue" },
@@ -130,7 +136,11 @@ export default async function MyTasksPage({
 
     for (const row of columnRows ?? []) {
       const list = statusOptionsByProject.get(row.project_id) ?? [];
-      list.push({ value: row.name, label: row.name, color: row.color });
+      list.push({
+        value: row.name,
+        label: statusLabelFor(row.name),
+        color: row.color,
+      });
       statusOptionsByProject.set(row.project_id, list);
     }
   }

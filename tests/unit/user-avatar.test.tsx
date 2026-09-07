@@ -36,7 +36,7 @@
 // <UserAvatar/> usage, but it is no longer the sole evidence for AS-214.
 
 import { createElement } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 // jest-dom matchers (toBeInTheDocument, toBeEmptyDOMElement, ...) — scoped
 // to this file's import rather than a global vitest setupFiles entry,
@@ -187,6 +187,88 @@ describe("test_AS_214_user_avatar_appears_in_members_list", () => {
       }),
     );
     expect(getAvatarRoot("Ada Lovelace")).toBeInTheDocument();
+  });
+});
+
+// Krug 2 UX audit fix: a member who HAS an uploaded avatar (Team/Members
+// pages, which pass `avatarUrl` straight through from `getWorkspaceMembers`)
+// must render the real `<img>`, not silently fall back to colour-hash
+// initials -- the previous tests in this file only ever exercised
+// `avatarUrl: null`, so a regression that dropped the `avatarUrl` prop
+// somewhere upstream (Team grid, Members table, or a future caller) had no
+// DOM-level coverage proving the *image* path, only the initials path.
+describe("test_AS_214_user_avatar_prefers_real_image_over_initials", () => {
+  const PERSON_WITH_PHOTO: UserAvatarPerson = {
+    id: ADA.id,
+    name: ADA.name,
+    email: ADA.email,
+    avatarUrl:
+      "https://example.supabase.co/storage/v1/object/public/avatars/11111111-2222-4333-8444-555555555555/avatar?v=123",
+  };
+
+  // Base UI's <Avatar.Image> (components/ui/avatar.tsx's AvatarImage)
+  // only mounts the real <img> once a background `new window.Image()`
+  // probe reports `loaded` -- jsdom never fires that event on its own, so
+  // without this shim every render would fail closed into "no <img> ever
+  // appears," masking the exact real-vs-initials distinction this test
+  // exists to prove. This mirrors production's success path (a valid
+  // `avatarUrl` that actually loads), not the failure path.
+  class AutoLoadingImage {
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    complete = false;
+    naturalWidth = 1;
+    private _src = "";
+    set src(value: string) {
+      this._src = value;
+      queueMicrotask(() => this.onload?.());
+    }
+    get src() {
+      return this._src;
+    }
+  }
+
+  it("renders an <img> pointed at avatarUrl, not the initials fallback text, when a real photo is supplied", async () => {
+    vi.stubGlobal("Image", AutoLoadingImage);
+    try {
+      render(createElement(UserAvatar, { person: PERSON_WITH_PHOTO }));
+      const root = getAvatarRoot("Ada Lovelace");
+      await waitFor(() => {
+        expect(root.querySelector("img")).not.toBeNull();
+      });
+      expect(root.querySelector("img")!.getAttribute("src")).toBe(
+        PERSON_WITH_PHOTO.avatarUrl,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not fall back to initials-only rendering when avatarUrl is present (Team/Members regression)", async () => {
+    // Same props shape as the Team directory card and Members table row
+    // (both build `{ id: member.userId, name, email, avatarUrl:
+    // member.avatarUrl }` straight from getWorkspaceMembers) -- a caller
+    // that forgot to thread `avatarUrl` through would fail this test by
+    // producing no `<img>` at all.
+    vi.stubGlobal("Image", AutoLoadingImage);
+    try {
+      render(
+        createElement(UserAvatar, {
+          person: {
+            id: PERSON_WITH_PHOTO.id,
+            name: PERSON_WITH_PHOTO.name,
+            email: PERSON_WITH_PHOTO.email,
+            avatarUrl: PERSON_WITH_PHOTO.avatarUrl,
+          },
+        }),
+      );
+      const root = getAvatarRoot("Ada Lovelace");
+      await waitFor(() => {
+        expect(root.querySelector("img")).not.toBeNull();
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
