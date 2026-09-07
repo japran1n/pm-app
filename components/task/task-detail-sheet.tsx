@@ -1480,6 +1480,19 @@ export function TaskDetailSheet({
               // the content beneath is easy to miss).
               className="max-sm:sticky max-sm:top-0 max-sm:z-10 max-sm:border-b max-sm:bg-popover"
             >
+              {/* F513 (design cleanup): every badge/link/toggle below this
+                  point used to be a direct flex-col child of SheetHeader
+                  (`gap-0.5`), which stacked up to ~9 small chip-like
+                  controls in a single narrow column — key badge, copy
+                  link, parent/recurrence breadcrumbs, share/approval
+                  toggles, "View as client", watchers — with almost no
+                  visual grouping between unrelated concerns. They're all
+                  inline, self-contained controls (Button/plain <button>
+                  roots), so wrapping them in one `flex-wrap` row lets
+                  related controls sit side by side and wrap naturally at
+                  narrow widths instead of forcing a tall, awkward single
+                  column above the title on every task. */}
+              <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5">
               {taskKey && (
                 // F146 (AS-258): click-to-copy task key. A plain <button>
                 // rather than a div/span with an onClick — native buttons
@@ -1658,8 +1671,17 @@ export function TaskDetailSheet({
                 }))}
                 currentUserId={currentUserId}
               />
+              </div>
             </SheetHeader>
-            <div className="flex flex-col gap-6 overflow-y-auto px-6">
+            {/* F513 (design cleanup): `py-6` closes the gap that used to
+                leave the first field (Title) touching the header's own
+                bottom edge, and the last section (Time tracking) touching
+                the footer's top edge, with zero breathing room on either
+                side — every other boundary in this Sheet (header/footer
+                themselves) already uses `p-4`; scrollable content deserves
+                at least as much, and slightly more since it's the dominant
+                area. */}
+            <div className="flex flex-col gap-6 overflow-y-auto px-6 py-6">
               <div className="flex flex-col gap-2">
                 <Label
                   htmlFor={`task-title-${task.id}`}
@@ -2155,6 +2177,14 @@ export function TaskDetailSheet({
                 />
               </MobileCollapsibleSection>
 
+              {/* F513 (design cleanup): every section from here down
+                  (Tags/Recurrence/Subtasks/Checklist/Activity/Attachments/
+                  Time tracking) is separated by a Separator — Description
+                  was the one gap in that rhythm, sitting flush against
+                  Tags with nothing but the shared `gap-6` between two
+                  otherwise-unrelated sections. */}
+              <Separator />
+
               <TagsEditor
                 taskId={task.id}
                 tags={task.tags}
@@ -2205,6 +2235,14 @@ export function TaskDetailSheet({
                   (lib/actions/comments.ts) are untouched; comments still
                   exist in the database, just not surfaced here. */}
               <MobileCollapsibleSection title="Activity">
+                {/* F513 (design cleanup): unlike Subtasks/Checklist/Tags/
+                    Attachments/Time tracking, ActivityFeed renders no
+                    top-level heading of its own (only per-day group
+                    labels) — on desktop, where MobileCollapsibleSection's
+                    own title is CSS-hidden, this section had no visible
+                    name at all. Matches every sibling section's own
+                    internal `<Label>` convention. */}
+                <Label>Activity</Label>
                 <ActivityFeed
                   taskId={task.id}
                   timezone={timezone}
