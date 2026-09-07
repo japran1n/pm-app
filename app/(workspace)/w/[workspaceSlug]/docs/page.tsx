@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
+import { FileText } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getDocsInFolder } from "@/lib/queries/docs";
 import { NewDocButton } from "@/components/docs/new-doc-button";
+import { EmptyState } from "@/components/empty-state";
 
 // W3 (docs/docs-system-plan.md): the workspace Docs "root" page — shown
 // when no specific doc is open. Lists root-level docs (folderId === null);
@@ -39,10 +41,12 @@ export default async function DocsIndexPage({
 
   if (rootDocs.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
-        <p className="text-sm text-muted-foreground">No documents yet.</p>
-        <NewDocButton workspaceId={workspace.id} workspaceSlug={workspaceSlug} />
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No documents yet"
+        description="Create your first document to start capturing notes and knowledge."
+        action={<NewDocButton workspaceId={workspace.id} workspaceSlug={workspaceSlug} />}
+      />
     );
   }
 

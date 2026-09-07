@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
+import { FileText } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
 import { getDocsInFolder } from "@/lib/queries/docs";
 import { NewDocButton } from "@/components/docs/new-doc-button";
+import { EmptyState } from "@/components/empty-state";
 
 // W5 (docs/docs-system-plan.md): the project-scoped Docs tab's "root" page
 // — shown when no specific doc is open, mirrors
@@ -46,16 +48,18 @@ export default async function ProjectDocsIndexPage({
 
   if (rootDocs.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 py-16 text-center">
-        <p className="text-sm text-muted-foreground">
-          No documents in this project yet
-        </p>
-        <NewDocButton
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          projectId={project.id}
-        />
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No documents in this project yet"
+        description="Create your first document to start capturing notes and knowledge for this project."
+        action={
+          <NewDocButton
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            projectId={project.id}
+          />
+        }
+      />
     );
   }
 

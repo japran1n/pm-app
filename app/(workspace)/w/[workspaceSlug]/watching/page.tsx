@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Eye } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWatchedTasksForUser } from "@/lib/queries/watching";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/task-colors";
+import { EmptyState } from "@/components/empty-state";
 
 // Feature request "Watching feed": lists every task the signed-in caller
 // is currently watching (F163/F164's task_watchers), sorted by most
@@ -45,12 +47,11 @@ export default async function WatchingPage({
       </div>
 
       {watchedTasks.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
-          <p className="text-sm font-medium">You&apos;re not watching any tasks</p>
-          <p className="text-sm text-muted-foreground">
-            Watch a task from its detail view to get notified about its activity here.
-          </p>
-        </div>
+        <EmptyState
+          icon={Eye}
+          title="You're not watching any tasks"
+          description="Watch a task from its detail view to get notified about its activity here."
+        />
       ) : (
         <ul className="flex flex-col gap-2">
           {watchedTasks.map((task) => {

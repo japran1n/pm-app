@@ -16,6 +16,7 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 import { canViewMembersList, type WorkspaceRole } from "@/lib/auth/permissions";
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/empty-state";
 
 export default async function TeamPage({
   params,
@@ -76,7 +77,11 @@ export default async function TeamPage({
       </div>
 
       {members.active.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No active members yet.</p>
+        <EmptyState
+          icon={Users}
+          title="No active members yet"
+          description="Invite teammates from Settings → Members to build your roster."
+        />
       ) : (
         <div
           data-testid="team-grid"

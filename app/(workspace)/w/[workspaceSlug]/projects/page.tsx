@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Suspense } from "react";
+import { FolderKanban } from "lucide-react";
+
+import { EmptyState } from "@/components/empty-state";
 
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -228,12 +231,11 @@ export async function ProjectsGridSection({
       )}
 
       {projects && projects.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
-          <p className="text-sm font-medium">No projects yet</p>
-          <p className="text-sm text-muted-foreground">
-            Create your first project to start organizing work.
-          </p>
-        </div>
+        <EmptyState
+          icon={FolderKanban}
+          title="No projects yet"
+          description="Create your first project to start organizing work."
+        />
       )}
 
       {projects && projects.length > 0 && (
