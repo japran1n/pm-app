@@ -24,11 +24,15 @@ import { logger } from "@/lib/observability/logger";
 // email/name via the admin client scoped to RLS-visible user ids.
 
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Clock } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
-import { getWorkspaceTimeByPerson } from "@/lib/queries/time-entries";
+import { getWorkspaceTimeByPerson, getPersonTimeDaily } from "@/lib/queries/time-entries";
+import { getPeriodShortcuts } from "@/lib/time/period-shortcuts";
+import { buildTeamHeatmapGrid, type PersonDayMinutes } from "@/lib/time/team-heatmap-data";
+import { TeamHeatmap } from "@/components/time/team-heatmap";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,6 +102,7 @@ export default async function TimeReportPage({
 
   let members: Awaited<ReturnType<typeof getWorkspaceMembers>> | null = null;
   let totals: Awaited<ReturnType<typeof getWorkspaceTimeByPerson>> = [];
+  let dailyByPerson: PersonDayMinutes[] = [];
   let loadError = false;
 
   try {
@@ -105,20 +110,62 @@ export default async function TimeReportPage({
       getWorkspaceMembers(workspace.id),
       getWorkspaceTimeByPerson(workspace.id, startDate, endDate),
     ]);
+
+    // No single workspace-wide "by person AND day" RPC exists yet (only
+    // `get_workspace_time_by_person_and_project`, grouped by project, not
+    // day) — see lib/time/team-heatmap-data.ts's header comment. One
+    // `getPersonTimeDaily` call per active member, bounded by the same
+    // member list already loaded above for the per-person table.
+    if (members) {
+      const perPersonDaily = await Promise.all(
+        members.active.map(async (member) => {
+          const days = await getPersonTimeDaily(member.userId, startDate, endDate);
+          return days.map((d) => ({
+            userId: member.userId,
+            entryDate: d.entryDate,
+            totalMinutes: d.totalMinutes,
+          }));
+        }),
+      );
+      dailyByPerson = perPersonDaily.flat();
+    }
   } catch (error) {
     logger.error("TimeReportPage: failed to load time report", { error: error });
     loadError = true;
   }
 
   const totalsByUserId = new Map(totals.map((t) => [t.userId, t]));
+  const periodShortcuts = getPeriodShortcuts();
+  const heatmapGrid =
+    members && members.active.length > 0
+      ? buildTeamHeatmapGrid(
+          members.active.map((m) => m.userId),
+          dailyByPerson,
+          startDate,
+          endDate,
+        )
+      : null;
 
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-lg font-semibold">
-          <Clock className="size-5" aria-hidden="true" />
-          Time report
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="flex items-center gap-2 text-lg font-semibold">
+            <Clock className="size-5" aria-hidden="true" />
+            Time report
+          </h1>
+          <nav aria-label="Time report views" className="flex items-center gap-1 rounded-md border p-1">
+            <span className="rounded bg-secondary px-3 py-1 text-sm font-medium">
+              Team report
+            </span>
+            <Link
+              href={`/w/${workspaceSlug}/time/me`}
+              className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-secondary"
+            >
+              My time
+            </Link>
+          </nav>
+        </div>
         <p className="text-sm text-muted-foreground">
           Logged time per member in {workspace.name} for the selected date
           range.
@@ -158,6 +205,19 @@ export default async function TimeReportPage({
           Apply
         </Button>
       </form>
+
+      <div className="flex flex-wrap items-center gap-2" aria-label="Period shortcuts">
+        {periodShortcuts.map((shortcut) => (
+          <a
+            key={shortcut.key}
+            href={`/w/${workspaceSlug}/time?start=${shortcut.start}&end=${shortcut.end}`}
+            data-testid={`period-shortcut-${shortcut.key}`}
+            className="hover-surface rounded-md border px-3 py-1 text-xs font-medium"
+          >
+            {shortcut.label}
+          </a>
+        ))}
+      </div>
 
       {loadError && (
         <div
@@ -201,12 +261,20 @@ export default async function TimeReportPage({
                 const billable = entry?.billableMinutes ?? 0;
                 const nonBillable = entry?.nonBillableMinutes ?? 0;
 
+                const drilldownHref = `/w/${workspaceSlug}/time/${member.userId}?start=${startDate}&end=${endDate}`;
+
                 return (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{label}</span>
-                      </div>
+                  <TableRow key={member.id} className="hover-surface">
+                    <TableCell className="p-0">
+                      <Link
+                        href={drilldownHref}
+                        data-testid="person-row-link"
+                        className="flex flex-col px-4 py-2"
+                      >
+                        <span className="font-medium underline-offset-2 hover:underline">
+                          {label}
+                        </span>
+                      </Link>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatMinutes(billable)}
@@ -222,6 +290,19 @@ export default async function TimeReportPage({
               })}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {!loadError && members && members.active.length > 0 && heatmapGrid && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium">Team heatmap</h2>
+          <TeamHeatmap
+            grid={heatmapGrid}
+            people={members.active.map((m) => ({
+              userId: m.userId,
+              label: m.name ?? m.email ?? "Unknown member",
+            }))}
+          />
         </div>
       )}
     </div>
