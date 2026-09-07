@@ -25,6 +25,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolvePeople } from "@/lib/queries/people";
 import { formatTaskActivityEntry } from "@/lib/activity/format-task-activity-entry";
 import type { TaskActivityKind } from "@/lib/activity/task-activity-feed";
+import { formatTaskKey } from "@/lib/tasks/task-key";
 import { logger } from "@/lib/observability/logger";
 
 export type WatchedTaskListItem = {
@@ -70,9 +71,15 @@ export async function getWatchedTasksForUser(
   const taskIds = (watcherRows ?? []).map((row) => row.task_id);
   if (taskIds.length === 0) return [];
 
+  // `tasks` has no `key` column -- a task's displayed "KEY-NUMBER"
+  // identifier (e.g. "PM-142") is derived at read time via formatTaskKey
+  // from the owning project's `key` plus this task's own `number`
+  // (lib/tasks/task-key.ts), same fix already applied to getPersonalTodos
+  // (see that function's own header comment for why this is the ONLY
+  // place that should assemble that string).
   const { data: taskRows, error: taskError } = await supabase
     .from("tasks")
-    .select("id, title, key, project_id, status, due_date, updated_at")
+    .select("id, title, number, project_id, status, due_date, updated_at, projects(key)")
     .in("id", taskIds)
     .is("deleted_at", null);
 
@@ -142,17 +149,27 @@ export async function getWatchedTasksForUser(
     ]),
   );
 
-  return buildWatchedTaskItems(tasks, projectNameById, latestActivityByTask, actorLabelById);
+  return buildWatchedTaskItems(
+    tasks as unknown as WatchingQueryTaskRow[],
+    projectNameById,
+    latestActivityByTask,
+    actorLabelById,
+  );
 }
 
 export type WatchingQueryTaskRow = {
   id: string;
   title: string;
-  key: string | null;
+  number: number | null;
   project_id: string;
   status: string;
   due_date: string | null;
   updated_at: string;
+  // `tasks` has no `key` column -- the displayed "KEY-NUMBER" identifier is
+  // derived from the owning project's `key` (embedded here) plus `number`
+  // via formatTaskKey (lib/tasks/task-key.ts), same convention
+  // getPersonalTodos already follows.
+  projects: { key: string | null } | null;
 };
 
 export type WatchingQueryActivityRow = {
@@ -201,7 +218,7 @@ export function buildWatchedTaskItems(
     return {
       taskId: task.id,
       taskTitle: task.title,
-      taskKey: task.key ?? null,
+      taskKey: formatTaskKey(task.projects?.key ?? null, task.number ?? null),
       projectId: task.project_id,
       projectName: projectNameById.get(task.project_id) ?? "Unknown project",
       status: task.status,

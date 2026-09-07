@@ -9,7 +9,8 @@ import {
 const TASK_A: WatchingQueryTaskRow = {
   id: "task-a",
   title: "Fix login bug",
-  key: "PM-1",
+  number: 1,
+  projects: { key: "PM" },
   project_id: "proj-1",
   status: "in_progress",
   due_date: "2026-06-01",
@@ -19,7 +20,8 @@ const TASK_A: WatchingQueryTaskRow = {
 const TASK_B: WatchingQueryTaskRow = {
   id: "task-b",
   title: "Write onboarding docs",
-  key: "PM-2",
+  number: 2,
+  projects: { key: "PM" },
   project_id: "proj-2",
   status: "todo",
   due_date: null,
@@ -44,6 +46,10 @@ describe("buildWatchedTaskItems (Watching feed)", () => {
     expect(items[0].lastActivityAt).toBe(TASK_A.updated_at);
     expect(items[0].lastActivitySummary).toBeNull();
     expect(items[0].projectName).toBe("Alpha");
+    // Regression guard for the `tasks.key does not exist` bug: `tasks` has
+    // no `key` column, the displayed key must be derived from the
+    // embedded project's `key` + this task's own `number`.
+    expect(items[0].taskKey).toBe("PM-1");
   });
 
   it("sorts by most recent activity, newest first", () => {
