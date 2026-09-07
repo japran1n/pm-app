@@ -20,6 +20,7 @@ import { getNotificationPreferences } from "@/lib/actions/notification-preferenc
 import { playNotificationSound } from "@/lib/notifications/sound";
 import { useUnreadBadge } from "@/lib/notifications/use-unread-badge";
 import { chatNotificationHref } from "@/lib/notifications/chat-link";
+import { showDesktopNotification } from "@/lib/notifications/browser-notify";
 import type { NotificationListItem } from "@/lib/queries/notifications";
 
 // Faza D (docs/chat-slack-parity-plan.md): sound + toast are only for the
@@ -36,6 +37,24 @@ function chatToastMessage(kind: string, actorName: string): string {
   return `${actorName} mentioned you`;
 }
 
+// Feature request: desktop/browser (foreground, in-tab) notifications for
+// @mentions and approval-related events -- the two kinds the feature spec
+// names explicitly. `approval_owner_nudge` is this app's "an approval is
+// waiting on your decision" kind (lib/notifications/fanout.ts) and
+// `approval_decided` is "your submitted approval was decided" -- both read
+// as "approval" for this purpose even though neither is named exactly
+// `approval_request`. Deliberately a separate set from CHAT_TOAST_KINDS
+// above: desktop notifications and the in-tab sound/toast are independent
+// features that happen to share the same realtime insert event, not one
+// gated by the other.
+const DESKTOP_NOTIFY_KINDS = new Set(["mention", "approval_owner_nudge", "approval_decided"]);
+
+function desktopNotificationBody(kind: string, actorName: string): string {
+  if (kind === "approval_owner_nudge") return "An approval is waiting on your decision.";
+  if (kind === "approval_decided") return `${actorName} decided on your approval request.`;
+  return `${actorName} mentioned you`;
+}
+
 // app-sidebar.tsx mounts TWO NotificationBell instances at once (desktop
 // header + `md:hidden` mobile top bar, same F332 responsive-duplicate
 // pattern the sidebar already uses elsewhere) -- both receive the exact
@@ -45,6 +64,12 @@ function chatToastMessage(kind: string, actorName: string): string {
 // once per mounted bell. Unbounded growth isn't a real concern: this is
 // per-tab, in-memory, UUID-keyed, and cleared on reload.
 const handledNotificationIds = new Set<string>();
+// Same "shared across every mounted bell instance" dedup convention as
+// handledNotificationIds above, kept as its own set since desktop
+// notifications and the chat sound/toast are independent features (see
+// DESKTOP_NOTIFY_KINDS' own comment) that can both fire for the same
+// notification id (e.g. a `mention` is in both sets).
+const handledDesktopNotificationIds = new Set<string>();
 
 export function NotificationBell({
   workspaceSlug,
@@ -147,13 +172,46 @@ export function NotificationBell({
       if (event.workspaceId !== workspaceId) return;
 
       void reconcile().then((result) => {
+        if (!result) return;
+
+        // Feature request: desktop (foreground, in-tab) browser
+        // notification -- independent of the chat sound/toast branch
+        // below, only gated on "tab isn't the one the user is actively
+        // looking at" (same rationale as the sound preference's own
+        // onlyWhenUnfocused default: a notification for something the
+        // user is already staring at is just noise). showDesktopNotification
+        // itself is the single gate for "has the user opted in AND does
+        // the browser actually grant permission" -- this call site doesn't
+        // need its own permission branching.
+        if (
+          DESKTOP_NOTIFY_KINDS.has(event.kind) &&
+          !handledDesktopNotificationIds.has(event.id)
+        ) {
+          handledDesktopNotificationIds.add(event.id);
+          const tabIsHidden =
+            typeof document !== "undefined" &&
+            (document.hidden || !document.hasFocus());
+          if (tabIsHidden) {
+            const freshForDesktop = result.list.find((n) => n.id === event.id);
+            const actorName =
+              freshForDesktop?.actor?.name ?? freshForDesktop?.actor?.email ?? "Someone";
+            const href = chatNotificationHref(workspaceSlug, freshForDesktop?.chatMention ?? null);
+            showDesktopNotification("Goodguys Studio", {
+              body: desktopNotificationBody(event.kind, actorName),
+              onClick: () => {
+                if (href) router.push(href);
+              },
+            });
+          }
+        }
+
         // Faza D: sound + toast, chat kinds only (see CHAT_TOAST_KINDS'
         // doc comment). The realtime payload itself only carries raw
         // columns (no resolved actor name) -- the just-reconciled
         // snapshot has the same row with `actor`/`chatMention` already
         // resolved, so this waits for reconcile rather than adding a
         // second query.
-        if (!result || !CHAT_TOAST_KINDS.has(event.kind)) return;
+        if (!CHAT_TOAST_KINDS.has(event.kind)) return;
         if (handledNotificationIds.has(event.id)) return;
         handledNotificationIds.add(event.id);
         const fresh = result.list.find((n) => n.id === event.id);

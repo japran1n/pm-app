@@ -282,6 +282,19 @@ export async function getWorkspaceChannels(
     });
 }
 
+// Feature request (sidebar unread badges): the sidebar's own "Chat" nav
+// item wants a single number, not the whole per-channel channel list this
+// module already exposes via getWorkspaceChannels — this is a thin wrapper
+// that sums that same per-channel `unreadCount` rather than a second RPC
+// round-trip, so it inherits getWorkspaceChannels' own fail-open-to-[]
+// behaviour (a query failure here surfaces as an un-badged nav item, never
+// a broken layout, matching the sidebar's existing approvals/requests
+// badge convention).
+export async function getWorkspaceChatUnreadTotal(workspaceId: string): Promise<number> {
+  const channels = await getWorkspaceChannels(workspaceId);
+  return channels.reduce((total, channel) => total + channel.unreadCount, 0);
+}
+
 // ---------------------------------------------------------------------
 // F4: channel member display names, for resolving each message's sender
 // in the thread view without an N+1 lookup per message.
@@ -447,6 +460,36 @@ export async function getMessageReactions(
   }
 
   return byMessage;
+}
+
+// ---------------------------------------------------------------------
+// Read receipts: `channel_members.last_read_at` per member, keyed by
+// user id -- reused by ChannelView to compute which members have "seen"
+// the channel's last message. Same table F5's markChannelRead action
+// already writes to; this is simply the first reader of it beyond the
+// unread-count RPC.
+// ---------------------------------------------------------------------
+
+export async function getChannelReadReceipts(
+  channelId: string,
+): Promise<Map<string, string | null>> {
+  const byUser = new Map<string, string | null>();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("channel_members")
+    .select("user_id, last_read_at")
+    .eq("channel_id", channelId);
+
+  if (error) {
+    logger.error("getChannelReadReceipts: query failed", { error: error });
+    return byUser;
+  }
+
+  for (const row of data ?? []) {
+    byUser.set(row.user_id, row.last_read_at);
+  }
+
+  return byUser;
 }
 
 // ---------------------------------------------------------------------

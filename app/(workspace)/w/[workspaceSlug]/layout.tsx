@@ -60,6 +60,11 @@ import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/proje
 // on this page.
 import { getOpenApprovalsForWorkspace } from "@/lib/queries/approvals";
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
+// Feature request (sidebar unread badges): total unread chat messages
+// across every channel the caller belongs to, for the sidebar's "Chat"
+// nav item badge -- same non-fatal, fails-open-to-0 convention as
+// openApprovals/openClientRequestCount above.
+import { getWorkspaceChatUnreadTotal } from "@/lib/queries/chat";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 // Client Presentation feature: computed fresh on every layout render
 // (see lib/calendar/client-presentation.ts's own file-header comment for
@@ -199,6 +204,7 @@ export default async function WorkspaceLayout({
     openApprovals,
     openClientRequestCount,
     upcomingClientPresentations,
+    chatUnreadTotal,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -267,6 +273,16 @@ export default async function WorkspaceLayout({
     // getUpcomingClientPresentations' own doc comment), same "non-fatal"
     // convention as every other sidebar figure above.
     getUpcomingClientPresentations(supabase, activeWorkspace.id),
+
+    // Feature request (sidebar unread badges): sums per-channel unread
+    // counts for the sidebar's "Chat" badge. getWorkspaceChatUnreadTotal
+    // wraps getWorkspaceChannels, which already fails open to [] (see that
+    // function's own doc comment), so a failure here surfaces as an
+    // un-badged nav item, not a broken layout.
+    getWorkspaceChatUnreadTotal(activeWorkspace.id).catch((error) => {
+      logger.error("WorkspaceLayout: failed to look up chat unread total for sidebar", { error });
+      return 0;
+    }),
   ]);
 
   if (membershipsError) {
@@ -426,6 +442,7 @@ export default async function WorkspaceLayout({
           }))}
           approvalsCount={openApprovals.length}
           requestsCount={openClientRequestCount}
+          chatUnreadCount={chatUnreadTotal}
         />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           <ClientPresentationBanner

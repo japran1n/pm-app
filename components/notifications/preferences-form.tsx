@@ -37,6 +37,12 @@ import {
   type NotificationPreferences,
 } from "@/lib/actions/notification-preferences";
 import { playNotificationSound } from "@/lib/notifications/sound";
+import {
+  getDesktopNotificationPermission,
+  isDesktopNotificationSupported,
+  isDesktopNotificationsEnabled,
+  setDesktopNotificationsEnabled,
+} from "@/lib/notifications/browser-notify";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -116,6 +122,38 @@ export function NotificationPreferencesForm({
   // call per pixel of drag.
   const [volumeDraft, setVolumeDraft] = useState(initialPreferences.soundVolume);
   const volumeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Feature request: desktop/browser notifications toggle. Local-only
+  // state (see lib/notifications/browser-notify.ts's own doc comment for
+  // why this isn't a server-persisted column). Lazy initializers (not
+  // useEffect+setState) -- same convention lib/hooks/use-recent-items.ts
+  // documents for its own localStorage read: each getter already guards on
+  // `typeof window === "undefined"`, so these read real per-browser state
+  // on first client render without an extra effect-triggered re-render.
+  const [desktopEnabled, setDesktopEnabledState] = useState(() =>
+    isDesktopNotificationsEnabled(),
+  );
+  const [desktopSupported] = useState(() => isDesktopNotificationSupported());
+  const [desktopPermission, setDesktopPermission] = useState<
+    NotificationPermission | "unsupported"
+  >(() => getDesktopNotificationPermission());
+
+  async function toggleDesktopNotifications(nextValue: boolean) {
+    setDesktopEnabledState(nextValue);
+    const permission = await setDesktopNotificationsEnabled(nextValue);
+    setDesktopPermission(permission);
+    if (nextValue && permission !== "granted") {
+      // The browser itself denied (or the user dismissed) the prompt --
+      // reflect that back on the switch rather than showing it "on" for a
+      // feature that will never actually fire.
+      setDesktopEnabledState(false);
+      if (permission === "denied") {
+        toast.error(
+          "Desktop notifications are blocked in your browser. Enable them in your browser's site settings.",
+        );
+      }
+    }
+  }
 
   function toggle(field: BooleanField, nextValue: boolean) {
     setCurrent((prev) => ({ ...prev, [field]: nextValue }));
@@ -236,6 +274,28 @@ export function NotificationPreferencesForm({
           </div>
         ))}
       </div>
+
+      {desktopSupported ? (
+        <div className="flex items-center justify-between gap-4 rounded-md border p-4">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="desktop-notifications-enabled">
+              Enable desktop notifications
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              Show a browser notification for @mentions and approval
+              requests while this tab is open in the background.
+              {desktopPermission === "denied"
+                ? " Currently blocked in your browser's site settings."
+                : null}
+            </p>
+          </div>
+          <Switch
+            id="desktop-notifications-enabled"
+            checked={desktopEnabled}
+            onCheckedChange={(checked) => void toggleDesktopNotifications(checked)}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-4 rounded-md border p-4">
         <div className="flex items-center justify-between gap-4">

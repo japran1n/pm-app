@@ -108,6 +108,7 @@ function navGroups(
   hasClient: boolean,
   approvalsCount: number,
   requestsCount: number,
+  chatUnreadCount: number,
 ): { label: string | null; items: NavItem[] }[] {
   const work: NavItem[] = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -120,7 +121,13 @@ function navGroups(
     // page.tsx redirects into the caller's first channel on desktop, or
     // renders the channel list itself on mobile; see that file's doc
     // comment).
-    { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle },
+    // Feature request (sidebar unread badges): same count-badge treatment
+    // as "Approvals"/"Client requests" below -- the sum of every channel's
+    // own unread count (lib/queries/chat.ts's getWorkspaceChatUnreadTotal,
+    // itself a thin sum over getWorkspaceChannels' per-channel
+    // unreadCount, which chat-nav-list.tsx already treats as the
+    // source of truth for "unread" there).
+    { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, count: chatUnreadCount },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
@@ -250,6 +257,7 @@ function SidebarContent({
   projects,
   approvalsCount = 0,
   requestsCount = 0,
+  chatUnreadCount = 0,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -268,6 +276,13 @@ function SidebarContent({
    * existing caller/test rendering the item with no badge instead of
    * crashing, same convention as `approvalsCount` above. */
   requestsCount?: number;
+  /** Feature request (sidebar unread badges): total unread chat messages
+   * across every channel the caller belongs to, for the "Chat" nav item's
+   * badge — server-fetched by the layout via
+   * `getWorkspaceChatUnreadTotal(...)`. Default `0` keeps every existing
+   * caller/test rendering the item with no badge instead of crashing,
+   * same convention as `approvalsCount`/`requestsCount` above. */
+  chatUnreadCount?: number;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -282,6 +297,7 @@ function SidebarContent({
     hasClient,
     approvalsCount,
     requestsCount,
+    chatUnreadCount,
   );
 
   return (
@@ -484,6 +500,7 @@ export function AppSidebar({
   projects = [],
   approvalsCount = 0,
   requestsCount = 0,
+  chatUnreadCount = 0,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -514,6 +531,9 @@ export function AppSidebar({
    * existing caller/test rendering the item with no badge instead of
    * crashing. */
   requestsCount?: number;
+  /** Feature request (sidebar unread badges): total unread chat messages,
+   * see SidebarContent's own doc comment for this prop. */
+  chatUnreadCount?: number;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -541,6 +561,7 @@ export function AppSidebar({
           projects={projects}
           approvalsCount={approvalsCount}
           requestsCount={requestsCount}
+          chatUnreadCount={chatUnreadCount}
         />
       </aside>
 
@@ -583,6 +604,7 @@ export function AppSidebar({
               projects={projects}
               approvalsCount={approvalsCount}
               requestsCount={requestsCount}
+              chatUnreadCount={chatUnreadCount}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
