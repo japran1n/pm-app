@@ -1,29 +1,30 @@
 "use client";
 
-// Follow-up to F227/F228/F229 saved views: lets a user manually add a
-// task to a saved view (ClickUp-style "add to list"), independent of
+// Follow-up to F227/F228/F229 saved views: lets a user manually add/remove
+// a task from a saved view (ClickUp-style "add to list"), independent of
 // whatever filter that view has -- lib/actions/view-tasks.ts's
-// addTaskToView, backed by `public.view_tasks`
+// addTaskToView/removeTaskFromView, backed by `public.view_tasks`
 // (supabase/migrations/20260907010000_create_view_tasks.sql).
 //
-// Renders a compact dropdown of the project's saved list views. This
-// intentionally does NOT show a checked/unchecked state per view (that
-// would need this project's manual-membership set fetched for every row
-// rendered, which the List page does not currently compute) -- clicking
-// an entry is idempotent (addTaskToView upserts), so "Add to <view>"
-// is always a safe action even if the task is already a member. Full
-// checkbox state showing current membership per view is noted as
-// follow-up work.
+// Renders a compact dropdown of the project's saved list views, WITH a
+// checkmark next to any view the task is already a manual member of
+// (fetched lazily via listViewTaskIds only when the dropdown is first
+// opened, one call per view -- not on every row render for every view up
+// front, which would be O(rows * views) queries on page load). Clicking a
+// checked entry now REMOVES the task from that view; clicking an unchecked
+// entry ADDS it. This replaces the previous "always safe to click, never
+// shows current state" version noted as follow-up work in that pass.
 
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Plus } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { addTaskToView } from "@/lib/actions/view-tasks";
+import { addTaskToView, listViewTaskIds, removeTaskFromView } from "@/lib/actions/view-tasks";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -39,6 +40,11 @@ export function AddToViewMenu({
   views: { id: string; name: string }[];
 }) {
   const [pendingViewId, setPendingViewId] = useState<string | null>(null);
+  // View ids this task is currently a manual member of. `null` = not
+  // loaded yet (dropdown never opened, or still loading) -- rendered as
+  // "no checkmark yet" rather than blocking the menu from opening.
+  const [memberViewIds, setMemberViewIds] = useState<Set<string> | null>(null);
+  const [loading, setLoading] = useState(false);
 
   if (views.length === 0) {
     return null;
@@ -46,8 +52,47 @@ export function AddToViewMenu({
 
   const stop = (event: ReactMouseEvent) => event.stopPropagation();
 
+  async function loadMembership() {
+    if (memberViewIds !== null || loading) return;
+    setLoading(true);
+    const results = await Promise.all(
+      views.map(async (view) => {
+        const result = await listViewTaskIds(view.id);
+        return result.ok && result.data.includes(taskId) ? view.id : null;
+      }),
+    );
+    setMemberViewIds(new Set(results.filter((id): id is string => id !== null)));
+    setLoading(false);
+  }
+
+  async function toggleView(viewId: string, viewName: string, isMember: boolean) {
+    setPendingViewId(viewId);
+    const result = isMember
+      ? await removeTaskFromView({ viewId, taskId })
+      : await addTaskToView({ viewId, taskId });
+    setPendingViewId(null);
+    if (result.ok) {
+      setMemberViewIds((current) => {
+        const next = new Set(current ?? []);
+        if (isMember) {
+          next.delete(viewId);
+        } else {
+          next.add(viewId);
+        }
+        return next;
+      });
+      toast.success(isMember ? `Removed from "${viewName}".` : `Added to "${viewName}".`);
+    } else {
+      toast.error(result.error);
+    }
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) void loadMembership();
+      }}
+    >
       <DropdownMenuTrigger
         render={
           <Button
@@ -62,26 +107,25 @@ export function AddToViewMenu({
         }
       />
       <DropdownMenuContent align="start" onClick={stop}>
-        <DropdownMenuLabel>Add to view</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {views.map((view) => (
-          <DropdownMenuItem
-            key={view.id}
-            disabled={pendingViewId === view.id}
-            onClick={async () => {
-              setPendingViewId(view.id);
-              const result = await addTaskToView({ viewId: view.id, taskId });
-              setPendingViewId(null);
-              if (result.ok) {
-                toast.success(`Added to "${view.name}".`);
-              } else {
-                toast.error(result.error);
-              }
-            }}
-          >
-            {view.name}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Add to view</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {views.map((view) => {
+            const isMember = memberViewIds?.has(view.id) ?? false;
+            return (
+              <DropdownMenuItem
+                key={view.id}
+                disabled={pendingViewId === view.id}
+                onClick={() => void toggleView(view.id, view.name, isMember)}
+              >
+                <span className="flex w-full items-center justify-between gap-2">
+                  <span>{view.name}</span>
+                  {isMember && <Check className="size-3.5 shrink-0" aria-hidden="true" />}
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

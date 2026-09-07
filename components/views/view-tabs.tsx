@@ -35,6 +35,11 @@ import type { SavedViewListItem } from "@/lib/queries/views";
 import { cn } from "@/lib/utils";
 import { canManageProject } from "@/lib/auth/permissions";
 import { useMembership } from "@/components/auth/membership-provider";
+// Follow-up (drag-and-drop view membership): each tab doubles as a drop
+// target for a task row dragged from the table below (TaskDragHandle,
+// components/views/view-drop-context.tsx) -- dropping a task here calls
+// the same addTaskToView the "Add to view" dropdown menu already uses.
+import { ViewDropTab } from "@/components/views/view-drop-context";
 
 export function ViewTabs({
   views,
@@ -104,7 +109,8 @@ export function ViewTabs({
       {tabs.map((tab, index) => {
         const isActive = tab.id === activeViewId;
         return (
-          <div key={tab.id} className="group flex items-center">
+          <ViewDropTab key={tab.id} viewId={tab.id} viewName={tab.name}>
+          <div className="group flex items-center">
             {canManage && index > 0 && (
               <button
                 type="button"
@@ -140,6 +146,7 @@ export function ViewTabs({
               </button>
             )}
           </div>
+          </ViewDropTab>
         );
       })}
     </div>

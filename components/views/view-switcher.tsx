@@ -20,19 +20,33 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { SavedViewListItem } from "@/lib/queries/views";
+// Follow-up (advanced filtering, partial -> UI): "Edit filters" per view
+// row -- opens the flat AND-only filter builder for that view's own
+// (owner-editable) config.
+import { EditViewFiltersDialog } from "@/components/views/edit-view-filters-dialog";
+import type { FilterFieldOption } from "@/components/views/filter-builder";
 
 export function ViewSwitcher({
   views,
   activeViewId,
+  filterFieldOptions = [],
 }: {
   views: SavedViewListItem[];
   activeViewId?: string;
+  /** The project's current status/priority/assignee options, for the
+   * "Edit filters" dialog's condition value pickers. Defaults to empty,
+   * in which case that dialog still opens but offers no field/value
+   * choices (same "quietly steps aside" convention as this file's other
+   * optional callers) -- the List page (the only real caller today)
+   * always passes the real set. */
+  filterFieldOptions?: FilterFieldOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -111,7 +125,7 @@ export function ViewSwitcher({
         )}
 
         {mine.length > 0 && (
-          <>
+          <DropdownMenuGroup>
             <DropdownMenuLabel>Your views</DropdownMenuLabel>
             {mine.map((view) => (
               <ViewMenuRow
@@ -122,24 +136,28 @@ export function ViewSwitcher({
                 onCopyLink={() => copyLink(view.id)}
                 onMakeDefault={() => makeDefault(view.id)}
                 onDelete={() => removeView(view.id)}
+                filterFieldOptions={filterFieldOptions}
               />
             ))}
-          </>
+          </DropdownMenuGroup>
         )}
 
         {shared.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Shared with you</DropdownMenuLabel>
-            {shared.map((view) => (
-              <ViewMenuRow
-                key={view.id}
-                view={view}
-                active={view.id === activeViewId}
-                onOpen={() => openView(view.id)}
-                onCopyLink={() => copyLink(view.id)}
-              />
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Shared with you</DropdownMenuLabel>
+              {shared.map((view) => (
+                <ViewMenuRow
+                  key={view.id}
+                  view={view}
+                  active={view.id === activeViewId}
+                  onOpen={() => openView(view.id)}
+                  onCopyLink={() => copyLink(view.id)}
+                  filterFieldOptions={filterFieldOptions}
+                />
+              ))}
+            </DropdownMenuGroup>
           </>
         )}
 
@@ -161,6 +179,7 @@ function ViewMenuRow({
   onCopyLink,
   onMakeDefault,
   onDelete,
+  filterFieldOptions,
 }: {
   view: SavedViewListItem;
   active: boolean;
@@ -168,6 +187,7 @@ function ViewMenuRow({
   onCopyLink: () => void;
   onMakeDefault?: () => void;
   onDelete?: () => void;
+  filterFieldOptions: FilterFieldOption[];
 }) {
   return (
     <div className="flex items-center gap-1 px-1">
@@ -200,6 +220,12 @@ function ViewMenuRow({
       >
         <LinkIcon className="size-3.5" aria-hidden="true" />
       </Button>
+      <EditViewFiltersDialog
+        viewId={view.id}
+        viewName={view.name}
+        config={view.config}
+        fieldOptions={filterFieldOptions}
+      />
       {onMakeDefault && (
         <Button
           type="button"

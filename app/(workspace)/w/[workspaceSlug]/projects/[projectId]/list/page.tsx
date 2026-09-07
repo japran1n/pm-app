@@ -74,6 +74,11 @@ import { mergeManualTaskIds } from "@/lib/views/apply-view";
 import { ViewSwitcher } from "@/components/views/view-switcher";
 import { ViewTabs } from "@/components/views/view-tabs";
 import { SaveViewDialog } from "@/components/views/save-view-dialog";
+// Follow-up (drag-and-drop view membership): a single shared dnd-kit
+// DndContext wrapping both the view tab row (drop targets) and the task
+// table (drag sources) below -- see that module's own doc comment for why
+// this works across two sibling components.
+import { ViewDropContext } from "@/components/views/view-drop-context";
 
 const VALID_PRIORITIES = new Set([
   "urgent",
@@ -304,6 +309,7 @@ export default async function ProjectListPage({
   );
 
   return (
+    <ViewDropContext>
     <div className="flex flex-col gap-4">
       {/* F401 ("views as tabs"): shared list views as a clickable tab row
           — the SAME `?viewId=` navigation/resolution ViewSwitcher's
@@ -315,7 +321,36 @@ export default async function ProjectListPage({
           entry point rather than relying on the Board view's. */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <ViewSwitcher views={savedViews} activeViewId={appliedViewId} />
+          <ViewSwitcher
+            views={savedViews}
+            activeViewId={appliedViewId}
+            filterFieldOptions={[
+              {
+                field: "status",
+                label: "Status",
+                values: statusOptions.map((option) => ({
+                  value: option.value as string,
+                  label: option.label,
+                })),
+              },
+              {
+                field: "priority",
+                label: "Priority",
+                values: Array.from(VALID_PRIORITIES).map((value) => ({
+                  value,
+                  label: value.charAt(0).toUpperCase() + value.slice(1),
+                })),
+              },
+              {
+                field: "assigneeId",
+                label: "Assignee",
+                values: assigneeOptions.map((option) => ({
+                  value: option.id,
+                  label: option.label,
+                })),
+              },
+            ]}
+          />
           {workspace && (
             <SaveViewDialog workspaceId={workspace.id} projectId={projectId} />
           )}
@@ -357,5 +392,6 @@ export default async function ProjectListPage({
         savedViews={savedViews.map((view) => ({ id: view.id, name: view.name }))}
       />
     </div>
+    </ViewDropContext>
   );
 }
