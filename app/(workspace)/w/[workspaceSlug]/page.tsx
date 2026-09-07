@@ -190,12 +190,6 @@ export default async function WorkspacePage({
         </p>
       </div>
 
-      <PersonalTodoList
-        workspaceId={workspace.id}
-        workspaceSlug={workspaceSlug}
-        initialTodos={personalTodos}
-      />
-
       <DashboardContent
         workspaceId={workspace.id}
         workspaceSlug={workspaceSlug}
@@ -210,16 +204,30 @@ export default async function WorkspacePage({
         canOfferSampleProject={canOfferSampleProject}
       />
 
+      {/* UX audit: the personal to-do list is a lower-priority personal
+          reminder, so it sits below the workspace-wide stats/charts above
+          instead of competing with them for the top of the page. */}
+      <PersonalTodoList
+        workspaceId={workspace.id}
+        workspaceSlug={workspaceSlug}
+        initialTodos={personalTodos}
+      />
+
       {/* F078 (AS-134): workspace-wide task table below the charts, only
           once there's something to show a table of — the empty/error
           states above already cover "no tasks"/"charts failed to load". */}
       {!hasError && !isEmpty && (
-        <DashboardTaskTable
-          workspaceId={workspace.id}
-          workspaceSlug={workspaceSlug}
-          searchParams={query}
-          timezone={timezone}
-        />
+        <div className="flex flex-col gap-3">
+          <h2 className="text-lg font-semibold tracking-tight">
+            All tasks
+          </h2>
+          <DashboardTaskTable
+            workspaceId={workspace.id}
+            workspaceSlug={workspaceSlug}
+            searchParams={query}
+            timezone={timezone}
+          />
+        </div>
       )}
 
       {/* F027: natural next stop from the dashboard. */}

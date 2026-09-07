@@ -76,7 +76,14 @@ type Priority = NonNullable<TaskCardTask["priority"]>;
 export const PRIORITY_COLORS: Record<Priority | "none", string> = {
   urgent: "#ef4444", // red-500 (3.76:1 on white)
   high: "#ea580c", // orange-600 (3.56:1 on white; was orange-500 2.80:1)
-  medium: "#a16207", // yellow-700 (4.92:1 on white; yellow-500 1.92:1 and yellow-600 2.94:1 both failed 3:1)
+  // UX audit: yellow-700 (#a16207, hue 35°) sat only ~14° away from
+  // `high`'s orange-600 (#ea580c, hue 21°) on the hue wheel, so the two
+  // bars/dots read as near-identical brown/orange at a glance despite
+  // both individually clearing 3:1. This darker, more yellow-leaning
+  // value (hue 52°) is ~31° from `high` and ~52° from `urgent`, while
+  // still clearing 3:1 on white (5.40:1) and the badge's real secondary
+  // background (4.73:1) — see tests/unit/task-colors-contrast.test.ts.
+  medium: "#7a6a00", // dark yellow/olive (5.40:1 on white, 4.73:1 on secondary; distinct hue from high/urgent)
   low: "#3b82f6", // blue-500 (3.68:1 on white)
   // F269 (AS-526): slate-600 (#475569) clears 3:1 on the light theme's
   // white card (7.58:1) but FAILS on the dark theme's card background
@@ -102,7 +109,7 @@ export const PRIORITY_COLORS: Record<Priority | "none", string> = {
 // this is a genuine per-colour "which one wins" pick, not a fixed
 // scheme. Every entry below is the higher-contrast of {black, white}
 // for its own background and clears 4.5:1: urgent 5.58:1, high 5.90:1,
-// medium 4.92:1, low 5.71:1, backlog 4.83:1, none 4.76:1 (against WHITE
+// medium 5.40:1, low 5.71:1, backlog 4.83:1, none 4.76:1 (against WHITE
 // text) or 5.58/5.90/-/5.71/-/- (against BLACK text) as applicable. See
 // tests/unit/task-colors-contrast.test.ts for the automated check.
 export const PRIORITY_TEXT_ON_COLOR: Record<Priority | "none", string> = {
