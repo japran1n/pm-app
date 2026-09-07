@@ -15,6 +15,8 @@ import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { canWrite } from "@/lib/auth/permissions";
 import { DashboardTaskTable } from "@/components/dashboard/dashboard-task-table";
 import { DashboardContentLazy as DashboardContent } from "@/components/dashboard/dashboard-content-lazy";
+import { QuickNotesWidget } from "@/components/dashboard/quick-notes-widget";
+import { getMyQuickNotes } from "@/lib/queries/quick-notes";
 
 // F073 (AS-135, and AS-155 via the clarified spec's "Performance" answer):
 // the workspace home dashboard — a priority bar chart (F071's
@@ -82,6 +84,11 @@ export default async function WorkspacePage({
       .maybeSingle(),
     getCurrentUserTimezone(supabase),
   ]);
+
+  // Quick notes: always-visible personal reminder widget, fetched here
+  // once workspace.id is known (below the redirect guard) and passed down
+  // as a plain prop, matching the my-tasks page's PersonalTodoList pattern.
+  const quickNotes = workspace ? await getMyQuickNotes(workspace.id) : [];
 
   // The layout above already redirects away when the workspace can't be
   // resolved, so this is just a defensive fallback, not the primary guard.
@@ -180,6 +187,12 @@ export default async function WorkspacePage({
           An overview of what&apos;s happening across your workspace.
         </p>
       </div>
+
+      <QuickNotesWidget
+        workspaceId={workspace.id}
+        workspaceSlug={workspaceSlug}
+        initialNotes={quickNotes}
+      />
 
       <DashboardContent
         workspaceId={workspace.id}
