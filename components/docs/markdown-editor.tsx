@@ -246,7 +246,7 @@ export function MarkdownEditor({
     },
   });
 
-  function handleTitleChange(event: React.ChangeEvent<HTMLInputElement>) {
+  function handleTitleChange(event: React.ChangeEvent<HTMLTextAreaElement>) {
     const nextTitle = event.target.value;
     setTitle(nextTitle);
     if (!editor) return;
@@ -256,16 +256,34 @@ export function MarkdownEditor({
     scheduleSave(nextTitle, markdown);
   }
 
+  // Auto-grow the title textarea to fit its (possibly multi-line) content
+  // instead of clipping/scrolling long titles horizontally.
+  const titleTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const node = titleTextareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, [title]);
+
   if (!editor) return null;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
-        <input
+      <div className="flex flex-wrap items-center gap-4">
+        <textarea
+          ref={titleTextareaRef}
           value={title}
           onChange={handleTitleChange}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
           placeholder="Untitled"
-          className="w-full border-none bg-transparent text-3xl font-bold outline-none"
+          rows={1}
+          className="min-w-0 flex-1 resize-none overflow-hidden whitespace-pre-wrap break-words border-none bg-transparent text-3xl font-bold outline-none"
         />
         <span className="shrink-0 text-xs text-muted-foreground">
           {status === "saving" && "Saving..."}
