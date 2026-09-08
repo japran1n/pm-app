@@ -22,8 +22,8 @@ export function SignInForm() {
     return (
       <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 p-6 text-center">
         <Mail className="size-6 text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm font-medium">Check your email</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini font-medium">Check your email</p>
+        <p className="text-mini text-muted-foreground">
           We sent a sign-in link. It expires soon and can only be used once.
         </p>
       </div>
@@ -48,7 +48,7 @@ export function SignInForm() {
       </div>
 
       {state?.ok === false && (
-        <p id="sign-in-error" role="alert" className="text-sm text-destructive">
+        <p id="sign-in-error" role="alert" className="text-mini text-destructive">
           {state.error}
         </p>
       )}

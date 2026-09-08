@@ -205,7 +205,7 @@ export function ActivityFeed({
   if (error) {
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-sm text-destructive">{error}</p>
+        <p className="text-mini text-destructive">{error}</p>
         <Button type="button" variant="outline" size="sm" onClick={handleRetry}>
           Retry
         </Button>
@@ -215,7 +215,7 @@ export function ActivityFeed({
 
   if (rows.length === 0) {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-mini text-muted-foreground">
         <History className="size-4" aria-hidden="true" />
         No activity yet.
       </div>
@@ -231,7 +231,7 @@ export function ActivityFeed({
     <div className="flex flex-col gap-4">
       {groups.map((group) => (
         <div key={group.key} className="flex flex-col gap-2">
-          <h4 className="text-xs font-medium text-muted-foreground">
+          <h4 className="text-micro font-medium text-muted-foreground">
             {group.label}
           </h4>
           <ul className="flex flex-col gap-2">
@@ -248,7 +248,7 @@ export function ActivityFeed({
               });
 
               return (
-                <li key={row.id} className="flex items-start gap-2 text-sm">
+                <li key={row.id} className="flex items-start gap-2 text-mini">
                   {person ? (
                     <UserAvatar person={person} size="sm" />
                   ) : (
@@ -263,7 +263,7 @@ export function ActivityFeed({
                   <time
                     dateTime={row.createdAt}
                     title={formatTaskActivityTime(row.createdAt, timezone)}
-                    className="shrink-0 text-xs text-muted-foreground"
+                    className="shrink-0 text-micro text-muted-foreground"
                   >
                     {formatDistanceToNow(new Date(row.createdAt), {
                       addSuffix: true,
@@ -294,7 +294,7 @@ export function ActivityFeed({
       )}
 
       {cappedAtMax && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-micro text-muted-foreground">
           Showing the first 200 activity items.
         </p>
       )}

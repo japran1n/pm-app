@@ -248,7 +248,7 @@ export function NewProjectDialog({
                         disabled={isPending}
                         onClick={() => setTemplateId(template.id)}
                         aria-pressed={templateId === template.id}
-                        className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                        className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-mini hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                           templateId === template.id ? "bg-accent" : ""
                         }`}
                       >
@@ -258,7 +258,7 @@ export function NewProjectDialog({
                   </div>
                 </div>
                 {templateError && (
-                  <p role="alert" className="text-sm text-destructive">
+                  <p role="alert" className="text-mini text-destructive">
                     {templateError}
                   </p>
                 )}
@@ -336,7 +336,7 @@ function BlankProjectFields({
         />
       </div>
       {error && (
-        <p id="project-name-error" role="alert" className="text-sm text-destructive">
+        <p id="project-name-error" role="alert" className="text-mini text-destructive">
           {error}
         </p>
       )}

@@ -118,7 +118,7 @@ export function ViewSwitcher({
       />
       <DropdownMenuContent align="start" className="w-64">
         {views.length === 0 && (
-          <div className="px-2 py-3 text-sm text-muted-foreground">
+          <div className="px-2 py-3 text-mini text-muted-foreground">
             No saved views yet. Set your filters, then use &quot;Save view&quot; to
             save your first one.
           </div>

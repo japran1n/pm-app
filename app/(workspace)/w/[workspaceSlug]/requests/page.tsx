@@ -30,10 +30,10 @@ export default async function ClientRequestsPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="title-2 font-semibold tracking-tight">
           Client requests
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           What your clients have asked for. Accepting one creates a task and
           shares it back with them.
         </p>

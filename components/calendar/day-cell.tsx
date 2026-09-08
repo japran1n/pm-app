@@ -111,7 +111,7 @@ export function DayCell({
       data-date={day.date}
       data-testid={`calendar-day-cell-${day.date}`}
       className={cn(
-        "group flex min-h-[7rem] flex-col gap-1 border-b border-r border-border/60 p-1.5 text-xs",
+        "group flex min-h-[7rem] flex-col gap-1 border-b border-r border-border/60 p-1.5 text-micro",
         !day.isCurrentMonth && "bg-muted/30 text-muted-foreground",
         isOver && "bg-primary/10 ring-1 ring-inset ring-primary/40",
       )}

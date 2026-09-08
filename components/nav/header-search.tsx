@@ -297,21 +297,21 @@ export function HeaderSearch({
           className="absolute top-full left-0 z-50 mt-1 w-full max-h-80 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
         >
           {loading && !hasResults && (
-            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-6 text-mini text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               Searching…
             </div>
           )}
 
           {!loading && !hasResults && (
-            <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+            <p className="px-2 py-6 text-center text-mini text-muted-foreground">
               No results found.
             </p>
           )}
 
           {results.projects.length > 0 && (
             <div className="mb-1">
-              <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
+              <p className="px-2 py-1 text-micro font-medium text-muted-foreground">
                 Projects
               </p>
               {results.projects.map((project, index) => (
@@ -326,7 +326,7 @@ export function HeaderSearch({
                   <FolderKanban className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    <span className="ml-auto shrink-0 text-micro text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -337,7 +337,7 @@ export function HeaderSearch({
 
           {results.tasks.length > 0 && (
             <div>
-              <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
+              <p className="px-2 py-1 text-micro font-medium text-muted-foreground">
                 Tasks
               </p>
               {results.tasks.map((task, index) => (
@@ -351,7 +351,7 @@ export function HeaderSearch({
                 >
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 text-micro text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ?? task.projectName}
                   </span>
                 </ResultRow>
@@ -404,7 +404,7 @@ function ResultRow({
       // control effectively dead for anything but a raw pointer press.
       onClick={onSelect}
       className={cn(
-        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-mini hover:bg-accent hover:text-accent-foreground",
         isActive && "bg-accent text-accent-foreground",
         className,
       )}

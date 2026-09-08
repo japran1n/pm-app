@@ -77,8 +77,8 @@ export function ApprovalsQueue({
   if (approvals.length === 0) {
     return (
       <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="text-sm font-medium">No open approvals</p>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-mini font-medium">No open approvals</p>
+        <p className="mt-1 text-mini text-muted-foreground">
           Every client decision across this workspace has been settled. New
           requests show up here the moment they&apos;re raised.
         </p>
@@ -136,8 +136,8 @@ export function ApprovalsQueue({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border/60">
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
+        <table className="w-full min-w-[860px] text-mini">
+          <thead className="border-b bg-muted/40 text-left text-micro font-medium text-muted-foreground">
             <tr>
               <th className="px-4 py-2">What</th>
               <th className="px-4 py-2">Project</th>
@@ -299,8 +299,8 @@ function SummaryFigure({
 }) {
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${emphasize ? "text-destructive" : ""}`}>
+      <p className="text-micro font-medium text-muted-foreground">{label}</p>
+      <p className={`mt-1 title-2 font-semibold ${emphasize ? "text-destructive" : ""}`}>
         {value}
       </p>
     </div>

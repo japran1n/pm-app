@@ -71,10 +71,10 @@ export default async function PortalHowWeWorkPage({
         <span className="text-tag font-medium uppercase tracking-wide text-muted-foreground">
           Kako radimo
         </span>
-        <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">
+        <h1 className="mt-2 title-2 font-semibold text-foreground sm:title-3">
           One process, start to finish -- no surprises along the way.
         </h1>
-        <p className="mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
+        <p className="mt-3 max-w-2xl text-mini text-muted-foreground sm:text-regular">
           Every project we run follows the same eight-stage process, and every
           decision along the way gets written down where you can see it. You
           always know what stage you&rsquo;re in, what happens next, and why it
@@ -91,7 +91,7 @@ export default async function PortalHowWeWorkPage({
       >
         <div className="mb-4 flex items-center gap-2">
           <BookOpen className="size-4 text-muted-foreground" aria-hidden="true" />
-          <h2 className="text-sm font-semibold text-foreground">Guides for this project</h2>
+          <h2 className="text-mini font-semibold text-foreground">Guides for this project</h2>
         </div>
         <HowWeWorkList entries={howWeWork.entries} />
       </section>

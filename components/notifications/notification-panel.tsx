@@ -256,12 +256,12 @@ export function NotificationPanel({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between px-1">
-        <span className="text-sm font-semibold">Notifications</span>
+        <span className="text-mini font-semibold">Notifications</span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 gap-1 px-2 text-xs"
+          className="h-7 gap-1 px-2 text-micro"
           disabled={unreadCount === 0 || isMarkingAll}
           onClick={handleMarkAll}
         >
@@ -282,7 +282,7 @@ export function NotificationPanel({
           }
         >
           <Bell className="size-6 text-muted-foreground" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini text-muted-foreground">
             You&apos;re all caught up. No notifications yet.
           </p>
         </div>
@@ -303,7 +303,7 @@ export function NotificationPanel({
 
             const content = (
               <div
-                className={`flex items-start gap-2.5 rounded-md px-2 py-2 text-sm ${
+                className={`flex items-start gap-2.5 rounded-md px-2 py-2 text-mini ${
                   isUnread ? "bg-accent/40" : ""
                 }`}
               >
@@ -319,7 +319,7 @@ export function NotificationPanel({
                   size="sm"
                 />
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <p className="text-sm leading-snug">
+                  <p className="text-mini leading-snug">
                     {isSystemNotification ? (
                       <>
                         A task you&apos;re watching {actionLabel(notification.kind)}{" "}
@@ -341,7 +341,7 @@ export function NotificationPanel({
                       </>
                     )}
                   </p>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-micro text-muted-foreground">
                     {formatDistanceToNow(new Date(notification.createdAt), {
                       addSuffix: true,
                     })}
@@ -389,7 +389,7 @@ export function NotificationPanel({
 
       <Link
         href={`/w/${workspaceSlug}/notifications`}
-        className="px-1 py-1 text-center text-xs text-muted-foreground hover:text-foreground hover:underline"
+        className="px-1 py-1 text-center text-micro text-muted-foreground hover:text-foreground hover:underline"
       >
         View all notifications
       </Link>

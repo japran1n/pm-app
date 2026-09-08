@@ -360,7 +360,7 @@ function ColumnRow({
               <div className="flex flex-col gap-1.5 py-2">
                 <label
                   htmlFor={`destination-column-${column.id}`}
-                  className="text-sm font-medium"
+                  className="text-mini font-medium"
                 >
                   Move tasks to
                 </label>
@@ -384,7 +384,7 @@ function ColumnRow({
                 </Select>
               </div>
             ) : (
-              <p className="py-2 text-sm text-destructive">
+              <p className="py-2 text-mini text-destructive">
                 This is the project&apos;s only column and cannot be removed.
               </p>
             )}
@@ -519,7 +519,7 @@ export function StatusManager({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2" data-testid="status-manager-list">
         {columns.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No board columns yet.</p>
+          <p className="text-mini text-muted-foreground">No board columns yet.</p>
         ) : (
           columns.map((column, index) =>
             canManage ? (
@@ -539,8 +539,8 @@ export function StatusManager({
                 className="flex items-center gap-2 rounded-md border border-border p-3"
               >
                 <ColorSwatch color={column.color} />
-                <span className="text-sm">{column.name}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="text-mini">{column.name}</span>
+                <span className="ml-auto text-micro text-muted-foreground">
                   {COLUMN_CATEGORIES.find((c) => c.value === column.category)?.label}
                 </span>
               </div>
@@ -604,7 +604,7 @@ export function StatusManager({
           <TooltipTrigger
             type="button"
             disabled
-            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground opacity-50"
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-mini font-medium text-primary-foreground opacity-50"
           >
             Add column
           </TooltipTrigger>

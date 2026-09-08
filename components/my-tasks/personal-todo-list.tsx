@@ -300,8 +300,8 @@ export function PersonalTodoList({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border p-4">
-      <h2 className="text-sm font-medium">Personal to-dos</h2>
-      <p className="text-xs text-muted-foreground">
+      <h2 className="text-mini font-medium">Personal to-dos</h2>
+      <p className="text-micro text-muted-foreground">
         Visible only to you — not a task, not assigned, not shared.
       </p>
 
@@ -317,8 +317,8 @@ export function PersonalTodoList({
               <span
                 className={
                   todo.isDone
-                    ? "text-sm text-muted-foreground line-through"
-                    : "text-sm"
+                    ? "text-mini text-muted-foreground line-through"
+                    : "text-mini"
                 }
               >
                 {todo.title}
@@ -326,7 +326,7 @@ export function PersonalTodoList({
               {todo.taskId && workspaceSlug && (
                 <Link
                   href={`/w/${workspaceSlug}/t/${todo.taskKey ?? todo.taskId}`}
-                  className="text-xs text-primary hover:underline"
+                  className="text-micro text-primary hover:underline"
                 >
                   on task: {todo.taskTitle ?? todo.taskKey}
                 </Link>
@@ -334,7 +334,7 @@ export function PersonalTodoList({
               {!todo.taskId && todo.projectId && workspaceSlug && (
                 <Link
                   href={`/w/${workspaceSlug}/projects/${todo.projectId}/list`}
-                  className="text-xs text-primary hover:underline"
+                  className="text-micro text-primary hover:underline"
                 >
                   on project: {todo.projectName ?? "project"}
                 </Link>
@@ -351,7 +351,7 @@ export function PersonalTodoList({
           </li>
         ))}
         {optimisticTodos.length === 0 && (
-          <li className="text-sm text-muted-foreground">Nothing here yet.</li>
+          <li className="text-mini text-muted-foreground">Nothing here yet.</li>
         )}
       </ul>
 

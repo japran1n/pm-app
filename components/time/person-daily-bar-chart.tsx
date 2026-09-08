@@ -17,7 +17,7 @@ function formatMinutes(minutes: number): string {
 
 export function PersonDailyBarChart({ data }: { data: PersonTimeDaily[] }) {
   if (data.length === 0) {
-    return <p className="text-sm text-muted-foreground">No logged time in this range.</p>;
+    return <p className="text-mini text-muted-foreground">No logged time in this range.</p>;
   }
 
   const maxMinutes = Math.max(...data.map((d) => d.totalMinutes), 1);

@@ -416,7 +416,7 @@ export default async function ProjectListPage({
       {/* AS-433: non-blocking notice — the view's tasks still render below
           even when some of its filters no longer apply. */}
       {appliedViewId && droppedFilterCount > 0 && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           {droppedFilterCount === 1
             ? "1 filter from this view no longer applies and was skipped."
             : `${droppedFilterCount} filters from this view no longer apply and were skipped.`}

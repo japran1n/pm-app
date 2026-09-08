@@ -58,15 +58,15 @@ export function TrashList({
                 {item.type === "task" ? "Task" : "Comment"}
               </Badge>
               {item.taskKey && (
-                <span className="font-mono text-xs text-muted-foreground">
+                <span className="font-mono text-micro text-muted-foreground">
                   {item.taskKey}
                 </span>
               )}
-              <span className="truncate text-sm font-medium">
+              <span className="truncate text-mini font-medium">
                 {item.label}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-micro text-muted-foreground">
               From {item.projectName} — deleted{" "}
               {trashItemDateLabel(item.deletedAt, dateFormatter)}
               {item.deletedByName ? ` by ${item.deletedByName}` : ""}

@@ -102,7 +102,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
         <div
           role="listbox"
           aria-label="Mention someone"
-          className="min-w-40 rounded-md border border-border bg-popover p-1 text-sm text-muted-foreground shadow-md"
+          className="min-w-40 rounded-md border border-border bg-popover p-1 text-mini text-muted-foreground shadow-md"
         >
           No matching members
         </div>
@@ -122,7 +122,7 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(
             role="option"
             aria-selected={index === selectedIndex}
             className={cn(
-              "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm",
+              "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-mini",
               index === selectedIndex
                 ? "bg-accent text-accent-foreground"
                 : "text-popover-foreground hover:bg-accent hover:text-accent-foreground",

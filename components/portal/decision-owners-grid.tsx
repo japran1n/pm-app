@@ -30,7 +30,7 @@ export function DecisionOwnersGrid({
 
   if (decisionTypes.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-mini text-muted-foreground">
         This project hasn&apos;t set up any decision types yet.
       </p>
     );
@@ -44,7 +44,7 @@ export function DecisionOwnersGrid({
       {decisionTypes.map((type) => {
         const owner = ownerByType.get(type.name);
         return (
-          <div key={type.id} className="flex items-center gap-1.5 text-xs sm:text-sm">
+          <div key={type.id} className="flex items-center gap-1.5 text-micro sm:text-mini">
             <span className="font-medium text-muted-foreground">{type.name}</span>
             <span aria-hidden className="text-muted-foreground">
               →

@@ -408,7 +408,7 @@ export function StatusTemplateManager({
       </div>
 
       {templates.length === 0 && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           No status templates yet.
           {canManage && " Create one below to reuse a set of columns across projects."}
         </p>

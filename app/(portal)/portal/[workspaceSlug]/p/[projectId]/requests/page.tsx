@@ -52,8 +52,8 @@ export default async function PortalRequestsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">Your requests</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-2 font-semibold tracking-tight">Your requests</h1>
+        <p className="text-mini text-muted-foreground">
           Ask {workspace.name} for something. They will accept it — which puts
           it on the board where you can follow it — or come back to you with a
           reason.

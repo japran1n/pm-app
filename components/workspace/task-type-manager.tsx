@@ -322,7 +322,7 @@ export function TaskTypeManager({
       </div>
 
       {taskTypes.length === 0 && (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           No task types yet.
           {canManage &&
             " Create one below — e.g. Setup, Design, Dev, SEO, QA — to tag and filter tasks by it."}

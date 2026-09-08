@@ -59,7 +59,7 @@ const FALLBACK_SLOT_WIDTH_PX = 96;
 // F104: rows brought down and the bar brought up so the bar -- the
 // loudest visual channel on the page -- dominates the row instead of a
 // thin 12px stripe inside a 56px row. Two text lines (name + state line)
-// at text-sm/text-xs still read comfortably at this height and stay
+// at text-mini/text-micro still read comfortably at this height and stay
 // above the 24px WCAG 2.5.8 minimum target size.
 // F104 round 2: rows are no longer a single constant. A phase with no
 // in-flight line needs two text lines (name + facts); an active phase
@@ -550,7 +550,7 @@ export function PhaseTimeline({
       // parent's layout.
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5"
     >
-      <h2 className="text-sm font-semibold text-foreground">Where we are</h2>
+      <h2 className="text-mini font-semibold text-foreground">Where we are</h2>
 
       {/* F104 round 4: the side-by-side label-column + shared-axis-plot
           arrangement below is a desktop idea -- on a 375px phone the
@@ -591,7 +591,7 @@ export function PhaseTimeline({
                     No `{phase.position}.` prefix: `position` is the
                     ordering column, and the row's own place in this
                     already-ordered list carries that sequence for free. */}
-                <span className="truncate text-sm font-medium text-foreground">
+                <span className="truncate text-mini font-medium text-foreground">
                   {phase.name}
                 </span>
                 {/* F104 1.3: state/dates/count kept together as one line
@@ -603,7 +603,7 @@ export function PhaseTimeline({
                     equals `formatPhaseSecondaryLine`. */}
                 <span
                   data-testid="phase-timeline-row-label"
-                  className="truncate text-xs"
+                  className="truncate text-micro"
                   title={formatPhaseSecondaryLine(phase)}
                 >
                   <span className={cn("font-semibold", STATE_TEXT_CLASS[phase.state])}>
@@ -630,7 +630,7 @@ export function PhaseTimeline({
                         : "phase-timeline-blocked-note"
                     }
                     className={cn(
-                      "truncate text-xs font-medium",
+                      "truncate text-micro font-medium",
                       qualifierLine.kind === "blocked-note"
                         ? "text-status-blocked"
                         : "text-foreground",
@@ -841,7 +841,7 @@ export function PhaseTimeline({
                 <div
                   role="tooltip"
                   data-testid="phase-timeline-tooltip"
-                  className="w-fit max-w-52 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                  className="w-fit max-w-52 rounded-md border border-border bg-popover p-2 text-micro text-popover-foreground shadow-md"
                 >
                   <p className="font-medium">{hoveredRow.phase.name}</p>
                   <p className="text-muted-foreground">
@@ -931,11 +931,11 @@ function MobilePhaseTimelineList({
             aria-label={ariaLabelParts.join(" -- ")}
             className="rounded-md border border-border p-3"
           >
-            <span className="block truncate text-sm font-medium text-foreground">
+            <span className="block truncate text-mini font-medium text-foreground">
               {phase.name}
             </span>
 
-            <span data-testid="phase-timeline-mobile-facts" className="mt-0.5 block text-xs">
+            <span data-testid="phase-timeline-mobile-facts" className="mt-0.5 block text-micro">
               <span className={cn("font-semibold", STATE_TEXT_CLASS[phase.state])}>
                 {STATE_LABEL[phase.state]}
               </span>
@@ -956,7 +956,7 @@ function MobilePhaseTimelineList({
                     : "phase-timeline-mobile-blocked-note"
                 }
                 className={cn(
-                  "mt-0.5 block text-xs font-medium",
+                  "mt-0.5 block text-micro font-medium",
                   qualifierLine.kind === "blocked-note"
                     ? "text-status-blocked"
                     : "text-foreground",
@@ -1030,13 +1030,13 @@ function MobilePhaseTimelineList({
             {behind && (
               <p
                 data-testid="phase-timeline-mobile-behind-note"
-                className="mt-1 text-xs font-medium text-status-blocked"
+                className="mt-1 text-micro font-medium text-status-blocked"
               >
                 Behind its expected pace for today.
               </p>
             )}
             {phase.clientDescription && (
-              <p className="mt-1 text-xs text-muted-foreground">{phase.clientDescription}</p>
+              <p className="mt-1 text-micro text-muted-foreground">{phase.clientDescription}</p>
             )}
           </div>
         );

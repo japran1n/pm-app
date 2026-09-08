@@ -108,7 +108,7 @@ export function NewFromTemplateButton({
               type="button"
               disabled={isPending}
               onClick={() => handleSelect(template.id, template.name)}
-              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-mini hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             >
               <span className="truncate">{template.name}</span>
               {isPending && (

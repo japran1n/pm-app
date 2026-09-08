@@ -62,10 +62,10 @@ export function ShortcutHelpDialog() {
             Shortcuts available anywhere in the app (not while typing in a field).
           </DialogDescription>
         </DialogHeader>
-        <ul className="flex flex-col gap-2 text-sm">
+        <ul className="flex flex-col gap-2 text-mini">
           <li className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Open the command palette</span>
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-micro">
               {mod}K
             </kbd>
           </li>
@@ -75,14 +75,14 @@ export function ShortcutHelpDialog() {
               own file-header comment. */}
           <li className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Switch project</span>
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-micro">
               {mod}P
             </kbd>
           </li>
           {SHORTCUT_REGISTRY.map((entry) => (
             <li key={entry.id} className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">{entry.description}</span>
-              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs">
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-micro">
                 {entry.keyLabel}
               </kbd>
             </li>

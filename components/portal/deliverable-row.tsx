@@ -78,7 +78,7 @@ export function DeliverableRow({
     return (
       <li
         data-testid="deliverable-row-settled"
-        className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground"
+        className="flex flex-col gap-1 rounded-lg border border-border/60 bg-muted/30 px-4 py-3 text-mini text-muted-foreground"
       >
         <div className="flex items-center justify-between gap-3">
           <span className="font-medium text-foreground">{deliverable.title}</span>
@@ -106,7 +106,7 @@ export function DeliverableRow({
       data-testid="deliverable-row-outstanding"
       data-state={state}
       className={cn(
-        "flex flex-col gap-2 rounded-lg border border-l-4 border-border/60 bg-card px-4 py-3 text-sm",
+        "flex flex-col gap-2 rounded-lg border border-l-4 border-border/60 bg-card px-4 py-3 text-mini",
         ruleToken,
       )}
     >
@@ -119,26 +119,26 @@ export function DeliverableRow({
           )}
         </div>
         <div className="flex flex-col items-end gap-1 text-right">
-          <span className={cn("text-xs font-medium", pastDue ? "text-status-blocked" : "text-muted-foreground")}>
+          <span className={cn("text-micro font-medium", pastDue ? "text-status-blocked" : "text-muted-foreground")}>
             {deliverable.dueAt
               ? `${pastDue ? "Was due" : "Due"} ${formatDate(deliverable.dueAt)}`
               : "No due date"}
           </span>
-          <span className="text-xs text-muted-foreground">{KIND_LABEL[deliverable.kind]}</span>
+          <span className="text-micro text-muted-foreground">{KIND_LABEL[deliverable.kind]}</span>
         </div>
       </div>
 
       {isReturned && deliverable.reviewNote && (
         <p
           data-testid="deliverable-review-note"
-          className="rounded-md bg-status-blocked-bg px-3 py-2 text-sm text-status-blocked"
+          className="rounded-md bg-status-blocked-bg px-3 py-2 text-mini text-status-blocked"
         >
           Sent back: {deliverable.reviewNote}
         </p>
       )}
 
       {isDelivered ? (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-mini text-muted-foreground">
           <Clock className="size-4" aria-hidden="true" />
           Waiting for us to check it{deliveredAt ? ` (sent ${formatDate(deliveredAt)})` : ""}.
         </p>

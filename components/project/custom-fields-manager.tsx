@@ -86,7 +86,7 @@ function FieldRow({
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-3">
       <span className="font-medium">{field.name}</span>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-micro text-muted-foreground">
         {FIELD_TYPE_LABELS[field.fieldType]}
       </span>
 
@@ -186,7 +186,7 @@ export function CustomFieldsManager({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2" data-testid="custom-fields-manager-list">
         {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No custom fields yet.</p>
+          <p className="text-mini text-muted-foreground">No custom fields yet.</p>
         ) : (
           fields.map((field) =>
             canManage ? (
@@ -196,8 +196,8 @@ export function CustomFieldsManager({
                 key={field.id}
                 className="flex items-center gap-2 rounded-md border border-border p-3"
               >
-                <span className="text-sm">{field.name}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="text-mini">{field.name}</span>
+                <span className="ml-auto text-micro text-muted-foreground">
                   {FIELD_TYPE_LABELS[field.fieldType]}
                 </span>
               </div>
@@ -240,7 +240,7 @@ export function CustomFieldsManager({
           <TooltipTrigger
             type="button"
             disabled
-            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground opacity-50"
+            className="inline-flex h-8 items-center justify-center rounded-lg bg-primary px-3 text-mini font-medium text-primary-foreground opacity-50"
           >
             Add field
           </TooltipTrigger>

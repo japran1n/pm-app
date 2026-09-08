@@ -47,7 +47,7 @@ function Row({
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="text-tag text-muted-foreground">{label}</span>
-        <span className="text-sm text-foreground">{value}</span>
+        <span className="text-mini text-foreground">{value}</span>
       </div>
     </div>
   );
@@ -111,7 +111,7 @@ export function LaunchDayCard({
       </div>
 
       {launchNote && (
-        <p className="text-sm text-muted-foreground" data-testid="launch-day-note">
+        <p className="text-mini text-muted-foreground" data-testid="launch-day-note">
           {launchNote}
         </p>
       )}

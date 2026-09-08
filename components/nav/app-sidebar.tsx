@@ -388,7 +388,7 @@ function SidebarContent({
                       // md:hidden`), so a `sm:` check would leave 640-767px
                       // tablet widths (where the mobile Sheet is still what's
                       // shown) under-sized.
-                      "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium max-md:min-h-11",
+                      "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium max-md:min-h-11",
                       isActive
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -463,7 +463,7 @@ function SidebarContent({
             // F265 (AS-518): same `max-md:min-h-11` reasoning as the
             // primary nav items above -- this Link is shared between the
             // desktop `<aside>` and the mobile hamburger Sheet.
-            "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
+            "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium transition-colors max-md:min-h-11",
             pathname === `/w/${workspaceSlug}/settings/profile`
               ? "bg-sidebar-accent text-sidebar-accent-foreground"
               : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

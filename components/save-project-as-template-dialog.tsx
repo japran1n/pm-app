@@ -131,7 +131,7 @@ export function SaveProjectAsTemplateDialog({
             <p
               id="project-template-name-error"
               role="alert"
-              className="text-sm text-destructive"
+              className="text-mini text-destructive"
             >
               {error}
             </p>

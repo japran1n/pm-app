@@ -93,7 +93,7 @@ export default async function PortalScopePage({
       <Separator />
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Change requests</h2>
+        <h2 className="text-mini font-semibold text-foreground">Change requests</h2>
         <ChangeRequestsTable
           requests={changeRequestsResult.data}
           workspaceSlug={workspaceSlug}
@@ -104,14 +104,14 @@ export default async function PortalScopePage({
       <Separator />
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Decision log</h2>
+        <h2 className="text-mini font-semibold text-foreground">Decision log</h2>
         <DecisionLog decisions={decisionsResult.data} />
       </div>
 
       <Separator />
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Assumptions</h2>
+        <h2 className="text-mini font-semibold text-foreground">Assumptions</h2>
         <AssumptionList assumptions={assumptionsResult.data} />
       </div>
 

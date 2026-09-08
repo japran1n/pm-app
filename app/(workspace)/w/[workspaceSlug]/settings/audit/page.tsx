@@ -136,8 +136,8 @@ export default async function AuditLogPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Audit log</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Audit log</h1>
+        <p className="text-mini text-muted-foreground">
           Sensitive activity for {workspace.name}, most recent first.
         </p>
       </div>
@@ -147,7 +147,7 @@ export default async function AuditLogPage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
         >
           <p>Something went wrong loading the audit log. Please try again.</p>
           <a href={`/w/${workspaceSlug}/settings/audit`} className="underline">

@@ -149,12 +149,12 @@ function PipelineStep({
       >
         <Icon aria-hidden={true} className={cn("size-5 shrink-0", BUCKET_TEXT_CLASS[bucket])} />
       </span>
-      <span className="text-2xl font-semibold tabular-nums text-foreground" data-testid={`page-pipeline-count-${bucket}`}>
+      <span className="title-2 font-semibold tabular-nums text-foreground" data-testid={`page-pipeline-count-${bucket}`}>
         {count}
       </span>
       <span
         className={cn(
-          "flex items-center gap-1.5 text-xs font-medium",
+          "flex items-center gap-1.5 text-micro font-medium",
           isClientBucket ? "text-status-waiting" : "text-muted-foreground",
         )}
       >
@@ -175,7 +175,7 @@ export function PagePipeline({
 
   return (
     <div className="flex flex-col gap-2" data-testid="page-pipeline">
-      <h3 className="text-sm font-medium text-foreground">How your pages travel</h3>
+      <h3 className="text-mini font-medium text-foreground">How your pages travel</h3>
 
       {/* AS-014/AS-017 (this feature's own definition of done): the
           pipeline is the axis AND the count in one picture — no separate
@@ -185,7 +185,7 @@ export function PagePipeline({
           by zero or render a broken bar) states "No pages yet" rather
           than drawing meaningless steps. */}
       {total === 0 ? (
-        <p className="text-sm text-muted-foreground" data-testid="page-pipeline-empty">
+        <p className="text-mini text-muted-foreground" data-testid="page-pipeline-empty">
           No pages yet.
         </p>
       ) : (
@@ -211,7 +211,7 @@ export function PagePipeline({
                   {index < FLOW_ORDER.length - 1 && (
                     <span
                       aria-hidden="true"
-                      className="flex shrink-0 items-center px-1 text-lg text-muted-foreground/70"
+                      className="flex shrink-0 items-center px-1 title-1 text-muted-foreground/70"
                     >
                       →
                     </span>
@@ -230,7 +230,7 @@ export function PagePipeline({
               position). Its own row, unconditionally visible, set apart
               by a plain top divider rather than an arrow. */}
           <div className="flex items-center gap-3 border-t border-border pt-3">
-            <span className="shrink-0 text-xs text-muted-foreground">Stuck at any step</span>
+            <span className="shrink-0 text-micro text-muted-foreground">Stuck at any step</span>
             <div data-testid="page-pipeline-blocked-aside">
               <PipelineStep bucket="blocked" count={counts.blocked} />
             </div>

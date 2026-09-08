@@ -86,9 +86,9 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
   if (weeks.length === 0) {
     return (
       <div className="flex flex-col gap-2 rounded-lg border border-border p-5">
-        <h2 className="text-sm font-semibold text-foreground">Weekly delivery rhythm</h2>
+        <h2 className="text-mini font-semibold text-foreground">Weekly delivery rhythm</h2>
         <p
-          className="text-sm text-muted-foreground"
+          className="text-mini text-muted-foreground"
           data-testid="weekly-delivery-chart-no-span"
         >
           Nothing to show yet.
@@ -111,9 +111,9 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-border p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">Weekly delivery rhythm</h2>
+        <h2 className="text-mini font-semibold text-foreground">Weekly delivery rhythm</h2>
         <span
-          className="text-xs text-muted-foreground"
+          className="text-micro text-muted-foreground"
           data-testid="weekly-delivery-chart-total"
         >
           {totalLabel}
@@ -207,7 +207,7 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
               <div
                 role="tooltip"
                 data-testid="weekly-delivery-tooltip"
-                className="w-fit max-w-36 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
+                className="w-fit max-w-36 rounded-md border border-border bg-popover p-2 text-micro text-popover-foreground shadow-md"
               >
                 <p className="font-medium">Week of {hovered.label}</p>
                 <p className="text-muted-foreground">
@@ -219,7 +219,7 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
         </svg>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-micro text-muted-foreground">
         Client-visible tasks, counted in the week they were last marked
         done.
       </p>

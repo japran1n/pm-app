@@ -90,7 +90,7 @@ export default async function MyTasksPage({
 
   if (!workspace || !user) {
     return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-lg border border-dashed p-8 text-center text-mini text-muted-foreground">
         Unable to load My Tasks.
       </p>
     );
@@ -155,7 +155,7 @@ export default async function MyTasksPage({
   if (totalCount === 0) {
     return (
       <div className="flex flex-col gap-4 p-6">
-        <h1 className="text-2xl font-semibold">My Tasks</h1>
+        <h1 className="title-2 font-semibold">My Tasks</h1>
         <PersonalTodoList
           workspaceId={workspace.id}
           workspaceSlug={workspaceSlug}
@@ -169,12 +169,12 @@ export default async function MyTasksPage({
             (components/board/board-empty-state.tsx). Reached via the
             real getMyTasks zero-row path, not a placeholder. */}
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed py-16 text-center">
-          <p className="text-sm font-medium">
+          <p className="text-mini font-medium">
             {includeWatched
               ? "No tasks are assigned to you or watched by you yet."
               : "No tasks are assigned to you yet."}
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini text-muted-foreground">
             Tasks show up here once someone assigns them to you{includeWatched ? ", or once you watch one" : ""}.
           </p>
           <Button
@@ -190,7 +190,7 @@ export default async function MyTasksPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">My Tasks</h1>
+        <h1 className="title-2 font-semibold">My Tasks</h1>
         {/* F231 (AS-441): toggle is a plain link that flips the URL
             search param -- no client component needed for navigation. */}
         <Button
@@ -222,7 +222,7 @@ export default async function MyTasksPage({
         if (rows.length === 0) return null;
         return (
           <section key={key} className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium text-muted-foreground">
+            <h2 className="text-mini font-medium text-muted-foreground">
               {label} ({rows.length})
             </h2>
             {/* Portal-parity fix ("My Tasks should look like Dashboard"):

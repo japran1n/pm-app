@@ -135,7 +135,7 @@ export function PagesTable({
                   <div className="flex flex-col gap-0.5">
                     <span className="font-medium">{page.title}</span>
                     {page.slug && (
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="font-mono text-micro text-muted-foreground">
                         /{page.slug.replace(/^\//, "")}
                       </span>
                     )}
@@ -175,21 +175,21 @@ export function PagesTable({
                         size="sm"
                       />
                       <div className="flex flex-col leading-tight">
-                        <span className="text-sm">
+                        <span className="text-mini">
                           {page.assignee.name ?? "Someone at the agency"}
                         </span>
                         {page.assignee.roleLabel && (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-micro text-muted-foreground">
                             {page.assignee.roleLabel}
                           </span>
                         )}
                       </div>
                     </div>
                   ) : (
-                    <span className="text-sm text-muted-foreground">Unassigned</span>
+                    <span className="text-mini text-muted-foreground">Unassigned</span>
                   )}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                <TableCell className="text-mini text-muted-foreground">
                   {formatUpdatedAt(page.updatedAt)}
                 </TableCell>
                 <TableCell>

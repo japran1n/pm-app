@@ -133,7 +133,7 @@ export function Watchers({
         onClick={handleToggle}
         disabled={isToggling || !currentUserId}
         aria-pressed={localIsWatching}
-        className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+        className="h-7 gap-1.5 px-2 text-micro text-muted-foreground"
       >
         {isToggling ? (
           <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -151,7 +151,7 @@ export function Watchers({
           ariaLabelPrefix="Watching"
         />
       ) : (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-micro text-muted-foreground">
           No watchers yet.
         </span>
       )}

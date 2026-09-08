@@ -111,7 +111,7 @@ export function ProjectLinksList({ links }: { links: ProjectLink[] }) {
               />
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <span className="flex items-center gap-1.5 text-mini font-medium text-foreground">
                 {link.label}
               </span>
               <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-tag text-muted-foreground">

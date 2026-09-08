@@ -76,7 +76,7 @@ export function UploadProgress({
           key={job.id}
           data-testid="upload-progress-row"
           data-status={job.status}
-          className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm"
+          className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-mini"
         >
           {job.status === "uploading" && (
             <Loader2
@@ -99,7 +99,7 @@ export function UploadProgress({
 
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate font-medium">{job.fileName}</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-micro text-muted-foreground">
               {job.status === "uploading" && (
                 <>{formatBytes(job.fileSize)} &middot; uploading&hellip;</>
               )}

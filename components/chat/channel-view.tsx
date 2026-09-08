@@ -427,7 +427,7 @@ export function ChannelView({
         >
           <ChevronLeft className="size-4" />
         </Link>
-        <h1 className="text-sm font-semibold">{channelName}</h1>
+        <h1 className="text-mini font-semibold">{channelName}</h1>
         {onlineMembers.length > 0 && (
           <div
             className="ml-auto flex items-center -space-x-2"
@@ -511,7 +511,7 @@ function TypingIndicatorLine({
     <p
       role="status"
       aria-live="polite"
-      className="px-4 pb-1 text-xs italic text-muted-foreground"
+      className="px-4 pb-1 text-micro italic text-muted-foreground"
     >
       {text}
     </p>

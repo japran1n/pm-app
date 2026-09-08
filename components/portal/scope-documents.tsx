@@ -100,7 +100,7 @@ function DocumentRow({
 
   return (
     <li
-      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5 text-sm"
+      className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5 text-mini"
       data-testid="scope-document-row"
     >
       <button
@@ -116,7 +116,7 @@ function DocumentRow({
         )}
         <span className="min-w-0 truncate font-medium">{document.title}</span>
       </button>
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <span className="shrink-0 text-micro text-muted-foreground">
         {document.uploadedByName ?? "Unknown"} · {formatDate(document.createdAt)}
       </span>
       {canManage && (
@@ -330,13 +330,13 @@ export function ScopeDocuments({
   return (
     <div className="flex flex-col gap-3" data-testid="scope-documents">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">Documents &amp; links</h2>
+        <h2 className="text-mini font-semibold text-foreground">Documents &amp; links</h2>
         {canManage && (
           <AddDocumentDialog projectId={projectId} onAdded={handleAdded} />
         )}
       </div>
       {items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           No documents or links attached yet.
         </p>
       ) : (

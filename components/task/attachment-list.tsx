@@ -467,7 +467,7 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
         </div>
       ) : error ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-mini text-destructive">{error}</p>
           {onRetry && (
             <Button
               type="button"
@@ -480,7 +480,7 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
           )}
         </div>
       ) : localAttachments.length === 0 ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-mini text-muted-foreground">
           <Paperclip className="size-4" aria-hidden="true" />
           No attachments yet. Upload a file to get started.
         </div>
@@ -505,13 +505,13 @@ export const AttachmentList = forwardRef<AttachmentListHandle, {
               )}
               <button
                 type="button"
-                className="truncate text-sm font-medium underline-offset-2 hover:underline disabled:opacity-60"
+                className="truncate text-mini font-medium underline-offset-2 hover:underline disabled:opacity-60"
                 disabled={openingId === attachment.id}
                 onClick={() => handleOpen(attachment.id)}
               >
                 {attachment.fileName}
               </button>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-micro text-muted-foreground">
                 {uploaderLabel(attachment.uploadedBy, members)}
               </span>
               {openingId === attachment.id && (

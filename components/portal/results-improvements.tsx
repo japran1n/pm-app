@@ -21,8 +21,8 @@ export function ResultsImprovements({ improvements }: { improvements: ResolvedIm
   if (improvements.length === 0) {
     return (
       <div className="flex flex-col gap-2 rounded-lg border border-border p-5">
-        <h2 className="text-sm font-semibold text-foreground">Improvements</h2>
-        <p className="text-sm text-muted-foreground" data-testid="results-improvements-empty">
+        <h2 className="text-mini font-semibold text-foreground">Improvements</h2>
+        <p className="text-mini text-muted-foreground" data-testid="results-improvements-empty">
           Nothing has been logged here yet.
         </p>
       </div>
@@ -31,17 +31,17 @@ export function ResultsImprovements({ improvements }: { improvements: ResolvedIm
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-border p-5">
-      <h2 className="text-sm font-semibold text-foreground">Improvements</h2>
+      <h2 className="text-mini font-semibold text-foreground">Improvements</h2>
       <ul className="flex flex-col gap-5" data-testid="results-improvements-list">
         {improvements.map((item) => (
           <li key={item.id} className="flex flex-col gap-2 border-b border-border/50 pb-5 last:border-0 last:pb-0">
-            <h3 className="text-sm font-medium text-foreground">{item.area}</h3>
-            <p className="text-sm text-muted-foreground">{item.explanation}</p>
+            <h3 className="text-mini font-medium text-foreground">{item.area}</h3>
+            <p className="text-mini text-muted-foreground">{item.explanation}</p>
             {(item.beforeImageUrl || item.afterImageUrl) && (
               <div className="mt-1 grid grid-cols-1 gap-3 sm:grid-cols-2" data-testid="results-improvement-images">
                 {item.beforeImageUrl && (
                   <figure className="flex flex-col gap-1">
-                    <figcaption className="text-xs text-muted-foreground">Before</figcaption>
+                    <figcaption className="text-micro text-muted-foreground">Before</figcaption>
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived Storage URL, not a static asset next/image can optimise */}
                     <img
                       src={item.beforeImageUrl}
@@ -52,7 +52,7 @@ export function ResultsImprovements({ improvements }: { improvements: ResolvedIm
                 )}
                 {item.afterImageUrl && (
                   <figure className="flex flex-col gap-1">
-                    <figcaption className="text-xs text-muted-foreground">After</figcaption>
+                    <figcaption className="text-micro text-muted-foreground">After</figcaption>
                     {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived Storage URL, not a static asset next/image can optimise */}
                     <img
                       src={item.afterImageUrl}

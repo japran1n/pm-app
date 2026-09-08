@@ -302,7 +302,7 @@ export function RequestApprovalDialog({
               decision types are per-project and customizable now, so this
               is no longer a fixed count of four. */}
           <div
-            className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-sm"
+            className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-mini"
             aria-live="polite"
           >
             {ownersStillLoading ? (
@@ -341,7 +341,7 @@ export function RequestApprovalDialog({
           </div>
 
           {error && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-mini text-destructive">
               {error}
             </p>
           )}

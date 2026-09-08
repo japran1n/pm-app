@@ -121,7 +121,7 @@ export function PortalApprovalActions({ taskId }: { taskId: string }) {
 
   if (optimisticApproved) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-4 text-sm font-medium">
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/5 p-4 text-mini font-medium">
         <Check className="size-4 text-emerald-600" aria-hidden="true" />
         Approved.
       </div>
@@ -130,7 +130,7 @@ export function PortalApprovalActions({ taskId }: { taskId: string }) {
 
   if (optimisticSent) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4 text-sm font-medium">
+      <div className="flex items-center gap-2 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4 text-mini font-medium">
         <MessageSquareWarning className="size-4" aria-hidden="true" />
         Sent — the team will follow up.
       </div>
@@ -140,7 +140,7 @@ export function PortalApprovalActions({ taskId }: { taskId: string }) {
   if (isRequestingChanges) {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4">
-        <p className="text-sm font-medium">What needs to change?</p>
+        <p className="text-mini font-medium">What needs to change?</p>
         <Textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
@@ -179,7 +179,7 @@ export function PortalApprovalActions({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4">
-      <p className="text-sm font-medium">This is waiting on your review.</p>
+      <p className="text-mini font-medium">This is waiting on your review.</p>
       <div className="flex gap-2">
         <Button
           type="button"

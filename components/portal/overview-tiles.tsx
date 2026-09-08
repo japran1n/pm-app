@@ -184,7 +184,7 @@ function StatusDistributionBar({
           ) : null,
         )}
       </div>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-micro text-muted-foreground">
         {nonZero.map((bucket) => `${distribution[bucket]} ${BUCKET_LABEL[bucket]}`).join(" · ")}
       </span>
     </div>
@@ -199,7 +199,7 @@ function StatusDistributionBar({
 function PagesReadyRow({ page }: { page: PortalPage }) {
   return (
     <li className="flex items-center justify-between gap-2 py-1.5">
-      <span className="min-w-0 truncate text-sm">{page.title}</span>
+      <span className="min-w-0 truncate text-mini">{page.title}</span>
       <StatusPill
         name={page.status.name}
         category={page.status.category}
@@ -243,11 +243,11 @@ function PagesReadyTile({
     >
       <span className="text-tag text-muted-foreground">Pages ready</span>
       <div className="flex items-end justify-between gap-2">
-        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+        <span className="title-2 font-semibold tracking-tight tabular-nums">
           {pagesTotalCount === 0 ? "—" : `${pagesReadyCount} / ${pagesTotalCount}`}
         </span>
       </div>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-micro text-muted-foreground">
         {pagesTotalCount === 0 ? "No pages shared yet" : "Ready to launch"}
       </span>
       {pagesTotalCount > 0 && (
@@ -258,7 +258,7 @@ function PagesReadyTile({
             data-testid="tile-pages-ready-toggle"
             aria-expanded={expanded}
             onClick={() => setExpanded((v) => !v)}
-            className="hover-surface -mx-2 flex items-center justify-between gap-1 rounded-md px-2 py-1 text-left text-xs font-medium text-primary"
+            className="hover-surface -mx-2 flex items-center justify-between gap-1 rounded-md px-2 py-1 text-left text-micro font-medium text-primary"
           >
             {expanded ? "Hide pages" : "Show pages"}
             <ChevronDown
@@ -275,7 +275,7 @@ function PagesReadyTile({
               </ul>
               <Link
                 href={pagesHref}
-                className="mt-2 text-xs text-primary underline underline-offset-2"
+                className="mt-2 text-micro text-primary underline underline-offset-2"
               >
                 View all pages
               </Link>
@@ -315,12 +315,12 @@ function Tile({
     <>
       <span className="text-tag text-muted-foreground">{label}</span>
       <div className="flex items-end justify-between gap-2">
-        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+        <span className="title-2 font-semibold tracking-tight tabular-nums">
           {value}
         </span>
         {chart}
       </div>
-      <span className="text-xs text-muted-foreground">{footnote}</span>
+      <span className="text-micro text-muted-foreground">{footnote}</span>
       {belowFootnote}
     </>
   );

@@ -182,10 +182,10 @@ export default async function WorkspacePage({
   return (
     <div className="flex flex-1 flex-col gap-6 p-6 md:p-8">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="title-2 font-semibold tracking-tight">
           {workspace.name}
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           An overview of what&apos;s happening across your workspace.
         </p>
       </div>
@@ -218,7 +218,7 @@ export default async function WorkspacePage({
           states above already cover "no tasks"/"charts failed to load". */}
       {!hasError && !isEmpty && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">
+          <h2 className="title-1 font-semibold tracking-tight">
             All tasks
           </h2>
           <DashboardTaskTable
@@ -233,7 +233,7 @@ export default async function WorkspacePage({
       {/* F027: natural next stop from the dashboard. */}
       <Link
         href={`/w/${workspaceSlug}/projects`}
-        className="text-sm text-primary underline-offset-4 hover:underline"
+        className="text-mini text-primary underline-offset-4 hover:underline"
       >
         View projects
       </Link>

@@ -411,11 +411,11 @@ function PhaseRow({
           disabled={isPending}
           aria-label={`Show ${phase.name} in the client portal`}
         />
-        <span className="text-sm text-muted-foreground">
+        <span className="text-mini text-muted-foreground">
           {clientVisible ? "Visible in the client portal" : "Hidden from the client portal"}
         </span>
         {phase.taskCount > 0 && (
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto text-micro text-muted-foreground">
             {phase.taskCount} {phase.taskCount === 1 ? "task" : "tasks"}
           </span>
         )}
@@ -565,7 +565,7 @@ export function PhaseList({
               "Add the standard ten phases"
             )}
           </Button>
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 text-micro text-muted-foreground">
             Adds the ten Good Guys phases (Kick-off through Handover) in
             order, with their client-facing descriptions already filled in.
           </p>
@@ -574,7 +574,7 @@ export function PhaseList({
 
       <div className="flex flex-col gap-2" data-testid="phase-list">
         {phases.length === 0 ? (
-          <p className="text-sm text-muted-foreground">This project has no phases yet.</p>
+          <p className="text-mini text-muted-foreground">This project has no phases yet.</p>
         ) : (
           phases.map((phase, index) =>
             canManage ? (
@@ -594,8 +594,8 @@ export function PhaseList({
                 key={phase.id}
                 className="flex items-center gap-2 rounded-md border border-border p-3"
               >
-                <span className="text-sm font-medium">{phase.name}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="text-mini font-medium">{phase.name}</span>
+                <span className="ml-auto text-micro text-muted-foreground">
                   {STATE_LABELS[phase.state]}
                 </span>
               </div>

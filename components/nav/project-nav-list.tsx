@@ -294,7 +294,7 @@ export function ProjectNavList({
           // both the colour dot AND the key/folder-icon treatment below
           // when set — it's already a distinct-enough visual identifier
           // on its own.
-          <span aria-hidden="true" className="shrink-0 text-sm leading-none">
+          <span aria-hidden="true" className="shrink-0 text-mini leading-none">
             {project.icon}
           </span>
         ) : (
@@ -308,7 +308,7 @@ export function ProjectNavList({
         )}
         {!project.icon &&
           (project.key ? (
-            <span className="shrink-0 text-xs font-semibold text-sidebar-foreground/50">
+            <span className="shrink-0 text-micro font-semibold text-sidebar-foreground/50">
               {project.key}
             </span>
           ) : (
@@ -348,7 +348,7 @@ export function ProjectNavList({
           // app-sidebar.tsx (this row renders inside the same `md:hidden`
           // mobile Sheet), bumping this row to the 44px touch-target
           // minimum on mobile without affecting its desktop sizing.
-          "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors max-md:min-h-11",
+          "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium transition-colors max-md:min-h-11",
           isActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -419,7 +419,7 @@ export function ProjectNavList({
             // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
             // same breakpoint convention as the other mobile-Sheet nav
             // controls in this file/app-sidebar.tsx.
-            className="flex min-h-10 shrink-0 items-center justify-between px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/70 hover:text-sidebar-foreground max-md:min-h-11"
+            className="flex min-h-10 shrink-0 items-center justify-between px-3 py-2.5 text-micro font-semibold uppercase tracking-wide text-sidebar-foreground/70 hover:text-sidebar-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown
@@ -440,7 +440,7 @@ export function ProjectNavList({
       <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {projects.length === 0 ? (
           <div className="flex flex-col gap-2 px-3 pb-3">
-            <p className="text-sm text-sidebar-foreground/60">
+            <p className="text-mini text-sidebar-foreground/60">
               No projects yet.
             </p>
             <NewProjectDialog workspaceId={workspaceId} />

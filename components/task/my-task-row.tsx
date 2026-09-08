@@ -75,7 +75,7 @@ export function MyTaskRowItem({
         }
       }}
     >
-      <TableCell className="font-mono text-xs text-muted-foreground">
+      <TableCell className="font-mono text-micro text-muted-foreground">
         <TaskKeyCell taskKey={key} />
       </TableCell>
       <TableCell className="font-medium">
@@ -127,20 +127,20 @@ export function MyTaskRowItem({
           options={taskTypeOptions}
         />
       </TableCell>
-      <TableCell className="text-right text-xs text-muted-foreground">
+      <TableCell className="text-right text-micro text-muted-foreground">
         {row.dueDate ? formatDueDate(row.dueDate, timezone) : "—"}
       </TableCell>
       {/* Portal-parity fix (Estimate/Logged columns): identical "—" for
           no estimate / plain formatDuration rendering TaskListTable's own
           Estimate/Logged cells use — see that component's own comment. */}
-      <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+      <TableCell className="text-right font-mono text-micro tabular-nums text-muted-foreground">
         {row.estimateMinutes ? formatDuration(row.estimateMinutes) : "—"}
       </TableCell>
       <TableCell
         className={
           row.estimateMinutes && row.totalMinutes > row.estimateMinutes
-            ? "text-right font-mono text-xs tabular-nums text-destructive"
-            : "text-right font-mono text-xs tabular-nums text-muted-foreground"
+            ? "text-right font-mono text-micro tabular-nums text-destructive"
+            : "text-right font-mono text-micro tabular-nums text-muted-foreground"
         }
       >
         {row.totalMinutes ? formatDuration(row.totalMinutes) : "—"}

@@ -98,7 +98,7 @@ function CategoryCell({
   const [isSaving, startSaveTransition] = useTransition();
 
   if (!canManage) {
-    return <span className="text-sm">{categoryLabel(workCategory)}</span>;
+    return <span className="text-mini">{categoryLabel(workCategory)}</span>;
   }
 
   return (
@@ -117,7 +117,7 @@ function CategoryCell({
         });
       }}
     >
-      <SelectTrigger className="h-7 w-40 text-xs" aria-label="Work category">
+      <SelectTrigger className="h-7 w-40 text-micro" aria-label="Work category">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -143,12 +143,12 @@ function BucketRow({
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="text-mini font-medium">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground tabular-nums">
+        <span className="text-mini text-muted-foreground tabular-nums">
           {formatDuration(total)} total
         </span>
-        <Badge variant="secondary" className="text-xs">
+        <Badge variant="secondary" className="text-micro">
           {formatDuration(billable)} client sees this
         </Badge>
       </div>
@@ -213,13 +213,13 @@ export function TeamHoursView({
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <span
                 className={cn(
-                  "text-3xl font-semibold tracking-tight tabular-nums",
+                  "title-3 font-semibold tracking-tight tabular-nums",
                   isOverBudget && "text-destructive",
                 )}
               >
                 {minutesToHoursLabel(billableMinutes)}
               </span>
-              <span className="text-sm text-muted-foreground">
+              <span className="text-mini text-muted-foreground">
                 of {minutesToHoursLabel(budget.soldMinutes)} sold hours used
                 {isOverBudget && " · over budget"}
               </span>
@@ -229,7 +229,7 @@ export function TeamHoursView({
                 <ProgressIndicator className={cn(isOverBudget && "bg-destructive")} />
               </ProgressTrack>
             </Progress>
-            <span className="text-xs text-muted-foreground">{rawUsagePercent}% of budget</span>
+            <span className="text-micro text-muted-foreground">{rawUsagePercent}% of budget</span>
           </CardContent>
         </Card>
       )}
@@ -240,7 +240,7 @@ export function TeamHoursView({
         </CardHeader>
         <CardContent className="px-0">
           {byPerson.size === 0 ? (
-            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+            <p className="px-4 text-mini text-muted-foreground">No time logged in this period.</p>
           ) : (
             <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
               {Array.from(byPerson.entries()).map(([userId, bucket]) => (
@@ -262,7 +262,7 @@ export function TeamHoursView({
         </CardHeader>
         <CardContent className="px-0">
           {byCategory.size === 0 ? (
-            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+            <p className="px-4 text-mini text-muted-foreground">No time logged in this period.</p>
           ) : (
             <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
               {Array.from(byCategory.entries()).map(([key, bucket]) => (
@@ -284,7 +284,7 @@ export function TeamHoursView({
         </CardHeader>
         <CardContent className="px-0">
           {localEntries.length === 0 ? (
-            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
+            <p className="px-4 text-mini text-muted-foreground">No time logged in this period.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -308,11 +308,11 @@ export function TeamHoursView({
                     </TableCell>
                     <TableCell className="tabular-nums">{formatDuration(entry.minutes)}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-micro">
                         {entry.billable ? "Billable · client sees this" : "Non-billable"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{entry.entryDate}</TableCell>
+                    <TableCell className="text-micro text-muted-foreground">{entry.entryDate}</TableCell>
                     <TableCell>
                       <CategoryCell
                         entryId={entry.entryId}

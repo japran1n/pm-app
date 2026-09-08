@@ -97,7 +97,7 @@ export default async function CalendarPage({
 
   if (!workspace || !user) {
     return (
-      <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-lg border border-dashed p-8 text-center text-mini text-muted-foreground">
         Unable to load the calendar.
       </p>
     );

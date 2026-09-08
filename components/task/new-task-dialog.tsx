@@ -454,7 +454,7 @@ export function NewTaskDialog({
                           id="task-assignee"
                           aria-labelledby="task-assignees-label"
                           disabled={isPending}
-                          className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-mini shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       }
                     >
@@ -484,7 +484,7 @@ export function NewTaskDialog({
                     <PopoverContent align="start" className="w-64 p-1">
                       <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
                         {assigneeOptions.length === 0 && (
-                          <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                          <p className="px-2 py-1.5 text-mini text-muted-foreground">
                             No workspace members.
                           </p>
                         )}
@@ -498,7 +498,7 @@ export function NewTaskDialog({
                               aria-checked={checked}
                               disabled={isPending}
                               onClick={() => toggleAssignee(option.id)}
-                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-mini hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Checkbox
                                 checked={checked}
@@ -636,7 +636,7 @@ export function NewTaskDialog({
             <p
               id="task-title-error"
               role="alert"
-              className="text-sm text-destructive"
+              className="text-mini text-destructive"
             >
               {error}
             </p>

@@ -156,8 +156,8 @@ export default async function MembersPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Members</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Members</h1>
+        <p className="text-mini text-muted-foreground">
           Active members and pending invites for {workspace.name}.
         </p>
       </div>
@@ -174,7 +174,7 @@ export default async function MembersPage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
         >
           <p>Something went wrong loading members. Please try again.</p>
           <a href={`/w/${workspaceSlug}/settings/members`} className="underline">
@@ -185,7 +185,7 @@ export default async function MembersPage({
 
       {members && canInvite && (
         <section className="flex flex-col gap-3 rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-medium">Invite a teammate</h2>
+          <h2 className="text-mini font-medium">Invite a teammate</h2>
           <InviteMemberForm
             workspaceId={workspace.id}
             projects={inviteableProjects ?? []}
@@ -196,11 +196,11 @@ export default async function MembersPage({
       {members && (
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold">Active members</h2>
+            <h2 className="text-mini font-semibold">Active members</h2>
             <Badge variant="secondary">{members.active.length}</Badge>
           </div>
           {members.active.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-mini text-muted-foreground">
               No active members yet.
             </p>
           ) : (
@@ -281,11 +281,11 @@ export default async function MembersPage({
       {members && (
         <section className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold">Pending invites</h2>
+            <h2 className="text-mini font-semibold">Pending invites</h2>
             <Badge variant="secondary">{members.pending.length}</Badge>
           </div>
           {members.pending.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-mini text-muted-foreground">
               No pending invites.
             </p>
           ) : (
@@ -313,7 +313,7 @@ export default async function MembersPage({
                           <div className="flex items-center gap-3">
                             <span
                               aria-hidden="true"
-                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
+                              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-micro font-medium text-muted-foreground"
                             >
                               {initial}
                             </span>

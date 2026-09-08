@@ -77,8 +77,8 @@ export default async function ProjectPortalSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Client portal</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Client portal</h1>
+        <p className="text-mini text-muted-foreground">
           Turn the portal on for {project.name}, check whether it&rsquo;s ready, and set the
           launch date and warranty the client sees.
         </p>

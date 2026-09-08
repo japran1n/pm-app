@@ -49,7 +49,7 @@ export function NewRequestForm({
 
   if (!fixedProjectId && projects.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-border bg-muted/30 p-6 text-mini text-muted-foreground">
         You will be able to file requests once a project has been shared with
         you.
       </div>
@@ -77,7 +77,7 @@ export function NewRequestForm({
             name="projectId"
             required
             disabled={isPending}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-mini outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50"
           >
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
@@ -124,12 +124,12 @@ export function NewRequestForm({
       </div>
 
       {state?.ok === false && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-mini text-destructive">
           {state.error}
         </p>
       )}
       {state?.ok && (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="text-mini text-muted-foreground">
           Sent. You will see it below with whatever the team decides.
         </p>
       )}

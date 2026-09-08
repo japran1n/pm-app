@@ -446,7 +446,7 @@ export function CommandPalette({
                   <Zap className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{action.label}</span>
                   {action.shortcut && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-micro text-muted-foreground">
                       {action.shortcut}
                     </span>
                   )}
@@ -475,7 +475,7 @@ export function CommandPalette({
                   <FolderKanban className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-micro text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -495,7 +495,7 @@ export function CommandPalette({
                   <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 text-micro text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ?? task.projectName}
                   </span>
                 </CommandItem>
@@ -510,7 +510,7 @@ export function CommandPalette({
             <CommandEmpty>No results found.</CommandEmpty>
           )}
           {hasQuery && loading && !hasResults && (
-            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-6 text-mini text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               Searching...
             </div>
@@ -533,7 +533,7 @@ export function CommandPalette({
                   <FolderKanban className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-micro text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -557,7 +557,7 @@ export function CommandPalette({
                 >
                   <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 text-micro text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ??
                       task.projectName}
                   </span>
@@ -579,7 +579,7 @@ export function CommandPalette({
                   <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{member.name ?? member.email ?? "Unknown"}</span>
                   {member.name && member.email && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-micro text-muted-foreground">
                       {member.email}
                     </span>
                   )}

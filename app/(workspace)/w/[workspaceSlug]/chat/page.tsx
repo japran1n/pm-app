@@ -81,7 +81,7 @@ export default async function ChatIndexPage({
           className="size-10 text-muted-foreground/40"
           aria-hidden="true"
         />
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           Select a conversation to start messaging
         </p>
       </div>

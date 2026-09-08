@@ -46,9 +46,9 @@ export function TeamCard({
       data-testid="team-card"
       className="flex flex-col gap-3 rounded-lg border border-border p-5"
     >
-      <h2 className="text-sm font-semibold">Your team</h2>
+      <h2 className="text-mini font-semibold">Your team</h2>
       {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           No team members assigned to this project yet.
         </p>
       ) : (
@@ -66,21 +66,21 @@ export function TeamCard({
                 size="lg"
               />
               <div className="flex min-w-0 flex-col leading-tight">
-                <span className="truncate text-sm font-medium">
+                <span className="truncate text-mini font-medium">
                   {member.name ?? "Someone at the agency"}
                 </span>
-                <span className="truncate text-xs text-muted-foreground">
+                <span className="truncate text-micro text-muted-foreground">
                   {member.roleLabel}
                 </span>
                 {member.note && (
-                  <span className="mt-1 truncate text-xs text-muted-foreground">
+                  <span className="mt-1 truncate text-micro text-muted-foreground">
                     {member.note}
                   </span>
                 )}
                 {member.email && (
                   <a
                     href={`mailto:${member.email}`}
-                    className="mt-1 truncate text-xs text-primary underline underline-offset-2"
+                    className="mt-1 truncate text-micro text-primary underline underline-offset-2"
                   >
                     {member.email}
                   </a>
@@ -88,7 +88,7 @@ export function TeamCard({
                 {workspaceSlug && projectId && (
                   <Link
                     href={`/portal/${workspaceSlug}/p/${projectId}/conversation?mention=${member.userId}`}
-                    className="mt-1 flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+                    className="mt-1 flex items-center gap-1 text-micro text-primary underline underline-offset-2"
                   >
                     <MessageCircle aria-hidden="true" className="size-3" />
                     Message

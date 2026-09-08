@@ -75,7 +75,7 @@ export function PageLinksEditor({ taskId, canEdit }: { taskId: string; canEdit: 
   if (links === null) {
     return (
       <div
-        className="flex items-center gap-2 text-sm text-muted-foreground"
+        className="flex items-center gap-2 text-mini text-muted-foreground"
         data-testid="page-links-editor-loading"
       >
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -150,7 +150,7 @@ export function PageLinksEditor({ taskId, canEdit }: { taskId: string; canEdit: 
       data-testid="page-links-editor"
       className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4"
     >
-      <span className="text-sm font-medium text-foreground">Page links</span>
+      <span className="text-mini font-medium text-foreground">Page links</span>
       {ROW_KINDS.map(({ kind, label, placeholder }) => {
         const existing = linkByKind.get(kind);
         return (
@@ -162,7 +162,7 @@ export function PageLinksEditor({ taskId, canEdit }: { taskId: string; canEdit: 
                 value={draftUrls[kind] ?? existing?.url ?? ""}
                 disabled={!canEdit || isPending}
                 placeholder={placeholder}
-                className="font-mono text-sm"
+                className="font-mono text-mini"
                 data-testid={`page-link-input-${kind}`}
                 onChange={(event) =>
                   setDraftUrls((prev) => ({ ...prev, [kind]: event.target.value }))
@@ -171,7 +171,7 @@ export function PageLinksEditor({ taskId, canEdit }: { taskId: string; canEdit: 
               />
               {existing && (
                 <label
-                  className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+                  className="flex shrink-0 items-center gap-1.5 text-micro text-muted-foreground"
                   title="Visible to the client in the portal"
                 >
                   <Checkbox

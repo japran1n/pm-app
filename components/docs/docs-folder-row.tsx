@@ -185,7 +185,7 @@ export function DocsFolderRow({
     <div>
       <Collapsible open={open} onOpenChange={setOpen}>
         <div
-          className="group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent/50"
+          className="group flex items-center gap-1 rounded-md px-1.5 py-1 text-mini hover:bg-accent/50"
           style={indent}
         >
           <CollapsibleTrigger
@@ -201,7 +201,7 @@ export function DocsFolderRow({
             {isRenaming ? (
               <input
                 autoFocus
-                className="min-w-0 flex-1 rounded border border-input bg-background px-1 py-0.5 text-sm outline-none"
+                className="min-w-0 flex-1 rounded border border-input bg-background px-1 py-0.5 text-mini outline-none"
                 value={nameDraft}
                 onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setNameDraft(e.target.value)}
@@ -266,7 +266,7 @@ export function DocsFolderRow({
                   placeholder="Subfolder name"
                   value={newSubfolderName}
                   disabled={isPending}
-                  className="h-7 text-sm"
+                  className="h-7 text-mini"
                   onChange={(event) => setNewSubfolderName(event.target.value)}
                   onBlur={submitNewSubfolder}
                   onKeyDown={(event) => {
@@ -350,7 +350,7 @@ export function DocsDocRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent/50",
+        "group flex items-center gap-1 rounded-md px-1.5 py-1 text-mini hover:bg-accent/50",
         doc.id === currentDocId && "bg-accent",
       )}
       style={indent}

@@ -66,7 +66,7 @@ export function PriorityBarChart({ data }: { data: PriorityCountDatum[] }) {
 
         const content = (
           <>
-            <span className="text-xs font-medium tabular-nums text-foreground">
+            <span className="text-micro font-medium tabular-nums text-foreground">
               {datum.count}
             </span>
             <div
@@ -83,7 +83,7 @@ export function PriorityBarChart({ data }: { data: PriorityCountDatum[] }) {
                 style={{ height: barHeightPx, backgroundColor: datum.color }}
               />
             </div>
-            <span className="max-w-full truncate text-xs text-muted-foreground">
+            <span className="max-w-full truncate text-micro text-muted-foreground">
               {datum.label}
             </span>
           </>

@@ -37,7 +37,7 @@ export function ClientPreviewBanner({
     <div
       role="status"
       data-testid="client-preview-banner"
-      className="sticky top-0 z-50 flex items-center justify-between gap-4 bg-status-blocked px-4 py-2 text-sm font-medium text-white"
+      className="sticky top-0 z-50 flex items-center justify-between gap-4 bg-status-blocked px-4 py-2 text-mini font-medium text-white"
     >
       <span className="flex items-center gap-2">
         <Eye className="size-4" aria-hidden="true" />

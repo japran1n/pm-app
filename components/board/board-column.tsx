@@ -219,14 +219,14 @@ export function BoardColumn({
       data-status={status}
     >
       <div className="flex items-center justify-between px-1 py-0.5">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <h2 className="flex items-center gap-1.5 text-mini font-semibold text-foreground">
           <span
             aria-hidden="true"
             className="size-2 rounded-full"
             style={{ backgroundColor: resolvedColor }}
           />
           {resolvedLabel}
-          <span className="rounded-full bg-background px-1.5 py-0.5 text-xs font-normal text-muted-foreground ring-1 ring-border/60">
+          <span className="rounded-full bg-background px-1.5 py-0.5 text-micro font-normal text-muted-foreground ring-1 ring-border/60">
             ({tasks.length})
           </span>
         </h2>
@@ -238,7 +238,7 @@ export function BoardColumn({
       >
         <div className="flex flex-col gap-3">
           {tasks.length === 0 ? (
-            <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+            <p className="rounded-md border border-dashed p-4 text-center text-micro text-muted-foreground">
               No tasks
             </p>
           ) : (

@@ -64,8 +64,8 @@ export function SampleProjectOffer({
 
   return (
     <div className="flex flex-col items-start gap-2 rounded-md border border-dashed p-4">
-      <p className="text-sm font-medium">Not sure where to start?</p>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-mini font-medium">Not sure where to start?</p>
+      <p className="text-mini text-muted-foreground">
         Create a sample project with a few tasks across every column —
         priorities, due dates, a checklist, and a comment included. It&apos;s
         clearly labelled as a sample, and you can delete it any time from the

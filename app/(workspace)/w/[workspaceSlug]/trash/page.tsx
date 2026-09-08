@@ -124,8 +124,8 @@ export default async function TrashPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Trash</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Trash</h1>
+        <p className="text-mini text-muted-foreground">
           Deleted tasks and comments from {workspace.name}. Deleting hides an
           item from active views without permanently removing its data.
         </p>
@@ -136,7 +136,7 @@ export default async function TrashPage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
         >
           <p>Something went wrong loading the trash. Please try again.</p>
           <a href={`/w/${workspaceSlug}/trash`} className="underline">
@@ -154,10 +154,10 @@ export default async function TrashPage({
             <Trash2 className="size-6 text-muted-foreground" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium">
+            <p className="text-mini font-medium">
               {allItems.length === 0 ? "Trash is empty" : "No matching items"}
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-mini text-muted-foreground">
               {allItems.length === 0
                 ? "Tasks and comments you delete will show up here, along with when they were deleted and by whom."
                 : "Try a different type filter."}

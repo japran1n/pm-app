@@ -120,7 +120,7 @@ export function ListAssigneeCell({
   // comment for the rationale.
   if (!canEdit) {
     return (
-      <div className="flex h-8 w-full max-w-48 items-center gap-2 px-2 text-sm">
+      <div className="flex h-8 w-full max-w-48 items-center gap-2 px-2 text-mini">
         {currentPeople.length > 0 ? (
           <>
             <UserAvatarGroup people={currentPeople} size="sm" />
@@ -133,7 +133,7 @@ export function ListAssigneeCell({
             </span>
           </>
         ) : (
-          <span className="text-xs text-muted-foreground">Unassigned</span>
+          <span className="text-micro text-muted-foreground">Unassigned</span>
         )}
       </div>
     );
@@ -148,7 +148,7 @@ export function ListAssigneeCell({
             disabled={isSaving || !canEdit}
             title={disabledTitle}
             aria-label={`Change assignees for task ${taskId}`}
-            className="flex h-8 w-full max-w-48 items-center gap-2 rounded-md border border-transparent px-2 text-sm hover:border-input hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-8 w-full max-w-48 items-center gap-2 rounded-md border border-transparent px-2 text-mini hover:border-input hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           />
         }
       >
@@ -172,13 +172,13 @@ export function ListAssigneeCell({
             </span>
           </>
         ) : (
-          <span className="text-xs text-muted-foreground">Unassigned</span>
+          <span className="text-micro text-muted-foreground">Unassigned</span>
         )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-1">
         <div className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
           {members.length === 0 && (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+            <p className="px-2 py-1.5 text-mini text-muted-foreground">
               No workspace members.
             </p>
           )}
@@ -192,7 +192,7 @@ export function ListAssigneeCell({
                 aria-checked={checked}
                 disabled={isSaving || !canEdit}
                 onClick={() => toggle(member.userId)}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-mini hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Checkbox checked={checked} tabIndex={-1} aria-hidden="true" />
                 <UserAvatar

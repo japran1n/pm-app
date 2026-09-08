@@ -44,7 +44,7 @@ export function MyTimeBarChart({ data }: { data: TimeBarDatum[] }) {
             data-testid="my-time-bar"
             className="flex flex-1 flex-col items-center gap-1.5"
           >
-            <span className="text-xs font-medium tabular-nums text-foreground">
+            <span className="text-micro font-medium tabular-nums text-foreground">
               {formatHours(datum.minutes)}
             </span>
             <div
@@ -56,7 +56,7 @@ export function MyTimeBarChart({ data }: { data: TimeBarDatum[] }) {
                 style={{ height: barHeightPx }}
               />
             </div>
-            <span className="max-w-full truncate text-xs text-muted-foreground">
+            <span className="max-w-full truncate text-micro text-muted-foreground">
               {datum.label}
             </span>
           </div>

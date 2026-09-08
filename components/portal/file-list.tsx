@@ -44,7 +44,7 @@ function FileRow({ file }: { file: PortalFile }) {
         type="button"
         onClick={handleOpen}
         disabled={isPending}
-        className="hover-surface flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-sm"
+        className="hover-surface flex w-full items-center justify-between gap-3 rounded-md px-3 py-2.5 text-left text-mini"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           {isPending ? (
@@ -62,7 +62,7 @@ function FileRow({ file }: { file: PortalFile }) {
             {file.fileName}
           </span>
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="shrink-0 text-micro text-muted-foreground">
           {file.taskTitle} · {formatDate(file.createdAt)}
         </span>
       </button>
@@ -100,7 +100,7 @@ export function PortalFileList({
         <div key={projectId} className="flex flex-col gap-2">
           <Link
             href={`/portal/${workspaceSlug}/p/${projectId}`}
-            className="w-fit text-sm font-semibold tracking-tight hover:underline"
+            className="w-fit text-mini font-semibold tracking-tight hover:underline"
           >
             {group.projectName}
           </Link>

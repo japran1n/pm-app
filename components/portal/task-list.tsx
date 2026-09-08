@@ -324,11 +324,11 @@ export function PortalTaskList({
 
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="text-lg font-medium tracking-tight">Shared with you</h2>
+      <h2 className="title-1 font-medium tracking-tight">Shared with you</h2>
 
       {groups.map(({ statusName, category, clientBucket, tasks: groupTasksList }) => (
         <section key={statusName} className="flex flex-col gap-2">
-          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <h3 className="text-micro font-medium uppercase tracking-wide text-muted-foreground">
             {clientStatusLabel(category, clientBucket)} ({groupTasksList.length})
           </h3>
 
@@ -345,13 +345,13 @@ export function PortalTaskList({
                     href={`/portal/${workspaceSlug}/p/${project.id}/t/${task.id}`}
                     className="hover-surface flex items-center justify-between gap-4 px-4 py-3"
                   >
-                    <span className="text-sm">{task.title}</span>
+                    <span className="text-mini">{task.title}</span>
                     {task.dueDate && (
                       <span
                         className={
                           overdue
-                            ? "inline-flex shrink-0 items-center gap-1 text-xs font-medium text-destructive"
-                            : "inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
+                            ? "inline-flex shrink-0 items-center gap-1 text-micro font-medium text-destructive"
+                            : "inline-flex shrink-0 items-center gap-1 text-micro text-muted-foreground"
                         }
                       >
                         {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}

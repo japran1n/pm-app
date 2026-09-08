@@ -104,17 +104,17 @@ export default async function PortalSitePage({
       />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Links</h2>
+        <h2 className="text-mini font-semibold text-foreground">Links</h2>
         <ProjectLinksList links={links} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Accounts</h2>
+        <h2 className="text-mini font-semibold text-foreground">Accounts</h2>
         <ProjectAccountsTable accounts={accounts} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Guides</h2>
+        <h2 className="text-mini font-semibold text-foreground">Guides</h2>
         <ProjectGuidesList guides={guides} />
       </section>
 
@@ -128,11 +128,11 @@ export default async function PortalSitePage({
           sidebar; this is a second, convenient entry point, not its only
           one. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">More</h2>
+        <h2 className="text-mini font-semibold text-foreground">More</h2>
         <div className="flex flex-wrap gap-2">
           <Link
             href={`${basePath}/files`}
-            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-mini"
             data-testid="site-view-files-link"
           >
             <Paperclip className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -140,7 +140,7 @@ export default async function PortalSitePage({
           </Link>
           <Link
             href={`${basePath}/requests`}
-            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+            className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-mini"
             data-testid="site-view-requests-link"
           >
             <Inbox className="size-4 text-muted-foreground" aria-hidden="true" />

@@ -303,7 +303,7 @@ function MetricRow({
         </Select>
 
         <span
-          className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS[status]}`}
+          className={`ml-auto rounded-full px-2 py-0.5 text-micro font-medium ${STATUS_BADGE_CLASS[status]}`}
           data-testid="metric-status-badge"
         >
           {STATUS_LABELS[status]}
@@ -342,7 +342,7 @@ function MetricRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Label htmlFor={`unit-${metric.id}`} className="text-xs text-muted-foreground">
+        <Label htmlFor={`unit-${metric.id}`} className="text-micro text-muted-foreground">
           Unit
         </Label>
         <Input
@@ -357,7 +357,7 @@ function MetricRow({
           placeholder="ms, %, count..."
         />
 
-        <Label htmlFor={`baseline-value-${metric.id}`} className="text-xs text-muted-foreground">
+        <Label htmlFor={`baseline-value-${metric.id}`} className="text-micro text-muted-foreground">
           Baseline
         </Label>
         <Input
@@ -387,7 +387,7 @@ function MetricRow({
         />
         {isFrozen && <Lock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
 
-        <Label htmlFor={`target-${metric.id}`} className="text-xs text-muted-foreground">
+        <Label htmlFor={`target-${metric.id}`} className="text-micro text-muted-foreground">
           Target
         </Label>
         <Input
@@ -420,20 +420,20 @@ function MetricRow({
             disabled={isPending}
             aria-label={`${metric.name} visible to client`}
           />
-          <span className="text-xs text-muted-foreground">
+          <span className="text-micro text-muted-foreground">
             {clientVisible ? "Visible to client" : "Hidden from client"}
           </span>
         </div>
       </div>
 
       {metric.latestSnapshot && (
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <p className="flex items-center gap-2 text-micro text-muted-foreground">
           Latest measurement: {metric.latestSnapshot.value} on {metric.latestSnapshot.measuredAt}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto px-1 py-0 text-xs"
+            className="h-auto px-1 py-0 text-micro"
             aria-label={`Delete latest measurement for ${metric.name}`}
             onClick={() => {
               const snapshotId = metric.latestSnapshot!.id;
@@ -468,7 +468,7 @@ function MetricRow({
       )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2">
-        <Label className="text-xs text-muted-foreground">Record a measurement</Label>
+        <Label className="text-micro text-muted-foreground">Record a measurement</Label>
         <Input
           value={snapshotValue}
           onChange={(event) => setSnapshotValue(event.target.value)}
@@ -585,7 +585,7 @@ function ImprovementRow({
             disabled={isPending}
             aria-label={`${improvement.area} visible to client`}
           />
-          <span className="text-xs text-muted-foreground">
+          <span className="text-micro text-muted-foreground">
             {clientVisible ? "Visible to client" : "Hidden from client"}
           </span>
           <Button
@@ -612,7 +612,7 @@ function ImprovementRow({
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`before-${improvement.id}`} className="text-xs text-muted-foreground">
+          <Label htmlFor={`before-${improvement.id}`} className="text-micro text-muted-foreground">
             Before {improvement.beforePath ? "(uploaded)" : ""}
           </Label>
           <input
@@ -624,7 +624,7 @@ function ImprovementRow({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`after-${improvement.id}`} className="text-xs text-muted-foreground">
+          <Label htmlFor={`after-${improvement.id}`} className="text-micro text-muted-foreground">
             After {improvement.afterPath ? "(uploaded)" : ""}
           </Label>
           <input
@@ -752,8 +752,8 @@ export function MeasurementPanel({
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm font-semibold">Metrics</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="text-mini font-semibold">Metrics</h2>
+            <p className="text-micro text-muted-foreground">
               Baseline, target, direction and source for each result the
               client sees.
             </p>
@@ -761,7 +761,7 @@ export function MeasurementPanel({
 
           {canManage &&
             (frozenAt ? (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="baseline-frozen-badge">
+              <span className="flex items-center gap-1 text-micro text-muted-foreground" data-testid="baseline-frozen-badge">
                 <Lock className="h-3.5 w-3.5" aria-hidden />
                 Baseline frozen {new Date(frozenAt).toLocaleDateString()}
               </span>
@@ -791,7 +791,7 @@ export function MeasurementPanel({
 
         <div className="flex flex-col gap-2" data-testid="metrics-list">
           {metrics.length === 0 ? (
-            <p className="text-sm text-muted-foreground">This project has no metrics yet.</p>
+            <p className="text-mini text-muted-foreground">This project has no metrics yet.</p>
           ) : (
             metrics.map((metric) =>
               canManage ? (
@@ -805,8 +805,8 @@ export function MeasurementPanel({
                 />
               ) : (
                 <div key={metric.id} className="flex items-center gap-2 rounded-md border border-border p-3">
-                  <span className="text-sm font-medium">{metric.name}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
+                  <span className="text-mini font-medium">{metric.name}</span>
+                  <span className="ml-auto text-micro text-muted-foreground">
                     {STATUS_LABELS[deriveMetricMeasurementStatus(metric, metric.latestSnapshot)]}
                   </span>
                 </div>
@@ -837,13 +837,13 @@ export function MeasurementPanel({
 
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-sm font-semibold">Improvements</h2>
-          <p className="text-xs text-muted-foreground">Before/after evidence for the client.</p>
+          <h2 className="text-mini font-semibold">Improvements</h2>
+          <p className="text-micro text-muted-foreground">Before/after evidence for the client.</p>
         </div>
 
         <div className="flex flex-col gap-2" data-testid="improvements-list">
           {improvements.length === 0 ? (
-            <p className="text-sm text-muted-foreground">This project has no improvements yet.</p>
+            <p className="text-mini text-muted-foreground">This project has no improvements yet.</p>
           ) : (
             improvements.map((improvement) =>
               canManage ? (
@@ -856,7 +856,7 @@ export function MeasurementPanel({
                 />
               ) : (
                 <div key={improvement.id} className="rounded-md border border-border p-3">
-                  <span className="text-sm font-medium">{improvement.area}</span>
+                  <span className="text-mini font-medium">{improvement.area}</span>
                 </div>
               ),
             )

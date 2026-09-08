@@ -117,7 +117,7 @@ export default async function TeamMemberProfilePage({
     <div className="flex flex-col gap-6 p-6">
       <Link
         href={`/w/${workspaceSlug}/team`}
-        className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="flex w-fit items-center gap-1 text-mini text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-3.5" aria-hidden="true" />
         Back to Team
@@ -134,9 +134,9 @@ export default async function TeamMemberProfilePage({
           className="size-14"
         />
         <div className="flex flex-col gap-1">
-          <h1 className="text-lg font-semibold">{label}</h1>
+          <h1 className="title-1 font-semibold">{label}</h1>
           {target.email && (
-            <p className="text-sm text-muted-foreground">{target.email}</p>
+            <p className="text-mini text-muted-foreground">{target.email}</p>
           )}
           <Badge
             variant={target.role === "owner" ? "default" : "secondary"}
@@ -148,16 +148,16 @@ export default async function TeamMemberProfilePage({
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-medium">
+        <h2 className="flex items-center gap-2 text-mini font-medium">
           <FolderKanban className="size-4" aria-hidden="true" />
           Projects
         </h2>
         {projects.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Not a member of any project.</p>
+          <p className="text-mini text-muted-foreground">Not a member of any project.</p>
         ) : (
           <ul className="flex flex-col gap-1" data-testid="team-member-projects">
             {projects.map((project) => (
-              <li key={project.projectId} className="flex items-center gap-2 text-sm">
+              <li key={project.projectId} className="flex items-center gap-2 text-mini">
                 <Link
                   href={`/w/${workspaceSlug}/projects/${project.projectId}`}
                   className="hover:underline"
@@ -174,24 +174,24 @@ export default async function TeamMemberProfilePage({
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-medium">
+        <h2 className="flex items-center gap-2 text-mini font-medium">
           <ListChecks className="size-4" aria-hidden="true" />
           Tasks
         </h2>
         {!canViewTasks ? (
           <p
             data-testid="tasks-restricted-notice"
-            className="text-sm text-muted-foreground"
+            className="text-mini text-muted-foreground"
           >
             Assigned tasks are only visible to this person, workspace
             owners/admins, or a lead on one of their projects.
           </p>
         ) : assignedTasks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks currently assigned.</p>
+          <p className="text-mini text-muted-foreground">No tasks currently assigned.</p>
         ) : (
           <ul className="flex flex-col gap-1" data-testid="team-member-tasks">
             {assignedTasks.map((task) => (
-              <li key={task.id} className="flex items-center gap-2 text-sm">
+              <li key={task.id} className="flex items-center gap-2 text-mini">
                 <Link
                   href={`/w/${workspaceSlug}/t/${task.projectKey ?? task.projectId}-${task.number}`}
                   className="hover:underline"
@@ -206,7 +206,7 @@ export default async function TeamMemberProfilePage({
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="flex items-center gap-2 text-sm font-medium">
+        <h2 className="flex items-center gap-2 text-mini font-medium">
           <Clock className="size-4" aria-hidden="true" />
           Time
         </h2>

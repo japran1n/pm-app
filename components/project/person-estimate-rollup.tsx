@@ -17,7 +17,7 @@ export function PersonEstimateRollup({
 
   return (
     <div className="flex flex-col gap-2">
-      <h2 className="text-sm font-medium text-muted-foreground">
+      <h2 className="text-mini font-medium text-muted-foreground">
         Estimate vs. logged, by person
       </h2>
       <ul className="flex flex-col gap-1.5">
@@ -28,7 +28,7 @@ export function PersonEstimateRollup({
           return (
             <li
               key={row.userId}
-              className="flex items-center gap-3 text-sm"
+              className="flex items-center gap-3 text-mini"
             >
               <UserAvatar
                 person={{
@@ -45,8 +45,8 @@ export function PersonEstimateRollup({
               <span
                 className={
                   over
-                    ? "font-mono text-xs tabular-nums text-destructive"
-                    : "font-mono text-xs tabular-nums text-muted-foreground"
+                    ? "font-mono text-micro tabular-nums text-destructive"
+                    : "font-mono text-micro tabular-nums text-muted-foreground"
                 }
               >
                 {formatDuration(row.loggedMinutes)}

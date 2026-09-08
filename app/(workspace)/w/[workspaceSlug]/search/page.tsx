@@ -91,8 +91,8 @@ export default async function SearchPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Search</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Search</h1>
+        <p className="text-mini text-muted-foreground">
           Find tasks across every project in {workspace.name}.
         </p>
       </div>
@@ -123,8 +123,8 @@ export default async function SearchPage({
             className="size-6 text-muted-foreground"
             aria-hidden="true"
           />
-          <p className="text-sm font-medium">Search this workspace</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini font-medium">Search this workspace</p>
+          <p className="text-mini text-muted-foreground">
             Type a task title or description above to get started.
           </p>
         </div>
@@ -133,7 +133,7 @@ export default async function SearchPage({
       {q && loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
         >
           <p>Something went wrong running your search. Please try again.</p>
           <a
@@ -147,8 +147,8 @@ export default async function SearchPage({
 
       {q && !loadError && results.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
-          <p className="text-sm font-medium">No results for &quot;{q}&quot;</p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini font-medium">No results for &quot;{q}&quot;</p>
+          <p className="text-mini text-muted-foreground">
             Try a different title or keyword from the task description.
           </p>
         </div>
@@ -174,15 +174,15 @@ export default async function SearchPage({
                   className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-4 shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-foreground/20"
                 >
                   <div className="flex flex-col gap-1">
-                    <span className="flex items-center gap-2 text-sm font-medium">
+                    <span className="flex items-center gap-2 text-mini font-medium">
                       {taskKey && (
-                        <span className="font-mono text-xs font-normal text-muted-foreground">
+                        <span className="font-mono text-micro font-normal text-muted-foreground">
                           {taskKey}
                         </span>
                       )}
                       {task.title}
                     </span>
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-mini text-muted-foreground">
                       {task.projectName}
                     </span>
                   </div>

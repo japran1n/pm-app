@@ -87,7 +87,7 @@ export function ListDueDateCell({
   // see list-priority-select.tsx's identical comment for the rationale.
   if (!canEdit) {
     return (
-      <span className="h-8 px-2 text-xs text-muted-foreground">
+      <span className="h-8 px-2 text-micro text-muted-foreground">
         {localValue ?? "No due date"}
       </span>
     );
@@ -102,7 +102,7 @@ export function ListDueDateCell({
           event.stopPropagation();
           setIsEditing(true);
         }}
-        className="h-8 rounded-md px-2 text-xs text-muted-foreground hover-surface"
+        className="h-8 rounded-md px-2 text-micro text-muted-foreground hover-surface"
       >
         Set date
       </button>
@@ -132,7 +132,7 @@ export function ListDueDateCell({
         // placeholder pattern text) visible.
         if (!localValue) setIsEditing(false);
       }}
-      className="h-8 w-36 text-xs"
+      className="h-8 w-36 text-micro"
     />
   );
 }

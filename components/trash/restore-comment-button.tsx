@@ -26,7 +26,7 @@ export function RestoreCommentButton({ commentId }: { commentId: string }) {
 
   if (restored) {
     return (
-      <span className="text-xs text-muted-foreground">Restored</span>
+      <span className="text-micro text-muted-foreground">Restored</span>
     );
   }
 
@@ -53,7 +53,7 @@ export function RestoreCommentButton({ commentId }: { commentId: string }) {
         Restore
       </Button>
       {error && (
-        <span role="alert" className="text-xs text-destructive">
+        <span role="alert" className="text-micro text-destructive">
           {error}
         </span>
       )}

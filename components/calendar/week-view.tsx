@@ -67,7 +67,7 @@ export function WeekView({
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-week-view">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="calendar-week-label">
+        <h1 className="title-2 font-semibold" data-testid="calendar-week-label">
           {rangeLabel}
         </h1>
         <div className="flex items-center gap-1">
@@ -100,7 +100,7 @@ export function WeekView({
           />
         </div>
       </div>
-      <div className="hidden grid-cols-[3.5rem_repeat(7,1fr)] text-xs font-medium text-muted-foreground md:grid">
+      <div className="hidden grid-cols-[3.5rem_repeat(7,1fr)] text-micro font-medium text-muted-foreground md:grid">
         <div />
         {week.days.map((day) => (
           <div key={day.date} className="px-2 py-1 text-center">
@@ -128,7 +128,7 @@ export function WeekView({
           workspaceId={workspaceId}
         />
       </div>
-      <p className="text-xs text-muted-foreground md:hidden" data-testid="calendar-week-mobile-fallback">
+      <p className="text-micro text-muted-foreground md:hidden" data-testid="calendar-week-mobile-fallback">
         The time-grid week view is available on wider screens. Rotate your
         device or use a larger screen to see this week&apos;s tasks and
         blocks here.

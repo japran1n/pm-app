@@ -191,14 +191,14 @@ export function SubtaskList({
       <div className="flex items-center justify-between gap-2">
         <Label>Subtasks</Label>
         {progress.total > 0 && (
-          <span className="text-xs text-muted-foreground">
+          <span className="text-micro text-muted-foreground">
             {progress.done} of {progress.total} done
           </span>
         )}
       </div>
 
       {localChildren.length === 0 ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div className="flex items-center gap-2 text-mini text-muted-foreground">
           <ListTree className="size-4" aria-hidden="true" />
           No subtasks yet. Add one below.
         </div>
@@ -233,11 +233,11 @@ export function SubtaskList({
                 )}
               >
                 {childKey && (
-                  <span className="font-mono text-xs text-muted-foreground">
+                  <span className="font-mono text-micro text-muted-foreground">
                     {childKey}
                   </span>
                 )}
-                <span className="flex-1 truncate text-sm">{child.title}</span>
+                <span className="flex-1 truncate text-mini">{child.title}</span>
                 {/* AS-153 convention (color never stands alone): status is
                     a text label alongside its dot, same pattern as
                     TaskCard's priority badge. */}

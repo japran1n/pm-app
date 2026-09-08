@@ -122,7 +122,7 @@ export default async function PortalOverviewPage({
               size="sm"
             />
             <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold tracking-tight">
+              <span className="text-mini font-semibold tracking-tight">
                 {workspace.name}
               </span>
               <span className="text-tag text-muted-foreground">Client portal</span>
@@ -136,10 +136,10 @@ export default async function PortalOverviewPage({
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-8">
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="title-2 font-semibold tracking-tight">
             Your projects
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini text-muted-foreground">
             Progress on the work {workspace.name} is delivering for you.
           </p>
         </div>
@@ -150,7 +150,7 @@ export default async function PortalOverviewPage({
             === null` means this is their first-ever visit, where a "what
             changed" framing makes no sense — nothing renders in that case. */}
         {activity && activity.since && (
-          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-mini text-muted-foreground">
             Since your last visit ({formatDate(activity.since)}):{" "}
             <span className="font-medium text-foreground">
               {activity.completed.length}{" "}
@@ -192,11 +192,11 @@ export default async function PortalOverviewPage({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
-                      <span className="text-lg font-semibold tracking-tight">
+                      <span className="title-1 font-semibold tracking-tight">
                         {project.name}
                       </span>
                       {project.description && (
-                        <span className="line-clamp-2 text-sm text-muted-foreground">
+                        <span className="line-clamp-2 text-mini text-muted-foreground">
                           {project.description}
                         </span>
                       )}
@@ -205,7 +205,7 @@ export default async function PortalOverviewPage({
                         workspace-wide list — see the comment above this
                         section's data prep for why. */}
                     {waitingCount > 0 && (
-                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-700">
+                      <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-amber-600/30 bg-amber-500/10 px-2.5 py-1 text-micro font-medium text-amber-700">
                         <Clock3 aria-hidden className="size-3.5" />
                         {waitingCount} waiting on you
                       </span>
@@ -213,7 +213,7 @@ export default async function PortalOverviewPage({
                   </div>
 
                   {project.targetLaunchDate && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-micro text-muted-foreground">
                       Target launch: {formatDate(project.targetLaunchDate)}
                     </span>
                   )}

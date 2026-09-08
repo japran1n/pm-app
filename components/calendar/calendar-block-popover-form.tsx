@@ -132,7 +132,7 @@ export function CalendarBlockPopoverForm({
           />
         </div>
       </div>
-      <label className="flex cursor-pointer items-center gap-2 text-xs">
+      <label className="flex cursor-pointer items-center gap-2 text-micro">
         <input
           type="checkbox"
           data-testid="calendar-block-client-presentation-toggle"
@@ -166,7 +166,7 @@ export function CalendarBlockPopoverForm({
         </div>
       </div>
       {error && (
-        <p className="text-xs text-destructive" data-testid="calendar-block-form-error">
+        <p className="text-micro text-destructive" data-testid="calendar-block-form-error">
           {error}
         </p>
       )}

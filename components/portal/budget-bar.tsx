@@ -41,8 +41,8 @@ export function BudgetBar({
         className="flex flex-col gap-2 rounded-lg border border-border p-5"
         data-testid="budget-bar-no-budget"
       >
-        <h2 className="text-sm font-semibold text-foreground">Budget</h2>
-        <p className="text-sm text-muted-foreground">No budget has been set for this project yet.</p>
+        <h2 className="text-mini font-semibold text-foreground">Budget</h2>
+        <p className="text-mini text-muted-foreground">No budget has been set for this project yet.</p>
       </div>
     );
   }
@@ -72,10 +72,10 @@ export function BudgetBar({
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-5" data-testid="budget-bar">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">Budget</h2>
+        <h2 className="text-mini font-semibold text-foreground">Budget</h2>
         <span
           className={cn(
-            "text-xs font-medium tabular-nums",
+            "text-micro font-medium tabular-nums",
             isOverBudget ? "text-status-blocked" : "text-muted-foreground",
           )}
           data-testid="budget-bar-summary"

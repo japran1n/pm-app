@@ -93,7 +93,7 @@ export function MonthGrid({
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-month-grid">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="calendar-month-label">
+        <h1 className="title-2 font-semibold" data-testid="calendar-month-label">
           {monthLabel}
         </h1>
         <div className="flex items-center gap-1">
@@ -125,7 +125,7 @@ export function MonthGrid({
           />
         </div>
       </div>
-      <div className="hidden grid-cols-7 border-l border-t border-border/60 text-xs font-medium text-muted-foreground md:grid">
+      <div className="hidden grid-cols-7 border-l border-t border-border/60 text-micro font-medium text-muted-foreground md:grid">
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className="border-b border-r border-border/60 px-2 py-1">
             {label}

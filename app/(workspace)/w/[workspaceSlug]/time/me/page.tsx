@@ -192,21 +192,21 @@ export default async function MyTimePage({
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="flex items-center gap-2 text-lg font-semibold">
+          <h1 className="flex items-center gap-2 title-1 font-semibold">
             <Clock className="size-5" aria-hidden="true" />
             My time
           </h1>
           <nav aria-label="Time report views" className="flex items-center gap-1 rounded-md border p-1">
             <Link
               href={`/w/${workspaceSlug}/time`}
-              className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-secondary"
+              className="rounded px-3 py-1 text-mini text-muted-foreground hover:bg-secondary"
             >
               Team report
             </Link>
-            <span className="rounded bg-secondary px-3 py-1 text-sm font-medium">My time</span>
+            <span className="rounded bg-secondary px-3 py-1 text-mini font-medium">My time</span>
           </nav>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           Your own logged time in {workspace.name}.
         </p>
       </div>

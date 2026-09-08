@@ -57,8 +57,8 @@ export function TeamRequestInbox({
   if (requests.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-8 text-center">
-        <p className="text-sm font-medium">No client requests</p>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-mini font-medium">No client requests</p>
+        <p className="mt-1 text-mini text-muted-foreground">
           When a client sends one from their portal, it lands here.
         </p>
       </div>
@@ -123,7 +123,7 @@ export function TeamRequestInbox({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex flex-col gap-1">
                 <span className="font-medium">{request.title}</span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-micro text-muted-foreground">
                   {request.requesterName ?? request.requesterEmail ?? "A client"}{" "}
                   · {request.projectName} · {formatDate(request.createdAt)}
                   {request.desiredBy
@@ -132,17 +132,17 @@ export function TeamRequestInbox({
                 </span>
               </div>
 
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-micro font-medium text-muted-foreground">
                 {STATUS_LABEL[request.status]}
               </span>
             </div>
 
             {request.body && (
-              <p className="text-sm text-muted-foreground">{request.body}</p>
+              <p className="text-mini text-muted-foreground">{request.body}</p>
             )}
 
             {request.scopeVerdict === "change_request" && (
-              <div className="flex flex-wrap items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-micro">
                 <Badge variant="secondary">Change request</Badge>
                 {request.quotedAmount != null && (
                   <span className="text-muted-foreground">
@@ -161,7 +161,7 @@ export function TeamRequestInbox({
             )}
 
             {request.status === "declined" && request.declineReason && (
-              <p className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+              <p className="rounded-md border border-border bg-muted/40 p-3 text-mini">
                 Declined: {request.declineReason}
               </p>
             )}
@@ -169,7 +169,7 @@ export function TeamRequestInbox({
             {request.status === "accepted" && request.convertedTaskId && (
               <Link
                 href={`/w/${workspaceSlug}/projects/${request.projectId}/board`}
-                className="w-fit text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                className="w-fit text-mini text-muted-foreground underline underline-offset-4 hover:text-foreground"
               >
                 View on the board
               </Link>

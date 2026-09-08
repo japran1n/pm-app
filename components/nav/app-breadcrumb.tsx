@@ -88,7 +88,7 @@ export function AppBreadcrumb({
 
   return (
     <Breadcrumb>
-      <BreadcrumbList className="flex-nowrap overflow-hidden text-xs">
+      <BreadcrumbList className="flex-nowrap overflow-hidden text-micro">
         {crumbs.map((crumb, index) => {
           const isLast = index === crumbs.length - 1;
           return (

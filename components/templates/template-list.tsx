@@ -150,7 +150,7 @@ function TemplateRow({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-micro text-muted-foreground">
           <UserAvatar
             person={{
               id: template.createdBy,

@@ -37,7 +37,7 @@ export function PageLinksMenu({ links }: { links: PageLink[] }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover-surface"
+        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-micro text-muted-foreground hover-surface"
         data-testid="page-links-menu-trigger"
         aria-label="Open this page's links"
       >

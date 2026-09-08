@@ -141,16 +141,16 @@ export default async function PortalYourListPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-foreground">
+        <p className="text-mini font-medium text-foreground">
           {deliveredCount} of {totalCount} delivered
         </p>
         <StatusDistribution counts={counts} labels={YOUR_LIST_BUCKET_LABELS} />
       </div>
 
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-foreground">Past due and upcoming</h2>
+        <h2 className="text-mini font-semibold text-foreground">Past due and upcoming</h2>
         {outstanding.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing open right now.</p>
+          <p className="text-mini text-muted-foreground">Nothing open right now.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {outstanding.map((deliverable) => (
@@ -167,7 +167,7 @@ export default async function PortalYourListPage({
 
       {settled.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">Delivered and accepted</h2>
+          <h2 className="text-mini font-semibold text-muted-foreground">Delivered and accepted</h2>
           <ul className="flex flex-col gap-2">
             {settled.map((deliverable) => (
               <DeliverableRow

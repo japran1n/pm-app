@@ -142,7 +142,7 @@ export default async function PortalHoursPage({
   return (
     <div className="flex flex-col gap-8">
       {currentPeriod && (
-        <p className="text-xs text-muted-foreground" data-testid="hours-period-scope">
+        <p className="text-micro text-muted-foreground" data-testid="hours-period-scope">
           Showing the current billing period: {formatPeriodDate(currentPeriod.periodStart)}
           {" – "}
           {formatPeriodDate(currentPeriod.periodEnd)}.
@@ -164,13 +164,13 @@ export default async function PortalHoursPage({
       <HoursByCategory categories={summary.byCategory} />
 
       <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-        <h2 className="text-sm font-semibold text-foreground">By month</h2>
+        <h2 className="text-mini font-semibold text-foreground">By month</h2>
         {months.length === 0 ? (
-          <p className="text-sm text-muted-foreground" data-testid="hours-by-month-empty">
+          <p className="text-mini text-muted-foreground" data-testid="hours-by-month-empty">
             No billable hours logged yet.
           </p>
         ) : (
-          <table className="w-full text-sm" data-testid="hours-by-month">
+          <table className="w-full text-mini" data-testid="hours-by-month">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="py-1.5 font-normal">Month</th>

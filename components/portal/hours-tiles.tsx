@@ -51,14 +51,14 @@ function Tile({
         )}
         {label}
       </span>
-      <span className={cn("text-2xl font-semibold tracking-tight tabular-nums", valueClassName)}>
+      <span className={cn("title-2 font-semibold tracking-tight tabular-nums", valueClassName)}>
         {value}
       </span>
-      <span className="text-xs text-muted-foreground">
+      <span className="text-micro text-muted-foreground">
         {footnote}
         {overBudget && <span className="sr-only"> (over budget)</span>}
       </span>
-      {note && <span className="text-xs text-status-blocked">{note}</span>}
+      {note && <span className="text-micro text-status-blocked">{note}</span>}
     </div>
   );
 }

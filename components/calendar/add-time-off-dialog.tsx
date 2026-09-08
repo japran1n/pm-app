@@ -130,7 +130,7 @@ export function AddTimeOffDialog({ workspaceId }: { workspaceId: string }) {
             />
           </div>
           {error && (
-            <p className="text-xs text-destructive" data-testid="add-time-off-error">
+            <p className="text-micro text-destructive" data-testid="add-time-off-error">
               {error}
             </p>
           )}

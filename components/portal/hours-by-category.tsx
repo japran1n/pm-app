@@ -36,8 +36,8 @@ export function HoursByCategory({ categories }: { categories: ClientHoursCategor
   if (categories.length === 0) {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-        <h2 className="text-sm font-semibold text-foreground">By category</h2>
-        <p className="text-sm text-muted-foreground" data-testid="hours-by-category-empty">
+        <h2 className="text-mini font-semibold text-foreground">By category</h2>
+        <p className="text-mini text-muted-foreground" data-testid="hours-by-category-empty">
           No billable hours logged yet.
         </p>
       </div>
@@ -49,11 +49,11 @@ export function HoursByCategory({ categories }: { categories: ClientHoursCategor
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-      <h2 className="text-sm font-semibold text-foreground">By category</h2>
+      <h2 className="text-mini font-semibold text-foreground">By category</h2>
       <dl className="flex flex-col gap-2.5" data-testid="hours-by-category">
         {sorted.map((category) => (
           <div key={category.workCategory} className="flex items-center gap-3">
-            <dt className="w-28 shrink-0 truncate text-sm text-muted-foreground">
+            <dt className="w-28 shrink-0 truncate text-mini text-muted-foreground">
               {categoryLabel(category.workCategory)}
             </dt>
             <div className="h-2.5 min-w-0 flex-1 rounded-full bg-muted">
@@ -62,7 +62,7 @@ export function HoursByCategory({ categories }: { categories: ClientHoursCategor
                 style={{ width: `${(category.minutes / maxMinutes) * 100}%` }}
               />
             </div>
-            <dd className="w-14 shrink-0 text-right text-sm font-medium tabular-nums">
+            <dd className="w-14 shrink-0 text-right text-mini font-medium tabular-nums">
               {minutesToHours(category.minutes)}
             </dd>
           </div>

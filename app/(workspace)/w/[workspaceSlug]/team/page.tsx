@@ -67,11 +67,11 @@ export default async function TeamPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-lg font-semibold">
+        <h1 className="flex items-center gap-2 title-1 font-semibold">
           <Users className="size-5" aria-hidden="true" />
           Team
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           Active members of {workspace.name}.
         </p>
       </div>

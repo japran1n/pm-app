@@ -709,7 +709,7 @@ function AllDayTaskChip({
     <Link
       href={`/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${task.id}`}
       className={cn(
-        "mb-1 flex min-w-0 items-center gap-1 truncate rounded border border-border/60 bg-card px-1.5 py-0.5 text-xs hover:bg-muted/60",
+        "mb-1 flex min-w-0 items-center gap-1 truncate rounded border border-border/60 bg-card px-1.5 py-0.5 text-micro hover:bg-muted/60",
         task.isDone && "opacity-60 line-through",
       )}
       title={task.title}

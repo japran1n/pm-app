@@ -56,24 +56,24 @@ export default async function PortalTaskPage({
       <div className="flex flex-col gap-4">
         <Link
           href={`/portal/${workspace.slug}/p/${task.projectId}`}
-          className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="flex w-fit items-center gap-1.5 text-mini text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
           {task.projectName}
         </Link>
 
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="title-2 font-semibold tracking-tight">
             {task.title}
           </h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini text-muted-foreground">
             {task.status.replace(/_/g, " ")}
             {task.dueDate ? ` · due ${task.dueDate}` : ""}
           </p>
         </div>
 
         {task.description && (
-          <p className="text-sm text-muted-foreground">{task.description}</p>
+          <p className="text-mini text-muted-foreground">{task.description}</p>
         )}
       </div>
 

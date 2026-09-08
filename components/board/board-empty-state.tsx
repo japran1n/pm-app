@@ -44,8 +44,8 @@ export function BoardEmptyState({
         <ListTodo className="size-6 text-muted-foreground" />
       </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">No tasks yet in this project</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini font-medium">No tasks yet in this project</p>
+        <p className="text-mini text-muted-foreground">
           Create your first task to start tracking work on the board.
         </p>
       </div>

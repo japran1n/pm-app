@@ -56,9 +56,9 @@ export function HowWeWorkList({ entries }: { entries: HowWeWorkEntry[] }) {
                 {KIND_LABEL[entry.docKind]}
               </span>
             </div>
-            <span className="text-sm font-semibold text-foreground">{entry.title}</span>
+            <span className="text-mini font-semibold text-foreground">{entry.title}</span>
             {entry.content && (
-              <p className="whitespace-pre-line text-sm text-muted-foreground">{entry.content}</p>
+              <p className="whitespace-pre-line text-mini text-muted-foreground">{entry.content}</p>
             )}
             {entry.links.length > 0 && (
               <ul
@@ -82,7 +82,7 @@ export function HowWeWorkList({ entries }: { entries: HowWeWorkEntry[] }) {
                           className="h-28 w-full rounded object-cover"
                         />
                       )}
-                      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                      <span className="flex items-center gap-1.5 text-mini font-medium text-foreground">
                         {link.title}
                         <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
                       </span>

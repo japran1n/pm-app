@@ -169,7 +169,7 @@ export function ProjectMembersList({
 }) {
   if (members.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-mini text-muted-foreground">
         No explicit project members yet. Add a workspace member below to
         scope them to this project.
       </p>
@@ -197,15 +197,15 @@ export function ProjectMembersList({
                 }}
               />
               <div className="flex flex-col">
-                <span className="text-sm font-medium">
+                <span className="text-mini font-medium">
                   {label}
                   {isSelf && (
-                    <span className="ml-1 text-xs text-muted-foreground">
+                    <span className="ml-1 text-micro text-muted-foreground">
                       (you)
                     </span>
                   )}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-micro text-muted-foreground">
                   Added by {member.addedByName ?? "unknown"} on{" "}
                   {formatDate(member.createdAt)}
                 </span>
@@ -256,7 +256,7 @@ export function AddProjectMemberForm({
 
   if (addable.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-mini text-muted-foreground">
         Every active workspace member is already scoped to this project.
       </p>
     );
@@ -398,10 +398,10 @@ export function ProjectVisibilityToggle({
           aria-label="Make this project private"
         />
         <div className="flex flex-col">
-          <span className="text-sm font-medium">
+          <span className="text-mini font-medium">
             {visibility === "private" ? "Private" : "Workspace-wide"}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-micro text-muted-foreground">
             {visibility === "private"
               ? "Only explicit project members and workspace owners/admins can see this project."
               : "Every active workspace member can see this project."}

@@ -138,14 +138,14 @@ export function TransferOwnershipDialog({
         </Select>
 
         {selectedCandidate && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-mini text-muted-foreground">
             &quot;{selectedCandidate.label}&quot; will become the owner, and
             you will become an admin.
           </p>
         )}
 
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-mini text-destructive">
             {error}
           </p>
         )}

@@ -593,7 +593,7 @@ export function TaskListTable({
         <button
           type="button"
           onClick={() => setIsQuickAdding(true)}
-          className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-sm text-muted-foreground hover-surface"
+          className="flex w-full items-center gap-1.5 rounded-md px-1 py-1 text-mini text-muted-foreground hover-surface"
         >
           <Plus className="size-4" aria-hidden="true" />
           Add task
@@ -608,7 +608,7 @@ export function TaskListTable({
         <>
           {quickAddBar}
           <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-mini text-muted-foreground">
               No tasks match your filters.
             </p>
             {clearFiltersHref && (
@@ -626,7 +626,7 @@ export function TaskListTable({
     return (
       <>
         {quickAddBar}
-        <p className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <p className="rounded-lg border border-dashed p-8 text-center text-mini text-muted-foreground">
           No tasks yet in this project.
         </p>
       </>
@@ -748,7 +748,7 @@ export function TaskListTable({
                   />
                 </TableCell>
                 <TableCell
-                  className="font-mono text-xs text-muted-foreground"
+                  className="font-mono text-micro text-muted-foreground"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <TaskKeyCell
@@ -846,7 +846,7 @@ export function TaskListTable({
                       }
                       trailing={
                         childCountByParentId.has(task.id) ? (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-micro text-muted-foreground">
                             {childCountByParentId.get(task.id)}
                           </span>
                         ) : undefined
@@ -906,7 +906,7 @@ export function TaskListTable({
                 </TableCell>
                 {/* F412: "—" for no estimate rather than "0h" — a task
                     nobody has sized yet must not read as "sized at zero". */}
-                <TableCell className="text-right font-mono text-xs tabular-nums text-muted-foreground">
+                <TableCell className="text-right font-mono text-micro tabular-nums text-muted-foreground">
                   {task.estimateMinutes
                     ? formatDuration(task.estimateMinutes)
                     : "—"}
@@ -915,8 +915,8 @@ export function TaskListTable({
                   className={
                     task.estimateMinutes &&
                     (task.totalMinutes ?? 0) > task.estimateMinutes
-                      ? "text-right font-mono text-xs tabular-nums text-destructive"
-                      : "text-right font-mono text-xs tabular-nums text-muted-foreground"
+                      ? "text-right font-mono text-micro tabular-nums text-destructive"
+                      : "text-right font-mono text-micro tabular-nums text-muted-foreground"
                   }
                 >
                   {task.totalMinutes ? formatDuration(task.totalMinutes) : "—"}
@@ -992,7 +992,7 @@ export function TaskListTable({
       >
         <button
           type="button"
-          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover-surface"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-mini hover-surface"
           onClick={() => {
             const task = tasks.find((candidate) => candidate.id === contextMenu.taskId);
             if (task) startRename(task);
@@ -1002,14 +1002,14 @@ export function TaskListTable({
         </button>
         <button
           type="button"
-          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover-surface"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-mini hover-surface"
           onClick={() => handleDuplicateRow(contextMenu.taskId)}
         >
           Duplicate
         </button>
         <button
           type="button"
-          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm text-destructive hover-surface"
+          className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-mini text-destructive hover-surface"
           onClick={() => handleDeleteRow(contextMenu.taskId)}
         >
           Delete

@@ -98,7 +98,7 @@ export function StatusPill({
         data-testid="status-pill"
         data-bucket="none"
         className={cn(
-          "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground",
+          "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-micro font-medium text-muted-foreground",
           className,
         )}
       >
@@ -116,7 +116,7 @@ export function StatusPill({
       data-testid="status-pill"
       data-bucket={bucket}
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium",
+        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-micro font-medium",
         classes.bg,
         classes.text,
         className,

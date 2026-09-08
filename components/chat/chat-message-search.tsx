@@ -69,7 +69,7 @@ export function ChatMessageSearch({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search messages..."
           aria-label="Search messages"
-          className="h-8 pl-7 pr-7 text-sm"
+          className="h-8 pl-7 pr-7 text-mini"
         />
         {query && (
           <Button
@@ -91,13 +91,13 @@ export function ChatMessageSearch({
       {isOpen && (
         <div className="absolute inset-x-2 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-md border bg-popover shadow-md">
           {isPending && (
-            <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 p-3 text-mini text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
               Searching...
             </div>
           )}
           {!isPending && displayedResults !== null && displayedResults.length === 0 && (
-            <p className="p-3 text-sm text-muted-foreground">
+            <p className="p-3 text-mini text-muted-foreground">
               No messages found.
             </p>
           )}
@@ -107,13 +107,13 @@ export function ChatMessageSearch({
                 <li key={r.id}>
                   <Link
                     href={`/w/${workspaceSlug}/chat/${r.channelId}`}
-                    className="block p-3 text-sm hover:bg-accent"
+                    className="block p-3 text-mini hover:bg-accent"
                     onClick={() => {
                       setQuery("");
                       setResults(null);
                     }}
                   >
-                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2 text-micro text-muted-foreground">
                       <span className="truncate">
                         {r.channelKind === "dm"
                           ? "Direct message"

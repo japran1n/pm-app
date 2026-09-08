@@ -104,8 +104,8 @@ export default async function ProjectCustomFieldsSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Custom fields</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Custom fields</h1>
+        <p className="text-mini text-muted-foreground">
           Extra fields tasks in {project.name} can carry, beyond status/priority/type/phase.
         </p>
       </div>
@@ -117,7 +117,7 @@ export default async function ProjectCustomFieldsSettingsPage({
       {fieldsError ? (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
         >
           <p>Something went wrong loading this project&apos;s custom fields. Please try again.</p>
           <a
@@ -128,7 +128,7 @@ export default async function ProjectCustomFieldsSettingsPage({
           </a>
         </div>
       ) : fields.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-mini text-muted-foreground">
           This project has no custom fields yet.
           {canManage ? " Add one below to get started." : ""}
         </p>

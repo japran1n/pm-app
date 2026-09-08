@@ -46,7 +46,7 @@ const CONFIDENCE_LABELS: Record<PortalLaunchConfidence, string> = {
 
 function ReadinessRow({ met, label }: { met: boolean; label: string }) {
   return (
-    <li className="flex items-center gap-2 text-sm" data-testid="portal-readiness-item">
+    <li className="flex items-center gap-2 text-mini" data-testid="portal-readiness-item">
       {met ? (
         <CheckCircle2 className="size-4 shrink-0 text-status-done" aria-hidden="true" />
       ) : (
@@ -153,10 +153,10 @@ export function PortalSettingsPanel({
               data-testid="portal-enabled-toggle"
             />
             <div className="flex flex-col">
-              <span className="text-sm font-medium">
+              <span className="text-mini font-medium">
                 Client portal is {portalEnabled ? "on" : "off"}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-micro text-muted-foreground">
                 {canManagePortal
                   ? "Only a workspace owner or admin can change this."
                   : "Only a workspace owner or admin can turn this on or off."}
@@ -175,10 +175,10 @@ export function PortalSettingsPanel({
         </div>
 
         <div className="flex flex-col gap-2 rounded-md border border-border p-4">
-          <span className="text-sm font-medium">
+          <span className="text-mini font-medium">
             Readiness ({readinessMetCount}/{readinessItems.length})
           </span>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-micro text-muted-foreground">
             Turning the portal on for a project with none of these shows the client an empty
             shell — not a hard requirement, but worth checking first.
           </p>
@@ -192,8 +192,8 @@ export function PortalSettingsPanel({
 
       <section className="flex flex-col gap-4" data-testid="portal-launch-section">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold">Launch &amp; warranty</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-mini font-semibold">Launch &amp; warranty</h2>
+          <p className="text-mini text-muted-foreground">
             Shown on the portal&rsquo;s launch-day card.
           </p>
         </div>
@@ -288,7 +288,7 @@ export function PortalSettingsPanel({
           </div>
 
           {launchError && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-mini text-destructive">
               {launchError}
             </p>
           )}

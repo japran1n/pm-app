@@ -41,7 +41,7 @@ export function CreateWorkspaceForm() {
         <p
           id="workspace-name-error"
           role="alert"
-          className="text-sm text-destructive"
+          className="text-mini text-destructive"
         >
           {state.error}
         </p>

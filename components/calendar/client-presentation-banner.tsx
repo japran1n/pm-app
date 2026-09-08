@@ -30,7 +30,7 @@ export function ClientPresentationBanner({
   return (
     <div
       data-testid="client-presentation-banner"
-      className="flex flex-col gap-1 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-900"
+      className="flex flex-col gap-1 border-b border-red-200 bg-red-50 px-4 py-2 text-mini text-red-900"
     >
       {presentations.map((presentation) => (
         <div

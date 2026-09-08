@@ -58,13 +58,13 @@ export default async function StatusTemplatesSettingsPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-lg font-semibold">Settings</h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="title-1 font-semibold">Settings</h1>
+        <p className="text-mini text-muted-foreground">
           Status templates for {workspace.name}.
         </p>
       </div>
 
-      <nav className="flex gap-4 border-b text-sm font-medium">
+      <nav className="flex gap-4 border-b text-mini font-medium">
         <Link
           href={`/w/${workspaceSlug}/settings`}
           className="px-1 pb-2 text-muted-foreground hover:text-foreground"
@@ -90,8 +90,8 @@ export default async function StatusTemplatesSettingsPage({
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold">Status templates</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-mini font-semibold">Status templates</h2>
+          <p className="text-mini text-muted-foreground">
             Reusable sets of board columns. Apply one from a project&apos;s
             Settings → Columns page instead of rebuilding columns by hand
             on every new project.

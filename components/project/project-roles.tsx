@@ -73,8 +73,8 @@ function AssignedRoleRow({
       <UserAvatar person={{ id: row.userId, name: row.name, avatarUrl: row.avatarUrl }} size="sm" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{row.name ?? row.email ?? row.userId}</span>
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+          <span className="truncate text-mini font-medium">{row.name ?? row.email ?? row.userId}</span>
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-micro font-medium text-muted-foreground">
             {PROJECT_ROLE_LABELS[row.role]}
           </span>
         </div>
@@ -85,7 +85,7 @@ function AssignedRoleRow({
           disabled={disabled || isPending}
           placeholder="What they own on this project (one line)"
           maxLength={280}
-          className="h-8 text-xs"
+          className="h-8 text-micro"
         />
       </div>
       {isPending && <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />}
@@ -144,7 +144,7 @@ function AddRoleForm({
 
   if (candidates.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-mini text-muted-foreground">
         This project has no team members yet. Add one above, then come back
         here to say what they do.
       </p>
@@ -182,7 +182,7 @@ function AddRoleForm({
         onChange={(event) => setNote(event.target.value)}
         placeholder="What they own (optional)"
         maxLength={280}
-        className="h-9 w-56 text-sm"
+        className="h-9 w-56 text-mini"
       />
       <Button type="button" size="sm" onClick={handleAdd} disabled={isPending}>
         {isPending && <Loader2 className="mr-1 size-3.5 animate-spin" aria-hidden="true" />}
@@ -212,7 +212,7 @@ export function ProjectRolesSection({
   return (
     <div className="flex flex-col gap-2">
       {sorted.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No roles assigned yet.</p>
+        <p className="text-mini text-muted-foreground">No roles assigned yet.</p>
       ) : (
         sorted.map((row) => (
           <AssignedRoleRow key={row.id} projectId={projectId} row={row} disabled={!canManage} />

@@ -169,7 +169,7 @@ export function HowWeWorkProcess() {
               >
                 <Icon className="size-5 sm:size-7" aria-hidden="true" />
                 <span
-                  className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background sm:-top-2 sm:-right-2 sm:size-6 sm:text-xs"
+                  className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background sm:-top-2 sm:-right-2 sm:size-6 sm:text-micro"
                   aria-hidden="true"
                 >
                   {index + 1}
@@ -200,11 +200,11 @@ export function HowWeWorkProcess() {
               )}
 
               <div className="flex flex-col gap-1.5">
-                <h3 className="text-sm font-semibold text-foreground sm:text-base">
+                <h3 className="text-mini font-semibold text-foreground sm:text-regular">
                   {phase.title}
                 </h3>
-                <p className="text-xs text-foreground/90 sm:text-sm">{phase.what}</p>
-                <p className="text-xs italic text-muted-foreground sm:text-sm">{phase.why}</p>
+                <p className="text-micro text-foreground/90 sm:text-mini">{phase.what}</p>
+                <p className="text-micro italic text-muted-foreground sm:text-mini">{phase.why}</p>
               </div>
             </li>
           );

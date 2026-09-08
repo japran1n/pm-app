@@ -85,7 +85,7 @@ export function LaunchHeadline({
           Launch date not set yet
         </p>
         {nextFromYou && (
-          <p className="text-sm text-muted-foreground" data-testid="launch-headline-next">
+          <p className="text-mini text-muted-foreground" data-testid="launch-headline-next">
             {nextFromYou}
           </p>
         )}
@@ -115,12 +115,12 @@ export function LaunchHeadline({
         </span>
       </div>
       {launchNote && (
-        <p className="text-sm text-muted-foreground" data-testid="launch-headline-note">
+        <p className="text-mini text-muted-foreground" data-testid="launch-headline-note">
           {launchNote}
         </p>
       )}
       {nextFromYou && (
-        <p className="text-sm text-muted-foreground" data-testid="launch-headline-next">
+        <p className="text-mini text-muted-foreground" data-testid="launch-headline-next">
           {nextFromYou}
         </p>
       )}

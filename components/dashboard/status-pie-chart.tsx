@@ -36,7 +36,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
 
   if (total === 0) {
     return (
-      <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-[260px] items-center justify-center text-mini text-muted-foreground">
         No tasks yet.
       </div>
     );
@@ -65,7 +65,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
               aria-pressed={activeStatus === datum.name}
               title={`${datum.label}: ${datum.count} (${Math.round(pct)}%)`}
               className={cn(
-                "flex min-w-0 items-center justify-center overflow-hidden text-xs font-medium text-white transition-opacity first:rounded-l-md last:rounded-r-md",
+                "flex min-w-0 items-center justify-center overflow-hidden text-micro font-medium text-white transition-opacity first:rounded-l-md last:rounded-r-md",
                 isDimmed ? "opacity-35" : "opacity-100",
               )}
               style={{ width: `${pct}%`, backgroundColor: datum.color }}
@@ -76,7 +76,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
         })}
       </div>
 
-      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-micro">
         {data.map((datum) => (
           <li key={datum.name}>
             <button
