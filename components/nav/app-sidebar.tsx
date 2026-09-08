@@ -361,7 +361,7 @@ function SidebarContent({
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
               {group.label && (
-                <p className="px-2.5 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
+                <p className="px-2 mb-1 mt-3 text-micro text-muted-foreground uppercase tracking-wide">
                   {group.label}
                 </p>
               )}
@@ -388,13 +388,13 @@ function SidebarContent({
                       // md:hidden`), so a `sm:` check would leave 640-767px
                       // tablet widths (where the mobile Sheet is still what's
                       // shown) under-sized.
-                      "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium max-md:min-h-11",
+                      "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-mini max-md:min-h-11",
                       isActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                        ? "bg-accent text-foreground font-medium"
+                        : "text-muted-foreground hover:bg-[#ffffff0d]",
                     )}
                   >
-                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                     {/* F010: same small-numeric-badge shape as the bell's own
                         unread count (components/notifications/notification-bell.tsx)
@@ -463,10 +463,10 @@ function SidebarContent({
             // F265 (AS-518): same `max-md:min-h-11` reasoning as the
             // primary nav items above -- this Link is shared between the
             // desktop `<aside>` and the mobile hamburger Sheet.
-            "flex min-h-9 items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium transition-colors max-md:min-h-11",
+            "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-mini transition-colors max-md:min-h-11",
             pathname === `/w/${workspaceSlug}/settings/profile`
-              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-              : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              ? "bg-accent text-foreground font-medium"
+              : "text-muted-foreground hover:bg-[#ffffff0d]",
           )}
         >
           <UserAvatar person={currentUser} size="sm" />
@@ -548,7 +548,7 @@ export function AppSidebar({
           pin it: the page (not `main`) is the scroll container, so on any
           view taller than the viewport the whole column scrolled out of
           sight along with the content. */}
-      <aside className="sticky top-0 hidden h-svh w-60 shrink-0 flex-col self-start border-r bg-sidebar text-sidebar-foreground md:flex">
+      <aside className="sticky top-0 hidden h-svh w-60 shrink-0 flex-col self-start bg-sidebar text-sidebar-foreground md:flex">
         <SidebarContent
           workspaceSlug={workspaceSlug}
           workspaces={workspaces}

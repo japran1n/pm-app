@@ -348,10 +348,10 @@ export function ProjectNavList({
           // app-sidebar.tsx (this row renders inside the same `md:hidden`
           // mobile Sheet), bumping this row to the 44px touch-target
           // minimum on mobile without affecting its desktop sizing.
-          "group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-mini font-medium transition-colors max-md:min-h-11",
+          "group flex items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-mini transition-colors max-md:min-h-11",
           isActive
-            ? "bg-sidebar-accent text-sidebar-accent-foreground"
-            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            ? "bg-accent text-foreground font-medium"
+            : "text-muted-foreground hover:bg-[#ffffff0d]",
         )}
       >
         {content}
@@ -419,7 +419,7 @@ export function ProjectNavList({
             // F332 (M17 scrutiny BLOCKER-1 / AS-518): `max-md:min-h-11` --
             // same breakpoint convention as the other mobile-Sheet nav
             // controls in this file/app-sidebar.tsx.
-            className="flex min-h-10 shrink-0 items-center justify-between px-3 py-2.5 text-micro font-semibold uppercase tracking-wide text-sidebar-foreground/70 hover:text-sidebar-foreground max-md:min-h-11"
+            className="flex min-h-10 shrink-0 items-center justify-between px-2 mt-3 mb-1 py-2.5 text-micro text-muted-foreground uppercase tracking-wide hover:text-foreground max-md:min-h-11"
           >
             <span>Projects</span>
             <ChevronDown
@@ -470,7 +470,7 @@ export function ProjectNavList({
                 aria-label="Favourite projects"
                 className="flex flex-col gap-0.5 pb-1"
               >
-                <p className="px-2.5 pt-1 text-[10px] font-semibold uppercase tracking-wide text-sidebar-foreground/40">
+                <p className="px-2 mb-1 mt-3 text-micro text-muted-foreground uppercase tracking-wide">
                   Favourites
                 </p>
                 {favoriteProjects.map((project) => renderProjectRow(project))}
