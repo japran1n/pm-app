@@ -81,3 +81,25 @@ The user does NOT, ever:
 ## Active mission
 
 The active mission ID lives in `missions/CURRENT`. If absent, no mission is active and the only valid command is `/mission-scope`.
+
+## Linear Design System — active rules (Good Guys 4.0)
+
+The workspace now runs on a Linear-reproduced dark design system. Portal stays on Good Guys 3.0 light tokens under `[data-surface="portal"]`.
+
+### Scope rule (test every PR)
+> Would a user who knows the app by heart need to learn anything new? If yes — out of scope of design system work.
+
+### Token rules
+- `--text-quaternary` (#62666d) is for decorative/non-essential elements only (IDs, keyboard hints, empty-state labels). NEVER use it for text the user must read to operate the app — it fails AA contrast.
+- One filled (bg-primary) button per screen maximum. All other buttons are transparent with hover fill.
+- `--line-row` (#202122) for row separators; `--border` (#23252a) for panel borders. They are different families — do not interchange.
+
+### Shadow rule
+Shadows only on overlays: dropdown, popover, dialog, sheet, command, tooltip.
+Cards, panels, sidebar, nav, buttons, inputs — zero shadow. Elevation comes from bg-level changes.
+
+### Font weight rule
+Use weight 510 for "medium" text and 590 for "semibold". Not 500/600. These are variable Inter weights.
+
+### Behavioral integrity
+`resolveClientBucket` in `components/portal/status-label.ts` must never be changed. The validation contract at `missions/20260909-linear-ds/validation-contract.md` is immutable.
