@@ -45,6 +45,8 @@ import {
   Quote,
   Heading1,
   Heading2,
+  Download,
+  Upload,
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -266,6 +268,58 @@ export function MarkdownEditor({
     node.style.height = `${node.scrollHeight}px`;
   }, [title]);
 
+  // Export/import as Markdown (.md) — the storage format is already a
+  // plain Markdown string (see this file's top comment), so export is a
+  // direct download of the current live content and import is a direct
+  // `setContent` + save, no conversion layer needed either direction.
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+
+  function currentMarkdown() {
+    return (
+      editor?.storage as unknown as { markdown: { getMarkdown(): string } }
+    ).markdown.getMarkdown();
+  }
+
+  function handleExport() {
+    if (!editor) return;
+    const markdown = currentMarkdown();
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const fileName = `${title.trim() || "Untitled"}.md`;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportClick() {
+    importInputRef.current?.click();
+  }
+
+  async function handleImportFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !editor) return;
+
+    if (!/\.(md|markdown|txt)$/i.test(file.name)) {
+      toast.error("Please choose a .md (Markdown) file.");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      editor.commands.setContent(text);
+      const markdown = currentMarkdown();
+      scheduleSave(titleRef.current, markdown);
+      toast.success("Imported document content.");
+    } catch {
+      toast.error("Couldn't read that file. Please try again.");
+    }
+  }
+
   if (!editor) return null;
 
   return (
@@ -290,6 +344,21 @@ export function MarkdownEditor({
           {status === "saved" && "Saved"}
           {status === "error" && "Failed to save"}
         </span>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".md,.markdown,.txt,text/markdown,text/plain"
+          className="hidden"
+          onChange={handleImportFileChange}
+        />
+        <Button type="button" variant="ghost" size="sm" onClick={handleImportClick}>
+          <Upload className="size-3.5" aria-hidden="true" />
+          Import .md
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={handleExport}>
+          <Download className="size-3.5" aria-hidden="true" />
+          Export .md
+        </Button>
         {projectId && (
           <>
             <Select value={docKind} onValueChange={handleKindChange} disabled={isKindPending}>
