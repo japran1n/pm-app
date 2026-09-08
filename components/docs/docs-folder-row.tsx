@@ -11,8 +11,9 @@
 // inline-rename state (`isRenaming`) is local to a single row and would
 // otherwise leak into the tree-building parent.
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ChevronRight,
   ChevronDown,
@@ -51,6 +52,7 @@ import {
   deleteDocFolder,
   renameDocFolder,
 } from "@/lib/actions/docs";
+import { Input } from "@/components/ui/input";
 
 export type FolderNode = DocFolder & { children: FolderNode[] };
 
@@ -90,48 +92,93 @@ export function DocsFolderRow({
   const [isRenaming, setIsRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(folder.name);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [creatingSubfolder, setCreatingSubfolder] = useState(false);
+  const [newSubfolderName, setNewSubfolderName] = useState("");
 
   const childDocs = docsByFolder.get(folder.id) ?? [];
   const indent = { paddingLeft: `${depth * 16}px` };
 
-  async function submitRename() {
+  function submitRename() {
     setIsRenaming(false);
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === folder.name) {
       setNameDraft(folder.name);
       return;
     }
-    const result = await renameDocFolder(folder.id, trimmed);
-    if ("error" in result && result.error) {
-      setNameDraft(folder.name);
+    startTransition(async () => {
+      const result = await renameDocFolder(folder.id, trimmed);
+      if ("error" in result && result.error) {
+        toast.error(result.error);
+        setNameDraft(folder.name);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function handleNewSubfolder() {
+    setNewSubfolderName("");
+    setCreatingSubfolder(true);
+    setOpen(true);
+  }
+
+  function submitNewSubfolder() {
+    const trimmed = newSubfolderName.trim();
+    if (!trimmed) {
+      setCreatingSubfolder(false);
+      return;
     }
+    startTransition(async () => {
+      const result = await createDocFolder(
+        workspaceId,
+        trimmed,
+        folder.id,
+        projectId ?? null,
+      );
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      setCreatingSubfolder(false);
+      setNewSubfolderName("");
+      router.refresh();
+    });
   }
 
-  async function handleNewSubfolder() {
-    const name = window.prompt("Subfolder name");
-    if (!name || !name.trim()) return;
-    await createDocFolder(
-      workspaceId,
-      name.trim(),
-      folder.id,
-      projectId ?? null,
-    );
-  }
-
-  async function handleNewDoc() {
-    const result = await createDoc(workspaceId, folder.id, projectId ?? null);
-    if ("id" in result) {
+  function handleNewDoc() {
+    startTransition(async () => {
+      const result = await createDoc(workspaceId, folder.id, projectId ?? null);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
       router.push(docHref(workspaceSlug, projectId, result.id));
-    }
+    });
   }
 
-  async function handleDeleteFolder() {
+  function handleDeleteFolder() {
     setConfirmDeleteOpen(false);
-    await deleteDocFolder(folder.id);
+    startTransition(async () => {
+      const result = await deleteDocFolder(folder.id);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+    });
   }
 
-  async function handleDeleteDoc(docId: string) {
-    await deleteDoc(docId);
+  function handleDeleteDoc(docId: string) {
+    startTransition(async () => {
+      const result = await deleteDoc(docId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+    });
   }
 
   return (
@@ -190,15 +237,16 @@ export function DocsFolderRow({
               >
                 Rename
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleNewSubfolder}>
+              <DropdownMenuItem onClick={handleNewSubfolder} disabled={isPending}>
                 New subfolder
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleNewDoc}>
+              <DropdownMenuItem onClick={handleNewDoc} disabled={isPending}>
                 New doc
               </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => setConfirmDeleteOpen(true)}
+                disabled={isPending}
               >
                 Delete
               </DropdownMenuItem>
@@ -208,6 +256,31 @@ export function DocsFolderRow({
 
         <CollapsibleContent>
           <div className="flex flex-col">
+            {creatingSubfolder && (
+              <div
+                className="mb-1 flex items-center gap-1 px-1.5"
+                style={{ paddingLeft: `${(depth + 1) * 16}px` }}
+              >
+                <Input
+                  autoFocus
+                  placeholder="Subfolder name"
+                  value={newSubfolderName}
+                  disabled={isPending}
+                  className="h-7 text-sm"
+                  onChange={(event) => setNewSubfolderName(event.target.value)}
+                  onBlur={submitNewSubfolder}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      submitNewSubfolder();
+                    } else if (event.key === "Escape") {
+                      setCreatingSubfolder(false);
+                      setNewSubfolderName("");
+                    }
+                  }}
+                />
+              </div>
+            )}
             {folder.children.map((child) => (
               <DocsFolderRow
                 key={child.id}

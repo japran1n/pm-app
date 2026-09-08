@@ -8,14 +8,16 @@
 // the tree rather than this query doing a recursive fetch"). Root-level
 // docs (folderId === null) render below the folder tree.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FilePlus, FolderPlus } from "lucide-react";
+import { toast } from "sonner";
 
 import type { Doc, DocFolder } from "@/lib/queries/docs";
 import { createDoc, createDocFolder } from "@/lib/actions/docs";
 import { DocsDocRow, DocsFolderRow, type FolderNode } from "@/components/docs/docs-folder-row";
 import { deleteDoc } from "@/lib/actions/docs";
+import { Input } from "@/components/ui/input";
 
 function buildTree(folders: DocFolder[]): FolderNode[] {
   const nodesById = new Map<string, FolderNode>();
@@ -63,6 +65,9 @@ export function DocsSidebar({
 }) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
 
   const tree = useMemo(() => buildTree(folders), [folders]);
   const docsByFolder = useMemo(() => groupDocsByFolder(docs), [docs]);
@@ -73,21 +78,50 @@ export function DocsSidebar({
       ? `/w/${workspaceSlug}/projects/${projectId}/docs/${docId}`
       : `/w/${workspaceSlug}/docs/${docId}`;
 
-  async function handleNewFolder() {
-    const name = window.prompt("Folder name");
-    if (!name || !name.trim()) return;
-    await createDocFolder(workspaceId, name.trim(), null, projectId ?? null);
+  function handleNewFolder() {
+    setNewFolderName("");
+    setCreatingFolder(true);
   }
 
-  async function handleNewDoc() {
-    const result = await createDoc(workspaceId, null, projectId ?? null);
-    if ("id" in result) {
-      router.push(docHref(result.id));
+  function submitNewFolder() {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) {
+      setCreatingFolder(false);
+      return;
     }
+    startTransition(async () => {
+      const result = await createDocFolder(workspaceId, trimmed, null, projectId ?? null);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      setCreatingFolder(false);
+      setNewFolderName("");
+      router.refresh();
+    });
   }
 
-  async function handleDeleteDoc(docId: string) {
-    await deleteDoc(docId);
+  function handleNewDoc() {
+    startTransition(async () => {
+      const result = await createDoc(workspaceId, null, projectId ?? null);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+      router.push(docHref(result.id));
+    });
+  }
+
+  function handleDeleteDoc(docId: string) {
+    startTransition(async () => {
+      const result = await deleteDoc(docId);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+    });
   }
 
   return (
@@ -110,7 +144,8 @@ export function DocsSidebar({
               type="button"
               aria-label="New folder"
               title="New folder"
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              disabled={isPending}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
               onClick={handleNewFolder}
             >
               <FolderPlus className="h-4 w-4" />
@@ -119,13 +154,37 @@ export function DocsSidebar({
               type="button"
               aria-label="New doc"
               title="New doc"
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+              disabled={isPending}
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
               onClick={handleNewDoc}
             >
               <FilePlus className="h-4 w-4" />
             </button>
           </div>
         </div>
+
+        {creatingFolder && (
+          <div className="mb-1 flex items-center gap-1 px-1.5">
+            <Input
+              autoFocus
+              placeholder="Folder name"
+              value={newFolderName}
+              disabled={isPending}
+              className="h-7 text-sm"
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onBlur={submitNewFolder}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submitNewFolder();
+                } else if (event.key === "Escape") {
+                  setCreatingFolder(false);
+                  setNewFolderName("");
+                }
+              }}
+            />
+          </div>
+        )}
 
         <div className="flex flex-col gap-0.5">
           {tree.map((folder) => (

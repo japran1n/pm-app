@@ -5,6 +5,8 @@
 // the `createDoc` action and navigates to the new doc's editor.
 
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { createDoc } from "@/lib/actions/docs";
@@ -19,17 +21,24 @@ export function NewDocButton({
   projectId?: string;
 }) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   return (
     <Button
-      onClick={async () => {
-        const result = await createDoc(workspaceId, null, projectId ?? null);
-        if ("id" in result) {
+      disabled={isPending}
+      onClick={() => {
+        startTransition(async () => {
+          const result = await createDoc(workspaceId, null, projectId ?? null);
+          if ("error" in result) {
+            toast.error(result.error);
+            return;
+          }
           const href = projectId
             ? `/w/${workspaceSlug}/projects/${projectId}/docs/${result.id}`
             : `/w/${workspaceSlug}/docs/${result.id}`;
+          router.refresh();
           router.push(href);
-        }
+        });
       }}
     >
       New document
