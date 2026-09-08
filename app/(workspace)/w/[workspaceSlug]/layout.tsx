@@ -446,18 +446,20 @@ export default async function WorkspaceLayout({
           requestsCount={openClientRequestCount}
           chatUnreadCount={chatUnreadTotal}
         />
-        <WorkspaceMain>
-          <ClientPresentationBanner
-            presentations={upcomingClientPresentations}
-            workspaceSlug={workspaceSlug}
-          />
-          <AppHeader
-            workspaceId={activeWorkspace.id}
-            workspaceSlug={workspaceSlug}
-            workspaceName={activeWorkspace.name}
-          />
-          {children}
-        </WorkspaceMain>
+        <div className="bg-background border border-border rounded-lg m-2 overflow-hidden flex-1 min-h-0">
+          <WorkspaceMain>
+            <ClientPresentationBanner
+              presentations={upcomingClientPresentations}
+              workspaceSlug={workspaceSlug}
+            />
+            <AppHeader
+              workspaceId={activeWorkspace.id}
+              workspaceSlug={workspaceSlug}
+              workspaceName={activeWorkspace.name}
+            />
+            {children}
+          </WorkspaceMain>
+        </div>
       </div>
       </BreadcrumbProvider>
       </WorkspacePresenceProvider>

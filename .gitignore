@@ -46,3 +46,6 @@ extension/playwright-report/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# ShipStudio metadata
+.shipstudio/
