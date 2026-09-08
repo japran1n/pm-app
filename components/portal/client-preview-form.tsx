@@ -53,6 +53,7 @@ export function ClientPreviewForm({
   const [projectId, setProjectId] = useState<string | undefined>(
     initialProjectId,
   );
+  const selectedProject = projects.find((project) => project.id === projectId);
   const [isPending, startTransition] = useTransition();
 
   function handleSubmit(event: React.FormEvent) {
@@ -136,7 +137,9 @@ export function ClientPreviewForm({
           }
         >
           <SelectTrigger id="preview-project" aria-label="Project">
-            <SelectValue placeholder="Land on the project chooser" />
+            <SelectValue placeholder="Land on the project chooser">
+              {selectedProject ? selectedProject.name : "Land on the project chooser"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none">Land on the project chooser</SelectItem>
