@@ -296,12 +296,13 @@ export function TaskCard({
           : undefined
       }
       className={cn(
-        "border border-border/60 bg-card",
-        // UX-02: the old `hover:ring-foreground/20` never rendered — Tailwind
-        // needs a `ring-*` width utility alongside a `ring-*` color one, and
-        // this card never set the width. `.hover-lift` (globals.css) is the
-        // app's one shared "this card is clickable" treatment.
-        onClick && "hover-lift",
+        "border border-border shadow-none bg-card",
+        // F009 (Linear row aesthetic): board cards use the same flat
+        // "surface fills in on hover" treatment as list rows
+        // (hover:bg-[#ffffff0d]) rather than the app-wide `.hover-lift`
+        // shadow-based card hover — no elevation change, just a faint
+        // surface tint, matching Linear's card aesthetic.
+        onClick && "hover:bg-[#ffffff0d]",
         className,
       )}
     >

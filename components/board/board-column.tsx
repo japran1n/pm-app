@@ -215,11 +215,11 @@ export function BoardColumn({
       // again, making `max-sm:shrink-0` redundant below `sm:` (kept anyway,
       // harmless, and documents intent). `sm:` and up are completely
       // unchanged from pre-F264 layout (`min-w-64 flex-1`, no snap classes).
-      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-muted/30 p-3 max-sm:w-[88vw] max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:snap-center"
+      className="flex min-w-64 flex-1 flex-col gap-3 rounded-lg border border-border/60 bg-secondary p-3 max-sm:w-[88vw] max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:snap-center"
       data-status={status}
     >
       <div className="flex items-center justify-between px-1 py-0.5">
-        <h2 className="flex items-center gap-1.5 text-mini font-semibold text-foreground">
+        <h2 className="flex items-center gap-1.5 text-mini font-medium text-muted-foreground">
           <span
             aria-hidden="true"
             className="size-2 rounded-full"

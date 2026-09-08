@@ -565,7 +565,7 @@ export function TaskListTable({
   // table caller spans multiple projects and has no single project to
   // create into).
   const quickAddBar = projectId ? (
-    <div className="border-b border-border/60 px-3 py-2">
+    <div className="border-b border-[var(--line-row)] px-3 py-2">
       {isQuickAdding ? (
         <Input
           ref={quickAddInputRef}
@@ -635,7 +635,7 @@ export function TaskListTable({
 
   return (
     <>
-    <div className="rounded-lg border border-border/60 bg-card">
+    <div className="rounded-lg border border-[var(--line-row)] bg-card">
       {quickAddBar}
       <Table>
         <TableHeader>
@@ -697,7 +697,7 @@ export function TaskListTable({
                 tabIndex={0}
                 className={[
                   "cursor-pointer",
-                  isChild ? "bg-muted/30 hover:bg-muted/50" : "",
+                  isChild ? "bg-muted/30 hover:bg-[#ffffff0d]" : "",
                   // j/k navigation: the same visible "current row" ring
                   // convention used elsewhere for keyboard focus state,
                   // distinct from row selection's checkbox highlighting.
