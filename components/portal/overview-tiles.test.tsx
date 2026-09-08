@@ -26,6 +26,8 @@ const BASE_PROPS = {
   pagesReadyCount: 5,
   pagesTotalCount: 12,
   pagesStatusDistribution: { done: 5, progress: 4, waiting: 2, blocked: 1 },
+  pages: [],
+  pagesHref: "/portal/acme/p/project-1/pages",
   usedMinutes: 120,
   usedMinutesSeries: [30, 60, 90, 120],
   soldMinutes: 600,

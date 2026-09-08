@@ -69,9 +69,17 @@ const FALLBACK_SLOT_WIDTH_PX = 96;
 // height from its own content, and both the label column and the SVG
 // bars are positioned from that same per-row measurement, so the two
 // coordinate systems can never drift apart.
-const BASE_ROW_HEIGHT_PX = 40;
-const INFLIGHT_LINE_HEIGHT_PX = 16;
-const BAR_HEIGHT_PX = 20;
+// Overview polish pass (2026-09-08): this is the most important visual
+// element on the client portal's most important page ("Where we are" is
+// now full-width, see the Overview page's own layout comment) -- rows
+// bumped up again from 40/16/20 to 52/20/24 so the chart reads as
+// spacious and confident rather than cramped, while keeping the exact
+// same per-row-height-derives-everything approach (`rowHeightForPhase`)
+// so the label column and the SVG bar/tick positions still cannot drift
+// apart.
+const BASE_ROW_HEIGHT_PX = 52;
+const INFLIGHT_LINE_HEIGHT_PX = 20;
+const BAR_HEIGHT_PX = 24;
 const HEADER_HEIGHT_PX = 24;
 // F104 1.5: gap between a bar's "done" fill and its lower-opacity
 // remainder, per the dataviz skill's spacer rule for adjacent same-hue
@@ -572,7 +580,7 @@ export function PhaseTimeline({
               <div
                 key={phase.id}
                 style={{ height: heightPx }}
-                className="flex flex-col justify-center gap-0.5 border-b border-border/50 pr-2"
+                className="flex flex-col justify-center gap-1 border-b border-border/50 py-1 pr-2"
               >
                 {/* Widened rather than truncated: phase names are short
                     and finite (docs/portal-timeline-review-and-demo-

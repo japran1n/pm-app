@@ -79,7 +79,9 @@ describe("TeamCard", () => {
 
   // Paket E ("Piši nam"): the team card links to the project's existing
   // conversation channel, prefilled with a mention of that member.
-  it("renders a 'Piši nam' link to the project conversation with a mention query param, when workspaceSlug/projectId are provided", () => {
+  // Overview polish pass: the link's label is now the English "Message"
+  // (this portal is English-only client-facing copy).
+  it("renders a 'Message' link to the project conversation with a mention query param, when workspaceSlug/projectId are provided", () => {
     render(
       <TeamCard
         workspaceSlug="acme"
@@ -97,14 +99,14 @@ describe("TeamCard", () => {
         ]}
       />,
     );
-    const link = screen.getByText("Piši nam");
+    const link = screen.getByText("Message");
     expect(link.closest("a")).toHaveAttribute(
       "href",
       "/portal/acme/p/proj-1/conversation?mention=u1",
     );
   });
 
-  it("does not render the 'Piši nam' link when workspaceSlug/projectId are missing", () => {
+  it("does not render the 'Message' link when workspaceSlug/projectId are missing", () => {
     render(
       <TeamCard
         members={[
@@ -120,6 +122,6 @@ describe("TeamCard", () => {
         ]}
       />,
     );
-    expect(screen.queryByText("Piši nam")).not.toBeInTheDocument();
+    expect(screen.queryByText("Message")).not.toBeInTheDocument();
   });
 });

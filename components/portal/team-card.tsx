@@ -14,6 +14,18 @@
 // optional so existing callers/tests that only care about the read-only
 // member list keep working unchanged -- the button simply doesn't render
 // without them.
+//
+// Overview polish pass (2026-09-08): the message link's own label was
+// still the Serbian "Piši nam" -- every other client-facing string in
+// this portal is English-only (see the pages/approvals copy this file's
+// siblings render), so this was the one straggler. Renamed to "Message"
+// to match this portal's terse, verb-first action-link tone (e.g.
+// "Message", not a full sentence) rather than translating literally.
+//
+// Same pass: this card moves from a narrow sidebar column to a full-width
+// row of member cards below the (now full-width) phase timeline -- see
+// this component's own grid className below and the Overview page's
+// layout comment for why.
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 
@@ -40,12 +52,18 @@ export function TeamCard({
           No team members assigned to this project yet.
         </p>
       ) : (
-        <ul className="flex flex-col gap-4">
+        <ul
+          data-testid="team-card-list"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        >
           {members.map((member) => (
-            <li key={member.id} className="flex items-start gap-2">
+            <li
+              key={member.id}
+              className="flex items-start gap-3 rounded-lg border border-border/60 p-4"
+            >
               <UserAvatar
                 person={{ id: member.userId, name: member.name, avatarUrl: member.avatarUrl }}
-                size="sm"
+                size="lg"
               />
               <div className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate text-sm font-medium">
@@ -73,7 +91,7 @@ export function TeamCard({
                     className="mt-1 flex items-center gap-1 text-xs text-primary underline underline-offset-2"
                   >
                     <MessageCircle aria-hidden="true" className="size-3" />
-                    Piši nam
+                    Message
                   </Link>
                 )}
               </div>

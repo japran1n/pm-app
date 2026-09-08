@@ -66,11 +66,24 @@
 // Nothing else read anywhere in this codebase's portal queries answers a
 // question this page doesn't already answer elsewhere on itself. Three
 // columns, not four tiles, is the honest answer here.
-import Link from "next/link";
-import type { ReactNode } from "react";
+"use client";
 
-import type { PortalLaunchConfidence } from "@/lib/queries/portal";
-import type { ClientBucket } from "@/components/portal/status-label";
+// Overview polish pass (2026-09-08): "Pages ready" now optionally carries
+// the actual per-page list (`pages`), shown as a compact, scrollable
+// expandable list right inside the tile -- reusing `StatusPill` (the
+// SAME per-page status rendering the Pages view's own table uses, per
+// this pass's own explicit instruction), never a second status
+// rendering. This is the one reason this whole file is now a Client
+// Component (`useState` for expand/collapse) -- every other tile here is
+// still the same plain server-renderable markup it always was.
+import Link from "next/link";
+import { useState, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+
+import type { PortalLaunchConfidence, PortalPage } from "@/lib/queries/portal";
+import { StatusPill } from "@/components/portal/status-pill";
+import { CLIENT_BUCKET_LABELS, type ClientBucket } from "@/components/portal/status-label";
+import { cn } from "@/lib/utils";
 
 const LAUNCH_CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   on_track: "On track",
@@ -178,6 +191,102 @@ function StatusDistributionBar({
   );
 }
 
+/** F: the same per-page status rendering the Pages view's own table uses
+ * (`StatusPill`, with the same client-bucket label override), reused
+ * verbatim rather than re-implemented -- a compact single-line row
+ * (title + pill) instead of the table's full column set, since this is a
+ * summary tile, not the Pages view itself. */
+function PagesReadyRow({ page }: { page: PortalPage }) {
+  return (
+    <li className="flex items-center justify-between gap-2 py-1.5">
+      <span className="min-w-0 truncate text-sm">{page.title}</span>
+      <StatusPill
+        name={page.status.name}
+        category={page.status.category}
+        clientBucket={page.status.clientBucket}
+        description={page.status.clientDescription}
+        labelOverride={
+          page.status.name === null ? null : CLIENT_BUCKET_LABELS[page.status.clientBucket]
+        }
+      />
+    </li>
+  );
+}
+
+/** The "Pages ready" tile's own body: count + progress bar + status
+ * distribution stay exactly as before, with a "Show pages" toggle
+ * underneath that expands into the actual list of pages, each with its
+ * own status -- a compact, capped-height scrollable list (rather than
+ * unbounded expansion) so a project with many pages doesn't blow out the
+ * tile strip's own height. Collapsed by default: the tile still reads as
+ * a compact summary first, per this pass's own "compact scrollable list
+ * inside the card" judgment call for a client-facing dashboard. */
+function PagesReadyTile({
+  pagesReadyCount,
+  pagesTotalCount,
+  pagesStatusDistribution,
+  pages,
+  pagesHref,
+}: {
+  pagesReadyCount: number;
+  pagesTotalCount: number;
+  pagesStatusDistribution: Record<ClientBucket, number>;
+  pages: PortalPage[];
+  pagesHref: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      data-testid="tile-pages-ready"
+      className="flex flex-col gap-2 rounded-lg border border-border p-5"
+    >
+      <span className="text-tag text-muted-foreground">Pages ready</span>
+      <div className="flex items-end justify-between gap-2">
+        <span className="text-2xl font-semibold tracking-tight tabular-nums">
+          {pagesTotalCount === 0 ? "—" : `${pagesReadyCount} / ${pagesTotalCount}`}
+        </span>
+      </div>
+      <span className="text-xs text-muted-foreground">
+        {pagesTotalCount === 0 ? "No pages shared yet" : "Ready to launch"}
+      </span>
+      {pagesTotalCount > 0 && (
+        <>
+          <StatusDistributionBar distribution={pagesStatusDistribution} />
+          <button
+            type="button"
+            data-testid="tile-pages-ready-toggle"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="hover-surface -mx-2 flex items-center justify-between gap-1 rounded-md px-2 py-1 text-left text-xs font-medium text-primary"
+          >
+            {expanded ? "Hide pages" : "Show pages"}
+            <ChevronDown
+              aria-hidden="true"
+              className={cn("size-3.5 transition-transform", expanded && "rotate-180")}
+            />
+          </button>
+          {expanded && (
+            <div data-testid="tile-pages-ready-list" className="flex flex-col">
+              <ul className="max-h-56 divide-y divide-border/60 overflow-y-auto">
+                {pages.map((page) => (
+                  <PagesReadyRow key={page.id} page={page} />
+                ))}
+              </ul>
+              <Link
+                href={pagesHref}
+                className="mt-2 text-xs text-primary underline underline-offset-2"
+              >
+                View all pages
+              </Link>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Tile({
   label,
   value,
@@ -265,6 +374,8 @@ export function OverviewTiles({
   pagesReadyCount,
   pagesTotalCount,
   pagesStatusDistribution,
+  pages,
+  pagesHref,
   usedMinutes,
   usedMinutesSeries,
   soldMinutes,
@@ -279,6 +390,14 @@ export function OverviewTiles({
    * output), the same classification `pagesReadyCount` above is derived
    * from -- drawn as a small stacked bar under the tile's own number. */
   pagesStatusDistribution: Record<ClientBucket, number>;
+  /** Overview polish pass: the actual pages, rendered inline (expanded on
+   * demand) via the same `getPortalPages` read `pagesReadyCount`/
+   * `pagesStatusDistribution` above are already derived from -- never a
+   * second query. */
+  pages: PortalPage[];
+  /** Where "View all pages" (inside the expanded list) sends a client --
+   * the existing Pages view. */
+  pagesHref: string;
   /** F085 (defect 1): billable minutes used against the current budget
    * period, the same read F019's Hours view uses. `null` when there is
    * no budget and nothing logged yet -- rendered as an honest "-", never
@@ -328,16 +447,12 @@ export function OverviewTiles({
           : "grid grid-cols-1 gap-4 sm:grid-cols-2"
       }
     >
-      <Tile
-        testId="tile-pages-ready"
-        label="Pages ready"
-        value={pagesTotalCount === 0 ? "—" : `${pagesReadyCount} / ${pagesTotalCount}`}
-        footnote={pagesTotalCount === 0 ? "No pages shared yet" : "Ready to launch"}
-        belowFootnote={
-          pagesTotalCount > 0 ? (
-            <StatusDistributionBar distribution={pagesStatusDistribution} />
-          ) : undefined
-        }
+      <PagesReadyTile
+        pagesReadyCount={pagesReadyCount}
+        pagesTotalCount={pagesTotalCount}
+        pagesStatusDistribution={pagesStatusDistribution}
+        pages={pages}
+        pagesHref={pagesHref}
       />
       {showHoursTile && (
         <Tile

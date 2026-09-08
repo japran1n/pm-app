@@ -312,6 +312,8 @@ export default async function PortalOverviewPage({
         pagesReadyCount={pagesReadyCount}
         pagesTotalCount={pages.length}
         pagesStatusDistribution={pagesStatusDistribution}
+        pages={pages}
+        pagesHref={`/portal/${workspace.slug}/p/${project.id}/pages`}
         usedMinutes={usedMinutes}
         usedMinutesSeries={usedMinutesSeries}
         soldMinutes={hoursSummary.soldMinutes}
@@ -344,6 +346,37 @@ export default async function PortalOverviewPage({
         <BudgetBar usedMinutes={usedMinutes} soldMinutes={hoursSummary.soldMinutes} />
       )}
 
+      {/* Overview polish pass (2026-09-08): "Where we are" used to share
+          a `lg:grid-cols-3` row with "Your team" in the right rail,
+          capping the timeline -- this page's own stated centrepiece --
+          at two-thirds width on desktop. It now gets a plain full-width
+          block of its own; "Your team" moves out of the narrow sidebar
+          entirely and into its own full-width row below (see further
+          down this file), and "Live now" / the activity feed keep the
+          previous two-column rail shape without the team card competing
+          for the same column. */}
+      <div className="flex min-w-0 flex-col gap-8">
+        {phasesResult.ok ? (
+          <PhaseTimeline phases={phasesResult.data} today={today} />
+        ) : (
+          // AS-011: a failed `project_statuses`/`tasks` read used to
+          // silently compute 0% for every phase from an empty map --
+          // this renders an honest "we could not load this" instead,
+          // never a percentage the function itself doesn't have.
+          <EmptyState
+            icon={AlertTriangle}
+            title="Couldn't load project phases"
+            description="Something went wrong loading this project's timeline. Try refreshing the page."
+            testId="phase-timeline-error"
+          />
+        )}
+
+        {/* Overview polish pass: "Your team" as a full-width row of
+            member cards directly under the timeline it used to sit
+            beside, rather than a cramped narrow-column stack. */}
+        <TeamCard members={team} workspaceSlug={workspace.slug} projectId={project.id} />
+      </div>
+
       <div className="grid gap-8 lg:grid-cols-3">
         {/* F104 round 3: `min-w-0` -- a CSS grid item's default
             min-width is `auto`, so without this the PhaseTimeline's
@@ -351,23 +384,11 @@ export default async function PortalOverviewPage({
             the viewport instead of scrolling inside its own container,
             pushing the whole page into a sideways scroll (coordinator
             measurement: body.scrollWidth 952 vs clientWidth 808 while
-            the chart's own scroller fit exactly). */}
+            the chart's own scroller fit exactly). Kept here even though
+            the timeline itself moved out of this grid, since
+            `PortalOverviewLive`/the activity feed below can still carry
+            wide content. */}
         <div className="flex min-w-0 flex-col gap-8 lg:col-span-2">
-          {phasesResult.ok ? (
-            <PhaseTimeline phases={phasesResult.data} today={today} />
-          ) : (
-            // AS-011: a failed `project_statuses`/`tasks` read used to
-            // silently compute 0% for every phase from an empty map --
-            // this renders an honest "we could not load this" instead,
-            // never a percentage the function itself doesn't have.
-            <EmptyState
-              icon={AlertTriangle}
-              title="Couldn't load project phases"
-              description="Something went wrong loading this project's timeline. Try refreshing the page."
-              testId="phase-timeline-error"
-            />
-          )}
-
           <PortalOverviewLive
             workspaceId={workspace.id}
             workspaceSlug={workspace.slug}
@@ -443,9 +464,11 @@ export default async function PortalOverviewPage({
               click from the fully working Hours view (F019). The tile
               above is now wired to the real read; this rail's own copy
               is deleted rather than duplicated, per this feature's own
-              "wire both to the real query, or delete them" instruction. */}
+              "wire both to the real query, or delete them" instruction.
 
-          <TeamCard members={team} workspaceSlug={workspace.slug} projectId={project.id} />
+              "Your team" used to render here -- moved to a full-width
+              row directly under the phase timeline above, see this
+              page's own comment there. */}
         </div>
       </div>
     </div>
