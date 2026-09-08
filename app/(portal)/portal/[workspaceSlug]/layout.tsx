@@ -140,7 +140,7 @@ export default async function PortalLayout({
   }
 
   return (
-    <div className="min-h-svh bg-background">
+    <div data-surface="portal" className="min-h-svh bg-background">
       {isPreview && previewLabel && (
         <ClientPreviewBanner
           workspaceSlug={workspace.slug}

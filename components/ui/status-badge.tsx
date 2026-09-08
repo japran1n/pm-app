@@ -37,19 +37,14 @@ export function StatusBadge({
     <span
       data-testid={dataTestId}
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-micro font-medium",
+        "inline-flex max-w-full items-center rounded-full border border-border bg-transparent px-2 py-0.5 text-micro font-medium text-foreground",
         className,
       )}
-      style={{
-        borderColor: color,
-        color,
-        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
-      }}
     >
       {Icon ? (
-        <Icon aria-hidden className="size-3 shrink-0" />
+        <Icon aria-hidden className="mr-1.5 size-3 shrink-0" style={{ color }} />
       ) : (
-        <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span aria-hidden className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
       )}
       <span className="truncate">{label}</span>
     </span>
