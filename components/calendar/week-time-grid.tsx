@@ -612,7 +612,7 @@ function WeekBlockChip({
             data-testid={`calendar-week-block-chip-${block.id}`}
             className={cn(
               "absolute left-0.5 right-0.5 flex flex-col overflow-hidden rounded border px-1 py-0.5 text-left text-[10px] hover:brightness-95",
-              isResizing && "z-10 shadow-md ring-1 ring-primary",
+              isResizing && "z-10 ring-1 ring-primary",
             )}
             style={{
               top,

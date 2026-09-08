@@ -138,7 +138,7 @@ export function AttachmentDropzone({
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-primary bg-primary/5"
         >
-          <p className="rounded-md bg-background px-3 py-1.5 text-mini font-medium text-primary shadow-sm">
+          <p className="rounded-md bg-background px-3 py-1.5 text-mini font-medium text-primary">
             Drop files to attach
           </p>
         </div>

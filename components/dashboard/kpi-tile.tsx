@@ -40,7 +40,7 @@ export function KpiTile({
 }) {
   return (
     <Link href={href} className="block">
-      <Card className="shadow-sm transition-shadow hover:shadow-md hover:ring-foreground/20">
+      <Card className="transition-shadow hover:ring-foreground/20">
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
           <CardTitle className="text-mini font-medium text-muted-foreground">
             {label}

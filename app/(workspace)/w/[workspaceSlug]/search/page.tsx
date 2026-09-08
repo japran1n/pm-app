@@ -171,7 +171,7 @@ export default async function SearchPage({
               <li key={task.id}>
                 <Link
                   href={`/w/${workspaceSlug}/projects/${task.projectId}/board`}
-                  className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-4 shadow-sm transition-shadow hover:shadow-md hover:ring-1 hover:ring-foreground/20"
+                  className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-4 transition-shadow hover:ring-1 hover:ring-foreground/20"
                 >
                   <div className="flex flex-col gap-1">
                     <span className="flex items-center gap-2 text-mini font-medium">

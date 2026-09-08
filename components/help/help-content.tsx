@@ -350,7 +350,7 @@ export function HelpContent() {
   return (
     <div className="flex flex-col gap-8 p-6 sm:p-10" data-testid="help-page">
       <header
-        className="rounded-lg border border-border bg-card p-6 shadow-sm sm:p-10"
+        className="rounded-lg border border-border bg-card p-6 sm:p-10"
         data-testid="help-hero"
       >
         <span className="text-tag font-medium uppercase tracking-wide text-muted-foreground">

@@ -499,7 +499,7 @@ function MessageRow({
         )}
       </div>
       {!message.deletedAt && !editing && hovered && (
-        <div className="absolute right-0 top-0 flex items-center gap-0.5 rounded border border-border bg-background p-0.5 shadow-sm">
+        <div className="absolute right-0 top-0 flex items-center gap-0.5 rounded border border-border bg-background p-0.5">
           {onOpenThread && (
             <button
               type="button"
