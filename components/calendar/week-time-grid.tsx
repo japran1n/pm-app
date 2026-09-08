@@ -157,6 +157,20 @@ export function WeekTimeGrid({
 
   function handleColumnPointerDown(date: string, event: React.PointerEvent) {
     if (!canDrag || !workspaceId) return;
+    // If this pointerdown originated from inside an already-open popover's
+    // own content (the create form, the edit form, or any of their
+    // interactive controls -- inputs, selects, color swatches, the submit
+    // button), don't start a drag-create gesture or steal pointer capture.
+    // `PendingCreatePopover`/the edit popover are rendered as React children
+    // of this same day-column div (so their floating-ui-positioned content
+    // is still part of this element's DOM subtree even though it visually
+    // renders elsewhere), and without this guard `setPointerCapture` below
+    // re-targets the corresponding pointerup/click for that same gesture to
+    // THIS column div instead of the actual button under the cursor,
+    // meaning a real click on the popover's submit button never registers.
+    if ((event.target as HTMLElement).closest('[data-slot="popover-content"]')) {
+      return;
+    }
     // Only start a create-drag on the empty grid surface itself, not on a
     // block chip (chips stop propagation in their own onPointerDown below).
     //
