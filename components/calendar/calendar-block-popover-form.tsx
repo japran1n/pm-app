@@ -29,10 +29,10 @@
 
 import { useState, type FormEvent } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 import {
   CALENDAR_BLOCK_COLORS,
   CLIENT_PRESENTATION_DEFAULT_COLOR,
@@ -185,9 +185,15 @@ export function CalendarBlockPopoverForm({
         ) : (
           <span />
         )}
-        <Button type="submit" size="sm" disabled={pending}>
+        {/* Native button to guarantee form submission — base-ui's Button
+            primitive may intercept clicks before the form's onSubmit fires. */}
+        <button
+          type="submit"
+          disabled={pending}
+          className={cn(buttonVariants({ variant: "default", size: "sm" }))}
+        >
           {submitLabel}
-        </Button>
+        </button>
       </div>
     </form>
   );
