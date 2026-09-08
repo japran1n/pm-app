@@ -58,6 +58,10 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --font-weight-medium: 510;
+  --font-weight-semibold: 590;
+  --color-line-row: var(--line-row);
+  --color-bg-hover: var(--bg-hover);
 }
 
 :root {
@@ -81,30 +85,26 @@
   --gg-light-100: #ffffff;
   --gg-brand-500: #3670e1;
 
-  --background: var(--gg-gray-50);
-  --foreground: var(--gg-gray-900);
-  /* Cards/popovers sit a full step lighter than the page background so
-     surfaces visibly lift off the ground instead of blending into it. */
-  --card: var(--gg-light-100);
-  --card-foreground: var(--gg-gray-900);
-  --popover: var(--gg-light-100);
-  --popover-foreground: var(--gg-gray-900);
-  /* Figma's primary button is Style=Primary, Color=Dark: dark fill,
-     light label. The blue is an accent (ring/links/charts/active-nav),
-     never the default button fill. */
-  --primary: var(--gg-gray-900);
-  --primary-foreground: var(--gg-light-100);
-  --secondary: var(--gg-gray-100);
-  --secondary-foreground: var(--gg-gray-900);
-  --muted: var(--gg-gray-100);
-  /* A real gray step rather than a black-alpha wash — reads consistently
-     over both --background and --card instead of getting darker/lighter
-     depending on what's underneath it. */
-  --muted-foreground: var(--gg-gray-600);
-  --accent: var(--gg-gray-200);
-  --accent-foreground: var(--gg-gray-900);
-  --brand: var(--gg-brand-500);
-  --brand-foreground: var(--gg-light-100);
+  /* Linear dark tokens — workspace internals */
+  --background: #0f1011;
+  --foreground: #f7f8f8;
+  --card: #141516;
+  --card-foreground: #f7f8f8;
+  --popover: #141516;
+  --popover-foreground: #f7f8f8;
+  --primary: #5e6ad2;
+  --primary-foreground: #ffffff;
+  --secondary: #232326;
+  --secondary-foreground: #d0d6e0;
+  --muted: #1c1d1f;
+  --muted-foreground: #8a8f98;
+  --accent: #28282c;
+  --accent-foreground: #f7f8f8;
+  --brand: #5e6ad2;
+  --brand-foreground: #ffffff;
+  /* Two new tokens Linear uses that shadcn doesn't have */
+  --line-row: #202122;
+  --bg-hover: #ffffff0d;
   /* F004 (missions/20260903-portal): the four client-facing status
      buckets (waiting / in progress / blocked / done) a project status
      maps to (components/portal/status-label.ts's `resolveClientBucket`).
@@ -123,12 +123,11 @@
   --status-progress-bg: color-mix(in srgb, var(--status-progress) 16%, transparent);
   --status-blocked-bg: color-mix(in srgb, var(--status-blocked) 16%, transparent);
   --status-done-bg: color-mix(in srgb, var(--status-done) 16%, transparent);
-  --destructive: oklch(
-    0.577 0.245 27.325
-  ); /* not in the Figma palette; kept from the shadcn base */
-  --border: var(--gg-gray-200);
-  --input: var(--gg-gray-300);
-  --ring: var(--gg-brand-500);
+  --destructive: #eb5757;
+  --destructive-foreground: #ffffff;
+  --border: #23252a;
+  --input: #34343a;
+  --ring: #5e69d1;
   --chart-1: var(--gg-brand-500);
   --chart-2: var(--gg-gray-600);
   --chart-3: var(--gg-gray-500);
@@ -136,17 +135,40 @@
   --chart-5: var(--gg-gray-300);
   /* Figma buttons and tags are rounded-[2px]; the whole system is that sharp. */
   --radius: 0.5rem;
-  /* Sidebar is its own "chrome" step: cooler and a shade deeper than the
-     page background (never dark) so it reads as a distinct panel, with
-     the brand blue driving the active item instead of another gray. */
-  --sidebar: var(--gg-gray-100);
-  --sidebar-foreground: var(--gg-gray-900);
-  --sidebar-primary: var(--gg-brand-500);
-  --sidebar-primary-foreground: var(--gg-light-100);
-  --sidebar-accent: color-mix(in srgb, var(--gg-brand-500) 12%, var(--gg-light-100));
-  --sidebar-accent-foreground: var(--gg-brand-500);
-  --sidebar-border: var(--gg-gray-200);
-  --sidebar-ring: var(--gg-brand-500);
+  /* sidebar */
+  --sidebar: #08090a;
+  --sidebar-foreground: #d0d6e0;
+  --sidebar-primary: #5e6ad2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #28282c;
+  --sidebar-accent-foreground: #f7f8f8;
+  --sidebar-border: transparent;
+  --sidebar-ring: #5e69d1;
+}
+
+[data-surface="portal"] {
+  /* Good Guys 3.0 light tokens — portal stays light */
+  --background: #f7f8fa;
+  --foreground: #0f1115;
+  --card: #ffffff;
+  --card-foreground: #0f1115;
+  --popover: #ffffff;
+  --popover-foreground: #0f1115;
+  --primary: #3670e1;
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f4;
+  --secondary-foreground: #3f4451;
+  --muted: #eef0f4;
+  --muted-foreground: #7b8291;
+  --accent: #e3e6ec;
+  --accent-foreground: #3f4451;
+  --destructive: #b8332a;
+  --destructive-foreground: #ffffff;
+  --border: #e3e6ec;
+  --input: #e3e6ec;
+  --ring: #3670e1;
+  --brand: #3670e1;
+  --brand-foreground: #ffffff;
 }
 
 @layer base {
@@ -158,6 +180,8 @@
   }
   html {
     @apply font-sans;
+    font-feature-settings: "cv01", "ss03";
+    font-optical-sizing: auto;
   }
 }
 
