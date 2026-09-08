@@ -73,6 +73,10 @@ import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 // not just the calendar.
 import { getUpcomingClientPresentations } from "@/lib/calendar/client-presentation";
 import { ClientPresentationBanner } from "@/components/calendar/client-presentation-banner";
+// Bugfix (whitespace-below-short-content): see this component's own
+// file-header comment for why `<main>`'s sizing is decided per-route here
+// instead of being a single fixed class on the element below.
+import { WorkspaceMain } from "@/components/nav/workspace-main";
 
 // AS-022: force every request under /w/* through a real server round-trip
 // instead of allowing the browser to serve a bfcache-restored copy of a
@@ -397,22 +401,20 @@ export default async function WorkspaceLayout({
       <OnboardingTour initialDismissed={tourDismissed} />
       <BreadcrumbProvider>
       {
-        // F120 (AS-073): `min-h-svh` only sets a FLOOR on this row's height
-        // -- it lets the row grow past the viewport if any descendant's
-        // content is taller than the screen, which is exactly what turns
-        // into a whole-page scroll for a route (like chat) that has its own
-        // internal, bounded-height scroll container further down
-        // (components/chat/message-list.tsx's `overflow-y-auto`): the two
-        // scroll containers fight, and depending on which one the browser
-        // decides owns the scroll, `<main>`'s sticky children (a channel's
-        // toolbar) can end up positioned against the wrong scroll context
-        // and appear to vanish. `h-svh` (a fixed height, not a minimum)
-        // plus `min-h-0` on `<main>` below caps this row at the viewport
-        // exactly, so `<main>`'s own `overflow-y-auto` only ever activates
-        // for a route that doesn't already manage its own internal
-        // scrolling (unchanged behaviour for every non-chat page), while a
-        // route like chat that DOES bound its own content to `h-full
-        // min-h-0` never grows past that cap in the first place.
+        // F120 (AS-073): `h-svh` (a fixed height, not a minimum) caps this
+        // row at the viewport exactly. `<AppSidebar>`'s own root element
+        // opts out of the row's default cross-axis stretch itself (it sets
+        // `sticky top-0 h-svh self-start` directly -- see that component),
+        // so it's always pinned to the viewport regardless of `<main>`'s
+        // height. `<main>` (now `<WorkspaceMain>`, see that component's own
+        // file-header comment) does the same per-route: capped to the
+        // viewport with its own `overflow-y-auto` for chat (so chat's
+        // internal, bounded-height scroll container further down --
+        // components/chat/message-list.tsx's `overflow-y-auto` -- never
+        // fights a second, page-level scroll container), or sized to its
+        // own content for every other route, letting the row/document grow
+        // and scroll naturally instead of `<main>` being forced to exactly
+        // `h-svh` and leaving empty space below short content.
       }
       <div className="flex h-svh">
         <AppSidebar
@@ -444,7 +446,7 @@ export default async function WorkspaceLayout({
           requestsCount={openClientRequestCount}
           chatUnreadCount={chatUnreadTotal}
         />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <WorkspaceMain>
           <ClientPresentationBanner
             presentations={upcomingClientPresentations}
             workspaceSlug={workspaceSlug}
@@ -455,7 +457,7 @@ export default async function WorkspaceLayout({
             workspaceName={activeWorkspace.name}
           />
           {children}
-        </main>
+        </WorkspaceMain>
       </div>
       </BreadcrumbProvider>
       </WorkspacePresenceProvider>

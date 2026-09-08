@@ -336,8 +336,20 @@ describe("channel scroll-container layout (AS-073)", () => {
   });
 
   it("test_AS_073_main_is_height_bounded_so_its_own_scroll_is_a_fallback_not_a_fight", () => {
+    // Bugfix (whitespace-below-short-content): `<main>`'s sizing now
+    // depends on the active route (bounded + its own overflow-y-auto for
+    // chat; content-sized for everything else, so short pages don't leave
+    // dangling empty space) -- see components/nav/workspace-main.tsx's own
+    // file-header comment. The workspace layout renders that component
+    // instead of a raw `<main>` with one fixed class string.
     const layout = read("app/(workspace)/w/[workspaceSlug]/layout.tsx");
-    expect(layout).toMatch(/<main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">/);
+    expect(layout).toMatch(/<WorkspaceMain>/);
+
+    const workspaceMain = read("components/nav/workspace-main.tsx");
+    // Chat keeps the exact bounded-height + own-overflow behaviour AS-073
+    // depends on.
+    expect(workspaceMain).toMatch(/min-h-0/);
+    expect(workspaceMain).toMatch(/overflow-y-auto/);
   });
 
   it("test_AS_073_channel_view_bounds_itself_to_the_available_height", () => {
