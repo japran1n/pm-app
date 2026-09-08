@@ -58,6 +58,7 @@ function DecisionOwnerRow({
   const [value, setValue] = useState(ownerId ?? NONE_VALUE);
   const [isPending, startTransition] = useTransition();
   const [isRemoving, startRemoveTransition] = useTransition();
+  const selectedMember = clientMembers.find((member) => member.userId === value);
 
   function handleChange(nextValue: string) {
     const previous = value;
@@ -105,7 +106,11 @@ function DecisionOwnerRow({
           disabled={disabled || isPending}
         >
           <SelectTrigger id={`decision-owner-${decisionType}`} className="w-56">
-            <SelectValue placeholder="No owner set" />
+            <SelectValue placeholder="No owner set">
+              {value === NONE_VALUE
+                ? "No owner"
+                : (selectedMember?.name ?? selectedMember?.email ?? selectedMember?.userId ?? "No owner")}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NONE_VALUE}>No owner</SelectItem>
