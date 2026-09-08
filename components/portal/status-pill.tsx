@@ -40,27 +40,17 @@ import { resolveClientBucket, type ClientBucket } from "@/components/portal/stat
 import type { StatusCategory } from "@/lib/queries/portal";
 import { cn } from "@/lib/utils";
 
-const BUCKET_CLASSES: Record<ClientBucket, { dot: string; text: string; bg: string }> = {
-  waiting: {
-    dot: "bg-status-waiting",
-    text: "text-status-waiting",
-    bg: "bg-status-waiting-bg",
-  },
-  progress: {
-    dot: "bg-status-progress",
-    text: "text-status-progress",
-    bg: "bg-status-progress-bg",
-  },
-  blocked: {
-    dot: "bg-status-blocked",
-    text: "text-status-blocked",
-    bg: "bg-status-blocked-bg",
-  },
-  done: {
-    dot: "bg-status-done",
-    text: "text-status-done",
-    bg: "bg-status-done-bg",
-  },
+// F008 (missions/20260909-linear-ds): Linear-style outline pill -- no solid
+// background fill on the pill itself, just a border and a small colour dot
+// ahead of the label. Colours here are Linear's own bucket palette, kept
+// separate from the `--status-*` CSS tokens (app/globals.css) which still
+// back the older filled treatment used elsewhere (page-pipeline.tsx,
+// status-distribution.tsx, etc -- out of this feature's scope).
+const BUCKET_DOT_COLORS: Record<ClientBucket, string> = {
+  progress: "#f0bf00",
+  waiting: "#00b8cc",
+  blocked: "#eb5757",
+  done: "#5e6ad2",
 };
 
 export function StatusPill({
@@ -98,31 +88,33 @@ export function StatusPill({
         data-testid="status-pill"
         data-bucket="none"
         className={cn(
-          "inline-flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-micro font-medium text-muted-foreground",
+          "inline-flex max-w-full items-center rounded-full border border-border bg-transparent px-2 py-0.5 text-micro font-medium text-muted-foreground",
           className,
         )}
       >
-        <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+        <span aria-hidden className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
         <span className="truncate">No status</span>
       </span>
     );
   }
 
   const bucket = resolveClientBucket(category, clientBucket);
-  const classes = BUCKET_CLASSES[bucket];
+  const dotColor = BUCKET_DOT_COLORS[bucket];
 
   const pill = (
     <span
       data-testid="status-pill"
       data-bucket={bucket}
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-micro font-medium",
-        classes.bg,
-        classes.text,
+        "inline-flex max-w-full items-center rounded-full border border-border bg-transparent px-2 py-0.5 text-micro font-medium text-foreground",
         className,
       )}
     >
-      <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", classes.dot)} />
+      <span
+        aria-hidden
+        className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: dotColor }}
+      />
       <span className="truncate">{labelOverride ?? name}</span>
     </span>
   );

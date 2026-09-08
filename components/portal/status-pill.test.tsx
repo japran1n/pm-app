@@ -30,8 +30,8 @@ describe("StatusPill", () => {
     render(<StatusPill name="Backlog" category="not_started" clientBucket={null} description={null} />);
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "progress");
-    expect(pill.className).toContain("bg-status-progress-bg");
-    expect(pill.className).toContain("text-status-progress");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
   });
 
   it("test_AS_015_renders_the_waiting_bucket_token_classes_via_explicit_override", () => {
@@ -45,16 +45,16 @@ describe("StatusPill", () => {
     );
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "waiting");
-    expect(pill.className).toContain("bg-status-waiting-bg");
-    expect(pill.className).toContain("text-status-waiting");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
   });
 
   it("test_AS_015_renders_the_progress_bucket_token_classes", () => {
     render(<StatusPill name="In Development" category="in_progress" clientBucket={null} description={null} />);
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "progress");
-    expect(pill.className).toContain("bg-status-progress-bg");
-    expect(pill.className).toContain("text-status-progress");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
   });
 
   // The distinction category alone cannot make: "Awaiting Client
@@ -72,16 +72,16 @@ describe("StatusPill", () => {
     );
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "blocked");
-    expect(pill.className).toContain("bg-status-blocked-bg");
-    expect(pill.className).toContain("text-status-blocked");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
   });
 
   it("test_AS_015_renders_the_done_bucket_token_classes", () => {
     render(<StatusPill name="Completed" category="done" clientBucket={null} description={null} />);
     const pill = screen.getByTestId("status-pill");
     expect(pill).toHaveAttribute("data-bucket", "done");
-    expect(pill.className).toContain("bg-status-done-bg");
-    expect(pill.className).toContain("text-status-done");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
   });
 
   // AS-015: the pill's own label is the real status name the team sees
@@ -143,7 +143,8 @@ describe("StatusPill", () => {
     expect(pill.className).not.toContain("bg-status-progress-bg");
     expect(pill.className).not.toContain("bg-status-blocked-bg");
     expect(pill.className).not.toContain("bg-status-done-bg");
-    expect(pill.className).toContain("bg-muted");
+    expect(pill.className).toContain("border-border");
+    expect(pill.className).toContain("bg-transparent");
     expect(screen.getByText("No status")).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
