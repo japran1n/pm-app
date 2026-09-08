@@ -206,7 +206,18 @@ export function WeekTimeGrid({
     if (dragCreate) {
       const { startTime, endTime } = dragRangeToTimes(dragCreate.startPx, dragCreate.currentPx);
       const anchorPx = Math.min(dragCreate.startPx, dragCreate.currentPx);
-      setPendingCreate({ date: dragCreate.date, startTime, endTime, anchorPx });
+      const { date } = dragCreate;
+      // Deferred to a macrotask: opening the popover synchronously inside
+      // this same pointerup/click gesture races base-ui's own
+      // outside-press dismiss listener, which (since the actual clicked
+      // element is the grid cell, not the popover's own trigger/floating
+      // element) sees this click as "outside" and immediately closes the
+      // popover it just opened. Yielding to the next tick lets the click
+      // that created this pending block finish before the popover (and
+      // its dismiss listeners) mount.
+      setTimeout(() => {
+        setPendingCreate({ date, startTime, endTime, anchorPx });
+      }, 0);
       setDragCreate(null);
       return;
     }
@@ -346,41 +357,6 @@ export function WeekTimeGrid({
     };
   }, [resize, resizePreviewPx, blocksState]);
 
-  // Virtual anchor (base-ui's Positioner accepts anything with a
-  // `getBoundingClientRect` method, not just a real DOM element) placed at
-  // the exact spot the create-gesture happened in the grid, recomputed
-  // live from the column's current viewport rect every time the popover
-  // measures -- this replaces an earlier unpositioned `sr-only` trigger
-  // span (rendered as a grid sibling, with zero relationship to the
-  // clicked cell) that could put the popup off-screen or make it look
-  // like the click silently did nothing.
-  const pendingCreateAnchor = useMemo(() => {
-    if (!pendingCreate) return null;
-    const { date, anchorPx } = pendingCreate;
-    return {
-      getBoundingClientRect: (): DOMRect => {
-        const el = columnRefs.current[date];
-        const rect = el?.getBoundingClientRect();
-        const left = rect?.left ?? 0;
-        const width = rect?.width ?? 0;
-        const top = (rect?.top ?? 0) + anchorPx;
-        return {
-          x: left,
-          y: top,
-          top,
-          left,
-          right: left + width,
-          bottom: top,
-          width,
-          height: 0,
-          toJSON() {
-            return this;
-          },
-        } as DOMRect;
-      },
-    };
-  }, [pendingCreate]);
-
   return (
     <div className="flex flex-col gap-2" data-testid="calendar-week-time-grid">
       {/* All-day task row -- tasks carry no time-of-day (due_date only),
@@ -480,33 +456,27 @@ export function WeekTimeGrid({
                 data-testid="calendar-week-drag-preview"
               />
             )}
+
+            {pendingCreate && pendingCreate.date === day.date && (
+              <PendingCreatePopover
+                pendingCreate={pendingCreate}
+                onSubmit={handleCreate}
+                onCancel={() => setPendingCreate(null)}
+              />
+            )}
           </div>
         ))}
       </div>
-
-      {pendingCreate && pendingCreateAnchor && (
-        <PendingCreatePopover
-          pendingCreate={pendingCreate}
-          anchor={pendingCreateAnchor}
-          onSubmit={handleCreate}
-          onCancel={() => setPendingCreate(null)}
-        />
-      )}
     </div>
   );
 }
 
 function PendingCreatePopover({
   pendingCreate,
-  anchor,
   onSubmit,
   onCancel,
 }: {
   pendingCreate: { date: string; startTime: string; endTime: string; anchorPx: number };
-  // Virtual anchor pinned to the actual clicked/dragged spot in the grid
-  // (see `pendingCreateAnchor` in the parent) -- base-ui's Positioner
-  // accepts this in place of a real trigger element.
-  anchor: { getBoundingClientRect: () => DOMRect };
   onSubmit: (values: CalendarBlockFormValues) => Promise<void> | void;
   onCancel: () => void;
 }) {
@@ -523,9 +493,31 @@ function PendingCreatePopover({
 
   return (
     <Popover open onOpenChange={(open) => !open && onCancel()}>
-      <PopoverTrigger render={<span className="sr-only" />} />
+      {/*
+       * base-ui's Popover.Trigger requires (by default, via `nativeButton`)
+       * that the element it renders is a real <button> -- passing a
+       * `getBoundingClientRect`-only virtual object as `anchor` while the
+       * trigger itself wasn't a real button caused the whole popover to
+       * silently fail to render (plus a console warning). Rendering an
+       * actual, invisible 1x1 <button> positioned absolutely at the exact
+       * clicked/dragged spot inside this day's (already `relative`)
+       * column, and letting the Positioner anchor to THAT real element
+       * (the default anchor for a trigger, no explicit `anchor` prop
+       * needed), satisfies base-ui's contract and reliably places the
+       * popover at the clicked cell.
+       */}
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            className="pointer-events-none absolute h-px w-px opacity-0"
+            style={{ top: pendingCreate.anchorPx, left: 0 }}
+          />
+        }
+      />
       <PopoverContent
-        anchor={anchor}
         side="right"
         align="start"
         data-testid="calendar-week-create-popover"
