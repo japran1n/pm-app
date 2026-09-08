@@ -517,6 +517,29 @@ export async function sendMessage(
   // plain-text projection is derived from the same document.
   const linkedBodyJson = autolinkBody(parsed.data.bodyJson as JSONContent);
 
+  // BUG FIX (confirmed live: empty-body messages in the messages table --
+  // sender name + timestamp, no text, no attachment): the client-side
+  // composer guard (message-composer.tsx's isEmptyDoc/submit) is
+  // defense-in-depth only, not the enforcement boundary -- a stale client
+  // bundle, a race between two rapid Enter presses, or any future caller of
+  // this Server Action could still submit a Tiptap doc that projects to
+  // empty/whitespace-only plain text. This is the authoritative,
+  // server-side guard: reject the insert outright unless there is either
+  // real text content OR at least one attachment being linked, matching
+  // the same "text or attachment" allowance the composer's own submit()
+  // gate documents. Returns a normal `{ ok: false }` result (not a thrown
+  // error) so the composer's existing `if (!result.ok) setError(...)`
+  // handling surfaces this cleanly instead of leaving the send button
+  // stuck -- no silent no-op.
+  const hasText = extractPlainText(linkedBodyJson).length > 0;
+  const hasAttachments = (attachmentIds ?? []).length > 0;
+  if (!hasText && !hasAttachments) {
+    return {
+      ok: false,
+      error: "Message can't be empty.",
+    };
+  }
+
   const { data: inserted, error: insertError } = await supabase
     .from("messages")
     .insert({
@@ -617,6 +640,17 @@ export async function editMessage(
 
   // AS-071: same autolink pass as sendMessage, applied on edit too.
   const linkedBodyJson = autolinkBody(parsed.data.bodyJson as JSONContent);
+
+  // BUG FIX: same authoritative empty-content guard as sendMessage --
+  // editMessage has no attachmentIds parameter, so unlike sendMessage the
+  // bar here is simply "must have real text left" (editing a message down
+  // to nothing should go through deleteMessage instead).
+  if (extractPlainText(linkedBodyJson).length === 0) {
+    return {
+      ok: false,
+      error: "Message can't be empty.",
+    };
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from("messages")

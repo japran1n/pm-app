@@ -25,7 +25,7 @@ import type { JSONContent } from "@tiptap/react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { docFromPlainText, toPlainJson } from "@/lib/comments/rich-text";
+import { docFromPlainText, extractPlainText, toPlainJson } from "@/lib/comments/rich-text";
 import {
   uploadChatAttachment,
   removePendingChatAttachment,
@@ -64,8 +64,23 @@ function useRichTextModule(): RichTextEditorModule | null {
 
 const EMPTY_DOC: JSONContent = { type: "doc", content: [] };
 
+// BUG FIX (empty/whitespace-only messages reaching the DB): the previous
+// implementation only checked `doc.content.length === 0`, which is true for
+// a genuinely empty Tiptap doc (`{ type: "doc", content: [] }`) but NOT for
+// the far more common "user typed then deleted everything" / "user typed
+// only spaces" case, where Tiptap still leaves a single empty (or
+// whitespace-only) paragraph node behind — e.g.
+// `{ type: "doc", content: [{ type: "paragraph" }] }` or
+// `{ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "   " }] }] }`.
+// Both have `content.length === 1`, so the old check returned `false`
+// (not empty) and let `submit()` send a message with a blank body straight
+// to the server — this is the confirmed root cause of the empty messages
+// found in the live DM thread. Reuse the same `extractPlainText` projection
+// the server itself uses to compute `body_text`, so "empty" here means
+// exactly what the server considers empty.
 function isEmptyDoc(doc: JSONContent): boolean {
-  return !Array.isArray(doc.content) || doc.content.length === 0;
+  if (!Array.isArray(doc.content) || doc.content.length === 0) return true;
+  return extractPlainText(doc).length === 0;
 }
 
 type PendingAttachment = { id: string; fileName: string; uploading?: boolean };

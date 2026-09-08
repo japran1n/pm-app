@@ -109,6 +109,24 @@ function makeSupabaseMock(opts: {
     }),
   };
 
+  // BUG FIX test support: sendMessage's linkAndLoadAttachments (invoked
+  // whenever attachmentIds is non-empty) touches `message_attachments` --
+  // stubbed here to a no-op empty result, since the attachment-linking
+  // behaviour itself is out of scope for this guard's tests.
+  const messageAttachmentsTable = {
+    update: () => ({
+      in: () => ({
+        eq: () => ({
+          eq: () => ({
+            is: () => ({
+              select: async () => ({ data: [], error: null }),
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+
   const client = {
     auth: {
       getUser: async () => ({ data: { user: opts.user } }),
@@ -117,6 +135,7 @@ function makeSupabaseMock(opts: {
       if (table === "messages") return messagesTable;
       if (table === "channel_members") return channelMembersTable;
       if (table === "channels") return channelsTable;
+      if (table === "message_attachments") return messageAttachmentsTable;
       throw new Error(`unexpected table: ${table}`);
     },
   };
@@ -138,7 +157,20 @@ vi.mock("next/cache", () => ({
   revalidatePath: () => {},
 }));
 
-const validBody = { type: "doc" as const, content: [] };
+// BUG FIX (empty/whitespace-only messages saved to the DB): an empty doc
+// (`content: []`) is now rejected by sendMessage/editMessage's own
+// server-side guard (see lib/actions/chat-messages.ts), so a body used to
+// exercise the "happy path" here must carry real text -- the guard's
+// negative-case tests below are what exercise the empty-content path.
+const validBody = {
+  type: "doc" as const,
+  content: [{ type: "paragraph", content: [{ type: "text", text: "hello" }] }],
+};
+const emptyBody = { type: "doc" as const, content: [] };
+const whitespaceOnlyBody = {
+  type: "doc" as const,
+  content: [{ type: "paragraph", content: [{ type: "text", text: "   " }] }],
+};
 
 describe("sendMessage (F3)", () => {
   beforeEach(() => {
@@ -192,6 +224,55 @@ describe("sendMessage (F3)", () => {
       expect(result.data.senderId).toBe(USER_ID);
     }
   });
+
+  // BUG FIX regression coverage: confirmed live, messages with a completely
+  // empty body were reaching the `messages` table (sender + timestamp, no
+  // text, no attachment). This is the authoritative server-side guard --
+  // it must reject regardless of what client-side bug or race let an empty
+  // body through.
+  it("test_BUGFIX_sendMessage_rejects_a_completely_empty_body_with_no_attachments", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: USER_ID },
+      isChannelMember: true,
+    });
+    const { sendMessage } = await import("@/lib/actions/chat-messages");
+
+    const result = await sendMessage(CHANNEL_ID, emptyBody);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/empty/i);
+    }
+  });
+
+  it("test_BUGFIX_sendMessage_rejects_a_whitespace_only_body_with_no_attachments", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: USER_ID },
+      isChannelMember: true,
+    });
+    const { sendMessage } = await import("@/lib/actions/chat-messages");
+
+    const result = await sendMessage(CHANNEL_ID, whitespaceOnlyBody);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/empty/i);
+    }
+  });
+
+  it("test_BUGFIX_sendMessage_allows_an_empty_body_when_attachments_are_present", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: USER_ID },
+      isChannelMember: true,
+    });
+    const { sendMessage } = await import("@/lib/actions/chat-messages");
+
+    // Attachment-only message: empty text body is fine as long as at least
+    // one attachment id is being linked -- mirrors the composer's own
+    // `hasContent || hasAttachments` submit gate.
+    const result = await sendMessage(CHANNEL_ID, emptyBody, null, [
+      "55555555-5555-4555-8555-555555555555",
+    ]);
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("editMessage / deleteMessage (F3, F9's server-side re-check)", () => {
@@ -234,6 +315,26 @@ describe("editMessage / deleteMessage (F3, F9's server-side re-check)", () => {
 
     const result = await editMessage(MESSAGE_ID, validBody);
     expect(result.ok).toBe(true);
+  });
+
+  it("test_BUGFIX_editMessage_rejects_editing_a_message_down_to_empty", async () => {
+    mockSupabase = makeSupabaseMock({
+      user: { id: USER_ID },
+      isChannelMember: true,
+      existingMessage: {
+        id: MESSAGE_ID,
+        sender_id: USER_ID,
+        channel_id: CHANNEL_ID,
+        deleted_at: null,
+      },
+    });
+    const { editMessage } = await import("@/lib/actions/chat-messages");
+
+    const result = await editMessage(MESSAGE_ID, emptyBody);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/empty/i);
+    }
   });
 
   it("test_F3_deleteMessage_rejects_deleting_someone_elses_message", async () => {

@@ -176,4 +176,74 @@ describe("bugfix: message composer Enter race + empty-message rejection", () => 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onSend).not.toHaveBeenCalled();
   });
+
+  // BUG FIX (confirmed live, DM thread): the previous `isEmptyDoc` only
+  // checked `content.length === 0`, which does NOT catch the far more
+  // common shape Tiptap actually leaves behind after typing then deleting
+  // everything (or typing only spaces) -- a doc with one empty/whitespace
+  // paragraph node, e.g. `{ type: "doc", content: [{ type: "paragraph" }] }`.
+  // `content.length` there is 1, so the old check let this through and
+  // `submit()` sent it straight to the server -- this is the confirmed
+  // root cause of the empty rows found in the live `messages` table.
+  it("test_BUGFIX_composer_does_not_send_a_doc_with_only_an_empty_paragraph", async () => {
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+
+    render(
+      createElement(MessageComposer, {
+        onSend,
+        mentionSuggestions: [],
+        channelId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rich-editor-stub")).toBeInTheDocument();
+    });
+
+    const emptyParagraphDoc: JSONDoc = {
+      type: "doc",
+      content: [{ type: "paragraph" }],
+    };
+    act(() => {
+      latestOnChange?.(emptyParagraphDoc);
+    });
+    act(() => {
+      latestOnEnterSubmit?.(emptyParagraphDoc);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("test_BUGFIX_composer_does_not_send_a_paragraph_containing_only_spaces", async () => {
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+
+    render(
+      createElement(MessageComposer, {
+        onSend,
+        mentionSuggestions: [],
+        channelId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("rich-editor-stub")).toBeInTheDocument();
+    });
+
+    const spacesOnlyDoc: JSONDoc = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "   " }] },
+      ],
+    };
+    act(() => {
+      latestOnChange?.(spacesOnlyDoc);
+    });
+    act(() => {
+      latestOnEnterSubmit?.(spacesOnlyDoc);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onSend).not.toHaveBeenCalled();
+  });
 });
