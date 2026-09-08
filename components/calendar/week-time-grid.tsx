@@ -137,6 +137,11 @@ export function WeekTimeGrid({
     date: string;
     startTime: string;
     endTime: string;
+    // Top offset (px) within the day column of the gesture that created
+    // this pending block -- used to anchor the popover to the actual
+    // clicked/dragged spot in the grid (see `pendingCreateAnchor` below),
+    // rather than an unpositioned, decoupled trigger element.
+    anchorPx: number;
   } | null>(null);
   const columnRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -200,7 +205,8 @@ export function WeekTimeGrid({
   function commitPointerGesture() {
     if (dragCreate) {
       const { startTime, endTime } = dragRangeToTimes(dragCreate.startPx, dragCreate.currentPx);
-      setPendingCreate({ date: dragCreate.date, startTime, endTime });
+      const anchorPx = Math.min(dragCreate.startPx, dragCreate.currentPx);
+      setPendingCreate({ date: dragCreate.date, startTime, endTime, anchorPx });
       setDragCreate(null);
       return;
     }
@@ -340,6 +346,41 @@ export function WeekTimeGrid({
     };
   }, [resize, resizePreviewPx, blocksState]);
 
+  // Virtual anchor (base-ui's Positioner accepts anything with a
+  // `getBoundingClientRect` method, not just a real DOM element) placed at
+  // the exact spot the create-gesture happened in the grid, recomputed
+  // live from the column's current viewport rect every time the popover
+  // measures -- this replaces an earlier unpositioned `sr-only` trigger
+  // span (rendered as a grid sibling, with zero relationship to the
+  // clicked cell) that could put the popup off-screen or make it look
+  // like the click silently did nothing.
+  const pendingCreateAnchor = useMemo(() => {
+    if (!pendingCreate) return null;
+    const { date, anchorPx } = pendingCreate;
+    return {
+      getBoundingClientRect: (): DOMRect => {
+        const el = columnRefs.current[date];
+        const rect = el?.getBoundingClientRect();
+        const left = rect?.left ?? 0;
+        const width = rect?.width ?? 0;
+        const top = (rect?.top ?? 0) + anchorPx;
+        return {
+          x: left,
+          y: top,
+          top,
+          left,
+          right: left + width,
+          bottom: top,
+          width,
+          height: 0,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      },
+    };
+  }, [pendingCreate]);
+
   return (
     <div className="flex flex-col gap-2" data-testid="calendar-week-time-grid">
       {/* All-day task row -- tasks carry no time-of-day (due_date only),
@@ -443,9 +484,10 @@ export function WeekTimeGrid({
         ))}
       </div>
 
-      {pendingCreate && (
+      {pendingCreate && pendingCreateAnchor && (
         <PendingCreatePopover
           pendingCreate={pendingCreate}
+          anchor={pendingCreateAnchor}
           onSubmit={handleCreate}
           onCancel={() => setPendingCreate(null)}
         />
@@ -456,10 +498,15 @@ export function WeekTimeGrid({
 
 function PendingCreatePopover({
   pendingCreate,
+  anchor,
   onSubmit,
   onCancel,
 }: {
-  pendingCreate: { date: string; startTime: string; endTime: string };
+  pendingCreate: { date: string; startTime: string; endTime: string; anchorPx: number };
+  // Virtual anchor pinned to the actual clicked/dragged spot in the grid
+  // (see `pendingCreateAnchor` in the parent) -- base-ui's Positioner
+  // accepts this in place of a real trigger element.
+  anchor: { getBoundingClientRect: () => DOMRect };
   onSubmit: (values: CalendarBlockFormValues) => Promise<void> | void;
   onCancel: () => void;
 }) {
@@ -477,7 +524,12 @@ function PendingCreatePopover({
   return (
     <Popover open onOpenChange={(open) => !open && onCancel()}>
       <PopoverTrigger render={<span className="sr-only" />} />
-      <PopoverContent data-testid="calendar-week-create-popover">
+      <PopoverContent
+        anchor={anchor}
+        side="right"
+        align="start"
+        data-testid="calendar-week-create-popover"
+      >
         <CalendarBlockPopoverForm
           initial={{
             title: "",
