@@ -49,7 +49,11 @@ export function WorkspaceSwitcher({
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" size="sm" className="max-w-56 gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="max-w-56 gap-1.5 rounded-lg"
+          >
             {current ? (
               <WorkspaceLogo
                 workspaceId={current.id}
@@ -58,7 +62,9 @@ export function WorkspaceSwitcher({
                 size="sm"
               />
             ) : null}
-            <span className="truncate">{current?.name ?? "Select workspace"}</span>
+            <span className="truncate font-mono uppercase">
+              {current?.name ?? "Select workspace"}
+            </span>
             <ChevronsUpDown className="text-muted-foreground" />
           </Button>
         }
