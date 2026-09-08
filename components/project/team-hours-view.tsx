@@ -196,9 +196,10 @@ export function TeamHoursView({
     byCategory.set(categoryKey, categoryBucket);
   }
 
-  const usagePercent = budget
-    ? Math.min(100, Math.round((billableMinutes / budget.soldMinutes) * 100))
+  const rawUsagePercent = budget
+    ? Math.round((billableMinutes / budget.soldMinutes) * 100)
     : null;
+  const usagePercent = rawUsagePercent !== null ? Math.min(100, rawUsagePercent) : null;
   const isOverBudget = budget !== null && billableMinutes > budget.soldMinutes;
 
   return (
@@ -228,7 +229,7 @@ export function TeamHoursView({
                 <ProgressIndicator className={cn(isOverBudget && "bg-destructive")} />
               </ProgressTrack>
             </Progress>
-            <span className="text-xs text-muted-foreground">{usagePercent}% of budget</span>
+            <span className="text-xs text-muted-foreground">{rawUsagePercent}% of budget</span>
           </CardContent>
         </Card>
       )}
