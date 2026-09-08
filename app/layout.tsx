@@ -1,26 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, IBM_Plex_Mono } from "next/font/google";
+import { Inter, IBM_Plex_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-// Good Guys 3.0 design system (Figma "STYLE GUIDE" pages).
-// The design specifies PP Neue Montreal (Book/400) for display + body and
-// IBM Plex Mono (400) for link-text / tag-text. PP Neue Montreal is a
-// commercial face with no files in this repo, so Geist stands in for it:
-// same geometric-grotesque character, 400 as the working weight. To swap in
-// the licensed face later, replace this one declaration with a
-// next/font/local pointing at the .woff2 files — nothing else changes,
-// because every consumer reads --font-sans.
-const sans = Geist({
+// Linear design system migration (F002): Inter Variable stands in for
+// Linear's proprietary "Inter Display" pairing — same geometric-humanist
+// character, opsz axis enabled for optical sizing across the type scale.
+// IBM Plex Mono is kept (Berkeley Mono declined) for link-text / tag-text.
+const sans = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  axes: ["opsz"],
+  display: "swap",
 });
 
 const mono = IBM_Plex_Mono({
   variable: "--font-plex-mono",
   subsets: ["latin"],
   weight: ["400", "500"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
