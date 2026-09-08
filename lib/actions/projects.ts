@@ -229,6 +229,33 @@ export async function createProject(
     });
   }
 
+  // "Who approves what" decision types: every new project starts with two
+  // (Design, Content) — the new, smaller default per this feature's own
+  // clarified spec, replacing the old fixed four (content/brand/technical/
+  // commercial), which existing projects keep via
+  // 20261117010000_project_decision_types.sql's backfill. Best-effort,
+  // same convention as the chat channel / default views above: a failure
+  // here must not fail project creation itself — a project without a
+  // decision type yet just falls back to adding one later from project
+  // settings (components/approvals/decision-owners.tsx).
+  const DEFAULT_DECISION_TYPES = [
+    { name: "Design", description: "Visual design, moodboards, page layouts." },
+    { name: "Content", description: "Copy, sitemap structure, wording." },
+  ];
+  const { error: decisionTypesError } = await admin.from("project_decision_types").insert(
+    DEFAULT_DECISION_TYPES.map((type, index) => ({
+      project_id: inserted.id,
+      name: type.name,
+      description: type.description,
+      sort_order: index + 1,
+    })),
+  );
+  if (decisionTypesError) {
+    logger.error("createProject: default decision types insert failed (non-fatal)", {
+      error: decisionTypesError,
+    });
+  }
+
   const { data: workspaceRow } = await admin
     .from("workspaces")
     .select("slug")

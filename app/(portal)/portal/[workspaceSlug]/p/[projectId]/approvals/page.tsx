@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   getApprovalHistory,
   getDecisionOwners,
+  getProjectDecisionTypes,
   getOpenApprovalsForClient,
 } from "@/lib/queries/approvals";
 import { getPortalProjects } from "@/lib/queries/portal";
@@ -55,10 +56,11 @@ export default async function PortalApprovalsPage({
 
   if (!project) notFound();
 
-  const [openApprovalsResult, historyResult, ownersResult] = await Promise.all([
+  const [openApprovalsResult, historyResult, ownersResult, decisionTypesResult] = await Promise.all([
     getOpenApprovalsForClient(project.id),
     getApprovalHistory(project.id),
     getDecisionOwners(project.id),
+    getProjectDecisionTypes(project.id),
   ]);
 
   // F079 (missions/20260903-portal audit, defect 1): each of the three
@@ -87,7 +89,7 @@ export default async function PortalApprovalsPage({
         <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
           Who approves what
         </h2>
-        {!ownersResult.ok ? (
+        {!ownersResult.ok || !decisionTypesResult.ok ? (
           <EmptyState
             icon={AlertTriangle}
             title="Couldn't load decision owners"
@@ -95,7 +97,7 @@ export default async function PortalApprovalsPage({
             testId="decision-owners-error"
           />
         ) : (
-          <DecisionOwnersGrid owners={ownersResult.data} />
+          <DecisionOwnersGrid decisionTypes={decisionTypesResult.data} owners={ownersResult.data} />
         )}
       </div>
 

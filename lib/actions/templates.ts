@@ -1208,6 +1208,29 @@ export async function createProjectFromTemplate(
     });
   }
 
+  // "Who approves what" decision types: same best-effort Design/Content
+  // seeding as lib/actions/projects.ts's createProject -- see that
+  // function's own comment for the full rationale. Duplicated for the
+  // same "only two real project-creation entry points" reason the default
+  // view tabs above already are.
+  const DEFAULT_DECISION_TYPES = [
+    { name: "Design", description: "Visual design, moodboards, page layouts." },
+    { name: "Content", description: "Copy, sitemap structure, wording." },
+  ];
+  const { error: decisionTypesError } = await admin.from("project_decision_types").insert(
+    DEFAULT_DECISION_TYPES.map((type, index) => ({
+      project_id: created.project_id as string,
+      name: type.name,
+      description: type.description,
+      sort_order: index + 1,
+    })),
+  );
+  if (decisionTypesError) {
+    logger.error("createProjectFromTemplate: default decision types insert failed (non-fatal)", {
+      error: decisionTypesError,
+    });
+  }
+
   // AS-376 (F316, follow-up to F313): `create_project_from_template`
   // (supabase/migrations/20260822190000_rpc_create_project_from_template.sql)
   // copies each template task's description_json directly in its SQL body,

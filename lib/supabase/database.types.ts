@@ -1427,6 +1427,8 @@ export type Database = {
           id: string
           is_done: boolean
           position: number
+          project_id: string | null
+          task_id: string | null
           title: string
           updated_at: string
           user_id: string
@@ -1437,6 +1439,8 @@ export type Database = {
           id?: string
           is_done?: boolean
           position?: number
+          project_id?: string | null
+          task_id?: string | null
           title: string
           updated_at?: string
           user_id: string
@@ -1447,12 +1451,35 @@ export type Database = {
           id?: string
           is_done?: boolean
           position?: number
+          project_id?: string | null
+          task_id?: string | null
           title?: string
           updated_at?: string
           user_id?: string
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "personal_todos_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "personal_todos_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "active_project_tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "personal_todos_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "personal_todos_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -1708,6 +1735,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_decision_owners_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_decision_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          project_id: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          project_id: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_decision_types_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
@@ -2311,71 +2373,6 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "projects_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      quick_notes: {
-        Row: {
-          completed_at: string | null
-          created_at: string
-          id: string
-          is_done: boolean
-          project_id: string | null
-          task_id: string | null
-          text: string
-          user_id: string
-          workspace_id: string
-        }
-        Insert: {
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          is_done?: boolean
-          project_id?: string | null
-          task_id?: string | null
-          text: string
-          user_id: string
-          workspace_id: string
-        }
-        Update: {
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          is_done?: boolean
-          project_id?: string | null
-          task_id?: string | null
-          text?: string
-          user_id?: string
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "quick_notes_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quick_notes_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "active_project_tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quick_notes_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "quick_notes_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

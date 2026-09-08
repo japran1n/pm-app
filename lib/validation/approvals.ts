@@ -6,24 +6,60 @@ import { z } from "zod";
 // lib/actions/approvals.ts re-validates with these schemas server-side,
 // per this repo's "the client-side check never stands alone" convention.
 //
-// Shape matches `approval_requests_subject_shape_check` and the enum
-// CHECK constraints in supabase/migrations/20260916010000_approval_requests
-// .sql exactly: subject_id required unless subject_type is 'artifact',
-// artifact_url required only when it is. 'phase' is a valid subject_type
+// Shape matches `approval_requests_subject_shape_check` in
+// supabase/migrations/20260916010000_approval_requests.sql exactly:
+// subject_id required unless subject_type is 'artifact', artifact_url
+// required only when it is. Decision type is no longer a fixed enum (see
+// decisionTypeSchema below and project_decision_types). 'phase' is a valid subject_type
 // at the DB layer (a future feature may raise an approval against a
 // project_phase directly) but this feature's dialog only ever raises
 // 'task' | 'doc' | 'artifact' — those are the only three entry points the
 // spec names — so the input schema deliberately narrows to those three
 // rather than accepting 'phase' from a form this feature never renders.
 
-const decisionTypeSchema = z.enum([
-  "content",
-  "brand",
-  "technical",
-  "commercial",
-]);
+// Decision types are now CUSTOMIZABLE per project
+// (`project_decision_types`), so this is no longer a fixed z.enum of the
+// old four values -- shape-only validation here (non-empty, capped
+// length, matching decisionTypeNameSchema below); whether the value
+// actually names an existing decision type for THIS project is re-checked
+// server-side in lib/actions/approvals.ts (requestApproval /
+// setDecisionOwner), the same "server round trip is the authoritative
+// check" convention this file's own header comment already states.
+const decisionTypeSchema = z
+  .string()
+  .trim()
+  .min(1, "Decision type is required.")
+  .max(100, "Decision type must be 100 characters or fewer.");
 
 export type ApprovalDecisionTypeInput = z.infer<typeof decisionTypeSchema>;
+
+// F008 follow-up ("Who approves what" customization): add/remove a
+// project's own decision types.
+const decisionTypeNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Name is required.")
+  .max(100, "Name must be 100 characters or fewer.");
+
+const decisionTypeDescriptionSchema = z
+  .string()
+  .trim()
+  .max(500, "Description must be 500 characters or fewer.");
+
+export const addProjectDecisionTypeSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  name: decisionTypeNameSchema,
+  description: decisionTypeDescriptionSchema.nullable().optional(),
+});
+
+export type AddProjectDecisionTypeInput = z.infer<typeof addProjectDecisionTypeSchema>;
+
+export const removeProjectDecisionTypeSchema = z.object({
+  projectId: z.string().uuid("Invalid project."),
+  decisionTypeId: z.string().uuid("Invalid decision type."),
+});
+
+export type RemoveProjectDecisionTypeInput = z.infer<typeof removeProjectDecisionTypeSchema>;
 
 const subjectTypeSchema = z.enum(["task", "doc", "artifact"]);
 

@@ -16,7 +16,12 @@ import type { PortalQueryResult } from "@/lib/queries/portal";
 // this feature's own migration) is the actual access-control boundary;
 // nothing here re-implements it.
 
-export type ApprovalDecisionType = "content" | "brand" | "technical" | "commercial";
+// "Who approves what" decision types are now CUSTOMIZABLE per project
+// (`project_decision_types`, see that migration's own header comment for
+// why this is no longer a fixed 4-value union) — the value is whatever a
+// team member typed as that decision type's name, so this is a plain
+// string, not a literal union.
+export type ApprovalDecisionType = string;
 export type ApprovalSubjectType = "task" | "doc" | "phase" | "artifact";
 export type ApprovalState = "pending" | "approved" | "changes_requested" | "withdrawn";
 
@@ -168,6 +173,45 @@ export type PortalDecisionOwner = {
   // display value here -- never a second, independent lookup.
   email: string | null;
 };
+
+// The customizable list of decision types itself (`project_decision_types`)
+// -- what the "who approves what" grid/dropdowns iterate over, distinct
+// from `getDecisionOwners` below (who is assigned to each type). RLS
+// (`project_decision_types_select_*`, this feature's own migration) scopes
+// the rows the same way every other table in this file is scoped.
+export type ProjectDecisionType = {
+  id: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+};
+
+export async function getProjectDecisionTypes(
+  projectId: string,
+): Promise<PortalQueryResult<ProjectDecisionType[]>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_decision_types")
+    .select("id, name, description, sort_order")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    logger.error("getProjectDecisionTypes: failed to load decision types", { error });
+    return { ok: false, error: error.message };
+  }
+
+  return {
+    ok: true,
+    data: (data ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      sortOrder: row.sort_order,
+    })),
+  };
+}
 
 // The "who approves what" grid. RLS (`project_decision_owners_select_*`)
 // scopes the rows; resolvePeople resolves the display name/avatar for an

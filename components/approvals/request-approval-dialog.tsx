@@ -28,7 +28,7 @@ import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { requestApproval, getDecisionOwnersForDialog } from "@/lib/actions/approvals";
-import type { ApprovalDecisionType, PortalDecisionOwner } from "@/lib/queries/approvals";
+import type { ApprovalDecisionType, PortalDecisionOwner, ProjectDecisionType } from "@/lib/queries/approvals";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,13 +51,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { UserAvatar } from "@/components/user-avatar";
-
-const DECISION_TYPES: { value: ApprovalDecisionType; label: string }[] = [
-  { value: "content", label: "Content" },
-  { value: "brand", label: "Brand" },
-  { value: "technical", label: "Technical" },
-  { value: "commercial", label: "Commercial" },
-];
 
 export type ApprovalDialogSubject =
   | { subjectType: "task"; subjectId: string; defaultTitle: string; defaultMessage: string | null; defaultDecisionType: ApprovalDecisionType }
@@ -84,12 +77,20 @@ export function RequestApprovalDialog({
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [artifactUrl, setArtifactUrl] = useState("");
-  const [decisionType, setDecisionType] = useState<ApprovalDecisionType>("content");
+  // "" means "not yet chosen" -- decision types are now per-project and
+  // fetched on open (below), so there is no longer a safe hardcoded
+  // default ("content" may not even exist for this project). Set once the
+  // fetch resolves, unless the task subject already names one it knows
+  // exists (subject.defaultDecisionType).
+  const [decisionType, setDecisionType] = useState<ApprovalDecisionType>(
+    subject.subjectType === "task" ? subject.defaultDecisionType : "",
+  );
   const [dueAt, setDueAt] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const [owners, setOwners] = useState<PortalDecisionOwner[] | null>(null);
+  const [decisionTypes, setDecisionTypes] = useState<ProjectDecisionType[] | null>(null);
   const [ownersError, setOwnersError] = useState(false);
 
   function resetForm() {
@@ -103,11 +104,11 @@ export function RequestApprovalDialog({
     } else if (subject.subjectType === "doc") {
       setTitle(subject.defaultTitle);
       setMessage("");
-      setDecisionType("content");
+      setDecisionType("");
     } else {
       setTitle("");
       setMessage("");
-      setDecisionType("content");
+      setDecisionType("");
     }
   }
 
@@ -116,6 +117,7 @@ export function RequestApprovalDialog({
     if (nextOpen) {
       resetForm();
       setOwners(null);
+      setDecisionTypes(null);
       setOwnersError(false);
     }
   }
@@ -127,8 +129,17 @@ export function RequestApprovalDialog({
       if (cancelled) return;
       if (result.ok) {
         setOwners(result.data.owners);
+        setDecisionTypes(result.data.decisionTypes);
+        // For doc/artifact subjects (no defaultDecisionType known ahead of
+        // time), fall back to this project's first configured decision
+        // type once the list has loaded, so the dropdown never opens on a
+        // blank/invalid value.
+        setDecisionType((current) =>
+          current || result.data.decisionTypes[0]?.name || "",
+        );
       } else {
         setOwners([]);
+        setDecisionTypes([]);
         setOwnersError(true);
       }
     });
@@ -139,7 +150,7 @@ export function RequestApprovalDialog({
 
   const currentOwner = owners?.find((owner) => owner.decisionType === decisionType) ?? null;
   const hasOwnerLoadFailed = ownersError;
-  const ownersStillLoading = owners === null;
+  const ownersStillLoading = owners === null || decisionTypes === null;
   const canSubmit = !ownersStillLoading && !hasOwnerLoadFailed && Boolean(currentOwner);
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
@@ -252,12 +263,12 @@ export function RequestApprovalDialog({
                 disabled={isPending}
               >
                 <SelectTrigger id={`${idPrefix}-decision-type`}>
-                  <SelectValue />
+                  <SelectValue placeholder="Loading…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {DECISION_TYPES.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                  {(decisionTypes ?? []).map((option) => (
+                    <SelectItem key={option.id} value={option.name}>
+                      {option.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -287,7 +298,9 @@ export function RequestApprovalDialog({
           </div>
 
           {/* AS-019 definition-of-done: "the dialog names the person who
-              will be asked, in all four decision types." */}
+              will be asked", for whichever decision type is selected --
+              decision types are per-project and customizable now, so this
+              is no longer a fixed count of four. */}
           <div
             className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2.5 text-sm"
             aria-live="polite"

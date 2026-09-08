@@ -32,7 +32,9 @@ import { Separator } from "@/components/ui/separator";
 import {
   getDecisionOwners,
   getProjectClientMembers,
+  getProjectDecisionTypes,
   type PortalDecisionOwner,
+  type ProjectDecisionType,
 } from "@/lib/queries/approvals";
 import { DecisionOwnersSection } from "@/components/approvals/decision-owners";
 import { RequestApprovalDialog } from "@/components/approvals/request-approval-dialog";
@@ -156,6 +158,7 @@ export default async function ProjectSettingsPage({
   let addable: Awaited<ReturnType<typeof getAddableWorkspaceMembers>> = [];
   let lossPreview: Awaited<ReturnType<typeof getVisibilityLossPreview>> = [];
   let decisionOwners: PortalDecisionOwner[] = [];
+  let decisionTypes: ProjectDecisionType[] = [];
   let clientMembers: Awaited<ReturnType<typeof getProjectClientMembers>> = [];
   let projectRoles: ProjectRoleRow[] = [];
   let teamCandidates: Awaited<ReturnType<typeof getProjectTeamCandidates>> = [];
@@ -167,21 +170,31 @@ export default async function ProjectSettingsPage({
     // canManage/canToggleVisibility, both already known), but whenever
     // fetched they run alongside `members` instead of after it.
     let decisionOwnersResult: Awaited<ReturnType<typeof getDecisionOwners>>;
+    let decisionTypesResult: Awaited<ReturnType<typeof getProjectDecisionTypes>>;
     let projectRolesResult: Awaited<ReturnType<typeof getProjectRoles>>;
-    [members, addable, lossPreview, decisionOwnersResult, clientMembers, projectRolesResult, teamCandidates] =
-      await Promise.all([
-        getProjectMembers(project.id),
-        canManage
-          ? getAddableWorkspaceMembers(workspace.id, project.id)
-          : Promise.resolve(addable),
-        canToggleVisibility
-          ? getVisibilityLossPreview(workspace.id, project.id)
-          : Promise.resolve(lossPreview),
-        getDecisionOwners(project.id),
-        getProjectClientMembers(workspace.id),
-        getProjectRoles(project.id),
-        getProjectTeamCandidates(workspace.id, project.id),
-      ]);
+    [
+      members,
+      addable,
+      lossPreview,
+      decisionOwnersResult,
+      decisionTypesResult,
+      clientMembers,
+      projectRolesResult,
+      teamCandidates,
+    ] = await Promise.all([
+      getProjectMembers(project.id),
+      canManage
+        ? getAddableWorkspaceMembers(workspace.id, project.id)
+        : Promise.resolve(addable),
+      canToggleVisibility
+        ? getVisibilityLossPreview(workspace.id, project.id)
+        : Promise.resolve(lossPreview),
+      getDecisionOwners(project.id),
+      getProjectDecisionTypes(project.id),
+      getProjectClientMembers(workspace.id),
+      getProjectRoles(project.id),
+      getProjectTeamCandidates(workspace.id, project.id),
+    ]);
     // F079 (missions/20260903-portal audit, defect 1): `getDecisionOwners`
     // now reports a failed read as `{ ok: false }` rather than silently
     // coalescing it to `[]` (see that function's own header comment) --
@@ -193,6 +206,10 @@ export default async function ProjectSettingsPage({
       throw new Error(decisionOwnersResult.error);
     }
     decisionOwners = decisionOwnersResult.data;
+    if (!decisionTypesResult.ok) {
+      throw new Error(decisionTypesResult.error);
+    }
+    decisionTypes = decisionTypesResult.data;
     if (!projectRolesResult.ok) {
       throw new Error(projectRolesResult.error);
     }
@@ -298,10 +315,10 @@ export default async function ProjectSettingsPage({
               <div className="flex flex-col gap-1">
                 <h2 className="text-sm font-semibold">Who approves what</h2>
                 <p className="text-sm text-muted-foreground">
-                  Which client decides content, brand, technical, and
-                  commercial approvals for this project. A request raised
-                  for a decision type with no owner set here is blocked
-                  before it can be sent.
+                  Which client decides each kind of approval for this
+                  project. Add or remove decision types below, and set who
+                  decides each one — a request raised for a decision type
+                  with no owner set here is blocked before it can be sent.
                 </p>
               </div>
               {/* F008 section 1: the standalone entry point for an
@@ -324,6 +341,7 @@ export default async function ProjectSettingsPage({
             <DecisionOwnersSection
               projectId={project.id}
               owners={decisionOwners}
+              decisionTypes={decisionTypes}
               clientMembers={clientMembers}
               canManage={canManageDecisionOwners}
             />

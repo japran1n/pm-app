@@ -36,13 +36,6 @@ import { cn } from "@/lib/utils";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-const DECISION_TYPE_LABEL: Record<PortalApproval["decisionType"], string> = {
-  content: "Content",
-  brand: "Brand",
-  technical: "Technical",
-  commercial: "Commercial",
-};
-
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -279,9 +272,10 @@ export function ApprovalCard({
       className="flex flex-col gap-3 rounded-lg border border-border p-5"
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-tag text-muted-foreground">
-          {DECISION_TYPE_LABEL[approval.decisionType]}
-        </span>
+        {/* Decision types are per-project and customizable now
+            (project_decision_types) — this is the type's own name, as
+            configured on the project, not a fixed 4-value label lookup. */}
+        <span className="text-tag text-muted-foreground">{approval.decisionType}</span>
         {!settled && approval.dueAt && (
           <span
             data-testid="approval-due-chip"

@@ -63,13 +63,17 @@ import {
   withdrawApprovalSchema,
   setDecisionOwnerSchema,
   projectIdSchema,
+  addProjectDecisionTypeSchema,
+  removeProjectDecisionTypeSchema,
 } from "@/lib/validation/approvals";
 import {
   isTaskClientVisible,
   getDecisionOwners,
   getProjectClientMembers,
+  getProjectDecisionTypes,
   type PortalDecisionOwner,
   type ApprovalDecisionType,
+  type ProjectDecisionType,
 } from "@/lib/queries/approvals";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
@@ -385,7 +389,7 @@ export async function requestApproval(input: {
   artifactUrl?: string | null;
   title: string;
   message?: string | null;
-  decisionType: "content" | "brand" | "technical" | "commercial";
+  decisionType: ApprovalDecisionType;
   dueAt?: string | null;
 }): Promise<RequestApprovalResult> {
   return requestApprovalImpl(input);
@@ -500,7 +504,7 @@ export async function withdrawApproval(requestId: string): Promise<WithdrawAppro
 // ---------------------------------------------------------------------
 
 export type GetDecisionOwnersResult =
-  | { ok: true; data: { owners: PortalDecisionOwner[] } }
+  | { ok: true; data: { owners: PortalDecisionOwner[]; decisionTypes: ProjectDecisionType[] } }
   | { ok: false; error: string };
 
 const getDecisionOwnersImpl = withAuthz(
@@ -513,9 +517,13 @@ const getDecisionOwnersImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (_input, ctx): Promise<GetDecisionOwnersResult> => {
-    const result = await getDecisionOwners(ctx.projectId!);
-    if (!result.ok) return { ok: false, error: result.error };
-    return { ok: true, data: { owners: result.data } };
+    const [ownersResult, decisionTypesResult] = await Promise.all([
+      getDecisionOwners(ctx.projectId!),
+      getProjectDecisionTypes(ctx.projectId!),
+    ]);
+    if (!ownersResult.ok) return { ok: false, error: ownersResult.error };
+    if (!decisionTypesResult.ok) return { ok: false, error: decisionTypesResult.error };
+    return { ok: true, data: { owners: ownersResult.data, decisionTypes: decisionTypesResult.data } };
   },
 );
 
@@ -546,6 +554,13 @@ const setDecisionOwnerImpl = withAuthz(
     resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
   },
   async (input, ctx): Promise<SetDecisionOwnerResult> => {
+    // Deliberately NOT re-validated against `project_decision_types` here:
+    // `project_decision_owners.decision_type` has no hard FK to that table
+    // (see this feature's migration header comment for why), and
+    // `requestApproval`'s own decision-owner lookup is the actual gate
+    // that keeps an approval from being raised against a bogus decision
+    // type in practice — a decision type with no `project_decision_owners`
+    // row (bogus or removed) already can never be chosen there.
     if (input.userId === null) {
       const { error: deleteError } = await ctx.admin
         .from("project_decision_owners")
@@ -652,8 +667,165 @@ export async function getApprovalDocSnapshotUrl(
 
 export async function setDecisionOwner(
   projectId: string,
-  decisionType: "content" | "brand" | "technical" | "commercial",
+  decisionType: ApprovalDecisionType,
   userId: string | null,
 ): Promise<SetDecisionOwnerResult> {
   return setDecisionOwnerImpl({ projectId, decisionType, userId });
+}
+
+// ---------------------------------------------------------------------
+// addProjectDecisionType / removeProjectDecisionType — F008 follow-up:
+// customizable decision types (`project_decision_types`). Single-table
+// writes, same "no RPC needed" reasoning requestApproval's own header
+// comment gives for its own single-table insert.
+// ---------------------------------------------------------------------
+
+export type AddProjectDecisionTypeResult =
+  | { ok: true; data: ProjectDecisionType }
+  | { ok: false; error: string };
+
+const addProjectDecisionTypeImpl = withAuthz(
+  addProjectDecisionTypeSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's decision types.",
+    writeError: "Viewers don't have permission to manage decision types.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's decision types.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<AddProjectDecisionTypeResult> => {
+    const { data: maxRow } = await ctx.admin
+      .from("project_decision_types")
+      .select("sort_order")
+      .eq("project_id", ctx.projectId!)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextSortOrder = (maxRow?.sort_order ?? 0) + 1;
+
+    const { data: inserted, error: insertError } = await ctx.admin
+      .from("project_decision_types")
+      .insert({
+        project_id: ctx.projectId!,
+        name: input.name,
+        description: input.description || null,
+        sort_order: nextSortOrder,
+      })
+      .select("id, name, description, sort_order")
+      .single();
+
+    if (insertError || !inserted) {
+      // Unique violation (project_decision_types_project_name_unique).
+      if (insertError?.code === "23505") {
+        return { ok: false, error: "This project already has a decision type with that name." };
+      }
+      logger.error("addProjectDecisionType: insert failed", { error: insertError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await revalidateApprovalSurfaces(ctx.projectId!);
+    return {
+      ok: true,
+      data: {
+        id: inserted.id,
+        name: inserted.name,
+        description: inserted.description,
+        sortOrder: inserted.sort_order,
+      },
+    };
+  },
+);
+
+export async function addProjectDecisionType(
+  projectId: string,
+  name: string,
+  description?: string | null,
+): Promise<AddProjectDecisionTypeResult> {
+  return addProjectDecisionTypeImpl({ projectId, name, description });
+}
+
+export type RemoveProjectDecisionTypeResult =
+  | { ok: true; data: { id: string } }
+  | { ok: false; error: string };
+
+const removeProjectDecisionTypeImpl = withAuthz(
+  removeProjectDecisionTypeSchema,
+  {
+    requireWrite: true,
+    membershipError: "You don't have permission to manage this project's decision types.",
+    writeError: "Viewers don't have permission to manage decision types.",
+    requireVisibility: true,
+    visibilityError: "You don't have permission to manage this project's decision types.",
+    resolveWorkspace: (input, admin) => loadProjectExtra(admin, input.projectId),
+  },
+  async (input, ctx): Promise<RemoveProjectDecisionTypeResult> => {
+    const { data: typeRow, error: typeError } = await ctx.admin
+      .from("project_decision_types")
+      .select("id, name")
+      .eq("id", input.decisionTypeId)
+      .eq("project_id", ctx.projectId!)
+      .maybeSingle();
+    if (typeError || !typeRow) {
+      return { ok: false, error: "Decision type not found." };
+    }
+
+    // Refuse to remove a decision type that is still in use — existing
+    // approval_requests/project_decision_owners rows referencing it must
+    // not become orphaned/unreadable-by-name. Checked here (not a hard
+    // FK, see this feature's migration header comment) so the error names
+    // the reason rather than surfacing a raw constraint failure.
+    const { count: ownerCount, error: ownerCountError } = await ctx.admin
+      .from("project_decision_owners")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", ctx.projectId!)
+      .eq("decision_type", typeRow.name);
+    if (ownerCountError) {
+      logger.error("removeProjectDecisionType: owner count failed", { error: ownerCountError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+    if ((ownerCount ?? 0) > 0) {
+      return {
+        ok: false,
+        error: "Remove this decision type's owner first, then try again.",
+      };
+    }
+
+    const { count: requestCount, error: requestCountError } = await ctx.admin
+      .from("approval_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", ctx.projectId!)
+      .eq("decision_type", typeRow.name);
+    if (requestCountError) {
+      logger.error("removeProjectDecisionType: request count failed", { error: requestCountError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+    if ((requestCount ?? 0) > 0) {
+      return {
+        ok: false,
+        error: "This decision type has approval requests on it and can't be removed.",
+      };
+    }
+
+    const { error: deleteError } = await ctx.admin
+      .from("project_decision_types")
+      .delete()
+      .eq("id", input.decisionTypeId)
+      .eq("project_id", ctx.projectId!);
+
+    if (deleteError) {
+      logger.error("removeProjectDecisionType: delete failed", { error: deleteError });
+      return { ok: false, error: GENERIC_ERROR };
+    }
+
+    await revalidateApprovalSurfaces(ctx.projectId!);
+    return { ok: true, data: { id: input.decisionTypeId } };
+  },
+);
+
+export async function removeProjectDecisionType(
+  projectId: string,
+  decisionTypeId: string,
+): Promise<RemoveProjectDecisionTypeResult> {
+  return removeProjectDecisionTypeImpl({ projectId, decisionTypeId });
 }

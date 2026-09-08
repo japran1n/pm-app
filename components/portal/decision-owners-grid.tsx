@@ -1,8 +1,9 @@
-// F009 (missions/20260903-portal): "who approves what" -- the four
-// decision types with their named owner, from `project_decision_owners`
-// (lib/queries/approvals.ts's `getDecisionOwners`). A type with no owner
-// says so plainly rather than showing an empty cell (this feature's own
-// explicit instruction).
+// F009 (missions/20260903-portal): "who approves what" -- this project's
+// configured decision types (`project_decision_types`, customizable per
+// project — no longer a fixed four) with their named owner, from
+// `project_decision_owners` (lib/queries/approvals.ts's `getDecisionOwners`).
+// A type with no owner says so plainly rather than showing an empty cell
+// (this feature's own explicit instruction).
 //
 // F085 (missions/20260903-portal audit, defect 6): "No owner assigned"
 // used to stop there -- a client reading it has no way to know who could
@@ -15,38 +16,36 @@
 // same data as a single compact, wrapping row -- "Content -> Nina Maric"
 // style chips -- so it reads at a glance and can sit above "Open
 // approvals" without pushing it down the page.
-import type { PortalDecisionOwner } from "@/lib/queries/approvals";
+import type { PortalDecisionOwner, ProjectDecisionType } from "@/lib/queries/approvals";
 import { UserAvatar, personLabel } from "@/components/user-avatar";
 
-const DECISION_TYPES: PortalDecisionOwner["decisionType"][] = [
-  "content",
-  "brand",
-  "technical",
-  "commercial",
-];
-
-const DECISION_TYPE_LABEL: Record<PortalDecisionOwner["decisionType"], string> = {
-  content: "Content",
-  brand: "Brand",
-  technical: "Technical",
-  commercial: "Commercial",
-};
-
-export function DecisionOwnersGrid({ owners }: { owners: PortalDecisionOwner[] }) {
+export function DecisionOwnersGrid({
+  decisionTypes,
+  owners,
+}: {
+  decisionTypes: ProjectDecisionType[];
+  owners: PortalDecisionOwner[];
+}) {
   const ownerByType = new Map(owners.map((owner) => [owner.decisionType, owner]));
+
+  if (decisionTypes.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        This project hasn&apos;t set up any decision types yet.
+      </p>
+    );
+  }
 
   return (
     <div
       data-testid="decision-owners-grid"
       className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5"
     >
-      {DECISION_TYPES.map((type) => {
-        const owner = ownerByType.get(type);
+      {decisionTypes.map((type) => {
+        const owner = ownerByType.get(type.name);
         return (
-          <div key={type} className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <span className="font-medium text-muted-foreground">
-              {DECISION_TYPE_LABEL[type]}
-            </span>
+          <div key={type.id} className="flex items-center gap-1.5 text-xs sm:text-sm">
+            <span className="font-medium text-muted-foreground">{type.name}</span>
             <span aria-hidden className="text-muted-foreground">
               →
             </span>
