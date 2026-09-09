@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useBreadcrumbExtra } from "@/components/nav/breadcrumb-context";
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
+import { AssistantThread } from "@/components/ai/assistant-thread";
 
 const STORAGE_KEY = "pm-app:ai-docs-sidebar-open";
 
@@ -262,7 +263,7 @@ export function AssistantSidebar({
           here proves the hook's `messages` state actually reaches this
           panel). Independent scroll region per the mount-point note: this
           must never inherit page-level scroll from WorkspaceMain. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
         {messages.length === 0 ? (
           // F013 owns the real empty state; this is a structural
           // placeholder so the region is never blank/undefined-looking
@@ -274,16 +275,9 @@ export function AssistantSidebar({
             Ask the assistant about this workspace&apos;s docs.
           </p>
         ) : (
-          <div
-            className="flex flex-col gap-2 divide-y divide-line-row"
-            data-testid="assistant-sidebar-message-list-placeholder"
-          >
-            {messages.map((message) => (
-              <p key={message.id} className="pt-2 text-mini first:pt-0">
-                {message.text}
-              </p>
-            ))}
-          </div>
+          // F010: message rendering (bubbles + markdown + considerate
+          // auto-scroll) — see components/ai/assistant-thread.tsx.
+          <AssistantThread messages={messages} />
         )}
 
         {/* Tool call cards are F011's job — reserved region only. */}
