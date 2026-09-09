@@ -62,12 +62,25 @@ export const shouldRunLiveDbTests = haveAdminCreds && (liveDbOptIn || Boolean(pr
  * touches rows that don't match one of the prefixes, so it never deletes
  * data this test run didn't create the naming convention for.
  */
+// F030 (M1 second review): sweepLeakedFixtures used to ignore every delete
+// error. Two leaked f027-* workspaces survived a run silently and had to be
+// found later by an ad-hoc admin query -- this sweep had already "run" and
+// reported nothing wrong. `unswept` now records every id whose delete came
+// back with an error (workspace subrows, the workspace row itself, or the
+// auth user), and the caller logs it to the console so a stuck fixture is
+// visible in test output instead of disappearing. This does NOT retry and
+// does NOT widen what gets deleted -- it only makes existing failures loud.
 export async function sweepLeakedFixtures(
   adminClient: SupabaseClient,
   prefixes: string[],
-): Promise<{ deletedWorkspaces: string[]; deletedUsers: string[] }> {
+): Promise<{
+  deletedWorkspaces: string[];
+  deletedUsers: string[];
+  unswept: { kind: "workspace" | "user"; id: string; reason: string }[];
+}> {
   const deletedWorkspaces: string[] = [];
   const deletedUsers: string[] = [];
+  const unswept: { kind: "workspace" | "user"; id: string; reason: string }[] = [];
 
   // Workspaces: slug starts with one of the prefixes.
   for (const prefix of prefixes) {
@@ -76,10 +89,20 @@ export async function sweepLeakedFixtures(
       .select("id, slug")
       .like("slug", `${prefix}%`);
     for (const ws of workspaces ?? []) {
-      await adminClient.from("docs").delete().eq("workspace_id", ws.id);
-      await adminClient.from("workspace_members").delete().eq("workspace_id", ws.id);
-      await adminClient.from("workspaces").delete().eq("id", ws.id);
-      deletedWorkspaces.push(ws.id as string);
+      const wsId = ws.id as string;
+      const { error: docsError } = await adminClient.from("docs").delete().eq("workspace_id", wsId);
+      const { error: membersError } = await adminClient
+        .from("workspace_members")
+        .delete()
+        .eq("workspace_id", wsId);
+      const { error: workspaceError } = await adminClient.from("workspaces").delete().eq("id", wsId);
+
+      const firstError = docsError ?? membersError ?? workspaceError;
+      if (firstError) {
+        unswept.push({ kind: "workspace", id: wsId, reason: firstError.message });
+      } else {
+        deletedWorkspaces.push(wsId);
+      }
     }
   }
 
@@ -93,15 +116,26 @@ export async function sweepLeakedFixtures(
     for (const u of data.users) {
       const email = u.email ?? "";
       if (prefixes.some((prefix) => email.startsWith(prefix))) {
-        await adminClient.auth.admin.deleteUser(u.id);
-        deletedUsers.push(u.id);
+        const { error: deleteError } = await adminClient.auth.admin.deleteUser(u.id);
+        if (deleteError) {
+          unswept.push({ kind: "user", id: u.id, reason: deleteError.message });
+        } else {
+          deletedUsers.push(u.id);
+        }
       }
     }
     if (data.users.length < perPage) break;
     page += 1;
   }
 
-  return { deletedWorkspaces, deletedUsers };
+  if (unswept.length > 0) {
+    console.error(
+      `sweepLeakedFixtures: ${unswept.length} fixture(s) FAILED to delete and are still live in the project:\n` +
+        unswept.map((u) => `  [${u.kind}] ${u.id} — ${u.reason}`).join("\n"),
+    );
+  }
+
+  return { deletedWorkspaces, deletedUsers, unswept };
 }
 
 export function createAdminClient(): SupabaseClient {

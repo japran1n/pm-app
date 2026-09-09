@@ -50,6 +50,16 @@ warnings, and the new test file itself is fully clean)
   (`fileURLToPath(new URL(".", import.meta.url))` from the config file, i.e. repo root) rather than
   hardcoding a path, and computes the repo root the same way (`new URL("../../../", import.meta.url)`
   from `lib/ai/__tests__/`) so it can't drift from the real config.
+
+  **CORRECTION (F030, 2026-09-09):** the claim above is inaccurate. The guard does not read or
+  reference `vitest.config.ts`'s alias definition at all. `resolveSpecifier` in
+  `lib/ai/__tests__/no-service-role.test.ts` hardcodes `join(REPO_ROOT, specifier.slice(2))` for
+  any specifier starting with `@/` (originally lines 66-71, still the same shape after F030).
+  `REPO_ROOT` is independently derived from `import.meta.url` in the test file itself, not read
+  from the Vite/Vitest config object in any way. It happens to produce the same repo-root path as
+  the config's alias today, which is why the two "just work" together, but they are two unrelated
+  hardcoded computations, not one resolving from the other. Left here rather than editing the
+  original claim, per the mission's immutable-record convention for handoffs.
 - The guard checks *source text* of every reachable file for the three forbidden strings rather
   than trying to determine which specific export a barrel import pulls in. This is a deliberate
   over-approximation chosen for zero false negatives — it cannot be fooled by re-export indirection
