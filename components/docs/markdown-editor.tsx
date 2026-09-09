@@ -30,6 +30,13 @@
 // project-scoped doc has a project to attach an approval_requests row to.
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+// F009: announces this doc's title upward via the SAME "leaf announces
+// itself upward" context ProjectBreadcrumb already uses
+// (components/project/project-breadcrumb.tsx) — the docs assistant
+// sidebar's context bar (components/ai/assistant-sidebar.tsx) reads it
+// from there rather than re-fetching the doc or being prop-drilled a
+// title through this component's own callers.
+import { useSetBreadcrumb } from "@/components/nav/breadcrumb-context";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -150,6 +157,11 @@ export function MarkdownEditor({
   currentUserRole,
 }: MarkdownEditorProps) {
   const [title, setTitle] = useState(initialTitle);
+  // F009 (AS-061): keeps the header breadcrumb AND the docs assistant
+  // sidebar's context bar in sync with the live (possibly-unsaved) title
+  // as the user types, not just `initialTitle` — same live-title
+  // responsiveness the title textarea below already has.
+  useSetBreadcrumb([{ label: title || "Untitled" }]);
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [docKind, setDocKindState] = useState<SetDocKindInput["kind"]>(
     initialDocKind ?? "note",

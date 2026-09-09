@@ -20,6 +20,11 @@ import { GlobalTimeTracker } from "@/components/time/global-time-tracker";
 import { WhatsNewPanel } from "@/components/whats-new/whats-new-panel";
 import { createClient } from "@/lib/supabase/server";
 import { getActiveTimer, getMyRecentTimeEntries } from "@/lib/queries/time-entries";
+// F009: docs assistant sidebar toggle. Placed next to HeaderSearch per
+// this feature's own "RESOLVED BY ORCHESTRATOR" mount-point note —
+// AssistantSidebarProvider (the boolean the toggle reads/flips) is
+// mounted one level up in layout.tsx, alongside BreadcrumbProvider.
+import { AssistantSidebarToggle } from "@/components/ai/assistant-sidebar";
 
 export async function AppHeader({
   workspaceId,
@@ -62,6 +67,7 @@ export async function AppHeader({
           to search/time-tracker in this always-visible header, same
           reachability convention as those two. */}
       <WhatsNewPanel />
+      <AssistantSidebarToggle />
       <GlobalTimeTracker
         workspaceId={workspaceId}
         workspaceSlug={workspaceSlug}
