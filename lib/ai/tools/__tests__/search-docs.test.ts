@@ -232,6 +232,18 @@ describe("search_docs (F004)", () => {
     });
   });
 
+  it("test_AS_028_scopes_the_query_to_the_callers_workspace_id_at_the_db_level", async () => {
+    // DB-level isolation check (not tool-run mocking): asserts the actual
+    // query builder call the tool sends to Supabase is filtered by the
+    // caller's own workspaceId — the mechanism F027 added on top of RLS
+    // (lib/ai/tools/search-docs.ts's `.eq("workspace_id", workspaceId)`).
+    resultsByColumn.title = { data: [makeDocRow()], error: null };
+
+    await run({ query: "onboarding" }, WORKSPACE_ID);
+
+    expect(eqSpy).toHaveBeenCalledWith("workspace_id", WORKSPACE_ID);
+  });
+
   it("test_AS_M1d_results_are_deterministically_ordered", async () => {
     // .order() must be called on the query chain so which MAX_RESULTS of N
     // rows come back is not arbitrary.

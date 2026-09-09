@@ -167,6 +167,19 @@ describe("list_doc_templates (F005)", () => {
     }
   });
 
+  it("test_AS_028_scopes_the_query_to_the_callers_workspace_id_at_the_db_level", async () => {
+    // DB-level isolation check (not tool-run mocking): asserts the actual
+    // query builder call the tool sends to Supabase is filtered by the
+    // caller's own workspaceId — the explicit
+    // `.eq("workspace_id", workspaceId)` F027 added on top of RLS
+    // (lib/ai/tools/list-doc-templates.ts).
+    currentResult = { data: [makeTemplateRow()], error: null };
+
+    await run({}, WORKSPACE_ID);
+
+    expect(mockEq).toHaveBeenCalledWith("workspace_id", WORKSPACE_ID);
+  });
+
   it("returns an error result, never throws, on a database error", async () => {
     currentResult = { data: null, error: { message: "boom" } };
 
