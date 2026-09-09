@@ -46,6 +46,7 @@ import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DiffView, countDiffLines } from "@/components/ai/diff-view";
 import { getDocEditorHandle } from "@/lib/ai/doc-editor-bridge";
+import { logger } from "@/lib/observability/logger";
 import {
   applyDocCreateProposal,
   applyDocEditProposal,
@@ -99,6 +100,11 @@ function asDocCreateProposal(payload: unknown): DocCreateProposal | null {
 
 const STALE_ERROR_MESSAGE =
   "The document changed since this proposal was made. Please ask the assistant to revise it.";
+
+/** Shown when the accept server action throws rather than resolving to an
+ * `{ ok: false }` / `{ error }` result — same generic phrasing convention
+ * used elsewhere in this app for unexpected failures. */
+const GENERIC_APPLY_ERROR_MESSAGE = "Something went wrong. Please try again in a moment.";
 
 /**
  * Narrows a proposal's `unknown` payload to the doc-edit shape this card
@@ -176,6 +182,13 @@ function DocCreateProposalCard({
       // lets the user click through when they're ready.
       setCreatedDocId(result.id);
       onAccept(proposal.id);
+    } catch (err) {
+      // A thrown server action (network drop, 500, stale action id after a
+      // deploy) must not leave Accept silently re-armed with no feedback
+      // (M3-SCRUTINY.md BLOCKER-1 / AS-065) — surface it the same way a
+      // `{ error }` result is surfaced above.
+      logger.error("DocCreateProposalCard: applyDocCreateProposal threw", { error: err });
+      setApplyError(GENERIC_APPLY_ERROR_MESSAGE);
     } finally {
       setIsApplying(false);
     }
@@ -355,6 +368,12 @@ export function ProposalCard({
       // ever marked accepted AFTER the write actually succeeded.
       handle?.applyAcceptedMarkdown(data!.proposedMarkdown);
       onAccept(proposal.id);
+    } catch (err) {
+      // See DocCreateProposalCard.handleAccept above — a thrown server
+      // action must surface an error, not silently re-arm Accept
+      // (M3-SCRUTINY.md BLOCKER-1 / AS-065).
+      logger.error("ProposalCard: applyDocEditProposal threw", { error: err });
+      setApplyError(GENERIC_APPLY_ERROR_MESSAGE);
     } finally {
       setIsApplying(false);
     }

@@ -21,12 +21,15 @@ const mockMaybeSingle = vi.fn();
 const mockEq = vi.fn();
 const mockSelect = vi.fn();
 const mockUpdateDoc = vi.fn();
+const mockDelete = vi.fn();
+const mockDeleteEq = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: mockGetUser },
     from: vi.fn(() => ({
       select: mockSelect,
+      delete: mockDelete,
     })),
   })),
 }));
@@ -55,6 +58,8 @@ describe("applyDocEditProposal (F016)", () => {
     vi.clearAllMocks();
     mockSelect.mockReturnValue({ eq: mockEq });
     mockEq.mockReturnValue({ maybeSingle: mockMaybeSingle });
+    mockDelete.mockReturnValue({ eq: mockDeleteEq });
+    mockDeleteEq.mockResolvedValue({ error: null });
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
     mockUpdateDoc.mockResolvedValue({});
   });
@@ -184,6 +189,8 @@ describe("applyDocCreateProposal (F017)", () => {
     vi.clearAllMocks();
     mockCreateDoc.mockResolvedValue({ id: NEW_DOC_ID });
     mockUpdateDoc.mockResolvedValue({});
+    mockDelete.mockReturnValue({ eq: mockDeleteEq });
+    mockDeleteEq.mockResolvedValue({ error: null });
   });
 
   it("test_AS_026_happy_path_creates_via_createDoc_then_writes_title_and_markdown_via_updateDoc", async () => {
@@ -228,7 +235,10 @@ describe("applyDocCreateProposal (F017)", () => {
     expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 
-  it("returns the updateDoc error when the doc is created but the content write fails", async () => {
+  // M3-SCRUTINY.md BLOCKER-2: when the second write fails, the stub row
+  // `createDoc` just persisted must be deleted so a retry cannot leave a
+  // second orphan document behind.
+  it("test_B2_returns_the_updateDoc_error_and_deletes_the_orphaned_stub_row_when_the_content_write_fails", async () => {
     mockUpdateDoc.mockResolvedValue({ error: "Something went wrong. Please try again in a moment." });
 
     const result = await applyDocCreateProposal({
@@ -239,5 +249,26 @@ describe("applyDocCreateProposal (F017)", () => {
     });
 
     expect(result).toEqual({ error: "Something went wrong. Please try again in a moment." });
+    expect(mockCreateDoc).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDeleteEq).toHaveBeenCalledWith("id", NEW_DOC_ID);
+  });
+
+  // M3-SCRUTINY.md BLOCKER-2: a blank title must be rejected BEFORE
+  // createDoc is ever called — `updateDoc` already rejects an empty title,
+  // so validating first here means no orphan "Untitled" row is ever
+  // created for a request that was always going to fail.
+  it("test_B2_blank_title_is_rejected_before_createDoc_is_called_zero_orphan_rows", async () => {
+    const result = await applyDocCreateProposal({
+      workspaceId: WORKSPACE_ID,
+      title: "   ",
+      markdown: "content",
+      folderId: null,
+    });
+
+    expect(result).toEqual({ error: "Title can't be empty." });
+    expect(mockCreateDoc).not.toHaveBeenCalled();
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
+    expect(mockDelete).not.toHaveBeenCalled();
   });
 });

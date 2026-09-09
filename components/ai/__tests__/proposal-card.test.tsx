@@ -218,6 +218,43 @@ describe("ProposalCard", () => {
     // Still pending — the user can retry once the assistant regenerates.
     expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
   });
+
+  // M3-SCRUTINY.md BLOCKER-1: a `{ ok: false }` result must surface
+  // `applyError` and leave Accept re-clickable (the proposal stays
+  // "pending" — no code path back once it becomes accepted/rejected).
+  it("test_B1_accept_shows_applyError_and_does_not_call_onAccept_when_the_server_action_resolves_ok_false", async () => {
+    mockApplyDocEditProposal.mockResolvedValue({ ok: false, error: "Something went wrong." });
+    const onAccept = vi.fn();
+
+    render(<ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={onAccept} onReject={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+
+    await screen.findByTestId("proposal-card-error");
+    expect(screen.getByTestId("proposal-card-error")).toHaveTextContent("Something went wrong.");
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByTestId("proposal-card-accept")).not.toBeDisabled();
+  });
+
+  // M3-SCRUTINY.md BLOCKER-1: a thrown server action (network drop, 500,
+  // stale action id) must not be silently swallowed by the bare
+  // `finally` — it must surface an error and re-arm Accept with visible
+  // feedback, not leave the user staring at a card with no explanation.
+  it("test_B1_accept_shows_applyError_and_does_not_call_onAccept_when_the_server_action_throws", async () => {
+    mockApplyDocEditProposal.mockRejectedValue(new Error("network error"));
+    const onAccept = vi.fn();
+
+    render(<ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={onAccept} onReject={vi.fn()} />);
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+
+    await screen.findByTestId("proposal-card-error");
+    expect(screen.getByTestId("proposal-card-error")).toHaveTextContent(/something went wrong/i);
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByTestId("proposal-card-accept")).not.toBeDisabled();
+  });
 });
 
 describe("ProposalCard — doc_create (F017)", () => {
@@ -347,5 +384,51 @@ describe("ProposalCard — doc_create (F017)", () => {
 
     expect(screen.getByTestId("proposal-card-meta")).toHaveTextContent("Docs root");
     expect(screen.getByTestId("proposal-card-meta")).not.toHaveTextContent("template");
+  });
+
+  // M3-SCRUTINY.md BLOCKER-1: same fix as the doc_edit card above, for the
+  // doc_create card's own accept handler.
+  it("test_B1_accept_shows_applyError_when_the_server_action_resolves_with_an_error", async () => {
+    mockApplyDocCreateProposal.mockResolvedValue({ error: "Something went wrong." });
+    const onAccept = vi.fn();
+
+    render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={onAccept}
+        onReject={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+
+    await screen.findByTestId("proposal-card-error");
+    expect(screen.getByTestId("proposal-card-error")).toHaveTextContent("Something went wrong.");
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByTestId("proposal-card-accept")).not.toBeDisabled();
+  });
+
+  it("test_B1_accept_shows_applyError_when_the_server_action_throws", async () => {
+    mockApplyDocCreateProposal.mockRejectedValue(new Error("network error"));
+    const onAccept = vi.fn();
+
+    render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={onAccept}
+        onReject={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+
+    await screen.findByTestId("proposal-card-error");
+    expect(screen.getByTestId("proposal-card-error")).toHaveTextContent(/something went wrong/i);
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByTestId("proposal-card-accept")).not.toBeDisabled();
   });
 });

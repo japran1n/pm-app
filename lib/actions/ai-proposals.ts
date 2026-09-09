@@ -162,17 +162,29 @@ export type ApplyDocCreateProposalResult = { id: string } | { error: string };
  * client_visibility.sql`), so an AI-drafted document is client-invisible
  * by construction, with no code path in this action able to override it.
  *
- * If the second write fails after the first succeeds, the empty
- * ("Untitled", "") row from step 1 is left behind rather than rolled back
- * — same accepted tradeoff `updateDoc`'s own callers already live with
- * (no cross-action transaction exists in this codebase), and it is a
- * harmless, editable, ordinary doc row a user can simply retitle or
- * delete, not a data-integrity issue.
+ * Two hardening measures fix the orphan-row bug scrutiny flagged
+ * (M3-SCRUTINY.md BLOCKER-2):
+ *
+ *   1. `title` is validated (`.trim()` non-empty) BEFORE `createDoc` is
+ *      ever called — `updateDoc` already rejects an empty title
+ *      (docs.ts:235-238), so validating first means the empty
+ *      ("Untitled", "") row is never created for a request that was
+ *      always going to fail step 2.
+ *   2. If `updateDoc` still fails for some other reason (network,
+ *      RLS, etc.) after `createDoc` succeeded, the just-created row is
+ *      deleted here (direct Supabase access — this file is a server
+ *      action, not a tool under lib/ai/tools/**, so AS-003's
+ *      no-writes-from-the-AI-layer guard does not apply to it) so a
+ *      retry cannot leave a second orphan behind.
  */
 export async function applyDocCreateProposal(
   input: ApplyDocCreateProposalInput,
 ): Promise<ApplyDocCreateProposalResult> {
   const { workspaceId, title, markdown, folderId } = input;
+
+  if (!title.trim()) {
+    return { error: "Title can't be empty." };
+  }
 
   const created = await createDoc(workspaceId, folderId, null);
   if ("error" in created) {
@@ -181,6 +193,18 @@ export async function applyDocCreateProposal(
 
   const updated = await updateDoc(created.id, title, markdown);
   if (updated.error) {
+    // Clean up the orphaned stub row so a retry cannot double-create.
+    const supabase = await createClient();
+    const { error: deleteError } = await supabase
+      .from("docs")
+      .delete()
+      .eq("id", created.id);
+    if (deleteError) {
+      logger.error("applyDocCreateProposal: orphan cleanup failed", {
+        error: deleteError,
+        docId: created.id,
+      });
+    }
     return { error: updated.error };
   }
 
