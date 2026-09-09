@@ -156,7 +156,7 @@ export function ToolCallList({ toolCalls }: { toolCalls: ToolCallView[] }) {
   return (
     <div
       data-testid="tool-call-list"
-      className="flex flex-col divide-y divide-line-row rounded-md border border-line-row"
+      className="flex flex-col divide-y divide-line-row rounded-md border border-border"
     >
       {toolCalls.map((toolCall) => (
         <ToolCallCard key={toolCall.id} toolCall={toolCall} />

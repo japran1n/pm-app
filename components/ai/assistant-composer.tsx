@@ -125,7 +125,14 @@ export function AssistantComposer({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={isStreaming}
+          // F036 (minor fold-in): `disabled` used to drop focus to
+          // `<body>` on every turn (a `disabled` form control is
+          // unfocusable, and this textarea holds focus most of the time
+          // a message is in flight) — keyboard users had to re-tab to
+          // reach Stop every single turn. `readOnly` blocks edits the
+          // same way without forcing a blur; Enter-to-submit is already
+          // a no-op while streaming via `canSubmit` below.
+          readOnly={isStreaming}
           placeholder="Ask about this workspace's docs…"
           aria-label="Message the docs assistant"
           data-testid="assistant-composer-input"

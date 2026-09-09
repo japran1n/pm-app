@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe("AS-067: stop control while streaming", () => {
-  it("disables the input and replaces send with a Stop control wired to stop()", () => {
+  it("makes the input read-only (without dropping focus) and replaces send with a Stop control wired to stop()", () => {
     const send = vi.fn();
     const stop = vi.fn();
     render(
@@ -33,7 +33,12 @@ describe("AS-067: stop control while streaming", () => {
     );
 
     const input = screen.getByTestId("assistant-composer-input");
-    expect(input).toBeDisabled();
+    // F036 (fixes B6-adjacent minor): `disabled` used to drop focus to
+    // `<body>` on every turn, forcing keyboard users to re-tab to reach
+    // Stop. `readOnly` blocks edits without making the element
+    // unfocusable — assert that specifically, not `toBeDisabled()`.
+    expect(input).toHaveAttribute("readonly");
+    expect(input).not.toBeDisabled();
     expect(screen.queryByTestId("assistant-composer-send")).not.toBeInTheDocument();
 
     const stopButton = screen.getByTestId("assistant-composer-stop");

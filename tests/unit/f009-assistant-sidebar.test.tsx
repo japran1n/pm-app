@@ -53,7 +53,12 @@ import {
   AssistantSidebarToggle,
 } from "@/components/ai/assistant-sidebar";
 
-const STORAGE_KEY = "pm-app:ai-docs-sidebar-open";
+// F036 (minor fold-in, fixes M2-SCRUTINY.md's non-blocking note on this
+// key not being workspace-scoped): scoped by the workspace slug parsed
+// off the URL. Every test in this file uses a `/w/acme/...` pathname
+// (see `mockPathname` above/below), so the scoped key is stable across
+// them.
+const STORAGE_KEY = "pm-app:ai-docs-sidebar-open:acme";
 
 function AnnounceDocTitle({ title }: { title: string }) {
   useSetBreadcrumb([{ label: title }]);

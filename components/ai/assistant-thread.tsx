@@ -133,8 +133,21 @@ function useStickToBottom<T extends HTMLElement>(
 
 export function AssistantThread({
   messages,
+  trailing,
 }: {
   messages: AssistantMessage[];
+  /**
+   * F036 (fixes B5/M2-SCRUTINY.md): tool-call cards and the turn error
+   * message used to be siblings of this scroll container in
+   * assistant-sidebar.tsx, in an OUTER `<div>` with no `overflow` class
+   * of its own — unshrinkable content there overflowed the whole `aside`,
+   * painting over the composer. Rendered here instead, inside this
+   * component's own `overflow-y-auto`/`aria-live` region, so they scroll
+   * WITH the thread (this is genuinely this panel's one scroll region,
+   * not two competing ones) and are announced the same way streamed text
+   * already is (the other fold-in minor this same feature addresses).
+   */
+  trailing?: React.ReactNode;
 }) {
   // Re-runs the "stick to bottom" effect whenever the total rendered text
   // length changes (covers both a new message being appended and an
@@ -174,6 +187,7 @@ export function AssistantThread({
             </div>
           ),
         )}
+        {trailing}
       </div>
 
       {!isStuck && messages.length > 0 && (

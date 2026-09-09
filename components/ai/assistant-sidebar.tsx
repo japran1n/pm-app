@@ -25,10 +25,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { usePathname } from "next/navigation";
-import { PanelRight, PanelRightClose } from "lucide-react";
+import { PanelRight, PanelRightClose, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,12 +38,71 @@ import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 import { AssistantThread } from "@/components/ai/assistant-thread";
 import { ToolCallList } from "@/components/ai/tool-call-card";
 import { AssistantComposer } from "@/components/ai/assistant-composer";
+import { useEscapeLayer } from "@/lib/hooks/use-shortcut";
 
-const STORAGE_KEY = "pm-app:ai-docs-sidebar-open";
+const STORAGE_PREFIX = "pm-app:ai-docs-sidebar-open";
+
+// F036 (minor fold-in): the panel's open/closed state is per-workspace
+// (this whole panel is mounted per workspace layout), but the persistence
+// key was a single global string — switching workspaces in one tab, or
+// having two workspaces open in two tabs, leaked one workspace's
+// open/closed choice into the other. Scoped by the workspace slug parsed
+// straight off the URL (same `/w/<slug>/...` shape
+// `useCurrentDocIdFromPath` below already parses) rather than plumbing
+// `workspaceId` down through `AssistantSidebarProvider` in layout.tsx,
+// which is outside this feature's Touches.
+function useWorkspaceSlugFromPath(): string | null {
+  const pathname = usePathname();
+  return useMemo(() => {
+    if (!pathname) return null;
+    const match = pathname.match(/^\/w\/([^/]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }, [pathname]);
+}
+
+/** Below this width the panel is a `fixed` overlay, not a peer panel —
+ * see AssistantSidebar's own file-header comment. Mirrors the
+ * `max-[1180px]:` Tailwind arbitrary breakpoint used throughout this
+ * file, so the JS-side "is this an overlay right now" check and the CSS
+ * that actually does the squeeze-vs-float switch never drift apart. */
+const OVERLAY_BREAKPOINT_PX = 1180;
+
+/**
+ * Tracks whether the panel is CURRENTLY rendered as the <1180px overlay,
+ * so Escape/backdrop/focus-trap behaviour (B6) can be scoped to exactly
+ * that state and never activate at desktop width, where the panel is a
+ * peer panel and trapping focus there would be wrong.
+ *
+ * Deliberately reads `window.innerWidth` on a `resize` listener rather
+ * than `window.matchMedia` — this codebase's jsdom test environment has
+ * no `matchMedia` implementation (grepped; no polyfill anywhere else in
+ * the suite either), while `window.innerWidth` is real in jsdom (and
+ * defaults below 1180, incidentally matching this component's own
+ * "renders as an overlay by default" behaviour in tests).
+ */
+function useIsNarrowOverlayViewport(): boolean {
+  const [isNarrow, setIsNarrow] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.innerWidth <= OVERLAY_BREAKPOINT_PX,
+  );
+
+  useEffect(() => {
+    function handleResize() {
+      setIsNarrow(window.innerWidth <= OVERLAY_BREAKPOINT_PX);
+    }
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return isNarrow;
+}
 
 type AssistantSidebarContextValue = {
   open: boolean;
   toggle: () => void;
+  close: () => void;
 };
 
 const AssistantSidebarContext =
@@ -72,34 +132,55 @@ export function AssistantSidebarProvider({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const workspaceSlug = useWorkspaceSlugFromPath();
+  const storageKey = `${STORAGE_PREFIX}:${workspaceSlug ?? "default"}`;
 
   useEffect(() => {
     // Same "mounted guard, one synchronous read, no dependencies" escape
     // hatch WhatsNewPanel already uses (components/whats-new/
     // whats-new-panel.tsx) for the identical hydration-mismatch reason —
-    // no cascading-render risk since this effect runs exactly once.
+    // no cascading-render risk since this effect runs exactly once per
+    // workspace.
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setOpen(window.localStorage.getItem(STORAGE_KEY) === "1");
+      setOpen(window.localStorage.getItem(storageKey) === "1");
     } catch {
       // Private browsing / storage disabled: stay closed by default
       // rather than crash the workspace shell.
     }
-  }, []);
+    // Re-read whenever the workspace changes (navigating between
+    // workspaces in the same tab), same rationale as the scoping itself.
+  }, [storageKey]);
+
+  function persist(next: boolean) {
+    try {
+      window.localStorage.setItem(storageKey, next ? "1" : "0");
+    } catch {
+      // Best-effort persistence only — see file header comment.
+    }
+  }
 
   function toggle() {
     setOpen((current) => {
       const next = !current;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-      } catch {
-        // Best-effort persistence only — see file header comment.
-      }
+      persist(next);
       return next;
     });
   }
 
-  const value = useMemo(() => ({ open, toggle }), [open]);
+  function close() {
+    setOpen((current) => {
+      if (!current) return current;
+      persist(false);
+      return false;
+    });
+  }
+
+  const value = useMemo(
+    () => ({ open, toggle, close }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [open, storageKey],
+  );
 
   return (
     <AssistantSidebarContext.Provider value={value}>
@@ -200,9 +281,23 @@ function useCurrentDocTitle(docId: string | null): string | null {
  */
 function AssistantEmptyState({
   hasDocOpen,
+  hasApiKey,
   send,
 }: {
   hasDocOpen: boolean;
+  /**
+   * B3 fix (M2-SCRUTINY.md): the chips used to be neither disabled nor
+   * key-aware. Clicking one when there's no API key called `send`, which
+   * optimistically appends a user turn — unmounting THIS empty state
+   * (and its explanation) since `messages.length !== 0` — only for the
+   * route to reject the request and a SECOND, differently-worded
+   * "no_api_key" message to render in the composer. Two competing
+   * explanations, a phantom turn nobody would ever answer, and no way
+   * back. Omitting the chips entirely when there's no key means exactly
+   * one explanation is ever on screen (this one), and `send` is never
+   * invoked from a state where it can only fail.
+   */
+  hasApiKey: boolean;
   send: (text: string) => void;
 }) {
   const suggestions = hasDocOpen
@@ -229,22 +324,24 @@ function AssistantEmptyState({
         your confirmation — it only knows what&apos;s written in this
         workspace&apos;s documents.
       </p>
-      <div
-        className="flex flex-col gap-1.5"
-        data-testid="assistant-sidebar-suggestions"
-      >
-        {suggestions.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => send(suggestion)}
-            data-testid="assistant-sidebar-suggestion-chip"
-            className="rounded-md border border-line-row px-2.5 py-1.5 text-left text-mini font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
+      {hasApiKey && (
+        <div
+          className="flex flex-col gap-1.5"
+          data-testid="assistant-sidebar-suggestions"
+        >
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => send(suggestion)}
+              data-testid="assistant-sidebar-suggestion-chip"
+              className="rounded-md border border-border px-2.5 py-1.5 text-left text-mini font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -272,98 +369,239 @@ export function AssistantSidebar({
   workspaceId: string;
   hasApiKey: boolean;
 }) {
-  const { open } = useAssistantSidebarContext();
+  const { open, close } = useAssistantSidebarContext();
   const currentDocId = useCurrentDocIdFromPath();
   const currentDocTitle = useCurrentDocTitle(currentDocId);
+  const isNarrowViewport = useIsNarrowOverlayViewport();
+  // F036 (fixes B6): the panel is genuinely a modal overlay ONLY while
+  // both true — open, and narrow enough that the CSS above has switched
+  // it to `fixed`. At desktop width it's a peer panel: no backdrop, no
+  // Escape-to-close, no focus trap, same as AppSidebar never traps focus
+  // either.
+  const isOverlay = open && isNarrowViewport;
+
+  const panelRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // F008: the panel is the first real consumer of this hook.
   // Message/tool/proposal RENDERING is F010-F013's job (see file header)
   // — this call proves the hook wires up correctly and drives the
   // disabled-composer/no-API-key state (AS-071).
-  const { messages, toolCalls, isStreaming, error, usage, send, stop } =
+  const { messages, toolCalls, isStreaming, error, usage, send, stop, reset } =
     useDocAssistant({
       workspaceId,
       currentDocId,
     });
 
+  // F036 (fixes B6): Escape closes the panel, but ONLY while it's
+  // actually acting as a modal overlay — registered on the shared
+  // escape-layer stack (lib/hooks/use-shortcut.ts) so it cooperates with
+  // whatever else may be open instead of a second, competing document
+  // keydown listener (same pattern components/task/image-lightbox.tsx
+  // uses for the identical reason).
+  useEscapeLayer(isOverlay, close);
+
+  // F036 (fixes B6): a focus trap AND initial-focus move, scoped to
+  // `isOverlay` exactly like Escape above. Tab/Shift+Tab wrap within the
+  // panel's own focusable elements instead of escaping to the header
+  // toggle hidden underneath the overlay (or further, to content behind
+  // the backdrop).
+  useEffect(() => {
+    if (!isOverlay) return undefined;
+
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    const panel = panelRef.current;
+    const focusables = panel
+      ? Array.from(
+          panel.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        )
+      : [];
+    (focusables[0] ?? panel)?.focus();
+
+    function handleKeyDown(keyboardEvent: KeyboardEvent) {
+      if (keyboardEvent.key !== "Tab") return;
+      const current = panelRef.current;
+      if (!current) return;
+      const elements = Array.from(
+        current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (elements.length === 0) return;
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      const active = document.activeElement;
+
+      if (keyboardEvent.shiftKey) {
+        if (active === first || !current.contains(active)) {
+          keyboardEvent.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !current.contains(active)) {
+        keyboardEvent.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, [isOverlay]);
+
   if (!open) return null;
 
   return (
-    <aside
-      aria-label="Docs assistant"
-      data-testid="assistant-sidebar"
-      className={cn(
-        "flex w-[380px] min-h-0 shrink-0 flex-col rounded-lg border border-border bg-background m-2",
-        // Below ~1180px: overlay instead of squeeze (see file header
-        // comment). `fixed` takes it out of the flex row entirely, so the
-        // content panel reclaims the width it would otherwise lose.
-        "max-[1180px]:fixed max-[1180px]:inset-y-2 max-[1180px]:right-2 max-[1180px]:z-40 max-[1180px]:m-0 max-[1180px]:shadow-lg",
-      )}
-    >
-      {/* Context bar (AS-061): the currently open doc's title, or a
-          decorative placeholder when no doc is open. */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-        <span className="min-w-0 flex-1 truncate text-mini font-semibold text-foreground">
-          {currentDocTitle ?? "Assistant"}
-        </span>
-        {!currentDocId && (
-          // Decorative only (never the sole way to learn "no doc is
-          // open" — the composer/thread placeholders below already say
-          // so in operational copy), so this is exactly the kind of
-          // label `--text-quaternary` is for. That token has no Tailwind
-          // utility wired up in this codebase yet (grepped; absent from
-          // app/globals.css's @theme block), so `text-muted-foreground`
-          // is used instead rather than inventing a new class — see
-          // handoff for the follow-up to wire the token properly.
-          <span
-            className="shrink-0 text-micro text-muted-foreground"
-            data-testid="assistant-sidebar-no-doc-hint"
-          >
-            No doc open
-          </span>
-        )}
-      </div>
-
-      {/* Thread region — message rendering is F010's job (placeholder
-          here proves the hook's `messages` state actually reaches this
-          panel). Independent scroll region per the mount-point note: this
-          must never inherit page-level scroll from WorkspaceMain. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-        {messages.length === 0 ? (
-          // F013: the real empty state (copy + suggestion chips).
-          <AssistantEmptyState hasDocOpen={Boolean(currentDocId)} send={send} />
-        ) : (
-          // F010: message rendering (bubbles + markdown + considerate
-          // auto-scroll) — see components/ai/assistant-thread.tsx.
-          <AssistantThread messages={messages} />
-        )}
-
-        {/* F011: quiet, collapsible cards for auditing tool calls.
-            Renders nothing when there are no tool calls yet. */}
-        <ToolCallList toolCalls={toolCalls} />
-
-        {error && (
-          <p
-            className="rounded-md bg-status-waiting-bg px-2 py-1.5 text-mini text-status-waiting"
-            data-testid="assistant-sidebar-error"
-          >
-            {error.message}
-          </p>
-        )}
-      </div>
-
-      {/* Composer — F012: real input/send/stop wiring, plus the AS-071
-          no-API-key message (this component owns that whole region now;
-          see components/ai/assistant-composer.tsx's own header comment). */}
-      <div className="shrink-0 border-t border-border p-3">
-        <AssistantComposer
-          hasApiKey={hasApiKey}
-          isStreaming={isStreaming}
-          send={send}
-          stop={stop}
-          usage={usage}
+    <>
+      {/* F036 (fixes B6): backdrop, overlay-only. Also the "outside
+          click" close affordance — clicking anywhere behind the panel
+          closes it, same convention components/task/image-lightbox.tsx
+          and components/ui/sheet.tsx already use. */}
+      {isOverlay && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40"
+          data-testid="assistant-sidebar-backdrop"
+          aria-hidden="true"
+          onClick={close}
         />
-      </div>
-    </aside>
+      )}
+      <aside
+        ref={panelRef}
+        aria-label="Docs assistant"
+        data-testid="assistant-sidebar"
+        role={isOverlay ? "dialog" : undefined}
+        aria-modal={isOverlay ? "true" : undefined}
+        tabIndex={-1}
+        className={cn(
+          "flex w-[380px] min-h-0 shrink-0 flex-col rounded-lg border border-border bg-background m-2 outline-none",
+          // Below ~1180px: overlay instead of squeeze (see file header
+          // comment). `fixed` takes it out of the flex row entirely, so
+          // the content panel reclaims the width it would otherwise lose.
+          "max-[1180px]:fixed max-[1180px]:inset-y-2 max-[1180px]:right-2 max-[1180px]:z-40 max-[1180px]:m-0 max-[1180px]:shadow-lg",
+        )}
+      >
+        {/* Context bar (AS-061): the currently open doc's title, or a
+            decorative placeholder when no doc is open. */}
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+          <span className="min-w-0 flex-1 truncate text-mini font-semibold text-foreground">
+            {currentDocTitle ?? "Assistant"}
+          </span>
+          {!currentDocId && (
+            // Decorative only (never the sole way to learn "no doc is
+            // open" — the composer/thread placeholders below already say
+            // so in operational copy), so this is exactly the kind of
+            // label `--text-quaternary` is for. That token has no
+            // Tailwind utility wired up in this codebase yet (grepped;
+            // absent from app/globals.css's @theme block), so
+            // `text-muted-foreground` is used instead rather than
+            // inventing a new class — see handoff for the follow-up to
+            // wire the token properly.
+            <span
+              className="shrink-0 text-micro text-muted-foreground"
+              data-testid="assistant-sidebar-no-doc-hint"
+            >
+              No doc open
+            </span>
+          )}
+          {/* F036 (fixes B3's "no way back"): `reset` exists on
+              useDocAssistant but was never destructured here. Exposed as
+              a quiet affordance whenever there's a thread to clear —
+              covers the no-key dead-end (a stray turn from before this
+              fix, or any future one) as well as an ordinary "start
+              over". */}
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={reset}
+              data-testid="assistant-sidebar-reset"
+              className="shrink-0 rounded-md px-1.5 py-1 text-micro font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              New conversation
+            </button>
+          )}
+          {/* F036 (fixes B6): the only way to reach the toggle was the
+              header button UNDERNEATH this overlay — genuinely
+              unreachable below 1180px. Overlay-only; at desktop width
+              the header toggle is already right there and a second
+              close control would be redundant on a non-modal peer
+              panel. */}
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close docs assistant"
+            data-testid="assistant-sidebar-close"
+            className="hidden shrink-0 rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 max-[1180px]:flex"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* Thread region — message rendering is F010's job. F036 (fixes
+            B5): this used to be an unshrinkable-siblings-of-nothing
+            layout with NO `overflow` class despite a comment claiming an
+            "independent scroll region" — `ToolCallList` and the error
+            `<p>` overflowed the whole `aside`. Both now render INSIDE
+            `AssistantThread`'s own scroll container (its `trailing`
+            prop) so there is exactly one scroll region, and this
+            wrapper additionally gets its own `overflow-y-auto` as a
+            second line of defence for the empty-state branch (chips +
+            explanation), which never mounts `AssistantThread` at all. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
+          {messages.length === 0 ? (
+            // F013: the real empty state (copy + suggestion chips).
+            <AssistantEmptyState
+              hasDocOpen={Boolean(currentDocId)}
+              hasApiKey={hasApiKey}
+              send={send}
+            />
+          ) : (
+            // F010: message rendering (bubbles + markdown + considerate
+            // auto-scroll) — see components/ai/assistant-thread.tsx.
+            <AssistantThread
+              messages={messages}
+              trailing={
+                <>
+                  {/* F011: quiet, collapsible cards for auditing tool
+                      calls. Renders nothing when there are no tool calls
+                      yet. */}
+                  <ToolCallList toolCalls={toolCalls} />
+
+                  {error && (
+                    <p
+                      className="rounded-md bg-status-waiting-bg px-2 py-1.5 text-mini text-status-waiting"
+                      data-testid="assistant-sidebar-error"
+                    >
+                      {error.message}
+                    </p>
+                  )}
+                </>
+              }
+            />
+          )}
+        </div>
+
+        {/* Composer — F012: real input/send/stop wiring, plus the
+            AS-071 no-API-key message (this component owns that whole
+            region now; see components/ai/assistant-composer.tsx's own
+            header comment). */}
+        <div className="shrink-0 border-t border-border p-3">
+          <AssistantComposer
+            hasApiKey={hasApiKey}
+            isStreaming={isStreaming}
+            send={send}
+            stop={stop}
+            usage={usage}
+          />
+        </div>
+      </aside>
+    </>
   );
 }
