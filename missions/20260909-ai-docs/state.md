@@ -114,3 +114,39 @@ Test Files  45 failed | 569 passed (614)
 - AS-102's honest outcome is likely **INCONCLUSIVE**, not PASS — the repo's own baseline is red
   for environmental reasons this mission did not cause and is not chartered to fix. Say that
   plainly rather than rounding to either PASS or FAIL.
+
+## POLICY CHANGE (orchestrator, 2026-09-09): stop running the full suite
+
+A full `npm test` run (688 s) produced:
+```
+Test Files  56 failed | 562 passed (618)
+     Tests  41 failed | 4030 passed | 350 skipped (4421)
+```
+versus the earlier recorded baseline of 45 failed files / 55 failed tests. **The baseline is not
+stable**, and the reason matters: **68 occurrences of `Request rate limit reached` from Supabase
+Auth.** ~200 integration files sign in against the user's live hosted project on every run.
+
+Three consequences:
+
+1. **AS-102 has no stable baseline and cannot get one in this environment.** The number moves run
+   to run depending on how much Auth quota is left. Comparing against a fixed figure is meaningless.
+   F022 must report AS-102 **INCONCLUSIVE with this evidence**, not PASS and not FAIL.
+
+2. **Repeatedly running the full suite consumes the user's production Auth quota** and can
+   rate-limit their real application, not just the tests. That is a side effect on their live
+   project that this mission is not chartered to spend.
+
+   **Rule from now on: do not run the full `npm test`.** The mission's gate is
+   `npx vitest run lib/` plus the specific route/isolation files, which are deterministic and
+   cheap. If a full run is ever genuinely needed, it is the user's call to make when awake.
+
+3. Two of the four known design-mission failures are confirmed genuine defects, not flakes:
+   - `tests/unit/app-sidebar-project-nav-list.test.tsx` — `No "useRouter" export is defined on the
+     "next/navigation" mock`, thrown from `components/notifications/notification-bell.tsx:114`
+   - `tests/unit/f038-as024-coverage.test.ts` — `Unable to find an element with the text: Toggle theme`
+   Both belong to mission `20260909-linear-ds`; already reported to that session.
+
+Also observed: `tests/unit/sign-out-back-navigation.test.ts` fails with
+`Cannot find package 'server-only' imported from lib/queries/chat.ts`. The worktree's
+`node_modules` is a symlink to the main checkout's, so this is not worktree-specific — worth
+checking whether `server-only` is genuinely absent from the project's dependencies.
