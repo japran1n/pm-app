@@ -41,14 +41,14 @@ export function TeamHeatmap({
   const labelByUserId = new Map(people.map((p) => [p.userId, p.label]));
 
   if (grid.rows.length === 0 || grid.columns.length === 0) {
-    return <p className="text-mini text-muted-foreground">No data for this range.</p>;
+    return <p className="text-sm text-muted-foreground">No data for this range.</p>;
   }
 
   return (
     <div className="overflow-x-auto">
       <table
         data-testid="team-heatmap"
-        className="w-full border-separate border-spacing-1 text-micro"
+        className="w-full border-separate border-spacing-1 text-xs"
       >
         <thead>
           <tr>

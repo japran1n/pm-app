@@ -144,8 +144,8 @@ export default async function ProfileSettingsPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Profile</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Profile</h1>
+        <p className="text-sm text-muted-foreground">
           Your name, avatar, and timezone as they appear everywhere
           you&rsquo;re shown across the app.
         </p>
@@ -163,8 +163,8 @@ export default async function ProfileSettingsPage({
       {workspaceRow ? (
         <>
           <div className="flex flex-col gap-1">
-            <h2 className="title-1 font-semibold">Status note</h2>
-            <p className="text-mini text-muted-foreground">
+            <h2 className="text-xl font-semibold">Status note</h2>
+            <p className="text-sm text-muted-foreground">
               Let your teammates know when you&rsquo;re out of office. Shown in a
               tooltip when someone hovers your avatar, until the date you pick
               (or indefinitely if you leave it blank).
@@ -180,8 +180,8 @@ export default async function ProfileSettingsPage({
       ) : null}
 
       <div className="flex flex-col gap-1">
-        <h2 className="title-1 font-semibold">Notifications</h2>
-        <p className="text-mini text-muted-foreground">
+        <h2 className="text-xl font-semibold">Notifications</h2>
+        <p className="text-sm text-muted-foreground">
           Choose which notifications you receive, and how.
         </p>
       </div>
@@ -194,8 +194,8 @@ export default async function ProfileSettingsPage({
           tour -- this profile page is the closest thing this app has to
           a "profile menu" (no dropdown user menu exists yet). */}
       <div className="flex flex-col gap-1">
-        <h2 className="title-1 font-semibold">Onboarding</h2>
-        <p className="text-mini text-muted-foreground">
+        <h2 className="text-xl font-semibold">Onboarding</h2>
+        <p className="text-sm text-muted-foreground">
           Replay the guided tour of the sidebar, board, and task creation.
         </p>
         <div>

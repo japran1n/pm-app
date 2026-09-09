@@ -214,7 +214,7 @@ export function NotificationPreferencesForm({
         <div className="flex items-center justify-between gap-4 rounded-md border p-4">
           <div className="flex flex-col gap-1">
             <Label htmlFor="email-enabled">Email notifications</Label>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Turn this off to stop all email notifications, regardless of
               the per-type settings below.
             </p>
@@ -230,7 +230,7 @@ export function NotificationPreferencesForm({
 
       <div className="flex flex-col gap-4">
         <div
-          className={`grid ${gridColsClassName} items-center gap-x-6 gap-y-1 text-mini font-medium text-muted-foreground`}
+          className={`grid ${gridColsClassName} items-center gap-x-6 gap-y-1 text-sm font-medium text-muted-foreground`}
         >
           <span />
           <span className="text-center">In-app</span>
@@ -246,7 +246,7 @@ export function NotificationPreferencesForm({
           >
             <div className="flex flex-col gap-1">
               <Label htmlFor={row.inApp}>{row.label}</Label>
-              <p className="text-mini text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 {row.description}
               </p>
             </div>
@@ -281,7 +281,7 @@ export function NotificationPreferencesForm({
             <Label htmlFor="desktop-notifications-enabled">
               Enable desktop notifications
             </Label>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Show a browser notification for @mentions and approval
               requests while this tab is open in the background.
               {desktopPermission === "denied"
@@ -301,7 +301,7 @@ export function NotificationPreferencesForm({
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <Label htmlFor="sound-enabled">Notification sound</Label>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Play a short sound for direct messages, thread replies, and
               mentions.
             </p>
@@ -327,7 +327,7 @@ export function NotificationPreferencesForm({
             aria-label="Notification sound volume"
             className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary disabled:cursor-not-allowed disabled:opacity-50"
           />
-          <span className="w-9 shrink-0 text-right text-mini text-muted-foreground tabular-nums">
+          <span className="w-9 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
             {volumeDraft}%
           </span>
           <Button
@@ -346,7 +346,7 @@ export function NotificationPreferencesForm({
             <Label htmlFor="sound-only-unfocused">
               Only play when this tab isn&apos;t focused
             </Label>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Off means it also plays for messages you&apos;re already looking
               at.
             </p>

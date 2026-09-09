@@ -195,7 +195,7 @@ export function WorkspaceGeneralForm({
             </>
           )}
         </div>
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           JPEG, PNG, or WebP, up to 2MB. Shown in the workspace switcher.
         </p>
       </div>
@@ -215,14 +215,14 @@ export function WorkspaceGeneralForm({
             aria-describedby={formError ? "workspace-name-error" : undefined}
             className="max-w-sm"
           />
-          <p className="text-micro text-muted-foreground text-right max-w-sm">{name.length}/80</p>
+          <p className="text-xs text-muted-foreground text-right max-w-sm">{name.length}/80</p>
         </div>
 
         {formError && (
           <p
             id="workspace-name-error"
             role="alert"
-            className="text-mini text-destructive"
+            className="text-sm text-destructive"
           >
             {formError}
           </p>
@@ -267,8 +267,8 @@ export function WorkspaceGeneralForm({
             aria-describedby={slugError ? "workspace-slug-error" : undefined}
             className="max-w-sm"
           />
-          <p className="text-micro text-muted-foreground text-right max-w-sm">{slug.length}/80</p>
-          <p className="text-mini text-muted-foreground">
+          <p className="text-xs text-muted-foreground text-right max-w-sm">{slug.length}/80</p>
+          <p className="text-sm text-muted-foreground">
             Changing this updates the workspace&rsquo;s URL. Links using the
             old URL will keep working — they redirect here automatically.
           </p>
@@ -278,7 +278,7 @@ export function WorkspaceGeneralForm({
           <p
             id="workspace-slug-error"
             role="alert"
-            className="text-mini text-destructive"
+            className="text-sm text-destructive"
           >
             {slugError}
           </p>

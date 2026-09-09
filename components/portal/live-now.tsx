@@ -29,7 +29,7 @@ export function LiveNow({ entries }: { entries: PortalLiveNowEntry[] }) {
     >
       <div className="flex items-center gap-2">
         <Radio aria-hidden="true" className="size-4 text-status-progress" />
-        <h2 className="text-mini font-semibold">Live now</h2>
+        <h2 className="text-sm font-semibold">Live now</h2>
       </div>
       <ul className="flex flex-col gap-3">
         {entries.map((entry) => (
@@ -39,10 +39,10 @@ export function LiveNow({ entries }: { entries: PortalLiveNowEntry[] }) {
               size="sm"
             />
             <div className="flex min-w-0 flex-col leading-tight">
-              <span className="truncate text-mini font-medium">
+              <span className="truncate text-sm font-medium">
                 {entry.personName ?? "Someone at the agency"}
               </span>
-              <span className="truncate text-micro text-muted-foreground">{entry.label}</span>
+              <span className="truncate text-xs text-muted-foreground">{entry.label}</span>
             </div>
           </li>
         ))}

@@ -62,7 +62,7 @@ export function PasswordSignInForm() {
         <p
           id="password-sign-in-error"
           role="alert"
-          className="text-mini text-destructive"
+          className="text-sm text-destructive"
         >
           {state.error}
         </p>

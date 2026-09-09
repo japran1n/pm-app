@@ -27,7 +27,7 @@ export function TaskTypeTimeCard({
     <Card>
       <CardHeader>
         <CardTitle>Time by task type</CardTitle>
-        <p className="text-micro text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Tracked and estimated hours grouped by task type.
         </p>
       </CardHeader>
@@ -36,7 +36,7 @@ export function TaskTypeTimeCard({
           {totals.map((total) => (
             <div
               key={total.taskTypeId}
-              className="flex items-center justify-between gap-4 px-4 py-2.5 text-mini"
+              className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm"
             >
               <span className="truncate font-medium">{total.taskTypeName}</span>
               <span className="shrink-0 text-muted-foreground tabular-nums">

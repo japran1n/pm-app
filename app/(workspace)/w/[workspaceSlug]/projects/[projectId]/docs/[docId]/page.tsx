@@ -58,7 +58,7 @@ export default async function ProjectDocEditorPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <nav className="flex items-center gap-1.5 text-mini text-muted-foreground">
+      <nav className="flex items-center gap-1.5 text-sm text-muted-foreground">
         <Link
           href={`/w/${workspaceSlug}/projects/${project.id}/docs`}
           className="hover:text-foreground"

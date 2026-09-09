@@ -126,18 +126,18 @@ export default async function ProjectDetailLayout({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-2">
-              <h1 className="title-2 font-semibold tracking-tight">
+              <h1 className="text-2xl font-semibold tracking-tight">
                 {project.name}
               </h1>
               {isArchived && <Badge variant="outline">Archived</Badge>}
             </div>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {project.description || "No description."}
             </p>
           </div>
           <Link
             href={`/w/${workspaceSlug}/projects`}
-            className="text-mini text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
             Back to projects
           </Link>
@@ -145,7 +145,7 @@ export default async function ProjectDetailLayout({
 
         {(totalMinutes > 0 || timeTotals.estimateMinutes > 0) && (
           <div className="flex flex-col gap-1.5">
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {formatHours(totalMinutes)}h logged (
               {formatHours(timeTotals.billableMinutes)}h billable)
               {timeTotals.estimateMinutes > 0 &&

@@ -53,7 +53,7 @@ export default async function DocEditorPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-micro text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         {workspace.name} / Docs / {doc.title}
       </p>
       <MarkdownEditor

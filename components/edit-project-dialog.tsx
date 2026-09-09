@@ -157,7 +157,7 @@ export function EditProjectDialog({
                 aria-label="No icon"
                 onClick={() => setIcon(null)}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-md border text-micro text-muted-foreground hover:bg-accent",
+                  "flex size-8 items-center justify-center rounded-md border text-xs text-muted-foreground hover:bg-accent",
                   icon === null && "border-primary bg-primary/10",
                 )}
               >
@@ -172,7 +172,7 @@ export function EditProjectDialog({
                   aria-label={`Use ${emoji} as the project icon`}
                   onClick={() => setIcon(emoji)}
                   className={cn(
-                    "flex size-8 items-center justify-center rounded-md border text-regular hover:bg-accent",
+                    "flex size-8 items-center justify-center rounded-md border text-base hover:bg-accent",
                     icon === emoji && "border-primary bg-primary/10",
                   )}
                 >
@@ -213,7 +213,7 @@ export function EditProjectDialog({
             <p
               id={`edit-project-error-${project.id}`}
               role="alert"
-              className="text-mini text-destructive"
+              className="text-sm text-destructive"
             >
               {error}
             </p>

@@ -73,8 +73,8 @@ export default async function TemplatesPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Templates</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Templates</h1>
+        <p className="text-sm text-muted-foreground">
           Task templates saved from {workspace.name}. Save any task as a
           template from its detail view, then create new tasks from it
           anywhere you create tasks.
@@ -97,8 +97,8 @@ export default async function TemplatesPage({
             <LayoutTemplate className="size-6 text-muted-foreground" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="text-mini font-medium">No templates yet</p>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm font-medium">No templates yet</p>
+            <p className="text-sm text-muted-foreground">
               Save a task as a template from its detail view to reuse its
               title, description, checklist, and other fields the next time
               you create a similar task.

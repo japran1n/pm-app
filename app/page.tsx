@@ -7,10 +7,10 @@ export default function Home() {
     <div className="flex min-h-svh flex-1 flex-col items-center justify-center gap-8 px-4 text-center">
       <div className="flex flex-col items-center gap-3">
         <Logo className="h-6 w-auto text-foreground" />
-        <h1 className="max-w-md title-3 font-semibold tracking-tight text-balance sm:title-3">
+        <h1 className="max-w-md text-3xl font-semibold tracking-tight text-balance sm:text-3xl">
           Project management, kept simple.
         </h1>
-        <p className="max-w-sm text-mini text-muted-foreground">
+        <p className="max-w-sm text-sm text-muted-foreground">
           Plan, track, and ship work with your team — without the clutter.
         </p>
       </div>

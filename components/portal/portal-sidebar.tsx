@@ -211,8 +211,8 @@ function NavRow({
         "flex shrink-0 items-center rounded-md transition-colors",
         layout === "desktop" && "w-full",
         variant === "secondary"
-          ? "gap-2 px-3 py-1.5 text-tag"
-          : "gap-2.5 px-3 py-2 text-mini font-medium",
+          ? "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
+          : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : variant === "secondary"
@@ -268,10 +268,10 @@ export function PortalSidebar({
         size="sm"
       />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate text-mini font-semibold tracking-tight">
+        <span className="truncate text-sm font-semibold tracking-tight">
           {workspaceName}
         </span>
-        <span className="text-tag text-sidebar-foreground/60">Client portal</span>
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Client portal</span>
       </span>
     </Link>
   );
@@ -281,20 +281,20 @@ export function PortalSidebar({
       href={`/portal/${workspaceSlug}`}
       className="hover-surface flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2"
     >
-      <span className="text-tag text-sidebar-foreground/60">Project</span>
-      <span className="truncate text-mini font-medium">{projectName}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="truncate text-sm font-medium">{projectName}</span>
     </Link>
   ) : (
     <div className="flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2">
-      <span className="text-tag text-sidebar-foreground/60">Project</span>
-      <span className="truncate text-mini font-medium">{projectName}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="truncate text-sm font-medium">{projectName}</span>
     </div>
   );
 
   const identity = (
     <div className="flex min-w-0 items-center gap-2.5">
       <UserAvatar person={currentUser} size="sm" />
-      <span className="min-w-0 flex-1 truncate text-mini font-medium">
+      <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {personLabel(currentUser)}
       </span>
     </div>

@@ -130,13 +130,13 @@ function AssumptionRow({
       data-testid="portal-assumption-row"
     >
       <div className="flex flex-wrap items-start gap-2">
-        <p className="text-mini text-foreground">{assumption.text}</p>
+        <p className="text-sm text-foreground">{assumption.text}</p>
         <Badge variant="secondary" className="ml-auto">
           {STATE_LABELS[assumption.state]}
         </Badge>
       </div>
       {isFlagged ? (
-        <p className="flex items-center gap-1.5 text-micro text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <AlertTriangle className="size-3.5" aria-hidden="true" />
           You flagged this — the team is reviewing your note.
         </p>
@@ -155,7 +155,7 @@ export function AssumptionList({ assumptions }: { assumptions: ProjectAssumption
   const [items, setItems] = useState(assumptions);
 
   if (items.length === 0) {
-    return <p className="text-mini text-muted-foreground">No assumptions recorded yet.</p>;
+    return <p className="text-sm text-muted-foreground">No assumptions recorded yet.</p>;
   }
 
   return (
@@ -171,7 +171,7 @@ export function AssumptionList({ assumptions }: { assumptions: ProjectAssumption
           />
         ))}
       </ul>
-      <p className="text-micro text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         An assumption that turns out wrong becomes a change request — not a
         surprise two weeks before launch.
       </p>

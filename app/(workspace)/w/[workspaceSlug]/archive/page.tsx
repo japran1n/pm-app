@@ -106,8 +106,8 @@ export default async function ArchivePage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Archive</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Archive</h1>
+        <p className="text-sm text-muted-foreground">
           Projects archived from {workspace.name}. Archiving hides a project
           from the active list without deleting its data.
         </p>
@@ -116,7 +116,7 @@ export default async function ArchivePage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <p>Something went wrong loading the archive. Please try again.</p>
           <a href={`/w/${workspaceSlug}/archive`} className="underline">
@@ -142,8 +142,8 @@ export default async function ArchivePage({
             <Archive className="size-6 text-muted-foreground" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="text-mini font-medium">No archived projects</p>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm font-medium">No archived projects</p>
+            <p className="text-sm text-muted-foreground">
               Projects you archive from the project list will show up here,
               along with when they were archived and by whom.
             </p>
@@ -172,7 +172,7 @@ export default async function ArchivePage({
                     `getArchivedWorkspaceProjects` doc comment — or a user
                     account that's since been deleted), in which case only
                     the date is shown rather than a fabricated name. */}
-                <p className="text-micro text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Archived {dateFormatter.format(new Date(project.archivedAt))}
                   {project.archivedByName
                     ? ` by ${project.archivedByName}`

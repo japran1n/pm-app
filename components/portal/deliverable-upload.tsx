@@ -81,7 +81,7 @@ export function DeliverableUpload({
       >
         <div
           className={cn(
-            "flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-mini",
+            "flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm",
             isPending && "opacity-60",
           )}
         >

@@ -141,7 +141,7 @@ export function RecurrenceEditor({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={`recurrence-freq-${taskId}`}
-            className="text-micro text-muted-foreground"
+            className="text-xs text-muted-foreground"
           >
             Frequency
           </Label>
@@ -166,7 +166,7 @@ export function RecurrenceEditor({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={`recurrence-interval-${taskId}`}
-            className="text-micro text-muted-foreground"
+            className="text-xs text-muted-foreground"
           >
             {freq === "every_n_days" ? "Every N days" : "Interval"}
           </Label>
@@ -185,7 +185,7 @@ export function RecurrenceEditor({
         <div className="flex flex-col gap-1.5">
           <Label
             htmlFor={`recurrence-until-${taskId}`}
-            className="text-micro text-muted-foreground"
+            className="text-xs text-muted-foreground"
           >
             Ends (optional)
           </Label>
@@ -205,7 +205,7 @@ export function RecurrenceEditor({
           task card's compact indicator calls, per this feature's own
           "one place users verify what they configured" note. */}
       <p
-        className="text-mini text-muted-foreground"
+        className="text-sm text-muted-foreground"
         data-testid="recurrence-summary"
       >
         {summary ?? "No recurrence set."}

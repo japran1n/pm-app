@@ -118,8 +118,8 @@ export default async function ProjectHoursPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Hours</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Hours</h1>
+        <p className="text-sm text-muted-foreground">
           {project.name}&apos;s logged time for {from} – {to}, by person and
           category. Rows marked &ldquo;Client sees this&rdquo; are exactly
           what shows up in the portal&apos;s hours chart.

@@ -159,17 +159,17 @@ export function Swimlane({
             {(avatar.name ?? avatar.email ?? "?").slice(0, 1)}
           </span>
         ) : null}
-        <h3 className="text-mini font-semibold text-foreground">{label}</h3>
-        <span className="rounded-full bg-muted px-1.5 py-0.5 text-micro font-normal text-muted-foreground">
+        <h3 className="text-sm font-semibold text-foreground">{label}</h3>
+        <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs font-normal text-muted-foreground">
           {tasks.length}
         </span>
         {collapsed ? (
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             ({tasks.length} hidden)
           </span>
         ) : null}
         {showMultiValueNote ? (
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             (tasks with multiple values appear in more than one lane)
           </span>
         ) : null}

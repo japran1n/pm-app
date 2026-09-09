@@ -288,14 +288,14 @@ export function OnboardingTour({
         className="rounded-lg border bg-popover p-4 text-popover-foreground shadow-lg"
         style={cardStyle}
       >
-        <p className="text-mini font-semibold">{step.title}</p>
-        <p className="mt-1 text-mini text-muted-foreground">{step.body}</p>
+        <p className="text-sm font-semibold">{step.title}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{step.body}</p>
         <div className="mt-4 flex items-center justify-between gap-2">
           <Button type="button" variant="ghost" size="sm" onClick={finish}>
             Skip
           </Button>
           <div className="flex items-center gap-2">
-            <span className="text-micro text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {stepIndex + 1} / {availableSteps.length}
             </span>
             {stepIndex > 0 && (

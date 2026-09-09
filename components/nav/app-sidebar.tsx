@@ -361,7 +361,7 @@ function SidebarContent({
           {groups.map((group, groupIndex) => (
             <div key={group.label ?? `group-${groupIndex}`} className="flex flex-col gap-0.5">
               {group.label && (
-                <p className="px-2 mb-1 mt-3 text-micro text-muted-foreground uppercase tracking-wide">
+                <p className="px-2 mb-1 mt-3 text-xs text-muted-foreground uppercase tracking-wide">
                   {group.label}
                 </p>
               )}
@@ -388,7 +388,7 @@ function SidebarContent({
                       // md:hidden`), so a `sm:` check would leave 640-767px
                       // tablet widths (where the mobile Sheet is still what's
                       // shown) under-sized.
-                      "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-mini max-md:min-h-11",
+                      "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm max-md:min-h-11",
                       isActive
                         ? "bg-accent text-foreground font-medium"
                         : "text-muted-foreground hover:bg-[#ffffff0d]",
@@ -463,7 +463,7 @@ function SidebarContent({
             // F265 (AS-518): same `max-md:min-h-11` reasoning as the
             // primary nav items above -- this Link is shared between the
             // desktop `<aside>` and the mobile hamburger Sheet.
-            "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-mini transition-colors max-md:min-h-11",
+            "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm transition-colors max-md:min-h-11",
             pathname === `/w/${workspaceSlug}/settings/profile`
               ? "bg-accent text-foreground font-medium"
               : "text-muted-foreground hover:bg-[#ffffff0d]",

@@ -236,7 +236,7 @@ export function MessageList({
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center px-4 text-center text-mini text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground">
         No messages yet. Say hello!
       </div>
     );
@@ -254,7 +254,7 @@ export function MessageList({
             type="button"
             onClick={onLoadMoreMessages}
             disabled={isLoadingMoreMessages}
-            className="rounded-full border border-border bg-background px-3 py-1 text-micro font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+            className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
           >
             {isLoadingMoreMessages ? "Loading…" : "Load earlier messages"}
           </button>
@@ -386,10 +386,10 @@ function MessageRow({
       <div className="min-w-0 flex-1">
         {!sameSenderAsPrevious && (
           <div className="flex items-baseline gap-2">
-            <span className="text-mini font-semibold">
+            <span className="text-sm font-semibold">
               {isOwn ? "You" : authorLabel(message.senderId, members)}
             </span>
-            <span className="text-micro text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {isAfter(new Date(message.createdAt), subHours(new Date(), 24))
                 ? formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })
                 : format(new Date(message.createdAt), "MMM d, HH:mm")}
@@ -400,7 +400,7 @@ function MessageRow({
           <div className="flex flex-col gap-1">
             <textarea
               autoFocus
-              className="w-full resize-none rounded border border-input bg-background px-2 py-1 text-mini outline-none focus:ring-1 focus:ring-ring"
+              className="w-full resize-none rounded border border-input bg-background px-2 py-1 text-sm outline-none focus:ring-1 focus:ring-ring"
               rows={2}
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
@@ -409,14 +409,14 @@ function MessageRow({
                 if (e.key === "Escape") { setEditing(false); setEditText(bodyText); }
               }}
             />
-            <div className="flex gap-1 text-micro">
+            <div className="flex gap-1 text-xs">
               <button type="button" onClick={() => void handleEdit()} className="text-primary hover:underline">Save</button>
               <span className="text-muted-foreground">·</span>
               <button type="button" onClick={() => { setEditing(false); setEditText(bodyText); }} className="text-muted-foreground hover:underline">Cancel</button>
             </div>
           </div>
         ) : message.deletedAt ? (
-          <p className="whitespace-pre-wrap text-mini italic text-muted-foreground">
+          <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">
             Message deleted
           </p>
         ) : RichTextRenderer ? (
@@ -426,21 +426,21 @@ function MessageRow({
           // plain text. Scoped to chat only (not touching the shared
           // editor component or the global reset) since a visibly-a-link
           // link was the literal ask.
-          <div className="text-mini [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
+          <div className="text-sm [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
             <RichTextRenderer
               content={message.bodyJson}
               aria-label={`Message from ${authorLabel(message.senderId, members)}`}
               mentionSuggestions={mentionSuggestions}
             />
             {message.editedAt && (
-              <span className="text-micro text-muted-foreground">(edited)</span>
+              <span className="text-xs text-muted-foreground">(edited)</span>
             )}
           </div>
         ) : (
-          <p className="whitespace-pre-wrap text-mini">
+          <p className="whitespace-pre-wrap text-sm">
             {bodyText}
             {message.editedAt && (
-              <span className="ml-1 text-micro text-muted-foreground">(edited)</span>
+              <span className="ml-1 text-xs text-muted-foreground">(edited)</span>
             )}
           </p>
         )}
@@ -469,7 +469,7 @@ function MessageRow({
               <button
                 type="button"
                 onClick={() => onOpenThread(message.id)}
-                className="text-micro font-medium text-primary hover:underline"
+                className="text-xs font-medium text-primary hover:underline"
               >
                 {replyCounts[message.id]}{" "}
                 {replyCounts[message.id] === 1 ? "reply" : "replies"}

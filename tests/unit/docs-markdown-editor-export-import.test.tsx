@@ -72,7 +72,7 @@ describe("MarkdownEditor export/import as Markdown", () => {
     fireEvent.click(await screen.findByRole("button", { name: /export \.md/i }));
 
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
-    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    const blob = (createObjectURL.mock.calls[0] as unknown as [Blob])[0];
     expect(blob.type).toContain("text/markdown");
     const text = await blob.text();
     expect(text).toContain("Hello");

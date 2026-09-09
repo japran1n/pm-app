@@ -87,7 +87,7 @@ export function StatusDistribution({
 
       {/* AS-017: the key — every bucket, always, count as a number AND
           name as text. */}
-      <dl className="flex flex-wrap gap-x-6 gap-y-2 text-mini">
+      <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
         {BUCKET_ORDER.map((bucket) => (
           <div key={bucket} className="flex items-center gap-2">
             <span

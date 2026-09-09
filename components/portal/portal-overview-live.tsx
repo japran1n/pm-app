@@ -187,10 +187,10 @@ export function PortalOverviewLive({
             aria-hidden="true"
             className="size-4 text-amber-600"
           />
-          <h2 className="text-mini font-semibold">Waiting on you</h2>
+          <h2 className="text-sm font-semibold">Waiting on you</h2>
         </div>
         {waitingOnYou.length === 0 ? (
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             {waitingOnYouFailed
               ? "We couldn't load this. Try refreshing the page."
               : "Nothing waiting on you right now."}
@@ -201,10 +201,10 @@ export function PortalOverviewLive({
               <li key={task.id}>
                 <Link
                   href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
-                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-mini"
+                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
                 >
                   <span className="min-w-0 truncate">{task.title}</span>
-                  <span className="shrink-0 text-micro text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {task.projectName}
                   </span>
                 </Link>
@@ -220,10 +220,10 @@ export function PortalOverviewLive({
             aria-hidden="true"
             className="size-4 text-emerald-600"
           />
-          <h2 className="text-mini font-semibold">Delivered this week</h2>
+          <h2 className="text-sm font-semibold">Delivered this week</h2>
         </div>
         {deliveredThisWeek.length === 0 ? (
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Nothing delivered in the last 7 days.
           </p>
         ) : (
@@ -232,10 +232,10 @@ export function PortalOverviewLive({
               <li key={task.id}>
                 <Link
                   href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
-                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-mini"
+                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
                 >
                   <span className="min-w-0 truncate">{task.title}</span>
-                  <span className="shrink-0 text-micro text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground">
                     {formatDate(task.updatedAt)}
                   </span>
                 </Link>

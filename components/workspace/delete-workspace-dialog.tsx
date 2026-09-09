@@ -81,7 +81,7 @@ export function DeleteWorkspaceDialog({
           </DialogDescription>
         </DialogHeader>
         {error && (
-          <p role="alert" className="text-mini text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}

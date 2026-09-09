@@ -41,7 +41,7 @@ export function WorkspaceSwitcher({
   // workspace is included), but handled explicitly rather than assuming.
   if (workspaces.length === 0) {
     return (
-      <span className="text-mini text-muted-foreground">No workspaces</span>
+      <span className="text-sm text-muted-foreground">No workspaces</span>
     );
   }
 

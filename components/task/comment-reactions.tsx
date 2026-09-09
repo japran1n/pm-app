@@ -210,7 +210,7 @@ export function CommentReactions({
                   }
                   onClick={() => toggle(reaction.emoji)}
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-micro",
+                    "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs",
                     mine
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-input bg-transparent text-foreground hover:bg-accent",
@@ -222,7 +222,7 @@ export function CommentReactions({
                 </button>
               }
             />
-            <PopoverContent className="w-auto max-w-64 p-2 text-micro">
+            <PopoverContent className="w-auto max-w-64 p-2 text-xs">
               {names}
             </PopoverContent>
           </Popover>
@@ -259,7 +259,7 @@ export function CommentReactions({
                   aria-label={`React with ${emoji}`}
                   disabled={isPending && pendingEmoji === emoji}
                   onClick={() => toggle(emoji)}
-                  className="rounded-md p-1 text-regular hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                  className="rounded-md p-1 text-base hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
                 >
                   {emoji}
                 </button>

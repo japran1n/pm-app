@@ -275,13 +275,13 @@ export function ApprovalCard({
         {/* Decision types are per-project and customizable now
             (project_decision_types) — this is the type's own name, as
             configured on the project, not a fixed 4-value label lookup. */}
-        <span className="text-tag text-muted-foreground">{approval.decisionType}</span>
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{approval.decisionType}</span>
         {!settled && approval.dueAt && (
           <span
             data-testid="approval-due-chip"
             data-overdue={overdue ? "true" : "false"}
             className={cn(
-              "rounded-full px-2 py-0.5 text-micro font-medium",
+              "rounded-full px-2 py-0.5 text-xs font-medium",
               overdue
                 ? "bg-status-blocked-bg text-status-blocked"
                 : "bg-status-waiting-bg text-status-waiting",
@@ -292,9 +292,9 @@ export function ApprovalCard({
         )}
       </div>
 
-      <h3 className="text-mini font-semibold">{approval.title}</h3>
+      <h3 className="text-sm font-semibold">{approval.title}</h3>
       {approval.description && (
-        <p className="text-mini text-muted-foreground">{approval.description}</p>
+        <p className="text-sm text-muted-foreground">{approval.description}</p>
       )}
 
       {/* F085 (missions/20260903-portal audit, defect 6): `requestedAt`
@@ -303,7 +303,7 @@ export function ApprovalCard({
           three weeks ago, or a fresh ask from a re-submission of
           something they already sent back. Both render here, always
           (not gated on `dueAt` the way the chip above is). */}
-      <p data-testid="approval-requested-meta" className="text-micro text-muted-foreground">
+      <p data-testid="approval-requested-meta" className="text-xs text-muted-foreground">
         Requested {formatDate(approval.requestedAt)}
         {approval.round > 1 ? ` · Round ${approval.round}` : ""}
       </p>
@@ -314,7 +314,7 @@ export function ApprovalCard({
           bar measuring time-still-waiting would be stale and misleading. */}
       {!settled && (
         <div data-testid="approval-age" className="flex flex-col gap-1">
-          <div className="flex items-center justify-between gap-2 text-micro text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{daysWaitedLabel}</span>
             {/* No colour-only encoding: overdue is named in text with an
                 icon, never left to the bar's colour alone. */}
@@ -372,7 +372,7 @@ export function ApprovalCard({
           href={href}
           target={isExternal ? "_blank" : undefined}
           rel={isExternal ? "noopener noreferrer" : undefined}
-          className="inline-flex w-fit items-center gap-1.5 text-mini font-medium text-primary hover:underline"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline"
         >
           {isExternal ? <ExternalLink className="size-3.5" aria-hidden="true" /> : null}
           Open
@@ -388,7 +388,7 @@ export function ApprovalCard({
           type="button"
           onClick={handleOpenDocSnapshot}
           disabled={isOpeningDoc}
-          className="inline-flex w-fit items-center gap-1.5 text-mini font-medium text-primary hover:underline disabled:opacity-60"
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-primary hover:underline disabled:opacity-60"
         >
           {isOpeningDoc ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -402,7 +402,7 @@ export function ApprovalCard({
       {settled ? (
         <div
           className={cn(
-            "flex flex-col gap-1 rounded-lg border p-3 text-mini font-medium",
+            "flex flex-col gap-1 rounded-lg border p-3 text-sm font-medium",
             settled.decision === "approved"
               ? "border-emerald-600/30 bg-emerald-600/5"
               : "border-amber-600/30 bg-amber-600/5",
@@ -425,14 +425,14 @@ export function ApprovalCard({
               deliberately text, not a Link, regardless of the id being
               known here. */}
           {settled.decision === "changes_requested" && settled.resultingTaskId && (
-            <p className="text-micro font-normal text-muted-foreground">
+            <p className="text-xs font-normal text-muted-foreground">
               We&apos;ve logged this as work for the team.
             </p>
           )}
         </div>
       ) : isRequestingChanges ? (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-600/30 bg-amber-600/5 p-4">
-          <p className="text-mini font-medium">What needs to change?</p>
+          <p className="text-sm font-medium">What needs to change?</p>
           <Textarea
             value={message}
             onChange={(event) => setMessage(event.target.value)}
@@ -496,7 +496,7 @@ export function ApprovalCard({
               (DecisionOwnersGrid, this feature's own sibling fix), the
               one place a client can see who else to raise it with. */}
           {!isOwner && (
-            <div className="flex flex-wrap items-center gap-2 text-micro text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>
                 {ownerName ? `Only ${ownerName} can decide this.` : "No one is assigned to decide this yet."}
               </span>

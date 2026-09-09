@@ -113,7 +113,7 @@ export function ListPrioritySelect({
         {localValue ? (
           <StatusBadge label={PRIORITY_LABELS[localValue]} color={PRIORITY_COLORS[localValue]} />
         ) : (
-          <span className="text-mini text-muted-foreground">No priority</span>
+          <span className="text-sm text-muted-foreground">No priority</span>
         )}
       </span>
     );

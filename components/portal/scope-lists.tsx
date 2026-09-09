@@ -17,20 +17,20 @@ function ScopeColumn({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <h3 className="text-mini font-semibold text-foreground">{title}</h3>
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {items.length === 0 ? (
-        <p className="text-mini text-muted-foreground">{emptyLabel}</p>
+        <p className="text-sm text-muted-foreground">{emptyLabel}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((item) => (
             <li
               key={item.id}
-              className="rounded-md border border-border p-3 text-mini"
+              className="rounded-md border border-border p-3 text-sm"
               data-testid="scope-item-row"
             >
               <p className="font-medium text-foreground">{item.title}</p>
               {item.description && (
-                <p className="mt-1 text-micro text-muted-foreground">{item.description}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
               )}
               {item.source === "change_request" && (
                 <Badge variant="outline" className="mt-2">

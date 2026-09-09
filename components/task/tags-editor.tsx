@@ -97,7 +97,7 @@ export function TagsEditor({
       <Label htmlFor={`task-tags-${taskId}`}>Tags</Label>
       <div className="flex flex-wrap gap-1.5">
         {localTags.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No tags yet.</p>
+          <p className="text-sm text-muted-foreground">No tags yet.</p>
         ) : (
           localTags.map((tag) => (
             <Badge key={tag} variant="secondary" className="gap-1 pr-1">

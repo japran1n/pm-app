@@ -311,7 +311,7 @@ function DependencySection({
               />
               <CommandList>
                 {isSearching ? (
-                  <div className="flex items-center justify-center gap-2 py-6 text-mini text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                     <Loader2
                       className="size-4 animate-spin"
                       aria-hidden="true"
@@ -335,7 +335,7 @@ function DependencySection({
                             onSelect={() => handleSelect(candidate)}
                           >
                             {key && (
-                              <span className="font-mono text-micro text-muted-foreground">
+                              <span className="font-mono text-xs text-muted-foreground">
                                 {key}
                               </span>
                             )}
@@ -355,7 +355,7 @@ function DependencySection({
       </div>
 
       {items.length === 0 ? (
-        <div className="flex items-center gap-2 text-mini text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Link2 className="size-4" aria-hidden="true" />
           {emptyLabel}
         </div>
@@ -380,11 +380,11 @@ function DependencySection({
                   className="flex flex-1 items-center gap-2 truncate text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-default"
                 >
                   {key && (
-                    <span className="font-mono text-micro text-muted-foreground">
+                    <span className="font-mono text-xs text-muted-foreground">
                       {key}
                     </span>
                   )}
-                  <span className="flex-1 truncate text-mini">
+                  <span className="flex-1 truncate text-sm">
                     {item.title}
                   </span>
                   <Badge variant="secondary" className="gap-1.5">

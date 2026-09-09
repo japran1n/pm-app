@@ -84,10 +84,10 @@ export function ProjectGuidesList({ guides }: { guides: Doc[] }) {
                 className="size-6 text-muted-foreground"
                 aria-hidden="true"
               />
-              <span className="text-mini font-medium text-foreground">
+              <span className="text-sm font-medium text-foreground">
                 {doc.title}
               </span>
-              <span className="line-clamp-3 text-tag text-muted-foreground">
+              <span className="line-clamp-3 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                 {doc.content ? doc.content : "No description yet."}
               </span>
             </button>

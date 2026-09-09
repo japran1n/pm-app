@@ -400,9 +400,9 @@ export default async function PortalOverviewPage({
           {hasActivity && activity && (
             <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-mini font-semibold">Since your last visit</h2>
+                <h2 className="text-sm font-semibold">Since your last visit</h2>
                 {activity.since && (
-                  <span className="text-micro text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {formatDate(activity.since)}
                   </span>
                 )}
@@ -412,7 +412,7 @@ export default async function PortalOverviewPage({
                   <li key={`completed-${task.id}`}>
                     <Link
                       href={`/portal/${workspace.slug}/p/${task.projectId}/t/${task.id}`}
-                      className="hover-surface -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-mini"
+                      className="hover-surface -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm"
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <CheckCircle2
@@ -421,7 +421,7 @@ export default async function PortalOverviewPage({
                         />
                         <span className="min-w-0 truncate">{task.title}</span>
                       </span>
-                      <span className="shrink-0 text-micro text-muted-foreground">Completed</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">Completed</span>
                     </Link>
                   </li>
                 ))}
@@ -429,7 +429,7 @@ export default async function PortalOverviewPage({
                   <li key={`added-${task.id}`}>
                     <Link
                       href={`/portal/${workspace.slug}/p/${task.projectId}/t/${task.id}`}
-                      className="hover-surface -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-mini"
+                      className="hover-surface -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm"
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <Plus
@@ -438,12 +438,12 @@ export default async function PortalOverviewPage({
                         />
                         <span className="min-w-0 truncate">{task.title}</span>
                       </span>
-                      <span className="shrink-0 text-micro text-muted-foreground">Added</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">Added</span>
                     </Link>
                   </li>
                 ))}
                 {activity.commentCount > 0 && (
-                  <li className="flex items-center gap-2 px-2 py-1.5 text-mini text-muted-foreground">
+                  <li className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
                     <MessageSquare aria-hidden="true" className="size-3.5 shrink-0" />
                     {activity.commentCount}{" "}
                     {activity.commentCount === 1 ? "comment" : "comments"} from the team

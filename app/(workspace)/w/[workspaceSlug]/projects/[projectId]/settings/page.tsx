@@ -223,8 +223,8 @@ export default async function ProjectSettingsPage({
     <div className="flex flex-col gap-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="title-1 font-semibold">Project settings</h1>
-          <p className="text-mini text-muted-foreground">
+          <h1 className="text-xl font-semibold">Project settings</h1>
+          <p className="text-sm text-muted-foreground">
             Members and visibility for {project.name}.
           </p>
         </div>
@@ -248,7 +248,7 @@ export default async function ProjectSettingsPage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <p>Something went wrong loading this project&apos;s settings. Please try again.</p>
           <a
@@ -263,7 +263,7 @@ export default async function ProjectSettingsPage({
       {!loadError && (
         <>
           <section className="flex flex-col gap-3">
-            <h2 className="text-mini font-semibold">Visibility</h2>
+            <h2 className="text-sm font-semibold">Visibility</h2>
             {canToggleVisibility ? (
               <ProjectVisibilityToggle
                 projectId={project.id}
@@ -271,7 +271,7 @@ export default async function ProjectSettingsPage({
                 lossPreview={lossPreview}
               />
             ) : (
-              <p className="text-mini text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 This project is{" "}
                 {visibility === "private" ? "private" : "visible to the whole workspace"}
                 . Only a workspace owner or admin can change this.
@@ -282,8 +282,8 @@ export default async function ProjectSettingsPage({
           <Separator />
 
           <section className="flex flex-col gap-3">
-            <h2 className="text-mini font-semibold">Project members</h2>
-            <p className="text-mini text-muted-foreground">
+            <h2 className="text-sm font-semibold">Project members</h2>
+            <p className="text-sm text-muted-foreground">
               People explicitly scoped to this project, with their project
               role and who added them.
             </p>
@@ -298,8 +298,8 @@ export default async function ProjectSettingsPage({
 
           {canManage && (
             <section className="flex flex-col gap-3">
-              <h2 className="text-mini font-semibold">Add a member</h2>
-              <p className="text-mini text-muted-foreground">
+              <h2 className="text-sm font-semibold">Add a member</h2>
+              <p className="text-sm text-muted-foreground">
                 Only people who are already workspace members can be added —
                 inviting someone new to the workspace happens from the
                 workspace members page.
@@ -313,8 +313,8 @@ export default async function ProjectSettingsPage({
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-col gap-1">
-                <h2 className="text-mini font-semibold">Who approves what</h2>
-                <p className="text-mini text-muted-foreground">
+                <h2 className="text-sm font-semibold">Who approves what</h2>
+                <p className="text-sm text-muted-foreground">
                   Which client decides each kind of approval for this
                   project. Add or remove decision types below, and set who
                   decides each one — a request raised for a decision type
@@ -331,7 +331,7 @@ export default async function ProjectSettingsPage({
                 trigger={
                   <button
                     type="button"
-                    className="text-mini underline underline-offset-2 hover:text-foreground"
+                    className="text-sm underline underline-offset-2 hover:text-foreground"
                   >
                     Request approval for a link
                   </button>
@@ -351,8 +351,8 @@ export default async function ProjectSettingsPage({
 
           <section className="flex flex-col gap-3">
             <div className="flex flex-col gap-1">
-              <h2 className="text-mini font-semibold">Team</h2>
-              <p className="text-mini text-muted-foreground">
+              <h2 className="text-sm font-semibold">Team</h2>
+              <p className="text-sm text-muted-foreground">
                 Who does what on this project — PM, team lead, design lead,
                 Webflow lead, designer, developer. Shown to the client on
                 the portal&apos;s Your team card, team lead first.

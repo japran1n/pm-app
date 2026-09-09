@@ -176,7 +176,7 @@ export function ProfileForm({
             className="max-w-xs"
           />
           {isUploadingAvatar && (
-            <p className="flex items-center gap-1 text-micro text-muted-foreground">
+            <p className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" aria-hidden="true" />
               Uploading...
             </p>
@@ -201,7 +201,7 @@ export function ProfileForm({
             aria-describedby={formError ? "profile-form-error" : undefined}
             className="max-w-sm"
           />
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Shown instead of your email everywhere you appear across the
             app.
           </p>
@@ -227,7 +227,7 @@ export function ProfileForm({
               ))}
             </SelectContent>
           </Select>
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Used for due dates and overdue calculations across the app.
           </p>
         </div>
@@ -236,7 +236,7 @@ export function ProfileForm({
           <p
             id="profile-form-error"
             role="alert"
-            className="text-mini text-destructive"
+            className="text-sm text-destructive"
           >
             {formError}
           </p>

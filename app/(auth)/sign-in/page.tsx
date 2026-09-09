@@ -44,8 +44,8 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
       <div className="flex w-full max-w-sm flex-col gap-8">
         <div className="flex flex-col gap-2 text-center">
-          <h1 className="title-2 font-semibold tracking-tight">Sign in</h1>
-          <p className="text-mini text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+          <p className="text-sm text-muted-foreground">
             Use your password, or have a one-time link emailed to you.
           </p>
         </div>
@@ -53,7 +53,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
         {linkExpired && (
           <p
             role="alert"
-            className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-mini text-destructive"
+            className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
           >
             This link has expired or was already used. Enter your email
             below to request a new one.

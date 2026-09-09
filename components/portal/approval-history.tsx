@@ -45,9 +45,9 @@ export function ApprovalHistory({ entries }: { entries: ApprovalHistoryEntry[] }
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
-      <table data-testid="approval-history-table" className="w-full text-mini">
+      <table data-testid="approval-history-table" className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-tag text-muted-foreground">
+          <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
             <th className="px-4 py-2 font-medium">What</th>
             <th className="px-4 py-2 font-medium">Type</th>
             <th className="px-4 py-2 font-medium">Decided by</th>
@@ -66,7 +66,7 @@ export function ApprovalHistory({ entries }: { entries: ApprovalHistoryEntry[] }
                 <span
                   data-testid="approval-history-outcome"
                   className={cn(
-                    "rounded-full px-2 py-0.5 text-micro font-medium",
+                    "rounded-full px-2 py-0.5 text-xs font-medium",
                     entry.state === "approved"
                       ? "bg-status-done-bg text-status-done"
                       : entry.state === "changes_requested"

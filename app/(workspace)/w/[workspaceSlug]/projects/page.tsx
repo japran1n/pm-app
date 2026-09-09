@@ -118,8 +118,8 @@ export default async function ProjectsPage({
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
-          <h1 className="title-1 font-semibold">Projects</h1>
-          <p className="text-mini text-muted-foreground">
+          <h1 className="text-xl font-semibold">Projects</h1>
+          <p className="text-sm text-muted-foreground">
             All projects in {workspace.name}.
           </p>
         </div>
@@ -145,7 +145,7 @@ export default async function ProjectsPage({
         />
       </Suspense>
 
-      <p className="text-mini text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         <Link href={`/w/${workspaceSlug}`} className="underline">
           Back to workspace home
         </Link>
@@ -221,7 +221,7 @@ export async function ProjectsGridSection({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <p>Something went wrong loading projects. Please try again.</p>
           <a href={`/w/${workspaceSlug}/projects`} className="underline">

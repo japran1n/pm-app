@@ -111,16 +111,16 @@ export function ProjectLinksList({ links }: { links: ProjectLink[] }) {
               />
             </span>
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="flex items-center gap-1.5 text-mini font-medium text-foreground">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                 {link.label}
               </span>
-              <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-tag text-muted-foreground">
+              <span className="w-fit rounded bg-muted px-1.5 py-0.5 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                 {KIND_LABEL[link.kind]}
               </span>
-              <span className="truncate font-mono text-tag text-muted-foreground">
+              <span className="truncate font-mono text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                 {hostLabel(link.url)}
               </span>
-              <span className="text-tag text-muted-foreground/80">
+              <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground/80">
                 Opens in {KIND_LABEL[link.kind]}
               </span>
             </span>

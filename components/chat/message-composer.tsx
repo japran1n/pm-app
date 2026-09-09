@@ -213,7 +213,7 @@ export function MessageComposer({
       {pendingAttachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {pendingAttachments.map((a) => (
-            <div key={a.id} className="flex items-center gap-1 rounded border border-border bg-muted px-2 py-1 text-micro">
+            <div key={a.id} className="flex items-center gap-1 rounded border border-border bg-muted px-2 py-1 text-xs">
               <span className="max-w-32 truncate">{a.fileName}</span>
               {a.uploading ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -330,7 +330,7 @@ export function MessageComposer({
           )}
         </Button>
       </div>
-      {error && <p className="mt-1 text-micro text-destructive">{error}</p>}
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

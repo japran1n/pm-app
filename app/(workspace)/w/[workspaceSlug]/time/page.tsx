@@ -150,23 +150,23 @@ export default async function TimeReportPage({
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="flex items-center gap-2 title-1 font-semibold">
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
             <Clock className="size-5" aria-hidden="true" />
             Time report
           </h1>
           <nav aria-label="Time report views" className="flex items-center gap-1 rounded-md border p-1">
-            <span className="rounded bg-secondary px-3 py-1 text-mini font-medium">
+            <span className="rounded bg-secondary px-3 py-1 text-sm font-medium">
               Team report
             </span>
             <Link
               href={`/w/${workspaceSlug}/time/me`}
-              className="rounded px-3 py-1 text-mini text-muted-foreground hover:bg-secondary"
+              className="rounded px-3 py-1 text-sm text-muted-foreground hover:bg-secondary"
             >
               My time
             </Link>
           </nav>
         </div>
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Logged time per member in {workspace.name} for the selected date
           range.
         </p>
@@ -178,7 +178,7 @@ export default async function TimeReportPage({
         className="flex flex-wrap items-end gap-3"
       >
         <div className="flex flex-col gap-1">
-          <label htmlFor="start" className="text-micro font-medium text-muted-foreground">
+          <label htmlFor="start" className="text-xs font-medium text-muted-foreground">
             From
           </label>
           <Input
@@ -190,7 +190,7 @@ export default async function TimeReportPage({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="end" className="text-micro font-medium text-muted-foreground">
+          <label htmlFor="end" className="text-xs font-medium text-muted-foreground">
             To
           </label>
           <Input
@@ -212,7 +212,7 @@ export default async function TimeReportPage({
             key={shortcut.key}
             href={`/w/${workspaceSlug}/time?start=${shortcut.start}&end=${shortcut.end}`}
             data-testid={`period-shortcut-${shortcut.key}`}
-            className="hover-surface rounded-md border px-3 py-1 text-micro font-medium"
+            className="hover-surface rounded-md border px-3 py-1 text-xs font-medium"
           >
             {shortcut.label}
           </a>
@@ -222,7 +222,7 @@ export default async function TimeReportPage({
       {loadError && (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <p>Something went wrong loading the time report. Please try again.</p>
           <a
@@ -236,8 +236,8 @@ export default async function TimeReportPage({
 
       {!loadError && members && members.active.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-md border border-dashed p-10 text-center">
-          <p className="text-mini font-medium">No active members yet</p>
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm font-medium">No active members yet</p>
+          <p className="text-sm text-muted-foreground">
             Invite teammates to start tracking their logged time here.
           </p>
         </div>
@@ -295,7 +295,7 @@ export default async function TimeReportPage({
 
       {!loadError && members && members.active.length > 0 && heatmapGrid && (
         <div className="flex flex-col gap-2">
-          <h2 className="text-mini font-medium">Team heatmap</h2>
+          <h2 className="text-sm font-medium">Team heatmap</h2>
           <TeamHeatmap
             grid={heatmapGrid}
             people={members.active.map((m) => ({

@@ -42,8 +42,8 @@ export default async function PortalFilesPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="title-2 font-semibold tracking-tight">Files</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-2xl font-semibold tracking-tight">Files</h1>
+        <p className="text-sm text-muted-foreground">
           Everything {workspace.name} has shared with you, across every
           project.
         </p>

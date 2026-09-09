@@ -479,7 +479,7 @@ export function TimeTracking({
       <div className="flex items-center justify-between">
         <Label>Time tracked</Label>
         <span
-          className="inline-flex items-center gap-1.5 text-mini font-medium"
+          className="inline-flex items-center gap-1.5 text-sm font-medium"
           data-testid="time-tracking-total"
         >
           <Clock className="size-4" aria-hidden="true" />
@@ -493,7 +493,7 @@ export function TimeTracking({
           above (AS-302). */}
       {estimateProgress && (
         <div className="flex flex-col gap-1.5" data-testid="estimate-progress">
-          <div className="flex items-center justify-between text-micro text-muted-foreground">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               {formatDuration(totalMinutes)} of{" "}
               {formatDuration(estimateMinutes as number)} estimated
@@ -557,14 +557,14 @@ export function TimeTracking({
               )}
               Stop
             </Button>
-            <span className="font-mono text-mini text-muted-foreground">
+            <span className="font-mono text-sm text-muted-foreground">
               {localActiveTimer
                 ? formatElapsed(localActiveTimer.startedAt, now)
                 : null}
             </span>
           </div>
         ) : localActiveTimer ? (
-          <div className="flex items-center gap-2 text-mini">
+          <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">
               Timer running on another task.
             </span>
@@ -607,7 +607,7 @@ export function TimeTracking({
       >
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`time-minutes-${taskId}`} className="text-micro">
+            <Label htmlFor={`time-minutes-${taskId}`} className="text-xs">
               Minutes
             </Label>
             <Input
@@ -622,7 +622,7 @@ export function TimeTracking({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`time-date-${taskId}`} className="text-micro">
+            <Label htmlFor={`time-date-${taskId}`} className="text-xs">
               Date
             </Label>
             <Input
@@ -643,12 +643,12 @@ export function TimeTracking({
               disabled={isLogging || !canTrackTime}
               onChange={(event) => setBillableDraft(event.target.checked)}
             />
-            <Label htmlFor={`time-billable-${taskId}`} className="text-micro">
+            <Label htmlFor={`time-billable-${taskId}`} className="text-xs">
               Billable
             </Label>
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor={`time-category-${taskId}`} className="text-micro">
+            <Label htmlFor={`time-category-${taskId}`} className="text-xs">
               Category
             </Label>
             <Select
@@ -673,7 +673,7 @@ export function TimeTracking({
           </div>
         </div>
         <div className="flex flex-col gap-1">
-          <Label htmlFor={`time-note-${taskId}`} className="text-micro">
+          <Label htmlFor={`time-note-${taskId}`} className="text-xs">
             Note (optional)
           </Label>
           <Input
@@ -704,7 +704,7 @@ export function TimeTracking({
 
       {/* Time entry list */}
       {orderedEntries.length === 0 ? (
-        <div className="flex items-center gap-2 text-mini text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Clock className="size-4" aria-hidden="true" />
           No time logged yet.
         </div>
@@ -746,7 +746,7 @@ export function TimeTracking({
                         setEditBillable(event.target.checked)
                       }
                     />
-                    <Label className="text-micro">Billable</Label>
+                    <Label className="text-xs">Billable</Label>
                   </div>
                   <Select
                     value={editCategory ?? UNCATEGORISED_VALUE}
@@ -804,19 +804,19 @@ export function TimeTracking({
             ) : (
               <li key={entry.id} className="flex flex-col gap-0.5">
                 <div className="flex flex-wrap items-baseline gap-2">
-                  <span className="text-mini font-medium">
+                  <span className="text-sm font-medium">
                     {personLabel(entry.userId, members)}
                   </span>
-                  <span className="text-micro text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {formatDuration(entry.minutes)}
                   </span>
-                  <Badge variant="secondary" className="text-micro">
+                  <Badge variant="secondary" className="text-xs">
                     {entry.billable ? "Billable" : "Non-billable"}
                   </Badge>
-                  <Badge variant="outline" className="text-micro">
+                  <Badge variant="outline" className="text-xs">
                     {entry.workCategory ? CATEGORY_LABELS[entry.workCategory] : "Uncategorised"}
                   </Badge>
-                  <span className="text-micro text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {formatEntryDate(entry.entryDate)}
                   </span>
                   <div className="ml-auto flex items-center gap-1">
@@ -825,7 +825,7 @@ export function TimeTracking({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="h-6 px-2 text-micro"
+                        className="h-6 px-2 text-xs"
                         onClick={() => startEdit(entry)}
                       >
                         Edit
@@ -854,7 +854,7 @@ export function TimeTracking({
                   </div>
                 </div>
                 {entry.note && (
-                  <p className="whitespace-pre-wrap text-mini text-muted-foreground">
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">
                     {entry.note}
                   </p>
                 )}

@@ -11,7 +11,7 @@
 // scope. `StatusBadge` is the generic building block for callers that only
 // have a single colour + label to render: task-card.tsx's priority chip and
 // the list view's read-only (viewer-role) priority/status cells.
-import type { ComponentType } from "react";
+import type { ComponentType, CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,11 @@ export function StatusBadge({
   color: string;
   /** When provided, replaces the plain colour dot with an icon (still
    * tinted to `color`) — e.g. a small triangle/eye/check glyph. */
-  icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon?: ComponentType<{
+    className?: string;
+    "aria-hidden"?: boolean;
+    style?: CSSProperties;
+  }>;
   className?: string;
   "data-testid"?: string;
 }) {
@@ -37,7 +41,7 @@ export function StatusBadge({
     <span
       data-testid={dataTestId}
       className={cn(
-        "inline-flex max-w-full items-center rounded-full border border-border bg-transparent px-2 py-0.5 text-micro font-medium text-foreground",
+        "inline-flex max-w-full items-center rounded-full border border-border bg-transparent px-2 py-0.5 text-xs font-medium text-foreground",
         className,
       )}
     >

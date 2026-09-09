@@ -169,13 +169,13 @@ export function MetricComparisonCard({
     <div className="flex flex-col gap-3 rounded-lg border border-border p-5" data-testid="metric-comparison-card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">
-          <h3 className="text-mini font-semibold text-foreground">{metric.name}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{metric.name}</h3>
           <span className="text-[11px] text-muted-foreground" data-testid="metric-direction-caption">
             {DIRECTION_CAPTION[metric.direction]}
           </span>
         </div>
         <span
-          className={`flex items-center gap-1 text-micro font-medium ${STATUS_TEXT_CLASS[status]}`}
+          className={`flex items-center gap-1 text-xs font-medium ${STATUS_TEXT_CLASS[status]}`}
           data-testid="metric-status-label"
         >
           {StatusIcon && <StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />}
@@ -195,7 +195,7 @@ export function MetricComparisonCard({
 function NotMeasuredBars({ metric }: { metric: ProjectMetric }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3 text-micro">
+      <div className="flex items-center gap-3 text-xs">
         <span className="w-14 shrink-0 text-muted-foreground">Before</span>
         {metric.baselineValue === null ? (
           <span className="text-muted-foreground">No baseline recorded yet.</span>
@@ -205,7 +205,7 @@ function NotMeasuredBars({ metric }: { metric: ProjectMetric }) {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3 text-micro">
+      <div className="flex items-center gap-3 text-xs">
         <span className="w-14 shrink-0 text-muted-foreground">Now</span>
         <span className="text-muted-foreground" data-testid="metric-not-measured">
           Not measured yet — the team will record the next measurement using the same
@@ -292,7 +292,7 @@ function MeasuredBullet({
         </svg>
       </div>
 
-      <div className="flex flex-col gap-1 text-micro">
+      <div className="flex flex-col gap-1 text-xs">
         <div className="flex items-center gap-3">
           <span className="w-14 shrink-0 text-muted-foreground">Before</span>
           <span className="font-medium text-foreground">{formatValue(metric.baselineValue!, metric.unit)}</span>

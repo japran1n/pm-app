@@ -203,8 +203,8 @@ export function RequestList({
   if (liveRequests.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-muted/30 p-8 text-center">
-        <p className="text-mini font-medium">No requests yet</p>
-        <p className="mt-1 text-mini text-muted-foreground">
+        <p className="text-sm font-medium">No requests yet</p>
+        <p className="mt-1 text-sm text-muted-foreground">
           Anything you send will show up here with its status.
         </p>
       </div>
@@ -227,7 +227,7 @@ export function RequestList({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="title-1 font-medium tracking-tight">Sent</h2>
+      <h2 className="text-xl font-medium tracking-tight">Sent</h2>
 
       <ul className="flex flex-col gap-3">
         {liveRequests.map((request) => (
@@ -238,7 +238,7 @@ export function RequestList({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex flex-col gap-1">
                 <span className="font-medium">{request.title}</span>
-                <span className="text-micro text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {request.projectName} · sent {formatDate(request.createdAt)}
                   {request.desiredBy
                     ? ` · needed by ${formatDate(request.desiredBy)}`
@@ -247,27 +247,27 @@ export function RequestList({
               </div>
 
               <span
-                className={`text-micro font-medium ${STATUS_CLASS[request.status]}`}
+                className={`text-xs font-medium ${STATUS_CLASS[request.status]}`}
               >
                 {STATUS_LABEL[request.status]}
               </span>
             </div>
 
             {request.body && (
-              <p className="text-mini text-muted-foreground">{request.body}</p>
+              <p className="text-sm text-muted-foreground">{request.body}</p>
             )}
 
             {/* The decision, in the client's own view. A bare "declined"
                 with the reason living only in the team's inbox is what
                 produces the follow-up email asking why. */}
             {request.status === "declined" && request.declineReason && (
-              <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-mini">
+              <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
                 {request.declineReason}
               </p>
             )}
 
             {request.status === "accepted" && (
-              <p className="rounded-md border border-emerald-600/30 bg-emerald-600/5 p-3 text-mini">
+              <p className="rounded-md border border-emerald-600/30 bg-emerald-600/5 p-3 text-sm">
                 {request.convertedTaskTitle
                   ? `On the board as "${request.convertedTaskTitle}"${
                       request.convertedTaskStatus

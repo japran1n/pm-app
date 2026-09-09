@@ -132,7 +132,7 @@ export function MemberRoleSelect({
           <SelectItem key={value} value={value}>
             <div className="flex flex-col gap-0.5 py-0.5">
               <span className="font-medium">{ROLE_META[value].label}</span>
-              <span className="text-micro text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {ROLE_META[value].description}
               </span>
             </div>

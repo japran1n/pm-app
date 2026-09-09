@@ -39,7 +39,7 @@ function LinkChip({ kind, url }: { kind: PortalKeyLink["kind"]; url: string }) {
       target="_blank"
       rel="noopener noreferrer"
       data-testid={`portal-link-strip-${kind}`}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-micro font-medium text-foreground hover-surface"
+      className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover-surface"
     >
       <LinkKindIcon kind={kind} />
       {KIND_LABEL[kind]}
@@ -61,7 +61,7 @@ export function PortalLinkStrip({ links }: { links: PortalKeyLink[] }) {
       ) : (
         <span
           data-testid="portal-link-strip-live-pending"
-          className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1 text-micro text-muted-foreground"
+          className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border px-2.5 py-1 text-xs text-muted-foreground"
           title="The live site link will appear here once the project has launched."
         >
           <ExternalLink className="size-3.5" aria-hidden="true" />

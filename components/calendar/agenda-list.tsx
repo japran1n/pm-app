@@ -53,7 +53,7 @@ export function AgendaList({
   if (daysWithTasks.length === 0) {
     return (
       <p
-        className="rounded-lg border border-dashed p-6 text-center text-mini text-muted-foreground"
+        className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"
         data-testid="calendar-agenda-empty"
       >
         No tasks are due this month.
@@ -67,7 +67,7 @@ export function AgendaList({
         <section key={day.date} data-testid={`calendar-agenda-day-${day.date}`}>
           <h2
             className={cn(
-              "mb-1.5 text-micro font-semibold text-muted-foreground",
+              "mb-1.5 text-xs font-semibold text-muted-foreground",
               day.isToday && "text-primary",
             )}
           >
@@ -115,7 +115,7 @@ function AgendaTaskRow({
     <Link
       href={`/w/${workspaceSlug}/projects/${task.projectId}/board?taskId=${task.id}`}
       className={cn(
-        "flex items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-2 text-mini hover:bg-muted/60",
+        "flex items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-2 text-sm hover:bg-muted/60",
         task.isDone && "opacity-60",
       )}
     >
@@ -126,12 +126,12 @@ function AgendaTaskRow({
       />
       <span className="sr-only">{PRIORITY_LABELS[priority]}</span>
       {key && (
-        <span className="shrink-0 font-mono text-micro text-muted-foreground">{key}</span>
+        <span className="shrink-0 font-mono text-xs text-muted-foreground">{key}</span>
       )}
       <span className={cn("min-w-0 flex-1 truncate", task.isDone && "line-through")}>
         {task.title}
       </span>
-      <span className="shrink-0 truncate text-micro text-muted-foreground">
+      <span className="shrink-0 truncate text-xs text-muted-foreground">
         {task.projectName}
       </span>
       {task.assignees.length > 0 && (

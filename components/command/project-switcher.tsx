@@ -101,7 +101,7 @@ export function ProjectSwitcher({
                 <FolderKanban className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 <span>{project.name}</span>
                 {project.key && (
-                  <span className="ml-auto text-micro text-muted-foreground">
+                  <span className="ml-auto text-xs text-muted-foreground">
                     {project.key}
                   </span>
                 )}

@@ -155,7 +155,7 @@ export function PortalTopbar({
 
   return (
     <header className="sticky top-0 z-10 flex flex-col gap-1 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
-      <span className="text-tag text-muted-foreground">{projectName}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{projectName}</span>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-h4 font-semibold tracking-tight">{title}</h1>
         {!isOverviewRoute && (

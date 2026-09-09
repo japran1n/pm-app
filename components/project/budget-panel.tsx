@@ -183,19 +183,19 @@ function BudgetRow({
     return (
       <li className="flex flex-col gap-1 rounded-md border border-border/60 p-3">
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-mini font-medium">
+          <span className="text-sm font-medium">
             {formatDate(budget.periodStart)} – {formatDate(budget.periodEnd)}
           </span>
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {minutesToHoursLabel(budget.soldMinutes)} sold
           </span>
           {budget.rateAmount != null && (
-            <span className="text-micro text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               {budget.rateAmount}
               {budget.currency ? ` ${budget.currency}` : ""}/hr
             </span>
           )}
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {ROLLOVER_LABELS[budget.rollover]}
           </span>
           {canManage && (
@@ -204,7 +204,7 @@ function BudgetRow({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-micro"
+                className="h-6 px-2 text-xs"
                 onClick={() => setIsEditing(true)}
               >
                 Edit
@@ -246,7 +246,7 @@ function BudgetRow({
           )}
         </div>
         {budget.note && (
-          <p className="whitespace-pre-wrap text-mini text-muted-foreground">{budget.note}</p>
+          <p className="whitespace-pre-wrap text-sm text-muted-foreground">{budget.note}</p>
         )}
       </li>
     );
@@ -256,7 +256,7 @@ function BudgetRow({
     <li className="flex flex-col gap-2 rounded-md border border-border/60 p-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Period start</Label>
+          <Label className="text-xs">Period start</Label>
           <Input
             type="date"
             className="w-40"
@@ -267,7 +267,7 @@ function BudgetRow({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Period end</Label>
+          <Label className="text-xs">Period end</Label>
           <Input
             type="date"
             className="w-40"
@@ -278,7 +278,7 @@ function BudgetRow({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Sold hours</Label>
+          <Label className="text-xs">Sold hours</Label>
           <Input
             type="number"
             min={0}
@@ -289,7 +289,7 @@ function BudgetRow({
             onChange={(event) => setSoldHours(event.target.value)}
           />
           {/* AS-033 / this feature's own "not blind" requirement. */}
-          <span className="text-micro text-muted-foreground" data-testid="budget-spent-preview">
+          <span className="text-xs text-muted-foreground" data-testid="budget-spent-preview">
             {isPreviewing
               ? "Checking logged hours…"
               : spentPreview != null
@@ -300,7 +300,7 @@ function BudgetRow({
       </div>
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Currency (optional)</Label>
+          <Label className="text-xs">Currency (optional)</Label>
           <Input
             className="w-24"
             value={currency}
@@ -310,7 +310,7 @@ function BudgetRow({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Rate per hour (optional)</Label>
+          <Label className="text-xs">Rate per hour (optional)</Label>
           <Input
             type="number"
             min={0}
@@ -322,7 +322,7 @@ function BudgetRow({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <Label className="text-micro">Rollover</Label>
+          <Label className="text-xs">Rollover</Label>
           <Select
             value={rollover}
             onValueChange={(value) => setRollover(value as BudgetRollover)}
@@ -342,7 +342,7 @@ function BudgetRow({
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        <Label className="text-micro">Note (optional)</Label>
+        <Label className="text-xs">Note (optional)</Label>
         <Input value={note} disabled={isSaving} onChange={(event) => setNote(event.target.value)} />
       </div>
       <div className="flex gap-2">
@@ -396,10 +396,10 @@ function BillingModelToggle({
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border/60 p-3">
-      <Label htmlFor="project-billing-model" className="text-mini font-medium">
+      <Label htmlFor="project-billing-model" className="text-sm font-medium">
         Billing model
       </Label>
-      <p className="text-micro text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Fixed-price projects hide the Hours view from the client portal.
         The team still logs and sees hours internally either way.
       </p>
@@ -510,7 +510,7 @@ export function BudgetPanel({
       />
 
       {budgets.length === 0 ? (
-        <p className="text-mini text-muted-foreground">No budget periods yet.</p>
+        <p className="text-sm text-muted-foreground">No budget periods yet.</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {budgets.map((budget) => (
@@ -534,10 +534,10 @@ export function BudgetPanel({
 
       {canManage && (
         <div className="flex flex-col gap-2 rounded-md border border-border/60 p-3">
-          <p className="text-mini font-medium">Add a budget period</p>
+          <p className="text-sm font-medium">Add a budget period</p>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-period-start" className="text-micro">
+              <Label htmlFor="budget-period-start" className="text-xs">
                 Period start
               </Label>
               <Input
@@ -551,7 +551,7 @@ export function BudgetPanel({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-period-end" className="text-micro">
+              <Label htmlFor="budget-period-end" className="text-xs">
                 Period end
               </Label>
               <Input
@@ -565,7 +565,7 @@ export function BudgetPanel({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-sold-hours" className="text-micro">
+              <Label htmlFor="budget-sold-hours" className="text-xs">
                 Sold hours
               </Label>
               <Input
@@ -579,7 +579,7 @@ export function BudgetPanel({
                 onChange={(event) => setSoldHours(event.target.value)}
               />
               <span
-                className="text-micro text-muted-foreground"
+                className="text-xs text-muted-foreground"
                 data-testid="budget-spent-preview-new"
               >
                 {isPreviewing
@@ -592,7 +592,7 @@ export function BudgetPanel({
           </div>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-currency" className="text-micro">
+              <Label htmlFor="budget-currency" className="text-xs">
                 Currency (optional)
               </Label>
               <Input
@@ -605,7 +605,7 @@ export function BudgetPanel({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-rate" className="text-micro">
+              <Label htmlFor="budget-rate" className="text-xs">
                 Rate per hour (optional)
               </Label>
               <Input
@@ -620,7 +620,7 @@ export function BudgetPanel({
               />
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="budget-rollover" className="text-micro">
+              <Label htmlFor="budget-rollover" className="text-xs">
                 Rollover
               </Label>
               <Select
@@ -642,7 +642,7 @@ export function BudgetPanel({
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="budget-note" className="text-micro">
+            <Label htmlFor="budget-note" className="text-xs">
               Note (optional)
             </Label>
             <Input

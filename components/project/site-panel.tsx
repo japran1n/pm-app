@@ -264,7 +264,7 @@ function LinkRow({
           disabled={isPending}
           aria-label={`${link.label} visible to client`}
         />
-        <span className="text-micro text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {clientVisible ? "Visible to client" : "Internal only"}
         </span>
         <DeleteRowButton
@@ -384,7 +384,7 @@ function LinksTab({
     <div className="flex flex-col gap-4" data-testid="links-tab">
       <div className="flex flex-col gap-2">
         {links.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No links yet.</p>
+          <p className="text-sm text-muted-foreground">No links yet.</p>
         ) : (
           links.map((link) =>
             canManage ? (
@@ -410,7 +410,7 @@ function LinksTab({
                 isReordering={reorderingId === link.id}
               />
             ) : (
-              <div key={link.id} className="rounded-md border border-border p-3 text-mini">
+              <div key={link.id} className="rounded-md border border-border p-3 text-sm">
                 {link.label} — {LINK_KIND_LABELS[link.kind]}
               </div>
             ),
@@ -596,7 +596,7 @@ function AccountRow({
           disabled={isPending}
           aria-label={`${account.service} visible to client`}
         />
-        <span className="text-micro text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {clientVisible ? "Visible to client" : "Internal only"}
         </span>
         <DeleteRowButton
@@ -714,7 +714,7 @@ function AccountsTab({
     <div className="flex flex-col gap-4" data-testid="accounts-tab">
       <div className="flex flex-col gap-2">
         {accounts.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No accounts recorded yet.</p>
+          <p className="text-sm text-muted-foreground">No accounts recorded yet.</p>
         ) : (
           accounts.map((account) =>
             canManage ? (
@@ -740,7 +740,7 @@ function AccountsTab({
                 isReordering={reorderingId === account.id}
               />
             ) : (
-              <div key={account.id} className="rounded-md border border-border p-3 text-mini">
+              <div key={account.id} className="rounded-md border border-border p-3 text-sm">
                 {account.service} — {ACCOUNT_STATUS_LABELS[account.status]}
               </div>
             ),

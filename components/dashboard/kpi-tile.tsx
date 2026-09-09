@@ -42,7 +42,7 @@ export function KpiTile({
     <Link href={href} className="block">
       <Card className="transition-shadow hover:ring-foreground/20">
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-mini font-medium text-muted-foreground">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
             {label}
           </CardTitle>
           <Icon
@@ -51,10 +51,10 @@ export function KpiTile({
           />
         </CardHeader>
         <CardContent>
-          <p className={cn("title-3 font-semibold tabular-nums", TONE_CLASS[tone])}>
+          <p className={cn("text-3xl font-semibold tabular-nums", TONE_CLASS[tone])}>
             {count}
           </p>
-          <p className="text-micro text-muted-foreground">{description}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </CardContent>
       </Card>
     </Link>

@@ -407,12 +407,12 @@ function DeliverableRow({
           disabled={isPending}
           aria-label={`${deliverable.title} blocks its linked task when overdue`}
         />
-        <span className="text-mini text-muted-foreground">
+        <span className="text-sm text-muted-foreground">
           {blocking ? "Blocking — overdue moves the linked task to Blocked" : "Not blocking"}
         </span>
 
         <span
-          className={`ml-auto rounded-full px-2 py-0.5 text-micro font-medium ${STATE_BADGE_CLASS[deliverable.state]}`}
+          className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium ${STATE_BADGE_CLASS[deliverable.state]}`}
           data-testid="deliverable-state-badge"
         >
           {STATE_LABELS[deliverable.state]}
@@ -420,11 +420,11 @@ function DeliverableRow({
       </div>
 
       {linkedTask && (
-        <p className="text-micro text-muted-foreground">Linked to: {linkedTask.title}</p>
+        <p className="text-xs text-muted-foreground">Linked to: {linkedTask.title}</p>
       )}
 
       {deliverable.reviewNote && (
-        <p className="text-micro text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {deliverable.state === "waived" ? "Waived" : "Last returned"} with: &ldquo;
           {deliverable.reviewNote}&rdquo;
         </p>
@@ -436,7 +436,7 @@ function DeliverableRow({
           yet has nothing to review. */}
       {canReview && (
         <div className="flex flex-col gap-2 rounded-md border border-dashed border-border p-3">
-          <Label htmlFor={`review-note-${deliverable.id}`} className="text-micro">
+          <Label htmlFor={`review-note-${deliverable.id}`} className="text-xs">
             Return note (required to send back)
           </Label>
           <Textarea
@@ -608,7 +608,7 @@ export function DeliverablesPanel({
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2" data-testid="deliverables-list">
         {deliverables.length === 0 ? (
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             This project has no deliverables yet.
           </p>
         ) : (
@@ -630,8 +630,8 @@ export function DeliverablesPanel({
                 key={deliverable.id}
                 className="flex items-center gap-2 rounded-md border border-border p-3"
               >
-                <span className="text-mini font-medium">{deliverable.title}</span>
-                <span className="ml-auto text-micro text-muted-foreground">
+                <span className="text-sm font-medium">{deliverable.title}</span>
+                <span className="ml-auto text-xs text-muted-foreground">
                   {STATE_LABELS[deliverable.state]}
                 </span>
               </div>

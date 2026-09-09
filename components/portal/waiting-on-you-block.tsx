@@ -63,7 +63,7 @@ export function WaitingOnYouBlock({ items }: { items: WaitingOnYouItem[] }) {
       data-testid="waiting-on-you-block"
       className="flex flex-col gap-1 rounded-lg border border-border p-2"
     >
-      <h2 className="px-3 pt-2 text-mini font-semibold text-foreground">What we need from you</h2>
+      <h2 className="px-3 pt-2 text-sm font-semibold text-foreground">What we need from you</h2>
       <ul className="flex flex-col">
         {items.map((item) => {
           const Icon = KIND_ICON[item.kind];
@@ -72,17 +72,17 @@ export function WaitingOnYouBlock({ items }: { items: WaitingOnYouItem[] }) {
               <Link
                 href={item.href}
                 data-testid={`waiting-on-you-item-${item.key}`}
-                className="hover-surface flex items-center justify-between gap-3 rounded-md px-3 py-2 text-mini"
+                className="hover-surface flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm"
               >
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Icon aria-hidden="true" className="size-4 shrink-0 text-status-waiting" />
                   <span className="min-w-0 truncate font-medium">{item.title}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-3">
-                  <span className="text-micro text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     {agedLabel(item.daysWaiting, item.kind)}
                   </span>
-                  <span className="text-micro font-medium text-brand">{item.actionLabel}</span>
+                  <span className="text-xs font-medium text-brand">{item.actionLabel}</span>
                 </span>
               </Link>
             </li>

@@ -52,13 +52,13 @@ export function HowWeWorkList({ entries }: { entries: HowWeWorkEntry[] }) {
           >
             <div className="flex items-center gap-2">
               <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-              <span className="text-tag font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                 {KIND_LABEL[entry.docKind]}
               </span>
             </div>
-            <span className="text-mini font-semibold text-foreground">{entry.title}</span>
+            <span className="text-sm font-semibold text-foreground">{entry.title}</span>
             {entry.content && (
-              <p className="whitespace-pre-line text-mini text-muted-foreground">{entry.content}</p>
+              <p className="whitespace-pre-line text-sm text-muted-foreground">{entry.content}</p>
             )}
             {entry.links.length > 0 && (
               <ul
@@ -82,12 +82,12 @@ export function HowWeWorkList({ entries }: { entries: HowWeWorkEntry[] }) {
                           className="h-28 w-full rounded object-cover"
                         />
                       )}
-                      <span className="flex items-center gap-1.5 text-mini font-medium text-foreground">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
                         {link.title}
                         <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden="true" />
                       </span>
                       {link.description && (
-                        <span className="line-clamp-2 text-tag text-muted-foreground">
+                        <span className="line-clamp-2 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                           {link.description}
                         </span>
                       )}

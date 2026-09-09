@@ -91,7 +91,7 @@ function LightboxImageBody({
 
   if (status === "error" || !signedUrl) {
     return (
-      <p className="text-mini text-white">Couldn&apos;t load this image.</p>
+      <p className="text-sm text-white">Couldn&apos;t load this image.</p>
     );
   }
 
@@ -235,7 +235,7 @@ export function ImageLightbox({
           </Button>
         </div>
 
-        <p className="max-w-full truncate text-mini text-white/80">
+        <p className="max-w-full truncate text-sm text-white/80">
           {current.fileName}
         </p>
       </div>

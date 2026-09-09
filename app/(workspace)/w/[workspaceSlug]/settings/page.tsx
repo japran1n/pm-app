@@ -84,13 +84,13 @@ export default async function WorkspaceSettingsPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Settings</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <p className="text-sm text-muted-foreground">
           General settings for {workspace.name}.
         </p>
       </div>
 
-      <nav className="flex gap-4 border-b text-mini font-medium">
+      <nav className="flex gap-4 border-b text-sm font-medium">
         <span className="border-b-2 border-primary px-1 pb-2">General</span>
         <Link
           href={`/w/${workspaceSlug}/settings/members`}
@@ -113,7 +113,7 @@ export default async function WorkspaceSettingsPage({
       </nav>
 
       <section className="flex flex-col gap-4">
-        <h2 className="text-mini font-semibold">General</h2>
+        <h2 className="text-sm font-semibold">General</h2>
         <WorkspaceGeneralForm
           workspaceId={workspace.id}
           name={workspace.name}
@@ -126,10 +126,10 @@ export default async function WorkspaceSettingsPage({
       {canDelete && (
         <section className="flex flex-col gap-4 rounded-lg border border-destructive/50 p-4">
           <div className="flex flex-col gap-1">
-            <h2 className="text-mini font-semibold text-destructive">
+            <h2 className="text-sm font-semibold text-destructive">
               Danger zone
             </h2>
-            <p className="text-mini text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Deleting this workspace removes it for every member. This
               cannot be undone from the UI.
             </p>

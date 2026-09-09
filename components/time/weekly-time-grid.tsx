@@ -78,7 +78,7 @@ function GridCell({
           setEditing(true);
         }}
         className={cn(
-          "flex h-9 w-full items-center justify-center rounded text-mini tabular-nums hover-surface",
+          "flex h-9 w-full items-center justify-center rounded text-sm tabular-nums hover-surface",
           minutes === 0 && "text-muted-foreground",
         )}
         aria-label={`Log time for ${date}`}
@@ -117,7 +117,7 @@ function GridCell({
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => setEditing(false)}
         placeholder="1.5"
-        className="h-8 w-16 text-center text-mini"
+        className="h-8 w-16 text-center text-sm"
         aria-label={`Hours for ${date}`}
       />
     </form>
@@ -154,7 +154,7 @@ export function WeeklyTimeGrid({
 
   if (tasks.length === 0) {
     return (
-      <p className="p-4 text-mini text-muted-foreground">
+      <p className="p-4 text-sm text-muted-foreground">
         No tasks to log time against this week yet.
       </p>
     );
@@ -162,7 +162,7 @@ export function WeeklyTimeGrid({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-mini" data-testid="weekly-time-grid">
+      <table className="w-full min-w-[640px] border-collapse text-sm" data-testid="weekly-time-grid">
         <thead>
           <tr>
             <th className="w-56 border-b p-2 text-left font-medium">Task</th>
@@ -187,7 +187,7 @@ export function WeeklyTimeGrid({
                 <div className="flex flex-col">
                   <span className="truncate font-medium">{task.title}</span>
                   {task.projectName && (
-                    <span className="truncate text-micro text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground">
                       {task.projectName}
                     </span>
                   )}

@@ -159,16 +159,16 @@ export default async function PersonTimeDrilldownPage({
       <div className="flex flex-col gap-1">
         <Link
           href={`/w/${workspaceSlug}/time`}
-          className="flex w-fit items-center gap-1 text-mini text-muted-foreground hover:text-foreground"
+          className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" aria-hidden="true" />
           Back to Time report
         </Link>
-        <h1 className="flex items-center gap-2 title-1 font-semibold">
+        <h1 className="flex items-center gap-2 text-xl font-semibold">
           <Clock className="size-5" aria-hidden="true" />
           {label}
         </h1>
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Logged time in {workspace.name} for the selected date range.
         </p>
       </div>
@@ -179,7 +179,7 @@ export default async function PersonTimeDrilldownPage({
         className="flex flex-wrap items-end gap-3"
       >
         <div className="flex flex-col gap-1">
-          <label htmlFor="start" className="text-micro font-medium text-muted-foreground">
+          <label htmlFor="start" className="text-xs font-medium text-muted-foreground">
             From
           </label>
           <input
@@ -187,11 +187,11 @@ export default async function PersonTimeDrilldownPage({
             type="date"
             name="start"
             defaultValue={startDate}
-            className="h-9 w-40 rounded-md border border-input bg-background px-3 text-mini"
+            className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label htmlFor="end" className="text-micro font-medium text-muted-foreground">
+          <label htmlFor="end" className="text-xs font-medium text-muted-foreground">
             To
           </label>
           <input
@@ -199,12 +199,12 @@ export default async function PersonTimeDrilldownPage({
             type="date"
             name="end"
             defaultValue={endDate}
-            className="h-9 w-40 rounded-md border border-input bg-background px-3 text-mini"
+            className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm"
           />
         </div>
         <button
           type="submit"
-          className="hover-surface inline-flex h-9 items-center rounded-md border px-3 text-mini font-medium"
+          className="hover-surface inline-flex h-9 items-center rounded-md border px-3 text-sm font-medium"
         >
           Apply
         </button>
@@ -212,30 +212,30 @@ export default async function PersonTimeDrilldownPage({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-lg border p-4">
-          <p className="text-micro text-muted-foreground">Total</p>
-          <p className="title-2 font-semibold tabular-nums">{formatMinutes(totalMinutes)}</p>
+          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="text-2xl font-semibold tabular-nums">{formatMinutes(totalMinutes)}</p>
         </div>
         <div className="rounded-lg border p-4">
-          <p className="text-micro text-muted-foreground">Billable</p>
-          <p className="title-2 font-semibold tabular-nums">{formatMinutes(totalBillable)}</p>
+          <p className="text-xs text-muted-foreground">Billable</p>
+          <p className="text-2xl font-semibold tabular-nums">{formatMinutes(totalBillable)}</p>
         </div>
         <div className="rounded-lg border p-4">
-          <p className="text-micro text-muted-foreground">Non-billable</p>
-          <p className="title-2 font-semibold tabular-nums">
+          <p className="text-xs text-muted-foreground">Non-billable</p>
+          <p className="text-2xl font-semibold tabular-nums">
             {formatMinutes(totalMinutes - totalBillable)}
           </p>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-mini font-medium">Logged time by day</h2>
+        <h2 className="text-sm font-medium">Logged time by day</h2>
         <PersonDailyBarChart data={daily} />
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-mini font-medium">Breakdown by project</h2>
+        <h2 className="text-sm font-medium">Breakdown by project</h2>
         {byProject.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No logged time in this range.</p>
+          <p className="text-sm text-muted-foreground">No logged time in this range.</p>
         ) : (
           <div className="overflow-hidden rounded-lg border">
             <Table>
@@ -265,17 +265,17 @@ export default async function PersonTimeDrilldownPage({
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-mini font-medium">Individual entries</h2>
+        <h2 className="text-sm font-medium">Individual entries</h2>
         {!canViewNotes ? (
           <p
             data-testid="entries-restricted-notice"
-            className="text-mini text-muted-foreground"
+            className="text-sm text-muted-foreground"
           >
             Individual entries with notes are only visible to workspace owners,
             admins, or a lead on one of this person&apos;s projects.
           </p>
         ) : entries.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No entries in this range.</p>
+          <p className="text-sm text-muted-foreground">No entries in this range.</p>
         ) : (
           <div className="overflow-hidden rounded-lg border">
             <Table>

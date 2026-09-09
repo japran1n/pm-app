@@ -46,8 +46,8 @@ function Row({
     <div className="flex items-start gap-2.5" data-testid={testId}>
       <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-tag text-muted-foreground">{label}</span>
-        <span className="text-mini text-foreground">{value}</span>
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{label}</span>
+        <span className="text-sm text-foreground">{value}</span>
       </div>
     </div>
   );
@@ -111,12 +111,12 @@ export function LaunchDayCard({
       </div>
 
       {launchNote && (
-        <p className="text-mini text-muted-foreground" data-testid="launch-day-note">
+        <p className="text-sm text-muted-foreground" data-testid="launch-day-note">
           {launchNote}
         </p>
       )}
 
-      <p className="text-tag text-muted-foreground" data-testid="launch-day-friday-line">
+      <p className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground" data-testid="launch-day-friday-line">
         We never launch on a Friday, and never the day before a holiday.
       </p>
     </div>

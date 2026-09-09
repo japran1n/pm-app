@@ -230,7 +230,7 @@ function ScopeRow({
         </SelectContent>
       </Select>
       {item.changeRequestTitle && (
-        <span className="text-micro text-muted-foreground">via &ldquo;{item.changeRequestTitle}&rdquo;</span>
+        <span className="text-xs text-muted-foreground">via &ldquo;{item.changeRequestTitle}&rdquo;</span>
       )}
       <div className="ml-auto">
         <DeleteRowButton
@@ -299,7 +299,7 @@ function ScopeTab({
     <div className="flex flex-col gap-4" data-testid="scope-tab">
       <div className="flex flex-col gap-2">
         {items.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No scope items yet.</p>
+          <p className="text-sm text-muted-foreground">No scope items yet.</p>
         ) : (
           items.map((item) =>
             canManage ? (
@@ -319,7 +319,7 @@ function ScopeTab({
                 }
               />
             ) : (
-              <div key={item.id} className="rounded-md border border-border p-3 text-mini">
+              <div key={item.id} className="rounded-md border border-border p-3 text-sm">
                 {item.title} — {item.included ? "In scope" : "Not included"}
               </div>
             ),
@@ -455,7 +455,7 @@ function DecisionRow({
             disabled={isPending}
             aria-label={`${decision.title} visible to client`}
           />
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {clientVisible ? "Visible to client" : "Internal only"}
           </span>
           <DeleteRowButton
@@ -542,7 +542,7 @@ function DecisionsTab({
     <div className="flex flex-col gap-4" data-testid="decisions-tab">
       <div className="flex flex-col gap-2">
         {decisions.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No decisions logged yet.</p>
+          <p className="text-sm text-muted-foreground">No decisions logged yet.</p>
         ) : (
           decisions.map((decision) =>
             canManage ? (
@@ -568,7 +568,7 @@ function DecisionsTab({
                 }
               />
             ) : (
-              <div key={decision.id} className="rounded-md border border-border p-3 text-mini">
+              <div key={decision.id} className="rounded-md border border-border p-3 text-sm">
                 {decision.title}
               </div>
             ),
@@ -693,7 +693,7 @@ function AssumptionRow({
     >
       {isFlagged && (
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-micro font-medium text-[color:var(--status-blocked)]">
+          <p className="text-xs font-medium text-[color:var(--status-blocked)]">
             Flagged by the client: &ldquo;{assumption.flaggedNote}&rdquo;
           </p>
           <Button
@@ -817,7 +817,7 @@ function AssumptionsTab({
     <div className="flex flex-col gap-4" data-testid="assumptions-tab">
       <div className="flex flex-col gap-2">
         {assumptions.length === 0 ? (
-          <p className="text-mini text-muted-foreground">No assumptions recorded yet.</p>
+          <p className="text-sm text-muted-foreground">No assumptions recorded yet.</p>
         ) : (
           assumptions.map((assumption) =>
             canManage ? (
@@ -839,7 +839,7 @@ function AssumptionsTab({
                 onRaised={(request) => setQuoteRequest(request)}
               />
             ) : (
-              <div key={assumption.id} className="rounded-md border border-border p-3 text-mini">
+              <div key={assumption.id} className="rounded-md border border-border p-3 text-sm">
                 {assumption.text}
               </div>
             ),

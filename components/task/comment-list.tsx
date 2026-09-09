@@ -771,7 +771,7 @@ export function CommentList({
         </div>
       ) : error ? (
         <div className="flex flex-col gap-2">
-          <p className="text-mini text-destructive">{error}</p>
+          <p className="text-sm text-destructive">{error}</p>
           {onRetry && (
             <Button
               type="button"
@@ -784,7 +784,7 @@ export function CommentList({
           )}
         </div>
       ) : orderedComments.length === 0 ? (
-        <div className="flex items-center gap-2 text-mini text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <MessageSquare className="size-4" aria-hidden="true" />
           No comments yet. Be the first to add one.
         </div>
@@ -801,10 +801,10 @@ export function CommentList({
                   person={authorOf(comment.userId, members)}
                   size="sm"
                 />
-                <span className="text-mini font-medium">
+                <span className="text-sm font-medium">
                   {authorLabel(comment.userId, members)}
                 </span>
-                <span className="text-micro text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {formatDistanceToNow(new Date(comment.createdAt), {
                     addSuffix: true,
                   })}
@@ -824,7 +824,7 @@ export function CommentList({
                   // F197 added — no extra wiring needed here, this
                   // component just renders whatever `editedAt` holds.
                   <span
-                    className="text-micro text-muted-foreground"
+                    className="text-xs text-muted-foreground"
                     title={`Edited ${formatExactEditTime(comment.editedAt)}`}
                     aria-label={`Edited ${formatExactEditTime(comment.editedAt)}`}
                   >
@@ -925,7 +925,7 @@ export function CommentList({
                     />
                   ) : (
                     <input
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-mini shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
                       value={extractPlainText(editDraft, resolveMentionLabel)}
                       disabled={isSavingEdit}
                       onChange={(changeEvent) =>
@@ -973,7 +973,7 @@ export function CommentList({
                 // tests/unit/comment-list.test.ts's AS-096/AS-097
                 // assertions (which render via renderToStaticMarkup, no
                 // DOM/effects) passing unchanged.
-                <p className="whitespace-pre-wrap text-mini">{comment.text}</p>
+                <p className="whitespace-pre-wrap text-sm">{comment.text}</p>
               )}
               {editingCommentId !== comment.id && (
                 <CommentReactions
@@ -1019,7 +1019,7 @@ export function CommentList({
           // before the editor has loaded is not lost once it does.
           <input
             id={`comment-draft-${taskId}`}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-mini shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none disabled:cursor-not-allowed disabled:opacity-50"
             value={draftPlainText}
             disabled={isSubmitting || !canPost}
             placeholder={canPost ? "Add a comment…" : "Viewers can't comment"}
@@ -1035,7 +1035,7 @@ export function CommentList({
             word, "the client will see this" is what the writer needs to
             know before hitting send. */}
         {workspaceHasClient && canPost && (
-          <label className="flex w-fit cursor-pointer items-center gap-2 text-mini text-muted-foreground">
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
               checked={shareWithClient}

@@ -363,7 +363,7 @@ export function GlobalTimeTracker({
         <Clock className="size-4" aria-hidden="true" />
         {activeTimer && (
           <span
-            className="ml-1 font-mono text-micro tabular-nums text-muted-foreground"
+            className="ml-1 font-mono text-xs tabular-nums text-muted-foreground"
             data-testid="global-time-tracker-live-badge"
           >
             {formatElapsedClock(activeTimer.startedAt, now)}
@@ -375,8 +375,8 @@ export function GlobalTimeTracker({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <h3 className="text-mini font-semibold">Track Time</h3>
-              <span className="text-micro text-muted-foreground" data-testid="daily-progress-label">
+              <h3 className="text-sm font-semibold">Track Time</h3>
+              <span className="text-xs text-muted-foreground" data-testid="daily-progress-label">
                 {formatDuration(todayMinutes)} / {formatDuration(DAILY_GOAL_MINUTES)}
               </span>
             </div>
@@ -429,7 +429,7 @@ export function GlobalTimeTracker({
             </div>
 
             <div className="relative flex flex-col gap-1">
-              <Label htmlFor="global-time-tracker-task" className="text-micro">
+              <Label htmlFor="global-time-tracker-task" className="text-xs">
                 Select task
               </Label>
               <Input
@@ -459,10 +459,10 @@ export function GlobalTimeTracker({
                         event.preventDefault();
                         pickTask(task);
                       }}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-mini hover:bg-accent hover:text-accent-foreground"
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
                     >
                       <span className="truncate">{task.title}</span>
-                      <span className="ml-auto shrink-0 text-micro text-muted-foreground">
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                         {formatTaskKey(task.projectKey, task.number) ?? task.projectName}
                       </span>
                     </button>
@@ -473,7 +473,7 @@ export function GlobalTimeTracker({
 
             <div className="flex items-end gap-2">
               <div className="flex flex-col gap-1">
-                <Label htmlFor="global-time-tracker-date" className="text-micro">
+                <Label htmlFor="global-time-tracker-date" className="text-xs">
                   Date
                 </Label>
                 <Input
@@ -500,7 +500,7 @@ export function GlobalTimeTracker({
             </div>
 
             <div className="flex flex-col gap-1">
-              <Label htmlFor="global-time-tracker-note" className="text-micro">
+              <Label htmlFor="global-time-tracker-note" className="text-xs">
                 Notes
               </Label>
               <Input
@@ -528,13 +528,13 @@ export function GlobalTimeTracker({
 
           <div className="flex flex-col gap-3">
             {groupedEntries.length === 0 ? (
-              <p className="py-2 text-center text-mini text-muted-foreground">
+              <p className="py-2 text-center text-sm text-muted-foreground">
                 No time logged yet.
               </p>
             ) : (
               groupedEntries.map((group) => (
                 <div key={group.day} className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between text-micro font-medium text-muted-foreground">
+                  <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                     <span>{formatDayHeading(group.day)}</span>
                     <span>{formatDuration(group.totalMinutes)}</span>
                   </div>
@@ -542,10 +542,10 @@ export function GlobalTimeTracker({
                     {group.entries.map((entry) => (
                       <li
                         key={entry.id}
-                        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-mini hover:bg-muted/50"
+                        className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/50"
                       >
                         <span className="min-w-0 flex-1 truncate">{entry.taskTitle}</span>
-                        <span className="shrink-0 text-micro text-muted-foreground">
+                        <span className="shrink-0 text-xs text-muted-foreground">
                           {formatDuration(entry.minutes)}
                         </span>
                         <Button
@@ -586,7 +586,7 @@ export function GlobalTimeTracker({
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t pt-2 text-mini">
+          <div className="flex items-center justify-between border-t pt-2 text-sm">
             <a
               href={`/w/${workspaceSlug}/time/me?view=weekly`}
               className="text-muted-foreground hover:text-foreground hover:underline"

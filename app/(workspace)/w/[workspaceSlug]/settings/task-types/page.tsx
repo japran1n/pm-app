@@ -58,13 +58,13 @@ export default async function TaskTypesSettingsPage({
   return (
     <div className="flex flex-col gap-8 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Settings</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <p className="text-sm text-muted-foreground">
           Task types for {workspace.name}.
         </p>
       </div>
 
-      <nav className="flex gap-4 border-b text-mini font-medium">
+      <nav className="flex gap-4 border-b text-sm font-medium">
         <Link
           href={`/w/${workspaceSlug}/settings`}
           className="px-1 pb-2 text-muted-foreground hover:text-foreground"
@@ -90,8 +90,8 @@ export default async function TaskTypesSettingsPage({
 
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <h2 className="text-mini font-semibold">Task types</h2>
-          <p className="text-mini text-muted-foreground">
+          <h2 className="text-sm font-semibold">Task types</h2>
+          <p className="text-sm text-muted-foreground">
             A tag you define once and apply to tasks — Setup, Design, Dev,
             SEO, QA, Add-on, or whatever fits how your team works. Filter
             and group by it on any project&apos;s List view.

@@ -93,8 +93,8 @@ function DecisionOwnerRow({
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border p-3">
       <div className="flex flex-col">
-        <span className="text-mini font-medium">{label}</span>
-        {description && <span className="text-micro text-muted-foreground">{description}</span>}
+        <span className="text-sm font-medium">{label}</span>
+        {description && <span className="text-xs text-muted-foreground">{description}</span>}
       </div>
       <div className="flex items-center gap-2">
         {(isPending || isRemoving) && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
@@ -170,7 +170,7 @@ function AddDecisionTypeForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
       <div className="flex flex-1 min-w-[10rem] flex-col gap-1">
-        <label htmlFor="new-decision-type-name" className="text-micro font-medium text-muted-foreground">
+        <label htmlFor="new-decision-type-name" className="text-xs font-medium text-muted-foreground">
           New decision type
         </label>
         <Input
@@ -183,7 +183,7 @@ function AddDecisionTypeForm({
         />
       </div>
       <div className="flex flex-1 min-w-[12rem] flex-col gap-1">
-        <label htmlFor="new-decision-type-description" className="text-micro font-medium text-muted-foreground">
+        <label htmlFor="new-decision-type-description" className="text-xs font-medium text-muted-foreground">
           Description (optional)
         </label>
         <Input
@@ -225,7 +225,7 @@ export function DecisionOwnersSection({
 
   if (clientMembers.length === 0) {
     return (
-      <p className="text-mini text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         This project has no client members yet. Add one from the workspace
         members page, then come back here to say who decides what.
       </p>
@@ -235,7 +235,7 @@ export function DecisionOwnersSection({
   return (
     <div className="flex flex-col gap-2">
       {types.length === 0 && (
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           This project has no decision types yet. Add one below to start
           assigning owners.
         </p>

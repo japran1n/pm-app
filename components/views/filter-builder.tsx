@@ -125,7 +125,7 @@ function ConditionRow({
       {condition.operator === "in" ? (
         <div className="flex flex-wrap gap-3">
           {(option?.values ?? []).map((v) => (
-            <label key={v.value} className="flex items-center gap-1.5 text-mini">
+            <label key={v.value} className="flex items-center gap-1.5 text-sm">
               <Checkbox
                 checked={selectedValues.has(v.value)}
                 onCheckedChange={(checked) => {
@@ -212,7 +212,7 @@ function GroupEditor({
       data-depth={depth}
     >
       <div className="flex items-center gap-2">
-        <span className="text-micro font-medium text-muted-foreground">Match</span>
+        <span className="text-xs font-medium text-muted-foreground">Match</span>
         <Select
           value={group.combinator}
           onValueChange={(combinator) => {
@@ -228,7 +228,7 @@ function GroupEditor({
             <SelectItem value="or">any (OR)</SelectItem>
           </SelectContent>
         </Select>
-        <span className="text-micro text-muted-foreground">of the following</span>
+        <span className="text-xs text-muted-foreground">of the following</span>
 
         {onRemove && (
           <Button
@@ -245,7 +245,7 @@ function GroupEditor({
       </div>
 
       {group.conditions.length === 0 && (
-        <p className="text-mini text-muted-foreground">No conditions yet.</p>
+        <p className="text-sm text-muted-foreground">No conditions yet.</p>
       )}
 
       {group.conditions.map((node, index) =>

@@ -120,7 +120,7 @@ export function ChatNavList({
         render={
           <button
             type="button"
-            className="flex min-h-9 items-center justify-between px-3 py-2 text-micro font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
+            className="flex min-h-9 items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60 hover:text-sidebar-foreground max-md:min-h-11"
           >
             <span>Chat</span>
             <ChevronDown
@@ -135,7 +135,7 @@ export function ChatNavList({
       />
       <CollapsibleContent className="min-h-0 overflow-y-auto">
         {channels.length === 0 ? (
-          <p className="px-3 pb-3 text-mini text-sidebar-foreground/60">
+          <p className="px-3 pb-3 text-sm text-sidebar-foreground/60">
             No channels yet.
           </p>
         ) : (
@@ -156,7 +156,7 @@ export function ChatNavList({
                       : undefined
                   }
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-mini font-medium transition-colors max-md:min-h-11",
+                    "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors max-md:min-h-11",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",

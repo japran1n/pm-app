@@ -49,7 +49,7 @@ function ThreadMessageBody({
 }) {
   if (message.deletedAt) {
     return (
-      <p className="whitespace-pre-wrap text-mini italic text-muted-foreground">
+      <p className="whitespace-pre-wrap text-sm italic text-muted-foreground">
         Message deleted
       </p>
     );
@@ -57,14 +57,14 @@ function ThreadMessageBody({
   return (
     <>
       {RichTextRenderer ? (
-        <div className="text-mini [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
+        <div className="text-sm [&_a]:text-primary! [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-primary/40 hover:[&_a]:decoration-primary">
           <RichTextRenderer
             content={message.bodyJson}
             mentionSuggestions={mentionSuggestions}
           />
         </div>
       ) : (
-        <p className="whitespace-pre-wrap text-mini">
+        <p className="whitespace-pre-wrap text-sm">
           {extractPlainText(message.bodyJson)}
         </p>
       )}
@@ -200,7 +200,7 @@ export function ThreadPanel({
   return (
     <div className="flex h-full w-full min-h-0 flex-col border-l md:w-96" aria-label="Thread">
       <div className="flex items-center justify-between border-b px-4 py-3">
-        <h2 className="text-mini font-semibold">Thread</h2>
+        <h2 className="text-sm font-semibold">Thread</h2>
         <Button
           type="button"
           size="icon"
@@ -214,11 +214,11 @@ export function ThreadPanel({
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {visibleMessages === null && (
-          <p className="text-mini text-muted-foreground">Loading thread...</p>
+          <p className="text-sm text-muted-foreground">Loading thread...</p>
         )}
 
         {visibleMessages !== null && !parent && (
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             This message is no longer available.
           </p>
         )}
@@ -237,12 +237,12 @@ export function ThreadPanel({
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-2">
-                <span className="text-mini font-semibold">
+                <span className="text-sm font-semibold">
                   {parent.senderId === currentUserId
                     ? "You"
                     : authorLabel(parent.senderId, members)}
                 </span>
-                <span className="text-micro text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {isAfter(new Date(parent.createdAt), subHours(new Date(), 24))
                     ? formatDistanceToNow(new Date(parent.createdAt), { addSuffix: true })
                     : format(new Date(parent.createdAt), "MMM d, HH:mm")}
@@ -259,7 +259,7 @@ export function ThreadPanel({
 
         {replies.length > 0 && (
           <div className="border-t pt-3">
-            <p className="pb-2 text-micro font-medium text-muted-foreground">
+            <p className="pb-2 text-xs font-medium text-muted-foreground">
               {replies.length} {replies.length === 1 ? "reply" : "replies"}
             </p>
             <div className="flex flex-col gap-3">
@@ -280,12 +280,12 @@ export function ThreadPanel({
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-mini font-semibold">
+                      <span className="text-sm font-semibold">
                         {reply.senderId === currentUserId
                           ? "You"
                           : authorLabel(reply.senderId, members)}
                       </span>
-                      <span className="text-micro text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {isAfter(new Date(reply.createdAt), subHours(new Date(), 24))
                           ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })
                           : format(new Date(reply.createdAt), "MMM d, HH:mm")}
@@ -304,7 +304,7 @@ export function ThreadPanel({
         )}
       </div>
 
-      {error && <p className="px-4 pb-1 text-micro text-destructive">{error}</p>}
+      {error && <p className="px-4 pb-1 text-xs text-destructive">{error}</p>}
       <MessageComposer
         onSend={handleSend}
         disabled={!parent}

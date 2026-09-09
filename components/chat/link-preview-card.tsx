@@ -82,11 +82,11 @@ export function LinkPreviewCard({ url }: { url: string }) {
       )}
       <div className="min-w-0 flex-1">
         {preview.siteName && (
-          <p className="truncate text-micro text-muted-foreground">{preview.siteName}</p>
+          <p className="truncate text-xs text-muted-foreground">{preview.siteName}</p>
         )}
-        <p className="line-clamp-2 text-mini font-medium">{preview.title}</p>
+        <p className="line-clamp-2 text-sm font-medium">{preview.title}</p>
         {preview.description && (
-          <p className="line-clamp-2 text-micro text-muted-foreground">{preview.description}</p>
+          <p className="line-clamp-2 text-xs text-muted-foreground">{preview.description}</p>
         )}
       </div>
     </a>

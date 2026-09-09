@@ -199,7 +199,7 @@ export function InviteMemberForm({
         <p
           id="invite-email-error"
           role="alert"
-          className="text-mini text-destructive sm:basis-full"
+          className="text-sm text-destructive sm:basis-full"
         >
           {error}
         </p>

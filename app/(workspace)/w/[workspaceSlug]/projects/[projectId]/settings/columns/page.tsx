@@ -119,8 +119,8 @@ export default async function ProjectColumnsSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Board columns</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Board columns</h1>
+        <p className="text-sm text-muted-foreground">
           The columns tasks move through on {project.name}&apos;s board.
         </p>
       </div>
@@ -132,7 +132,7 @@ export default async function ProjectColumnsSettingsPage({
       {columnsError ? (
         <div
           role="alert"
-          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-mini text-destructive"
+          className="flex flex-col gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
         >
           <p>Something went wrong loading this project&apos;s board columns. Please try again.</p>
           <a
@@ -143,7 +143,7 @@ export default async function ProjectColumnsSettingsPage({
           </a>
         </div>
       ) : columns.length === 0 ? (
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           This project has no board columns yet.
           {canManage ? " Add one below to get started." : ""}
         </p>

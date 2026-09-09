@@ -67,7 +67,7 @@ export function ListTaskTypeSelect({
 
   if (!canEdit) {
     return (
-      <span className="flex items-center gap-1.5 px-2 text-mini">
+      <span className="flex items-center gap-1.5 px-2 text-sm">
         {localValue && (
           <span
             aria-hidden="true"

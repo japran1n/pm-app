@@ -86,7 +86,7 @@ export function ProjectSettingsNav({
             href={href}
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "rounded-md px-3 py-1.5 text-mini font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               isActive
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",

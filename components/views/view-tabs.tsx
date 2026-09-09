@@ -127,7 +127,7 @@ export function ViewTabs({
               aria-selected={isActive}
               onClick={() => openTab(tab.id)}
               className={cn(
-                "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-mini font-medium transition-colors",
+                "shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors",
                 isActive
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",

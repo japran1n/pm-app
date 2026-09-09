@@ -82,15 +82,15 @@ export function ProjectAccountsTable({ accounts }: { accounts: ProjectAccount[] 
             data-testid="project-account-row"
           >
             <div className="flex min-w-0 flex-col gap-0.5">
-              <p className="text-mini font-medium text-foreground">{account.service}</p>
-              <p className="text-tag text-muted-foreground">{OWNER_LABEL[account.owner]}</p>
+              <p className="text-sm font-medium text-foreground">{account.service}</p>
+              <p className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{OWNER_LABEL[account.owner]}</p>
               {account.note && (
-                <p className="text-tag text-muted-foreground">{account.note}</p>
+                <p className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{account.note}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
               {account.renewalDate && (
-                <span className="text-tag text-muted-foreground">
+                <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
                   Renews {formatDate(account.renewalDate)}
                 </span>
               )}

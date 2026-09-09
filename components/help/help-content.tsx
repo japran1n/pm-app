@@ -353,13 +353,13 @@ export function HelpContent() {
         className="rounded-lg border border-border bg-card p-6 sm:p-10"
         data-testid="help-hero"
       >
-        <span className="text-tag font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
           Internal guide
         </span>
-        <h1 className="mt-2 title-2 font-semibold text-foreground sm:title-3">
+        <h1 className="mt-2 text-2xl font-semibold text-foreground sm:text-3xl">
           How this dashboard works
         </h1>
-        <p className="mt-3 max-w-2xl text-mini text-muted-foreground sm:text-regular">
+        <p className="mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
           A quick tour of every page and tab in the workspace — what it&rsquo;s
           for, how it fits together, and how it differs from what a client
           sees in the portal. Jump to any section below.
@@ -376,7 +376,7 @@ export function HelpContent() {
             <a
               key={section.id}
               href={`#${section.id}`}
-              className="rounded-lg px-2.5 py-2 text-mini font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-lg px-2.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               {section.title}
             </a>
@@ -396,7 +396,7 @@ export function HelpContent() {
                   <CardDescription>{section.summary}</CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  <p className="text-mini text-muted-foreground">{section.body}</p>
+                  <p className="text-sm text-muted-foreground">{section.body}</p>
                   {section.illustration}
                 </CardContent>
               </Card>

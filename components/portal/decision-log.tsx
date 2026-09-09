@@ -27,7 +27,7 @@ export function DecisionLog({ decisions }: { decisions: ProjectDecision[] }) {
   const sorted = [...decisions].sort((a, b) => (a.decidedOn < b.decidedOn ? 1 : -1));
 
   if (sorted.length === 0) {
-    return <p className="text-mini text-muted-foreground">No decisions recorded yet.</p>;
+    return <p className="text-sm text-muted-foreground">No decisions recorded yet.</p>;
   }
 
   return (
@@ -35,14 +35,14 @@ export function DecisionLog({ decisions }: { decisions: ProjectDecision[] }) {
       {sorted.map((decision) => (
         <li key={decision.id} className="rounded-md border border-border p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-mini font-medium text-foreground">{decision.title}</p>
+            <p className="text-sm font-medium text-foreground">{decision.title}</p>
             <Badge variant="secondary">{DECISION_TYPE_LABELS[decision.decisionType]}</Badge>
-            <span className="ml-auto text-micro text-muted-foreground">
+            <span className="ml-auto text-xs text-muted-foreground">
               {formatDate(decision.decidedOn)}
             </span>
           </div>
           {decision.rationale && (
-            <p className="mt-2 text-mini text-muted-foreground">{decision.rationale}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{decision.rationale}</p>
           )}
         </li>
       ))}

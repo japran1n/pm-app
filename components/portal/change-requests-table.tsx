@@ -93,7 +93,7 @@ export function ChangeRequestsTable({
   projectId?: string;
 }) {
   if (requests.length === 0) {
-    return <p className="text-mini text-muted-foreground">No change requests yet.</p>;
+    return <p className="text-sm text-muted-foreground">No change requests yet.</p>;
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -106,7 +106,7 @@ export function ChangeRequestsTable({
         return (
           <li key={request.id} className="rounded-md border border-border p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-mini font-medium text-foreground">{request.title}</p>
+              <p className="text-sm font-medium text-foreground">{request.title}</p>
               <Badge variant="secondary">{STATUS_LABELS[request.status]}</Badge>
               {quoteState && (
                 <Badge
@@ -123,21 +123,21 @@ export function ChangeRequestsTable({
                 projectId && (
                   <Link
                     href={`/portal/${workspaceSlug}/p/${projectId}/approvals`}
-                    className="text-micro font-medium text-primary underline underline-offset-2"
+                    className="text-xs font-medium text-primary underline underline-offset-2"
                   >
                     Review this quote
                   </Link>
                 )}
-              <span className="ml-auto text-micro text-muted-foreground">
+              <span className="ml-auto text-xs text-muted-foreground">
                 {formatDate(request.createdAt)}
               </span>
             </div>
             {request.body && (
-              <p className="mt-1 text-mini text-muted-foreground">{request.body}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{request.body}</p>
             )}
             {request.scopeVerdict === "change_request" && (
               <div
-                className="mt-2 flex flex-wrap items-center gap-3 text-micro text-muted-foreground"
+                className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
                 data-testid={`quote-details-${request.id}`}
               >
                 {request.quotedHours != null && <span>Estimate: {request.quotedHours}h</span>}
@@ -150,7 +150,7 @@ export function ChangeRequestsTable({
               </div>
             )}
             {request.status === "declined" && request.declineReason && (
-              <p className="mt-1 text-micro text-muted-foreground">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Declined: {request.declineReason}
               </p>
             )}

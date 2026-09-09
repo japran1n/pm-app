@@ -32,17 +32,17 @@ export default async function ExtensionConnectPage() {
       <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
         <Logo className="h-5 w-auto text-foreground" />
         <div className="flex max-w-sm flex-col gap-3">
-          <h1 className="title-2 font-semibold tracking-tight">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Sign in to connect the extension
           </h1>
-          <p className="text-mini text-muted-foreground" data-testid="extension-connect-signed-out">
+          <p className="text-sm text-muted-foreground" data-testid="extension-connect-signed-out">
             You need to be signed in to pm-app to connect the QA feedback
             extension.
           </p>
           <Link
             href="/sign-in?next=/extension-connect"
             data-testid="extension-connect-sign-in-link"
-            className="text-mini font-medium underline underline-offset-4"
+            className="text-sm font-medium underline underline-offset-4"
           >
             Sign in
           </Link>
@@ -80,11 +80,11 @@ export default async function ExtensionConnectPage() {
 
   return (
     <main className="flex min-h-svh flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <span className="title-2 font-semibold tracking-tight">pm-app</span>
-      <h1 className="title-2 font-semibold tracking-tight">
+      <span className="text-2xl font-semibold tracking-tight">pm-app</span>
+      <h1 className="text-2xl font-semibold tracking-tight">
         Connecting the extension&hellip;
       </h1>
-      <p className="text-mini text-muted-foreground" data-testid="extension-connect-signed-in">
+      <p className="text-sm text-muted-foreground" data-testid="extension-connect-signed-in">
         Signed in as {user.email}. You can close this tab once the extension
         shows &quot;Connected&quot;.
       </p>

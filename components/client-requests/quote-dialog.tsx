@@ -206,10 +206,10 @@ export function QuoteDialog({
               </div>
 
               <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-                <p className="text-micro font-medium text-muted-foreground">
+                <p className="text-xs font-medium text-muted-foreground">
                   Track — three quick questions, then override if the default is wrong.
                 </p>
-                <label className="flex items-center gap-2 text-mini">
+                <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={needsDesign}
@@ -217,7 +217,7 @@ export function QuoteDialog({
                   />
                   Does this touch design?
                 </label>
-                <label className="flex items-center gap-2 text-mini">
+                <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={needsDev}
@@ -225,7 +225,7 @@ export function QuoteDialog({
                   />
                   Does this touch code?
                 </label>
-                <label className="flex items-center gap-2 text-mini">
+                <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={contentOnly}
@@ -234,7 +234,7 @@ export function QuoteDialog({
                   Content/SEO only?
                 </label>
 
-                <div className="mt-1 flex items-center gap-2 text-mini">
+                <div className="mt-1 flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Proposed:</span>
                   <Badge variant="secondary">{TRACK_LABEL[proposedTrack]}</Badge>
                 </div>
@@ -276,14 +276,14 @@ export function QuoteDialog({
                 className="rounded-md border border-dashed border-border bg-muted/30 p-3"
                 data-testid="quote-client-preview"
               >
-                <p className="mb-2 text-micro font-medium text-muted-foreground">
+                <p className="mb-2 text-xs font-medium text-muted-foreground">
                   How the client will see this
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-mini font-medium">{request.title}</p>
+                  <p className="text-sm font-medium">{request.title}</p>
                   <Badge variant="outline">Awaiting your approval</Badge>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-3 text-micro text-muted-foreground">
+                <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   {parsedHours != null && !Number.isNaN(parsedHours) && (
                     <span>Estimate: {parsedHours}h</span>
                   )}
@@ -298,7 +298,7 @@ export function QuoteDialog({
                   )}
                   {validUntil && <span>Valid until {validUntil}</span>}
                 </div>
-                {note && <p className="mt-1 text-micro text-muted-foreground">{note}</p>}
+                {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
               </div>
             </>
           )}

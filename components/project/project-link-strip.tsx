@@ -53,7 +53,7 @@ export function ProjectLinkStrip({ links }: { links: ProjectLink[] }) {
           target="_blank"
           rel="noopener noreferrer"
           data-testid={`project-link-strip-${link.kind}`}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-micro font-medium text-foreground hover-surface"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground hover-surface"
           title={link.label || KIND_LABEL[link.kind]}
         >
           <LinkKindIcon kind={link.kind} />

@@ -93,7 +93,7 @@ export function MyTimeView({
             role="tab"
             aria-selected={view === mode}
             className={cn(
-              "rounded px-3 py-1 text-mini capitalize",
+              "rounded px-3 py-1 text-sm capitalize",
               view === mode
                 ? "bg-secondary font-medium"
                 : "text-muted-foreground hover:bg-secondary",
@@ -142,7 +142,7 @@ export function MyTimeView({
         </CardHeader>
         <CardContent className="px-0">
           {byProject.length === 0 ? (
-            <p className="px-4 text-mini text-muted-foreground">No time logged in this period.</p>
+            <p className="px-4 text-sm text-muted-foreground">No time logged in this period.</p>
           ) : (
             <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
               {byProject.map((row) => (
@@ -150,8 +150,8 @@ export function MyTimeView({
                   key={row.projectId}
                   className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
                 >
-                  <span className="text-mini font-medium">{row.projectName}</span>
-                  <div className="flex items-center gap-2 text-mini text-muted-foreground tabular-nums">
+                  <span className="text-sm font-medium">{row.projectName}</span>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
                     <span>{formatDuration(row.totalMinutes)} total</span>
                     <span>· {formatDuration(row.billableMinutes)} billable</span>
                   </div>
@@ -186,10 +186,10 @@ function SummaryCard({ label, minutes }: { label: string; minutes: number }) {
   return (
     <Card data-testid={`summary-card-${label.toLowerCase().replace(/\s+/g, "-")}`}>
       <CardHeader>
-        <CardTitle className="text-mini font-medium text-muted-foreground">{label}</CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <span className="title-2 font-semibold tabular-nums">{formatDuration(minutes)}</span>
+        <span className="text-2xl font-semibold tabular-nums">{formatDuration(minutes)}</span>
       </CardContent>
     </Card>
   );
@@ -229,7 +229,7 @@ function DailyView({
         <CardTitle>
           {selectedDate} · {formatDuration(total)}
         </CardTitle>
-        <div className="flex items-center gap-2 text-mini">
+        <div className="flex items-center gap-2 text-sm">
           <Link href={`${base}?view=daily&date=${prevDate}`} className="rounded border px-2 py-1 hover:bg-secondary">
             ← Previous day
           </Link>
@@ -240,7 +240,7 @@ function DailyView({
       </CardHeader>
       <CardContent className="px-0">
         {byTask.size === 0 ? (
-          <p className="px-4 text-mini text-muted-foreground">No time logged on this day.</p>
+          <p className="px-4 text-sm text-muted-foreground">No time logged on this day.</p>
         ) : (
           <div className="flex flex-col divide-y divide-border/60 border-t border-border/60">
             {Array.from(byTask.entries()).map(([taskId, bucket]) => (
@@ -250,12 +250,12 @@ function DailyView({
                 className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5"
               >
                 <div className="flex flex-col">
-                  <span className="text-mini font-medium">{bucket.title}</span>
+                  <span className="text-sm font-medium">{bucket.title}</span>
                   {bucket.projectName && (
-                    <span className="text-micro text-muted-foreground">{bucket.projectName}</span>
+                    <span className="text-xs text-muted-foreground">{bucket.projectName}</span>
                   )}
                 </div>
-                <span className="text-mini tabular-nums text-muted-foreground">
+                <span className="text-sm tabular-nums text-muted-foreground">
                   {formatDuration(bucket.minutes)}
                 </span>
               </div>
@@ -314,7 +314,7 @@ function WeeklyView({
     <Card aria-label="Weekly time grid">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>Week of {calendarWeek.weekKey}</CardTitle>
-        <div className="flex items-center gap-2 text-mini">
+        <div className="flex items-center gap-2 text-sm">
           <Link
             href={`${base}?view=weekly&week=${prevWeekKey}`}
             className="rounded border px-2 py-1 hover:bg-secondary"
@@ -366,7 +366,7 @@ function MonthlyView({
         <CardTitle>
           {calendarMonth.monthKey} · {formatDuration(total)}
         </CardTitle>
-        <div className="flex items-center gap-2 text-mini">
+        <div className="flex items-center gap-2 text-sm">
           <Link
             href={`${base}?view=monthly&month=${prevMonthKey}`}
             className="rounded border px-2 py-1 hover:bg-secondary"
@@ -382,7 +382,7 @@ function MonthlyView({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-7 gap-1 text-center text-micro font-medium text-muted-foreground">
+        <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground">
           {DAY_LABELS.map((label) => (
             <span key={label}>{label}</span>
           ))}
@@ -398,7 +398,7 @@ function MonthlyView({
                     href={`${base}?view=daily&date=${day.date}`}
                     data-testid="monthly-calendar-day"
                     className={cn(
-                      "flex h-16 flex-col items-center justify-center rounded border text-micro hover:bg-secondary",
+                      "flex h-16 flex-col items-center justify-center rounded border text-xs hover:bg-secondary",
                       !day.isCurrentMonth && "opacity-40",
                       day.isToday && "border-primary",
                     )}

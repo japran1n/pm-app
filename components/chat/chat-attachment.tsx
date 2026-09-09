@@ -92,7 +92,7 @@ export function ChatAttachment({ attachment }: { attachment: ChatAttachmentData 
       rel="noopener noreferrer"
       aria-disabled={!signedUrl}
       className={cn(
-        "flex max-w-64 items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-micro",
+        "flex max-w-64 items-center gap-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs",
         signedUrl ? "hover:bg-muted" : "pointer-events-none opacity-70",
       )}
     >

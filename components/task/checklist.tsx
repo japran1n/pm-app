@@ -694,7 +694,7 @@ export function Checklist({
       <div className="flex items-center justify-between gap-2">
         <Label>Checklist</Label>
         {progress.total > 0 && (
-          <span className="text-micro text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {progress.checked} of {progress.total} checked
           </span>
         )}
@@ -708,7 +708,7 @@ export function Checklist({
       )}
 
       {localItems.length === 0 ? (
-        <div className="flex items-center gap-2 text-mini text-muted-foreground">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <ListChecks className="size-4" aria-hidden="true" />
           No checklist items yet. Add one below.
         </div>

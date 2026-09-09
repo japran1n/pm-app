@@ -308,7 +308,7 @@ export function TaskCard({
     >
       <CardHeader>
         {taskKey && (
-          <span className="font-mono text-micro font-medium text-muted-foreground">
+          <span className="font-mono text-xs font-medium text-muted-foreground">
             {taskKey}
           </span>
         )}
@@ -325,7 +325,7 @@ export function TaskCard({
         {task.dueDate && (
           <span
             className={cn(
-              "inline-flex items-center gap-1 text-micro",
+              "inline-flex items-center gap-1 text-xs",
               overdue
                 ? "font-medium text-destructive"
                 : "text-muted-foreground",
@@ -347,7 +347,7 @@ export function TaskCard({
             independent columns, so both render independently. */}
         {task.clientVisible && (
           <span
-            className="inline-flex items-center gap-1 text-micro text-muted-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
             data-testid="client-visible-indicator"
           >
             <Eye className="size-3" aria-hidden="true" />
@@ -362,7 +362,7 @@ export function TaskCard({
             since this is a fact about the task, not an error. */}
         {task.pendingClientApproval && (
           <span
-            className="inline-flex items-center gap-1 text-micro font-medium text-amber-700"
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
             data-testid="awaiting-client-indicator"
           >
             <CircleDot className="size-3" aria-hidden="true" />
@@ -371,7 +371,7 @@ export function TaskCard({
           </span>
         )}
         {!!task.totalMinutes && task.totalMinutes > 0 && (
-          <span className="inline-flex items-center gap-1 text-micro text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="size-3" aria-hidden="true" />
             {formatDuration(task.totalMinutes)}
           </span>
@@ -384,14 +384,14 @@ export function TaskCard({
             estimate is a fact, not an error.
             F269 (AS-526): `text-amber-600` (#d97706) only clears 3.19:1
             against the card's white ground — below the 4.5:1 normal-
-            text threshold this `text-micro` badge text requires (large-text's
+            text threshold this `text-xs` badge text requires (large-text's
             3:1 exemption needs >=18pt/24px, or >=14pt/18.66px bold; this is
             12px, not bold). Swapped for `text-amber-700` (#b45309,
             5.02:1) — see
             tests/unit/task-card-badge-text-contrast.test.ts. */}
         {estimateProgress?.isOverEstimate && (
           <span
-            className="inline-flex items-center gap-1 text-micro font-medium text-amber-700"
+            className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
             data-testid="over-estimate-badge"
           >
             <TriangleAlert className="size-3" aria-hidden="true" />
@@ -406,7 +406,7 @@ export function TaskCard({
             rule says. */}
         {recurrenceSummary && (
           <span
-            className="inline-flex items-center gap-1 text-micro text-muted-foreground"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground"
             data-testid="recurrence-badge"
           >
             <Repeat className="size-3" aria-hidden="true" />
@@ -417,7 +417,7 @@ export function TaskCard({
             text, never colour alone — same pairing this card already
             uses for the overdue indicator above. */}
         {!!task.subtaskCount && task.subtaskCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-micro text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <ListTree className="size-3" aria-hidden="true" />
             {task.subtaskCount} {task.subtaskCount === 1 ? "subtask" : "subtasks"}
           </span>
@@ -429,7 +429,7 @@ export function TaskCard({
             state to notice, not necessarily a fault, so it doesn't reuse
             the destructive-red treatment overdue uses). */}
         {!!task.openBlockerCount && task.openBlockerCount > 0 && (
-          <span className="inline-flex items-center gap-1 text-micro text-muted-foreground">
+          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Ban className="size-3" aria-hidden="true" />
             Blocked
           </span>
@@ -445,7 +445,7 @@ export function TaskCard({
             <TooltipTrigger
               render={
                 <span
-                  className="inline-flex items-center gap-1 text-micro font-medium text-amber-700"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-amber-700"
                   data-testid="blocked-reason-indicator"
                 >
                   <AlertTriangle className="size-3" aria-hidden="true" />
@@ -469,7 +469,7 @@ export function TaskCard({
             above, just with a small fill bar standing in for the icon. */}
         {task.completion && (
           <span
-            className="inline-flex items-center gap-1.5 text-micro text-muted-foreground"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
             aria-label={`${task.completion.percent}% complete, ${task.completion.done} of ${task.completion.total}`}
           >
             <span

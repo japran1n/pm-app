@@ -93,18 +93,18 @@ export function DocLinksEditor({
       className="flex flex-col gap-3 rounded-md border border-border p-3"
       data-testid="doc-links-editor"
     >
-      <span className="text-mini font-medium text-foreground">Video and document links</span>
+      <span className="text-sm font-medium text-foreground">Video and document links</span>
 
       {links.length > 0 && (
         <ul className="flex flex-col gap-2" data-testid="doc-links-editor-list">
           {links.map((link) => (
             <li
               key={link.id}
-              className="flex items-center justify-between gap-2 rounded border border-border p-2 text-mini"
+              className="flex items-center justify-between gap-2 rounded border border-border p-2 text-sm"
             >
               <div className="flex min-w-0 flex-col">
                 <span className="truncate font-medium text-foreground">{link.title}</span>
-                <span className="truncate text-tag text-muted-foreground">{link.url}</span>
+                <span className="truncate text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{link.url}</span>
               </div>
               <Button
                 type="button"

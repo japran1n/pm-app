@@ -89,8 +89,8 @@ export default async function ProjectPhasesSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Phases</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Phases</h1>
+        <p className="text-sm text-muted-foreground">
           The ordered phases {project.name} moves through, and what the
           client sees for each one.
         </p>

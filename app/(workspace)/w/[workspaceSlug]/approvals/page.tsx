@@ -63,7 +63,7 @@ export default async function ApprovalsQueuePage({
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <h1 className="title-2 font-semibold">Approvals</h1>
+      <h1 className="text-2xl font-semibold">Approvals</h1>
       <ApprovalsQueue workspaceSlug={workspaceSlug} approvals={rows} />
     </div>
   );

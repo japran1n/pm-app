@@ -372,9 +372,9 @@ export function MarkdownEditor({
           }}
           placeholder="Untitled"
           rows={1}
-          className="min-w-0 flex-1 resize-none overflow-hidden whitespace-pre-wrap break-words border-none bg-transparent title-3 font-bold outline-none"
+          className="min-w-0 flex-1 resize-none overflow-hidden whitespace-pre-wrap break-words border-none bg-transparent text-3xl font-bold outline-none"
         />
-        <span className="shrink-0 text-micro text-muted-foreground">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {status === "saving" && "Saving..."}
           {status === "saved" && "Saved"}
           {status === "error" && "Failed to save"}

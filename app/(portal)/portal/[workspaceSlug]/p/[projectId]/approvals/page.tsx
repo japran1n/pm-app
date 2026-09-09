@@ -86,7 +86,7 @@ export default async function PortalApprovalsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-3">
-        <h2 className="title-1 font-semibold tracking-tight text-foreground sm:title-2">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
           Who approves what
         </h2>
         {!ownersResult.ok || !decisionTypesResult.ok ? (
@@ -102,7 +102,7 @@ export default async function PortalApprovalsPage({
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="title-1 font-semibold tracking-tight text-foreground sm:title-2">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
           Open approvals
         </h2>
         {!openApprovalsResult.ok ? (
@@ -140,7 +140,7 @@ export default async function PortalApprovalsPage({
       </div>
 
       <div className="flex flex-col gap-4">
-        <h2 className="title-1 font-semibold tracking-tight text-foreground sm:title-2">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
           Decision history
         </h2>
         {!historyResult.ok ? (

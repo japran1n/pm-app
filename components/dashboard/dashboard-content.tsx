@@ -85,7 +85,7 @@ export function DashboardContent({
           >
             <AlertTriangle className="size-6 text-destructive" />
           </div>
-          <p className="text-mini text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             We couldn&apos;t load your dashboard charts.
           </p>
           <DashboardRetryButton />
@@ -111,7 +111,7 @@ export function DashboardContent({
           <>
             <Link
               href={`/w/${workspaceSlug}/projects`}
-              className="text-mini text-primary underline-offset-4 hover:underline"
+              className="text-sm text-primary underline-offset-4 hover:underline"
             >
               View projects
             </Link>
@@ -168,7 +168,7 @@ export function DashboardContent({
       <div className="grid gap-4 md:grid-cols-2" data-testid="dashboard-charts">
         <Card className="gap-4">
           <CardHeader>
-            <CardTitle className="text-mini font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Tasks by priority
             </CardTitle>
           </CardHeader>
@@ -178,7 +178,7 @@ export function DashboardContent({
         </Card>
         <Card className="gap-4">
           <CardHeader>
-            <CardTitle className="text-mini font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
               Tasks by status
             </CardTitle>
           </CardHeader>

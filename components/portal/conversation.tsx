@@ -57,10 +57,10 @@ export function PortalConversation({
 
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="title-1 font-medium tracking-tight">Conversation</h2>
+      <h2 className="text-xl font-medium tracking-tight">Conversation</h2>
 
       {comments.length === 0 ? (
-        <p className="text-mini text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Nothing here yet. Ask {teamName} anything about this item.
         </p>
       ) : (
@@ -71,16 +71,16 @@ export function PortalConversation({
               className="flex flex-col gap-1.5 rounded-lg border border-border p-4"
             >
               <div className="flex items-baseline justify-between gap-3">
-                <span className="text-mini font-medium">
+                <span className="text-sm font-medium">
                   {comment.isMine
                     ? "You"
                     : (comment.authorName ?? teamName)}
                 </span>
-                <span className="text-micro text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {formatTimestamp(comment.createdAt)}
                 </span>
               </div>
-              <p className="text-mini whitespace-pre-wrap">{comment.text}</p>
+              <p className="text-sm whitespace-pre-wrap">{comment.text}</p>
             </li>
           ))}
         </ul>

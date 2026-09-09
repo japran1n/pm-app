@@ -122,7 +122,7 @@ export function SaveAsTemplateDialog({
           </div>
 
           {error && (
-            <p id="template-name-error" role="alert" className="text-mini text-destructive">
+            <p id="template-name-error" role="alert" className="text-sm text-destructive">
               {error}
             </p>
           )}

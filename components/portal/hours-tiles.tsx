@@ -42,7 +42,7 @@ function Tile({
       data-over-budget={overBudget ? "true" : "false"}
       className="flex flex-col gap-2 rounded-lg border border-border p-5"
     >
-      <span className="flex items-center gap-1.5 text-tag text-muted-foreground">
+      <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
         {overBudget && (
           <AlertTriangle
             aria-hidden="true"
@@ -51,14 +51,14 @@ function Tile({
         )}
         {label}
       </span>
-      <span className={cn("title-2 font-semibold tracking-tight tabular-nums", valueClassName)}>
+      <span className={cn("text-2xl font-semibold tracking-tight tabular-nums", valueClassName)}>
         {value}
       </span>
-      <span className="text-micro text-muted-foreground">
+      <span className="text-xs text-muted-foreground">
         {footnote}
         {overBudget && <span className="sr-only"> (over budget)</span>}
       </span>
-      {note && <span className="text-micro text-status-blocked">{note}</span>}
+      {note && <span className="text-xs text-status-blocked">{note}</span>}
     </div>
   );
 }

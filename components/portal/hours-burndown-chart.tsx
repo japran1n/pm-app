@@ -159,8 +159,8 @@ export function HoursBurndownChart({
   if (points.length === 0) {
     return (
       <div className="flex flex-col gap-2 rounded-lg border border-border p-5">
-        <h2 className="text-mini font-semibold text-foreground">Hours</h2>
-        <p className="text-mini text-muted-foreground" data-testid="hours-chart-not-started">
+        <h2 className="text-sm font-semibold text-foreground">Hours</h2>
+        <p className="text-sm text-muted-foreground" data-testid="hours-chart-not-started">
           {soldMinutes === null
             ? "No budget has been set for this project yet."
             : "No billable hours have been logged against this budget yet."}
@@ -175,15 +175,15 @@ export function HoursBurndownChart({
   return (
     <div className="flex flex-col gap-4 rounded-lg border border-border p-5">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-mini font-semibold text-foreground">Hours burn-down</h2>
+        <h2 className="text-sm font-semibold text-foreground">Hours burn-down</h2>
         {soldMinutes === null && (
-          <span className="text-micro text-muted-foreground" data-testid="hours-chart-no-budget">
+          <span className="text-xs text-muted-foreground" data-testid="hours-chart-no-budget">
             No budget set yet — showing hours used only.
           </span>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-micro text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span aria-hidden="true" className="h-0.5 w-4 rounded-full bg-brand" />
           Used
@@ -328,7 +328,7 @@ export function HoursBurndownChart({
               <div
                 role="tooltip"
                 data-testid="hours-chart-tooltip"
-                className="w-fit max-w-40 rounded-md border border-border bg-popover p-2 text-micro text-popover-foreground shadow-md"
+                className="w-fit max-w-40 rounded-md border border-border bg-popover p-2 text-xs text-popover-foreground shadow-md"
               >
                 <p className="font-medium">Week of {hovered.label}</p>
                 <p className="text-muted-foreground">
@@ -358,7 +358,7 @@ export function HoursBurndownChart({
         </svg>
       </div>
 
-      <p className="text-micro text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         Billable hours only. Internal review and rework are not billed to you.
         {soldMinutes !== null &&
           " Planned assumes the budget is spread evenly across the weeks shown here."}

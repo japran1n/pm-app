@@ -84,8 +84,8 @@ export default async function ProjectDeliverablesSettingsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Deliverables</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Deliverables</h1>
+        <p className="text-sm text-muted-foreground">
           What {project.name} needs from the client — files, copy, access,
           and decisions — and whether the team has reviewed what came
           back.

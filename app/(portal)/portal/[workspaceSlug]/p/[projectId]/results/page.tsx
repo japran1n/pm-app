@@ -136,7 +136,7 @@ export default async function PortalResultsPage({
   return (
     <div className="flex flex-col gap-8">
       <div className="rounded-lg border border-border bg-muted/40 p-4">
-        <p className="text-mini text-muted-foreground" data-testid="results-header-note">
+        <p className="text-sm text-muted-foreground" data-testid="results-header-note">
           {baselineFrozenAt
             ? `Baseline frozen on ${formatDate(baselineFrozenAt)}. Every "Now" measurement below is taken the same way as the baseline, so the two numbers are directly comparable.`
             : "This project's baseline has not been frozen yet — measurements below may still change as the baseline method is finalised."}
@@ -145,7 +145,7 @@ export default async function PortalResultsPage({
 
       {metrics.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h2 className="text-mini font-semibold text-foreground">Metrics</h2>
+          <h2 className="text-sm font-semibold text-foreground">Metrics</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="metric-comparison-cards">
             {metrics.map((metric) => (
               <MetricComparisonCard

@@ -49,7 +49,7 @@ export function RiskBanner({
     <div
       role="alert"
       data-testid="risk-banner"
-      className="flex items-start gap-3 rounded-lg border border-status-blocked/30 bg-status-blocked-bg px-4 py-3 text-mini text-status-blocked"
+      className="flex items-start gap-3 rounded-lg border border-status-blocked/30 bg-status-blocked-bg px-4 py-3 text-sm text-status-blocked"
     >
       <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
       <ul className="flex flex-col gap-1.5">

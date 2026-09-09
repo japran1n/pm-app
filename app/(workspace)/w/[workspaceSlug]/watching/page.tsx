@@ -40,8 +40,8 @@ export default async function WatchingPage({
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
-        <h1 className="title-1 font-semibold">Watching</h1>
-        <p className="text-mini text-muted-foreground">
+        <h1 className="text-xl font-semibold">Watching</h1>
+        <p className="text-sm text-muted-foreground">
           Tasks you&apos;re watching, sorted by the most recent activity.
         </p>
       </div>
@@ -73,14 +73,14 @@ export default async function WatchingPage({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <StatusBadge label={statusLabel} color={statusColor} />
-                      <span className="truncate text-mini font-medium">{task.taskTitle}</span>
+                      <span className="truncate text-sm font-medium">{task.taskTitle}</span>
                     </div>
-                    <span className="shrink-0 text-micro text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {task.projectName}
                     </span>
                   </div>
                   {task.lastActivitySummary && (
-                    <p className="line-clamp-1 text-micro text-muted-foreground">
+                    <p className="line-clamp-1 text-xs text-muted-foreground">
                       {task.lastActivitySummary}
                     </p>
                   )}

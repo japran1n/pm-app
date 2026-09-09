@@ -186,7 +186,7 @@ export function DocsSidebar({
     <>
       <button
         type="button"
-        className="mb-2 self-start rounded-md border border-input px-2 py-1 text-micro text-muted-foreground md:hidden"
+        className="mb-2 self-start rounded-md border border-input px-2 py-1 text-xs text-muted-foreground md:hidden"
         onClick={() => setCollapsed((value) => !value)}
       >
         {collapsed ? "Show docs" : "Hide docs"}
@@ -196,7 +196,7 @@ export function DocsSidebar({
         className={collapsed ? "hidden md:flex md:flex-col" : "flex flex-col"}
       >
         <div className="mb-2 flex items-center justify-between px-1.5">
-          <h2 className="text-mini font-semibold">Docs</h2>
+          <h2 className="text-sm font-semibold">Docs</h2>
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -228,7 +228,7 @@ export function DocsSidebar({
               placeholder="Folder name"
               value={newFolderName}
               disabled={isPending}
-              className="h-7 text-mini"
+              className="h-7 text-sm"
               onChange={(event) => setNewFolderName(event.target.value)}
               onBlur={submitNewFolder}
               onKeyDown={(event) => {
@@ -281,7 +281,7 @@ export function DocsSidebar({
                 />
               ))}
               {tree.length === 0 && rootDocs.length === 0 && (
-                <p className="px-1.5 py-2 text-micro text-muted-foreground">
+                <p className="px-1.5 py-2 text-xs text-muted-foreground">
                   No documents yet.
                 </p>
               )}

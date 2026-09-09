@@ -56,7 +56,7 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
   if (fields === null) {
     return (
       <div
-        className="flex items-center gap-2 text-mini text-muted-foreground"
+        className="flex items-center gap-2 text-sm text-muted-foreground"
         data-testid="custom-fields-section-loading"
       >
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -97,7 +97,7 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
       data-testid="custom-fields-section"
       className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4"
     >
-      <span className="text-mini font-medium text-foreground">Custom fields</span>
+      <span className="text-sm font-medium text-foreground">Custom fields</span>
       {fields.map((field) => {
         const inputId = `task-custom-field-${field.id}-${taskId}`;
         if (field.fieldType === "checkbox") {
@@ -106,7 +106,7 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
             <label
               key={field.id}
               htmlFor={inputId}
-              className="flex items-center gap-2 text-mini"
+              className="flex items-center gap-2 text-sm"
             >
               <Checkbox
                 id={inputId}

@@ -34,7 +34,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
 
   if (total === 0) {
     return (
-      <p className="text-mini text-muted-foreground">
+      <p className="text-sm text-muted-foreground">
         Nothing shared with you on this project yet.
       </p>
     );
@@ -48,7 +48,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-2">
-        <span className="title-2 font-semibold tabular-nums">
+        <span className="text-2xl font-semibold tabular-nums">
           {percentComplete}%
         </span>
         <span
@@ -57,7 +57,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
           {health.label}
         </span>
       </div>
-      <span className="-mt-2 text-micro text-muted-foreground">
+      <span className="-mt-2 text-xs text-muted-foreground">
         {done} of {total} done
       </span>
 
@@ -78,7 +78,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {nextDue ? (
           <span>
             Next: {nextDue.title}

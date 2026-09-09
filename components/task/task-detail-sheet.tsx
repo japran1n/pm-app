@@ -502,7 +502,7 @@ function MobileCollapsibleSection({
         render={
           <button
             type="button"
-            className="hidden min-h-11 w-full items-center justify-between gap-2 rounded-md px-1 text-left text-mini font-medium text-foreground max-sm:flex"
+            className="hidden min-h-11 w-full items-center justify-between gap-2 rounded-md px-1 text-left text-sm font-medium text-foreground max-sm:flex"
           />
         }
       >
@@ -1562,7 +1562,7 @@ export function TaskDetailSheet({
                 <button
                   type="button"
                   onClick={handleCopyKey}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-micro font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   aria-label={`Copy task key ${taskKey} to clipboard`}
                 >
                   <Copy className="size-3" aria-hidden="true" />
@@ -1579,7 +1579,7 @@ export function TaskDetailSheet({
                 <button
                   type="button"
                   onClick={handleCopyLink}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-micro font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                   aria-label="Copy link to this task"
                 >
                   <LinkIcon className="size-3" aria-hidden="true" />
@@ -1598,7 +1598,7 @@ export function TaskDetailSheet({
                   type="button"
                   onClick={() => onOpenTask?.(task.parent!.id)}
                   disabled={!onOpenTask}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-micro text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
                   aria-label={`Open parent task ${
                     formatTaskKey(task.parent.projectKey, task.parent.number) ??
                     task.parent.title
@@ -1624,7 +1624,7 @@ export function TaskDetailSheet({
                   type="button"
                   onClick={() => onOpenTask?.(task.recurrenceSource!.id)}
                   disabled={!onOpenTask}
-                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-micro text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
+                  className="inline-flex w-fit items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70"
                   aria-label={`Open source task ${
                     formatTaskKey(
                       task.recurrenceSource.projectKey,
@@ -1769,7 +1769,7 @@ export function TaskDetailSheet({
                   onChange={(changeEvent) => setTitle(changeEvent.target.value)}
                   onBlur={handleTitleBlur}
                   onKeyDown={handleTitleKeyDown}
-                  className="text-regular font-medium"
+                  className="text-base font-medium"
                 />
               </div>
 
@@ -2013,7 +2013,7 @@ export function TaskDetailSheet({
                             aria-labelledby={`task-assignee-label-${task.id}`}
                             disabled={isAssigning || !canEdit}
                             title={editDisabledTitle}
-                            className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-mini shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs transition-colors hover:bg-accent/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         }
                       >
@@ -2056,7 +2056,7 @@ export function TaskDetailSheet({
                       <PopoverContent align="start" className="w-64 p-1">
                         <div role="listbox" aria-multiselectable="true" aria-label="Assignees" className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
                           {members.length === 0 && (
-                            <p className="px-2 py-1.5 text-mini text-muted-foreground">
+                            <p className="px-2 py-1.5 text-sm text-muted-foreground">
                               No workspace members.
                             </p>
                           )}
@@ -2074,7 +2074,7 @@ export function TaskDetailSheet({
                                 onClick={() =>
                                   handleAssigneesToggle(member.userId)
                                 }
-                                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-mini hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Checkbox
                                   checked={checked}
@@ -2211,7 +2211,7 @@ export function TaskDetailSheet({
                       disabled={isSavingField || !canEdit}
                       title={editDisabledTitle}
                       placeholder="e.g. about-us"
-                      className="font-mono text-mini"
+                      className="font-mono text-sm"
                       onChange={(changeEvent) =>
                         setPageSlug(changeEvent.target.value)
                       }
