@@ -137,15 +137,6 @@ function formatToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "UTC" });
 }
 
-async function resolveCurrentDocTitle(
-  currentDocId: string | null,
-  workspaceId: string,
-): Promise<string | null> {
-  if (!currentDocId) return null;
-  const result = await getCurrentDocTool.run({ docId: currentDocId }, workspaceId);
-  return result.status === "ok" ? result.data.title : null;
-}
-
 /**
  * Builds the full request body for one docs-agent turn. Pure data in, pure
  * data out — no `Request` object, no cookies, so this is directly
@@ -170,7 +161,12 @@ export async function buildDocsAgentRequest({
   // "the user" instead of a name.
   void userId;
 
-  const currentDocTitle = await resolveCurrentDocTitle(currentDocId, workspaceId);
+  // F032: `currentDocId` is retained in the signature (route callers still
+  // pass it, and it is still validated as a uuid before it reaches here)
+  // but is no longer interpolated into the prompt in any form — see the
+  // volatile-tail comment below for why. The model resolves "what document
+  // is open" itself via `get_current_doc`, under the injection defence.
+  void currentDocId;
 
   const stableBlocks: BetaTextBlockParam[] = [
     { type: "text", text: PERSONA_AND_BOUNDARY },
@@ -190,12 +186,19 @@ export async function buildDocsAgentRequest({
   // Volatile tail — never anything per-request-unique (no request id, no
   // uuid) above this point, and this block itself carries no
   // cache_control, so it is never cached.
-  const volatileTailLines = [
-    currentDocId
-      ? `Current document: "${currentDocTitle ?? "(untitled)"}" (id: ${currentDocId}).`
-      : "No document is currently open.",
-    `Today's date: ${formatToday()}.`,
-  ];
+  //
+  // F032 (AS-006 fix): this used to also carry a "Current document: ..."
+  // line built from `currentDocTitle` and the raw `currentDocId`. Both are
+  // client/tenant-controlled — the id came straight off the request body
+  // (only loosely validated at the route), and the title can be authored
+  // by a client-portal user outside the team. Interpolating either at
+  // SYSTEM authority let an attacker inject a fake instruction that
+  // INJECTION_DEFENSE's protections (scoped to `tool_result` / prior
+  // turns) do not cover. The system prompt now carries no document text
+  // and no client-supplied id at all; if the model needs to know what
+  // document is open it calls `get_current_doc`, whose result comes back
+  // as a `tool_result` — squarely inside the injection defence.
+  const volatileTailLines = [`Today's date: ${formatToday()}.`];
   const volatileTail: BetaTextBlockParam = {
     type: "text",
     text: volatileTailLines.join("\n"),

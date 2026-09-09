@@ -64,7 +64,10 @@ const requestBodySchema = z.object({
   // schema is invented for it here.
   threadId: z.string().optional(),
   message: z.string().trim().min(1, "message is required."),
-  currentDocId: z.string().optional(),
+  // F032 (AS-006 fix, vector A): a malformed id must never reach prompt
+  // assembly. `.uuid()` rejects it here with the existing generic 400,
+  // before `buildDocsAgentRequest` (and therefore before any model call).
+  currentDocId: z.string().uuid().optional(),
   // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): the docs sidebar
   // always knows which workspace it is rendered inside (the page route
   // itself is workspace-scoped), so the caller supplies it explicitly —
@@ -138,6 +141,21 @@ function asProposal(
     // Not JSON, or not the ToolResult envelope shape — not a proposal.
   }
   return null;
+}
+
+/**
+ * F032: bounds length and charset on a model-controlled tool name before it
+ * is interpolated into a client-facing `detail` string. Real tool names are
+ * short, lowercase, snake_case identifiers this route itself defines — so
+ * anything outside `[a-zA-Z0-9_-]`, or over a generous length cap, is either
+ * not a real tool name or an attempt to smuggle something through `detail`;
+ * either way it gets truncated and stripped down to a safe-to-render token.
+ */
+function sanitizeToolNameForDisplay(name: string): string {
+  const MAX_TOOL_NAME_DISPLAY_LEN = 64;
+  const stripped = name.replace(/[^a-zA-Z0-9_-]/g, "");
+  const bounded = stripped.slice(0, MAX_TOOL_NAME_DISPLAY_LEN);
+  return bounded.length > 0 ? bounded : "unknown";
 }
 
 /** A short, safe-to-render one-line summary for a tool_end event. Never leaks raw content. */
@@ -302,6 +320,21 @@ export async function POST(request: Request) {
         let totalCached = 0;
         let turnEnded = false;
         let proposalEmitted = false;
+        // F032 (measurement correctness, AS-047): `totalCached` sums
+        // `cache_read_input_tokens` across every iteration of the tool
+        // loop below, including iterations *within this same turn* after
+        // the first (a tool-calling turn's 2nd+ iteration legitimately
+        // re-sends the cached system prefix and reports cached > 0 purely
+        // from within-turn reuse). That is real cache usage and stays in
+        // the `usage` event's `cached` total. But it means `cached > 0` on
+        // a turn's first iteration is the only signal that proves reuse
+        // ACROSS requests (the thing AS-047 cares about) rather than
+        // across iterations of one request. Track it separately so a
+        // future AS-047 test can assert on cross-request caching
+        // specifically instead of being pre-satisfied by within-turn
+        // reuse.
+        let firstIterationCached = 0;
+        let sawFirstIteration = false;
 
         while (!turnEnded) {
           if (abortController.signal.aborted) break;
@@ -335,6 +368,10 @@ export async function POST(request: Request) {
           totalIn += finalMessage.usage.input_tokens;
           totalOut += finalMessage.usage.output_tokens;
           totalCached += finalMessage.usage.cache_read_input_tokens ?? 0;
+          if (!sawFirstIteration) {
+            sawFirstIteration = true;
+            firstIterationCached = finalMessage.usage.cache_read_input_tokens ?? 0;
+          }
 
           messages = [...messages, { role: "assistant", content: finalMessage.content }];
 
@@ -375,7 +412,14 @@ export async function POST(request: Request) {
             let isError = false;
 
             if (!tool) {
-              resultContent = `Error: Tool '${toolUse.name}' not found`;
+              // F032: `toolUse.name` is model-controlled — the SDK does
+              // not guarantee it matches one of the tools this route
+              // offered. It is the one model-controlled string that
+              // reaches the client's `detail` field, and M2 is expected to
+              // render `detail` in a tool card, so bound its length and
+              // charset before it gets anywhere near that string
+              // interpolation, rather than after.
+              resultContent = `Error: Tool '${sanitizeToolNameForDisplay(toolUse.name)}' not found`;
               isError = true;
               send({ t: "tool_end", id: toolUse.id, summary: "tool error", detail: resultContent });
             } else {
@@ -445,6 +489,23 @@ export async function POST(request: Request) {
           ];
         }
 
+        // F032 (measurement correctness, AS-047): the `cached` figure on the
+        // wire is deliberately the whole-turn total (unchanged — it is a
+        // real, useful number, and the NDJSON contract in
+        // tech-decisions.md is fixed). `firstIterationCached` is logged
+        // separately here purely for observability: it is the only number
+        // that isolates "did this turn's very first request to the model
+        // already see a cache hit" from "did a later tool-calling
+        // iteration within this same turn reuse the cache this turn itself
+        // primed" — the two get conflated once summed into `totalCached`,
+        // and only the former is evidence of cross-*request* caching
+        // (what AS-047 is actually about).
+        logger.info("docs agent: turn usage", {
+          totalIn,
+          totalOut,
+          totalCached,
+          firstIterationCached,
+        });
         send({ t: "usage", in: totalIn, out: totalOut, cached: totalCached });
         send({ t: "done" });
         finish();
