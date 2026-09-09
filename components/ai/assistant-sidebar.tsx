@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { useBreadcrumbExtra } from "@/components/nav/breadcrumb-context";
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 import { AssistantThread } from "@/components/ai/assistant-thread";
+import { ToolCallList } from "@/components/ai/tool-call-card";
 
 const STORAGE_KEY = "pm-app:ai-docs-sidebar-open";
 
@@ -216,7 +217,7 @@ export function AssistantSidebar({
   // Message/tool/proposal RENDERING is F010-F013's job (see file header)
   // — this call proves the hook wires up correctly and drives the
   // disabled-composer/no-API-key state (AS-071).
-  const { messages, isStreaming, error } = useDocAssistant({
+  const { messages, toolCalls, isStreaming, error } = useDocAssistant({
     workspaceId,
     currentDocId,
   });
@@ -280,8 +281,9 @@ export function AssistantSidebar({
           <AssistantThread messages={messages} />
         )}
 
-        {/* Tool call cards are F011's job — reserved region only. */}
-        <div data-testid="assistant-sidebar-tool-cards-placeholder" />
+        {/* F011: quiet, collapsible cards for auditing tool calls.
+            Renders nothing when there are no tool calls yet. */}
+        <ToolCallList toolCalls={toolCalls} />
 
         {error && (
           <p
