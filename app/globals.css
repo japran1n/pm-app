@@ -42,6 +42,7 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
+  --color-text-quaternary: var(--text-quaternary);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -105,6 +106,7 @@
   /* Two new tokens Linear uses that shadcn doesn't have */
   --line-row: #202122;
   --bg-hover: #ffffff0d;
+  --text-quaternary: #62666d;
   /* F004 (missions/20260903-portal): the four client-facing status
      buckets (waiting / in progress / blocked / done) a project status
      maps to (components/portal/status-label.ts's `resolveClientBucket`).
@@ -169,6 +171,7 @@
   --ring: #3670e1;
   --brand: #3670e1;
   --brand-foreground: #ffffff;
+  --text-quaternary: #9499a3;
 }
 
 @layer base {
