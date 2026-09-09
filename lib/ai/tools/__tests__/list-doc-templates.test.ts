@@ -1,10 +1,15 @@
-// F005: unit tests for the list_doc_templates AI tool (AS-024, AS-002,
-// AS-028). Mocking style matches
-// lib/ai/tools/__tests__/search-docs.test.ts — mock `createClient` from
-// lib/supabase/server and stub the chained query-builder methods it uses.
-// This tool's query is `.from().select().eq()`, awaited directly (no
-// terminal `.maybeSingle()`), so the mock's `eq()` return value must be a
-// thenable resolving to the query result.
+// F005: unit tests for the list_doc_templates AI tool (AS-024, AS-028).
+// Mocking style matches lib/ai/tools/__tests__/search-docs.test.ts — mock
+// `createClient` from lib/supabase/server and stub the chained
+// query-builder methods it uses. This tool's query is
+// `.from().select().eq()`, awaited directly (no terminal `.maybeSingle()`),
+// so the mock's `eq()` return value must be a thenable resolving to the
+// query result.
+//
+// These are fast shape/parsing/empty-path tests only — they cannot and do
+// not prove cross-workspace isolation (AS-002): see
+// tests/integration/list-doc-templates-isolation.test.ts for that (F024,
+// fixing M1-SCRUTINY.md B2).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -66,12 +71,15 @@ describe("list_doc_templates (F005)", () => {
     expect(mockEq).toHaveBeenCalledWith("kind", "doc");
   });
 
-  it("test_AS_002_scoping_relies_entirely_on_rls_no_extra_workspace_filter_needed", async () => {
-    // RLS (`task_templates_select_non_guest_members`) already scopes every
-    // row this query can return to the caller's own workspace — a
-    // foreign-workspace template simply never appears in `data`, exactly
-    // like get_current_doc/search_docs's precedent. The mock simulates
-    // that boundary by only ever including the caller's own row.
+  it("test_a_single_row_result_set_is_shaped_and_returned_correctly", async () => {
+    // NOT an isolation proof: the mock only ever contains the row the
+    // test itself put there, so this does not exercise
+    // `task_templates_select_non_guest_members` (the real RLS boundary)
+    // at all — it would pass identically with RLS dropped entirely or a
+    // service-role client in place. The real cross-workspace isolation
+    // property (AS-002) is proven against a live database in
+    // tests/integration/list-doc-templates-isolation.test.ts — see that
+    // file's header for why a mock cannot make this claim.
     const ownWorkspaceTemplate = makeTemplateRow({
       id: "22222222-2222-4222-8222-222222222222",
       name: "Own Workspace Template",
@@ -84,8 +92,6 @@ describe("list_doc_templates (F005)", () => {
     if (result.status === "ok") {
       expect(result.data.templates).toHaveLength(1);
       expect(result.data.templates[0].id).toBe(ownWorkspaceTemplate.id);
-      const serialized = JSON.stringify(result.data.templates);
-      expect(serialized).not.toMatch(/foreign|other-workspace/i);
     }
   });
 

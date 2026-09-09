@@ -1,8 +1,11 @@
 // F003: unit tests for the get_current_doc AI tool (AS-020, AS-021, AS-002,
-// AS-008, AS-028). Mocking style matches
+// AS-028). Mocking style matches
 // tests/unit/chat-mark-channel-read-action.test.ts — mock `createClient`
 // from lib/supabase/server and stub the chained query-builder methods it
-// uses.
+// uses. These are fast shape/truncation/empty-path tests only — they
+// cannot and do not prove cross-workspace isolation (AS-008): see
+// tests/integration/get-current-doc-isolation.test.ts for that (F024,
+// fixing M1-SCRUTINY.md B2).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -71,11 +74,16 @@ describe("get_current_doc (F003)", () => {
     });
   });
 
-  it("test_AS_008_doc_in_another_workspace_returns_empty_and_leaks_nothing", async () => {
-    // RLS makes a doc in a foreign workspace indistinguishable from one
-    // that doesn't exist at all: the query returns `data: null` either
-    // way, so the tool never sees (and can never leak) the other
-    // workspace's title/content.
+  it("test_a_null_row_returns_the_same_empty_shape_regardless_of_why_it_is_null", async () => {
+    // NOT an isolation proof: this only exercises the tool's own
+    // null-handling given a mocked `data: null`. The mock cannot tell the
+    // tool "why" the row is null (true not-found vs. RLS-hidden), so this
+    // case is indistinguishable from the not-found case above at the mock
+    // level and would pass identically even with RLS dropped entirely or
+    // a service-role client in place. The real cross-workspace isolation
+    // property (AS-008) is proven against a live database in
+    // tests/integration/get-current-doc-isolation.test.ts — see that
+    // file's header for why a mock cannot make this claim.
     mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
     const result = await run({ docId: DOC_ID });
@@ -84,8 +92,6 @@ describe("get_current_doc (F003)", () => {
     if (result.status === "empty") {
       expect(result.reason).toBe("not_found");
       expect(result.message).toBe("No matching document found.");
-      // Same message as the true not-found case above — no distinguishing
-      // wording that would leak the document's existence.
       expect(JSON.stringify(result)).not.toMatch(/title|content|markdown/i);
     }
   });

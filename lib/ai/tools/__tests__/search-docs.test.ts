@@ -1,12 +1,17 @@
-// F004: unit tests for the search_docs AI tool (AS-022, AS-023, AS-008,
-// AS-028). Mocking style matches
-// lib/ai/tools/__tests__/get-current-doc.test.ts — mock `createClient`
-// from lib/supabase/server and stub the chained query-builder methods it
-// uses. The query builder here (`.from().select().or().limit()`, with an
-// optional `.eq()` when `projectId` is given) is awaited directly rather
-// than terminated with `.maybeSingle()`, so the mock returns a thenable
-// object from `limit()` that resolves to the query result whether or not
-// `.eq()` is chained after it.
+// F004: unit tests for the search_docs AI tool (AS-022, AS-028). Mocking
+// style matches lib/ai/tools/__tests__/get-current-doc.test.ts — mock
+// `createClient` from lib/supabase/server and stub the chained
+// query-builder methods it uses. The query builder here
+// (`.from().select().or().limit()`, with an optional `.eq()` when
+// `projectId` is given) is awaited directly rather than terminated with
+// `.maybeSingle()`, so the mock returns a thenable object from `limit()`
+// that resolves to the query result whether or not `.eq()` is chained
+// after it.
+//
+// These are fast shape/snippet/empty-path tests only — they cannot and do
+// not prove cross-workspace isolation (AS-023, AS-008): see
+// tests/integration/search-docs-isolation.test.ts for that (F024, fixing
+// M1-SCRUTINY.md B2).
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -103,12 +108,15 @@ describe("search_docs (F004)", () => {
     });
   });
 
-  it("test_AS_023_AS_008_doc_in_another_workspace_never_appears", async () => {
-    // RLS (`docs_select_active_members`) scopes every row this query can
-    // possibly return to the caller's own workspace, so a doc that exists
-    // in a foreign workspace never appears in `data` regardless of query
-    // text — the mock simulates that boundary by simply never including
-    // a foreign-workspace row in the resolved result set.
+  it("test_a_single_row_result_set_is_shaped_and_serialized_correctly", async () => {
+    // NOT an isolation proof: the mock only ever contains rows the test
+    // itself put there, so asserting the output "doesn't mention a
+    // foreign workspace" proves nothing about a real workspace boundary —
+    // it would pass identically with RLS dropped entirely or a
+    // service-role client in place. The real cross-workspace isolation
+    // property (AS-023, AS-008) is proven against a live database in
+    // tests/integration/search-docs-isolation.test.ts — see that file's
+    // header for why a mock cannot make this claim.
     const ownWorkspaceDoc = makeDocRow({
       id: "33333333-3333-4333-8333-333333333333",
       title: "Own Workspace Doc",
@@ -121,8 +129,6 @@ describe("search_docs (F004)", () => {
     if (result.status === "ok") {
       expect(result.data.results).toHaveLength(1);
       expect(result.data.results[0].docId).toBe(ownWorkspaceDoc.id);
-      const serialized = JSON.stringify(result.data.results);
-      expect(serialized).not.toMatch(/foreign|other-workspace/i);
     }
   });
 
