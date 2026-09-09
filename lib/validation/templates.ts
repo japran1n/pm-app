@@ -246,24 +246,3 @@ export const taskTemplatePayloadSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).default([]),
 });
 export type TaskTemplatePayload = z.infer<typeof taskTemplatePayloadSchema>;
-
-// F005 (missions/20260909-ai-docs, AS-024/AS-002/AS-028): the shape of a
-// `kind='doc'` template's `payload` jsonb column (widened onto
-// `task_templates` by supabase/migrations/20260909064152_task_templates_doc_kind.sql).
-// Same split as every other kind in this file: the DB stores an opaque
-// jsonb blob and enforces workspace access via RLS; THIS schema is the
-// only place payload shape is validated, at the Server Action / tool
-// layer, never by a DB CHECK.
-//
-// `list_doc_templates` (lib/ai/tools/list-doc-templates.ts) parses every
-// row's payload through this schema defensively (`safeParse`, never
-// `parse`): templates are user-authored data, so a malformed or
-// legacy-shaped payload must be skipped rather than throwing and crashing
-// the whole tool call.
-export const docTemplatePayloadSchema = z.object({
-  sections: z.array(z.string()),
-  rules: z.array(z.string()),
-  tone: z.string().optional(),
-  folderHint: z.string().optional(),
-});
-export type DocTemplatePayload = z.infer<typeof docTemplatePayloadSchema>;
