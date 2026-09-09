@@ -188,6 +188,68 @@ function useCurrentDocTitle(docId: string | null): string | null {
 }
 
 /**
+ * F013: the empty state shown before the first message in a thread.
+ *
+ * Sets expectations plainly (documents-only limit stated up front, before
+ * the first refusal has to say it) and offers at least three suggestion
+ * chips (AS-068) that are genuinely useful defaults rather than feature
+ * advertising — grounded in the currently open doc when there is one.
+ * Clicking a chip submits it immediately via the same `send` the composer
+ * uses (no intermediate "fill the input then require a second click"
+ * step).
+ */
+function AssistantEmptyState({
+  hasDocOpen,
+  send,
+}: {
+  hasDocOpen: boolean;
+  send: (text: string) => void;
+}) {
+  const suggestions = hasDocOpen
+    ? [
+        "What's missing before I send this to the client?",
+        "Shorten the introduction",
+        "Summarize this doc in three bullet points",
+      ]
+    : [
+        "Draft a new doc from material I'll paste",
+        "What docs exist in this workspace?",
+        "Help me outline a new doc",
+      ];
+
+  return (
+    <div
+      className="flex flex-col gap-3"
+      data-testid="assistant-sidebar-empty-state"
+    >
+      <p className="text-mini text-muted-foreground">
+        This assistant can read and discuss your workspace&apos;s docs, and
+        draft new content or edits for you to review. It can&apos;t browse
+        the web, access files outside your docs, or take actions without
+        your confirmation — it only knows what&apos;s written in this
+        workspace&apos;s documents.
+      </p>
+      <div
+        className="flex flex-col gap-1.5"
+        data-testid="assistant-sidebar-suggestions"
+      >
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            onClick={() => send(suggestion)}
+            data-testid="assistant-sidebar-suggestion-chip"
+            className="rounded-md border border-line-row px-2.5 py-1.5 text-left text-mini font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The panel itself. Mounted in layout.tsx as a sibling of the existing
  * `bg-background border border-border rounded-lg m-2` content panel,
  * inside the same `flex h-svh` row — see this feature's "RESOLVED BY
@@ -218,10 +280,11 @@ export function AssistantSidebar({
   // Message/tool/proposal RENDERING is F010-F013's job (see file header)
   // — this call proves the hook wires up correctly and drives the
   // disabled-composer/no-API-key state (AS-071).
-  const { messages, toolCalls, isStreaming, error, send, stop } = useDocAssistant({
-    workspaceId,
-    currentDocId,
-  });
+  const { messages, toolCalls, isStreaming, error, usage, send, stop } =
+    useDocAssistant({
+      workspaceId,
+      currentDocId,
+    });
 
   if (!open) return null;
 
@@ -267,15 +330,8 @@ export function AssistantSidebar({
           must never inherit page-level scroll from WorkspaceMain. */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
         {messages.length === 0 ? (
-          // F013 owns the real empty state; this is a structural
-          // placeholder so the region is never blank/undefined-looking
-          // before that feature lands.
-          <p
-            className="text-mini text-muted-foreground"
-            data-testid="assistant-sidebar-thread-placeholder"
-          >
-            Ask the assistant about this workspace&apos;s docs.
-          </p>
+          // F013: the real empty state (copy + suggestion chips).
+          <AssistantEmptyState hasDocOpen={Boolean(currentDocId)} send={send} />
         ) : (
           // F010: message rendering (bubbles + markdown + considerate
           // auto-scroll) — see components/ai/assistant-thread.tsx.
@@ -305,6 +361,7 @@ export function AssistantSidebar({
           isStreaming={isStreaming}
           send={send}
           stop={stop}
+          usage={usage}
         />
       </div>
     </aside>

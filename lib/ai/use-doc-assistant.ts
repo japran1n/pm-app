@@ -46,6 +46,12 @@ export interface AssistantError {
   message: string;
 }
 
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+}
+
 interface UseDocAssistantOptions {
   workspaceId: string;
   currentDocId?: string | null;
@@ -57,6 +63,7 @@ interface UseDocAssistantResult {
   proposals: ProposalView[];
   isStreaming: boolean;
   error: AssistantError | null;
+  usage: UsageTotals | null;
   send: (text: string) => void;
   stop: () => void;
   reset: () => void;
@@ -106,6 +113,7 @@ export function useDocAssistant({
   const [proposals, setProposals] = useState<ProposalView[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<AssistantError | null>(null);
+  const [usage, setUsage] = useState<UsageTotals | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   // Tracks the id of the assistant message currently receiving `text`
@@ -188,7 +196,21 @@ export function useDocAssistant({
         setError({ code, message });
         return;
       }
-      case "usage":
+      case "usage": {
+        const { in: inTokens, out: outTokens, cached } = event as Extract<
+          NdjsonEvent,
+          { t: "usage" }
+        >;
+        // Accumulate across turns in the same thread (a running total),
+        // not a per-turn replacement — matches the meta row's "running
+        // token count" framing.
+        setUsage((prev) => ({
+          inputTokens: (prev?.inputTokens ?? 0) + (inTokens ?? 0),
+          outputTokens: (prev?.outputTokens ?? 0) + (outTokens ?? 0),
+          cachedTokens: (prev?.cachedTokens ?? 0) + (cached ?? 0),
+        }));
+        return;
+      }
       case "done":
         return;
       default:
@@ -311,7 +333,18 @@ export function useDocAssistant({
     setProposals([]);
     setIsStreaming(false);
     setError(null);
+    setUsage(null);
   }, []);
 
-  return { messages, toolCalls, proposals, isStreaming, error, send, stop, reset };
+  return {
+    messages,
+    toolCalls,
+    proposals,
+    isStreaming,
+    error,
+    usage,
+    send,
+    stop,
+    reset,
+  };
 }
