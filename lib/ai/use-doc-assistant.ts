@@ -670,30 +670,33 @@ export function useDocAssistant({
     );
   }
 
+  // F019/AS-085: `didTransition` cannot be read synchronously right after
+  // calling `setProposals(updater)` — React does not invoke the updater
+  // function until the render phase, so a plain "call setState, then
+  // check a closure variable the updater set" pattern reads a value that
+  // is still stale at that point. Persisting from *inside* the updater
+  // (where "did this proposal just move off pending" is known
+  // synchronously and correctly) avoids that race entirely.
   const acceptProposal = useCallback((id: string) => {
-    let didTransition = false;
     setProposals((prev) => {
       const idx = prev.findIndex((p) => p.id === id);
       if (idx === -1 || prev[idx].status !== "pending") return prev;
       const next = [...prev];
       next[idx] = { ...next[idx], status: "accepted" };
-      didTransition = true;
+      persistProposalState(id, "accepted");
       return next;
     });
-    if (didTransition) persistProposalState(id, "accepted");
   }, []);
 
   const rejectProposal = useCallback((id: string) => {
-    let didTransition = false;
     setProposals((prev) => {
       const idx = prev.findIndex((p) => p.id === id);
       if (idx === -1 || prev[idx].status !== "pending") return prev;
       const next = [...prev];
       next[idx] = { ...next[idx], status: "rejected" };
-      didTransition = true;
+      persistProposalState(id, "rejected");
       return next;
     });
-    if (didTransition) persistProposalState(id, "rejected");
   }, []);
 
   const reset = useCallback(() => {
@@ -793,7 +796,6 @@ export function useDocAssistant({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
   return {

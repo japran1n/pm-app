@@ -299,7 +299,12 @@ export async function updateProposalState(
       (proposal as { id?: unknown }).id === proposalId
     ) {
       found = true;
-      return { ...proposal, state };
+      // Persisted proposal objects use the `status` key (matching
+      // `ProposalView.status` in lib/ai/use-doc-assistant.ts — the exact
+      // shape `addMessage` was given), not `state` — patching a `state`
+      // key here would leave the field hydration actually reads
+      // (`status`) untouched and silently fail to persist the decision.
+      return { ...proposal, status: state };
     }
     return proposal;
   });

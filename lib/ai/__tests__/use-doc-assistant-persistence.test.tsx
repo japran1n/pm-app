@@ -128,7 +128,7 @@ describe("useDocAssistant persistence (F019)", () => {
   });
 
   it("test_AS_084_send_persists_the_user_turn_immediately_before_the_stream_resolves", async () => {
-    let releaseStream: (() => void) | null = null;
+    let releaseStream!: () => void;
     const gate = new Promise<void>((resolve) => {
       releaseStream = resolve;
     });
@@ -158,7 +158,7 @@ describe("useDocAssistant persistence (F019)", () => {
       expect(addMessageMock).toHaveBeenCalledWith("thread-1", "user", "hello there", null, null, null);
     });
 
-    releaseStream?.();
+    releaseStream();
     await waitFor(() => expect(result.current.isStreaming).toBe(false));
   });
 
