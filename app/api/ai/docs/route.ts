@@ -38,6 +38,27 @@ import { createClient } from "@/lib/supabase/server";
 /** AS-048: hard cap on tool calls in a single turn (across all iterations). */
 const MAX_TOOL_CALLS_PER_TURN = 8;
 
+// F028: caps on the client-supplied conversation history. An unbounded
+// array is both a cost vector (every prior turn re-enters the model's
+// input every request) and a prompt-injection surface (a client could
+// stuff arbitrarily large or crafted "assistant" turns into the history).
+// These are deliberately conservative — this is a stopgap shape ahead of
+// server-side persistence (F018/F019), not the final word on chat length.
+const MAX_HISTORY_TURNS = 20;
+const MAX_HISTORY_CHARS = 20_000;
+
+// F028: one prior turn. Content is a plain string (not content blocks) —
+// the client only ever needs to round-trip the text it rendered; tool_use/
+// tool_result blocks from earlier turns are not reconstructed here (that
+// requires the fuller persistence F018/F019 will add). Restricting to
+// user/assistant, with no `system` and no way to inject cache_control or a
+// tool_use block, keeps this path from becoming an alternate route into
+// the model request that bypasses lib/ai/docs-agent.ts's prompt layers.
+const historyTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().trim().min(1),
+});
+
 const requestBodySchema = z.object({
   // Accepted and ignored per spec — persistence lands in F018/F019. No
   // schema is invented for it here.
@@ -51,6 +72,15 @@ const requestBodySchema = z.object({
   // `?workspaceId=`. Verified against the caller's own real membership
   // below before it is trusted for anything.
   workspaceId: z.string().min(1, "workspaceId is required."),
+  // F028 (M1e remediation): prior turns of this conversation, supplied by
+  // the client until F018/F019 land server-side persistence. Treated as
+  // DATA, exactly like document text (lib/ai/docs-agent.ts's injection
+  // defence layer already tells the model prior conversation content may
+  // be untrustworthy) — never as anything that changes the system prompt,
+  // tool set, or route control flow. Turn count and total character caps
+  // are enforced separately below (a single Zod `.max()` on the array
+  // would only cap turn count, not aggregate size).
+  messages: z.array(historyTurnSchema).optional(),
 });
 
 type NdjsonEvent =
@@ -148,6 +178,25 @@ export async function POST(request: Request) {
     });
   }
 
+  // F028: enforce the history caps here (a plain 400, not a streamed
+  // `error` event) — this is a request-shape rejection, the same class as
+  // the Zod parse failure just above, and happens before the stream (and
+  // therefore before any model call) opens at all.
+  const history = body.messages ?? [];
+  if (history.length > MAX_HISTORY_TURNS) {
+    return new Response(
+      JSON.stringify({ error: `Conversation history is too long (max ${MAX_HISTORY_TURNS} turns).` }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const historyChars = history.reduce((sum, turn) => sum + turn.content.length, 0);
+  if (historyChars > MAX_HISTORY_CHARS) {
+    return new Response(
+      JSON.stringify({ error: `Conversation history is too long (max ${MAX_HISTORY_CHARS} characters).` }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): re-verify the caller
   // is an ACTIVE member of the workspace they claim is current before it
   // is trusted for anything downstream — same `workspace_id`/`user_id`/
@@ -230,7 +279,16 @@ export async function POST(request: Request) {
           // defence in depth on top of RLS (AS-023/AS-024).
           workspaceId: body.workspaceId,
           currentDocId: body.currentDocId ?? null,
+          // F028: prior turns (if any) forwarded in order, followed by the
+          // new user turn. Every prior turn is plain text content — never
+          // trusted as anything other than DATA (see the injection
+          // defence layer in lib/ai/docs-agent.ts, which already warns the
+          // model that conversation content, like document content, may
+          // originate outside the user's own team).
           messages: [
+            ...history.map(
+              (turn): BetaMessageParam => ({ role: turn.role, content: turn.content }),
+            ),
             { role: "user", content: body.message } satisfies BetaMessageParam,
           ],
         });
