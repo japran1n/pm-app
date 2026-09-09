@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:realtime": "vitest run -c vitest.realtime.config.ts --no-file-parallelism",
     "seed:demo": "node --env-file=.env scripts/seed-demo.mjs",
+    "seed:full-demo": "tsx --env-file=.env scripts/seed-full-demo.ts",
     "db:apply": "node --env-file=.env scripts/apply-migration.mjs",
     "db:gen-types": "node --env-file=.env scripts/gen-types.mjs",
     "migrations:check": "node --env-file=.env scripts/check-migration-drift.mjs",
@@ -61,6 +62,7 @@
     "eslint-config-next": "16.3.1",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }
