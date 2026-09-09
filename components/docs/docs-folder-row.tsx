@@ -476,6 +476,7 @@ export function DocsDocRow({
         <DropdownMenuContent>
           <Popover open={movePickerOpen} onOpenChange={setMovePickerOpen}>
             <PopoverTrigger
+              nativeButton={false}
               render={
                 <DropdownMenuItem
                   closeOnClick={false}
@@ -496,7 +497,7 @@ export function DocsDocRow({
                   <CommandGroup>
                     <CommandItem
                       value="root"
-                      onClick={() => handleMoveTo(null)}
+                      onSelect={() => handleMoveTo(null)}
                     >
                       No folder (root)
                     </CommandItem>
@@ -504,7 +505,7 @@ export function DocsDocRow({
                       <CommandItem
                         key={folder.id}
                         value={folder.name}
-                        onClick={() => handleMoveTo(folder.id)}
+                        onSelect={() => handleMoveTo(folder.id)}
                       >
                         {folder.name}
                       </CommandItem>
