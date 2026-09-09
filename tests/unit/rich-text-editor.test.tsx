@@ -185,6 +185,91 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     expect(container.textContent).toContain("keep me");
   });
 
+  // F037 (IME safety): `onEnterSubmit`'s own keydown interception (inside
+  // `editorProps.handleKeyDown`, before ProseMirror's `Enter` keymap runs)
+  // used to check only `key === "Enter" && !shiftKey`. A CJK IME sends a
+  // real "Enter" keydown to commit a candidate, which — before this fix —
+  // was indistinguishable from a genuine submit keystroke.
+  it("F037/F038: does not fire onEnterSubmit for a genuine IME candidate-commit Enter (isComposing + keyCode 229)", () => {
+    const onEnterSubmit = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }],
+    };
+    render(
+      createElement(RichTextEditor, {
+        content,
+        onEnterSubmit,
+        "aria-label": "Message",
+      }),
+    );
+    const editable = screen.getByRole("textbox", { name: "Message" });
+    editable.focus();
+
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 229 });
+    expect(onEnterSubmit).not.toHaveBeenCalled();
+  });
+
+  it("F037/F038: does not fire onEnterSubmit for an IME candidate-commit Enter (isComposing + keyCode 229 fallback)", () => {
+    const onEnterSubmit = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }],
+    };
+    render(
+      createElement(RichTextEditor, {
+        content,
+        onEnterSubmit,
+        "aria-label": "Message",
+      }),
+    );
+    const editable = screen.getByRole("textbox", { name: "Message" });
+    editable.focus();
+
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 229 });
+    expect(onEnterSubmit).not.toHaveBeenCalled();
+  });
+
+  it("F037: a genuine (non-composing) Enter still fires onEnterSubmit", () => {
+    const onEnterSubmit = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }],
+    };
+    render(
+      createElement(RichTextEditor, {
+        content,
+        onEnterSubmit,
+        "aria-label": "Message",
+      }),
+    );
+    const editable = screen.getByRole("textbox", { name: "Message" });
+    editable.focus();
+
+    fireEvent.keyDown(editable, { key: "Enter" });
+    expect(onEnterSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("F038: submits on a discrete Enter while isComposing is true but keyCode is not 229 (Android GBoard/Samsung Latin typing)", () => {
+    const onEnterSubmit = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }],
+    };
+    render(
+      createElement(RichTextEditor, {
+        content,
+        onEnterSubmit,
+        "aria-label": "Message",
+      }),
+    );
+    const editable = screen.getByRole("textbox", { name: "Message" });
+    editable.focus();
+
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 13 });
+    expect(onEnterSubmit).toHaveBeenCalledTimes(1);
+  });
+
   // F318 (AS-378, data-loss bug): every real caller (comment-list.tsx,
   // task-detail-sheet.tsx) mounts with empty `mentionSuggestions` and
   // populates them a moment later, which — per F310/F317's deps-driven

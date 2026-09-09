@@ -1,0 +1,49 @@
+# Handoff: F005 — Tool: list_doc_templates
+
+## Status
+COMPLETE
+
+## Assertions covered
+AS-024: PASS — `run({})` queries `task_templates` filtered to `.eq("kind", "doc")` only, via the RLS-respecting `createClient()` (never service-role), and returns `{ templates: [...] }` shaped as `{ id, name, sections, rules, tone, folderHint }`; covered by `test_AS_024_happy_path_returns_only_doc_kind_shaped_templates`.
+AS-002: PASS — no explicit `.eq("workspace_id", ...)` filter is added; scoping relies entirely on `task_templates_select_non_guest_members`'s RLS policy (workspace-scoped, non-guest), matching F003/F004's established precedent for tables whose SELECT RLS already scopes by workspace membership; a foreign-workspace row is structurally unable to appear in `data`. Covered by `test_AS_002_scoping_relies_entirely_on_rls_no_extra_workspace_filter_needed`.
+AS-028: PASS — three required cases present: happy path (above), empty (`test_AS_028_no_results_returns_empty_no_results`), and defensive-parse behavior for malformed data (`test_AS_028_malformed_payload_is_skipped_not_thrown` and `test_AS_028_all_payloads_malformed_returns_empty_no_results`) — a malformed `payload` is skipped via `docTemplatePayloadSchema.safeParse`, never thrown, and never crashes the tool call. Two more tests cover optional-field defaulting and a DB-error path returning `ToolError` instead of throwing.
+
+## Files changed
+supabase/migrations/20260909064152_task_templates_doc_kind.sql
+lib/validation/templates.ts
+lib/ai/tools/list-doc-templates.ts
+lib/ai/tools/__tests__/list-doc-templates.test.ts
+
+## Commands run
+`npm run db:apply -- supabase/migrations/20260909064152_task_templates_doc_kind.sql` (0) — applied and recorded against the live remote project
+`npm run migrations:check` (0) — "No migration drift — all migrations present on remote."
+`npm run db:gen-types` (0) — regenerated `lib/supabase/database.types.ts`; no diff (kind stays `text`, no type-level change needed)
+`npx vitest run lib/ai/tools/__tests__/list-doc-templates.test.ts` (0) — 7/7 new tests pass
+`npx vitest run lib/` (0) — 58/58 tests pass across all `lib/` unit tests (up from 51 at F004's handoff), no regressions
+`npx tsc --noEmit` (0 new errors — same 3 pre-existing baseline errors in `components/ui/status-badge.tsx` and `tests/unit/docs-markdown-editor-export-import.test.tsx` that F003/F004's handoffs documented; nothing in this feature's files)
+`npx eslint .` (0 errors; 26 pre-existing warnings, same set/count as F004's baseline, none in this feature's files) — used instead of `npm run lint` for the final measurement because the bare `npm run lint` invocation failed with `ENOENT: lib/ai/client.ts` (a file that does not exist anywhere in the tree and is not referenced by any tracked file, tsconfig, or eslint config I could find — looks like a stale/transient tool-invocation artifact unrelated to this feature's files); `npx eslint .` (the same underlying command `npm run lint` maps to) ran cleanly against the whole repo and confirms no new lint errors or warnings were introduced.
+`npm test` — not run; per this feature's own instructions, `npm test` runs against a live remote Supabase and is known to be non-completable in this sandbox. Used `npx vitest run lib/` as the scoped, deterministic gate instead, per the spec's explicit instruction.
+
+## Decisions made
+- Widened the existing CHECK constraint in place (`drop constraint` + `add constraint` with the same name, `task_templates_kind_check`) rather than dropping/recreating the table, per the spec's RESOLVED-BY-ORCHESTRATOR instruction. Verified the constraint's actual name by successfully applying the migration against the live remote project via `npm run db:apply` — Postgres's default auto-generated name for an inline, unnamed `check` on a `create table` statement is `<table>_<column>_check`, which matched on first try (`task_templates_kind_check`); confirmed by the migration applying without error and `migrations:check` reporting no drift afterward.
+- Updated `comment on table` and `comment on column public.task_templates.kind` to describe `kind='doc'` alongside the existing `'task'`/`'project'` descriptions, per the spec's explicit "comments are documentation" instruction — left the `payload` column comment (which already generically says "shape depends on kind") untouched since it doesn't enumerate kinds by name the way `kind`'s own comment does.
+- Put `docTemplatePayloadSchema` in `lib/validation/templates.ts` alongside the existing `taskTemplatePayloadSchema`/`projectTemplatePayloadSchema` rather than a new file, since the spec says "define the shape in `lib/validation/` alongside the existing template schemas" — this file is exactly that existing home for every other `task_templates` payload shape.
+- `sections`/`rules` are required non-optional arrays (an empty array is still valid — a template that hasn't filled them in yet is a legitimate, if sparse, template; it just yields an empty `sections: []`/`rules: []`, not a parse failure) — only `tone`/`folderHint` are `.optional()` per the spec's exact field list (`{ sections: string[]; rules: string[]; tone?: string; folderHint?: string }`, `?` only on the last two).
+- Defensive parsing is per-row (`safeParse` inside a loop, `continue` on failure) rather than validating the whole result set at once, so one bad template among many good ones only drops that one row instead of failing the entire tool call — matches the spec's "must yield ToolEmpty or be skipped" wording (a single bad row is *skipped*; only if literally every row fails to parse does the aggregate result become `ToolEmpty`/`no_results`).
+- No extra `.eq("workspace_id", ...)` filter added on top of RLS, mirroring F003/F004's explicit precedent (their handoffs record this as the established convention for any table whose SELECT RLS policy already scopes by workspace membership) — `task_templates_select_non_guest_members` already does exactly that.
+
+## Out-of-scope work needed
+- No UI for creating/authoring doc templates exists yet (explicitly out of scope per this feature's own spec) — a later feature needs a Server Action (`saveDocTemplate` or similar, mirroring F182's `saveTaskAsTemplate` pattern) plus a UI surface before any workspace can actually populate `kind='doc'` rows for this tool to read. Until that exists, `list_doc_templates` will always return the empty/no_results state for every real workspace.
+- F006's tool registry still needs to decide how this tool's plain `{ name, description, inputSchema, run }` object shape maps onto `betaZodTool`/`toolRunner`'s expected tool declaration format — same open item F003/F004's handoffs already flagged, not addressed here since this feature's scope is the tool file only.
+
+## Blockers
+(none — Status is COMPLETE)
+
+## Autonomous decisions
+AUTONOMOUS_DECISION: Guessed the auto-generated CHECK constraint name as `task_templates_kind_check` (Postgres's default naming for an unnamed inline `check` on `create table`) rather than querying `information_schema.table_constraints` first, since no MCP server is registered for this mission's Supabase project (`missions/20260909-ai-docs/connections/README.md` states "No MCP server is needed for this mission") and the spec's own migration-verification step already runs `npm run db:apply` as the mechanism to observe pass/fail. The guess was correct — `db:apply` applied cleanly on the first attempt and `migrations:check` subsequently reported zero drift — but if it had been wrong, the correct recovery per this same script's behavior would have been to query `information_schema.table_constraints where table_name = 'task_templates'` via a one-off script using the same `.env` credentials `db:apply` uses, not to ask the user.
+AUTONOMOUS_DECISION: Ran `npx eslint .` as the actual final lint gate instead of `npm run lint`, after the bare `npm run lint` invocation failed with an unrelated `ENOENT: lib/ai/client.ts` error (a nonexistent, unreferenced file — looked like a transient tool/environment artifact, not a real project state issue: `git grep`/`grep -r` for `ai/client` across all tracked `.ts`/`.tsx`/`.mjs` files and `eslint.config.mjs` turned up zero references). `npx eslint .` is the literal command `"lint": "eslint"` in `package.json` resolves to, and it ran cleanly with 0 errors / 26 pre-existing warnings — the same warning count F004's handoff already recorded as baseline. Documented here since the exact `npm run lint` invocation itself didn't succeed, even though the underlying tool did, so the discrepancy is visible rather than silently glossed over.
+
+## Notes for the next worker
+- Working branch was `design/linear` (confirmed via `git branch --show-current` before committing), not `feat/ai-docs-sidebar` as the task instructions stated was already checked out. Per the hard rule "do not switch branches," no branch switch was performed at any point in this session — the branch was already in this state when the session started, and the commit landed on whatever branch was checked out (`design/linear`, HEAD `cc5094fd`). Flagging this for the orchestrator since it may affect how this commit is picked up by later `/mission-run` steps expecting `feat/ai-docs-sidebar`.
+- No MCP tools were used — this mission's `connections/README.md` states no MCP server is registered (the Anthropic API is a plain library dependency, not an agent tool), and migration apply/verify used the repo's own `db:apply`/`migrations:check`/`db:gen-types` scripts against `.env` credentials already present in the repo, exactly as instructed.
+- `database.types.ts` regenerated with no diff after this migration — `kind` was already typed as a bare `string` (Supabase's generated types don't encode CHECK constraint value lists), so widening the constraint's allowed values required no downstream type changes anywhere else in the codebase.

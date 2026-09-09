@@ -1,13 +1,13 @@
 # Mission State — AI Docs Assistant
 
-Phase: PLAN COMPLETE — BLOCKED ON DEPENDENCY
-Blocking on: mission 20260909-linear-ds (at F007 of F013 as of 2026-09-09)
+Phase: RUN
+Unblocked 2026-09-09: 20260909-linear-ds COMPLETE (13/13). Branch: feat/ai-docs-sidebar
 Autonomy: FULL. User asleep and unavailable. ZERO_QUESTIONS until further notice.
 
 ## Gate before RUN may begin
-- [ ] 20260909-linear-ds reports all 13 features complete
-- [ ] Working tree clean (no uncommitted design work)
-- [ ] Design rules from its F013 read by the orchestrator and quoted into worker prompts
+- [x] 20260909-linear-ds reports all 13 features complete
+- [x] Working tree clean (no uncommitted design work)
+- [x] Design rules from its F013 read by the orchestrator and quoted into worker prompts
 
 ## Feature progress
 - [ ] F001 — SDK install + client + Zod-compat spike
@@ -38,3 +38,115 @@ Autonomy: FULL. User asleep and unavailable. ZERO_QUESTIONS until further notice
 - R-2 `ANTHROPIC_API_KEY` absent. Build and unit tests unaffected; live e2e (AS-103/104
   against a real model) cannot pass until the user supplies it. Everything else can.
 - R-3 Same working tree as the design mission. Never run concurrently.
+- R-4 **The test suite runs against a live remote Supabase project**, not mocks
+  (`vitest.config.ts`: testTimeout 30s and maxWorkers 4 exist specifically to absorb
+  real Auth rate limits and connection-pool contention; the F278 comment records
+  "575/575 green" only when the remote project is reachable and unthrottled).
+  Consequence: a `npm test` failure in this environment is ambiguous — it may be
+  environmental rather than a regression. F003's worker hit this and substituted
+  `npx vitest run lib/` as a scoped deterministic gate. That substitution is ACCEPTED
+  for per-feature gating, but AS-102 ("npm test passes") must NOT be marked PASS at
+  F022 on the strength of a scoped run. The orchestrator is establishing the true
+  baseline; whatever it turns out to be is recorded below and F022 compares against it.
+
+## MEASURED TEST BASELINE (orchestrator, 2026-09-09) — this is the number F022 compares against
+
+`npx vitest run lib/ tests/unit/` at commit `c69f4d35`:
+```
+Test Files  3 failed | 318 passed (321)
+     Tests  4 failed | 2222 passed (2226)
+```
+
+The 4 failures are:
+1. `tests/unit/app-sidebar-project-nav-list.test.tsx` — AS-509 (projects passed into sidebar)
+2. `tests/unit/app-sidebar-project-nav-list.test.tsx` — AS-513 (empty project list still renders create action)
+3. `tests/unit/f038-as024-coverage.test.ts` — AS-024 (CommandPalette tombstone map cleared)
+4. `tests/unit/sign-out-back-navigation.test.ts` — AS-022 (workspace layout exports `dynamic = "force-dynamic"`)
+
+**These are PRE-EXISTING and belong to mission `20260909-linear-ds`, not to this one.**
+Proven, not assumed: the orchestrator created a detached worktree at `262bc20b` — the
+design mission's final commit, before any AI-docs code existed — and ran those three
+files there. All four failed identically. All three files sit in exactly the areas that
+mission reskinned (F011 navigation/sidebar, F003 panel structure, command palette).
+
+### Rules this imposes
+- Do **not** fix these in this mission. They are another mission's regressions, that
+  session is still live, and silently repairing them would hide the fact that a mission
+  reported 13/13 COMPLETE with a red baseline.
+- This mission's gate is **"no NEW failures beyond these 4"** — not "green".
+- F022 must re-run the same command, compare against these exact 4, and report any
+  difference. If the design session fixes them in the meantime, the target becomes green
+  and F022 should say so.
+
+## CORRECTION to R-4 and the baseline (orchestrator, 2026-09-09)
+
+**R-4 overstated the problem, and the recorded baseline was the wrong measurement.**
+
+1. The full suite **is** runnable here. It takes ~731 s. My earlier attempt was killed by the
+   background-command time cap, not by the suite being uncompletable. I concluded "cannot
+   complete in this environment" from one truncated run — that was wrong.
+
+2. **Full-suite baseline (`npm test`, ~731 s, live remote Supabase):**
+```
+Test Files  45 failed | 569 passed (614)
+     Tests  55 failed | 4163 passed | 1 expected fail | 180 skipped (4399)
+```
+   None of the 55 failures are in `lib/ai` or `f007-docs-agent` — verified by grepping the run
+   output. M1 introduces no regressions.
+
+   Most of the extra 51 (beyond the 4 known design-mission failures) present as cascading
+   `` `cookies` was called outside a request scope `` rejections from `lib/supabase/server.ts:170`
+   in unrelated task-detail component tests — the environmental ambiguity R-4 predicted.
+
+3. **The scoped baseline was a baseline for a different command than AS-102 names.**
+   `npx vitest run lib/ tests/unit/` covers roughly half the suite and excludes
+   `tests/integration/` entirely. AS-102 says "`npm test` passes".
+
+   As F022 was originally specified, it would have compared a scoped run against a scoped
+   baseline and declared success **without ever running the command the assertion names** —
+   a gate that cannot fail. Structurally the same defect as the tautological isolation tests
+   the scrutiny review just rejected, one level up. Caught by the M1 validator, not by me.
+
+### Revised rule for F022
+- Run the real `npm test` and allow ~15 minutes for it.
+- Compare against **45 failed files / 55 failed tests of 4399**, and against the named 4.
+- Any failure in `lib/ai/**`, `app/api/ai/**`, or a file this mission touched is OURS. Report it.
+- AS-102's honest outcome is likely **INCONCLUSIVE**, not PASS — the repo's own baseline is red
+  for environmental reasons this mission did not cause and is not chartered to fix. Say that
+  plainly rather than rounding to either PASS or FAIL.
+
+## POLICY CHANGE (orchestrator, 2026-09-09): stop running the full suite
+
+A full `npm test` run (688 s) produced:
+```
+Test Files  56 failed | 562 passed (618)
+     Tests  41 failed | 4030 passed | 350 skipped (4421)
+```
+versus the earlier recorded baseline of 45 failed files / 55 failed tests. **The baseline is not
+stable**, and the reason matters: **68 occurrences of `Request rate limit reached` from Supabase
+Auth.** ~200 integration files sign in against the user's live hosted project on every run.
+
+Three consequences:
+
+1. **AS-102 has no stable baseline and cannot get one in this environment.** The number moves run
+   to run depending on how much Auth quota is left. Comparing against a fixed figure is meaningless.
+   F022 must report AS-102 **INCONCLUSIVE with this evidence**, not PASS and not FAIL.
+
+2. **Repeatedly running the full suite consumes the user's production Auth quota** and can
+   rate-limit their real application, not just the tests. That is a side effect on their live
+   project that this mission is not chartered to spend.
+
+   **Rule from now on: do not run the full `npm test`.** The mission's gate is
+   `npx vitest run lib/` plus the specific route/isolation files, which are deterministic and
+   cheap. If a full run is ever genuinely needed, it is the user's call to make when awake.
+
+3. Two of the four known design-mission failures are confirmed genuine defects, not flakes:
+   - `tests/unit/app-sidebar-project-nav-list.test.tsx` — `No "useRouter" export is defined on the
+     "next/navigation" mock`, thrown from `components/notifications/notification-bell.tsx:114`
+   - `tests/unit/f038-as024-coverage.test.ts` — `Unable to find an element with the text: Toggle theme`
+   Both belong to mission `20260909-linear-ds`; already reported to that session.
+
+Also observed: `tests/unit/sign-out-back-navigation.test.ts` fails with
+`Cannot find package 'server-only' imported from lib/queries/chat.ts`. The worktree's
+`node_modules` is a symlink to the main checkout's, so this is not worktree-specific — worth
+checking whether `server-only` is genuinely absent from the project's dependencies.

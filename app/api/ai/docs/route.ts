@@ -1,0 +1,645 @@
+// F007: the one HTTP entry point for the docs sidebar's AI assistant.
+//
+// Per this feature's spec, this file contains NO prompt text at all — every
+// string a model ever sees lives in lib/ai/docs-agent.ts (F006). This route
+// is pure transport: auth, stream translation, the tool loop's bookkeeping
+// (start/end pairing, the 8-call cap, proposal short-circuit), and clean
+// error mapping. It never imports a service-role client (AS-001) — the
+// RLS-respecting cookie client from lib/supabase/server is the only
+// identity/authorization boundary this route uses.
+//
+// Event envelope (tech-decisions.md, verbatim, one JSON object per `\n`):
+//   {"t":"text","v":"..."}
+//   {"t":"tool_start","id":"...","name":"...","args":"..."}
+//   {"t":"tool_end","id":"...","summary":"...","detail":"..."}
+//   {"t":"proposal","id":"...","kind":"doc_edit"|"doc_create","payload":{...}}
+//   {"t":"usage","in":123,"out":456,"cached":789}
+//   {"t":"error","code":"...","message":"..."}
+//   {"t":"done"}
+//
+// Persistence (F018/F019) is explicitly out of scope here — `threadId` is
+// accepted and ignored, no schema is invented for it. F020's guards
+// (per-user rate limit, per-thread token ceiling) DO live in this route —
+// see checkRateLimit/checkTokenCeiling below — but stay pure functions
+// from lib/ai/guards.ts with no persistence of their own.
+
+export const runtime = "nodejs";
+
+import { z } from "zod";
+
+import { APIError, RateLimitError } from "@anthropic-ai/sdk";
+import type {
+  BetaContentBlock,
+  BetaMessageParam,
+} from "@anthropic-ai/sdk/resources/beta/messages/messages";
+
+import { buildDocsAgentRequest } from "@/lib/ai/docs-agent";
+import { getAnthropicClient, hasApiKey } from "@/lib/ai/client";
+import { checkRateLimit, checkTokenCeiling } from "@/lib/ai/guards";
+import {
+  describeToolResult,
+  sanitizeToolArgsForDisplay,
+  sanitizeToolNameForDisplay,
+} from "@/lib/ai/tool-result-display";
+import { logger } from "@/lib/observability/logger";
+import { createClient } from "@/lib/supabase/server";
+
+/** AS-048: hard cap on tool calls in a single turn (across all iterations). */
+const MAX_TOOL_CALLS_PER_TURN = 8;
+
+// F028: caps on the client-supplied conversation history. An unbounded
+// array is both a cost vector (every prior turn re-enters the model's
+// input every request) and a prompt-injection surface (a client could
+// stuff arbitrarily large or crafted "assistant" turns into the history).
+// These are deliberately conservative — this is a stopgap shape ahead of
+// server-side persistence (F018/F019), not the final word on chat length.
+const MAX_HISTORY_TURNS = 20;
+const MAX_HISTORY_CHARS = 20_000;
+
+// F028: one prior turn. Content is a plain string (not content blocks) —
+// the client only ever needs to round-trip the text it rendered; tool_use/
+// tool_result blocks from earlier turns are not reconstructed here (that
+// requires the fuller persistence F018/F019 will add). Restricting to
+// user/assistant, with no `system` and no way to inject cache_control or a
+// tool_use block, keeps this path from becoming an alternate route into
+// the model request that bypasses lib/ai/docs-agent.ts's prompt layers.
+const historyTurnSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string().trim().min(1),
+});
+
+const requestBodySchema = z.object({
+  // Accepted and ignored per spec — persistence lands in F018/F019. No
+  // schema is invented for it here.
+  threadId: z.string().optional(),
+  message: z.string().trim().min(1, "message is required."),
+  // F032 (AS-006 fix, vector A): a malformed id must never reach prompt
+  // assembly. `.uuid()` rejects it here with the existing generic 400,
+  // before `buildDocsAgentRequest` (and therefore before any model call).
+  currentDocId: z.string().uuid().optional(),
+  // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): the docs sidebar
+  // always knows which workspace it is rendered inside (the page route
+  // itself is workspace-scoped), so the caller supplies it explicitly —
+  // same convention app/api/extension/context/route.ts uses for
+  // `?workspaceId=`. Verified against the caller's own real membership
+  // below before it is trusted for anything.
+  workspaceId: z.string().min(1, "workspaceId is required."),
+  // F028 (M1e remediation): prior turns of this conversation, supplied by
+  // the client until F018/F019 land server-side persistence. Treated as
+  // DATA, exactly like document text (lib/ai/docs-agent.ts's injection
+  // defence layer already tells the model prior conversation content may
+  // be untrustworthy) — never as anything that changes the system prompt,
+  // tool set, or route control flow. Turn count and total character caps
+  // are enforced separately below (a single Zod `.max()` on the array
+  // would only cap turn count, not aggregate size).
+  messages: z.array(historyTurnSchema).optional(),
+  // F020: cumulative token usage (in + out) this thread has consumed
+  // across all prior turns, as tracked client-side by useDocAssistant's
+  // running `usage` total. This is the value checkTokenCeiling compares
+  // against THREAD_TOKEN_CEILING — a self-reported figure is acceptable
+  // here because it only gates a UX-level "start a new chat" nudge, not a
+  // security boundary (the real cost/abuse guard is the per-user rate
+  // limit above, which is server-tracked and cannot be spoofed by the
+  // client).
+  threadUsage: z.number().min(0).optional(),
+});
+
+type NdjsonEvent =
+  | { t: "text"; v: string }
+  // F033: `args` is a sanitised, length-bounded summary of the tool's
+  // model-controlled arguments (sanitizeToolArgsForDisplay) — omitted
+  // entirely when there is nothing meaningful to show (e.g. no-arg tools).
+  | { t: "tool_start"; id: string; name: string; args?: string }
+  | { t: "tool_end"; id: string; summary: string; detail?: string }
+  | {
+      t: "proposal";
+      id: string;
+      kind: "doc_edit" | "doc_create";
+      payload: unknown;
+    }
+  | { t: "usage"; in: number; out: number; cached: number }
+  | { t: "error"; code: string; message: string }
+  | { t: "done" };
+
+/**
+ * The only tools whose successful result can be treated as an edit
+ * proposal (F014/F017, not yet registered). Keyed on the tool's *name* —
+ * a value the route itself controls — rather than duck-typing on
+ * model-adjacent `data.kind`, which a tool's output shape could spoof.
+ */
+const PROPOSAL_TOOL_NAMES = new Set(["propose_doc_edit", "create_doc"]);
+
+/** A tool result shaped like a write-tool proposal (F014/F017, not yet registered). */
+function asProposal(
+  toolName: string,
+  content: string,
+): { kind: "doc_edit" | "doc_create"; payload: unknown } | null {
+  if (!PROPOSAL_TOOL_NAMES.has(toolName)) return null;
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      "status" in parsed &&
+      (parsed as { status: unknown }).status === "ok" &&
+      "data" in parsed
+    ) {
+      const data = (parsed as { data: unknown }).data;
+      if (
+        data &&
+        typeof data === "object" &&
+        "kind" in data &&
+        ((data as { kind: unknown }).kind === "doc_edit" ||
+          (data as { kind: unknown }).kind === "doc_create")
+      ) {
+        return {
+          kind: (data as { kind: "doc_edit" | "doc_create" }).kind,
+          payload: data,
+        };
+      }
+    }
+  } catch {
+    // Not JSON, or not the ToolResult envelope shape — not a proposal.
+  }
+  return null;
+}
+
+export async function POST(request: Request) {
+  // --- Auth first, before any model call (AS-007). ---------------------
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // F020 (AS-046): per-user throttle, checked before any body parsing or
+  // model work. HTTP 200 with a single `error` NDJSON line, matching the
+  // no_api_key/tool_limit convention this route already uses for
+  // in-band failures — the sidebar only ever branches on the event
+  // envelope, never on transport status, for this class of failure.
+  const rateLimitResult = checkRateLimit(user.id);
+  if (!rateLimitResult.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil(rateLimitResult.retryAfterMs / 1000));
+    return ndjsonSingleErrorResponse({
+      code: "rate_limit",
+      message: `Too many requests, please wait ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}.`,
+    });
+  }
+
+  let body: z.infer<typeof requestBodySchema>;
+  try {
+    const json = await request.json();
+    body = requestBodySchema.parse(json);
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid request body." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // F028: enforce the history caps here (a plain 400, not a streamed
+  // `error` event) — this is a request-shape rejection, the same class as
+  // the Zod parse failure just above, and happens before the stream (and
+  // therefore before any model call) opens at all.
+  const history = body.messages ?? [];
+  if (history.length > MAX_HISTORY_TURNS) {
+    return new Response(
+      JSON.stringify({ error: `Conversation history is too long (max ${MAX_HISTORY_TURNS} turns).` }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const historyChars = history.reduce((sum, turn) => sum + turn.content.length, 0);
+  if (historyChars > MAX_HISTORY_CHARS) {
+    return new Response(
+      JSON.stringify({ error: `Conversation history is too long (max ${MAX_HISTORY_CHARS} characters).` }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // F020 (AS-046): per-thread token ceiling. `threadUsage` is the running
+  // total the client already tracks (useDocAssistant's `usage` state) —
+  // see the schema comment on this field for why a self-reported figure
+  // is acceptable here.
+  const tokenCeilingResult = checkTokenCeiling(body.threadUsage ?? 0);
+  if (!tokenCeilingResult.allowed) {
+    return ndjsonSingleErrorResponse({
+      code: "thread_limit",
+      message: "This conversation has reached its context limit. Start a new chat to continue.",
+    });
+  }
+
+  // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): re-verify the caller
+  // is an ACTIVE member of the workspace they claim is current before it
+  // is trusted for anything downstream — same `workspace_id`/`user_id`/
+  // `status='active'` shape `lib/auth/require-membership.ts`'s
+  // `requireActiveMembership` uses, but on the RLS-respecting session
+  // client rather than an admin client: this route lives under
+  // app/api/ai/**, which the AS-001 transitive-import guard
+  // (lib/ai/__tests__/no-service-role.test.ts) also scans, so no
+  // service-role client may ever be reachable from here. The
+  // `workspace_members_select_fellow_members` RLS policy already lets a
+  // caller read their own membership row, which is all this needs.
+  const { data: membership, error: membershipError } = await supabase
+    .from("workspace_members")
+    .select("status")
+    .eq("workspace_id", body.workspaceId)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return new Response(JSON.stringify({ error: "You don't have access to that workspace." }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const encoder = new TextEncoder();
+
+  // AS-044: propagate the client's abort into the SDK call so an abandoned
+  // request doesn't keep billing for a response nobody reads. Declared
+  // outside `start()` so the ReadableStream's `cancel()` callback (invoked
+  // when the *consumer* — e.g. the browser's fetch reader — goes away) can
+  // reach the same per-request controller and closed flag. `cancel()` is a
+  // distinct signal from `request.signal` aborting: either one must tear
+  // this down.
+  const abortController = new AbortController();
+  let closed = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: NdjsonEvent) => {
+        if (closed || abortController.signal.aborted) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        } catch {
+          // Controller may already be closed/errored (e.g. a race between
+          // cancel() and this call) — never let enqueue throw out of here.
+          closed = true;
+        }
+      };
+      const finish = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Already closed/errored by cancel() or the platform — harmless.
+        }
+      };
+
+      const onClientAbort = () => abortController.abort();
+      request.signal.addEventListener("abort", onClientAbort);
+
+      try {
+        // AS-045: no API key -> one `error` (code no_api_key), then `done`,
+        // HTTP 200 throughout (the stream is already open by this point).
+        if (!hasApiKey()) {
+          send({ t: "error", code: "no_api_key", message: "The AI assistant is not configured yet." });
+          send({ t: "done" });
+          finish();
+          return;
+        }
+
+        const client = getAnthropicClient();
+
+        const agentRequest = await buildDocsAgentRequest({
+          userId: user.id,
+          // F027: the caller's `workspaceId`, already re-verified as an
+          // active membership above — threaded into every tool call as
+          // defence in depth on top of RLS (AS-023/AS-024).
+          workspaceId: body.workspaceId,
+          currentDocId: body.currentDocId ?? null,
+          // F028: prior turns (if any) forwarded in order, followed by the
+          // new user turn. Every prior turn — including prior "assistant"
+          // turns — is plain text content and is never trusted as anything
+          // other than DATA. The injection defence layer in
+          // lib/ai/docs-agent.ts explicitly names conversation history and
+          // prior assistant turns as untrusted, on par with document
+          // content, so a compromised client cannot inject a fabricated
+          // prior turn to change tool selection or steer the model.
+          messages: [
+            ...history.map(
+              (turn): BetaMessageParam => ({ role: turn.role, content: turn.content }),
+            ),
+            { role: "user", content: body.message } satisfies BetaMessageParam,
+          ],
+        });
+
+        let messages: BetaMessageParam[] = [...agentRequest.messages];
+        let toolCallCount = 0;
+        let totalIn = 0;
+        let totalOut = 0;
+        let totalCached = 0;
+        let turnEnded = false;
+        let proposalEmitted = false;
+        // F032 (measurement correctness, AS-047): `totalCached` sums
+        // `cache_read_input_tokens` across every iteration of the tool
+        // loop below, including iterations *within this same turn* after
+        // the first (a tool-calling turn's 2nd+ iteration legitimately
+        // re-sends the cached system prefix and reports cached > 0 purely
+        // from within-turn reuse). That is real cache usage and stays in
+        // the `usage` event's `cached` total. But it means `cached > 0` on
+        // a turn's first iteration is the only signal that proves reuse
+        // ACROSS requests (the thing AS-047 cares about) rather than
+        // across iterations of one request. Track it separately so a
+        // future AS-047 test can assert on cross-request caching
+        // specifically instead of being pre-satisfied by within-turn
+        // reuse.
+        let firstIterationCached = 0;
+        let sawFirstIteration = false;
+
+        while (!turnEnded) {
+          if (abortController.signal.aborted) break;
+
+          const anthropicStream = client.beta.messages.stream(
+            {
+              model: agentRequest.model,
+              max_tokens: agentRequest.max_tokens,
+              system: agentRequest.system,
+              messages,
+              tools: [...agentRequest.tools],
+              thinking: agentRequest.thinking,
+              output_config: agentRequest.output_config,
+            },
+            { signal: abortController.signal },
+          );
+
+          anthropicStream.on("text", (delta) => {
+            send({ t: "text", v: delta });
+          });
+
+          let finalMessage;
+          try {
+            finalMessage = await anthropicStream.finalMessage();
+          } catch (streamError) {
+            handleUpstreamError(streamError, send, abortController.signal.aborted);
+            finish();
+            return;
+          }
+
+          totalIn += finalMessage.usage.input_tokens;
+          totalOut += finalMessage.usage.output_tokens;
+          totalCached += finalMessage.usage.cache_read_input_tokens ?? 0;
+          if (!sawFirstIteration) {
+            sawFirstIteration = true;
+            firstIterationCached = finalMessage.usage.cache_read_input_tokens ?? 0;
+          }
+
+          messages = [...messages, { role: "assistant", content: finalMessage.content }];
+
+          const toolUseBlocks = finalMessage.content.filter(
+            (block): block is Extract<BetaContentBlock, { type: "tool_use" }> =>
+              block.type === "tool_use",
+          );
+
+          if (toolUseBlocks.length === 0) {
+            // No tools requested this turn — the assistant is done.
+            turnEnded = true;
+            break;
+          }
+
+          // AS-048: cap total tool calls in this turn at 8, across every
+          // iteration of the loop, not just this one.
+          if (toolCallCount + toolUseBlocks.length > MAX_TOOL_CALLS_PER_TURN) {
+            send({ t: "error", code: "tool_limit", message: "Too many tool calls in this turn." });
+            send({ t: "done" });
+            finish();
+            return;
+          }
+
+          const toolResultBlocks: Array<{
+            type: "tool_result";
+            tool_use_id: string;
+            content: string;
+            is_error?: boolean;
+          }> = [];
+
+          for (const toolUse of toolUseBlocks) {
+            toolCallCount += 1;
+            // F033: a sanitised, length-bounded summary of the tool's
+            // (model-controlled) arguments — omitted from the event
+            // entirely when there is nothing meaningful to show, rather
+            // than sent as an empty string.
+            const argsSummary = sanitizeToolArgsForDisplay(toolUse.input);
+            send({
+              t: "tool_start",
+              id: toolUse.id,
+              name: toolUse.name,
+              ...(argsSummary ? { args: argsSummary } : {}),
+            });
+
+            const tool = agentRequest.tools.find((t) => t.name === toolUse.name);
+
+            let resultContent: string;
+            let isError = false;
+
+            if (!tool) {
+              // F032: `toolUse.name` is model-controlled — the SDK does
+              // not guarantee it matches one of the tools this route
+              // offered. It is the one model-controlled string that
+              // reaches the client's `detail` field, and M2 is expected to
+              // render `detail` in a tool card, so bound its length and
+              // charset before it gets anywhere near that string
+              // interpolation, rather than after.
+              resultContent = `Error: Tool '${sanitizeToolNameForDisplay(toolUse.name)}' not found`;
+              isError = true;
+              send({ t: "tool_end", id: toolUse.id, summary: "tool error", detail: resultContent });
+            } else {
+              try {
+                const input: unknown = tool.parse ? tool.parse(toolUse.input) : toolUse.input;
+                // tool.run's input type is specific to each tool; this loop is generic
+                // over all of them (the same shape the SDK's own internal runner uses).
+                const raw = await (tool.run as (input: never, ctx: unknown) => Promise<string | unknown>)(input as never, {
+                  toolUse,
+                  toolUseBlock: toolUse,
+                  signal: abortController.signal,
+                });
+                resultContent = typeof raw === "string" ? raw : JSON.stringify(raw);
+                // AS-042: every tool_start gets exactly one matching
+                // tool_end, including on a thrown error (handled below).
+                // F033 (fixes M2-SCRUTINY.md B1 / AS-063): a real,
+                // per-tool summary/detail derived from resultContent via
+                // describeToolResult — never the bare literal "ok", and
+                // never resultContent itself forwarded raw.
+                const { summary, detail } = describeToolResult(resultContent);
+                send({
+                  t: "tool_end",
+                  id: toolUse.id,
+                  summary,
+                  ...(detail ? { detail } : {}),
+                });
+              } catch (toolError) {
+                isError = true;
+                // AS-105 / lib/ai/tools/types.ts:33: never pass a thrown
+                // error's message through to the client — Zod v4 parse
+                // failures embed the offending input value, and transport
+                // errors can carry URLs. Log the detail server-side only;
+                // the client gets a generic, safe-to-render summary.
+                const safeMessage = "Tool execution failed.";
+                resultContent = `Error: ${safeMessage}`;
+                logger.error("docs agent: tool threw", {
+                  tool: toolUse.name,
+                  id: toolUse.id,
+                  detail: toolError instanceof Error ? toolError.message : String(toolError),
+                });
+                send({ t: "tool_end", id: toolUse.id, summary: "tool error", detail: safeMessage });
+              }
+            }
+
+            toolResultBlocks.push({
+              type: "tool_result",
+              tool_use_id: toolUse.id,
+              content: resultContent,
+              ...(isError ? { is_error: true } : {}),
+            });
+
+            // AS-043: a write tool's proposal ends the turn immediately —
+            // the model must never be allowed to continue as though the
+            // edit were applied.
+            if (!isError) {
+              const proposal = asProposal(toolUse.name, resultContent);
+              if (proposal) {
+                send({
+                  t: "proposal",
+                  id: toolUse.id,
+                  kind: proposal.kind,
+                  payload: proposal.payload,
+                });
+                proposalEmitted = true;
+              }
+            }
+          }
+
+          if (proposalEmitted) {
+            turnEnded = true;
+            break;
+          }
+
+          messages = [
+            ...messages,
+            { role: "user", content: toolResultBlocks },
+          ];
+        }
+
+        // F032 (measurement correctness, AS-047): the `cached` figure on the
+        // wire is deliberately the whole-turn total (unchanged — it is a
+        // real, useful number, and the NDJSON contract in
+        // tech-decisions.md is fixed). `firstIterationCached` is logged
+        // separately here purely for observability: it is the only number
+        // that isolates "did this turn's very first request to the model
+        // already see a cache hit" from "did a later tool-calling
+        // iteration within this same turn reuse the cache this turn itself
+        // primed" — the two get conflated once summed into `totalCached`,
+        // and only the former is evidence of cross-*request* caching
+        // (what AS-047 is actually about).
+        logger.info("docs agent: turn usage", {
+          totalIn,
+          totalOut,
+          totalCached,
+          firstIterationCached,
+        });
+        send({ t: "usage", in: totalIn, out: totalOut, cached: totalCached });
+        send({ t: "done" });
+        finish();
+      } catch (error) {
+        if (isAbortLike(error) || abortController.signal.aborted) {
+          // Client went away — nothing left to stream to.
+          finish();
+          return;
+        }
+        handleUpstreamError(error, send, abortController.signal.aborted);
+        finish();
+      } finally {
+        request.signal.removeEventListener("abort", onClientAbort);
+      }
+    },
+    cancel() {
+      // Called when the stream's consumer goes away (e.g. the client's
+      // fetch reader is cancelled/aborted). Must reach the SAME per-request
+      // abortController `start()` uses, and must mark `closed` so `finish()`
+      // never calls `controller.close()` on an already-torn-down controller.
+      closed = true;
+      abortController.abort();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/**
+ * F020: an already-open-looking NDJSON stream (HTTP 200, same content
+ * type as the main route response) carrying exactly one `error` event
+ * followed by `done`, for guard failures (rate limit, token ceiling) that
+ * are detected before the main stream would otherwise open. Keeps every
+ * in-band failure — no_api_key, tool_limit, rate_limit, thread_limit — on
+ * the same "200 + error event" convention the sidebar already parses.
+ */
+function ndjsonSingleErrorResponse(event: { code: string; message: string }): Response {
+  const encoder = new TextEncoder();
+  const lines =
+    JSON.stringify({ t: "error", ...event }) + "\n" + JSON.stringify({ t: "done" }) + "\n";
+  return new Response(encoder.encode(lines), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function isAbortLike(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "APIUserAbortError")
+  );
+}
+
+/** Maps an upstream Anthropic SDK failure to a safe error event (AS-046, AS-105). */
+function handleUpstreamError(
+  error: unknown,
+  send: (event: NdjsonEvent) => void,
+  clientAborted: boolean,
+) {
+  if (clientAborted || isAbortLike(error)) {
+    // Nobody is listening; nothing to send.
+    return;
+  }
+
+  if (error instanceof RateLimitError) {
+    logger.warn("docs agent: upstream rate limited");
+    send({ t: "error", code: "rate_limited", message: "The assistant is busy right now. Please try again shortly." });
+    send({ t: "done" });
+    return;
+  }
+
+  if (error instanceof APIError) {
+    // Never surface raw upstream error bodies (AS-105) — a short, generic,
+    // safe-to-display message only.
+    logger.error("docs agent: upstream API error", { status: error.status });
+    send({ t: "error", code: "upstream", message: "The assistant is temporarily unavailable." });
+    send({ t: "done" });
+    return;
+  }
+
+  // AS-105: do not pass raw error text into the log line either — a
+  // generic marker is enough to correlate; keep detail out entirely rather
+  // than risk another wire-adjacent leak surface.
+  logger.error("docs agent: unexpected error", {
+    name: error instanceof Error ? error.name : "unknown",
+  });
+  send({ t: "error", code: "upstream", message: "The assistant is temporarily unavailable." });
+  send({ t: "done" });
+}

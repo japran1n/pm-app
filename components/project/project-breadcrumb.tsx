@@ -15,8 +15,12 @@ export function ProjectBreadcrumb({
   projectId: string;
   projectName: string;
 }) {
-  useSetBreadcrumb([
-    { label: projectName, href: `/w/${workspaceSlug}/projects/${projectId}` },
-  ]);
+  // F035: named "project" slot (see breadcrumb-context.tsx's `SLOT_ORDER`)
+  // so it composes with the docs editor's own "doc" slot instead of the
+  // two clobbering each other on `/projects/<id>/docs/<docId>`.
+  useSetBreadcrumb(
+    [{ label: projectName, href: `/w/${workspaceSlug}/projects/${projectId}` }],
+    "project",
+  );
   return null;
 }
