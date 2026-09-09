@@ -602,11 +602,20 @@ export function RichTextEditor({
         // avoids by intercepting HERE, before ProseMirror's own `Enter`
         // keymap binding (splitBlock) ever runs, rather than downstream in
         // some ancestor's `onKeyDown`.
+        // F037 (IME safety): an IME candidate-commit Enter must never be
+        // read as "submit" — `event.isComposing` covers the standard
+        // signal, `event.keyCode === 229` is the historical Safari/older
+        // Chrome fallback for the same condition (both checked because
+        // `isComposing` alone has had browser-specific gaps historically).
+        // Without this, a CJK user pressing Enter to commit a candidate
+        // sends the raw, uncommitted partial text and the editor clears.
         if (
           event.key === "Enter" &&
           !event.shiftKey &&
           !event.metaKey &&
           !event.ctrlKey &&
+          !event.isComposing &&
+          event.keyCode !== 229 &&
           onEnterSubmit
         ) {
           event.preventDefault()

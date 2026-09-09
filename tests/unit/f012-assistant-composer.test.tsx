@@ -124,6 +124,45 @@ describe("AS-069: keyboard reachability and visible focus", () => {
     expect(send).toHaveBeenCalledWith("hello");
   });
 
+  it("F037: an IME candidate-commit Enter (isComposing) does not submit", () => {
+    const send = vi.fn();
+    render(
+      <AssistantComposer
+        hasApiKey
+        isStreaming={false}
+        send={send}
+        stop={vi.fn()}
+      />,
+    );
+    const input = screen.getByTestId("assistant-composer-input") as HTMLTextAreaElement;
+
+    fireEvent.change(input, { target: { value: "こんにちは" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    expect(send).not.toHaveBeenCalled();
+    expect(input.value).toBe("こんにちは");
+
+    // Once composition has ended, a real Enter still submits.
+    fireEvent.keyDown(input, { key: "Enter", isComposing: false });
+    expect(send).toHaveBeenCalledWith("こんにちは");
+  });
+
+  it("F037: an IME candidate-commit Enter (keyCode 229, Safari/older-Chrome fallback) does not submit", () => {
+    const send = vi.fn();
+    render(
+      <AssistantComposer
+        hasApiKey
+        isStreaming={false}
+        send={send}
+        stop={vi.fn()}
+      />,
+    );
+    const input = screen.getByTestId("assistant-composer-input") as HTMLTextAreaElement;
+
+    fireEvent.change(input, { target: { value: "candidate" } });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("does not submit an empty or whitespace-only message", () => {
     const send = vi.fn();
     render(

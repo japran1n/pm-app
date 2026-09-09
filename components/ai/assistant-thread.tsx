@@ -52,24 +52,32 @@ function AssistantMarkdown({ text }: { text: string }) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        class: "prose prose-sm max-w-none",
+        // F037: `prose` alone sets `color: var(--tw-prose-body)` (a
+        // light-theme gray, with headings/bold/code darker still) —
+        // there is no `--tw-prose-*` override anywhere in this repo, so
+        // on the workspace's dark panel background that read as
+        // near-black on near-black. `prose-invert` maps the typography
+        // plugin's whole palette onto its dark-mode variants, which in
+        // this codebase's Tailwind v4 setup resolve against the same
+        // design tokens (no colour literals introduced here).
+        class: "prose prose-sm prose-invert max-w-none",
       },
     },
   });
 
   useEffect(() => {
     if (!editor) return;
-    // `setContent`'s markdown parsing comes from the Markdown extension
-    // (same mechanism markdown-editor.tsx documents) — update in place
-    // rather than remounting the editor on every streamed token, and
-    // never emit an "update" (this view is read-only; there is no
-    // onUpdate consumer).
-    const current = (
-      editor.storage as unknown as { markdown: { getMarkdown(): string } }
-    ).markdown.getMarkdown();
-    if (current !== text) {
-      editor.commands.setContent(text, { emitUpdate: false });
-    }
+    // F037: previously guarded with a `getMarkdown() !== text` check
+    // before calling `setContent` — removed. That guard called a full
+    // markdown *serialise* (getMarkdown) then a full *re-parse*
+    // (setContent) on every streamed token regardless, because markdown
+    // serialisation is not identity-preserving (e.g. `*em*` round-trips
+    // to `_em_`), so `current !== text` was true on almost every call —
+    // the guard rarely actually skipped the update it existed to avoid.
+    // The M2 review measured ~3.2 MB round-tripped this way for a 4 KB
+    // streamed answer across 400 deltas. `setContent` is unconditional
+    // now; this effect already only re-runs when `text` itself changed.
+    editor.commands.setContent(text, { emitUpdate: false });
   }, [editor, text]);
 
   if (!editor) return null;
@@ -98,7 +106,10 @@ function useStickToBottom<T extends HTMLElement>(
   function scrollToBottom() {
     const el = containerRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    // F037: `scrollHeight` alone overshoots by `clientHeight` — browsers
+    // clamp so this was harmless in practice, but the correct target for
+    // "scrolled to the bottom" is `scrollHeight - clientHeight`.
+    el.scrollTop = el.scrollHeight - el.clientHeight;
     setIsStuck(true);
   }
 
@@ -124,7 +135,9 @@ function useStickToBottom<T extends HTMLElement>(
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !isStuck) return;
-    el.scrollTop = el.scrollHeight;
+    // F037: see `scrollToBottom` above for why this is
+    // `scrollHeight - clientHeight`, not bare `scrollHeight`.
+    el.scrollTop = el.scrollHeight - el.clientHeight;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dependency]);
 

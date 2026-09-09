@@ -275,7 +275,15 @@ export function MarkdownEditor({
         role: "textbox",
         "aria-multiline": "true",
         "aria-label": "Document content",
-        class: "prose max-w-none px-1 py-2 outline-none",
+        // F037: pre-existing bare `prose` had no `prose-invert`/
+        // `--tw-prose-*` override anywhere in the repo, so `.prose`'s
+        // light-theme text colours (`--tw-prose-body` etc) rendered
+        // near-black on this workspace's dark panel background — the same
+        // defect flagged and fixed in components/ai/assistant-thread.tsx's
+        // read-only markdown renderer (F037). Fixed here too since it's
+        // the same one-line shape; not otherwise restyled. See the F037
+        // handoff — this file is outside that feature's own surface.
+        class: "prose prose-invert max-w-none px-1 py-2 outline-none",
       },
     },
     onUpdate: ({ editor: updatedEditor }) => {

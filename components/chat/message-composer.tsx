@@ -231,7 +231,19 @@ export function MessageComposer({
           <div
             className="min-h-10 max-h-40 flex-1 overflow-y-auto"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // F037 (IME safety): see the matching guard inside
+              // rich-text-editor.tsx's own `handleKeyDown` for why this
+              // duplicate check exists — that ProseMirror-level handler is
+              // the one that actually fires (its `stopPropagation()` keeps
+              // this outer, React-delegated handler from ever seeing the
+              // same keydown), but this guard is kept in lockstep so this
+              // wrapper is never the odd one out if that changes.
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                e.keyCode !== 229
+              ) {
                 e.preventDefault();
                 submit();
               }
@@ -268,7 +280,15 @@ export function MessageComposer({
               onTyping?.();
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              // F037 (IME safety): a CJK IME's Enter-to-commit-candidate
+              // keystroke must not be read as submit — see the rich-text
+              // path's matching guard above for the full rationale.
+              if (
+                e.key === "Enter" &&
+                !e.shiftKey &&
+                !e.nativeEvent.isComposing &&
+                e.keyCode !== 229
+              ) {
                 e.preventDefault();
                 submit();
               }

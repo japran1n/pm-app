@@ -374,6 +374,15 @@ export function useDocAssistant({
             }
           }
 
+          // F037: flush the decoder itself, not just the line buffer.
+          // `decoder.decode(value, { stream: true })` can hold back the
+          // trailing bytes of a multibyte UTF-8 character split across the
+          // last `reader.read()` chunk, waiting for the rest — which never
+          // arrives once `done` is true. A final `decoder.decode()` call
+          // with no arguments (and `stream` defaulting to false) forces
+          // that held-back partial sequence out.
+          buffer += decoder.decode();
+
           // Flush any trailing complete line left in the buffer once the
           // stream ends (a final chunk need not end in "\n").
           if (controller.signal.aborted) return;

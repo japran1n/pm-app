@@ -100,6 +100,36 @@ describe("F010 AS-062: assistant text renders progressively", () => {
   });
 });
 
+describe("F037: assistant markdown is themed for the dark panel", () => {
+  it("applies prose-invert alongside prose so typography colours map onto dark-theme tokens", () => {
+    render(<AssistantThread messages={makeMessages()} />);
+    const turn = screen.getByTestId("assistant-thread-assistant-turn");
+    const proseEl = turn.querySelector(".prose");
+    expect(proseEl).not.toBeNull();
+    expect(proseEl?.className).toMatch(/\bprose-invert\b/);
+  });
+});
+
+describe("F037: assistant markdown never renders live <script>/onerror", () => {
+  it("strips a <script> tag and an onerror handler from streamed markdown, pinning the TipTap StarterKit sanitisation default", () => {
+    const malicious =
+      'Before <script>window.__pwned = true;</script> after, and <img src="x" onerror="window.__pwned2 = true">.';
+    render(
+      <AssistantThread
+        messages={[{ id: "a1", role: "assistant", text: malicious }]}
+      />,
+    );
+    const turn = screen.getByTestId("assistant-thread-assistant-turn");
+    // No live <script> element in the rendered DOM.
+    expect(turn.querySelector("script")).toBeNull();
+    // No onerror attribute survives onto any rendered element.
+    expect(turn.innerHTML).not.toMatch(/onerror\s*=/i);
+    // The raw payload never executed / got interpreted as script text.
+    expect((window as unknown as { __pwned?: boolean }).__pwned).toBeUndefined();
+    expect((window as unknown as { __pwned2?: boolean }).__pwned2).toBeUndefined();
+  });
+});
+
 describe("F010: aria-live thread container", () => {
   it("uses aria-live='polite', not 'assertive'", () => {
     render(<AssistantThread messages={makeMessages()} />);
@@ -153,7 +183,14 @@ describe("F010: considerate auto-scroll", () => {
     expect(jumpButton.className).toMatch(/focus-visible:ring/);
 
     fireEvent.click(jumpButton);
-    expect(container.scrollTop).toBe(container.scrollHeight);
+    // F037: the correct "scrolled to the bottom" target is
+    // `scrollHeight - clientHeight`, not bare `scrollHeight` — asserting
+    // the unclamped value here would only pass because this test's own
+    // scrollTop stub (above) stores it unclamped, not because it reflects
+    // a real DOM's clamping behaviour.
+    expect(container.scrollTop).toBe(
+      container.scrollHeight - container.clientHeight,
+    );
     expect(
       screen.queryByTestId("assistant-thread-jump-to-latest"),
     ).not.toBeInTheDocument();

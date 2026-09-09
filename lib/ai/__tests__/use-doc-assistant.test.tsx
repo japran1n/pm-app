@@ -67,6 +67,31 @@ function streamResponse(chunks: string[], ok = true, status = 200): Response {
   } as unknown as Response;
 }
 
+/**
+ * F037: like `streamResponse`, but yields raw pre-encoded byte chunks
+ * instead of whole strings — needed to reproduce a multibyte UTF-8
+ * character's bytes being split across two `reader.read()` chunks, which
+ * is impossible to construct by encoding separate strings (each string
+ * chunk always encodes to a complete, self-contained byte sequence).
+ */
+function rawByteStreamResponse(chunks: Uint8Array[]): Response {
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= chunks.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(chunks[index]);
+      index += 1;
+    },
+    cancel() {
+      // no-op — allows reader.cancel() to resolve.
+    },
+  });
+  return { ok: true, status: 200, body } as unknown as Response;
+}
+
 /** A non-2xx JSON error response with no stream body, like the route emits. */
 function errorResponse(status: number, errorMessage: string): Response {
   return {
@@ -453,6 +478,72 @@ describe("useDocAssistant", () => {
     });
 
     expect(result.current.messages).toEqual([]);
+  });
+
+  it("F037: the stream's TextDecoder is explicitly flushed (decode() with no args) once the stream ends", async () => {
+    // A genuinely truncated trailing multibyte character (its completing
+    // bytes never sent at all — the true "split across the last chunk"
+    // shape the fix targets) also can't form valid trailing JSON either
+    // way, so it isn't independently observable through `messages` alone
+    // — see this test's comment history / the F037 handoff for the full
+    // reasoning. What IS directly, reliably observable (and what a
+    // regression that deletes the trailing flush call breaks) is that
+    // `TextDecoder.prototype.decode` gets one final call with NO
+    // arguments after the read loop ends, forcing out whatever partial
+    // sequence the decoder is internally holding rather than leaving it
+    // silently stuck forever.
+    const decodeSpy = vi.spyOn(TextDecoder.prototype, "decode");
+
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([ndjsonLine({ t: "text", v: "hello" }), ndjsonLine({ t: "done" })]),
+    );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isStreaming).toBe(false);
+    });
+
+    expect(decodeSpy).toHaveBeenCalled();
+    const finalCallArgs = decodeSpy.mock.calls.at(-1);
+    // The trailing flush call is `decoder.decode()` — zero arguments,
+    // distinct from every in-loop call, which is always
+    // `decoder.decode(value, { stream: true })`.
+    expect(finalCallArgs).toEqual([]);
+
+    decodeSpy.mockRestore();
+  });
+
+  it("F037: a multibyte character that straddles two stream chunks (not truncated) still renders correctly end-to-end", async () => {
+    // "€" is 3 UTF-8 bytes (E2 82 AC). Splits it across two genuine
+    // `reader.read()` chunks — both consumed inside the read loop before
+    // `done` — covering the (already-correct, unrelated-to-the-flush-fix)
+    // ordinary cross-chunk case, so this feature doesn't regress it while
+    // fixing the true end-of-stream truncation case above.
+    const line = JSON.stringify({ t: "text", v: "price: €" }) + "\n" + ndjsonLine({ t: "done" });
+    const fullBytes = new TextEncoder().encode(line);
+    const euroStart = line.indexOf("€");
+    const splitAt = new TextEncoder().encode(line.slice(0, euroStart)).length + 2; // mid "€"
+    const firstChunk = fullBytes.slice(0, splitAt);
+    const secondChunk = fullBytes.slice(splitAt);
+
+    fetchMock.mockResolvedValueOnce(rawByteStreamResponse([firstChunk, secondChunk]));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.isStreaming).toBe(false);
+    });
+
+    expect(result.current.messages.at(-1)?.text).toBe("price: €");
   });
 
   it("test_final_line_with_no_trailing_newline_is_still_parsed", async () => {
