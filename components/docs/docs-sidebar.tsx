@@ -8,14 +8,32 @@
 // the tree rather than this query doing a recursive fetch"). Root-level
 // docs (folderId === null) render below the folder tree.
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FilePlus, FolderPlus } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
+import { cn } from "@/lib/utils";
 import type { Doc, DocFolder } from "@/lib/queries/docs";
-import { createDoc, createDocFolder } from "@/lib/actions/docs";
-import { DocsDocRow, DocsFolderRow, type FolderNode } from "@/components/docs/docs-folder-row";
+import { createDoc, createDocFolder, moveDoc } from "@/lib/actions/docs";
+import {
+  DocsDocRow,
+  DocsFolderRow,
+  DOC_DRAG_ID_PREFIX,
+  FOLDER_DROP_ID_PREFIX,
+  ROOT_DROP_ID,
+  type FolderNode,
+} from "@/components/docs/docs-folder-row";
 import { deleteDoc } from "@/lib/actions/docs";
 import { Input } from "@/components/ui/input";
 
@@ -69,6 +87,17 @@ export function DocsSidebar({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
 
+  // Synchronous re-entrancy guard: see docs-folder-row.tsx's matching
+  // comment on renameSubmittedRef/subfolderSubmittedRef for why a ref
+  // (not `isPending`) is required to stop Enter's keydown handler and
+  // the blur it triggers from both calling submitNewFolder.
+  const folderSubmittedRef = useRef(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
   const tree = useMemo(() => buildTree(folders), [folders]);
   const docsByFolder = useMemo(() => groupDocsByFolder(docs), [docs]);
   const rootDocs = docsByFolder.get(null) ?? [];
@@ -80,10 +109,13 @@ export function DocsSidebar({
 
   function handleNewFolder() {
     setNewFolderName("");
+    folderSubmittedRef.current = false;
     setCreatingFolder(true);
   }
 
   function submitNewFolder() {
+    if (folderSubmittedRef.current) return;
+    folderSubmittedRef.current = true;
     const trimmed = newFolderName.trim();
     if (!trimmed) {
       setCreatingFolder(false);
@@ -99,6 +131,32 @@ export function DocsSidebar({
       setNewFolderName("");
       router.refresh();
     });
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (!activeId.startsWith(DOC_DRAG_ID_PREFIX)) return;
+
+    const docId = activeId.slice(DOC_DRAG_ID_PREFIX.length);
+    let targetFolderId: string | null;
+    if (overId === ROOT_DROP_ID) {
+      targetFolderId = null;
+    } else if (overId.startsWith(FOLDER_DROP_ID_PREFIX)) {
+      targetFolderId = overId.slice(FOLDER_DROP_ID_PREFIX.length);
+    } else {
+      return;
+    }
+
+    const result = await moveDoc(docId, targetFolderId);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    router.refresh();
   }
 
   function handleNewDoc() {
@@ -186,37 +244,71 @@ export function DocsSidebar({
           </div>
         )}
 
-        <div className="flex flex-col gap-0.5">
-          {tree.map((folder) => (
-            <DocsFolderRow
-              key={folder.id}
-              folder={folder}
-              docsByFolder={docsByFolder}
-              workspaceSlug={workspaceSlug}
-              projectId={projectId}
-              currentDocId={currentDocId}
-              workspaceId={workspaceId}
-              depth={0}
-            />
-          ))}
-          {rootDocs.map((doc) => (
-            <DocsDocRow
-              key={doc.id}
-              doc={doc}
-              workspaceSlug={workspaceSlug}
-              projectId={projectId}
-              currentDocId={currentDocId}
-              depth={0}
-              onDelete={handleDeleteDoc}
-            />
-          ))}
-          {tree.length === 0 && rootDocs.length === 0 && (
-            <p className="px-1.5 py-2 text-micro text-muted-foreground">
-              No documents yet.
-            </p>
-          )}
-        </div>
+        <DndContext
+          // F272-style explicit id (see components/board/board.tsx /
+          // components/views/view-drop-context.tsx): avoids dnd-kit's
+          // counter-based auto-id drifting between server/client renders
+          // when more than one DndContext mounts in the app.
+          id="docs-sidebar-drop-context"
+          sensors={sensors}
+          onDragEnd={handleDragEnd}
+        >
+          <RootDropTarget>
+            <div className="flex flex-col gap-0.5">
+              {tree.map((folder) => (
+                <DocsFolderRow
+                  key={folder.id}
+                  folder={folder}
+                  docsByFolder={docsByFolder}
+                  workspaceSlug={workspaceSlug}
+                  projectId={projectId}
+                  currentDocId={currentDocId}
+                  workspaceId={workspaceId}
+                  allFolders={folders}
+                  depth={0}
+                />
+              ))}
+              {rootDocs.map((doc) => (
+                <DocsDocRow
+                  key={doc.id}
+                  doc={doc}
+                  workspaceSlug={workspaceSlug}
+                  projectId={projectId}
+                  currentDocId={currentDocId}
+                  allFolders={folders}
+                  depth={0}
+                  onDelete={handleDeleteDoc}
+                />
+              ))}
+              {tree.length === 0 && rootDocs.length === 0 && (
+                <p className="px-1.5 py-2 text-micro text-muted-foreground">
+                  No documents yet.
+                </p>
+              )}
+            </div>
+          </RootDropTarget>
+        </DndContext>
       </div>
     </>
+  );
+}
+
+// Drop target representing "no folder" (root) -- wraps the whole
+// tree/root-docs list rather than a small dedicated strip, since any
+// empty space below the last row is also a reasonable place to drop a
+// doc back to root. Highlighted the same way DocsFolderRow highlights
+// itself on drag-over.
+function RootDropTarget({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: ROOT_DROP_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-md transition-colors",
+        isOver && "bg-primary/5 ring-1 ring-primary/20",
+      )}
+    >
+      {children}
+    </div>
   );
 }

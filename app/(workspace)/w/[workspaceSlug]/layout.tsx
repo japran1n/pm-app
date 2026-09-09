@@ -66,17 +66,6 @@ import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requ
 // openApprovals/openClientRequestCount above.
 import { getWorkspaceChatUnreadTotal } from "@/lib/queries/chat";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
-// F009: the docs assistant sidebar shell — mounted here as a sibling
-// panel of the existing raised content panel (see this feature's own
-// "RESOLVED BY ORCHESTRATOR" mount-point note in its spec), plus the
-// context provider that shares open/closed state with the header toggle
-// (components/nav/app-header.tsx) without prop-drilling through
-// WorkspaceMain.
-import {
-  AssistantSidebar,
-  AssistantSidebarProvider,
-} from "@/components/ai/assistant-sidebar";
-import { hasApiKey } from "@/lib/ai/client";
 // Client Presentation feature: computed fresh on every layout render
 // (see lib/calendar/client-presentation.ts's own file-header comment for
 // why this is a page-load-triggered check rather than a real scheduled
@@ -411,7 +400,6 @@ export default async function WorkspaceLayout({
       <ShortcutHelpDialog />
       <OnboardingTour initialDismissed={tourDismissed} />
       <BreadcrumbProvider>
-      <AssistantSidebarProvider>
       {
         // F120 (AS-073): `h-svh` (a fixed height, not a minimum) caps this
         // row at the viewport exactly. `<AppSidebar>`'s own root element
@@ -472,12 +460,7 @@ export default async function WorkspaceLayout({
             {children}
           </WorkspaceMain>
         </div>
-        <AssistantSidebar
-          workspaceId={activeWorkspace.id}
-          hasApiKey={hasApiKey()}
-        />
       </div>
-      </AssistantSidebarProvider>
       </BreadcrumbProvider>
       </WorkspacePresenceProvider>
     </MembershipProvider>

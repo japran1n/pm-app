@@ -11,15 +11,18 @@
 // inline-rename state (`isRenaming`) is local to a single row and would
 // otherwise leak into the tree-building parent.
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   ChevronRight,
   ChevronDown,
   Folder,
   MoreHorizontal,
   FileText,
+  FolderInput,
+  GripVertical,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -44,17 +47,39 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { Doc, DocFolder } from "@/lib/queries/docs";
 import {
   createDoc,
   createDocFolder,
   deleteDoc,
   deleteDocFolder,
+  moveDoc,
   renameDocFolder,
 } from "@/lib/actions/docs";
 import { Input } from "@/components/ui/input";
 
 export type FolderNode = DocFolder & { children: FolderNode[] };
+
+// DnD-kit id prefixes for the docs sidebar's drag-and-drop wiring (see
+// DocsSidebar's DndContext, the single top-level context wrapping both
+// the folder tree and the root docs list). Kept as string prefixes on a
+// single flat DndContext id-space, same convention as
+// components/views/view-drop-context.tsx.
+export const DOC_DRAG_ID_PREFIX = "docs-drag-doc:";
+export const FOLDER_DROP_ID_PREFIX = "docs-drop-folder:";
+export const ROOT_DROP_ID = "docs-drop-root";
 
 function docHref(
   workspaceSlug: string,
@@ -77,6 +102,7 @@ export function DocsFolderRow({
   projectId,
   currentDocId,
   workspaceId,
+  allFolders,
   depth,
 }: {
   folder: FolderNode;
@@ -85,6 +111,7 @@ export function DocsFolderRow({
   projectId?: string;
   currentDocId?: string;
   workspaceId: string;
+  allFolders: DocFolder[];
   depth: number;
 }) {
   const router = useRouter();
@@ -96,10 +123,30 @@ export function DocsFolderRow({
   const [creatingSubfolder, setCreatingSubfolder] = useState(false);
   const [newSubfolderName, setNewSubfolderName] = useState("");
 
+  // Synchronous re-entrancy guards for the rename/create-subfolder inputs
+  // below: each is wired to BOTH onKeyDown(Enter) and onBlur with no
+  // dependency on React's (async, next-tick) `isPending` state, so a
+  // real browser fires Enter's keydown handler AND the blur handler it
+  // triggers before either submit's `startTransition` has flipped
+  // `isPending` -- without this ref, that double-fire created two
+  // subfolders / duplicate renames per single Enter press. Reset when
+  // the corresponding input is reopened (handleNewSubfolder / the
+  // "Rename" menu click), matching submitNewFolder's own guard in
+  // DocsSidebar.
+  const renameSubmittedRef = useRef(false);
+  const subfolderSubmittedRef = useRef(false);
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `${FOLDER_DROP_ID_PREFIX}${folder.id}`,
+    data: { folderId: folder.id },
+  });
+
   const childDocs = docsByFolder.get(folder.id) ?? [];
   const indent = { paddingLeft: `${depth * 16}px` };
 
   function submitRename() {
+    if (renameSubmittedRef.current) return;
+    renameSubmittedRef.current = true;
     setIsRenaming(false);
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === folder.name) {
@@ -119,11 +166,14 @@ export function DocsFolderRow({
 
   function handleNewSubfolder() {
     setNewSubfolderName("");
+    subfolderSubmittedRef.current = false;
     setCreatingSubfolder(true);
     setOpen(true);
   }
 
   function submitNewSubfolder() {
+    if (subfolderSubmittedRef.current) return;
+    subfolderSubmittedRef.current = true;
     const trimmed = newSubfolderName.trim();
     if (!trimmed) {
       setCreatingSubfolder(false);
@@ -185,7 +235,11 @@ export function DocsFolderRow({
     <div>
       <Collapsible open={open} onOpenChange={setOpen}>
         <div
-          className="group flex items-center gap-1 rounded-md px-1.5 py-1 text-mini hover:bg-accent/50"
+          ref={setDropRef}
+          className={cn(
+            "group flex items-center gap-1 rounded-md px-1.5 py-1 text-mini hover:bg-accent/50",
+            isOver && "bg-primary/10 ring-1 ring-primary/40",
+          )}
           style={indent}
         >
           <CollapsibleTrigger
@@ -232,6 +286,7 @@ export function DocsFolderRow({
               <DropdownMenuItem
                 onClick={() => {
                   setNameDraft(folder.name);
+                  renameSubmittedRef.current = false;
                   setIsRenaming(true);
                 }}
               >
@@ -290,6 +345,7 @@ export function DocsFolderRow({
                 projectId={projectId}
                 currentDocId={currentDocId}
                 workspaceId={workspaceId}
+                allFolders={allFolders}
                 depth={depth + 1}
               />
             ))}
@@ -300,6 +356,7 @@ export function DocsFolderRow({
                 workspaceSlug={workspaceSlug}
                 projectId={projectId}
                 currentDocId={currentDocId}
+                allFolders={allFolders}
                 depth={depth + 1}
                 onDelete={handleDeleteDoc}
               />
@@ -334,6 +391,7 @@ export function DocsDocRow({
   workspaceSlug,
   projectId,
   currentDocId,
+  allFolders,
   depth,
   onDelete,
 }: {
@@ -341,20 +399,60 @@ export function DocsDocRow({
   workspaceSlug: string;
   projectId?: string;
   currentDocId?: string;
+  allFolders: DocFolder[];
   depth: number;
   onDelete: (docId: string) => void;
 }) {
   const router = useRouter();
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
   const indent = { paddingLeft: `${depth * 16 + 18}px` };
+
+  // Drag handle rendered as its own small element (NOT the whole row):
+  // the row already has a click-to-open handler (below) and a dropdown
+  // menu trigger, so making the entire row draggable would fight those
+  // gestures -- same reasoning components/views/view-drop-context.tsx's
+  // TaskDragHandle applies to its own row.
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: `${DOC_DRAG_ID_PREFIX}${doc.id}`,
+    data: { docId: doc.id },
+  });
+
+  async function handleMoveTo(folderId: string | null) {
+    setMovePickerOpen(false);
+    const result = await moveDoc(doc.id, folderId);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    router.refresh();
+  }
 
   return (
     <div
       className={cn(
         "group flex items-center gap-1 rounded-md px-1.5 py-1 text-mini hover:bg-accent/50",
         doc.id === currentDocId && "bg-accent",
+        isDragging && "opacity-50",
       )}
       style={indent}
     >
+      <button
+        ref={setDragRef}
+        type="button"
+        aria-label="Drag to move to a folder"
+        title="Drag onto a folder to move this doc"
+        className="cursor-grab touch-none opacity-0 group-hover:opacity-100 active:cursor-grabbing"
+        onClick={(e) => e.stopPropagation()}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      </button>
       <button
         type="button"
         className="flex flex-1 items-center gap-1.5 text-left"
@@ -370,23 +468,52 @@ export function DocsDocRow({
         <DropdownMenuTrigger
           className="rounded p-0.5 opacity-0 hover:bg-accent group-hover:opacity-100 data-[popup-open]:opacity-100"
           aria-label="Document actions"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuItem
-            onClick={() => {
-              const target = window.prompt(
-                "Move to folder id (leave empty for root):",
-              );
-              if (target === null) return;
-              import("@/lib/actions/docs").then(({ moveDoc }) =>
-                moveDoc(doc.id, target.trim() || null),
-              );
-            }}
-          >
-            Move to...
-          </DropdownMenuItem>
+          <Popover open={movePickerOpen} onOpenChange={setMovePickerOpen}>
+            <PopoverTrigger
+              render={
+                <DropdownMenuItem
+                  closeOnClick={false}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setMovePickerOpen(true);
+                  }}
+                >
+                  <FolderInput className="h-3.5 w-3.5" aria-hidden="true" />
+                  Move to...
+                </DropdownMenuItem>
+              }
+            />
+            <PopoverContent align="start" className="w-64 p-0">
+              <Command>
+                <CommandList>
+                  <CommandEmpty>No folders yet.</CommandEmpty>
+                  <CommandGroup>
+                    <CommandItem
+                      value="root"
+                      onClick={() => handleMoveTo(null)}
+                    >
+                      No folder (root)
+                    </CommandItem>
+                    {allFolders.map((folder) => (
+                      <CommandItem
+                        key={folder.id}
+                        value={folder.name}
+                        onClick={() => handleMoveTo(folder.id)}
+                      >
+                        {folder.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
           <DropdownMenuItem
             variant="destructive"
             onClick={() => onDelete(doc.id)}

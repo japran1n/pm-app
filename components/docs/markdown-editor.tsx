@@ -32,15 +32,8 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 // F009: announces this doc's title upward via the SAME "leaf announces
 // itself upward" context ProjectBreadcrumb already uses
-// (components/project/project-breadcrumb.tsx) — the docs assistant
-// sidebar's context bar (components/ai/assistant-sidebar.tsx) reads it
-// from there rather than re-fetching the doc or being prop-drilled a
-// title through this component's own callers.
+// (components/project/project-breadcrumb.tsx).
 import { useSetBreadcrumb } from "@/components/nav/breadcrumb-context";
-// F016: registers this editor's live handle for the AI proposal Accept
-// flow — see lib/ai/doc-editor-bridge.ts's header for why this is a
-// module-level registry rather than a context.
-import { registerDocEditorHandle } from "@/lib/ai/doc-editor-bridge";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -321,37 +314,6 @@ export function MarkdownEditor({
       editor?.storage as unknown as { markdown: { getMarkdown(): string } }
     ).markdown.getMarkdown();
   }
-
-  // F016: registers this editor's live handle for the AI proposal Accept
-  // flow. `applyAcceptedMarkdown` deliberately does NOT go through
-  // `scheduleSave` — the caller (ProposalCard) has already persisted the
-  // markdown via `applyDocEditProposal` by the time it calls this, so
-  // re-scheduling a save here would be a redundant, and potentially
-  // stale-content-clobbering, second write. `{ emitUpdate: false }`
-  // mirrors components/ai/assistant-thread.tsx's own read-only
-  // `setContent` call — it stops `onUpdate` (and therefore
-  // `scheduleSave`) from firing off this programmatic content push.
-  useEffect(() => {
-    if (!editor) return undefined;
-    return registerDocEditorHandle(docId, {
-      getCurrentMarkdown: currentMarkdown,
-      cancelPendingSave: () => {
-        if (timerRef.current) {
-          clearTimeout(timerRef.current);
-          timerRef.current = null;
-        }
-      },
-      applyAcceptedMarkdown: (markdown: string) => {
-        if (timerRef.current) {
-          clearTimeout(timerRef.current);
-          timerRef.current = null;
-        }
-        editor.commands.setContent(markdown, { emitUpdate: false });
-        setStatus("saved");
-      },
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, editor]);
 
   function handleExport() {
     if (!editor) return;
