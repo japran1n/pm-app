@@ -48,3 +48,32 @@ Autonomy: FULL. User asleep and unavailable. ZERO_QUESTIONS until further notice
   for per-feature gating, but AS-102 ("npm test passes") must NOT be marked PASS at
   F022 on the strength of a scoped run. The orchestrator is establishing the true
   baseline; whatever it turns out to be is recorded below and F022 compares against it.
+
+## MEASURED TEST BASELINE (orchestrator, 2026-09-09) — this is the number F022 compares against
+
+`npx vitest run lib/ tests/unit/` at commit `c69f4d35`:
+```
+Test Files  3 failed | 318 passed (321)
+     Tests  4 failed | 2222 passed (2226)
+```
+
+The 4 failures are:
+1. `tests/unit/app-sidebar-project-nav-list.test.tsx` — AS-509 (projects passed into sidebar)
+2. `tests/unit/app-sidebar-project-nav-list.test.tsx` — AS-513 (empty project list still renders create action)
+3. `tests/unit/f038-as024-coverage.test.ts` — AS-024 (CommandPalette tombstone map cleared)
+4. `tests/unit/sign-out-back-navigation.test.ts` — AS-022 (workspace layout exports `dynamic = "force-dynamic"`)
+
+**These are PRE-EXISTING and belong to mission `20260909-linear-ds`, not to this one.**
+Proven, not assumed: the orchestrator created a detached worktree at `262bc20b` — the
+design mission's final commit, before any AI-docs code existed — and ran those three
+files there. All four failed identically. All three files sit in exactly the areas that
+mission reskinned (F011 navigation/sidebar, F003 panel structure, command palette).
+
+### Rules this imposes
+- Do **not** fix these in this mission. They are another mission's regressions, that
+  session is still live, and silently repairing them would hide the fact that a mission
+  reported 13/13 COMPLETE with a red baseline.
+- This mission's gate is **"no NEW failures beyond these 4"** — not "green".
+- F022 must re-run the same command, compare against these exact 4, and report any
+  difference. If the design session fixes them in the meantime, the target becomes green
+  and F022 should say so.
