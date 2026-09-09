@@ -22,6 +22,7 @@ vi.mock("@/lib/supabase/server", () => ({
 import { run } from "@/lib/ai/tools/get-current-doc";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
+const WORKSPACE_ID = "55555555-5555-4555-8555-555555555555";
 
 describe("get_current_doc (F003)", () => {
   beforeEach(() => {
@@ -39,12 +40,13 @@ describe("get_current_doc (F003)", () => {
         title: "Onboarding Guide",
         content: "# Hello\n\nWelcome to the team.",
         client_visible: true,
+        workspace_id: WORKSPACE_ID,
         doc_folders: { name: "Getting Started" },
       },
       error: null,
     });
 
-    const result = await run({ docId: DOC_ID });
+    const result = await run({ docId: DOC_ID }, WORKSPACE_ID);
 
     expect(result).toEqual({
       status: "ok",
@@ -65,7 +67,7 @@ describe("get_current_doc (F003)", () => {
   it("test_AS_021_AS_002_nonexistent_uuid_returns_empty_not_found", async () => {
     mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-    const result = await run({ docId: DOC_ID });
+    const result = await run({ docId: DOC_ID }, WORKSPACE_ID);
 
     expect(result).toEqual({
       status: "empty",
@@ -86,7 +88,7 @@ describe("get_current_doc (F003)", () => {
     // file's header for why a mock cannot make this claim.
     mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
-    const result = await run({ docId: DOC_ID });
+    const result = await run({ docId: DOC_ID }, WORKSPACE_ID);
 
     expect(result.status).toBe("empty");
     if (result.status === "empty") {
@@ -96,8 +98,35 @@ describe("get_current_doc (F003)", () => {
     }
   });
 
+  it("test_F027_doc_belongs_to_a_different_workspace_than_the_caller_current_returns_the_identical_not_found_shape", async () => {
+    // Same row shape as the happy-path test above but its workspace_id
+    // does not match the caller's current workspaceId — must collapse
+    // into the exact same empty/not_found shape as a genuinely missing
+    // row (AS-021), not a different reason or message.
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        id: DOC_ID,
+        title: "Someone Else's Doc",
+        content: "Secret content",
+        client_visible: true,
+        workspace_id: "99999999-9999-4999-8999-999999999999",
+        doc_folders: null,
+      },
+      error: null,
+    });
+
+    const result = await run({ docId: DOC_ID }, WORKSPACE_ID);
+
+    expect(result).toEqual({
+      status: "empty",
+      reason: "not_found",
+      message: "No matching document found.",
+    });
+    expect(JSON.stringify(result)).not.toMatch(/secret|else's doc/i);
+  });
+
   it("rejects a malformed docId without querying the database", async () => {
-    const result = await run({ docId: "not-a-uuid" } as never);
+    const result = await run({ docId: "not-a-uuid" } as never, WORKSPACE_ID);
 
     expect(result.status).toBe("error");
     expect(mockCreateClient).not.toHaveBeenCalled();
@@ -111,12 +140,13 @@ describe("get_current_doc (F003)", () => {
         title: "Long Doc",
         content: longMarkdown,
         client_visible: false,
+        workspace_id: WORKSPACE_ID,
         doc_folders: null,
       },
       error: null,
     });
 
-    const result = await run({ docId: DOC_ID });
+    const result = await run({ docId: DOC_ID }, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {

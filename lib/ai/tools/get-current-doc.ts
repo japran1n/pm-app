@@ -18,6 +18,21 @@
 //      row exist in some other workspace" before querying.
 //   5. A `name`/`description`/`inputSchema`/`run` export object matching
 //      the shape F006's tool registry will import.
+//
+// F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024/AS-021): `run` now takes a
+// second, non-model-controlled `workspaceId` argument threaded down from
+// the route via lib/ai/docs-agent.ts's per-request tool wiring (never part
+// of the Zod `inputSchema` a model can influence). RLS already makes a doc
+// in a workspace the caller isn't a member of invisible, but a caller who
+// is an ACTIVE member of BOTH their current workspace and some other one
+// would otherwise be able to read the other workspace's doc through this
+// tool — RLS has nothing to say about "current" vs. "any" workspace, only
+// about membership. The extra check below is that defence in depth, mirror
+// of `lib/queries/docs.ts:163`'s `.eq("workspace_id", workspaceId)`. A doc
+// that fails the check returns the exact same `ToolEmpty` shape/reason/
+// message as a genuinely nonexistent doc — collapsing this new case into
+// the existing AS-008/AS-021 not-found path rather than inventing a new
+// one, so no new observable difference is introduced.
 
 import { z } from "zod";
 
@@ -59,6 +74,7 @@ function countWords(markdown: string): number {
 
 export async function run(
   input: GetCurrentDocInput,
+  workspaceId: string,
 ): Promise<ToolResult<GetCurrentDocData>> {
   const parsed = getCurrentDocInputSchema.safeParse(input);
   if (!parsed.success) {
@@ -67,15 +83,17 @@ export async function run(
 
   const supabase = await createClient();
 
-  // A single row lookup by primary key, scoped only by RLS
-  // (`docs_select_active_members`, 20260904010000_docs_system.sql) — no
-  // extra `.eq("workspace_id", ...)` filter is added here on purpose: RLS
-  // already makes a doc in another workspace invisible, which is exactly
-  // what makes not-found and not-visible collapse into the same query
-  // result (`data: null`) instead of needing to be told apart in code.
+  // A single row lookup by primary key, scoped by RLS
+  // (`docs_select_active_members`, 20260904010000_docs_system.sql) plus the
+  // `workspace_id` selected below and checked in code (F027) — RLS alone
+  // only proves "some workspace this caller is an active member of", not
+  // "the caller's CURRENT workspace" (AS-023/AS-024's actual wording), so a
+  // caller active in two workspaces needs the extra check. Not-found and
+  // not-visible-to-any-workspace still collapse into the same query result
+  // (`data: null`) exactly as before.
   const { data, error } = await supabase
     .from("docs")
-    .select("id, title, content, client_visible, doc_folders(name)")
+    .select("id, title, content, client_visible, workspace_id, doc_folders(name)")
     .eq("id", parsed.data.docId)
     .maybeSingle();
 
@@ -83,7 +101,11 @@ export async function run(
     return err("doc_fetch_failed", "Something went wrong reading that document.");
   }
 
-  if (!data) {
+  if (!data || data.workspace_id !== workspaceId) {
+    // Same shape/reason/message whether the row doesn't exist, RLS hides
+    // it, or it belongs to a different workspace the caller happens to
+    // also be a member of (AS-008/AS-021) — never let the wording tell
+    // these cases apart.
     return empty("not_found", NOT_FOUND_MESSAGE);
   }
 

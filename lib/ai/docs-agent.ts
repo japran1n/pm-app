@@ -38,17 +38,24 @@ const MAX_TOKENS_CHAT = 16_000;
  * it is the only thing this module changes about the underlying tools —
  * their own `run` functions and unit tests are untouched.
  */
-function forRunner<Schema extends z.ZodType>(tool: {
-  name: string;
-  description: string;
-  inputSchema: Schema;
-  run: (input: z.infer<Schema>) => Promise<ToolResult<unknown>>;
-}) {
+// F027: `workspaceId` is closed over here rather than exposed on the tool's
+// Zod `inputSchema` — it must never be a model-controlled argument, only a
+// value the route resolved for the real caller and this function threads
+// straight through.
+function forRunner<Schema extends z.ZodType>(
+  tool: {
+    name: string;
+    description: string;
+    inputSchema: Schema;
+    run: (input: z.infer<Schema>, workspaceId: string) => Promise<ToolResult<unknown>>;
+  },
+  workspaceId: string,
+) {
   return betaZodTool({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputSchema,
-    run: async (args: z.infer<Schema>) => JSON.stringify(await tool.run(args)),
+    run: async (args: z.infer<Schema>) => JSON.stringify(await tool.run(args, workspaceId)),
   });
 }
 
@@ -57,13 +64,18 @@ function forRunner<Schema extends z.ZodType>(tool: {
  * `propose_doc_edit` or `create_doc` stubs here — those land in F014/F017
  * with their own write-safety work. A literal array (not a `Set`, not
  * built from an async result) so tool order is deterministic across
- * requests, which matters for prompt caching.
+ * requests, which matters for prompt caching. Built fresh per request (not
+ * a module-level constant) because each closure now carries the caller's
+ * own `workspaceId` (F027) — the tool *names*, order, and schemas are
+ * still identical across requests, so prompt caching is unaffected.
  */
-const DOCS_AGENT_TOOLS = [
-  forRunner(getCurrentDocTool),
-  forRunner(searchDocsTool),
-  forRunner(listDocTemplatesTool),
-] as const;
+function buildDocsAgentTools(workspaceId: string) {
+  return [
+    forRunner(getCurrentDocTool, workspaceId),
+    forRunner(searchDocsTool, workspaceId),
+    forRunner(listDocTemplatesTool, workspaceId),
+  ] as const;
+}
 
 // ---------------------------------------------------------------------------
 // System prompt layers. Order is load-bearing — see the feature spec's
@@ -111,7 +123,7 @@ export type DocsAgentRequest = {
   max_tokens: number;
   system: BetaTextBlockParam[];
   messages: BetaMessageParam[];
-  tools: typeof DOCS_AGENT_TOOLS;
+  tools: ReturnType<typeof buildDocsAgentTools>;
   thinking: { type: "adaptive" };
   output_config: { effort: "medium" };
   stream: true;
@@ -125,20 +137,22 @@ function formatToday(): string {
 
 async function resolveCurrentDocTitle(
   currentDocId: string | null,
+  workspaceId: string,
 ): Promise<string | null> {
   if (!currentDocId) return null;
-  const result = await getCurrentDocTool.run({ docId: currentDocId });
+  const result = await getCurrentDocTool.run({ docId: currentDocId }, workspaceId);
   return result.status === "ok" ? result.data.title : null;
 }
 
 /**
  * Builds the full request body for one docs-agent turn. Pure data in, pure
  * data out — no `Request` object, no cookies, so this is directly
- * unit-testable. `workspaceId` is accepted (and required by the signature
- * per spec) even though this layer itself makes no direct query keyed on
- * it: every tool call the model triggers is scoped to the caller's
- * workspace by RLS via the caller's own session, not by anything threaded
- * through this function.
+ * unit-testable. `workspaceId` must be a real workspace the route has
+ * already verified the caller is an active member of; it is threaded
+ * straight into every tool call (F027, fixes M1-SCRUTINY.md M1c) as
+ * defence in depth on top of RLS — RLS proves membership in *some*
+ * workspace, this proves the caller's CURRENT one, which is what
+ * AS-023/AS-024 actually require.
  */
 export async function buildDocsAgentRequest({
   userId,
@@ -146,7 +160,6 @@ export async function buildDocsAgentRequest({
   currentDocId,
   messages,
 }: BuildDocsAgentRequestInput): Promise<DocsAgentRequest> {
-  void workspaceId; // scoping happens via RLS inside each tool's own call, not here
   // F023 (fixes B1): userId is retained in the signature (per spec, and
   // future features may need it for e.g. per-user tool scoping) but is no
   // longer used to resolve a display name — that required a privileged,
@@ -155,7 +168,7 @@ export async function buildDocsAgentRequest({
   // "the user" instead of a name.
   void userId;
 
-  const currentDocTitle = await resolveCurrentDocTitle(currentDocId);
+  const currentDocTitle = await resolveCurrentDocTitle(currentDocId, workspaceId);
 
   const stableBlocks: BetaTextBlockParam[] = [
     { type: "text", text: PERSONA_AND_BOUNDARY },
@@ -191,7 +204,7 @@ export async function buildDocsAgentRequest({
     max_tokens: MAX_TOKENS_CHAT,
     system: [...stableBlocks, volatileTail],
     messages,
-    tools: DOCS_AGENT_TOOLS,
+    tools: buildDocsAgentTools(workspaceId),
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     stream: true,

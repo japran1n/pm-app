@@ -88,6 +88,7 @@ function buildSnippet(title: string, content: string, query: string): string {
 
 export async function run(
   input: SearchDocsInput,
+  workspaceId: string,
 ): Promise<ToolResult<SearchDocsData>> {
   const parsed = searchDocsInputSchema.safeParse(input);
   if (!parsed.success) {
@@ -125,11 +126,14 @@ export async function run(
       .order("id", { ascending: true })
       .limit(MAX_RESULTS);
 
-    // Workspace scoping is enforced by RLS (`docs_select_active_members`)
-    // on every row this query can possibly return — no other workspace's
-    // docs are visible to this session no matter what filters are applied
-    // here (AS-023, AS-008). `projectId`, when given, narrows further
-    // within that already-scoped set.
+    // AS-008 still holds via RLS (`docs_select_active_members`) — no other
+    // *user's* workspace can ever be read this way. But RLS only proves
+    // membership, not "the caller's CURRENT workspace" — a caller active
+    // in two workspaces would otherwise get results interleaved from both
+    // (F027, fixes M1-SCRUTINY.md M1c). `.eq("workspace_id", workspaceId)`
+    // is the same defence-in-depth convention `lib/queries/docs.ts:163`
+    // already uses. `projectId`, when given, narrows further still.
+    builder = builder.eq("workspace_id", workspaceId);
     if (parsed.data.projectId) {
       builder = builder.eq("project_id", parsed.data.projectId);
     }

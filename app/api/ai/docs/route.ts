@@ -44,6 +44,13 @@ const requestBodySchema = z.object({
   threadId: z.string().optional(),
   message: z.string().trim().min(1, "message is required."),
   currentDocId: z.string().optional(),
+  // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): the docs sidebar
+  // always knows which workspace it is rendered inside (the page route
+  // itself is workspace-scoped), so the caller supplies it explicitly —
+  // same convention app/api/extension/context/route.ts uses for
+  // `?workspaceId=`. Verified against the caller's own real membership
+  // below before it is trusted for anything.
+  workspaceId: z.string().min(1, "workspaceId is required."),
 });
 
 type NdjsonEvent =
@@ -141,6 +148,32 @@ export async function POST(request: Request) {
     });
   }
 
+  // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): re-verify the caller
+  // is an ACTIVE member of the workspace they claim is current before it
+  // is trusted for anything downstream — same `workspace_id`/`user_id`/
+  // `status='active'` shape `lib/auth/require-membership.ts`'s
+  // `requireActiveMembership` uses, but on the RLS-respecting session
+  // client rather than an admin client: this route lives under
+  // app/api/ai/**, which the AS-001 transitive-import guard
+  // (lib/ai/__tests__/no-service-role.test.ts) also scans, so no
+  // service-role client may ever be reachable from here. The
+  // `workspace_members_select_fellow_members` RLS policy already lets a
+  // caller read their own membership row, which is all this needs.
+  const { data: membership, error: membershipError } = await supabase
+    .from("workspace_members")
+    .select("status")
+    .eq("workspace_id", body.workspaceId)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (membershipError || !membership) {
+    return new Response(JSON.stringify({ error: "You don't have access to that workspace." }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const encoder = new TextEncoder();
 
   // AS-044: propagate the client's abort into the SDK call so an abandoned
@@ -192,12 +225,10 @@ export async function POST(request: Request) {
 
         const agentRequest = await buildDocsAgentRequest({
           userId: user.id,
-          // Not present in the request body per this feature's spec (the
-          // literal shape is { threadId?, message, currentDocId? }), and
-          // F006's buildDocsAgentRequest never keys any query on this value
-          // itself — every tool call is scoped by the caller's own RLS
-          // session instead. See handoff "Autonomous decisions".
-          workspaceId: "",
+          // F027: the caller's `workspaceId`, already re-verified as an
+          // active membership above — threaded into every tool call as
+          // defence in depth on top of RLS (AS-023/AS-024).
+          workspaceId: body.workspaceId,
           currentDocId: body.currentDocId ?? null,
           messages: [
             { role: "user", content: body.message } satisfies BetaMessageParam,

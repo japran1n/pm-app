@@ -56,6 +56,8 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import { run } from "@/lib/ai/tools/search-docs";
 
+const WORKSPACE_ID = "55555555-5555-4555-8555-555555555555";
+
 function makeDocRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
@@ -88,7 +90,7 @@ describe("search_docs (F004)", () => {
     );
     resultsByColumn.title = { data: rows, error: null };
 
-    const result = await run({ query: "onboarding" });
+    const result = await run({ query: "onboarding" }, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -107,10 +109,13 @@ describe("search_docs (F004)", () => {
   it("scopes to a project when projectId is provided", async () => {
     resultsByColumn.title = { data: [makeDocRow()], error: null };
 
-    await run({
-      query: "onboarding",
-      projectId: "22222222-2222-4222-8222-222222222222",
-    });
+    await run(
+      {
+        query: "onboarding",
+        projectId: "22222222-2222-4222-8222-222222222222",
+      },
+      WORKSPACE_ID,
+    );
 
     expect(eqSpy).toHaveBeenCalledWith(
       "project_id",
@@ -119,7 +124,7 @@ describe("search_docs (F004)", () => {
   });
 
   it("test_AS_no_results_returns_empty_no_results", async () => {
-    const result = await run({ query: "nonexistent-term-xyz" });
+    const result = await run({ query: "nonexistent-term-xyz" }, WORKSPACE_ID);
 
     expect(result).toEqual({
       status: "empty",
@@ -143,7 +148,7 @@ describe("search_docs (F004)", () => {
     });
     resultsByColumn.title = { data: [ownWorkspaceDoc], error: null };
 
-    const result = await run({ query: "doc" });
+    const result = await run({ query: "doc" }, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -159,7 +164,7 @@ describe("search_docs (F004)", () => {
     });
     resultsByColumn.title = { data: [row], error: null };
 
-    const result = await run({ query: "UniqueTitleMatch" });
+    const result = await run({ query: "UniqueTitleMatch" }, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -168,7 +173,7 @@ describe("search_docs (F004)", () => {
   });
 
   it("rejects an empty query without querying the database", async () => {
-    const result = await run({ query: "   " } as never);
+    const result = await run({ query: "   " } as never, WORKSPACE_ID);
 
     expect(result.status).toBe("error");
     expect(mockCreateClient).not.toHaveBeenCalled();
@@ -180,7 +185,7 @@ describe("search_docs (F004)", () => {
     resultsByColumn.title = { data: [row], error: null };
     resultsByColumn.content = { data: [row], error: null };
 
-    const result = await run({ query: "onboarding" });
+    const result = await run({ query: "onboarding" }, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -197,7 +202,7 @@ describe("search_docs (F004)", () => {
       // a dot are also grammar metacharacters there.
       const injectionQuery = "budget, revised (Q3).report";
 
-      await run({ query: injectionQuery });
+      await run({ query: injectionQuery }, WORKSPACE_ID);
 
       // Every .ilike() call must receive the query as an opaque bound
       // pattern argument (wildcard-escaped), never spliced into a filter
@@ -218,7 +223,7 @@ describe("search_docs (F004)", () => {
       const row = makeDocRow({ title: "Q3 budget, revised" });
       resultsByColumn.title = { data: [row], error: null };
 
-      const result = await run({ query: "budget, revised" });
+      const result = await run({ query: "budget, revised" }, WORKSPACE_ID);
 
       expect(result.status).toBe("ok");
       if (result.status === "ok") {
@@ -232,7 +237,7 @@ describe("search_docs (F004)", () => {
     // rows come back is not arbitrary.
     resultsByColumn.title = { data: [makeDocRow()], error: null };
 
-    await run({ query: "onboarding" });
+    await run({ query: "onboarding" }, WORKSPACE_ID);
 
     const ilikeReturn = mockIlike.mock.results[0]?.value as { order: ReturnType<typeof vi.fn> };
     expect(ilikeReturn.order).toHaveBeenCalledWith("id", { ascending: true });

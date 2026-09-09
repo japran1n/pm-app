@@ -17,10 +17,21 @@ type QueryResult = { data: unknown[] | null; error: unknown };
 
 let currentResult: QueryResult = { data: [], error: null };
 
-const mockEq = vi.fn(() => Promise.resolve(currentResult));
+// F027: the query now chains a second `.eq("workspace_id", ...)` on top of
+// `.eq("kind", "doc")`, so the mock's `eq()` must itself return a chainable
+// (and thenable) object rather than resolving on the first call.
+const mockEq = vi.fn(() => chain);
+const chain = {
+  eq: mockEq,
+  then: (
+    resolve: (value: QueryResult) => void,
+    reject: (reason: unknown) => void,
+  ) => Promise.resolve(currentResult).then(resolve, reject),
+};
 const mockSelect = vi.fn(() => ({ eq: mockEq }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 const mockCreateClient = vi.fn();
+const WORKSPACE_ID = "55555555-5555-4555-8555-555555555555";
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: (...args: unknown[]) => mockCreateClient(...args),
@@ -52,7 +63,7 @@ describe("list_doc_templates (F005)", () => {
   it("test_AS_024_happy_path_returns_only_doc_kind_shaped_templates", async () => {
     currentResult = { data: [makeTemplateRow()], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -86,7 +97,7 @@ describe("list_doc_templates (F005)", () => {
     });
     currentResult = { data: [ownWorkspaceTemplate], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -98,7 +109,7 @@ describe("list_doc_templates (F005)", () => {
   it("test_AS_028_no_results_returns_empty_no_results", async () => {
     currentResult = { data: [], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result).toEqual({
       status: "empty",
@@ -119,7 +130,7 @@ describe("list_doc_templates (F005)", () => {
     });
     currentResult = { data: [malformed, valid], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -132,7 +143,7 @@ describe("list_doc_templates (F005)", () => {
     const malformed = makeTemplateRow({ payload: { garbage: true } });
     currentResult = { data: [malformed], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result).toEqual({
       status: "empty",
@@ -147,7 +158,7 @@ describe("list_doc_templates (F005)", () => {
     });
     currentResult = { data: [row], error: null };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
@@ -159,7 +170,7 @@ describe("list_doc_templates (F005)", () => {
   it("returns an error result, never throws, on a database error", async () => {
     currentResult = { data: null, error: { message: "boom" } };
 
-    const result = await run({});
+    const result = await run({}, WORKSPACE_ID);
 
     expect(result.status).toBe("error");
   });

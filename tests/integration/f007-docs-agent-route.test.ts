@@ -18,9 +18,25 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const getUserMock = vi.fn();
+// F027: the route now re-verifies the caller's membership in the claimed
+// `workspaceId` via `supabase.from("workspace_members")...` before doing
+// anything else — defaults to an active membership so every existing test
+// below (none of which cares about the membership check itself) keeps
+// passing unchanged.
+const membershipMaybeSingleMock = vi.fn();
+function membershipQueryChain() {
+  const chain = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    maybeSingle: membershipMaybeSingleMock,
+  };
+  return chain;
+}
+const fromMock = vi.fn(() => membershipQueryChain());
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => ({
     auth: { getUser: getUserMock },
+    from: fromMock,
   })),
 }));
 
@@ -48,10 +64,12 @@ const { RateLimitError, APIError } = await import("@anthropic-ai/sdk");
 
 const AUTHED_USER = { id: "user-1" };
 
-function makeRequest(body: unknown, signal?: AbortSignal) {
+const DEFAULT_WORKSPACE_ID = "workspace-1";
+
+function makeRequest(body: Record<string, unknown>, signal?: AbortSignal) {
   return new Request("http://localhost/api/ai/docs", {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ workspaceId: DEFAULT_WORKSPACE_ID, ...body }),
     headers: { "Content-Type": "application/json" },
     signal,
   });
@@ -132,6 +150,7 @@ beforeEach(() => {
   getUserMock.mockResolvedValue({ data: { user: AUTHED_USER } });
   hasApiKeyMock.mockReturnValue(true);
   buildDocsAgentRequestMock.mockResolvedValue(baseAgentRequest());
+  membershipMaybeSingleMock.mockResolvedValue({ data: { status: "active" }, error: null });
 });
 
 describe("test_AS_007_unauthenticated_request_gets_401_before_any_model_call", () => {
@@ -141,6 +160,18 @@ describe("test_AS_007_unauthenticated_request_gets_401_before_any_model_call", (
     const response = await POST(makeRequest({ message: "hello" }));
 
     expect(response.status).toBe(401);
+    expect(buildDocsAgentRequestMock).not.toHaveBeenCalled();
+    expect(streamMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("test_AS_023_AS_024_caller_not_an_active_member_of_the_claimed_workspace_gets_403", () => {
+  it("returns 403 and never constructs a model request when the membership check fails (F027)", async () => {
+    membershipMaybeSingleMock.mockResolvedValue({ data: null, error: null });
+
+    const response = await POST(makeRequest({ message: "hello" }));
+
+    expect(response.status).toBe(403);
     expect(buildDocsAgentRequestMock).not.toHaveBeenCalled();
     expect(streamMock).not.toHaveBeenCalled();
   });

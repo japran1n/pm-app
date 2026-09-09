@@ -21,9 +21,13 @@
 // widened the kind CHECK to add 'doc' for this feature). This tool reads
 // only `kind='doc'` rows (AS-024), scoped to the caller's workspace via
 // RLS's existing `task_templates_select_non_guest_members` policy
-// (AS-002) — no extra `.eq("workspace_id", ...)` filter is added on top,
-// same convention F003/F004's handoffs record for any table whose RLS
-// SELECT policy already scopes by workspace membership.
+// (AS-002) as the enforcement boundary, PLUS an explicit
+// `.eq("workspace_id", workspaceId)` filter (F027, fixes
+// M1-SCRUTINY.md M1c): RLS only proves membership in *some* workspace, not
+// the caller's CURRENT one (AS-024's actual wording) — a caller active in
+// two workspaces would otherwise see both workspaces' templates
+// interleaved. `workspaceId` is threaded down from the route, never part
+// of the model-controlled input schema.
 //
 // `payload` is opaque jsonb per that migration's explicit DB/Zod split:
 // the DB never validates payload shape, so this tool must. Templates are
@@ -60,6 +64,7 @@ const NO_RESULTS_MESSAGE = "No document templates found.";
 
 export async function run(
   input: ListDocTemplatesInput,
+  workspaceId: string,
 ): Promise<ToolResult<ListDocTemplatesData>> {
   const parsed = listDocTemplatesInputSchema.safeParse(input ?? {});
   if (!parsed.success) {
@@ -68,14 +73,19 @@ export async function run(
 
   const supabase = await createClient();
 
-  // Scoped only by RLS (`task_templates_select_non_guest_members`,
+  // Scoped by RLS (`task_templates_select_non_guest_members`,
   // supabase/migrations/20260822180000_task_templates.sql) plus the
-  // `kind='doc'` filter — no other workspace's templates can ever be
-  // returned no matter what filters are applied here (AS-002).
+  // `kind='doc'` filter — no other USER's workspace can ever be returned
+  // (AS-002) — and, as of F027, an explicit `.eq("workspace_id",
+  // workspaceId)` on top: RLS alone would still let a caller active in two
+  // workspaces see both workspaces' templates through this tool, which is
+  // exactly the M1-SCRUTINY.md M1c gap AS-024 ("the caller's workspace")
+  // exists to close.
   const { data, error } = await supabase
     .from("task_templates")
     .select("id, name, payload")
-    .eq("kind", "doc");
+    .eq("kind", "doc")
+    .eq("workspace_id", workspaceId);
 
   if (error) {
     return err(
