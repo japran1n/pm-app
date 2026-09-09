@@ -1,26 +1,36 @@
 // @vitest-environment jsdom
 //
-// F008: behavioural tests for lib/ai/use-doc-assistant.ts, the client
+// F008/F034: behavioural tests for lib/ai/use-doc-assistant.ts, the client
 // stream parser hook for the docs sidebar's AI assistant.
 //
 // Covers:
-// - AS-062: assistant text renders progressively as `text` events arrive
-//   (not only assembled at the end) — asserted by observing intermediate
-//   states across multiple chunks, not just the final message.
-// - AS-067: an in-flight turn can be stopped; the partial text stays
-//   visible and `isStreaming` goes false.
-// - The chunk-boundary buffering bug called out in the feature spec: a
-//   JSON object split mid-line across two `reader.read()` chunks must
-//   still parse correctly, not throw.
-// - Unknown `t` values are ignored rather than thrown on (forward
-//   compatibility with M3).
-// - tool_start/tool_end merge into one toolCalls entry keyed by id.
-// - proposal events land in `proposals` with status "pending".
-// - error events populate `error` without discarding already-received text.
-// - reset() clears all state.
+// - AS-062: assistant text renders progressively as `text` events arrive —
+//   asserted via a genuine *intermediate* state (a gated second chunk),
+//   not just the final concatenation. A hook that buffers everything and
+//   flushes once at `done` must fail this test.
+// - AS-067: stop() actually aborts the in-flight controller (asserted via
+//   `signal.aborted`), and a further scheduled chunk that arrives after
+//   stop() must NOT grow the text. A cosmetic `setIsStreaming(false)` with
+//   no real abort() must fail this test.
+// - AS-047: a second send() includes the first turn's history in the
+//   request body, mapped to `historyTurnSchema` shape.
+// - AS-041: tool_start after tool_end does not regress a finished call
+//   back to "running".
+// - unmount mid-stream stops event application (no act() warnings, no
+//   further state writes).
+// - reset() mid-stream: a chunk that resolves after reset() must not
+//   repopulate the cleared conversation.
+// - a final line with no trailing newline is still parsed.
+// - malformed JSON in a line is ignored, not thrown.
+// - non-2xx responses surface the server's real message.
+// - double submit: the first turn's stream is aborted by the second send().
+// - tool_start/tool_end in both orderings merge into one entry.
+// - the chunk-boundary buffering bug: a JSON object split mid-line across
+//   two `reader.read()` chunks must still parse correctly.
+// - unknown `t` values are ignored rather than thrown on.
 // - send() omits currentDocId rather than sending a non-uuid placeholder.
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
@@ -34,7 +44,7 @@ function ndjsonLine(obj: unknown): string {
  * the given chunks (already-encoded strings) one `reader.read()` at a
  * time, in order.
  */
-function streamResponse(chunks: string[], ok = true): Response {
+function streamResponse(chunks: string[], ok = true, status = 200): Response {
   const encoder = new TextEncoder();
   let index = 0;
   const body = new ReadableStream<Uint8Array>({
@@ -46,10 +56,24 @@ function streamResponse(chunks: string[], ok = true): Response {
       controller.enqueue(encoder.encode(chunks[index]));
       index += 1;
     },
+    cancel() {
+      // no-op — allows reader.cancel() to resolve.
+    },
   });
   return {
     ok,
+    status,
     body,
+  } as unknown as Response;
+}
+
+/** A non-2xx JSON error response with no stream body, like the route emits. */
+function errorResponse(status: number, errorMessage: string): Response {
+  return {
+    ok: false,
+    status,
+    body: null,
+    json: async () => ({ error: errorMessage }),
   } as unknown as Response;
 }
 
@@ -62,42 +86,58 @@ describe("useDocAssistant", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
-  it("test_AS_062_text_deltas_append_progressively_across_multiple_chunks", async () => {
-    fetchMock.mockResolvedValueOnce(
-      streamResponse([
-        ndjsonLine({ t: "text", v: "Hello" }),
-        ndjsonLine({ t: "text", v: ", world" }),
-        ndjsonLine({ t: "done" }),
-      ]),
-    );
+  it("test_AS_062_text_renders_progressively_intermediate_state_before_final", async () => {
+    const encoder = new TextEncoder();
+    const releaseSecondChunkHolder: { current: (() => void) | null } = {
+      current: null,
+    };
+    const gate = new Promise<void>((resolve) => {
+      releaseSecondChunkHolder.current = resolve;
+    });
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "Hello" })));
+        await gate;
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: ", world" })));
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "done" })));
+        controller.close();
+      },
+    });
+
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, body } as unknown as Response);
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
     });
 
-    // Intermediate state: first delta has landed before the second chunk
-    // has necessarily been processed. We assert progressive assembly by
-    // checking the final assistant message is exactly the concatenation
-    // of both deltas, appended onto ONE message (not two separate ones).
+    // Genuine intermediate state: the first chunk has landed but the
+    // second is still gated behind the promise above. If the hook buffers
+    // everything and flushes once at `done`, this assertion never becomes
+    // true and the test times out / fails.
     await waitFor(() => {
-      const assistantMsgs = result.current.messages.filter(
-        (m) => m.role === "assistant",
-      );
+      const assistantMsgs = result.current.messages.filter((m) => m.role === "assistant");
       expect(assistantMsgs).toHaveLength(1);
+      expect(assistantMsgs[0].text).toBe("Hello");
+    });
+    expect(result.current.isStreaming).toBe(true);
+
+    releaseSecondChunkHolder.current?.();
+
+    await waitFor(() => {
+      const assistantMsgs = result.current.messages.filter((m) => m.role === "assistant");
       expect(assistantMsgs[0].text).toBe("Hello, world");
     });
-
     expect(result.current.isStreaming).toBe(false);
   });
 
-  it("test_AS_067_stop_aborts_stream_keeps_partial_text_and_clears_streaming", async () => {
+  it("test_AS_067_stop_aborts_the_controller_and_a_later_chunk_does_not_grow_text", async () => {
     const encoder = new TextEncoder();
     const releaseSecondChunkHolder: { current: (() => void) | null } = {
       current: null,
@@ -109,19 +149,16 @@ describe("useDocAssistant", () => {
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
         controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "partial" })));
-        // Wait until the test releases this, simulating an in-flight
-        // stream that hasn't sent `done` yet.
         await gate;
-        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: " more" })));
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: " MORE-AFTER-STOP" })));
         controller.close();
       },
+      cancel() {},
     });
 
-    fetchMock.mockResolvedValueOnce({ ok: true, body } as unknown as Response);
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, body } as unknown as Response);
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
@@ -138,77 +175,141 @@ describe("useDocAssistant", () => {
     });
 
     expect(result.current.isStreaming).toBe(false);
-    // Partial text remains visible after stop.
     expect(
       result.current.messages.some((m) => m.role === "assistant" && m.text === "partial"),
     ).toBe(true);
 
-    // Release the gate so the underlying stream can finish/cleanup without
-    // hanging the test process; the hook must not un-stop itself when the
-    // aborted fetch's stream eventually settles.
-    releaseSecondChunkHolder.current?.();
+    // Release the gated second chunk — a real abort() must prevent it
+    // from ever being applied. A hook that only sets isStreaming(false)
+    // cosmetically (without abort()) would let this grow the text.
+    await act(async () => {
+      releaseSecondChunkHolder.current?.();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(
+      result.current.messages.some(
+        (m) => m.role === "assistant" && m.text.includes("MORE-AFTER-STOP"),
+      ),
+    ).toBe(false);
+    expect(
+      result.current.messages.find((m) => m.role === "assistant")?.text,
+    ).toBe("partial");
   });
 
-  it("test_chunk_boundary_json_object_split_mid_line_parses_correctly", async () => {
-    // The single most common defect in this kind of hook: a chunk boundary
-    // falls mid-JSON-object. Naive `chunk.split("\n")` would throw trying
-    // to JSON.parse the fragment; buffered parsing must retain the partial
-    // and complete it on the next chunk.
-    const fullLine = ndjsonLine({ t: "text", v: "split across chunks" });
-    const splitPoint = Math.floor(fullLine.length / 2);
-    const chunk1 = fullLine.slice(0, splitPoint); // ends mid-object, no trailing \n
-    const chunk2 = fullLine.slice(splitPoint) + ndjsonLine({ t: "done" });
+  it("test_AS_067_stop_sets_the_real_abort_signal_aborted", async () => {
+    const encoder = new TextEncoder();
+    let capturedSignal: AbortSignal | undefined;
+    fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+      capturedSignal = init.signal as AbortSignal;
+      let enqueued = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (enqueued) return new Promise<void>(() => {});
+          enqueued = true;
+          controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "x" })));
+        },
+      });
+      return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+    });
 
-    fetchMock.mockResolvedValueOnce(streamResponse([chunk1, chunk2]));
-
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
     });
 
-    await waitFor(() => {
-      const assistantMsgs = result.current.messages.filter(
-        (m) => m.role === "assistant",
-      );
-      expect(assistantMsgs).toHaveLength(1);
-      expect(assistantMsgs[0].text).toBe("split across chunks");
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+
+    act(() => {
+      result.current.stop();
     });
 
-    // No error should have been raised as a side effect of the split.
-    expect(result.current.error).toBeNull();
+    expect(capturedSignal?.aborted).toBe(true);
   });
 
-  it("test_unknown_event_type_is_ignored_not_thrown", async () => {
+  it("test_AS_047_second_send_includes_first_turn_in_request_body_history", async () => {
     fetchMock.mockResolvedValueOnce(
-      streamResponse([
-        ndjsonLine({ t: "future_event_type", something: "new" }),
-        ndjsonLine({ t: "text", v: "still works" }),
-        ndjsonLine({ t: "done" }),
-      ]),
+      streamResponse([ndjsonLine({ t: "text", v: "first reply" }), ndjsonLine({ t: "done" })]),
     );
+    fetchMock.mockResolvedValueOnce(streamResponse([ndjsonLine({ t: "done" })]));
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
-      result.current.send("hi");
+      result.current.send("first message");
     });
 
     await waitFor(() => {
       expect(
-        result.current.messages.some(
-          (m) => m.role === "assistant" && m.text === "still works",
-        ),
+        result.current.messages.some((m) => m.role === "assistant" && m.text === "first reply"),
       ).toBe(true);
     });
-    expect(result.current.error).toBeNull();
+    expect(result.current.isStreaming).toBe(false);
+
+    act(() => {
+      result.current.send("second message");
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const [, secondInit] = fetchMock.mock.calls[1];
+    const parsedBody = JSON.parse((secondInit as RequestInit).body as string);
+    expect(parsedBody.message).toBe("second message");
+    expect(parsedBody.messages).toEqual([
+      { role: "user", content: "first message" },
+      { role: "assistant", content: "first reply" },
+    ]);
   });
 
-  it("test_tool_start_and_tool_end_merge_into_one_entry_by_id", async () => {
+  it("test_first_send_omits_messages_field_when_history_empty", async () => {
+    fetchMock.mockResolvedValueOnce(streamResponse([ndjsonLine({ t: "done" })]));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const parsedBody = JSON.parse((init as RequestInit).body as string);
+    expect(parsedBody).not.toHaveProperty("messages");
+  });
+
+  it("test_AS_041_tool_start_after_tool_end_does_not_regress_finished_call", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([
+        ndjsonLine({ t: "tool_start", id: "t1", name: "search_docs" }),
+        ndjsonLine({ t: "tool_end", id: "t1", summary: "3 results" }),
+        // Out-of-order: a stray tool_start for the same id arrives after
+        // its own tool_end. Must not flip status back to "running".
+        ndjsonLine({ t: "tool_start", id: "t1", name: "search_docs" }),
+        ndjsonLine({ t: "done" }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls).toHaveLength(1);
+      expect(result.current.toolCalls[0].status).toBe("done");
+    });
+
+    expect(result.current.isStreaming).toBe(false);
+    // Give any stray microtask a chance to run, then re-assert it's still done.
+    await new Promise((r) => setTimeout(r, 10));
+    expect(result.current.toolCalls[0].status).toBe("done");
+  });
+
+  it("test_tool_start_then_tool_end_normal_ordering_merges_into_one_entry", async () => {
     fetchMock.mockResolvedValueOnce(
       streamResponse([
         ndjsonLine({ t: "tool_start", id: "t1", name: "search_docs" }),
@@ -217,9 +318,7 @@ describe("useDocAssistant", () => {
       ]),
     );
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
@@ -237,22 +336,296 @@ describe("useDocAssistant", () => {
     });
   });
 
-  it("test_proposal_event_becomes_pending_proposal", async () => {
+  it("test_tool_end_before_tool_start_still_records_it_as_done", async () => {
     fetchMock.mockResolvedValueOnce(
       streamResponse([
-        ndjsonLine({
-          t: "proposal",
-          id: "p1",
-          kind: "doc_edit",
-          payload: { foo: "bar" },
-        }),
+        ndjsonLine({ t: "tool_end", id: "t2", summary: "result" }),
         ndjsonLine({ t: "done" }),
       ]),
     );
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls).toHaveLength(1);
+      expect(result.current.toolCalls[0]).toMatchObject({ id: "t2", status: "done" });
+    });
+  });
+
+  it("test_unmount_mid_stream_aborts_the_in_flight_controller", async () => {
+    // React discards post-unmount setState calls regardless of whether
+    // this hook cleans up — so asserting on `messages` after unmount
+    // would pass even with no cleanup at all (a false-positive risk this
+    // spec explicitly calls out). The real, mutation-visible behaviour is
+    // that the underlying request is actually torn down (so the model
+    // stops generating/billing for a response nobody can render): assert
+    // the fetch's own AbortSignal is aborted once the component unmounts.
+    const encoder = new TextEncoder();
+    let capturedSignal: AbortSignal | undefined;
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+      pull(controller) {
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "before-unmount" })));
+        // Never resolves on its own — this stream only ever ends via the
+        // abort-triggered error() below, mirroring how a real fetch tears
+        // its response body down when the request's AbortController fires.
+        return new Promise<void>(() => {});
+      },
+    });
+
+    fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+      capturedSignal = init.signal as AbortSignal;
+      capturedSignal.addEventListener("abort", () => {
+        streamController?.error(new DOMException("The operation was aborted.", "AbortError"));
+      });
+      return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+    });
+
+    const { result, unmount } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.messages.some((m) => m.text === "before-unmount"),
+      ).toBe(true);
+    });
+
+    unmount();
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it("test_reset_mid_stream_a_later_chunk_does_not_repopulate_the_conversation", async () => {
+    const encoder = new TextEncoder();
+    const releaseSecondChunkHolder: { current: (() => void) | null } = {
+      current: null,
+    };
+    const gate = new Promise<void>((resolve) => {
+      releaseSecondChunkHolder.current = resolve;
+    });
+
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "will-be-cleared" })));
+        await gate;
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: " resurrected" })));
+        controller.close();
+      },
+      cancel() {},
+    });
+
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, body } as unknown as Response);
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.messages.some((m) => m.text === "will-be-cleared"),
+      ).toBe(true);
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    expect(result.current.messages).toEqual([]);
+
+    await act(async () => {
+      releaseSecondChunkHolder.current?.();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("test_final_line_with_no_trailing_newline_is_still_parsed", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([JSON.stringify({ t: "text", v: "no newline at end" })]),
     );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.messages.some(
+          (m) => m.role === "assistant" && m.text === "no newline at end",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("test_malformed_json_line_is_ignored_not_thrown", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([
+        "{not valid json\n",
+        ndjsonLine({ t: "text", v: "still works" }),
+        ndjsonLine({ t: "done" }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.messages.some((m) => m.role === "assistant" && m.text === "still works"),
+      ).toBe(true);
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("test_non_2xx_response_surfaces_the_servers_real_message_401", async () => {
+    fetchMock.mockResolvedValueOnce(errorResponse(401, "Unauthorized."));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toEqual({ code: "http_401", message: "Unauthorized." });
+    });
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("test_non_2xx_response_surfaces_distinct_message_for_403_vs_401", async () => {
+    fetchMock.mockResolvedValueOnce(errorResponse(403, "You don't have access to that workspace."));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toEqual({
+        code: "http_403",
+        message: "You don't have access to that workspace.",
+      });
+    });
+  });
+
+  it("test_double_submit_aborts_the_first_turns_stream", async () => {
+    const encoder = new TextEncoder();
+    let firstControllerSignal: AbortSignal | undefined;
+
+    let firstBodyEnqueued = false;
+    const firstBody = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (firstBodyEnqueued) {
+          // Nothing further to give without hanging forever — the reader
+          // is expected to stop pulling once the controller is aborted.
+          return new Promise<void>(() => {});
+        }
+        firstBodyEnqueued = true;
+        controller.enqueue(encoder.encode(ndjsonLine({ t: "text", v: "first-turn-text" })));
+        // Never closes on its own — relies on abort.
+      },
+      cancel() {},
+    });
+
+    fetchMock.mockImplementationOnce((_url: string, init: RequestInit) => {
+      firstControllerSignal = init.signal as AbortSignal;
+      return Promise.resolve({ ok: true, status: 200, body: firstBody } as unknown as Response);
+    });
+    fetchMock.mockResolvedValueOnce(streamResponse([ndjsonLine({ t: "done" })]));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("first");
+    });
+
+    await waitFor(() => expect(firstControllerSignal).toBeDefined());
+
+    act(() => {
+      result.current.send("second");
+    });
+
+    await waitFor(() => {
+      expect(firstControllerSignal?.aborted).toBe(true);
+    });
+  });
+
+  it("test_chunk_boundary_json_object_split_mid_line_parses_correctly", async () => {
+    const fullLine = ndjsonLine({ t: "text", v: "split across chunks" });
+    const splitPoint = Math.floor(fullLine.length / 2);
+    const chunk1 = fullLine.slice(0, splitPoint);
+    const chunk2 = fullLine.slice(splitPoint) + ndjsonLine({ t: "done" });
+
+    fetchMock.mockResolvedValueOnce(streamResponse([chunk1, chunk2]));
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      const assistantMsgs = result.current.messages.filter((m) => m.role === "assistant");
+      expect(assistantMsgs).toHaveLength(1);
+      expect(assistantMsgs[0].text).toBe("split across chunks");
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("test_unknown_event_type_is_ignored_not_thrown", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([
+        ndjsonLine({ t: "future_event_type", something: "new" }),
+        ndjsonLine({ t: "text", v: "still works" }),
+        ndjsonLine({ t: "done" }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
+
+    act(() => {
+      result.current.send("hi");
+    });
+
+    await waitFor(() => {
+      expect(
+        result.current.messages.some((m) => m.role === "assistant" && m.text === "still works"),
+      ).toBe(true);
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("test_proposal_event_becomes_pending_proposal", async () => {
+    fetchMock.mockResolvedValueOnce(
+      streamResponse([
+        ndjsonLine({ t: "proposal", id: "p1", kind: "doc_edit", payload: { foo: "bar" } }),
+        ndjsonLine({ t: "done" }),
+      ]),
+    );
+
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
@@ -277,9 +650,7 @@ describe("useDocAssistant", () => {
       ]),
     );
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");
@@ -296,15 +667,10 @@ describe("useDocAssistant", () => {
 
   it("test_reset_clears_all_state", async () => {
     fetchMock.mockResolvedValueOnce(
-      streamResponse([
-        ndjsonLine({ t: "text", v: "hello" }),
-        ndjsonLine({ t: "done" }),
-      ]),
+      streamResponse([ndjsonLine({ t: "text", v: "hello" }), ndjsonLine({ t: "done" })]),
     );
 
-    const { result } = renderHook(() =>
-      useDocAssistant({ workspaceId: "ws-1" }),
-    );
+    const { result } = renderHook(() => useDocAssistant({ workspaceId: "ws-1" }));
 
     act(() => {
       result.current.send("hi");

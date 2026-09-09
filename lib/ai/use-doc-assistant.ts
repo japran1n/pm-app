@@ -18,7 +18,13 @@
 //   {"t":"done"}
 // Unknown `t` values are ignored rather than thrown on — the envelope is
 // expected to grow in M3.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+// F034: caps mirrored from app/api/ai/docs/route.ts's `MAX_HISTORY_TURNS`.
+// The route is the source of truth and re-enforces this server-side — this
+// client-side trim only avoids sending a request the route would reject
+// outright, and keeps the outgoing payload bounded.
+const MAX_HISTORY_TURNS = 20;
 
 export interface AssistantMessage {
   id: string;
@@ -121,13 +127,30 @@ export function useDocAssistant({
   const [error, setError] = useState<AssistantError | null>(null);
   const [usage, setUsage] = useState<UsageTotals | null>(null);
 
+  // Kept in sync via the effect below.
+
   const abortControllerRef = useRef<AbortController | null>(null);
   // Tracks the id of the assistant message currently receiving `text`
   // deltas, so consecutive deltas append to the same message rather than
   // each creating a new one.
   const openAssistantIdRef = useRef<string | null>(null);
+  // F034: mirrors `messages` synchronously (state updates are async) so
+  // `send()` can read the conversation-as-of-now to build the history
+  // payload without depending on `messages` as a callback dependency
+  // (which would recreate `send` — and therefore any consumer's memoised
+  // handlers — on every delta).
+  const messagesRef = useRef<AssistantMessage[]>([]);
+  // F034: guards the unmount race — an in-flight turn's `finally` block
+  // must not call `setIsStreaming` after the component has unmounted.
+  const mountedRef = useRef(true);
 
-  const applyEvent = useCallback((event: NdjsonEvent) => {
+  // F034: every event application is scoped to the controller of the turn
+  // that produced it. A stale stream (from a superseded send(), a stop(),
+  // or a reset()) must never mutate state after its controller has been
+  // aborted — otherwise a settled/cleared conversation can be silently
+  // resurrected by a late-arriving chunk.
+  const applyEvent = useCallback((event: NdjsonEvent, controller: AbortController) => {
+    if (controller.signal.aborted) return;
     switch (event.t) {
       case "text": {
         const delta = (event as Extract<NdjsonEvent, { t: "text" }>).v;
@@ -153,6 +176,10 @@ export function useDocAssistant({
         setToolCalls((prev) => {
           const idx = prev.findIndex((tc) => tc.id === id);
           if (idx !== -1) {
+            // Guard against a `tool_start` arriving after this call's own
+            // `tool_end` (out-of-order delivery) — never regress a
+            // finished call back into a permanent spinner.
+            if (prev[idx].status === "done") return prev;
             const next = [...prev];
             next[idx] = { ...next[idx], name, args, status: "running" };
             return next;
@@ -244,6 +271,18 @@ export function useDocAssistant({
         role: "user",
         text: trimmed,
       };
+
+      // F034/F028: build the history payload from the conversation as it
+      // stands *before* this turn's user message is appended locally —
+      // the route's `messages` field is "prior turns", not including the
+      // one just sent as `message`. Trimmed to the route's own
+      // MAX_HISTORY_TURNS so a long-running conversation never grows the
+      // outgoing payload unbounded.
+      const historyTurns = messagesRef.current
+        .filter((m) => m.text.trim().length > 0)
+        .map((m) => ({ role: m.role, content: m.text }))
+        .slice(-MAX_HISTORY_TURNS);
+
       setMessages((prev) => [...prev, userMessage]);
 
       void (async () => {
@@ -257,16 +296,45 @@ export function useDocAssistant({
               // Omit currentDocId entirely rather than send a non-uuid
               // placeholder — the route validates it as a strict uuid.
               ...(currentDocId ? { currentDocId } : {}),
+              ...(historyTurns.length > 0 ? { messages: historyTurns } : {}),
             }),
             signal: controller.signal,
           });
 
-          if (!response.ok || !response.body) {
-            setError({
-              code: "request_failed",
-              message: "The assistant request failed.",
-            });
-            setIsStreaming(false);
+          if (!response.ok) {
+            // F034: surface the route's real error message (401/400/403
+            // each say something different) instead of one opaque string
+            // — session expiry must be distinguishable from a bug.
+            let serverMessage: string | null = null;
+            try {
+              const payload = (await response.json()) as { error?: unknown };
+              if (typeof payload?.error === "string" && payload.error.trim()) {
+                serverMessage = payload.error;
+              }
+            } catch {
+              // Non-JSON or unreadable body — fall back to a generic message.
+            } finally {
+              // Cancel the body if reading it above didn't already fully
+              // consume/lock it (some environments still hand back a
+              // readable body after a failed .json() parse attempt).
+              void response.body?.cancel().catch(() => {});
+            }
+            if (!controller.signal.aborted) {
+              setError({
+                code: `http_${response.status}`,
+                message: serverMessage ?? "The assistant request failed.",
+              });
+            }
+            return;
+          }
+
+          if (!response.body) {
+            if (!controller.signal.aborted) {
+              setError({
+                code: "request_failed",
+                message: "The assistant request failed.",
+              });
+            }
             return;
           }
 
@@ -279,7 +347,15 @@ export function useDocAssistant({
           let buffer = "";
 
           for (;;) {
+            if (controller.signal.aborted) {
+              void reader.cancel().catch(() => {});
+              return;
+            }
             const { done, value } = await reader.read();
+            if (controller.signal.aborted) {
+              void reader.cancel().catch(() => {});
+              return;
+            }
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
@@ -290,22 +366,30 @@ export function useDocAssistant({
             buffer = lines.pop() ?? "";
 
             for (const rawLine of lines) {
+              if (controller.signal.aborted) return;
               const line = rawLine.trim();
               if (!line) continue;
               const event = parseLine(line);
-              if (event) applyEvent(event);
+              if (event) applyEvent(event, controller);
             }
           }
 
           // Flush any trailing complete line left in the buffer once the
           // stream ends (a final chunk need not end in "\n").
+          if (controller.signal.aborted) return;
           const trailing = buffer.trim();
           if (trailing) {
             const event = parseLine(trailing);
-            if (event) applyEvent(event);
+            if (event) applyEvent(event, controller);
           }
-        } catch (err) {
-          if (err instanceof Error && err.name === "AbortError") {
+        } catch {
+          // F034: `err.name === "AbortError"` is unreliable across
+          // environments — undici rejects an aborted fetch as
+          // `TypeError: fetch failed` with the real abort surfaced only
+          // via `.cause`, and jsdom's `DOMException` is not `instanceof
+          // Error`. The controller's own signal is the one reliable
+          // source of truth for "this turn was intentionally aborted".
+          if (controller.signal.aborted) {
             // stop() or a superseding send() aborted this turn — partial
             // text stays visible, no error surfaced.
           } else {
@@ -315,7 +399,11 @@ export function useDocAssistant({
             });
           }
         } finally {
-          if (abortControllerRef.current === controller) {
+          if (
+            !controller.signal.aborted &&
+            abortControllerRef.current === controller &&
+            mountedRef.current
+          ) {
             setIsStreaming(false);
             abortControllerRef.current = null;
           }
@@ -341,6 +429,25 @@ export function useDocAssistant({
     setError(null);
     setUsage(null);
   }, []);
+
+  // F034: unmount cleanup — abort any in-flight turn's controller so the
+  // read loop's aborted-checks stop it, and let it cancel its own reader
+  // via those checks. Without this the IIFE keeps reading and calling
+  // `setMessages` after unmount, and the model keeps generating (and
+  // billing) for a response nobody can render.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  // Keep messagesRef in sync so `send()` can read the current
+  // conversation synchronously when building the history payload.
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   return {
     messages,
