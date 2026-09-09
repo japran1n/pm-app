@@ -124,7 +124,7 @@ describe("AS-069: keyboard reachability and visible focus", () => {
     expect(send).toHaveBeenCalledWith("hello");
   });
 
-  it("F037: an IME candidate-commit Enter (isComposing) does not submit", () => {
+  it("F037/F038: a genuine IME candidate-commit Enter (isComposing + keyCode 229) does not submit", () => {
     const send = vi.fn();
     render(
       <AssistantComposer
@@ -132,12 +132,13 @@ describe("AS-069: keyboard reachability and visible focus", () => {
         isStreaming={false}
         send={send}
         stop={vi.fn()}
-      />,
+      />
     );
+
     const input = screen.getByTestId("assistant-composer-input") as HTMLTextAreaElement;
 
     fireEvent.change(input, { target: { value: "こんにちは" } });
-    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 229 });
     expect(send).not.toHaveBeenCalled();
     expect(input.value).toBe("こんにちは");
 
@@ -146,7 +147,7 @@ describe("AS-069: keyboard reachability and visible focus", () => {
     expect(send).toHaveBeenCalledWith("こんにちは");
   });
 
-  it("F037: an IME candidate-commit Enter (keyCode 229, Safari/older-Chrome fallback) does not submit", () => {
+  it("F038: a discrete Enter while isComposing is true but keyCode is not 229 (Android GBoard/Samsung Latin typing) submits", () => {
     const send = vi.fn();
     render(
       <AssistantComposer
@@ -154,13 +155,14 @@ describe("AS-069: keyboard reachability and visible focus", () => {
         isStreaming={false}
         send={send}
         stop={vi.fn()}
-      />,
+      />
     );
+
     const input = screen.getByTestId("assistant-composer-input") as HTMLTextAreaElement;
 
-    fireEvent.change(input, { target: { value: "candidate" } });
-    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
-    expect(send).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: "hello world" } });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true, keyCode: 13 });
+    expect(send).toHaveBeenCalledWith("hello world");
   });
 
   it("does not submit an empty or whitespace-only message", () => {

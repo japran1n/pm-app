@@ -52,15 +52,16 @@ function AssistantMarkdown({ text }: { text: string }) {
     immediatelyRender: false,
     editorProps: {
       attributes: {
-        // F037: `prose` alone sets `color: var(--tw-prose-body)` (a
-        // light-theme gray, with headings/bold/code darker still) —
-        // there is no `--tw-prose-*` override anywhere in this repo, so
-        // on the workspace's dark panel background that read as
-        // near-black on near-black. `prose-invert` maps the typography
-        // plugin's whole palette onto its dark-mode variants, which in
-        // this codebase's Tailwind v4 setup resolve against the same
-        // design tokens (no colour literals introduced here).
-        class: "prose prose-sm prose-invert max-w-none",
+        // F038: no `prose-invert` here — `design/linear`'s
+        // `bf6b0b69` maps `--tw-prose-*` tokens to the dark workspace
+        // palette globally (`:root:not([data-surface="portal"])`), which
+        // is meant to work WITHOUT a per-call-site invert. Adding
+        // `prose-invert` at the element level would set its own
+        // `--tw-prose-*` custom properties on this node, which win over
+        // the `:root` mapping on cascade/specificity grounds and silently
+        // opt this renderer back out of it. Correct rendering here
+        // depends on `bf6b0b69` landing when the branches merge.
+        class: "prose prose-sm max-w-none",
       },
     },
   });

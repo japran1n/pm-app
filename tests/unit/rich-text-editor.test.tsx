@@ -190,7 +190,7 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
   // used to check only `key === "Enter" && !shiftKey`. A CJK IME sends a
   // real "Enter" keydown to commit a candidate, which — before this fix —
   // was indistinguishable from a genuine submit keystroke.
-  it("F037: does not fire onEnterSubmit for an IME candidate-commit Enter (isComposing)", () => {
+  it("F037/F038: does not fire onEnterSubmit for a genuine IME candidate-commit Enter (isComposing + keyCode 229)", () => {
     const onEnterSubmit = vi.fn();
     const content: JSONContent = {
       type: "doc",
@@ -206,11 +206,11 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     const editable = screen.getByRole("textbox", { name: "Message" });
     editable.focus();
 
-    fireEvent.keyDown(editable, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 229 });
     expect(onEnterSubmit).not.toHaveBeenCalled();
   });
 
-  it("F037: does not fire onEnterSubmit for an IME candidate-commit Enter (keyCode 229 fallback)", () => {
+  it("F037/F038: does not fire onEnterSubmit for an IME candidate-commit Enter (isComposing + keyCode 229 fallback)", () => {
     const onEnterSubmit = vi.fn();
     const content: JSONContent = {
       type: "doc",
@@ -226,7 +226,7 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     const editable = screen.getByRole("textbox", { name: "Message" });
     editable.focus();
 
-    fireEvent.keyDown(editable, { key: "Enter", keyCode: 229 });
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 229 });
     expect(onEnterSubmit).not.toHaveBeenCalled();
   });
 
@@ -247,6 +247,26 @@ describe("AS-313: keyboard operability, Escape blurs without losing content", ()
     editable.focus();
 
     fireEvent.keyDown(editable, { key: "Enter" });
+    expect(onEnterSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("F038: submits on a discrete Enter while isComposing is true but keyCode is not 229 (Android GBoard/Samsung Latin typing)", () => {
+    const onEnterSubmit = vi.fn();
+    const content: JSONContent = {
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }],
+    };
+    render(
+      createElement(RichTextEditor, {
+        content,
+        onEnterSubmit,
+        "aria-label": "Message",
+      }),
+    );
+    const editable = screen.getByRole("textbox", { name: "Message" });
+    editable.focus();
+
+    fireEvent.keyDown(editable, { key: "Enter", isComposing: true, keyCode: 13 });
     expect(onEnterSubmit).toHaveBeenCalledTimes(1);
   });
 

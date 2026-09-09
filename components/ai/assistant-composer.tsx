@@ -94,16 +94,16 @@ export function AssistantComposer({
     // exactly: Enter (no Shift) submits, Shift+Enter is a newline. See
     // this file's header comment for why no touch/viewport branch exists.
     //
-    // F037 (IME safety): an IME candidate-commit Enter must not submit —
-    // `isComposing` is the standard signal; `keyCode === 229` is the
-    // historical Safari/older-Chrome fallback for the same condition.
-    // Without this, a CJK user pressing Enter to commit a candidate sends
-    // raw partial text and the textarea clears mid-composition.
+    // F037/F038 (IME safety, narrowed): suppress Enter only for a genuine
+    // IME candidate-commit (`isComposing` AND `keyCode === 229`), not for
+    // ordinary composing alone — Android soft keyboards keep `isComposing`
+    // true during plain Latin typing, which broke Enter-to-send there
+    // under the original, broader guard. See message-composer.tsx for the
+    // full tradeoff writeup (same guard, kept in lockstep).
     if (
       e.key === "Enter" &&
       !e.shiftKey &&
-      !e.nativeEvent.isComposing &&
-      e.keyCode !== 229
+      !(e.nativeEvent.isComposing && e.keyCode === 229)
     ) {
       e.preventDefault();
       submit();

@@ -602,20 +602,26 @@ export function RichTextEditor({
         // avoids by intercepting HERE, before ProseMirror's own `Enter`
         // keymap binding (splitBlock) ever runs, rather than downstream in
         // some ancestor's `onKeyDown`.
-        // F037 (IME safety): an IME candidate-commit Enter must never be
-        // read as "submit" — `event.isComposing` covers the standard
-        // signal, `event.keyCode === 229` is the historical Safari/older
-        // Chrome fallback for the same condition (both checked because
-        // `isComposing` alone has had browser-specific gaps historically).
-        // Without this, a CJK user pressing Enter to commit a candidate
-        // sends the raw, uncommitted partial text and the editor clears.
+        // F037/F038 (IME safety, narrowed): suppress Enter only for a
+        // genuine IME candidate-commit, not for ordinary composing.
+        // `event.keyCode === 229` is the signal browsers send specifically
+        // for an IME candidate commit; requiring it alongside
+        // `isComposing` narrows the guard to that case, because Android
+        // soft keyboards (GBoard, Samsung) set `isComposing === true`
+        // during ordinary Latin typing too — the original, broader guard
+        // (any `isComposing`) silently broke Enter-to-send for those
+        // users. Tradeoff: a handful of older/uncommon IME+browser
+        // combinations that commit without setting `keyCode === 229` will
+        // now submit prematurely instead of being suppressed — accepted
+        // because 229 is well-supported by current mainstream CJK IME
+        // implementations, and losing Enter-to-send on a shipped,
+        // real-user chat feature is the worse failure mode.
         if (
           event.key === "Enter" &&
           !event.shiftKey &&
           !event.metaKey &&
           !event.ctrlKey &&
-          !event.isComposing &&
-          event.keyCode !== 229 &&
+          !(event.isComposing && event.keyCode === 229) &&
           onEnterSubmit
         ) {
           event.preventDefault()

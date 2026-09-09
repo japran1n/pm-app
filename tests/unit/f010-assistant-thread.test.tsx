@@ -100,13 +100,13 @@ describe("F010 AS-062: assistant text renders progressively", () => {
   });
 });
 
-describe("F037: assistant markdown is themed for the dark panel", () => {
-  it("applies prose-invert alongside prose so typography colours map onto dark-theme tokens", () => {
+describe("F038: assistant markdown does not force prose-invert", () => {
+  it("renders with the bare `prose` class, deferring dark-theme typography mapping to the global --tw-prose-* token mapping (design/linear bf6b0b69) rather than a per-call-site invert", () => {
     render(<AssistantThread messages={makeMessages()} />);
     const turn = screen.getByTestId("assistant-thread-assistant-turn");
     const proseEl = turn.querySelector(".prose");
     expect(proseEl).not.toBeNull();
-    expect(proseEl?.className).toMatch(/\bprose-invert\b/);
+    expect(proseEl?.className).not.toMatch(/\bprose-invert\b/);
   });
 });
 
@@ -151,8 +151,8 @@ describe("F010: considerate auto-scroll", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows 'jump to latest' once the user scrolls away from the bottom, and does not auto-scroll them back on new content", () => {
-    render(<AssistantThread messages={makeMessages()} />);
+  it("shows 'jump to latest' once the user scrolls away from the bottom, and does not auto-scroll them back when new content arrives (F038: rerenders with grown text, not just the initial scroll event)", () => {
+    const { rerender } = render(<AssistantThread messages={makeMessages()} />);
     const container = screen.getByTestId("assistant-thread");
     // Far from the bottom (well past the ~40px stick threshold).
     stubScrollGeometry(container, { scrollTop: 0, scrollHeight: 500, clientHeight: 40 });
@@ -161,8 +161,34 @@ describe("F010: considerate auto-scroll", () => {
     });
 
     expect(screen.getByTestId("assistant-thread-jump-to-latest")).toBeInTheDocument();
-    // Scroll position was not forced back to the bottom by the component.
+    // Scroll position was not forced back to the bottom by the initial
+    // scroll event.
     expect(container.scrollTop).toBe(0);
+
+    // Grow the streamed assistant message's text — this is what actually
+    // re-runs the "stick to bottom" effect (its dependency is derived
+    // from total rendered text length), which is the effect under test.
+    // Simulate the container's scrollHeight growing along with the
+    // content, the way a real DOM would as more text is appended.
+    stubScrollGeometry(container, { scrollTop: 0, scrollHeight: 900, clientHeight: 40 });
+    rerender(
+      <AssistantThread
+        messages={makeMessages([
+          { id: "u1", role: "user", text: "How do I set up onboarding?" },
+          {
+            id: "a1",
+            role: "assistant",
+            text: "Start with the **Onboarding** doc.".repeat(20),
+          },
+        ])}
+      />,
+    );
+
+    // The user's scroll position away from the bottom is preserved — the
+    // component did not yank them back down for the user who had already
+    // scrolled up.
+    expect(container.scrollTop).toBe(0);
+    expect(screen.getByTestId("assistant-thread-jump-to-latest")).toBeInTheDocument();
   });
 
   it("'jump to latest' is a real, keyboard-focusable button (AS-069) and scrolls to the bottom on activation", () => {
@@ -194,5 +220,20 @@ describe("F010: considerate auto-scroll", () => {
     expect(
       screen.queryByTestId("assistant-thread-jump-to-latest"),
     ).not.toBeInTheDocument();
+  });
+
+  it("F038 (F036 fold-in): renders `trailing` content inside the same scroll region as the messages", () => {
+    render(
+      <AssistantThread
+        messages={makeMessages()}
+        trailing={<div data-testid="trailing-tool-card">Running tool…</div>}
+      />,
+    );
+    const container = screen.getByTestId("assistant-thread");
+    const trailingEl = screen.getByTestId("trailing-tool-card");
+    expect(trailingEl).toBeInTheDocument();
+    // Lives inside the same scrollable, aria-live region as the messages
+    // — not a sibling outside it (the defect F036 fixed).
+    expect(container.contains(trailingEl)).toBe(true);
   });
 });

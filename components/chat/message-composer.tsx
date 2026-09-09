@@ -231,18 +231,15 @@ export function MessageComposer({
           <div
             className="min-h-10 max-h-40 flex-1 overflow-y-auto"
             onKeyDown={(e) => {
-              // F037 (IME safety): see the matching guard inside
-              // rich-text-editor.tsx's own `handleKeyDown` for why this
-              // duplicate check exists — that ProseMirror-level handler is
-              // the one that actually fires (its `stopPropagation()` keeps
-              // this outer, React-delegated handler from ever seeing the
-              // same keydown), but this guard is kept in lockstep so this
-              // wrapper is never the odd one out if that changes.
+              // F037/F038 (IME safety, narrowed): only suppress Enter for a
+              // genuine IME candidate-commit, not for ordinary composing.
+              // See rich-text-editor.tsx's own `handleKeyDown` for the full
+              // rationale (kept in lockstep with that guard, though it never
+              // actually fires in practice — see the comment there for why).
               if (
                 e.key === "Enter" &&
                 !e.shiftKey &&
-                !e.nativeEvent.isComposing &&
-                e.keyCode !== 229
+                !(e.nativeEvent.isComposing && e.keyCode === 229)
               ) {
                 e.preventDefault();
                 submit();
@@ -280,14 +277,26 @@ export function MessageComposer({
               onTyping?.();
             }}
             onKeyDown={(e) => {
-              // F037 (IME safety): a CJK IME's Enter-to-commit-candidate
-              // keystroke must not be read as submit — see the rich-text
-              // path's matching guard above for the full rationale.
+              // F037/F038 (IME safety, narrowed): Android soft keyboards
+              // (GBoard, Samsung) set `isComposing === true` during
+              // ordinary Latin typing, not just genuine CJK candidate
+              // selection — the original guard here (suppress whenever
+              // `isComposing` is true) broke Enter-to-send for those users
+              // on the plain-textarea path. `keyCode === 229` is the
+              // signal browsers send specifically for an IME candidate
+              // commit, so requiring BOTH narrows the guard to that case.
+              // Tradeoff: a small number of older/less-common IME+browser
+              // combinations that set `isComposing` without `keyCode 229`
+              // on commit will now submit prematurely — accepted because
+              // (a) 229 is well-supported across current Chrome/Safari/
+              // Firefox IME implementations for the mainstream CJK IMEs,
+              // and (b) an Android user losing Enter-to-send entirely on a
+              // shipped, real-user feature is worse than a rare
+              // premature-submit edge case on an already-degraded IME path.
               if (
                 e.key === "Enter" &&
                 !e.shiftKey &&
-                !e.nativeEvent.isComposing &&
-                e.keyCode !== 229
+                !(e.nativeEvent.isComposing && e.keyCode === 229)
               ) {
                 e.preventDefault();
                 submit();
