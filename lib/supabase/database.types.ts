@@ -93,6 +93,109 @@ export type Database = {
           },
         ]
       }
+      ai_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          proposals: Json | null
+          role: string
+          thread_id: string
+          tool_calls: Json | null
+          usage: Json | null
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          proposals?: Json | null
+          role: string
+          thread_id: string
+          tool_calls?: Json | null
+          usage?: Json | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          proposals?: Json | null
+          role?: string
+          thread_id?: string
+          tool_calls?: Json | null
+          usage?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "ai_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_threads: {
+        Row: {
+          created_at: string
+          created_by: string
+          doc_id: string | null
+          id: string
+          project_id: string | null
+          title: string | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          doc_id?: string | null
+          id?: string
+          project_id?: string | null
+          title?: string | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          doc_id?: string | null
+          id?: string
+          project_id?: string | null
+          title?: string | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_threads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_threads_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_threads_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_threads_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       approval_requests: {
         Row: {
           artifact_snapshot_path: string | null
