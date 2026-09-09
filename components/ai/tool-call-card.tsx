@@ -15,19 +15,21 @@
 // is safe rather than fragile — `summarizeToolResult` never legitimately
 // returns that exact string for a successful call).
 //
-// `detail` is server-sanitised before it ever reaches this hook (F026
-// stops raw thrown-error text; F032 bounds the one model-controlled
-// string that can reach `detail`) — it is rendered as plain text only,
-// never as HTML or markdown, per the spec's explicit instruction.
+// `detail` and `args` are both server-sanitised before they ever reach
+// this hook (F026 stops raw thrown-error text; F032 bounds the one
+// model-controlled string that used to reach `detail`; F033 extends the
+// same bounded-length/sanitised treatment to a real per-tool success
+// `detail` and to `tool_start`'s `args`, via lib/ai/tool-result-display.ts)
+// — both are rendered as plain text only, never as HTML or markdown, per
+// the spec's explicit instruction.
 //
-// No raw "arguments" ever cross the wire: `tool_start` only carries
-// `{id, name}` (see use-doc-assistant.ts's own event-envelope comment and
-// route.ts's `send({ t: "tool_start", id, name })` call site) — the model
-// input is never sent to the client. The expanded panel therefore shows
-// the result detail only; there is no arguments payload to render. This
-// is a data-availability constraint, not a scope decision by this
-// feature — see the handoff for the suggested follow-up if the protocol
-// should start including a sanitised argument summary.
+// F033 (fixes M2-SCRUTINY.md B1 / AS-063): the success path used to send
+// no `detail` at all (`summarizeToolResult` returned the bare literal
+// "ok"), which made `hasDetail` false and disabled the card's trigger
+// entirely — an inert, unclickable row. The route now sends a real,
+// bounded `detail` (and `args`) on success too, so `hasContent` below
+// reflects whether there is anything to show, not just whether the tool
+// failed.
 
 import { AlertTriangle, Check, Loader2 } from "lucide-react";
 
@@ -85,7 +87,11 @@ function oneLineSummary(toolCall: ToolCallView): string {
  */
 export function ToolCallCard({ toolCall }: { toolCall: ToolCallView }) {
   const failed = isFailed(toolCall);
-  const hasDetail = Boolean(toolCall.detail);
+  // F033: expandable whenever there is EITHER a result detail OR an
+  // argument summary to show — not `detail` alone, so a tool call whose
+  // result has no interesting detail but does have arguments (or vice
+  // versa) still expands.
+  const hasContent = Boolean(toolCall.detail) || Boolean(toolCall.args);
 
   return (
     <Collapsible
@@ -94,13 +100,13 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCallView }) {
       data-failed={failed ? "true" : "false"}
     >
       <CollapsibleTrigger
-        disabled={!hasDetail}
+        disabled={!hasContent}
         data-testid="tool-call-card-trigger"
         className={cn(
           "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left",
           "text-mini text-muted-foreground",
-          hasDetail && "cursor-pointer hover:bg-muted",
-          !hasDetail && "cursor-default",
+          hasContent && "cursor-pointer hover:bg-muted",
+          !hasContent && "cursor-default",
           // Visible focus state (AS-069) — same ring treatment
           // components/ui/button.tsx uses elsewhere in this codebase.
           "outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring",
@@ -114,7 +120,7 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCallView }) {
           {oneLineSummary(toolCall)}
         </span>
       </CollapsibleTrigger>
-      {hasDetail && (
+      {hasContent && (
         <CollapsibleContent
           data-testid="tool-call-card-detail"
           className={cn(
@@ -122,6 +128,11 @@ export function ToolCallCard({ toolCall }: { toolCall: ToolCallView }) {
             failed ? "text-status-waiting" : "text-muted-foreground",
           )}
         >
+          {toolCall.args && (
+            <div data-testid="tool-call-card-args" className="text-foreground/70">
+              {toolCall.args}
+            </div>
+          )}
           {toolCall.detail}
         </CollapsibleContent>
       )}

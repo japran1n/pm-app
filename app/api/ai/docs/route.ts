@@ -10,7 +10,7 @@
 //
 // Event envelope (tech-decisions.md, verbatim, one JSON object per `\n`):
 //   {"t":"text","v":"..."}
-//   {"t":"tool_start","id":"...","name":"..."}
+//   {"t":"tool_start","id":"...","name":"...","args":"..."}
 //   {"t":"tool_end","id":"...","summary":"...","detail":"..."}
 //   {"t":"proposal","id":"...","kind":"doc_edit"|"doc_create","payload":{...}}
 //   {"t":"usage","in":123,"out":456,"cached":789}
@@ -32,6 +32,11 @@ import type {
 
 import { buildDocsAgentRequest } from "@/lib/ai/docs-agent";
 import { getAnthropicClient, hasApiKey } from "@/lib/ai/client";
+import {
+  describeToolResult,
+  sanitizeToolArgsForDisplay,
+  sanitizeToolNameForDisplay,
+} from "@/lib/ai/tool-result-display";
 import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 
@@ -88,7 +93,10 @@ const requestBodySchema = z.object({
 
 type NdjsonEvent =
   | { t: "text"; v: string }
-  | { t: "tool_start"; id: string; name: string }
+  // F033: `args` is a sanitised, length-bounded summary of the tool's
+  // model-controlled arguments (sanitizeToolArgsForDisplay) — omitted
+  // entirely when there is nothing meaningful to show (e.g. no-arg tools).
+  | { t: "tool_start"; id: string; name: string; args?: string }
   | { t: "tool_end"; id: string; summary: string; detail?: string }
   | {
       t: "proposal";
@@ -141,34 +149,6 @@ function asProposal(
     // Not JSON, or not the ToolResult envelope shape — not a proposal.
   }
   return null;
-}
-
-/**
- * F032: bounds length and charset on a model-controlled tool name before it
- * is interpolated into a client-facing `detail` string. Real tool names are
- * short, lowercase, snake_case identifiers this route itself defines — so
- * anything outside `[a-zA-Z0-9_-]`, or over a generous length cap, is either
- * not a real tool name or an attempt to smuggle something through `detail`;
- * either way it gets truncated and stripped down to a safe-to-render token.
- */
-function sanitizeToolNameForDisplay(name: string): string {
-  const MAX_TOOL_NAME_DISPLAY_LEN = 64;
-  const stripped = name.replace(/[^a-zA-Z0-9_-]/g, "");
-  const bounded = stripped.slice(0, MAX_TOOL_NAME_DISPLAY_LEN);
-  return bounded.length > 0 ? bounded : "unknown";
-}
-
-/** A short, safe-to-render one-line summary for a tool_end event. Never leaks raw content. */
-function summarizeToolResult(content: string): string {
-  try {
-    const parsed = JSON.parse(content) as { status?: string; message?: string };
-    if (parsed?.status === "ok") return "ok";
-    if (parsed?.status === "empty") return parsed.message ?? "no results";
-    if (parsed?.status === "error") return parsed.message ?? "tool error";
-  } catch {
-    // fall through
-  }
-  return "ok";
 }
 
 export async function POST(request: Request) {
@@ -404,7 +384,17 @@ export async function POST(request: Request) {
 
           for (const toolUse of toolUseBlocks) {
             toolCallCount += 1;
-            send({ t: "tool_start", id: toolUse.id, name: toolUse.name });
+            // F033: a sanitised, length-bounded summary of the tool's
+            // (model-controlled) arguments — omitted from the event
+            // entirely when there is nothing meaningful to show, rather
+            // than sent as an empty string.
+            const argsSummary = sanitizeToolArgsForDisplay(toolUse.input);
+            send({
+              t: "tool_start",
+              id: toolUse.id,
+              name: toolUse.name,
+              ...(argsSummary ? { args: argsSummary } : {}),
+            });
 
             const tool = agentRequest.tools.find((t) => t.name === toolUse.name);
 
@@ -435,7 +425,17 @@ export async function POST(request: Request) {
                 resultContent = typeof raw === "string" ? raw : JSON.stringify(raw);
                 // AS-042: every tool_start gets exactly one matching
                 // tool_end, including on a thrown error (handled below).
-                send({ t: "tool_end", id: toolUse.id, summary: summarizeToolResult(resultContent) });
+                // F033 (fixes M2-SCRUTINY.md B1 / AS-063): a real,
+                // per-tool summary/detail derived from resultContent via
+                // describeToolResult — never the bare literal "ok", and
+                // never resultContent itself forwarded raw.
+                const { summary, detail } = describeToolResult(resultContent);
+                send({
+                  t: "tool_end",
+                  id: toolUse.id,
+                  summary,
+                  ...(detail ? { detail } : {}),
+                });
               } catch (toolError) {
                 isError = true;
                 // AS-105 / lib/ai/tools/types.ts:33: never pass a thrown

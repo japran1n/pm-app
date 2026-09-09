@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// F011: behavioural tests for the tool call card
+// F011 (F033 fixes B1): behavioural tests for the tool call card
 // (components/ai/tool-call-card.tsx).
 //
 // Covers:
@@ -11,8 +11,18 @@
 //   with a visible focus state.
 // - AS-070: no hex colour literals / new colour tokens anywhere in the
 //   component's source.
-// - A failed tool still renders (never a silent gap) with an error
-//   summary and — when expanded — the sanitised error detail.
+// - AS-105 / AS-041: a failed tool still renders (never a silent gap)
+//   with an error summary and — when expanded — the sanitised error
+//   detail.
+//
+// M2-SCRUTINY.md B1: every "done"/"failed" fixture below is built from
+// tests/helpers/f033-tool-result-fixtures.ts, which derives its
+// summary/detail/args strings by calling the ROUTE's own
+// lib/ai/tool-result-display.ts functions against real `ToolResult`
+// envelopes — never hand-invented strings the route cannot actually
+// produce. That shared fixture module is imported by both this file and
+// tests/integration/f007-docs-agent-route.test.ts, so the two can never
+// drift apart again.
 
 import "@testing-library/jest-dom/vitest";
 import fs from "node:fs";
@@ -22,35 +32,31 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ToolCallCard, ToolCallList } from "@/components/ai/tool-call-card";
 import type { ToolCallView } from "@/lib/ai/use-doc-assistant";
+import {
+  SEARCH_DOCS_ARGS_SUMMARY,
+  SEARCH_DOCS_OK_DESCRIPTION,
+  TOOL_ERROR_DETAIL,
+  TOOL_ERROR_SUMMARY,
+  getCurrentDocDoneToolCall,
+  searchDocsDoneToolCall,
+  searchDocsRunningToolCall,
+  toolThrewFailedToolCall,
+} from "../helpers/f033-tool-result-fixtures";
 
 afterEach(() => {
   cleanup();
 });
 
 function runningCall(overrides: Partial<ToolCallView> = {}): ToolCallView {
-  return { id: "t1", name: "search_docs", status: "running", ...overrides };
+  return searchDocsRunningToolCall(overrides);
 }
 
 function doneCall(overrides: Partial<ToolCallView> = {}): ToolCallView {
-  return {
-    id: "t1",
-    name: "search_docs",
-    status: "done",
-    summary: "Found 3 matching docs",
-    detail: "onboarding.md, setup.md, faq.md",
-    ...overrides,
-  };
+  return searchDocsDoneToolCall(overrides);
 }
 
 function failedCall(overrides: Partial<ToolCallView> = {}): ToolCallView {
-  return {
-    id: "t2",
-    name: "read_doc",
-    status: "done",
-    summary: "tool error",
-    detail: "The requested document could not be found.",
-    ...overrides,
-  };
+  return toolThrewFailedToolCall(overrides);
 }
 
 describe("F011: collapsed-by-default rendering (AS-063)", () => {
@@ -64,16 +70,31 @@ describe("F011: collapsed-by-default rendering (AS-063)", () => {
   it("shows the tool name and the one-line result summary once done, collapsed by default", () => {
     render(<ToolCallCard toolCall={doneCall()} />);
     expect(screen.getByText("search_docs")).toBeInTheDocument();
-    expect(screen.getByText("Found 3 matching docs")).toBeInTheDocument();
+    // Real route output for a 3-result search (see F033 spec's example),
+    // not a fabricated string.
+    expect(SEARCH_DOCS_OK_DESCRIPTION.summary).toBe("3 docs");
+    expect(screen.getByText("3 docs")).toBeInTheDocument();
     expect(screen.queryByTestId("tool-call-card-detail")).not.toBeInTheDocument();
   });
 
-  it("expands to show the result detail when the trigger is activated", () => {
+  it("expands to show the result detail (and the argument summary) when the trigger is activated", () => {
     render(<ToolCallCard toolCall={doneCall()} />);
     const trigger = screen.getByTestId("tool-call-card-trigger");
     fireEvent.click(trigger);
     expect(screen.getByTestId("tool-call-card-detail")).toHaveTextContent(
       "onboarding.md, setup.md, faq.md",
+    );
+    expect(screen.getByTestId("tool-call-card-args")).toHaveTextContent(
+      SEARCH_DOCS_ARGS_SUMMARY,
+    );
+  });
+
+  it("also becomes expandable for a tool result with no matching-array detail (get_current_doc)", () => {
+    render(<ToolCallCard toolCall={getCurrentDocDoneToolCall()} />);
+    expect(screen.getByText("1,240 words")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("tool-call-card-trigger"));
+    expect(screen.getByTestId("tool-call-card-detail")).toHaveTextContent(
+      "Onboarding Guide",
     );
   });
 });
@@ -81,8 +102,8 @@ describe("F011: collapsed-by-default rendering (AS-063)", () => {
 describe("F011: failed tool calls are never a silent gap", () => {
   it("renders a failed tool call in the same card type with an error summary", () => {
     render(<ToolCallCard toolCall={failedCall()} />);
-    expect(screen.getByText("read_doc")).toBeInTheDocument();
-    expect(screen.getByText("tool error")).toBeInTheDocument();
+    expect(screen.getByText("get_current_doc")).toBeInTheDocument();
+    expect(screen.getByText(TOOL_ERROR_SUMMARY)).toBeInTheDocument();
     expect(screen.getByTestId("tool-call-card")).toHaveAttribute(
       "data-failed",
       "true",
@@ -93,9 +114,7 @@ describe("F011: failed tool calls are never a silent gap", () => {
     render(<ToolCallCard toolCall={failedCall()} />);
     fireEvent.click(screen.getByTestId("tool-call-card-trigger"));
     const detail = screen.getByTestId("tool-call-card-detail");
-    expect(detail).toHaveTextContent(
-      "The requested document could not be found.",
-    );
+    expect(detail).toHaveTextContent(TOOL_ERROR_DETAIL);
     // Rendered as text, not injected as markup.
     expect(detail.innerHTML).not.toContain("<script");
   });
@@ -144,14 +163,14 @@ describe("F011: keyboard reachability and visible focus (AS-069)", () => {
     expect(trigger).not.toHaveAttribute("tabindex", "-1");
   });
 
-  it("is marked non-actionable (but stays focusable) when there is no detail to expand", () => {
+  it("is marked non-actionable (but stays focusable) when there is no result detail or argument summary yet", () => {
     // The underlying base-ui Collapsible.Trigger keeps a disabled control
     // in the tab order and communicates state via aria-disabled rather
     // than the native `disabled` attribute (which would remove it from
     // the tab order entirely) — this is the correct accessible pattern,
     // not a bug: AS-069 requires reachability, and a card with nothing
     // to expand should still be announced as such, not silently skipped.
-    render(<ToolCallCard toolCall={runningCall()} />);
+    render(<ToolCallCard toolCall={runningCall({ args: undefined })} />);
     const trigger = screen.getByTestId("tool-call-card-trigger");
     expect(trigger).toHaveAttribute("aria-disabled", "true");
     expect(trigger).not.toHaveAttribute("tabindex", "-1");

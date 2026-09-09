@@ -10,7 +10,7 @@
 // Event envelope this hook parses (verbatim from the route's own `send(...)`
 // calls, NOT the (stale) table in tech-decisions.md):
 //   {"t":"text","v":"..."}
-//   {"t":"tool_start","id":"...","name":"..."}
+//   {"t":"tool_start","id":"...","name":"...","args"?:"..."}
 //   {"t":"tool_end","id":"...","summary":"...","detail"?:"..."}
 //   {"t":"proposal","id":"...","kind":"doc_edit"|"doc_create","payload":{...}}
 //   {"t":"usage","in":123,"out":456,"cached":789}
@@ -30,6 +30,12 @@ export interface ToolCallView {
   id: string;
   name: string;
   status: "running" | "done";
+  // F033: a sanitised, length-bounded summary of the tool's (model-
+  // controlled) arguments, carried on tool_start and rendered alongside
+  // `detail` in the expanded panel. Server-sanitised before it ever
+  // reaches this hook — same treatment as `detail` (see
+  // components/ai/tool-call-card.tsx's header comment).
+  args?: string;
   summary?: string;
   detail?: string;
 }
@@ -71,7 +77,7 @@ interface UseDocAssistantResult {
 
 type NdjsonEvent =
   | { t: "text"; v: string }
-  | { t: "tool_start"; id: string; name: string }
+  | { t: "tool_start"; id: string; name: string; args?: string }
   | { t: "tool_end"; id: string; summary: string; detail?: string }
   | {
       t: "proposal";
@@ -143,15 +149,15 @@ export function useDocAssistant({
         return;
       }
       case "tool_start": {
-        const { id, name } = event as Extract<NdjsonEvent, { t: "tool_start" }>;
+        const { id, name, args } = event as Extract<NdjsonEvent, { t: "tool_start" }>;
         setToolCalls((prev) => {
           const idx = prev.findIndex((tc) => tc.id === id);
           if (idx !== -1) {
             const next = [...prev];
-            next[idx] = { ...next[idx], name, status: "running" };
+            next[idx] = { ...next[idx], name, args, status: "running" };
             return next;
           }
-          return [...prev, { id, name, status: "running" as const }];
+          return [...prev, { id, name, args, status: "running" as const }];
         });
         return;
       }

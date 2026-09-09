@@ -17,6 +17,13 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import {
+  SEARCH_DOCS_ARGS_RAW,
+  SEARCH_DOCS_ARGS_SUMMARY,
+  SEARCH_DOCS_OK_CONTENT,
+  SEARCH_DOCS_OK_DESCRIPTION,
+} from "../helpers/f033-tool-result-fixtures";
+
 const getUserMock = vi.fn();
 // F027: the route now re-verifies the caller's membership in the claimed
 // `workspaceId` via `supabase.from("workspace_members")...` before doing
@@ -276,10 +283,70 @@ describe("test_AS_042_tool_end_always_pairs_with_tool_start_even_on_throw", () =
     const toolStart = events.find((e) => e.t === "tool_start");
     const toolEnd = events.find((e) => e.t === "tool_end");
 
-    expect(toolStart).toEqual({ t: "tool_start", id: "tool-1", name: "search_docs" });
+    // F033: tool_start now also carries a sanitised argument summary.
+    expect(toolStart).toEqual({
+      t: "tool_start",
+      id: "tool-1",
+      name: "search_docs",
+      args: '{"query":"x"}',
+    });
     expect(toolEnd).toMatchObject({ t: "tool_end", id: "tool-1", summary: "tool error" });
     // The loop must continue (a second model call happens) rather than crash the request.
     expect(streamMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("test_AS_063_AS_041_a_successful_tool_call_sends_a_real_bounded_summary_and_detail", () => {
+  it("carries a real per-tool detail on tool_end success, not the bare literal 'ok' (fixes M2-SCRUTINY.md B1)", async () => {
+    const searchTool = {
+      name: "search_docs",
+      parse: (x: unknown) => x,
+      run: vi.fn(async () => SEARCH_DOCS_OK_CONTENT),
+    };
+    buildDocsAgentRequestMock.mockResolvedValue(baseAgentRequest([searchTool]));
+
+    streamMock
+      .mockReturnValueOnce(
+        fakeAnthropicStream({
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-1",
+              name: "search_docs",
+              input: SEARCH_DOCS_ARGS_RAW,
+            },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 },
+          stop_reason: "tool_use",
+        }),
+      )
+      .mockReturnValueOnce(
+        fakeAnthropicStream({
+          content: [{ type: "text", text: "found them" }],
+          usage: { input_tokens: 2, output_tokens: 2, cache_read_input_tokens: 0 },
+        }),
+      );
+
+    const response = await POST(makeRequest({ message: "find onboarding docs" }));
+    const events = await readEvents(response);
+
+    const toolStart = events.find((e) => e.t === "tool_start");
+    const toolEnd = events.find((e) => e.t === "tool_end");
+
+    expect(toolStart).toEqual({
+      t: "tool_start",
+      id: "tool-1",
+      name: "search_docs",
+      args: SEARCH_DOCS_ARGS_SUMMARY,
+    });
+    // Never the bare literal "ok" — a real, bounded per-tool summary/detail.
+    expect(toolEnd).toEqual({
+      t: "tool_end",
+      id: "tool-1",
+      summary: SEARCH_DOCS_OK_DESCRIPTION.summary,
+      detail: SEARCH_DOCS_OK_DESCRIPTION.detail,
+    });
+    expect(toolEnd?.summary).not.toBe("ok");
   });
 });
 
