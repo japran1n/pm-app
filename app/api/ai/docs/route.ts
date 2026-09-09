@@ -133,22 +133,38 @@ export async function POST(request: Request) {
 
   const encoder = new TextEncoder();
 
+  // AS-044: propagate the client's abort into the SDK call so an abandoned
+  // request doesn't keep billing for a response nobody reads. Declared
+  // outside `start()` so the ReadableStream's `cancel()` callback (invoked
+  // when the *consumer* — e.g. the browser's fetch reader — goes away) can
+  // reach the same per-request controller and closed flag. `cancel()` is a
+  // distinct signal from `request.signal` aborting: either one must tear
+  // this down.
+  const abortController = new AbortController();
+  let closed = false;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      let closed = false;
       const send = (event: NdjsonEvent) => {
-        if (closed) return;
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        if (closed || abortController.signal.aborted) return;
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        } catch {
+          // Controller may already be closed/errored (e.g. a race between
+          // cancel() and this call) — never let enqueue throw out of here.
+          closed = true;
+        }
       };
       const finish = () => {
         if (closed) return;
         closed = true;
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Already closed/errored by cancel() or the platform — harmless.
+        }
       };
 
-      // AS-044: propagate the client's abort into the SDK call so an
-      // abandoned request doesn't keep billing for a response nobody reads.
-      const abortController = new AbortController();
       const onClientAbort = () => abortController.abort();
       request.signal.addEventListener("abort", onClientAbort);
 
@@ -336,7 +352,12 @@ export async function POST(request: Request) {
       }
     },
     cancel() {
-      abortControllerCancelNoop();
+      // Called when the stream's consumer goes away (e.g. the client's
+      // fetch reader is cancelled/aborted). Must reach the SAME per-request
+      // abortController `start()` uses, and must mark `closed` so `finish()`
+      // never calls `controller.close()` on an already-torn-down controller.
+      closed = true;
+      abortController.abort();
     },
   });
 
@@ -347,13 +368,6 @@ export async function POST(request: Request) {
       "Cache-Control": "no-store",
     },
   });
-}
-
-function abortControllerCancelNoop() {
-  // Intentionally empty: the client-abort listener registered inside
-  // `start()` already tears down the upstream SDK call via the shared
-  // AbortController when the request's own signal fires. This hook exists
-  // only so `ReadableStream`'s `cancel()` contract is explicitly satisfied.
 }
 
 function isAbortLike(error: unknown): boolean {

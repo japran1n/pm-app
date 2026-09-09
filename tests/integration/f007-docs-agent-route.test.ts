@@ -80,6 +80,34 @@ function baseAgentRequest(tools: unknown[] = []) {
   };
 }
 
+/**
+ * A scripted fake for `client.beta.messages.stream(...)` whose
+ * `finalMessage()` emits one text delta synchronously and then hangs on a
+ * caller-controlled promise — long enough for a test to read one NDJSON
+ * chunk from the response body and cancel the reader before the SDK call
+ * "resolves", the exact race B3 describes (the client goes away while the
+ * upstream call is still in flight).
+ */
+function pendingAnthropicStream() {
+  const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+  let resolveFinal!: (value: unknown) => void;
+  const finalPromise = new Promise((resolve) => {
+    resolveFinal = resolve;
+  });
+  const stream = {
+    on(event: string, cb: (...args: unknown[]) => void) {
+      listeners[event] ??= [];
+      listeners[event].push(cb);
+      return this;
+    },
+    async finalMessage() {
+      for (const cb of listeners.text ?? []) cb("partial chunk");
+      return finalPromise;
+    },
+  };
+  return { stream, resolveFinal };
+}
+
 /** A scripted fake for `client.beta.messages.stream(...)`. */
 function fakeAnthropicStream(finalMessage: unknown, textDeltas: string[] = []) {
   const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
@@ -277,6 +305,59 @@ describe("test_AS_044_client_abort_propagates_to_the_sdk_call", () => {
     expect(streamMock).toHaveBeenCalledTimes(1);
     const [, options] = streamMock.mock.calls[0] as [unknown, { signal?: AbortSignal }];
     expect(options?.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe("test_AS_044_test_AS_042_reader_cancel_mid_stream_tears_down_cleanly", () => {
+  it("aborts the upstream SDK call, causes no unhandled rejection, and enqueues nothing after cancel", async () => {
+    const unhandledReasons: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => unhandledReasons.push(reason);
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      const { stream: fake, resolveFinal } = pendingAnthropicStream();
+      streamMock.mockReturnValue(fake);
+
+      const response = await POST(makeRequest({ message: "hi" }));
+      const reader = response.body!.getReader();
+
+      // Read the one chunk the fake emits before it hangs.
+      const first = await reader.read();
+      expect(first.done).toBe(false);
+
+      // The client goes away mid-stream — this is what a real aborted
+      // `fetch` reader does to a ReadableStream's `cancel()` hook.
+      await reader.cancel();
+
+      // The upstream SDK call was still "in flight" when cancel() fired;
+      // let it resolve now, exactly as B3 describes — this is the moment
+      // the old code called `controller.close()` on an already-torn-down
+      // controller.
+      resolveFinal({
+        content: [{ type: "text", text: "ok" }],
+        usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 },
+      });
+
+      // Flush microtasks so the route's post-finalMessage code (usage/done
+      // events, finish()) actually runs.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // The signal handed to the SDK must genuinely be aborted, not merely
+      // an AbortSignal instance (a fresh, never-aborted signal would also
+      // satisfy `instanceof AbortSignal`).
+      const [, options] = streamMock.mock.calls[0] as [unknown, { signal?: AbortSignal }];
+      expect(options?.signal?.aborted).toBe(true);
+
+      // Draining the cancelled reader again must complete immediately —
+      // nothing was enqueued after cancellation.
+      const second = await reader.read();
+      expect(second.done).toBe(true);
+
+      expect(unhandledReasons).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
   });
 });
 
