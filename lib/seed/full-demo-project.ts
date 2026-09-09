@@ -1154,6 +1154,7 @@ export async function createFullDemoProject(
             scope: "personal",
             view_type: "list",
             config: { filters: { assignee: "me", status: ["todo", "in_progress"] } },
+            is_default: false,
           },
           {
             workspace_id: workspaceId,
@@ -1163,6 +1164,7 @@ export async function createFullDemoProject(
             scope: "shared",
             view_type: "calendar",
             config: {},
+            is_default: false,
           },
           {
             workspace_id: workspaceId,
@@ -1172,6 +1174,7 @@ export async function createFullDemoProject(
             scope: "shared",
             view_type: "timeline",
             config: {},
+            is_default: false,
           },
         ])
         .select("id"),
