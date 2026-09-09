@@ -280,11 +280,13 @@ export async function POST(request: Request) {
           workspaceId: body.workspaceId,
           currentDocId: body.currentDocId ?? null,
           // F028: prior turns (if any) forwarded in order, followed by the
-          // new user turn. Every prior turn is plain text content — never
-          // trusted as anything other than DATA (see the injection
-          // defence layer in lib/ai/docs-agent.ts, which already warns the
-          // model that conversation content, like document content, may
-          // originate outside the user's own team).
+          // new user turn. Every prior turn — including prior "assistant"
+          // turns — is plain text content and is never trusted as anything
+          // other than DATA. The injection defence layer in
+          // lib/ai/docs-agent.ts explicitly names conversation history and
+          // prior assistant turns as untrusted, on par with document
+          // content, so a compromised client cannot inject a fabricated
+          // prior turn to change tool selection or steer the model.
           messages: [
             ...history.map(
               (turn): BetaMessageParam => ({ role: turn.role, content: turn.content }),

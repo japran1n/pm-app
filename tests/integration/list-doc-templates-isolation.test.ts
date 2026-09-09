@@ -13,39 +13,21 @@
 // `kind='doc'` template that genuinely exists in workspace B (which they
 // are not a member of) — an actual RLS denial, not a filtered mock.
 
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient as createSupabaseJsClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  SUPABASE_URL,
+  PUBLISHABLE_KEY,
+  shouldRunLiveDbTests,
+  createAdminClient,
+  sweepLeakedFixtures,
+} from "./support/live-db";
 
-function loadDotEnv() {
-  const path = join(process.cwd(), ".env");
-  if (!existsSync(path)) return;
-  const contents = readFileSync(path, "utf8");
-  for (const line of contents.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    if (key && !(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
-
-loadDotEnv();
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
-if (process.env.CI && !haveAdminCreds) {
-  throw new Error(
-    "F024: missing Supabase credentials required to run this suite in CI (haveAdminCreds is false). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY as GitHub Actions repository secrets.",
-  );
-}
+// F031: these suites only run when explicit opt-in
+// (AI_DOCS_LIVE_DB_TESTS=1) or CI is set, on top of having admin
+// credentials — see tests/integration/support/live-db.ts. An ordinary
+// `npm test` run with `.env` pointed at a live project no longer seeds it.
+const LEAK_PREFIXES = ["f024-", "f027-"];
 
 let callerSessionClient: SupabaseClient | null = null;
 
@@ -55,7 +37,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => callerSessionClient,
 }));
 
-describe.skipIf(!haveAdminCreds)(
+describe.skipIf(!shouldRunLiveDbTests)(
   "list_doc_templates excludes doc templates from a workspace the caller is not a member of (F024: AS-024, AS-002)",
   () => {
     let adminClient: SupabaseClient;
@@ -67,9 +49,7 @@ describe.skipIf(!haveAdminCreds)(
     let uniqueName: string;
 
     beforeAll(async () => {
-      adminClient = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+      adminClient = createAdminClient();
 
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       uniqueName = `F024 Foreign Doc Template ${uniqueSuffix}`;
@@ -174,6 +154,10 @@ describe.skipIf(!haveAdminCreds)(
       }
       if (callerUserId) await adminClient.auth.admin.deleteUser(callerUserId);
       if (ownerBUserId) await adminClient.auth.admin.deleteUser(ownerBUserId);
+      // F031: belt-and-suspenders sweep for anything left behind by a
+      // beforeAll that threw partway, or a prior run killed before its own
+      // afterAll could execute.
+      await sweepLeakedFixtures(adminClient, LEAK_PREFIXES);
     });
 
     it("AS-024/AS-002: a caller in workspace A never sees a real doc template that exists only in workspace B", async () => {
@@ -200,7 +184,7 @@ describe.skipIf(!haveAdminCreds)(
 // workspace B, calling with A as their current workspace, must not see
 // B's doc template even though RLS alone (which only proves "some active
 // membership") would let them.
-describe.skipIf(!haveAdminCreds)(
+describe.skipIf(!shouldRunLiveDbTests)(
   "list_doc_templates excludes a doc template from a workspace the caller is ALSO an active member of, when it is not their current workspace (F027: AS-024)",
   () => {
     let adminClient: SupabaseClient;
@@ -211,9 +195,7 @@ describe.skipIf(!haveAdminCreds)(
     let uniqueName: string;
 
     beforeAll(async () => {
-      adminClient = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+      adminClient = createAdminClient();
 
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       uniqueName = `F027 Both-Member Doc Template ${uniqueSuffix}`;
@@ -308,6 +290,10 @@ describe.skipIf(!haveAdminCreds)(
         }
       }
       if (callerUserId) await adminClient.auth.admin.deleteUser(callerUserId);
+      // F031: belt-and-suspenders sweep for anything left behind by a
+      // beforeAll that threw partway, or a prior run killed before its own
+      // afterAll could execute.
+      await sweepLeakedFixtures(adminClient, LEAK_PREFIXES);
     });
 
     it("AS-024: a doc template that exists only in workspace B never appears when the caller's CURRENT workspace is A, even though the caller is also an active member of B", async () => {

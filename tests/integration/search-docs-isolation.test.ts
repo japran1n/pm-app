@@ -15,39 +15,21 @@
 // document in workspace B (which they are not a member of), gets zero
 // results for that token — an actual RLS denial, not a filtered mock.
 
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient as createSupabaseJsClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  SUPABASE_URL,
+  PUBLISHABLE_KEY,
+  shouldRunLiveDbTests,
+  createAdminClient,
+  sweepLeakedFixtures,
+} from "./support/live-db";
 
-function loadDotEnv() {
-  const path = join(process.cwd(), ".env");
-  if (!existsSync(path)) return;
-  const contents = readFileSync(path, "utf8");
-  for (const line of contents.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    if (key && !(key in process.env)) {
-      process.env[key] = value;
-    }
-  }
-}
-
-loadDotEnv();
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-const SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const haveAdminCreds = Boolean(SUPABASE_URL && SECRET_KEY && PUBLISHABLE_KEY);
-if (process.env.CI && !haveAdminCreds) {
-  throw new Error(
-    "F024: missing Supabase credentials required to run this suite in CI (haveAdminCreds is false). Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY as GitHub Actions repository secrets.",
-  );
-}
+// F031: these suites only run when explicit opt-in
+// (AI_DOCS_LIVE_DB_TESTS=1) or CI is set, on top of having admin
+// credentials — see tests/integration/support/live-db.ts. An ordinary
+// `npm test` run with `.env` pointed at a live project no longer seeds it.
+const LEAK_PREFIXES = ["f024-", "f027-"];
 
 let callerSessionClient: SupabaseClient | null = null;
 
@@ -57,7 +39,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => callerSessionClient,
 }));
 
-describe.skipIf(!haveAdminCreds)(
+describe.skipIf(!shouldRunLiveDbTests)(
   "search_docs excludes documents from a workspace the caller is not a member of (F024: AS-023)",
   () => {
     let adminClient: SupabaseClient;
@@ -69,9 +51,7 @@ describe.skipIf(!haveAdminCreds)(
     let uniqueToken: string;
 
     beforeAll(async () => {
-      adminClient = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+      adminClient = createAdminClient();
 
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       uniqueToken = `zzsd${uniqueSuffix.replace(/[^a-z0-9]/gi, "")}`;
@@ -164,6 +144,10 @@ describe.skipIf(!haveAdminCreds)(
       }
       if (callerUserId) await adminClient.auth.admin.deleteUser(callerUserId);
       if (ownerBUserId) await adminClient.auth.admin.deleteUser(ownerBUserId);
+      // F031: belt-and-suspenders sweep for anything left behind by a
+      // beforeAll that threw partway, or a prior run killed before its own
+      // afterAll could execute.
+      await sweepLeakedFixtures(adminClient, LEAK_PREFIXES);
     });
 
     it("AS-023: searching a token that exists only inside a document in a workspace the caller cannot see returns no results", async () => {
@@ -188,7 +172,7 @@ describe.skipIf(!haveAdminCreds)(
 // would let them (they really are an active member of B too). This is
 // the property AS-023 ("restricts results to the caller's current
 // workspace") actually asserts, and the only test that can prove it.
-describe.skipIf(!haveAdminCreds)(
+describe.skipIf(!shouldRunLiveDbTests)(
   "search_docs excludes a document from a workspace the caller is ALSO an active member of, when it is not their current workspace (F027: AS-023)",
   () => {
     let adminClient: SupabaseClient;
@@ -199,9 +183,7 @@ describe.skipIf(!haveAdminCreds)(
     let uniqueToken: string;
 
     beforeAll(async () => {
-      adminClient = createSupabaseJsClient(SUPABASE_URL!, SECRET_KEY!, {
-        auth: { autoRefreshToken: false, persistSession: false },
-      });
+      adminClient = createAdminClient();
 
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       uniqueToken = `zzsdboth${uniqueSuffix.replace(/[^a-z0-9]/gi, "")}`;
@@ -283,6 +265,10 @@ describe.skipIf(!haveAdminCreds)(
         }
       }
       if (callerUserId) await adminClient.auth.admin.deleteUser(callerUserId);
+      // F031: belt-and-suspenders sweep for anything left behind by a
+      // beforeAll that threw partway, or a prior run killed before its own
+      // afterAll could execute.
+      await sweepLeakedFixtures(adminClient, LEAK_PREFIXES);
     });
 
     it("AS-023: a token that exists only in workspace B's doc returns no results when the caller's CURRENT workspace is A, even though the caller is also an active member of B", async () => {
