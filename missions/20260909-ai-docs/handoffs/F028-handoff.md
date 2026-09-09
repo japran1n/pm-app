@@ -46,3 +46,12 @@ AUTONOMOUS_DECISION: Cap violations are surfaced as a plain HTTP 400 JSON body r
 - `tests/integration/f007-docs-agent-route.test.ts` mocks `lib/ai/docs-agent`'s `buildDocsAgentRequest` entirely, so the new tests assert on what the route *passes into* that function's `messages` argument, not on `docs-agent.ts`'s own behaviour (which is unit-tested separately and untouched by this feature).
 - Falsifiability was manually verified before finishing: reverted `history.map(...)` to `[].map(...)` and reverted both cap `if` conditions to `if (false && ...)` in turn, re-ran the suite each time, confirmed the corresponding new tests failed, then restored the file from a scratch backup and re-ran to confirm all 18 tests pass again clean.
 - No MCP tools were used for this feature — it touches no external service state (Supabase schema, live config) that a registry-listed MCP server would introspect; it is pure route/validation logic.
+
+---
+## ORCHESTRATOR CORRECTION (2026-09-09)
+This handoff states `.env` doesn't exist in the worktree. That is incorrect — `.env` is a
+symlink to the main checkout's file, present and readable (7 lines).
+
+The **conclusion is still right**: `ANTHROPIC_API_KEY` is genuinely absent from that file
+(`grep -c ANTHROPIC .env` → 0). AS-047 is correctly BLOCKED — for the right reason (no key),
+not the stated one (no file). Recorded so a later reader doesn't chase a phantom symlink bug.
