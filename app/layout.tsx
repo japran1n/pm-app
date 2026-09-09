@@ -1,23 +1,20 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Inter, Source_Code_Pro } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
-// Linear design system migration (F002): Inter Variable stands in for
-// Linear's proprietary "Inter Display" pairing — same geometric-humanist
-// character, opsz axis enabled for optical sizing across the type scale.
-// IBM Plex Mono is kept (Berkeley Mono declined) for link-text / tag-text.
-const sans = Inter({
-  variable: "--font-sans",
+// Supabase design system migration (F004): Inter Variable without the
+// opsz axis (Supabase's Inter-tuned type scale doesn't rely on optical
+// sizing). Source Code Pro replaces IBM Plex Mono for link-text / tag-text.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
-  axes: ["opsz"],
   display: "swap",
 });
 
-const mono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
+const sourceCodePro = Source_Code_Pro({
+  variable: "--font-source-code-pro",
   subsets: ["latin"],
-  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -30,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${sans.variable} ${mono.variable} h-full antialiased`}
+      className={`${inter.variable} ${sourceCodePro.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}
