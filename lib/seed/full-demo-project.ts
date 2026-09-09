@@ -25,7 +25,9 @@
 // nothing here works around a constraint, it just performs the insert
 // directly instead of through a cookie-authenticated request.
 
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Database } from "@/lib/supabase/database.types";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -87,6 +89,7 @@ async function must<T>(
 export async function createFullDemoProject(
   workspaceId: string,
   memberUserIds: Record<DemoRole, string>,
+  memberCredentials: Record<DemoRole, { email: string; password: string }>,
 ): Promise<CreateFullDemoProjectResult> {
   if (typeof workspaceId !== "string" || workspaceId.length === 0) {
     return { ok: false, error: "Invalid workspace." };
@@ -1197,19 +1200,68 @@ export async function createFullDemoProject(
       { user: "member", kind: "task_due_soon", actor: "owner", taskId: checkoutBugId },
       { user: "viewer", kind: "watcher_update", actor: "member", taskId: wireframesId },
     ];
+    // create_notification is granted to `authenticated` only and reads
+    // auth.uid() internally (both to attribute the notification's actor_id
+    // -- it never trusts the client-supplied p_actor_id -- and, unless
+    // p_system => true is passed while genuinely session-less, to verify
+    // the caller is an active member of p_workspace_id). The admin
+    // (service-role) client used everywhere else in this module has no
+    // user session, so auth.uid() is null there and every call would hit
+    // "no authenticated caller". Mirrors scripts/seed-demo-team.ts's
+    // handling of create_workspace_with_owner: sign in as the real actor
+    // user via a publishable-key client to get a genuine session, then
+    // call the RPC through that client. Batched by distinct actor (rather
+    // than re-authenticating per notification) since several seeds below
+    // share the same actor.
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL || !PUBLISHABLE_KEY) {
+      throw new Error(
+        "Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY env vars.",
+      );
+    }
+
+    const seedsByActor = new Map<DemoRole, typeof notificationSeeds>();
     for (const n of notificationSeeds) {
-      const { error } = await admin.rpc("create_notification", {
-        p_user_id: memberUserIds[n.user],
-        p_workspace_id: workspaceId,
-        p_kind: n.kind,
-        p_actor_id: memberUserIds[n.actor],
-        p_task_id: n.taskId ?? undefined,
-        p_comment_id: n.commentId ?? undefined,
-        p_payload: {},
-      });
-      if (error) {
-        throw new Error(`create_notification(${n.kind}) failed: ${error.message}`);
+      const bucket = seedsByActor.get(n.actor);
+      if (bucket) {
+        bucket.push(n);
+      } else {
+        seedsByActor.set(n.actor, [n]);
       }
+    }
+
+    for (const [actor, seeds] of seedsByActor) {
+      const actorCreds = memberCredentials[actor];
+      const actorSession = createSupabaseClient<Database>(
+        SUPABASE_URL,
+        PUBLISHABLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } },
+      );
+      const { error: signInError } = await actorSession.auth.signInWithPassword({
+        email: actorCreds.email,
+        password: actorCreds.password,
+      });
+      if (signInError) {
+        throw new Error(`sign-in as ${actor} failed: ${signInError.message}`);
+      }
+
+      for (const n of seeds) {
+        const { error } = await actorSession.rpc("create_notification", {
+          p_user_id: memberUserIds[n.user],
+          p_workspace_id: workspaceId,
+          p_kind: n.kind,
+          p_actor_id: memberUserIds[n.actor],
+          p_task_id: n.taskId ?? undefined,
+          p_comment_id: n.commentId ?? undefined,
+          p_payload: {},
+        });
+        if (error) {
+          throw new Error(`create_notification(${n.kind}) failed: ${error.message}`);
+        }
+      }
+
+      await actorSession.auth.signOut();
     }
 
     return {

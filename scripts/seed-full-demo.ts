@@ -19,7 +19,17 @@ async function main() {
   const memberUserIds = Object.fromEntries(
     Object.entries(team.users).map(([role, user]) => [role, user.id]),
   ) as Record<keyof typeof team.users, string>;
-  const project = await createFullDemoProject(team.workspaceId, memberUserIds);
+  const memberCredentials = Object.fromEntries(
+    Object.entries(team.users).map(([role, user]) => [
+      role,
+      { email: user.email, password: team.password },
+    ]),
+  ) as Record<keyof typeof team.users, { email: string; password: string }>;
+  const project = await createFullDemoProject(
+    team.workspaceId,
+    memberUserIds,
+    memberCredentials,
+  );
 
   if (!project.ok) {
     console.error(`\n[seed-full-demo] Project content seed FAILED: ${project.error}`);
