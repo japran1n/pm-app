@@ -16,7 +16,7 @@
 
 import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
-import { updateDoc } from "@/lib/actions/docs";
+import { createDoc, updateDoc } from "@/lib/actions/docs";
 
 export type ApplyDocEditProposalInput = {
   docId: string;
@@ -108,4 +108,81 @@ export async function applyDocEditProposal(
   }
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------
+// F017: apply an accepted `create_doc` proposal.
+// ---------------------------------------------------------------------
+
+export type ApplyDocCreateProposalInput = {
+  workspaceId: string;
+  title: string;
+  markdown: string;
+  folderId: string | null;
+};
+
+/**
+ * Returned shape matches `createDoc`'s own convention (lib/actions/
+ * docs.ts) exactly — `{ id }` on success, `{ error }` on failure — rather
+ * than the `{ ok: true } | { ok: false; error }` shape
+ * `applyDocEditProposal` uses above. Per this feature's spec: the caller
+ * (ProposalCard) needs the new doc's id to decide navigation itself; it
+ * never navigates server-side.
+ */
+export type ApplyDocCreateProposalResult = { id: string } | { error: string };
+
+/**
+ * Applies an accepted `create_doc` proposal (lib/ai/tools/create-doc.ts).
+ * Two ordinary writes through lib/actions/docs.ts's EXISTING actions — no
+ * new write path is opened here, same invariant `applyDocEditProposal`
+ * keeps above:
+ *
+ *   1. `createDoc(workspaceId, folderId, projectId)` — `createDoc`'s own
+ *      signature has no title/content parameters (it always creates an
+ *      "Untitled"/"" row so the editor page always has a real row to load
+ *      into, per its own header comment), so the AI-drafted title and
+ *      markdown are applied as a second, immediate write.
+ *   2. `updateDoc(id, title, markdown)` — the SAME write path a human's
+ *      own autosave uses (F016 reuses it identically for edit proposals).
+ *
+ * `projectId` is always `null` here: this feature's Touches does not
+ * include threading the currently-open project's id down through
+ * AssistantSidebar/ProposalCard (the assistant sidebar mounts at the
+ * workspace layout level, not scoped to a project route — see
+ * components/ai/assistant-sidebar.tsx's own header comment on why
+ * `workspaceId` is its only route-derived id today). A `null` projectId
+ * places the new doc at the workspace's Docs root, the exact same target
+ * `components/docs/new-doc-button.tsx` and `docs-sidebar.tsx` use for
+ * their own "New doc" actions when invoked outside a project route — this
+ * is an existing, supported doc location, never a silent
+ * workspace-root-of-something-else.
+ *
+ * `client_visible` is never set by either write here — the `docs` table
+ * defaults it to `false` at the schema level (`client_role_and_task_
+ * client_visibility.sql`), so an AI-drafted document is client-invisible
+ * by construction, with no code path in this action able to override it.
+ *
+ * If the second write fails after the first succeeds, the empty
+ * ("Untitled", "") row from step 1 is left behind rather than rolled back
+ * — same accepted tradeoff `updateDoc`'s own callers already live with
+ * (no cross-action transaction exists in this codebase), and it is a
+ * harmless, editable, ordinary doc row a user can simply retitle or
+ * delete, not a data-integrity issue.
+ */
+export async function applyDocCreateProposal(
+  input: ApplyDocCreateProposalInput,
+): Promise<ApplyDocCreateProposalResult> {
+  const { workspaceId, title, markdown, folderId } = input;
+
+  const created = await createDoc(workspaceId, folderId, null);
+  if ("error" in created) {
+    return { error: created.error };
+  }
+
+  const updated = await updateDoc(created.id, title, markdown);
+  if (updated.error) {
+    return { error: updated.error };
+  }
+
+  return { id: created.id };
 }

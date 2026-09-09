@@ -31,15 +31,22 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
+const mockCreateDoc = vi.fn();
+
 vi.mock("@/lib/actions/docs", () => ({
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
+  createDoc: (...args: unknown[]) => mockCreateDoc(...args),
 }));
 
 vi.mock("@/lib/observability/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
 
-import { applyDocEditProposal, normalizeForStaleCheck } from "@/lib/actions/ai-proposals";
+import {
+  applyDocCreateProposal,
+  applyDocEditProposal,
+  normalizeForStaleCheck,
+} from "@/lib/actions/ai-proposals";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 
@@ -156,5 +163,81 @@ describe("applyDocEditProposal (F016)", () => {
     it("strips trailing per-line whitespace and normalises CRLF to LF", () => {
       expect(normalizeForStaleCheck("a \r\nb\t\nc")).toBe("a\nb\nc");
     });
+  });
+});
+
+// F017: unit tests for `applyDocCreateProposal` — the single, narrow write
+// path for an accepted AI doc-create proposal.
+//
+// Covers:
+// - AS-026: accepting creates the doc via the existing `createDoc` action
+//   with the workspace/folder from the proposal, then writes the proposed
+//   title/markdown via the existing `updateDoc` action — never a new/
+//   parallel write path — and returns `{ id }` (no server-side navigation).
+// - AS-002: both writes go through lib/actions/docs.ts's existing actions.
+describe("applyDocCreateProposal (F017)", () => {
+  const WORKSPACE_ID = "55555555-5555-4555-8555-555555555555";
+  const FOLDER_ID = "22222222-2222-4222-8222-222222222222";
+  const NEW_DOC_ID = "33333333-3333-4333-8333-333333333333";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateDoc.mockResolvedValue({ id: NEW_DOC_ID });
+    mockUpdateDoc.mockResolvedValue({});
+  });
+
+  it("test_AS_026_happy_path_creates_via_createDoc_then_writes_title_and_markdown_via_updateDoc", async () => {
+    const result = await applyDocCreateProposal({
+      workspaceId: WORKSPACE_ID,
+      title: "Q3 Retro Notes",
+      markdown: "# Q3 Retro\n\nWhat went well.",
+      folderId: FOLDER_ID,
+    });
+
+    expect(mockCreateDoc).toHaveBeenCalledWith(WORKSPACE_ID, FOLDER_ID, null);
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      NEW_DOC_ID,
+      "Q3 Retro Notes",
+      "# Q3 Retro\n\nWhat went well.",
+    );
+    expect(result).toEqual({ id: NEW_DOC_ID });
+  });
+
+  it("test_AS_002_null_folderId_is_passed_through_to_createDoc_unchanged", async () => {
+    await applyDocCreateProposal({
+      workspaceId: WORKSPACE_ID,
+      title: "Untitled Draft",
+      markdown: "content",
+      folderId: null,
+    });
+
+    expect(mockCreateDoc).toHaveBeenCalledWith(WORKSPACE_ID, null, null);
+  });
+
+  it("returns the createDoc error and never calls updateDoc when createDoc fails", async () => {
+    mockCreateDoc.mockResolvedValue({ error: "Something went wrong. Please try again in a moment." });
+
+    const result = await applyDocCreateProposal({
+      workspaceId: WORKSPACE_ID,
+      title: "Doc",
+      markdown: "content",
+      folderId: null,
+    });
+
+    expect(result).toEqual({ error: "Something went wrong. Please try again in a moment." });
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
+  });
+
+  it("returns the updateDoc error when the doc is created but the content write fails", async () => {
+    mockUpdateDoc.mockResolvedValue({ error: "Something went wrong. Please try again in a moment." });
+
+    const result = await applyDocCreateProposal({
+      workspaceId: WORKSPACE_ID,
+      title: "Doc",
+      markdown: "content",
+      folderId: null,
+    });
+
+    expect(result).toEqual({ error: "Something went wrong. Please try again in a moment." });
   });
 });

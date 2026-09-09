@@ -19,6 +19,7 @@ import type {
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 
 import { DOCS_MODEL } from "@/lib/ai/client";
+import { createDocTool } from "@/lib/ai/tools/create-doc";
 import { getCurrentDocTool } from "@/lib/ai/tools/get-current-doc";
 import { listDocTemplatesTool } from "@/lib/ai/tools/list-doc-templates";
 import { proposeDocEditTool } from "@/lib/ai/tools/propose-doc-edit";
@@ -64,13 +65,15 @@ function forRunner<Schema extends z.ZodType>(
  * F015: `propose_doc_edit` (F014) is now registered here — F014 left it
  * intentionally unregistered until a UI existed to render the `proposal`
  * event it produces (see F014's handoff "Notes for the next worker").
- * `create_doc` remains unregistered; it lands with its own F017 UI work.
- * A literal array (not a `Set`, not built from an async result) so tool
- * order is deterministic across requests, which matters for prompt
- * caching. Built fresh per request (not a module-level constant) because
- * each closure now carries the caller's own `workspaceId` (F027) — the
- * tool *names*, order, and schemas are still identical across requests,
- * so prompt caching is unaffected.
+ * F017: `create_doc` is now registered too, for the same reason — its own
+ * proposal card (components/ai/proposal-card.tsx's `doc_create` branch)
+ * now exists to render the `proposal` event it produces. A literal array
+ * (not a `Set`, not built from an async result) so tool order is
+ * deterministic across requests, which matters for prompt caching. Built
+ * fresh per request (not a module-level constant) because each closure now
+ * carries the caller's own `workspaceId` (F027) — the tool *names*, order,
+ * and schemas are still identical across requests, so prompt caching is
+ * unaffected.
  */
 function buildDocsAgentTools(workspaceId: string) {
   return [
@@ -78,6 +81,7 @@ function buildDocsAgentTools(workspaceId: string) {
     forRunner(searchDocsTool, workspaceId),
     forRunner(listDocTemplatesTool, workspaceId),
     forRunner(proposeDocEditTool, workspaceId),
+    forRunner(createDocTool, workspaceId),
   ] as const;
 }
 

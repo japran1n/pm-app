@@ -593,6 +593,7 @@ export function AssistantSidebar({
                       does (see this block's own F036 comment above). */}
                   <ProposalList
                     proposals={proposals}
+                    workspaceId={workspaceId}
                     onAccept={acceptProposal}
                     onReject={rejectProposal}
                   />

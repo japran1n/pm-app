@@ -18,12 +18,16 @@
 // - F016 stale guard: when the editor bridge's live content differs from
 //   the proposal's `currentMarkdown`, Accept surfaces the stale error and
 //   never calls the write path at all.
+// - F017: a `doc_create` proposal renders title/folder/template/content
+//   preview, Accept calls `applyDocCreateProposal` and collapses to
+//   accepted, Reject performs zero calls and collapses to rejected.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
 const mockApplyDocEditProposal = vi.fn();
+const mockApplyDocCreateProposal = vi.fn();
 vi.mock("@/lib/actions/ai-proposals", async () => {
   const actual = await vi.importActual<typeof import("@/lib/actions/ai-proposals")>(
     "@/lib/actions/ai-proposals",
@@ -31,12 +35,18 @@ vi.mock("@/lib/actions/ai-proposals", async () => {
   return {
     ...actual,
     applyDocEditProposal: (...args: unknown[]) => mockApplyDocEditProposal(...args),
+    applyDocCreateProposal: (...args: unknown[]) => mockApplyDocCreateProposal(...args),
   };
 });
 
 const mockGetDocEditorHandle = vi.fn();
 vi.mock("@/lib/ai/doc-editor-bridge", () => ({
   getDocEditorHandle: (...args: unknown[]) => mockGetDocEditorHandle(...args),
+}));
+
+const mockUsePathname = vi.fn();
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockUsePathname(),
 }));
 
 import { ProposalCard } from "@/components/ai/proposal-card";
@@ -66,6 +76,8 @@ describe("ProposalCard", () => {
     vi.clearAllMocks();
     mockGetDocEditorHandle.mockReturnValue(null);
     mockApplyDocEditProposal.mockResolvedValue({ ok: true });
+    mockApplyDocCreateProposal.mockResolvedValue({ id: "new-doc-1" });
+    mockUsePathname.mockReturnValue("/w/acme/docs");
   });
 
   afterEach(() => {
@@ -74,7 +86,7 @@ describe("ProposalCard", () => {
 
   it("test_AS_064_pending_proposal_renders_a_card_with_visible_diff_and_accept_reject_buttons", () => {
     render(
-      <ProposalCard proposal={pendingProposal()} onAccept={vi.fn()} onReject={vi.fn()} />,
+      <ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={vi.fn()} onReject={vi.fn()} />,
     );
 
     expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
@@ -87,7 +99,7 @@ describe("ProposalCard", () => {
 
   it("test_AS_069_accept_and_reject_are_real_buttons_with_visible_focus_ring_classes", () => {
     render(
-      <ProposalCard proposal={pendingProposal()} onAccept={vi.fn()} onReject={vi.fn()} />,
+      <ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={vi.fn()} onReject={vi.fn()} />,
     );
 
     const accept = screen.getByTestId("proposal-card-accept");
@@ -127,7 +139,7 @@ describe("ProposalCard", () => {
     });
     const onAccept = vi.fn();
 
-    render(<ProposalCard proposal={pendingProposal()} onAccept={onAccept} onReject={vi.fn()} />);
+    render(<ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={onAccept} onReject={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId("proposal-card-accept"));
 
@@ -146,6 +158,7 @@ describe("ProposalCard", () => {
     render(
       <ProposalCard
         proposal={pendingProposal({ status: "accepted" })}
+        workspaceId="ws-1"
         onAccept={vi.fn()}
         onReject={vi.fn()}
       />,
@@ -159,7 +172,7 @@ describe("ProposalCard", () => {
 
   it("test_AS_066_reject_performs_zero_calls_and_collapses_to_a_rejected_row", () => {
     const onReject = vi.fn();
-    render(<ProposalCard proposal={pendingProposal()} onAccept={vi.fn()} onReject={onReject} />);
+    render(<ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={vi.fn()} onReject={onReject} />);
 
     fireEvent.click(screen.getByTestId("proposal-card-reject"));
 
@@ -172,6 +185,7 @@ describe("ProposalCard", () => {
     render(
       <ProposalCard
         proposal={pendingProposal({ status: "rejected" })}
+        workspaceId="ws-1"
         onAccept={vi.fn()}
         onReject={vi.fn()}
       />,
@@ -191,7 +205,7 @@ describe("ProposalCard", () => {
     });
     const onAccept = vi.fn();
 
-    render(<ProposalCard proposal={pendingProposal()} onAccept={onAccept} onReject={vi.fn()} />);
+    render(<ProposalCard proposal={pendingProposal()} workspaceId="ws-1" onAccept={onAccept} onReject={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId("proposal-card-accept"));
 
@@ -203,5 +217,135 @@ describe("ProposalCard", () => {
     expect(onAccept).not.toHaveBeenCalled();
     // Still pending — the user can retry once the assistant regenerates.
     expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+  });
+});
+
+describe("ProposalCard — doc_create (F017)", () => {
+  const CREATE_PAYLOAD = {
+    kind: "doc_create" as const,
+    proposalId: "p2",
+    title: "Q3 Retro Notes",
+    markdown:
+      "# Q3 Retro\n\n" +
+      "A".repeat(220) +
+      "\n\nWhat went well, what didn't, and what we'll change next quarter.",
+    folderId: "folder-1",
+    templateName: "Retro",
+  };
+
+  function pendingCreateProposal(overrides: Partial<ProposalView> = {}): ProposalView {
+    return { id: "p2", kind: "doc_create", payload: CREATE_PAYLOAD, status: "pending", ...overrides };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApplyDocCreateProposal.mockResolvedValue({ id: "new-doc-1" });
+    mockUsePathname.mockReturnValue("/w/acme/docs");
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("test_AS_026_pending_doc_create_proposal_renders_title_folder_template_and_a_content_preview", () => {
+    render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "pending");
+    expect(screen.getByText(/Q3 Retro Notes/)).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-card-meta")).toHaveTextContent("In a folder");
+    expect(screen.getByTestId("proposal-card-meta")).toHaveTextContent("Retro");
+    const preview = screen.getByTestId("proposal-card-content-preview").textContent ?? "";
+    expect(preview.length).toBeLessThanOrEqual(201); // 200 chars + ellipsis
+    expect(preview).toContain("Q3 Retro");
+  });
+
+  it("test_AS_026_accept_calls_applyDocCreateProposal_with_the_proposals_own_fields_and_collapses_to_accepted", async () => {
+    const onAccept = vi.fn();
+    render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={onAccept}
+        onReject={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+
+    await vi.waitFor(() => {
+      expect(mockApplyDocCreateProposal).toHaveBeenCalledWith({
+        workspaceId: "ws-1",
+        title: CREATE_PAYLOAD.title,
+        markdown: CREATE_PAYLOAD.markdown,
+        folderId: CREATE_PAYLOAD.folderId,
+      });
+    });
+    expect(onAccept).toHaveBeenCalledWith("p2");
+  });
+
+  it("accepted doc_create proposal renders a collapsed single row with a link to the new doc, no buttons", async () => {
+    const { rerender } = render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("proposal-card-accept"));
+    await vi.waitFor(() => expect(mockApplyDocCreateProposal).toHaveBeenCalled());
+
+    rerender(
+      <ProposalCard
+        proposal={pendingCreateProposal({ status: "accepted" })}
+        workspaceId="ws-1"
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("proposal-card")).toHaveAttribute("data-status", "accepted");
+    expect(screen.queryByTestId("proposal-card-accept")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("proposal-card-reject")).not.toBeInTheDocument();
+  });
+
+  it("test_reject_performs_zero_calls_and_collapses_to_a_rejected_row_with_no_buttons", () => {
+    const onReject = vi.fn();
+    render(
+      <ProposalCard
+        proposal={pendingCreateProposal()}
+        workspaceId="ws-1"
+        onAccept={vi.fn()}
+        onReject={onReject}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("proposal-card-reject"));
+
+    expect(mockApplyDocCreateProposal).not.toHaveBeenCalled();
+    expect(onReject).toHaveBeenCalledWith("p2");
+  });
+
+  it("test_AS_026_no_folder_and_no_template_renders_docs_root_and_no_template_mention", () => {
+    const payload = { ...CREATE_PAYLOAD, folderId: null, templateName: null };
+    render(
+      <ProposalCard
+        proposal={{ id: "p3", kind: "doc_create", payload, status: "pending" }}
+        workspaceId="ws-1"
+        onAccept={vi.fn()}
+        onReject={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("proposal-card-meta")).toHaveTextContent("Docs root");
+    expect(screen.getByTestId("proposal-card-meta")).not.toHaveTextContent("template");
   });
 });

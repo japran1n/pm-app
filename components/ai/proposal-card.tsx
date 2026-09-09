@@ -40,14 +40,62 @@
 // marked `accepted` in the hook's state.
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DiffView, countDiffLines } from "@/components/ai/diff-view";
 import { getDocEditorHandle } from "@/lib/ai/doc-editor-bridge";
-import { applyDocEditProposal, normalizeForStaleCheck } from "@/lib/actions/ai-proposals";
+import {
+  applyDocCreateProposal,
+  applyDocEditProposal,
+  normalizeForStaleCheck,
+} from "@/lib/actions/ai-proposals";
 import type { DocEditProposalWithDiff } from "@/lib/ai/tools/propose-doc-edit";
+import type { DocCreateProposal } from "@/lib/ai/tools/types";
 import type { ProposalView } from "@/lib/ai/use-doc-assistant";
+
+/** Trims to a preview length without splitting mid-word where avoidable. */
+const CONTENT_PREVIEW_CHARS = 200;
+
+function previewMarkdown(markdown: string): string {
+  const trimmed = markdown.trim();
+  if (trimmed.length <= CONTENT_PREVIEW_CHARS) return trimmed;
+  return `${trimmed.slice(0, CONTENT_PREVIEW_CHARS).trimEnd()}…`;
+}
+
+/**
+ * Same `/w/<slug>/...` parse `components/ai/assistant-sidebar.tsx`'s own
+ * `useWorkspaceSlugFromPath` already uses — duplicated here (rather than
+ * exported/shared) since this feature's Touches is scoped to
+ * `proposal-card.tsx` and `lib/actions/ai-proposals.ts`, not a refactor of
+ * assistant-sidebar.tsx's internals.
+ */
+function useWorkspaceSlugFromPath(): string | null {
+  const pathname = usePathname();
+  if (!pathname) return null;
+  const match = pathname.match(/^\/w\/([^/]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Narrows a proposal's `unknown` payload to the doc-create shape this card
+ * knows how to render.
+ */
+function asDocCreateProposal(payload: unknown): DocCreateProposal | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate = payload as Partial<DocCreateProposal>;
+  if (
+    candidate.kind === "doc_create" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.markdown === "string" &&
+    (candidate.folderId === null || typeof candidate.folderId === "string") &&
+    (candidate.templateName === null || typeof candidate.templateName === "string")
+  ) {
+    return candidate as DocCreateProposal;
+  }
+  return null;
+}
 
 const STALE_ERROR_MESSAGE =
   "The document changed since this proposal was made. Please ask the assistant to revise it.";
@@ -75,17 +123,188 @@ function asDocEditProposal(payload: unknown): DocEditProposalWithDiff | null {
   return null;
 }
 
-export function ProposalCard({
+/**
+ * The `doc_create` counterpart to `ProposalCard`'s `doc_edit` rendering
+ * below, following the same three-state shape (pending/accepted/rejected,
+ * one-time decision) established there. Split into its own component
+ * rather than a branch inside `ProposalCard` because its Accept path calls
+ * a different server action with a different result shape (`{ id } |
+ * { error }`, not `{ ok: true } | { ok: false; error }`) and needs an
+ * additional `workspaceId` prop `doc_edit` proposals never needed
+ * (`applyDocEditProposal` resolves the target doc, and therefore its
+ * workspace, from `docId` alone).
+ */
+function DocCreateProposalCard({
   proposal,
+  data,
+  workspaceId,
   onAccept,
   onReject,
 }: {
   proposal: ProposalView;
+  data: DocCreateProposal;
+  workspaceId: string;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
 }) {
   const [isApplying, setIsApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  const [createdDocId, setCreatedDocId] = useState<string | null>(null);
+  const workspaceSlug = useWorkspaceSlugFromPath();
+
+  async function handleAccept() {
+    if (isApplying) return;
+    setApplyError(null);
+    setIsApplying(true);
+    try {
+      const result = await applyDocCreateProposal({
+        workspaceId,
+        title: data.title,
+        markdown: data.markdown,
+        folderId: data.folderId,
+      });
+
+      if ("error" in result) {
+        setApplyError(result.error);
+        setIsApplying(false);
+        return;
+      }
+
+      // Success: this component never navigates itself (per this
+      // feature's spec — "do not navigate server-side; let the client
+      // decide") — it renders a link to the new doc once one exists and
+      // lets the user click through when they're ready.
+      setCreatedDocId(result.id);
+      onAccept(proposal.id);
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  function handleReject() {
+    // Same zero-calls contract as the doc_edit card's Reject (AS-010) —
+    // a plain, synchronous state transition, nothing async.
+    onReject(proposal.id);
+  }
+
+  const docHref =
+    createdDocId && workspaceSlug ? `/w/${workspaceSlug}/docs/${createdDocId}` : null;
+
+  if (proposal.status === "accepted") {
+    return (
+      <div
+        data-testid="proposal-card"
+        data-status="accepted"
+        className="flex items-center gap-2 rounded-md bg-status-done-bg px-2.5 py-1.5 text-mini text-status-done"
+      >
+        <Check className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">Created: &quot;{data.title}&quot;</span>
+        {docHref && (
+          <a
+            href={docHref}
+            className="shrink-0 rounded-sm font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="proposal-card-open-doc"
+          >
+            Open
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (proposal.status === "rejected") {
+    return (
+      <div
+        data-testid="proposal-card"
+        data-status="rejected"
+        className="flex items-center gap-2 rounded-md bg-muted px-2.5 py-1.5 text-mini text-muted-foreground"
+      >
+        <X className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">Discarded: &quot;{data.title}&quot;</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="proposal-card"
+      data-status="pending"
+      className="flex flex-col gap-2 rounded-md bg-status-waiting-bg p-2.5"
+    >
+      <p className="text-mini font-medium text-foreground">
+        New document: &quot;{data.title}&quot;
+      </p>
+      <p data-testid="proposal-card-meta" className="text-micro text-status-waiting">
+        {data.folderId ? "In a folder" : "Docs root"}
+        {data.templateName ? ` · From template "${data.templateName}"` : ""}
+      </p>
+      <p
+        data-testid="proposal-card-content-preview"
+        className="whitespace-pre-wrap text-mini text-foreground"
+      >
+        {previewMarkdown(data.markdown) || "(empty document)"}
+      </p>
+
+      {applyError && (
+        <p role="alert" className="text-mini text-status-blocked" data-testid="proposal-card-error">
+          {applyError}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={handleAccept}
+          disabled={isApplying}
+          data-testid="proposal-card-accept"
+        >
+          <Check className="size-3.5" aria-hidden="true" />
+          {isApplying ? "Creating…" : "Accept"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={handleReject}
+          disabled={isApplying}
+          data-testid="proposal-card-reject"
+        >
+          <X className="size-3.5" aria-hidden="true" />
+          Reject
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function ProposalCard({
+  proposal,
+  workspaceId,
+  onAccept,
+  onReject,
+}: {
+  proposal: ProposalView;
+  workspaceId: string;
+  onAccept: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  const createData = asDocCreateProposal(proposal.payload);
+  if (createData) {
+    return (
+      <DocCreateProposalCard
+        proposal={proposal}
+        data={createData}
+        workspaceId={workspaceId}
+        onAccept={onAccept}
+        onReject={onReject}
+      />
+    );
+  }
 
   const data = asDocEditProposal(proposal.payload);
   if (!data) return null;
@@ -229,10 +448,12 @@ export function ProposalCard({
 
 export function ProposalList({
   proposals,
+  workspaceId,
   onAccept,
   onReject,
 }: {
   proposals: ProposalView[];
+  workspaceId: string;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
 }) {
@@ -243,6 +464,7 @@ export function ProposalList({
         <ProposalCard
           key={proposal.id}
           proposal={proposal}
+          workspaceId={workspaceId}
           onAccept={onAccept}
           onReject={onReject}
         />
