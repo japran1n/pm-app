@@ -710,6 +710,14 @@ export async function createFullDemoProject(
         .select("id")
         .single(),
     );
+    const dmUserLow =
+      memberUserIds.owner < memberUserIds.admin
+        ? memberUserIds.owner
+        : memberUserIds.admin;
+    const dmUserHigh =
+      memberUserIds.owner < memberUserIds.admin
+        ? memberUserIds.admin
+        : memberUserIds.owner;
     const dmChannel = await must(
       "insert channel dm",
       admin
@@ -718,6 +726,8 @@ export async function createFullDemoProject(
           workspace_id: workspaceId,
           kind: "dm",
           created_by: owner,
+          dm_user_low: dmUserLow,
+          dm_user_high: dmUserHigh,
         })
         .select("id")
         .single(),
