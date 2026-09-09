@@ -36,6 +36,7 @@ import { useBreadcrumbExtra } from "@/components/nav/breadcrumb-context";
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 import { AssistantThread } from "@/components/ai/assistant-thread";
 import { ToolCallList } from "@/components/ai/tool-call-card";
+import { AssistantComposer } from "@/components/ai/assistant-composer";
 
 const STORAGE_KEY = "pm-app:ai-docs-sidebar-open";
 
@@ -217,7 +218,7 @@ export function AssistantSidebar({
   // Message/tool/proposal RENDERING is F010-F013's job (see file header)
   // — this call proves the hook wires up correctly and drives the
   // disabled-composer/no-API-key state (AS-071).
-  const { messages, toolCalls, isStreaming, error } = useDocAssistant({
+  const { messages, toolCalls, isStreaming, error, send, stop } = useDocAssistant({
     workspaceId,
     currentDocId,
   });
@@ -295,33 +296,16 @@ export function AssistantSidebar({
         )}
       </div>
 
-      {/* Composer — real input/send/stop wiring is F012's job. This
-          region only owns the AS-071 disabled/no-API-key state, since that
-          state gates the whole composer regardless of which feature wires
-          the rest of it. */}
+      {/* Composer — F012: real input/send/stop wiring, plus the AS-071
+          no-API-key message (this component owns that whole region now;
+          see components/ai/assistant-composer.tsx's own header comment). */}
       <div className="shrink-0 border-t border-border p-3">
-        {hasApiKey ? (
-          <div
-            className="rounded-md border border-border px-2.5 py-2 text-mini text-muted-foreground"
-            data-testid="assistant-sidebar-composer-placeholder"
-          >
-            {isStreaming ? "Assistant is responding…" : "Composer (F012)"}
-          </div>
-        ) : (
-          // AS-071: a configuration state, not an error — no
-          // destructive/red styling. Uses the same neutral
-          // muted/muted-foreground pair the spec's token table assigns to
-          // "rejected / settled-neutral", which is exactly the register
-          // this message needs: calm, not alarming.
-          <div
-            className="rounded-md bg-muted px-2.5 py-2 text-mini text-muted-foreground"
-            data-testid="assistant-sidebar-no-api-key"
-          >
-            The docs assistant isn&apos;t configured for this environment yet
-            — an administrator needs to set an API key before it can
-            respond.
-          </div>
-        )}
+        <AssistantComposer
+          hasApiKey={hasApiKey}
+          isStreaming={isStreaming}
+          send={send}
+          stop={stop}
+        />
       </div>
     </aside>
   );

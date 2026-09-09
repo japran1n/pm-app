@@ -222,13 +222,17 @@ describe("F009 AS-071: no API key configured", () => {
       expect(screen.getByTestId("assistant-sidebar")).toBeInTheDocument();
     });
 
-    const notice = screen.getByTestId("assistant-sidebar-no-api-key");
+    // F012: the no-API-key notice now lives inside AssistantComposer
+    // (components/ai/assistant-composer.tsx), which owns this whole
+    // region's DOM slot — testid updated from
+    // `assistant-sidebar-no-api-key` accordingly.
+    const notice = screen.getByTestId("assistant-composer-no-api-key");
     expect(notice).toBeInTheDocument();
     // Configuration state, not an error: must not use destructive styling.
     expect(notice.className).not.toMatch(/destructive/);
     // No functioning composer input rendered alongside the notice.
     expect(
-      screen.queryByTestId("assistant-sidebar-composer-placeholder"),
+      screen.queryByTestId("assistant-composer-input"),
     ).not.toBeInTheDocument();
   });
 
@@ -237,13 +241,15 @@ describe("F009 AS-071: no API key configured", () => {
     render(<Harness docTitle="Doc One" hasApiKey={true} />);
     fireEvent.click(screen.getByTestId("assistant-sidebar-toggle"));
 
+    // F012: real composer input, replacing F009's own
+    // `assistant-sidebar-composer-placeholder`.
     await waitFor(() => {
       expect(
-        screen.getByTestId("assistant-sidebar-composer-placeholder"),
+        screen.getByTestId("assistant-composer-input"),
       ).toBeInTheDocument();
     });
     expect(
-      screen.queryByTestId("assistant-sidebar-no-api-key"),
+      screen.queryByTestId("assistant-composer-no-api-key"),
     ).not.toBeInTheDocument();
   });
 });
