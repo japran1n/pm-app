@@ -100,7 +100,7 @@ Ništa od toga nije dirano.
 
 ---
 
-## Nalaz koji audit nije imao: test suite je nedeterministički
+## Nalaz koji audit nije imao: merenje test suite-a je bilo pod duplim opterećenjem
 
 Dva uzastopna pokretanja `npm test` na **istom, nepromenjenom kodu**:
 
@@ -109,18 +109,44 @@ Dva uzastopna pokretanja `npm test` na **istom, nepromenjenom kodu**:
 | 1 | 100 | 83 |
 | 2 | 114 | 56 |
 
-Uzrok: `tests/integration/**` (573 fajla) gađa **jednu živu Supabase bazu**,
-paralelno. Testovi prave i brišu iste projekte/workspace-ove istovremeno, pa se
-međusobno ruše kroz lock kontenciju i timeout-e od 30 s.
+Prvo objašnjenje koje sam napisao — "suite je strukturno nedeterministički" —
+**nije tačno**, i ispravljam ga ovde.
 
-Dokaz da je kontencija a ne kod: `tests/integration/f007-approvals-rls.test.ts`
+### Šta repo već zna o ovome
+
+Kontencija integration testova nad jednom deljenom bazom je odavno
+dijagnostikovana, izmerena i ublažena, sve dokumentovano u `vitest.config.ts`:
+
+- **F278** — podigao `testTimeout` na 30 s. Komentar navodi tačno isti simptom
+  koji sam ja izmerio: *"two consecutive runs gave 41 and 36 failures; 30s was
+  deterministic (575/575 green)"*.
+- **F312** — podigao `hookTimeout` na 30 s i ograničio `maxWorkers: 4`, jer je
+  pravi izvor kontencije Supabase Auth rate limit, ne CPU.
+- **F092** — izdvojio realtime testove u `vitest.realtime.config.ts` koji ide
+  `--no-file-parallelism`, sa merenjem: 13–20 s isporuke pod kontencijom
+  naspram 1–2 s na neopterećenom hostu.
+
+Dakle suite je nekad bio **575/575 zelen** pod ovom konfiguracijom.
+
+### Zašto je moje merenje ispalo loše
+
+Tokom cele noći **dve Claude sesije su paralelno vrtele isti suite protiv istog
+remote Supabase projekta** — ova i ona koja radi design system. To je duplo
+opterećenje preko `maxWorkers: 4` budžeta koji je F312 pažljivo odmerio, plus
+moje DDL migracije koje traže `AccessExclusiveLock`. Moj prvi pokušaj primene
+migracije je i pao na `40P01: deadlock detected` baš zbog toga.
+
+Dokaz da je u pitanju kontencija a ne kod: `tests/integration/f007-approvals-rls.test.ts`
 pada u punom paralelnom run-u, a **prolazi 30/30 pokrenut sam**.
 
-Posledica: **suite se trenutno ne može koristiti kao regresioni gate.** Ovo je
-ozbiljniji problem od svega u originalnom auditu, jer znači da CI ne može da
-razlikuje pravu regresiju od šuma.
+### Šta ovo znači
 
-Rešenje (nije rađeno noćas, traži odluku): svaki test fajl treba da radi u
-svom izolovanom prostoru — zaseban workspace po fajlu sa determinističkim
-prefiksom, ili Supabase branch po CI run-u, ili lokalni `supabase start` stack
-umesto deljenog remote projekta.
+Ne "suite je pokvaren", nego: **suite podnosi tačno jednog pokretača.** Dva
+istovremena run-a protiv jednog remote projekta se međusobno ruše, i nijedan od
+njih se ne sme čitati kao regresioni signal.
+
+Otvoreno pitanje za tebe (nije rešavano noćas, traži odluku): da li ostaviti
+tako uz pravilo "jedan run u isto vreme", ili uložiti u stvarnu izolaciju —
+Supabase branch po CI run-u, ili lokalni `supabase start` stack umesto deljenog
+remote projekta. Prvo je besplatno i radi; drugo je jedino što omogućava da
+dvoje ljudi (ili dve sesije) rade paralelno.
