@@ -48,8 +48,8 @@ vi.mock("@/lib/observability/logger", () => ({
 import {
   applyDocCreateProposal,
   applyDocEditProposal,
-  normalizeForStaleCheck,
 } from "@/lib/actions/ai-proposals";
+import { normalizeForStaleCheck } from "@/lib/ai/normalize-markdown";
 
 const DOC_ID = "11111111-1111-4111-8111-111111111111";
 

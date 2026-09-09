@@ -1,4 +1,5 @@
 "use server";
+import { normalizeForStaleCheck } from "@/lib/ai/normalize-markdown";
 
 // F016: the single, narrow, auditable write path for an accepted AI doc-
 // edit proposal. This is an ordinary server action — it is NOT reachable
@@ -42,15 +43,9 @@ const STALE_ERROR_MESSAGE =
  * verbatim). Trims trailing whitespace per line and normalises line
  * endings to `\n`, so an invisible difference (a stray trailing space, or
  * a CRLF a client-side paste introduced) does not produce a spurious
- * rejection of an otherwise-unchanged document.
+ * rejection of an otherwise-unchanged document. Moved to lib/ai/normalize-markdown.ts
+ * so client components can import it without crossing the "use server" boundary.
  */
-export function normalizeForStaleCheck(markdown: string): string {
-  return markdown
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.replace(/[ \t]+$/, ""))
-    .join("\n");
-}
 
 /**
  * Applies an accepted `propose_doc_edit` proposal. Re-reads the document's

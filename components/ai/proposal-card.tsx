@@ -50,8 +50,8 @@ import { logger } from "@/lib/observability/logger";
 import {
   applyDocCreateProposal,
   applyDocEditProposal,
-  normalizeForStaleCheck,
 } from "@/lib/actions/ai-proposals";
+import { normalizeForStaleCheck } from "@/lib/ai/normalize-markdown";
 import type { DocEditProposalWithDiff } from "@/lib/ai/tools/propose-doc-edit";
 import type { DocCreateProposal } from "@/lib/ai/tools/types";
 import type { ProposalView } from "@/lib/ai/use-doc-assistant";
