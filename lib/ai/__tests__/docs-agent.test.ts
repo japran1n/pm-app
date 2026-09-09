@@ -82,7 +82,10 @@ describe("buildDocsAgentRequest (F006)", () => {
     mockListDocTemplatesRun.mockResolvedValue({ status: "empty", reason: "no_results" });
   });
 
-  it("test_AS_004_tool_array_contains_exactly_the_three_existing_docs_tools", async () => {
+  // F015: `propose_doc_edit` (F014) is now registered alongside the
+  // original three read-only tools — see docs-agent.ts's own comment on
+  // buildDocsAgentTools for why this landed in F015, not F014.
+  it("test_AS_004_tool_array_contains_exactly_the_four_registered_docs_tools", async () => {
     const request = await buildDocsAgentRequest({
       userId: USER_ID,
       workspaceId: WORKSPACE_ID,
@@ -91,8 +94,13 @@ describe("buildDocsAgentRequest (F006)", () => {
     });
 
     const names = request.tools.map((t) => t.name).sort();
-    expect(names).toEqual(["get_current_doc", "list_doc_templates", "search_docs"]);
-    expect(request.tools).toHaveLength(3);
+    expect(names).toEqual([
+      "get_current_doc",
+      "list_doc_templates",
+      "propose_doc_edit",
+      "search_docs",
+    ]);
+    expect(request.tools).toHaveLength(4);
   });
 
   it("test_AS_004_tool_order_is_deterministic_across_calls", async () => {

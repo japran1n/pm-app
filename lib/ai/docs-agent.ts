@@ -21,6 +21,7 @@ import type {
 import { DOCS_MODEL } from "@/lib/ai/client";
 import { getCurrentDocTool } from "@/lib/ai/tools/get-current-doc";
 import { listDocTemplatesTool } from "@/lib/ai/tools/list-doc-templates";
+import { proposeDocEditTool } from "@/lib/ai/tools/propose-doc-edit";
 import { searchDocsTool } from "@/lib/ai/tools/search-docs";
 import type { ToolResult } from "@/lib/ai/tools/types";
 
@@ -60,20 +61,23 @@ function forRunner<Schema extends z.ZodType>(
 }
 
 /**
- * The exact three tools that exist as of this feature. Do NOT add
- * `propose_doc_edit` or `create_doc` stubs here — those land in F014/F017
- * with their own write-safety work. A literal array (not a `Set`, not
- * built from an async result) so tool order is deterministic across
- * requests, which matters for prompt caching. Built fresh per request (not
- * a module-level constant) because each closure now carries the caller's
- * own `workspaceId` (F027) — the tool *names*, order, and schemas are
- * still identical across requests, so prompt caching is unaffected.
+ * F015: `propose_doc_edit` (F014) is now registered here — F014 left it
+ * intentionally unregistered until a UI existed to render the `proposal`
+ * event it produces (see F014's handoff "Notes for the next worker").
+ * `create_doc` remains unregistered; it lands with its own F017 UI work.
+ * A literal array (not a `Set`, not built from an async result) so tool
+ * order is deterministic across requests, which matters for prompt
+ * caching. Built fresh per request (not a module-level constant) because
+ * each closure now carries the caller's own `workspaceId` (F027) — the
+ * tool *names*, order, and schemas are still identical across requests,
+ * so prompt caching is unaffected.
  */
 function buildDocsAgentTools(workspaceId: string) {
   return [
     forRunner(getCurrentDocTool, workspaceId),
     forRunner(searchDocsTool, workspaceId),
     forRunner(listDocTemplatesTool, workspaceId),
+    forRunner(proposeDocEditTool, workspaceId),
   ] as const;
 }
 

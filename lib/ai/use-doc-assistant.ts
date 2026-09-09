@@ -79,6 +79,20 @@ interface UseDocAssistantResult {
   send: (text: string) => void;
   stop: () => void;
   reset: () => void;
+  /**
+   * F015/F016: marks a pending proposal `accepted` in this hook's own
+   * state. This function performs NO writes itself — it is called by
+   * `ProposalCard` (components/ai/proposal-card.tsx) only AFTER F016's
+   * server action (`applyDocEditProposal`) has already resolved
+   * successfully. This hook has no knowledge of `updateDoc`/Supabase and
+   * must stay that way; it is a pure in-memory state container.
+   */
+  acceptProposal: (id: string) => void;
+  /**
+   * F015: marks a pending proposal `rejected`. Reject performs zero calls
+   * anywhere (AS-010) — this is a plain state transition, nothing else.
+   */
+  rejectProposal: (id: string) => void;
 }
 
 type NdjsonEvent =
@@ -427,6 +441,31 @@ export function useDocAssistant({
     setIsStreaming(false);
   }, []);
 
+  // F015/F016: one-time state transitions only — a proposal already
+  // `accepted` or `rejected` never moves again (both card affordances are
+  // one-time, per spec). Guarding here as well as in the card component
+  // means the invariant holds even if something else somehow re-invokes
+  // these functions for a settled proposal.
+  const acceptProposal = useCallback((id: string) => {
+    setProposals((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx === -1 || prev[idx].status !== "pending") return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], status: "accepted" };
+      return next;
+    });
+  }, []);
+
+  const rejectProposal = useCallback((id: string) => {
+    setProposals((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx === -1 || prev[idx].status !== "pending") return prev;
+      const next = [...prev];
+      next[idx] = { ...next[idx], status: "rejected" };
+      return next;
+    });
+  }, []);
+
   const reset = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -468,5 +507,7 @@ export function useDocAssistant({
     send,
     stop,
     reset,
+    acceptProposal,
+    rejectProposal,
   };
 }

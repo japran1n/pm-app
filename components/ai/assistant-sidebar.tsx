@@ -38,6 +38,7 @@ import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 import { AssistantThread } from "@/components/ai/assistant-thread";
 import { ToolCallList } from "@/components/ai/tool-call-card";
 import { AssistantComposer } from "@/components/ai/assistant-composer";
+import { ProposalList } from "@/components/ai/proposal-card";
 import { useEscapeLayer } from "@/lib/hooks/use-shortcut";
 
 const STORAGE_PREFIX = "pm-app:ai-docs-sidebar-open";
@@ -387,11 +388,22 @@ export function AssistantSidebar({
   // Message/tool/proposal RENDERING is F010-F013's job (see file header)
   // — this call proves the hook wires up correctly and drives the
   // disabled-composer/no-API-key state (AS-071).
-  const { messages, toolCalls, isStreaming, error, usage, send, stop, reset } =
-    useDocAssistant({
-      workspaceId,
-      currentDocId,
-    });
+  const {
+    messages,
+    toolCalls,
+    proposals,
+    isStreaming,
+    error,
+    usage,
+    send,
+    stop,
+    reset,
+    acceptProposal,
+    rejectProposal,
+  } = useDocAssistant({
+    workspaceId,
+    currentDocId,
+  });
 
   // F036 (fixes B6): Escape closes the panel, but ONLY while it's
   // actually acting as a modal overlay — registered on the shared
@@ -573,6 +585,17 @@ export function AssistantSidebar({
                       calls. Renders nothing when there are no tool calls
                       yet. */}
                   <ToolCallList toolCalls={toolCalls} />
+
+                  {/* F015/F016: proposal cards — renders nothing when
+                      there are no proposals yet. Lives inside
+                      AssistantThread's own scroll container for the same
+                      "exactly one scroll region" reason ToolCallList
+                      does (see this block's own F036 comment above). */}
+                  <ProposalList
+                    proposals={proposals}
+                    onAccept={acceptProposal}
+                    onReject={rejectProposal}
+                  />
 
                   {error && (
                     <p
