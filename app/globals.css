@@ -197,8 +197,19 @@
 
 /* Typography plugin: map --tw-prose-* onto workspace tokens so bare
    `prose` works on the dark workspace without needing prose-invert
-   at every call site. Portal keeps the plugin defaults (light bg). */
-:root:not([data-surface="portal"]) {
+   at every call site. Portal keeps the plugin defaults (light bg).
+   QA fix: this must target `.prose` directly, not `:root`. The
+   `@tailwindcss/typography` plugin's own `.prose` rule (emitted in the
+   layered `utilities` layer) sets its own light-theme `--tw-prose-*`
+   defaults DIRECTLY on the `.prose` element. A `:root` declaration only
+   supplies an *inherited* value, and an element's own direct rule always
+   wins over an inherited one regardless of cascade-layer priority — so
+   the previous `:root` mapping was silently losing to the plugin's
+   defaults on every `.prose` node, rendering near-invisible dark text on
+   the dark workspace background. Declaring these vars directly on
+   `.prose` here (still unlayered, so it still outranks the plugin's
+   layered `.prose` rule for the same property) fixes that. */
+:not([data-surface="portal"]) .prose {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
   --tw-prose-lead: var(--muted-foreground);
