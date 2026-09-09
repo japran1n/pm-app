@@ -179,6 +179,115 @@ describe.skipIf(!shouldRunLiveDbTests)(
   },
 );
 
+// F029 (closes the B2 remainder, positive control): every describe above
+// only ever asserts `status === "empty"` — a mutant that always filters to
+// the nil workspace uuid passes every one of those green. This block proves
+// the tool actually returns data: a real `kind='doc'` template that exists
+// in the caller's OWN current workspace must come back `status === "ok"`
+// with that template's id, name, and parsed payload fields.
+describe.skipIf(!shouldRunLiveDbTests)(
+  "list_doc_templates returns a real doc template in the caller's own current workspace (F029: AS-024, AS-028)",
+  () => {
+    let adminClient: SupabaseClient;
+    let workspaceAId: string;
+    let callerUserId: string;
+    let ownTemplateId: string;
+    let uniqueName: string;
+
+    beforeAll(async () => {
+      adminClient = createAdminClient();
+
+      const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      uniqueName = `F024 Own Doc Template ${uniqueSuffix}`;
+      const callerEmail = `f024-list-templates-own-${uniqueSuffix}@example.com`;
+      const password = "Test-password-1!";
+
+      const { data: callerAuth, error: callerAuthErr } =
+        await adminClient.auth.admin.createUser({
+          email: callerEmail,
+          password,
+          email_confirm: true,
+        });
+      if (callerAuthErr || !callerAuth.user) {
+        throw new Error(`Failed to create caller user: ${callerAuthErr?.message}`);
+      }
+      callerUserId = callerAuth.user.id;
+
+      const { data: wsA, error: wsAErr } = await adminClient
+        .from("workspaces")
+        .insert({ name: "F024 Templates Own Workspace A", slug: `f024-tmpl-own-a-${uniqueSuffix}` })
+        .select("id")
+        .single();
+      if (wsAErr || !wsA) throw new Error(`Failed to create workspace A: ${wsAErr?.message}`);
+      workspaceAId = wsA.id;
+
+      const { error: memberAErr } = await adminClient.from("workspace_members").insert({
+        workspace_id: workspaceAId,
+        user_id: callerUserId,
+        role: "member",
+        status: "active",
+      });
+      if (memberAErr) throw new Error(`Failed to seed caller membership: ${memberAErr.message}`);
+
+      const { data: template, error: templateErr } = await adminClient
+        .from("task_templates")
+        .insert({
+          workspace_id: workspaceAId,
+          kind: "doc",
+          name: uniqueName,
+          payload: {
+            sections: ["Overview"],
+            rules: ["Say hello"],
+          },
+          created_by: callerUserId,
+        })
+        .select("id")
+        .single();
+      if (templateErr || !template) {
+        throw new Error(`Failed to seed own doc template: ${templateErr?.message}`);
+      }
+      ownTemplateId = template.id;
+
+      callerSessionClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
+      const { error: signInErr } = await callerSessionClient.auth.signInWithPassword({
+        email: callerEmail,
+        password,
+      });
+      if (signInErr) throw new Error(`Failed to sign in caller: ${signInErr.message}`);
+    });
+
+    afterAll(async () => {
+      if (ownTemplateId) {
+        await adminClient.from("task_templates").delete().eq("id", ownTemplateId);
+      }
+      if (workspaceAId) {
+        await adminClient.from("workspace_members").delete().eq("workspace_id", workspaceAId);
+        await adminClient.from("workspaces").delete().eq("id", workspaceAId);
+      }
+      if (callerUserId) await adminClient.auth.admin.deleteUser(callerUserId);
+      // F031: belt-and-suspenders sweep for anything left behind by a
+      // beforeAll that threw partway, or a prior run killed before its own
+      // afterAll could execute.
+      await sweepLeakedFixtures(adminClient, LEAK_PREFIXES);
+    });
+
+    it("AS-024/AS-028: a real doc template in the caller's own current workspace comes back status 'ok' with matching id and name", async () => {
+      const { run } = await import("@/lib/ai/tools/list-doc-templates");
+
+      const result = await run({}, workspaceAId);
+
+      expect(result.status).toBe("ok");
+      if (result.status === "ok") {
+        const match = result.data.templates.find((t) => t.id === ownTemplateId);
+        expect(match).toBeDefined();
+        expect(match?.name).toBe(uniqueName);
+        expect(match?.sections).toEqual(["Overview"]);
+        expect(match?.rules).toEqual(["Say hello"]);
+      }
+    });
+  },
+);
+
 // F027 (fixes M1-SCRUTINY.md M1c): the case none of the tests above can
 // reach — a caller who is an active member of BOTH workspace A and
 // workspace B, calling with A as their current workspace, must not see

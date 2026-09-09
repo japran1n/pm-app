@@ -22,6 +22,44 @@ vi.mock("@/lib/ai/tools/get-current-doc", async () => {
   };
 });
 
+// F029 (closes the B2 remainder): nothing asserted that `forRunner`
+// (lib/ai/docs-agent.ts) actually threads the request's `workspaceId`
+// through to each tool's `run` as its second argument. If an M2 refactor
+// drops it, every tool call gets `workspaceId: undefined` forever —
+// `get_current_doc` would 404 on every real document
+// (`data.workspace_id !== undefined` is always true) and `search_docs`
+// would error on the uuid cast — with a perfectly green suite, because no
+// test called through the wrapped `betaZodTool.run` and inspected what the
+// underlying tool actually received. Mock all three tool modules' `run` so
+// each can be spied on independently of the others.
+const mockSearchDocsRun = vi.fn();
+vi.mock("@/lib/ai/tools/search-docs", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/ai/tools/search-docs")
+  >("@/lib/ai/tools/search-docs");
+  return {
+    ...actual,
+    searchDocsTool: {
+      ...actual.searchDocsTool,
+      run: (...args: unknown[]) => mockSearchDocsRun(...args),
+    },
+  };
+});
+
+const mockListDocTemplatesRun = vi.fn();
+vi.mock("@/lib/ai/tools/list-doc-templates", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/ai/tools/list-doc-templates")
+  >("@/lib/ai/tools/list-doc-templates");
+  return {
+    ...actual,
+    listDocTemplatesTool: {
+      ...actual.listDocTemplatesTool,
+      run: (...args: unknown[]) => mockListDocTemplatesRun(...args),
+    },
+  };
+});
+
 import { buildDocsAgentRequest } from "@/lib/ai/docs-agent";
 import type { BetaTextBlockParam } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 
@@ -40,6 +78,8 @@ describe("buildDocsAgentRequest (F006)", () => {
       status: "ok",
       data: { title: "Q3 Roadmap" },
     });
+    mockSearchDocsRun.mockResolvedValue({ status: "empty", reason: "no_results" });
+    mockListDocTemplatesRun.mockResolvedValue({ status: "empty", reason: "no_results" });
   });
 
   it("test_AS_004_tool_array_contains_exactly_the_three_existing_docs_tools", async () => {
@@ -193,5 +233,48 @@ describe("buildDocsAgentRequest (F006)", () => {
 
     expect(mockGetCurrentDocRun).not.toHaveBeenCalled();
     expect(textOf(request.system[4])).toContain("No document is currently open");
+  });
+
+  it("test_F029_forRunner_passes_the_request_workspaceId_as_the_second_argument_to_every_tool_run", async () => {
+    const request = await buildDocsAgentRequest({
+      userId: USER_ID,
+      workspaceId: WORKSPACE_ID,
+      currentDocId: null,
+      messages: [],
+    });
+
+    // `run` here is the SDK's declared union across all three tools'
+    // schemas, which TS narrows to an unsatisfiable intersection when
+    // called generically through the array element type — cast to a
+    // permissive callable so each runner can be invoked with its own
+    // tool's actual argument shape below, exactly as the SDK's tool
+    // runner would at the JS level.
+    type AnyRunnable = { name: string; run: (args: unknown) => Promise<unknown> };
+    const byName = new Map((request.tools as readonly AnyRunnable[]).map((t) => [t.name, t]));
+
+    const getCurrentDocRunner = byName.get("get_current_doc");
+    const searchDocsRunner = byName.get("search_docs");
+    const listDocTemplatesRunner = byName.get("list_doc_templates");
+    expect(getCurrentDocRunner).toBeDefined();
+    expect(searchDocsRunner).toBeDefined();
+    expect(listDocTemplatesRunner).toBeDefined();
+
+    // Invoke each wrapped tool's `run` exactly as the SDK's tool runner
+    // would, with a model-supplied argument object, and inspect what the
+    // UNDERLYING tool module's `run` actually received as its second
+    // argument — not what `buildDocsAgentRequest` was given, so a
+    // `forRunner` that silently drops `workspaceId` before calling
+    // `tool.run` cannot pass this by construction.
+    await getCurrentDocRunner!.run({ docId: "44444444-4444-4444-8444-444444444444" });
+    expect(mockGetCurrentDocRun).toHaveBeenCalledWith(
+      { docId: "44444444-4444-4444-8444-444444444444" },
+      WORKSPACE_ID,
+    );
+
+    await searchDocsRunner!.run({ query: "hello" });
+    expect(mockSearchDocsRun).toHaveBeenCalledWith({ query: "hello" }, WORKSPACE_ID);
+
+    await listDocTemplatesRunner!.run({});
+    expect(mockListDocTemplatesRun).toHaveBeenCalledWith({}, WORKSPACE_ID);
   });
 });
