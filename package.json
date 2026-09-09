@@ -18,11 +18,9 @@
     "realtime:check": "node --env-file=.env scripts/check-realtime-publication.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
     "@base-ui/react": "^1.7.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
-    "@react-email/components": "^1.0.12",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/typography": "^0.5.20",
@@ -42,7 +40,6 @@
     "react": "19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.8",
-    "resend": "^6.20.0",
     "shadcn": "^4.18.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
