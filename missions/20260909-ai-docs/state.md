@@ -77,3 +77,40 @@ mission reskinned (F011 navigation/sidebar, F003 panel structure, command palett
 - F022 must re-run the same command, compare against these exact 4, and report any
   difference. If the design session fixes them in the meantime, the target becomes green
   and F022 should say so.
+
+## CORRECTION to R-4 and the baseline (orchestrator, 2026-09-09)
+
+**R-4 overstated the problem, and the recorded baseline was the wrong measurement.**
+
+1. The full suite **is** runnable here. It takes ~731 s. My earlier attempt was killed by the
+   background-command time cap, not by the suite being uncompletable. I concluded "cannot
+   complete in this environment" from one truncated run — that was wrong.
+
+2. **Full-suite baseline (`npm test`, ~731 s, live remote Supabase):**
+```
+Test Files  45 failed | 569 passed (614)
+     Tests  55 failed | 4163 passed | 1 expected fail | 180 skipped (4399)
+```
+   None of the 55 failures are in `lib/ai` or `f007-docs-agent` — verified by grepping the run
+   output. M1 introduces no regressions.
+
+   Most of the extra 51 (beyond the 4 known design-mission failures) present as cascading
+   `` `cookies` was called outside a request scope `` rejections from `lib/supabase/server.ts:170`
+   in unrelated task-detail component tests — the environmental ambiguity R-4 predicted.
+
+3. **The scoped baseline was a baseline for a different command than AS-102 names.**
+   `npx vitest run lib/ tests/unit/` covers roughly half the suite and excludes
+   `tests/integration/` entirely. AS-102 says "`npm test` passes".
+
+   As F022 was originally specified, it would have compared a scoped run against a scoped
+   baseline and declared success **without ever running the command the assertion names** —
+   a gate that cannot fail. Structurally the same defect as the tautological isolation tests
+   the scrutiny review just rejected, one level up. Caught by the M1 validator, not by me.
+
+### Revised rule for F022
+- Run the real `npm test` and allow ~15 minutes for it.
+- Compare against **45 failed files / 55 failed tests of 4399**, and against the named 4.
+- Any failure in `lib/ai/**`, `app/api/ai/**`, or a file this mission touched is OURS. Report it.
+- AS-102's honest outcome is likely **INCONCLUSIVE**, not PASS — the repo's own baseline is red
+  for environmental reasons this mission did not cause and is not chartered to fix. Say that
+  plainly rather than rounding to either PASS or FAIL.
