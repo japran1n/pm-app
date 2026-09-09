@@ -361,6 +361,49 @@ describe("test_AS_044_test_AS_042_reader_cancel_mid_stream_tears_down_cleanly", 
   });
 });
 
+describe("test_AS_105_thrown_tool_error_message_never_reaches_the_client", () => {
+  it("does not leak the thrown error's message anywhere in the raw NDJSON stream", async () => {
+    // A marker unlikely to appear anywhere else in a safe summary/message.
+    const MARKER = "SECRET_LEAK_MARKER_9f3ac21";
+    const throwingTool = {
+      name: "search_docs",
+      parse: (x: unknown) => x,
+      run: vi.fn(async () => {
+        throw new Error(`Postgres connection failed: postgres://user:pw@host/db?token=${MARKER}`);
+      }),
+    };
+    buildDocsAgentRequestMock.mockResolvedValue(baseAgentRequest([throwingTool]));
+
+    streamMock
+      .mockReturnValueOnce(
+        fakeAnthropicStream({
+          content: [
+            { type: "tool_use", id: "tool-1", name: "search_docs", input: { query: "x" } },
+          ],
+          usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0 },
+          stop_reason: "tool_use",
+        }),
+      )
+      .mockReturnValueOnce(
+        fakeAnthropicStream({
+          content: [{ type: "text", text: "done" }],
+          usage: { input_tokens: 2, output_tokens: 2, cache_read_input_tokens: 0 },
+        }),
+      );
+
+    const response = await POST(makeRequest({ message: "search for x" }));
+
+    // Read the FULL raw serialised stream text, not a parsed/narrowed
+    // object — toMatchObject on a parsed event would silently ignore an
+    // extra `detail` key carrying the leak (see AS-042's test, which did
+    // exactly that and observed nothing).
+    const rawText = await response.text();
+
+    expect(rawText).not.toContain(MARKER);
+    expect(rawText.includes(MARKER)).toBe(false);
+  });
+});
+
 describe("test_AS_046_anthropic_429_maps_to_rate_limited_error_code", () => {
   it("emits error code rate_limited then done", async () => {
     const rateLimitError = new RateLimitError(

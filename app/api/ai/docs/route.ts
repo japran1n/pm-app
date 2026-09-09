@@ -60,10 +60,20 @@ type NdjsonEvent =
   | { t: "error"; code: string; message: string }
   | { t: "done" };
 
+/**
+ * The only tools whose successful result can be treated as an edit
+ * proposal (F014/F017, not yet registered). Keyed on the tool's *name* —
+ * a value the route itself controls — rather than duck-typing on
+ * model-adjacent `data.kind`, which a tool's output shape could spoof.
+ */
+const PROPOSAL_TOOL_NAMES = new Set(["propose_doc_edit", "create_doc"]);
+
 /** A tool result shaped like a write-tool proposal (F014/F017, not yet registered). */
 function asProposal(
+  toolName: string,
   content: string,
 ): { kind: "doc_edit" | "doc_create"; payload: unknown } | null {
+  if (!PROPOSAL_TOOL_NAMES.has(toolName)) return null;
   try {
     const parsed = JSON.parse(content) as unknown;
     if (
@@ -293,11 +303,19 @@ export async function POST(request: Request) {
                 send({ t: "tool_end", id: toolUse.id, summary: summarizeToolResult(resultContent) });
               } catch (toolError) {
                 isError = true;
-                const message =
-                  toolError instanceof Error ? toolError.message : "Tool execution failed.";
-                resultContent = `Error: ${message}`;
-                logger.error("docs agent: tool threw", { tool: toolUse.name, id: toolUse.id });
-                send({ t: "tool_end", id: toolUse.id, summary: "tool error", detail: message });
+                // AS-105 / lib/ai/tools/types.ts:33: never pass a thrown
+                // error's message through to the client — Zod v4 parse
+                // failures embed the offending input value, and transport
+                // errors can carry URLs. Log the detail server-side only;
+                // the client gets a generic, safe-to-render summary.
+                const safeMessage = "Tool execution failed.";
+                resultContent = `Error: ${safeMessage}`;
+                logger.error("docs agent: tool threw", {
+                  tool: toolUse.name,
+                  id: toolUse.id,
+                  detail: toolError instanceof Error ? toolError.message : String(toolError),
+                });
+                send({ t: "tool_end", id: toolUse.id, summary: "tool error", detail: safeMessage });
               }
             }
 
@@ -312,7 +330,7 @@ export async function POST(request: Request) {
             // the model must never be allowed to continue as though the
             // edit were applied.
             if (!isError) {
-              const proposal = asProposal(resultContent);
+              const proposal = asProposal(toolUse.name, resultContent);
               if (proposal) {
                 send({
                   t: "proposal",
@@ -404,8 +422,11 @@ function handleUpstreamError(
     return;
   }
 
+  // AS-105: do not pass raw error text into the log line either — a
+  // generic marker is enough to correlate; keep detail out entirely rather
+  // than risk another wire-adjacent leak surface.
   logger.error("docs agent: unexpected error", {
-    message: error instanceof Error ? error.message : "unknown",
+    name: error instanceof Error ? error.name : "unknown",
   });
   send({ t: "error", code: "upstream", message: "The assistant is temporarily unavailable." });
   send({ t: "done" });

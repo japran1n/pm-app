@@ -1,12 +1,9 @@
-// F004: unit tests for the search_docs AI tool (AS-022, AS-028). Mocking
-// style matches lib/ai/tools/__tests__/get-current-doc.test.ts — mock
-// `createClient` from lib/supabase/server and stub the chained
-// query-builder methods it uses. The query builder here
-// (`.from().select().or().limit()`, with an optional `.eq()` when
-// `projectId` is given) is awaited directly rather than terminated with
-// `.maybeSingle()`, so the mock returns a thenable object from `limit()`
-// that resolves to the query result whether or not `.eq()` is chained
-// after it.
+// F004: unit tests for the search_docs AI tool (AS-022, AS-028), updated for
+// F026/M1d — the query now runs one bound `.ilike()` call per column
+// (title, content) instead of hand-interpolating a `.or()` filter string,
+// and merges+dedupes the two result sets client-side. The mock below
+// mirrors that chain: `.from().select().ilike(column, pattern).order().
+// limit()`, with an optional `.eq()` when `projectId` is given.
 //
 // These are fast shape/snippet/empty-path tests only — they cannot and do
 // not prove cross-workspace isolation (AS-023, AS-008): see
@@ -17,18 +14,39 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 type QueryResult = { data: unknown[] | null; error: unknown };
 
-let currentResult: QueryResult = { data: [], error: null };
+// One result set per column so tests can control title vs. content matches
+// independently; defaults to empty for both.
+let resultsByColumn: Record<"title" | "content", QueryResult> = {
+  title: { data: [], error: null },
+  content: { data: [], error: null },
+};
 
-const mockEq = vi.fn(() => Promise.resolve(currentResult));
-const mockLimit = vi.fn(() => ({
-  eq: mockEq,
-  then: (
-    resolve: (value: QueryResult) => void,
-    reject: (reason: unknown) => void,
-  ) => Promise.resolve(currentResult).then(resolve, reject),
-}));
-const mockOr = vi.fn(() => ({ limit: mockLimit }));
-const mockSelect = vi.fn(() => ({ or: mockOr }));
+const eqSpy = vi.fn();
+const ilikeCalls: Array<{ column: string; pattern: string }> = [];
+
+function makeTerminal(column: "title" | "content") {
+  const terminal = {
+    eq: vi.fn((...args: unknown[]) => {
+      eqSpy(...args);
+      return terminal;
+    }),
+    then: (
+      resolve: (value: QueryResult) => void,
+      reject: (reason: unknown) => void,
+    ) => Promise.resolve(resultsByColumn[column]).then(resolve, reject),
+  };
+  return terminal;
+}
+
+const mockIlike = vi.fn((column: "title" | "content", pattern: string) => {
+  ilikeCalls.push({ column, pattern });
+  return {
+    order: vi.fn(() => ({
+      limit: vi.fn(() => makeTerminal(column)),
+    })),
+  };
+});
+const mockSelect = vi.fn(() => ({ ilike: mockIlike }));
 const mockFrom = vi.fn(() => ({ select: mockSelect }));
 const mockCreateClient = vi.fn();
 
@@ -53,7 +71,11 @@ function makeDocRow(overrides: Partial<Record<string, unknown>> = {}) {
 describe("search_docs (F004)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    currentResult = { data: [], error: null };
+    ilikeCalls.length = 0;
+    resultsByColumn = {
+      title: { data: [], error: null },
+      content: { data: [], error: null },
+    };
     mockCreateClient.mockResolvedValue({ from: mockFrom });
   });
 
@@ -64,7 +86,7 @@ describe("search_docs (F004)", () => {
         title: `Doc ${i}`,
       }),
     );
-    currentResult = { data: rows, error: null };
+    resultsByColumn.title = { data: rows, error: null };
 
     const result = await run({ query: "onboarding" });
 
@@ -83,22 +105,20 @@ describe("search_docs (F004)", () => {
   });
 
   it("scopes to a project when projectId is provided", async () => {
-    currentResult = { data: [makeDocRow()], error: null };
+    resultsByColumn.title = { data: [makeDocRow()], error: null };
 
     await run({
       query: "onboarding",
       projectId: "22222222-2222-4222-8222-222222222222",
     });
 
-    expect(mockEq).toHaveBeenCalledWith(
+    expect(eqSpy).toHaveBeenCalledWith(
       "project_id",
       "22222222-2222-4222-8222-222222222222",
     );
   });
 
   it("test_AS_no_results_returns_empty_no_results", async () => {
-    currentResult = { data: [], error: null };
-
     const result = await run({ query: "nonexistent-term-xyz" });
 
     expect(result).toEqual({
@@ -121,7 +141,7 @@ describe("search_docs (F004)", () => {
       id: "33333333-3333-4333-8333-333333333333",
       title: "Own Workspace Doc",
     });
-    currentResult = { data: [ownWorkspaceDoc], error: null };
+    resultsByColumn.title = { data: [ownWorkspaceDoc], error: null };
 
     const result = await run({ query: "doc" });
 
@@ -137,7 +157,7 @@ describe("search_docs (F004)", () => {
       title: "UniqueTitleMatch",
       content: "This body has nothing to do with the query at all.",
     });
-    currentResult = { data: [row], error: null };
+    resultsByColumn.title = { data: [row], error: null };
 
     const result = await run({ query: "UniqueTitleMatch" });
 
@@ -152,5 +172,69 @@ describe("search_docs (F004)", () => {
 
     expect(result.status).toBe("error");
     expect(mockCreateClient).not.toHaveBeenCalled();
+  });
+
+  it("merges and dedupes title and content matches for the same document", async () => {
+    const row = makeDocRow({ id: "44444444-4444-4444-8444-444444444444" });
+    // Same row surfaces from both column queries — must appear only once.
+    resultsByColumn.title = { data: [row], error: null };
+    resultsByColumn.content = { data: [row], error: null };
+
+    const result = await run({ query: "onboarding" });
+
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.data.results).toHaveLength(1);
+    }
+  });
+
+  describe("test_AS_M1d_query_with_postgrest_grammar_characters_is_not_injected_as_filter_syntax", () => {
+    it("passes a query containing a comma, dot and parentheses through as a single bound pattern, never building a filter string", async () => {
+      // The motivating case from the spec: "budget, revised" — under the
+      // old `.or(\`title.ilike.${pattern},content.ilike.${pattern}\`)`
+      // string-interpolation approach, the comma would inject an extra
+      // top-level OR term into PostgREST's filter grammar. Parentheses and
+      // a dot are also grammar metacharacters there.
+      const injectionQuery = "budget, revised (Q3).report";
+
+      await run({ query: injectionQuery });
+
+      // Every .ilike() call must receive the query as an opaque bound
+      // pattern argument (wildcard-escaped), never spliced into a filter
+      // string — proven here by the fact `.ilike()` (not `.or()`) is what
+      // the mocked query builder exposes at all, and by asserting the
+      // pattern argument contains the punctuation verbatim (escaped only
+      // for %/_, not stripped or reinterpreted as grammar).
+      expect(mockIlike).toHaveBeenCalled();
+      for (const call of ilikeCalls) {
+        expect(call.pattern).toContain(",");
+        expect(call.pattern).toContain(".");
+        expect(call.pattern).toContain("(");
+        expect(call.pattern).toContain(")");
+      }
+    });
+
+    it("returns sane (non-error) results for a comma-containing query instead of injected OR terms", async () => {
+      const row = makeDocRow({ title: "Q3 budget, revised" });
+      resultsByColumn.title = { data: [row], error: null };
+
+      const result = await run({ query: "budget, revised" });
+
+      expect(result.status).toBe("ok");
+      if (result.status === "ok") {
+        expect(result.data.results).toHaveLength(1);
+      }
+    });
+  });
+
+  it("test_AS_M1d_results_are_deterministically_ordered", async () => {
+    // .order() must be called on the query chain so which MAX_RESULTS of N
+    // rows come back is not arbitrary.
+    resultsByColumn.title = { data: [makeDocRow()], error: null };
+
+    await run({ query: "onboarding" });
+
+    const ilikeReturn = mockIlike.mock.results[0]?.value as { order: ReturnType<typeof vi.fn> };
+    expect(ilikeReturn.order).toHaveBeenCalledWith("id", { ascending: true });
   });
 });
