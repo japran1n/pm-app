@@ -96,6 +96,7 @@
   --color-border-stronger: var(--border-stronger);
   --color-border-control: var(--input);
   --color-border-control-hover: var(--border-control-hover);
+  --color-field: var(--field);
   --color-border-destructive: var(--border-destructive);
   --color-border-warning: var(--border-warning);
   --color-border-brand: var(--border-brand);

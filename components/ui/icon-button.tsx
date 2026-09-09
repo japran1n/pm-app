@@ -35,13 +35,29 @@ export function IconButton({
   variant?: ButtonVariant;
   size?: "icon" | "icon-sm" | "icon-lg" | "icon-xs";
 } & Omit<ComponentProps<"button">, "aria-label">) {
+  // Supabase icon-button anatomy: rounded-md, duration-200 transitions, a
+  // subtle press affordance (scale down on active), and Supabase's tiny/
+  // small/medium size steps (26/34/38px) layered over the shared
+  // `buttonVariants` colour treatment for the chosen variant.
+  const sizeOverride =
+    size === "icon-xs"
+      ? "h-[26px] w-[26px]"
+      : size === "icon-lg"
+        ? "h-[38px] w-[38px]"
+        : "h-[34px] w-[34px]";
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger
           type="button"
           aria-label={label}
-          className={cn(buttonVariants({ variant, size }), className)}
+          className={cn(
+            buttonVariants({ variant, size }),
+            "rounded-md duration-200 motion-safe:active:scale-[0.97]",
+            sizeOverride,
+            className
+          )}
           {...props}
         >
           {children}

@@ -35,7 +35,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast bg-card border border-border text-sm",
+          toast: "cn-toast rounded-md border border-border bg-card text-sm text-foreground shadow-xs",
+          description: "text-muted-foreground",
+          actionButton: "bg-primary text-primary-foreground",
+          cancelButton: "bg-muted text-muted-foreground",
+          error: "border-destructive/30 bg-destructive/10 text-destructive",
+          success: "border-brand/30 bg-brand/10 text-brand",
         },
       }}
       {...props}
