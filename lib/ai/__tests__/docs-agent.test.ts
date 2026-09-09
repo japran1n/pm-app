@@ -1,15 +1,12 @@
 // F006: unit tests for the docs-agent tool registry + system prompt
 // builder (AS-004, AS-005, AS-006, AS-047). Fully unit-testable with no
 // HTTP request object, per the feature's hard constraint — mocks only the
-// two data dependencies buildDocsAgentRequest reaches into
-// (lib/queries/people's resolvePeople, and get-current-doc's run).
+// one data dependency buildDocsAgentRequest reaches into (get-current-doc's
+// run). F023 (fixes B1): the display-name lookup (`resolvePeople`, which
+// pulled in a service-role client) was removed from the prompt entirely,
+// so there is no longer anything to mock there.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-
-const mockResolvePeople = vi.fn();
-vi.mock("@/lib/queries/people", () => ({
-  resolvePeople: (...args: unknown[]) => mockResolvePeople(...args),
-}));
 
 const mockGetCurrentDocRun = vi.fn();
 vi.mock("@/lib/ai/tools/get-current-doc", async () => {
@@ -39,9 +36,6 @@ function textOf(block: BetaTextBlockParam): string {
 describe("buildDocsAgentRequest (F006)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockResolvePeople.mockResolvedValue(
-      new Map([[USER_ID, { name: "Jamie Doe", email: null, avatarUrl: null }]]),
-    );
     mockGetCurrentDocRun.mockResolvedValue({
       status: "ok",
       data: { title: "Q3 Roadmap" },
@@ -144,7 +138,7 @@ describe("buildDocsAgentRequest (F006)", () => {
     expect(request.system[4].cache_control).toBeUndefined();
   });
 
-  it("test_AS_047_volatile_tail_carries_current_doc_date_and_display_name_uncached", async () => {
+  it("test_AS_047_volatile_tail_carries_current_doc_and_date_uncached", async () => {
     const request = await buildDocsAgentRequest({
       userId: USER_ID,
       workspaceId: WORKSPACE_ID,
@@ -155,7 +149,6 @@ describe("buildDocsAgentRequest (F006)", () => {
     const tail = textOf(request.system[4]);
     expect(tail).toContain(DOC_ID);
     expect(tail).toContain("Q3 Roadmap");
-    expect(tail).toContain("Jamie Doe");
     expect(tail).toMatch(/\d{4}-\d{2}-\d{2}/);
     expect(request.system[4].cache_control).toBeUndefined();
   });
@@ -171,7 +164,6 @@ describe("buildDocsAgentRequest (F006)", () => {
     const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
     for (const block of request.system.slice(0, 4)) {
       expect(textOf(block)).not.toMatch(uuidPattern);
-      expect(textOf(block)).not.toContain("Jamie Doe");
     }
   });
 

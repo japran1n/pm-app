@@ -6,7 +6,10 @@
 // Callable from a unit test with no HTTP request object: nothing here reads
 // `Request`/`Headers`/cookies. `buildDocsAgentRequest` takes plain data
 // (`userId`, `workspaceId`, `currentDocId`, `messages`) and resolves the
-// display name / doc title itself via existing query helpers.
+// doc title itself via an existing query helper. It does NOT resolve a
+// display name (see F023 / fixes B1 below): that used to go through a
+// privileged, RLS-bypassing read, which is exactly the reachability
+// lib/ai/**'s AS-001 rule forbids, so the prompt just says "the user".
 
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
@@ -20,7 +23,6 @@ import { getCurrentDocTool } from "@/lib/ai/tools/get-current-doc";
 import { listDocTemplatesTool } from "@/lib/ai/tools/list-doc-templates";
 import { searchDocsTool } from "@/lib/ai/tools/search-docs";
 import type { ToolResult } from "@/lib/ai/tools/types";
-import { resolvePeople } from "@/lib/queries/people";
 
 const MAX_TOKENS_CHAT = 16_000;
 
@@ -121,11 +123,6 @@ function formatToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "UTC" });
 }
 
-async function resolveDisplayName(userId: string): Promise<string> {
-  const people = await resolvePeople([userId]);
-  return people.get(userId)?.name ?? "there";
-}
-
 async function resolveCurrentDocTitle(
   currentDocId: string | null,
 ): Promise<string | null> {
@@ -150,11 +147,15 @@ export async function buildDocsAgentRequest({
   messages,
 }: BuildDocsAgentRequestInput): Promise<DocsAgentRequest> {
   void workspaceId; // scoping happens via RLS inside each tool's own call, not here
+  // F023 (fixes B1): userId is retained in the signature (per spec, and
+  // future features may need it for e.g. per-user tool scoping) but is no
+  // longer used to resolve a display name — that required a privileged,
+  // RLS-bypassing read reachable from every chat turn, which is exactly
+  // the standing hazard AS-001 forbids in lib/ai/**. The prompt now says
+  // "the user" instead of a name.
+  void userId;
 
-  const [displayName, currentDocTitle] = await Promise.all([
-    resolveDisplayName(userId),
-    resolveCurrentDocTitle(currentDocId),
-  ]);
+  const currentDocTitle = await resolveCurrentDocTitle(currentDocId);
 
   const stableBlocks: BetaTextBlockParam[] = [
     { type: "text", text: PERSONA_AND_BOUNDARY },
@@ -179,7 +180,6 @@ export async function buildDocsAgentRequest({
       ? `Current document: "${currentDocTitle ?? "(untitled)"}" (id: ${currentDocId}).`
       : "No document is currently open.",
     `Today's date: ${formatToday()}.`,
-    `The user's display name is ${displayName}.`,
   ];
   const volatileTail: BetaTextBlockParam = {
     type: "text",
