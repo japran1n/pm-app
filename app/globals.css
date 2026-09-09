@@ -194,6 +194,29 @@
    mono steps (link-text / tag-text) are the only uppercase ones in the
    system; that is what makes buttons and tags read as brand furniture
    rather than as chrome. */
+
+/* Typography plugin: map --tw-prose-* onto workspace tokens so bare
+   `prose` works on the dark workspace without needing prose-invert
+   at every call site. Portal keeps the plugin defaults (light bg). */
+:root:not([data-surface="portal"]) {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--secondary);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--line-row);
+}
+
 @layer components {
   /* Linear type scale */
   .text-tiny {
@@ -384,6 +407,7 @@
 
    New interactive surfaces pick one of these; nothing invents a third.
    ───────────────────────────────────────────────────────────────────────── */
+
 @layer components {
   .hover-surface:hover {
     background-color: var(--muted);
@@ -407,6 +431,7 @@
    only — the editable `RichTextEditor` is unaffected, and this must never
    become a global `a {}` rule that repaints every link in the app.
    ───────────────────────────────────────────────────────────────────────── */
+
 @layer components {
   .rich-text-renderer a {
     color: var(--primary);
