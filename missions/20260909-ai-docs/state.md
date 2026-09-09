@@ -1,13 +1,13 @@
 # Mission State — AI Docs Assistant
 
-Phase: PLAN COMPLETE — BLOCKED ON DEPENDENCY
-Blocking on: mission 20260909-linear-ds (at F007 of F013 as of 2026-09-09)
+Phase: RUN
+Unblocked 2026-09-09: 20260909-linear-ds COMPLETE (13/13). Branch: feat/ai-docs-sidebar
 Autonomy: FULL. User asleep and unavailable. ZERO_QUESTIONS until further notice.
 
 ## Gate before RUN may begin
-- [ ] 20260909-linear-ds reports all 13 features complete
-- [ ] Working tree clean (no uncommitted design work)
-- [ ] Design rules from its F013 read by the orchestrator and quoted into worker prompts
+- [x] 20260909-linear-ds reports all 13 features complete
+- [x] Working tree clean (no uncommitted design work)
+- [x] Design rules from its F013 read by the orchestrator and quoted into worker prompts
 
 ## Feature progress
 - [ ] F001 — SDK install + client + Zod-compat spike
