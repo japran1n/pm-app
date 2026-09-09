@@ -38,3 +38,13 @@ Autonomy: FULL. User asleep and unavailable. ZERO_QUESTIONS until further notice
 - R-2 `ANTHROPIC_API_KEY` absent. Build and unit tests unaffected; live e2e (AS-103/104
   against a real model) cannot pass until the user supplies it. Everything else can.
 - R-3 Same working tree as the design mission. Never run concurrently.
+- R-4 **The test suite runs against a live remote Supabase project**, not mocks
+  (`vitest.config.ts`: testTimeout 30s and maxWorkers 4 exist specifically to absorb
+  real Auth rate limits and connection-pool contention; the F278 comment records
+  "575/575 green" only when the remote project is reachable and unthrottled).
+  Consequence: a `npm test` failure in this environment is ambiguous — it may be
+  environmental rather than a regression. F003's worker hit this and substituted
+  `npx vitest run lib/` as a scoped deterministic gate. That substitution is ACCEPTED
+  for per-feature gating, but AS-102 ("npm test passes") must NOT be marked PASS at
+  F022 on the strength of a scoped run. The orchestrator is establishing the true
+  baseline; whatever it turns out to be is recorded below and F022 compares against it.
