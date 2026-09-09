@@ -378,6 +378,7 @@ export async function createFullDemoProject(
           {
             task_id: wireframesId,
             content: "Get stakeholder sign-off on layout",
+            is_checked: false,
             position: 1000,
           },
           {
@@ -391,6 +392,7 @@ export async function createFullDemoProject(
           {
             task_id: taskIdByTitle.get("Design system tokens")!,
             content: "Confirm brand colors with the client",
+            is_checked: false,
             position: 1000,
           },
         ])
