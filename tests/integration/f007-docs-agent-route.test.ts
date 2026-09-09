@@ -73,6 +73,12 @@ vi.mock("@/lib/observability/logger", () => ({
 // Import after mocks are registered.
 const { POST } = await import("@/app/api/ai/docs/route");
 const { RateLimitError, APIError } = await import("@anthropic-ai/sdk");
+// F020: this file makes MANY requests as AUTHED_USER across its many
+// `describe` blocks — well over the per-user rate limit's 20/min budget.
+// Reset the guard's in-memory store between tests so F020's rate limiter
+// (a cross-request, module-level guard by design) doesn't leak state into
+// tests that aren't exercising it.
+const { __resetRateLimitStoreForTests } = await import("@/lib/ai/guards");
 
 const AUTHED_USER = { id: "user-1" };
 
@@ -159,6 +165,7 @@ function fakeAnthropicStream(finalMessage: unknown, textDeltas: string[] = []) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetRateLimitStoreForTests();
   getUserMock.mockResolvedValue({ data: { user: AUTHED_USER } });
   hasApiKeyMock.mockReturnValue(true);
   buildDocsAgentRequestMock.mockResolvedValue(baseAgentRequest());

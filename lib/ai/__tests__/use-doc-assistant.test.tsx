@@ -33,6 +33,21 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// F019: this hook now persists through lib/actions/ai-threads.ts. These
+// pre-existing streaming/parsing tests aren't about persistence — mocked
+// to a quiet, always-succeeding no-op (getRecentThread resolves to null,
+// i.e. "no prior thread", so hydration never interferes with any of these
+// tests' own send()-driven state) so they keep testing exactly what they
+// always tested. Persistence itself is covered by
+// use-doc-assistant-persistence.test.tsx.
+vi.mock("@/lib/actions/ai-threads", () => ({
+  createThread: vi.fn().mockResolvedValue({ id: "thread-mock" }),
+  addMessage: vi.fn().mockResolvedValue({ id: "message-mock" }),
+  getRecentThread: vi.fn().mockResolvedValue(null),
+  getThread: vi.fn().mockResolvedValue(null),
+  updateProposalState: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 
 function ndjsonLine(obj: unknown): string {

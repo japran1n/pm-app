@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useBreadcrumbExtra } from "@/components/nav/breadcrumb-context";
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
+import { getErrorDisplay } from "@/lib/ai/error-display";
 import { AssistantThread } from "@/components/ai/assistant-thread";
 import { ToolCallList } from "@/components/ai/tool-call-card";
 import { AssistantComposer } from "@/components/ai/assistant-composer";
@@ -598,14 +599,30 @@ export function AssistantSidebar({
                     onReject={rejectProposal}
                   />
 
-                  {error && (
-                    <p
-                      className="rounded-md bg-status-waiting-bg px-2 py-1.5 text-mini text-status-waiting"
-                      data-testid="assistant-sidebar-error"
-                    >
-                      {error.message}
-                    </p>
-                  )}
+                  {error &&
+                    (() => {
+                      // F020: every `error` code renders as a human
+                      // sentence. `no_api_key` is a configuration state,
+                      // not a failure — it gets neutral styling (no red/
+                      // amber), everything else (rate_limit, thread_limit,
+                      // auth_error, model_error, and any unrecognised
+                      // code) gets the warning treatment.
+                      const display = getErrorDisplay(error);
+                      return (
+                        <p
+                          className={cn(
+                            "rounded-md px-2 py-1.5 text-mini",
+                            display.tone === "neutral"
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-status-waiting-bg text-status-waiting",
+                          )}
+                          data-testid="assistant-sidebar-error"
+                          data-error-tone={display.tone}
+                        >
+                          {display.message}
+                        </p>
+                      );
+                    })()}
                 </>
               }
             />

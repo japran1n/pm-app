@@ -13,6 +13,18 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// F019: see use-doc-assistant.test.tsx's identical mock comment — this
+// file's own tests are about the pure in-memory accept/reject state
+// transition, not persistence, so persistence is mocked quiet/successful
+// throughout.
+vi.mock("@/lib/actions/ai-threads", () => ({
+  createThread: vi.fn().mockResolvedValue({ id: "thread-mock" }),
+  addMessage: vi.fn().mockResolvedValue({ id: "message-mock" }),
+  getRecentThread: vi.fn().mockResolvedValue(null),
+  getThread: vi.fn().mockResolvedValue(null),
+  updateProposalState: vi.fn().mockResolvedValue({ ok: true }),
+}));
+
 import { useDocAssistant } from "@/lib/ai/use-doc-assistant";
 
 function ndjsonLine(obj: unknown): string {

@@ -17,8 +17,11 @@
 //   {"t":"error","code":"...","message":"..."}
 //   {"t":"done"}
 //
-// Persistence (F018/F019) and rate limiting (F020) are explicitly out of
-// scope. `threadId` is accepted and ignored — no schema is invented here.
+// Persistence (F018/F019) is explicitly out of scope here — `threadId` is
+// accepted and ignored, no schema is invented for it. F020's guards
+// (per-user rate limit, per-thread token ceiling) DO live in this route —
+// see checkRateLimit/checkTokenCeiling below — but stay pure functions
+// from lib/ai/guards.ts with no persistence of their own.
 
 export const runtime = "nodejs";
 
@@ -32,6 +35,7 @@ import type {
 
 import { buildDocsAgentRequest } from "@/lib/ai/docs-agent";
 import { getAnthropicClient, hasApiKey } from "@/lib/ai/client";
+import { checkRateLimit, checkTokenCeiling } from "@/lib/ai/guards";
 import {
   describeToolResult,
   sanitizeToolArgsForDisplay,
@@ -89,6 +93,15 @@ const requestBodySchema = z.object({
   // are enforced separately below (a single Zod `.max()` on the array
   // would only cap turn count, not aggregate size).
   messages: z.array(historyTurnSchema).optional(),
+  // F020: cumulative token usage (in + out) this thread has consumed
+  // across all prior turns, as tracked client-side by useDocAssistant's
+  // running `usage` total. This is the value checkTokenCeiling compares
+  // against THREAD_TOKEN_CEILING — a self-reported figure is acceptable
+  // here because it only gates a UX-level "start a new chat" nudge, not a
+  // security boundary (the real cost/abuse guard is the per-user rate
+  // limit above, which is server-tracked and cannot be spoofed by the
+  // client).
+  threadUsage: z.number().min(0).optional(),
 });
 
 type NdjsonEvent =
@@ -165,6 +178,20 @@ export async function POST(request: Request) {
     });
   }
 
+  // F020 (AS-046): per-user throttle, checked before any body parsing or
+  // model work. HTTP 200 with a single `error` NDJSON line, matching the
+  // no_api_key/tool_limit convention this route already uses for
+  // in-band failures — the sidebar only ever branches on the event
+  // envelope, never on transport status, for this class of failure.
+  const rateLimitResult = checkRateLimit(user.id);
+  if (!rateLimitResult.allowed) {
+    const retryAfterSeconds = Math.max(1, Math.ceil(rateLimitResult.retryAfterMs / 1000));
+    return ndjsonSingleErrorResponse({
+      code: "rate_limit",
+      message: `Too many requests, please wait ${retryAfterSeconds} second${retryAfterSeconds === 1 ? "" : "s"}.`,
+    });
+  }
+
   let body: z.infer<typeof requestBodySchema>;
   try {
     const json = await request.json();
@@ -193,6 +220,18 @@ export async function POST(request: Request) {
       JSON.stringify({ error: `Conversation history is too long (max ${MAX_HISTORY_CHARS} characters).` }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
+  }
+
+  // F020 (AS-046): per-thread token ceiling. `threadUsage` is the running
+  // total the client already tracks (useDocAssistant's `usage` state) —
+  // see the schema comment on this field for why a self-reported figure
+  // is acceptable here.
+  const tokenCeilingResult = checkTokenCeiling(body.threadUsage ?? 0);
+  if (!tokenCeilingResult.allowed) {
+    return ndjsonSingleErrorResponse({
+      code: "thread_limit",
+      message: "This conversation has reached its context limit. Start a new chat to continue.",
+    });
   }
 
   // F027 (fixes M1-SCRUTINY.md M1c, AS-023/AS-024): re-verify the caller
@@ -532,6 +571,27 @@ export async function POST(request: Request) {
   });
 
   return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/**
+ * F020: an already-open-looking NDJSON stream (HTTP 200, same content
+ * type as the main route response) carrying exactly one `error` event
+ * followed by `done`, for guard failures (rate limit, token ceiling) that
+ * are detected before the main stream would otherwise open. Keeps every
+ * in-band failure — no_api_key, tool_limit, rate_limit, thread_limit — on
+ * the same "200 + error event" convention the sidebar already parses.
+ */
+function ndjsonSingleErrorResponse(event: { code: string; message: string }): Response {
+  const encoder = new TextEncoder();
+  const lines =
+    JSON.stringify({ t: "error", ...event }) + "\n" + JSON.stringify({ t: "done" }) + "\n";
+  return new Response(encoder.encode(lines), {
     status: 200,
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
