@@ -161,7 +161,33 @@ export function MarkdownEditor({
   // sidebar's context bar in sync with the live (possibly-unsaved) title
   // as the user types, not just `initialTitle` — same live-title
   // responsiveness the title textarea below already has.
-  useSetBreadcrumb([{ label: title || "Untitled" }]);
+  //
+  // F035 (M2 review minor, same file): announcing `title` directly here
+  // fired `setSlot` on every keystroke in the title field, re-rendering
+  // BreadcrumbProvider (and everything under it, including the whole
+  // workspace shell) once per character. Debounced the same way this
+  // file's own autosave already is (`AUTOSAVE_DEBOUNCE_MS`) — the
+  // breadcrumb/context-bar title only needs to settle a beat after typing
+  // stops, not track every keystroke.
+  const [debouncedTitle, setDebouncedTitle] = useState(initialTitle);
+  const titleAnnounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (titleAnnounceTimerRef.current) {
+      clearTimeout(titleAnnounceTimerRef.current);
+    }
+    titleAnnounceTimerRef.current = setTimeout(() => {
+      setDebouncedTitle(title);
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (titleAnnounceTimerRef.current) {
+        clearTimeout(titleAnnounceTimerRef.current);
+      }
+    };
+  }, [title]);
+  // F035: named "doc" slot (see breadcrumb-context.tsx's `SLOT_ORDER`) so
+  // this composes with `ProjectBreadcrumb`'s "project" slot instead of
+  // clobbering it on `/projects/<id>/docs/<docId>`.
+  useSetBreadcrumb([{ label: debouncedTitle || "Untitled" }], "doc");
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [docKind, setDocKindState] = useState<SetDocKindInput["kind"]>(
     initialDocKind ?? "note",
