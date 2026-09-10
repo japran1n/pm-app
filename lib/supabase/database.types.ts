@@ -1473,6 +1473,44 @@ export type Database = {
           },
         ]
       }
+      page_components: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          position: number
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          position?: number
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          position?: number
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_components_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_links: {
         Row: {
           client_visible: boolean
@@ -2917,6 +2955,7 @@ export type Database = {
           author_id: string
           blocked_reason: string | null
           client_visible: boolean
+          component_id: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -2929,6 +2968,7 @@ export type Database = {
           id: string
           last_occurrence_at: string | null
           number: number
+          page_kind: string | null
           page_order: number | null
           page_slug: string | null
           parent_task_id: string | null
@@ -2954,6 +2994,7 @@ export type Database = {
           author_id: string
           blocked_reason?: string | null
           client_visible?: boolean
+          component_id?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -2966,6 +3007,7 @@ export type Database = {
           id?: string
           last_occurrence_at?: string | null
           number?: number
+          page_kind?: string | null
           page_order?: number | null
           page_slug?: string | null
           parent_task_id?: string | null
@@ -2991,6 +3033,7 @@ export type Database = {
           author_id?: string
           blocked_reason?: string | null
           client_visible?: boolean
+          component_id?: string | null
           created_at?: string
           deleted_at?: string | null
           deleted_by?: string | null
@@ -3003,6 +3046,7 @@ export type Database = {
           id?: string
           last_occurrence_at?: string | null
           number?: number
+          page_kind?: string | null
           page_order?: number | null
           page_slug?: string | null
           parent_task_id?: string | null
@@ -3024,6 +3068,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tasks_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "page_components"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tasks_deleted_via_task_id_fkey"
             columns: ["deleted_via_task_id"]
@@ -4109,6 +4160,7 @@ export type Database = {
           author_id: string
           blocked_reason: string | null
           client_visible: boolean
+          component_id: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -4121,6 +4173,7 @@ export type Database = {
           id: string
           last_occurrence_at: string | null
           number: number
+          page_kind: string | null
           page_order: number | null
           page_slug: string | null
           parent_task_id: string | null
@@ -4155,6 +4208,7 @@ export type Database = {
           author_id: string
           blocked_reason: string | null
           client_visible: boolean
+          component_id: string | null
           created_at: string
           deleted_at: string | null
           deleted_by: string | null
@@ -4167,6 +4221,7 @@ export type Database = {
           id: string
           last_occurrence_at: string | null
           number: number
+          page_kind: string | null
           page_order: number | null
           page_slug: string | null
           parent_task_id: string | null
