@@ -7,18 +7,19 @@
 // Client Component owning only the form state, calling the Server Action
 // and refreshing on success.
 //
-// Slug: F011 is scoped to propose a slug from the name and let it be
-// edited before it stops tracking the name (standing decision 3). Until
-// that lands, this dialog uses the name itself as the slug -- the
-// simplest value that satisfies createPageSchema's non-empty
-// requirement -- so "Add first page" is fully usable now rather than
-// blocked on F011.
+// Slug: F011 (AS-013, AS-014, AS-015, AS-016) proposes a slug from the
+// name via `slugify` and lets it be edited before save. Once the user
+// manually edits the slug field, `slugEdited` flips true and the slug
+// stops tracking further name changes (AS-015) -- it is frozen at
+// whatever the user typed, including nested segments like
+// "services/seo" (AS-016).
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { createPage } from "@/lib/actions/architecture";
+import { slugify } from "@/lib/utils/slugify";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,13 +44,32 @@ export function CreatePageDialog({
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function resetAndClose() {
     setName("");
+    setSlug("");
+    setSlugEdited(false);
     setError(null);
     onOpenChange(false);
+  }
+
+  function handleNameChange(nextName: string) {
+    setName(nextName);
+    // AS-013/AS-015: keep proposing a slug from the name until the user
+    // has manually edited the slug field; once edited, the slug is
+    // frozen and no longer tracks the name.
+    if (!slugEdited) {
+      setSlug(slugify(nextName));
+    }
+  }
+
+  function handleSlugChange(nextSlug: string) {
+    setSlugEdited(true);
+    setSlug(nextSlug);
   }
 
   function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
@@ -57,11 +77,12 @@ export function CreatePageDialog({
     setError(null);
 
     const trimmedName = name.trim();
+    const trimmedSlug = slug.trim();
 
     startTransition(async () => {
       const result = await createPage(projectId, {
         name: trimmedName,
-        slug: trimmedName,
+        slug: trimmedSlug,
         page_kind: "static",
       });
 
@@ -104,10 +125,27 @@ export function CreatePageDialog({
               autoFocus
               disabled={isPending}
               value={name}
-              onChange={(changeEvent) => setName(changeEvent.target.value)}
+              onChange={(changeEvent) => handleNameChange(changeEvent.target.value)}
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? "page-name-error" : undefined}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="page-slug">Slug</Label>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground" aria-hidden="true">
+                /
+              </span>
+              <Input
+                id="page-slug"
+                name="slug"
+                required
+                disabled={isPending}
+                value={slug}
+                placeholder="e.g. services/seo"
+                onChange={(changeEvent) => handleSlugChange(changeEvent.target.value)}
+              />
+            </div>
           </div>
           {error && (
             <p id="page-name-error" role="alert" className="text-sm text-destructive">

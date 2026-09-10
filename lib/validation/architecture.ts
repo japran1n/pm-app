@@ -14,6 +14,11 @@ export const pageKindEnum = z.enum(["static", "cms", "utility"]);
 
 // AS-039 (this mission's naming assertion): name is required, non-empty
 // after trimming.
+// AS-016: slugs may contain nested path segments (e.g. "services/seo").
+// Allowed characters are lowercase letters, digits, hyphens, and forward
+// slashes; no leading/trailing/double slashes.
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
+
 export const createPageSchema = z.object({
   name: z
     .string()
@@ -24,7 +29,11 @@ export const createPageSchema = z.object({
     .string()
     .trim()
     .min(1, "Page slug is required.")
-    .max(200, "Page slug must be 200 characters or fewer."),
+    .max(200, "Page slug must be 200 characters or fewer.")
+    .regex(
+      slugPattern,
+      "Slug can only contain lowercase letters, numbers, hyphens, and forward slashes for nested paths.",
+    ),
   page_kind: pageKindEnum.default("static"),
 });
 
