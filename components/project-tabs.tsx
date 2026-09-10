@@ -37,7 +37,7 @@ import { useRouter, usePathname } from "next/navigation";
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ProjectTab = "board" | "list" | "docs" | "hours" | "settings";
+type ProjectTab = "board" | "list" | "docs" | "hours" | "architecture" | "brief" | "settings";
 
 export function ProjectTabs({
   workspaceSlug,
@@ -56,6 +56,10 @@ export function ProjectTabs({
   // `${basePath}/list` or the board route.
   const activeTab: ProjectTab = pathname?.startsWith(`${basePath}/settings`)
     ? "settings"
+    : pathname?.startsWith(`${basePath}/architecture`)
+    ? "architecture"
+    : pathname?.startsWith(`${basePath}/brief`)
+    ? "brief"
     : pathname?.startsWith(`${basePath}/hours`)
     ? "hours"
     : pathname?.startsWith(`${basePath}/docs`)
@@ -76,6 +80,8 @@ export function ProjectTabs({
         <TabsTrigger value="list">List</TabsTrigger>
         <TabsTrigger value="docs">Docs</TabsTrigger>
         <TabsTrigger value="hours">Hours</TabsTrigger>
+        <TabsTrigger value="architecture">Architecture</TabsTrigger>
+        <TabsTrigger value="brief">Brief</TabsTrigger>
         <TabsTrigger value="settings">Settings</TabsTrigger>
       </TabsList>
     </Tabs>
