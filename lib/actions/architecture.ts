@@ -650,3 +650,198 @@ export async function createSection(
 
   return { success: true, id: inserted.id };
 }
+
+// Mission 20260910-182104, F017 (AS-035): deletes a section from the
+// board. Standing decision 1: a section IS a subtask of its page
+// (`parent_task_id` set, no `page_slug` of its own) -- discovery
+// established the board is flat (sections have no sub-sections of their
+// own), so unlike deletePage this needs no cascade: a plain soft-delete
+// of this one task row is enough. Still reuses `cascade_delete_task`
+// (same RPC deletePage calls) rather than a bespoke `.update()` here --
+// it degrades to a single-row soft-delete when the target has no live
+// children, and keeps every delete on the board going through one
+// audited path (stamping `deleted_via_task_id` consistently) instead of
+// two.
+export async function deleteSection(
+  taskId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to delete a section." };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the task's owning project/workspace server-side, and confirm
+  // it is actually a section (has a parent page, no page_slug of its
+  // own) before touching it -- same convention as deletePage above.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    taskRow.page_slug ||
+    !taskRow.parent_task_id ||
+    !(taskRow as { projects?: { workspace_id?: string } }).projects?.workspace_id
+  ) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
+    .workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to delete this section.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to delete a section.",
+    };
+  }
+
+  const { data: cascadeResult, error: cascadeError } = await admin.rpc(
+    "cascade_delete_task",
+    { p_task_id: taskId },
+  );
+
+  if (cascadeError || !cascadeResult) {
+    logger.error("deleteSection: cascade_delete_task failed", {
+      error: cascadeError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("deleteSection: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
+
+// Mission 20260910-182104, F015 (AS-007, AS-034, AS-040): renames a
+// section inline on the board. Standing decision 1: a section IS a
+// subtask of its page task (`parent_task_id` set, no `page_slug`), so
+// renaming a section is exactly the same targeted `title` update
+// renamePage performs on a page task above -- the section list already
+// reads that same `title` column, so AS-007 ("renaming a section outside
+// the board changes the name shown on the board") falls out for free
+// from sharing that one column, with no separate display name to keep in
+// sync. Ownership check confirms the target task is actually a section
+// (has a non-null `parent_task_id`, i.e. it is NOT a page) before
+// touching it, mirroring renamePage's "confirm it's actually a page"
+// guard in the opposite direction.
+export async function renameSection(
+  taskId: string,
+  title: string,
+): Promise<{ success: boolean; error?: string }> {
+  // AS-040: a section cannot be saved with an empty name.
+  const parsed = z
+    .string()
+    .trim()
+    .min(1, "Section name is required.")
+    .max(200, "Section name must be 200 characters or fewer.")
+    .safeParse(title);
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Section name is required.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to rename a section.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, parent_task_id, projects(workspace_id)")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    !taskRow.parent_task_id ||
+    !(taskRow as { projects?: { workspace_id?: string } }).projects
+      ?.workspace_id
+  ) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const workspaceId = (taskRow as { projects: { workspace_id: string } })
+    .projects.workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to rename this section.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to rename a section.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ title: parsed.data })
+    .eq("id", taskId);
+
+  if (updateError) {
+    logger.error("renameSection: update failed", { error: updateError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("renameSection: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
