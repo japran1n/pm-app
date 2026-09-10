@@ -351,7 +351,7 @@ export function ProjectNavList({
           "group flex items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm transition-colors max-md:min-h-11",
           isActive
             ? "bg-accent text-foreground font-medium"
-            : "text-muted-foreground hover:bg-[#ffffff0d]",
+            : "text-muted-foreground hover:bg-accent",
         )}
       >
         {content}

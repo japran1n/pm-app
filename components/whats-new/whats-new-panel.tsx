@@ -160,7 +160,7 @@ export function WhatsNewPanel() {
             <li key={entry.title} className="flex flex-col gap-1 border-b pb-4 last:border-b-0 last:pb-0">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-medium">{entry.title}</p>
-                <p className="text-xs text-muted-foreground">{entry.date}</p>
+                <p className="font-mono text-xs text-muted-foreground">{entry.date}</p>
               </div>
               <p className="text-sm text-muted-foreground">{entry.description}</p>
             </li>

@@ -55,7 +55,7 @@ export function RouteError({
         <AlertTriangle className="size-6 text-destructive" />
       </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xl font-semibold">{title}</p>
         <p className="max-w-sm text-sm text-muted-foreground">{description}</p>
       </div>
       <Button

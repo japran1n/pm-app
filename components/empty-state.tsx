@@ -50,7 +50,7 @@ export function EmptyState({
         <Icon className="size-6 text-muted-foreground" />
       </div>
       <div className="flex flex-col gap-1">
-        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xl font-semibold">{title}</p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       {action && <div className="flex items-center gap-2">{action}</div>}

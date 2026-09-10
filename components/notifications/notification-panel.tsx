@@ -341,7 +341,7 @@ export function NotificationPanel({
                       </>
                     )}
                   </p>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(notification.createdAt), {
                       addSuffix: true,
                     })}
@@ -367,7 +367,7 @@ export function NotificationPanel({
                 {href ? (
                   <Link
                     href={href}
-                    className="block rounded-md hover:bg-accent/60"
+                    className="block rounded-md hover:bg-muted/50"
                     onClick={() => handleMarkRead(notification)}
                   >
                     {content}
@@ -375,7 +375,7 @@ export function NotificationPanel({
                 ) : (
                   <button
                     type="button"
-                    className="block w-full rounded-md text-left hover:bg-accent/60"
+                    className="block w-full rounded-md text-left hover:bg-muted/50"
                     onClick={() => handleMarkRead(notification)}
                   >
                     {content}

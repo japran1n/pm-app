@@ -475,7 +475,7 @@ export function CommandPalette({
                   <FolderKanban className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -495,7 +495,7 @@ export function CommandPalette({
                   <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ?? task.projectName}
                   </span>
                 </CommandItem>
@@ -533,7 +533,7 @@ export function CommandPalette({
                   <FolderKanban className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -557,7 +557,7 @@ export function CommandPalette({
                 >
                   <FileText className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ??
                       task.projectName}
                   </span>
@@ -579,7 +579,7 @@ export function CommandPalette({
                   <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                   <span>{member.name ?? member.email ?? "Unknown"}</span>
                   {member.name && member.email && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">
                       {member.email}
                     </span>
                   )}

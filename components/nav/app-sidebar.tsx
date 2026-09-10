@@ -393,7 +393,7 @@ function SidebarContent({
                       "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm max-md:min-h-11",
                       isActive
                         ? "bg-accent text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-[#ffffff0d]",
+                        : "text-muted-foreground hover:bg-accent",
                     )}
                   >
                     <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -403,7 +403,7 @@ function SidebarContent({
                         — 0/undefined renders nothing, so a settled workspace's
                         nav item looks exactly like any other plain link. */}
                     {typeof count === "number" && count > 0 && (
-                      <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px]">
+                      <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px] font-mono">
                         {count}
                       </Badge>
                     )}
@@ -468,7 +468,7 @@ function SidebarContent({
             "flex min-h-9 items-center gap-2.5 rounded-[4px] px-2 py-1.5 text-sm transition-colors max-md:min-h-11",
             pathname === `/w/${workspaceSlug}/settings/profile`
               ? "bg-accent text-foreground font-medium"
-              : "text-muted-foreground hover:bg-[#ffffff0d]",
+              : "text-muted-foreground hover:bg-accent",
           )}
         >
           <UserAvatar person={currentUser} size="sm" />

@@ -50,7 +50,7 @@ export async function AppHeader({
     : [null, []];
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-4 border-b bg-background px-4">
+    <header className="flex h-12 shrink-0 items-center gap-4 border-b border-border bg-background px-4">
       <div className="min-w-0 flex-1">
         <AppBreadcrumb
           workspaceSlug={workspaceSlug}

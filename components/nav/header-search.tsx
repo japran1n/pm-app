@@ -326,7 +326,7 @@ export function HeaderSearch({
                   <FolderKanban className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{project.name}</span>
                   {project.key && (
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                    <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
                       {project.key}
                     </span>
                   )}
@@ -351,7 +351,7 @@ export function HeaderSearch({
                 >
                   <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{task.title}</span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
                     {formatTaskKey(task.projectKey, task.number) ?? task.projectName}
                   </span>
                 </ResultRow>
