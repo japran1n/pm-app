@@ -399,7 +399,7 @@ export function WeekTimeGrid({
           {HOURS.map((hour) => (
             <div
               key={hour}
-              className="absolute left-0 right-0 border-t border-border/40 pr-1 text-right text-[10px] text-muted-foreground"
+              className="absolute left-0 right-0 border-t border-border/40 pr-1 text-right font-mono text-[10px] text-muted-foreground"
               style={{ top: hour * PX_PER_HOUR }}
             >
               {String(hour).padStart(2, "0")}:00

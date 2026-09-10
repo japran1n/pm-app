@@ -118,16 +118,22 @@ export function TeamRequestInbox({
         return (
           <li
             key={request.id}
-            className="flex flex-col gap-3 rounded-lg border border-border p-4"
+            className="flex flex-col gap-3 rounded-lg border border-border p-4 hover:bg-muted/50"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex flex-col gap-1">
                 <span className="font-medium">{request.title}</span>
                 <span className="text-xs text-muted-foreground">
                   {request.requesterName ?? request.requesterEmail ?? "A client"}{" "}
-                  · {request.projectName} · {formatDate(request.createdAt)}
+                  · {request.projectName} ·{" "}
+                  <span className="font-mono">{formatDate(request.createdAt)}</span>
                   {request.desiredBy
-                    ? ` · needs it by ${formatDate(request.desiredBy)}`
+                    ? (
+                      <>
+                        {" "}· needs it by{" "}
+                        <span className="font-mono">{formatDate(request.desiredBy)}</span>
+                      </>
+                    )
                     : ""}
                 </span>
               </div>
@@ -145,7 +151,7 @@ export function TeamRequestInbox({
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge variant="secondary">Change request</Badge>
                 {request.quotedAmount != null && (
-                  <span className="text-muted-foreground">
+                  <span className="font-mono text-muted-foreground">
                     {request.quotedAmount} {request.quoteCurrency ?? ""}
                     {request.quotedHours != null ? ` · ${request.quotedHours}h` : ""}
                   </span>

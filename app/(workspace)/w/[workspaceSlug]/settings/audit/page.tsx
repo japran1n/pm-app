@@ -134,7 +134,7 @@ export default async function AuditLogPage({
   const loadMoreHref = `/w/${workspaceSlug}/settings/audit?${loadMoreParams.toString()}`;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Audit log</h1>
         <p className="text-sm text-muted-foreground">

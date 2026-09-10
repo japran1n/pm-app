@@ -142,7 +142,7 @@ export default async function ProfileSettingsPage({
       };
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Profile</h1>
         <p className="text-sm text-muted-foreground">

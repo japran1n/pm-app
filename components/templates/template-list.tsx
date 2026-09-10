@@ -105,7 +105,7 @@ function TemplateRow({
   }
 
   return (
-    <Card>
+    <Card className="hover-lift">
       <CardHeader>
         {isRenaming ? (
           <div className="flex items-center gap-2">
@@ -161,8 +161,10 @@ function TemplateRow({
             size="sm"
           />
           <span>
-            {template.creatorName ?? template.creatorEmail ?? "Unknown"} ·{" "}
-            {dateFormatter.format(new Date(template.createdAt))}
+            {template.creatorName ?? (
+              <span className="font-mono">{template.creatorEmail ?? "Unknown"}</span>
+            )}{" "}
+            · <span className="font-mono">{dateFormatter.format(new Date(template.createdAt))}</span>
           </span>
         </div>
 

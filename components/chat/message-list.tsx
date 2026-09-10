@@ -389,7 +389,7 @@ function MessageRow({
             <span className="text-sm font-semibold">
               {isOwn ? "You" : authorLabel(message.senderId, members)}
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="font-mono text-xs text-muted-foreground">
               {isAfter(new Date(message.createdAt), subHours(new Date(), 24))
                 ? formatDistanceToNow(new Date(message.createdAt), { addSuffix: true })
                 : format(new Date(message.createdAt), "MMM d, HH:mm")}

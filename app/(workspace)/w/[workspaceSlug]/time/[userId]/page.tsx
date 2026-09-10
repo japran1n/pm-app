@@ -155,7 +155,7 @@ export default async function PersonTimeDrilldownPage({
   const label = targetMember.name ?? targetMember.email ?? "Unknown member";
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <Link
           href={`/w/${workspaceSlug}/time`}
@@ -213,15 +213,15 @@ export default async function PersonTimeDrilldownPage({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground">Total</p>
-          <p className="text-2xl font-semibold tabular-nums">{formatMinutes(totalMinutes)}</p>
+          <p className="text-2xl font-semibold font-mono tabular-nums">{formatMinutes(totalMinutes)}</p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground">Billable</p>
-          <p className="text-2xl font-semibold tabular-nums">{formatMinutes(totalBillable)}</p>
+          <p className="text-2xl font-semibold font-mono tabular-nums">{formatMinutes(totalBillable)}</p>
         </div>
         <div className="rounded-lg border p-4">
           <p className="text-xs text-muted-foreground">Non-billable</p>
-          <p className="text-2xl font-semibold tabular-nums">
+          <p className="text-2xl font-semibold font-mono tabular-nums">
             {formatMinutes(totalMinutes - totalBillable)}
           </p>
         </div>
@@ -250,10 +250,10 @@ export default async function PersonTimeDrilldownPage({
                 {byProject.map((row) => (
                   <TableRow key={row.projectId}>
                     <TableCell>{row.projectName}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatMinutes(row.billableMinutes)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatMinutes(row.totalMinutes)}
                     </TableCell>
                   </TableRow>
@@ -292,7 +292,7 @@ export default async function PersonTimeDrilldownPage({
                   <TableRow key={entry.id}>
                     <TableCell>{entry.entryDate}</TableCell>
                     <TableCell>{entry.taskTitle}</TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatMinutes(entry.minutes)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">

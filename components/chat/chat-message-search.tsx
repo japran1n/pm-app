@@ -107,7 +107,7 @@ export function ChatMessageSearch({
                 <li key={r.id}>
                   <Link
                     href={`/w/${workspaceSlug}/chat/${r.channelId}`}
-                    className="block p-3 text-sm hover:bg-accent"
+                    className="block p-3 text-sm hover:bg-muted/50"
                     onClick={() => {
                       setQuery("");
                       setResults(null);

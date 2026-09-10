@@ -51,7 +51,7 @@ export default async function DocsIndexPage({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Docs</h1>
         <NewDocButton workspaceId={workspace.id} workspaceSlug={workspaceSlug} />
@@ -61,7 +61,7 @@ export default async function DocsIndexPage({
           <li key={doc.id}>
             <a
               href={`/w/${workspaceSlug}/docs/${doc.id}`}
-              className="block rounded-md px-3 py-2 text-sm hover:bg-accent"
+              className="block rounded-md px-3 py-2 text-sm hover:bg-muted/50"
             >
               {doc.title}
             </a>

@@ -285,18 +285,26 @@ export function QuoteDialog({
                 </div>
                 <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   {parsedHours != null && !Number.isNaN(parsedHours) && (
-                    <span>Estimate: {parsedHours}h</span>
+                    <span>
+                      Estimate: <span className="font-mono">{parsedHours}h</span>
+                    </span>
                   )}
                   {parsedAmount != null && !Number.isNaN(parsedAmount) && (
                     <span>
                       Price:{" "}
-                      {new Intl.NumberFormat("en-GB", {
-                        style: "currency",
-                        currency: currency || "USD",
-                      }).format(parsedAmount)}
+                      <span className="font-mono">
+                        {new Intl.NumberFormat("en-GB", {
+                          style: "currency",
+                          currency: currency || "USD",
+                        }).format(parsedAmount)}
+                      </span>
                     </span>
                   )}
-                  {validUntil && <span>Valid until {validUntil}</span>}
+                  {validUntil && (
+                    <span>
+                      Valid until <span className="font-mono">{validUntil}</span>
+                    </span>
+                  )}
                 </div>
                 {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
               </div>

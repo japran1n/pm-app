@@ -159,7 +159,7 @@ export function ChatNavList({
                     "flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors max-md:min-h-11",
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      : "text-sidebar-foreground/70 hover:bg-muted/50 hover:text-sidebar-accent-foreground",
                   )}
                 >
                   <Icon
@@ -172,7 +172,7 @@ export function ChatNavList({
                   {unreadCount > 0 && (
                     <Badge
                       variant="destructive"
-                      className="h-4 min-w-4 shrink-0 rounded-full px-1 text-[10px] leading-none"
+                      className="h-4 min-w-4 shrink-0 rounded-full px-1 font-mono text-[10px] leading-none"
                     >
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </Badge>

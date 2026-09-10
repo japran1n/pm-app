@@ -40,7 +40,7 @@ export function TrashList({
       {items.map((item) => (
         <li
           key={`${item.type}-${item.id}`}
-          className="flex items-start gap-3 p-4"
+          className="flex items-start gap-3 p-4 hover:bg-muted/50"
         >
           <div
             aria-hidden="true"
@@ -68,7 +68,9 @@ export function TrashList({
             </div>
             <p className="text-xs text-muted-foreground">
               From {item.projectName} — deleted{" "}
-              {trashItemDateLabel(item.deletedAt, dateFormatter)}
+              <span className="font-mono">
+                {trashItemDateLabel(item.deletedAt, dateFormatter)}
+              </span>
               {item.deletedByName ? ` by ${item.deletedByName}` : ""}
             </p>
           </div>

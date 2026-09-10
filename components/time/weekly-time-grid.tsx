@@ -78,7 +78,7 @@ function GridCell({
           setEditing(true);
         }}
         className={cn(
-          "flex h-9 w-full items-center justify-center rounded text-sm tabular-nums hover-surface",
+          "flex h-9 w-full items-center justify-center rounded font-mono text-sm tabular-nums hover-surface",
           minutes === 0 && "text-muted-foreground",
         )}
         aria-label={`Log time for ${date}`}
@@ -174,7 +174,7 @@ export function WeeklyTimeGrid({
                   day.isToday && "text-primary",
                 )}
               >
-                {day.label}
+                <span className="font-mono">{day.label}</span>
               </th>
             ))}
             <th className="border-b p-2 text-center font-medium">Total</th>
@@ -203,7 +203,7 @@ export function WeeklyTimeGrid({
                   />
                 </td>
               ))}
-              <td className="p-2 text-center font-medium tabular-nums">
+              <td className="p-2 text-center font-mono font-medium tabular-nums">
                 {formatDuration(rowTotals[rowIndex] ?? 0)}
               </td>
             </tr>
@@ -213,11 +213,11 @@ export function WeeklyTimeGrid({
           <tr>
             <td className="p-2 font-medium">Total</td>
             {columnTotals.map((total, i) => (
-              <td key={days[i]?.date ?? i} className="p-2 text-center font-medium tabular-nums">
+              <td key={days[i]?.date ?? i} className="p-2 text-center font-mono font-medium tabular-nums">
                 {formatDuration(total)}
               </td>
             ))}
-            <td className="p-2 text-center font-semibold tabular-nums">
+            <td className="p-2 text-center font-mono font-semibold tabular-nums">
               {formatDuration(grandTotal)}
             </td>
           </tr>

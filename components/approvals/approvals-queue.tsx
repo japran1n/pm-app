@@ -122,16 +122,18 @@ export function ApprovalsQueue({
       {/* Summary strip (spec section 4): open count, oldest age, past-due
           count — the last two are what make a PM act. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <SummaryFigure label="Open approvals" value={String(approvals.length)} />
+        <SummaryFigure label="Open approvals" value={String(approvals.length)} mono />
         <SummaryFigure
           label="Oldest waiting"
           value={`${daysSince(oldest.requestedAt)}d`}
           emphasize={daysSince(oldest.requestedAt) >= 3}
+          mono
         />
         <SummaryFigure
           label="Past due"
           value={String(pastDueCount)}
           emphasize={pastDueCount > 0}
+          mono
         />
       </div>
 
@@ -171,7 +173,7 @@ export function ApprovalsQueue({
                     : null;
 
               return (
-                <tr key={approval.id} className="align-top">
+                <tr key={approval.id} className="align-top hover:bg-muted/50">
                   <td className="px-4 py-3 font-medium">
                     {whatHref ? (
                       <NextLink href={whatHref} className="underline-offset-2 hover:underline">
@@ -210,7 +212,7 @@ export function ApprovalsQueue({
                   <td className="px-4 py-3">
                     <span
                       className={
-                        pastDue ? "font-medium text-destructive" : "text-muted-foreground"
+                        pastDue ? "font-mono font-medium text-destructive" : "font-mono text-muted-foreground"
                       }
                     >
                       {waitingDays}d{pastDue ? " · past due" : ""}
@@ -292,15 +294,19 @@ function SummaryFigure({
   label,
   value,
   emphasize = false,
+  mono = false,
 }: {
   label: string;
   value: string;
   emphasize?: boolean;
+  mono?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-4">
+    <div className="rounded-lg border border-border/60 bg-card p-4 hover-lift">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${emphasize ? "text-destructive" : ""}`}>
+      <p
+        className={`mt-1 text-2xl font-semibold ${emphasize ? "text-destructive" : ""} ${mono ? "font-mono" : ""}`}
+      >
         {value}
       </p>
     </div>

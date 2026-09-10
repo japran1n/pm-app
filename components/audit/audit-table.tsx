@@ -127,7 +127,7 @@ export function AuditTable({
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                  <TableCell className="whitespace-nowrap font-mono text-muted-foreground">
                     <time dateTime={row.createdAt}>
                       {formatTimestamp(row.createdAt)}
                     </time>

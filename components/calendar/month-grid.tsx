@@ -93,7 +93,7 @@ export function MonthGrid({
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-month-grid">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="calendar-month-label">
+        <h1 className="font-mono text-2xl font-semibold" data-testid="calendar-month-label">
           {monthLabel}
         </h1>
         <div className="flex items-center gap-1">

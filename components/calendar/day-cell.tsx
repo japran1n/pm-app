@@ -119,7 +119,7 @@ export function DayCell({
       <div className="flex items-center justify-between">
         <span
           className={cn(
-            "flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium",
+            "flex h-5 w-5 items-center justify-center rounded-full font-mono text-[11px] font-medium",
             day.isToday && "bg-primary text-primary-foreground",
           )}
         >

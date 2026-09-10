@@ -376,7 +376,7 @@ export function GlobalTimeTracker({
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Track Time</h3>
-              <span className="text-xs text-muted-foreground" data-testid="daily-progress-label">
+              <span className="font-mono text-xs text-muted-foreground" data-testid="daily-progress-label">
                 {formatDuration(todayMinutes)} / {formatDuration(DAILY_GOAL_MINUTES)}
               </span>
             </div>
@@ -535,8 +535,8 @@ export function GlobalTimeTracker({
               groupedEntries.map((group) => (
                 <div key={group.day} className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-                    <span>{formatDayHeading(group.day)}</span>
-                    <span>{formatDuration(group.totalMinutes)}</span>
+                    <span className="font-mono">{formatDayHeading(group.day)}</span>
+                    <span className="font-mono">{formatDuration(group.totalMinutes)}</span>
                   </div>
                   <ul className="flex flex-col gap-1">
                     {group.entries.map((entry) => (
@@ -545,7 +545,7 @@ export function GlobalTimeTracker({
                         className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/50"
                       >
                         <span className="min-w-0 flex-1 truncate">{entry.taskTitle}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground">
                           {formatDuration(entry.minutes)}
                         </span>
                         <Button

@@ -147,7 +147,7 @@ export default async function TimeReportPage({
       : null;
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="flex items-center gap-2 text-xl font-semibold">
@@ -276,13 +276,13 @@ export default async function TimeReportPage({
                         </span>
                       </Link>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatMinutes(billable)}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-right font-mono tabular-nums">
                       {formatMinutes(nonBillable)}
                     </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
+                    <TableCell className="text-right font-mono font-medium tabular-nums">
                       {formatMinutes(billable + nonBillable)}
                     </TableCell>
                   </TableRow>

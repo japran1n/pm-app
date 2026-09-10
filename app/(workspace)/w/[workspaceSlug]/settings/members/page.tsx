@@ -154,7 +154,7 @@ export default async function MembersPage({
       : [];
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Members</h1>
         <p className="text-sm text-muted-foreground">
@@ -317,7 +317,7 @@ export default async function MembersPage({
                             >
                               {initial}
                             </span>
-                            {invite.invitedEmail}
+                            <span className="font-mono">{invite.invitedEmail}</span>
                           </div>
                         </TableCell>
                         <TableCell>

@@ -237,7 +237,7 @@ export function DocsFolderRow({
         <div
           ref={setDropRef}
           className={cn(
-            "group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent/50",
+            "group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-muted/50",
             isOver && "bg-primary/10 ring-1 ring-primary/40",
           )}
           style={indent}
@@ -435,7 +435,7 @@ export function DocsDocRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent/50",
+        "group flex items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-muted/50",
         doc.id === currentDocId && "bg-accent",
         isDragging && "opacity-50",
       )}

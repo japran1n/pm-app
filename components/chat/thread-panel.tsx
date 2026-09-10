@@ -242,7 +242,7 @@ export function ThreadPanel({
                     ? "You"
                     : authorLabel(parent.senderId, members)}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {isAfter(new Date(parent.createdAt), subHours(new Date(), 24))
                     ? formatDistanceToNow(new Date(parent.createdAt), { addSuffix: true })
                     : format(new Date(parent.createdAt), "MMM d, HH:mm")}
@@ -285,7 +285,7 @@ export function ThreadPanel({
                           ? "You"
                           : authorLabel(reply.senderId, members)}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {isAfter(new Date(reply.createdAt), subHours(new Date(), 24))
                           ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })
                           : format(new Date(reply.createdAt), "MMM d, HH:mm")}

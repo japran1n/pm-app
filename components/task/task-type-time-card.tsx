@@ -39,7 +39,7 @@ export function TaskTypeTimeCard({
               className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm"
             >
               <span className="truncate font-medium">{total.taskTypeName}</span>
-              <span className="shrink-0 text-muted-foreground tabular-nums">
+              <span className="shrink-0 font-mono text-muted-foreground tabular-nums">
                 {formatDuration(total.trackedMinutes)} tracked &middot;{" "}
                 {formatDuration(total.estimatedMinutes)} estimated
               </span>

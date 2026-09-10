@@ -104,7 +104,7 @@ export default async function ArchivePage({
   });
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold">Archive</h1>
         <p className="text-sm text-muted-foreground">
@@ -154,7 +154,7 @@ export default async function ArchivePage({
       {archivedProjects && archivedProjects.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {archivedProjects.map((project) => (
-            <Card key={project.id}>
+            <Card key={project.id} className="hover-lift">
               <CardHeader>
                 <CardTitle className="line-clamp-1">{project.name}</CardTitle>
                 <CardDescription className="line-clamp-2">
@@ -173,7 +173,10 @@ export default async function ArchivePage({
                     account that's since been deleted), in which case only
                     the date is shown rather than a fabricated name. */}
                 <p className="text-xs text-muted-foreground">
-                  Archived {dateFormatter.format(new Date(project.archivedAt))}
+                  Archived{" "}
+                  <span className="font-mono">
+                    {dateFormatter.format(new Date(project.archivedAt))}
+                  </span>
                   {project.archivedByName
                     ? ` by ${project.archivedByName}`
                     : ""}

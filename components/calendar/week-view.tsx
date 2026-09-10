@@ -67,7 +67,7 @@ export function WeekView({
   return (
     <div className="flex flex-col gap-3" data-testid="calendar-week-view">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold" data-testid="calendar-week-label">
+        <h1 className="font-mono text-2xl font-semibold" data-testid="calendar-week-label">
           {rangeLabel}
         </h1>
         <div className="flex items-center gap-1">
@@ -103,7 +103,7 @@ export function WeekView({
       <div className="hidden grid-cols-[3.5rem_repeat(7,1fr)] text-xs font-medium text-muted-foreground md:grid">
         <div />
         {week.days.map((day) => (
-          <div key={day.date} className="px-2 py-1 text-center">
+          <div key={day.date} className="px-2 py-1 text-center font-mono">
             {formatDayHeaderLabel(day.date, day.isToday)}
           </div>
         ))}

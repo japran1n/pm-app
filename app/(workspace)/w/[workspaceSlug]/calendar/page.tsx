@@ -163,7 +163,7 @@ export default async function CalendarPage({
   );
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 p-6 pt-4 lg:p-8 lg:pt-8">
       {filtersBar}
       {/* Perf (W9b): the filters bar above only needs the option-set
           batch already resolved, not the grid's own task fetch -- the

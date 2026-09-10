@@ -152,8 +152,8 @@ export function MyTimeView({
                 >
                   <span className="text-sm font-medium">{row.projectName}</span>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
-                    <span>{formatDuration(row.totalMinutes)} total</span>
-                    <span>· {formatDuration(row.billableMinutes)} billable</span>
+                    <span className="font-mono">{formatDuration(row.totalMinutes)} total</span>
+                    <span className="font-mono">· {formatDuration(row.billableMinutes)} billable</span>
                   </div>
                 </div>
               ))}
@@ -189,7 +189,7 @@ function SummaryCard({ label, minutes }: { label: string; minutes: number }) {
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <span className="text-2xl font-semibold tabular-nums">{formatDuration(minutes)}</span>
+        <span className="font-mono text-2xl font-semibold tabular-nums">{formatDuration(minutes)}</span>
       </CardContent>
     </Card>
   );
@@ -227,7 +227,7 @@ function DailyView({
     <Card aria-label="Daily time entries">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>
-          {selectedDate} · {formatDuration(total)}
+          <span className="font-mono">{selectedDate} · {formatDuration(total)}</span>
         </CardTitle>
         <div className="flex items-center gap-2 text-sm">
           <Link href={`${base}?view=daily&date=${prevDate}`} className="rounded border px-2 py-1 hover:bg-secondary">
@@ -255,7 +255,7 @@ function DailyView({
                     <span className="text-xs text-muted-foreground">{bucket.projectName}</span>
                   )}
                 </div>
-                <span className="text-sm tabular-nums text-muted-foreground">
+                <span className="font-mono text-sm tabular-nums text-muted-foreground">
                   {formatDuration(bucket.minutes)}
                 </span>
               </div>
@@ -313,7 +313,7 @@ function WeeklyView({
   return (
     <Card aria-label="Weekly time grid">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle>Week of {calendarWeek.weekKey}</CardTitle>
+        <CardTitle>Week of <span className="font-mono">{calendarWeek.weekKey}</span></CardTitle>
         <div className="flex items-center gap-2 text-sm">
           <Link
             href={`${base}?view=weekly&week=${prevWeekKey}`}
@@ -364,7 +364,7 @@ function MonthlyView({
     <Card aria-label="Monthly calendar">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>
-          {calendarMonth.monthKey} · {formatDuration(total)}
+          <span className="font-mono">{calendarMonth.monthKey} · {formatDuration(total)}</span>
         </CardTitle>
         <div className="flex items-center gap-2 text-sm">
           <Link
@@ -403,9 +403,9 @@ function MonthlyView({
                       day.isToday && "border-primary",
                     )}
                   >
-                    <span>{Number.parseInt(day.date.split("-")[2] ?? "0", 10)}</span>
+                    <span className="font-mono">{Number.parseInt(day.date.split("-")[2] ?? "0", 10)}</span>
                     {minutes > 0 && (
-                      <span className="font-medium tabular-nums">{formatDuration(minutes)}</span>
+                      <span className="font-mono font-medium tabular-nums">{formatDuration(minutes)}</span>
                     )}
                   </Link>
                 );

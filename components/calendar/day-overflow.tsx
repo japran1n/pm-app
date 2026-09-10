@@ -44,7 +44,7 @@ export function DayOverflow({
         render={
           <button
             type="button"
-            className="rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            className="rounded px-1.5 py-0.5 text-left font-mono text-[11px] font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             aria-label={`Show ${tasks.length} more task${tasks.length === 1 ? "" : "s"}`}
           >
             +{tasks.length} more
