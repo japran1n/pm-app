@@ -48,6 +48,7 @@ export type BoardPage = {
   pageSlug: string;
   pageKind: BoardPageKind | null;
   position: number;
+  description: string | null;
   sections: BoardSection[];
 };
 
@@ -65,7 +66,7 @@ export type ArchitectureBoard = {
 };
 
 const TASK_COLUMNS =
-  "id, title, page_slug, page_kind, component_id, parent_task_id, position";
+  "id, title, page_slug, page_kind, component_id, parent_task_id, position, description_text";
 
 type TaskRow = {
   id: string;
@@ -75,6 +76,7 @@ type TaskRow = {
   component_id: string | null;
   parent_task_id: string | null;
   position: number;
+  description_text: string | null;
 };
 
 const COMPONENT_COLUMNS = "id, name, description, position";
@@ -145,6 +147,10 @@ function buildBoardFromRows(
       pageSlug: page.page_slug as string,
       pageKind: (page.page_kind as BoardPageKind | null) ?? null,
       position: page.position,
+      description:
+        page.description_text && page.description_text.length > 0
+          ? page.description_text
+          : null,
       sections,
     };
   });

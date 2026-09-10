@@ -1,5 +1,6 @@
 import { getArchitectureBoard } from "@/lib/queries/architecture";
 import { ArchitectureBoardEmptyState } from "@/components/architecture/board-empty-state";
+import { ArchitectureBoard } from "@/components/architecture/board";
 
 // Mission 20260910-182104, F005 (AS-028, AS-030): the Architecture tab's
 // route. Server Component, same pattern as the sibling
@@ -29,10 +30,5 @@ export default async function ProjectArchitecturePage({
     return <ArchitectureBoardEmptyState />;
   }
 
-  return (
-    <div className="rounded-lg border p-6 text-sm text-muted-foreground">
-      Board goes here ({board.pages.length} page
-      {board.pages.length === 1 ? "" : "s"})
-    </div>
-  );
+  return <ArchitectureBoard pages={board.pages} components={board.components} />;
 }
