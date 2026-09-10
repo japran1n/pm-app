@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
-import { saveBriefAnswer } from "@/lib/actions/brief";
+import { saveBriefAnswer, submitBrief } from "@/lib/actions/brief";
 import { useAutosave } from "@/lib/hooks/use-autosave";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,15 @@ export function PortalQuestionnaire({
   // validation on the last Next attempt, so the inline error can render.
   const [validationError, setValidationError] = useState(false);
 
+  // F061 (AS-124/AS-125/AS-126): submit state for the whole questionnaire.
+  // `submitted` flips true on success and never flips back to false --
+  // AS-126 means the form stays fully editable afterwards (nothing here
+  // disables AnswerInput or the autosave wiring), it's purely a status
+  // message shown alongside the still-editable form.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
   if (question?.id !== renderedQuestionId) {
     setRenderedQuestionId(question?.id);
     setDraft({
@@ -132,6 +141,38 @@ export function PortalQuestionnaire({
     }
     setValidationError(false);
     setCurrentIndex((i) => Math.min(total - 1, i + 1));
+  };
+
+  // AS-124: every required question must be answered before submit is
+  // allowed. The current question's in-progress draft takes precedence
+  // over its possibly-stale saved answer (autosave may still be
+  // in-flight/debounced); every other question is checked against its
+  // last-saved answer from `initialAnswers`.
+  const allRequiredAnswered = questions.every((q) => {
+    if (!q.required) return true;
+    if (q.id === question.id) return isAnswered(q, draft);
+    const saved = answersByQuestionId.get(q.id);
+    return isAnswered(q, {
+      text: saved?.answerText ?? "",
+      options: saved?.answerOptions ?? null,
+    });
+  });
+
+  const handleSubmit = async () => {
+    if (!briefId) return;
+    if (!allRequiredAnswered) {
+      setSubmitError("Please answer all required questions before submitting.");
+      return;
+    }
+    setSubmitError(null);
+    setSubmitting(true);
+    const result = await submitBrief(briefId);
+    setSubmitting(false);
+    if (!result.success) {
+      setSubmitError(result.error ?? "Couldn't submit this brief.");
+      return;
+    }
+    setSubmitted(true);
   };
 
   return (
@@ -189,6 +230,30 @@ export function PortalQuestionnaire({
         <Button type="button" disabled={isLast} onClick={handleNext}>
           Next
         </Button>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t border-border pt-4" data-testid="questionnaire-submit">
+        {submitted ? (
+          <p className="text-sm text-foreground" data-testid="questionnaire-submitted-message">
+            Brief submitted. You can still edit your answers.
+          </p>
+        ) : (
+          <>
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!briefId || submitting}
+              data-testid="questionnaire-submit-button"
+            >
+              {submitting ? "Submitting…" : "Submit"}
+            </Button>
+            {submitError && (
+              <p className="text-sm text-destructive" data-testid="questionnaire-submit-error">
+                {submitError}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

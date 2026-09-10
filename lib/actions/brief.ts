@@ -398,6 +398,64 @@ export async function saveBriefAnswer(
   return { success: true };
 }
 
+// Marks a brief as submitted (F061, AS-124/AS-125). Submission is
+// idempotent -- resubmitting a brief already in 'submitted' is a no-op
+// success rather than an error, matching AS-126's "answers stay editable
+// after submit" framing: a client may revisit and resubmit freely. This
+// intentionally never writes 'approved' -- approval is a separate,
+// team-side action (out of scope here) that this action must not
+// perform even if called repeatedly. RLS (`briefs_update_client`,
+// F046) is the real boundary preventing a client from writing any state
+// other than what that policy allows once a brief is 'approved'; this
+// action's `.eq("state", ...)` filter below is a defense-in-depth guard
+// that also makes "already submitted" naturally idempotent without a
+// second round-trip to check state first.
+export async function submitBrief(briefId: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "You must be signed in to submit this brief." };
+  }
+
+  const { data: brief, error: briefError } = await supabase
+    .from("briefs")
+    .select("id, state")
+    .eq("id", briefId)
+    .maybeSingle();
+
+  if (briefError) {
+    logger.error("submitBrief: failed to load brief", { error: briefError, briefId });
+    return { success: false, error: "Couldn't submit this brief." };
+  }
+
+  if (!brief) {
+    return { success: false, error: "Couldn't submit this brief. It may not exist." };
+  }
+
+  if (brief.state === "submitted") {
+    return { success: true };
+  }
+
+  if (brief.state !== "draft") {
+    return { success: false, error: "This brief can no longer be submitted." };
+  }
+
+  const { error: updateError } = await supabase
+    .from("briefs")
+    .update({ state: "submitted" })
+    .eq("id", briefId)
+    .eq("state", "draft");
+
+  if (updateError) {
+    logger.error("submitBrief: update failed", { error: updateError, briefId });
+    return { success: false, error: "Couldn't submit this brief." };
+  }
+
+  return { success: true };
+}
+
 // Persists a new question order after a drag-and-drop reorder (F052,
 // AS-107, AS-108). Mirrors lib/actions/projects.ts's `reorderProject`
 // "the client already computed the full target order, this action just
