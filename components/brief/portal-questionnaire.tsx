@@ -27,6 +27,28 @@ import { AnswerInput } from "@/components/brief/answer-input";
 // to persist to without a brief to attach the answer to, which never
 // happens on the real portal route now that the page below always passes
 // the loaded brief's id.
+//
+// F060 (AS-123): a required question must be answered before the brief
+// can advance past it. `isAnswered` mirrors the "counts as answered"
+// rule already used by F058's resume-position logic, applied per-type:
+// short_text/long_text need non-empty answer_text, single_choice needs
+// exactly one selected option, multi_choice needs at least one.
+export function isAnswered(
+  question: BriefQuestion,
+  draft: { text: string | null; options: string[] | null },
+): boolean {
+  switch (question.answerType) {
+    case "single_choice":
+      return (draft.options?.length ?? 0) === 1;
+    case "multi_choice":
+      return (draft.options?.length ?? 0) >= 1;
+    case "short_text":
+    case "long_text":
+    default:
+      return Boolean(draft.text && draft.text.trim() !== "");
+  }
+}
+
 export function PortalQuestionnaire({
   questions,
   initialAnswers,
@@ -74,6 +96,9 @@ export function PortalQuestionnaire({
     text: existingAnswer?.answerText ?? "",
     options: existingAnswer?.answerOptions ?? null,
   });
+  // F060 (AS-123): tracks whether the current question failed required
+  // validation on the last Next attempt, so the inline error can render.
+  const [validationError, setValidationError] = useState(false);
 
   if (question?.id !== renderedQuestionId) {
     setRenderedQuestionId(question?.id);
@@ -81,6 +106,7 @@ export function PortalQuestionnaire({
       text: existingAnswer?.answerText ?? "",
       options: existingAnswer?.answerOptions ?? null,
     });
+    setValidationError(false);
   }
 
   // AS-116: no save control anywhere in this component -- saveFn fires
@@ -98,6 +124,15 @@ export function PortalQuestionnaire({
 
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === total - 1;
+
+  const handleNext = () => {
+    if (question.required && !isAnswered(question, draft)) {
+      setValidationError(true);
+      return;
+    }
+    setValidationError(false);
+    setCurrentIndex((i) => Math.min(total - 1, i + 1));
+  };
 
   return (
     <div className="flex flex-col gap-6" data-testid="portal-questionnaire">
@@ -121,8 +156,17 @@ export function PortalQuestionnaire({
           question={question}
           value={draft.text}
           selectedOptions={draft.options ?? []}
-          onChange={(text, options) => setDraft({ text, options })}
+          onChange={(text, options) => {
+            setDraft({ text, options });
+            setValidationError(false);
+          }}
         />
+
+        {validationError && (
+          <p className="text-sm text-destructive" data-testid="questionnaire-required-error">
+            This question is required
+          </p>
+        )}
 
         <p
           className="font-mono text-xs text-muted-foreground"
@@ -142,11 +186,7 @@ export function PortalQuestionnaire({
         >
           Previous
         </Button>
-        <Button
-          type="button"
-          disabled={isLast}
-          onClick={() => setCurrentIndex((i) => Math.min(total - 1, i + 1))}
-        >
+        <Button type="button" disabled={isLast} onClick={handleNext}>
           Next
         </Button>
       </div>

@@ -105,6 +105,14 @@ describe("F055: AS-114 the questionnaire presents one question at a time", () =>
   });
 
   it("pre-fills the answer stub from initialAnswers when one exists for the current question", () => {
+    // F058 (AS-117) makes the initial `currentIndex` resume at the first
+    // *unanswered* question, so this test uses its own single-question
+    // list to keep asserting the prefill behaviour independent of that
+    // resume logic (which is covered separately in
+    // tests/unit/f058-resume-first-unanswered.test.tsx).
+    const singleQuestion: BriefQuestion[] = [
+      makeQuestion({ id: "q1", prompt: "First question?", position: 0 }),
+    ];
     const answers: BriefAnswer[] = [
       {
         id: "a1",
@@ -119,7 +127,7 @@ describe("F055: AS-114 the questionnaire presents one question at a time", () =>
       },
     ];
 
-    render(<PortalQuestionnaire questions={questions} initialAnswers={answers} />);
+    render(<PortalQuestionnaire questions={singleQuestion} initialAnswers={answers} />);
 
     expect(screen.getByTestId("questionnaire-answer-stub")).toHaveValue("My existing answer");
   });
