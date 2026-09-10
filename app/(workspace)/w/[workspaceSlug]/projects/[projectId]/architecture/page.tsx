@@ -30,5 +30,20 @@ export default async function ProjectArchitecturePage({
     return <ArchitectureBoardEmptyState projectId={projectId} />;
   }
 
-  return <ArchitectureBoard pages={board.pages} components={board.components} />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {/* Mission 20260910-182104, F019 (AS-004, AS-005): pages and
+          sections ARE tasks and subtasks (standing decision 1) -- this
+          note is the UI signal that editing the same record from Board
+          and List/task-detail views simultaneously is intentional, not a
+          data-integrity bug. See lib/queries/architecture.ts's own header
+          comment for the underlying identity. */}
+      <p className="px-1 text-xs text-muted-foreground">
+        Pages and sections here are the same records as tasks and subtasks
+        in the List and Board task views -- edits made in one view show up
+        in the other.
+      </p>
+      <ArchitectureBoard pages={board.pages} components={board.components} />
+    </div>
+  );
 }
