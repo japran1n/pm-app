@@ -73,6 +73,7 @@ export const extensionCreateTaskSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid due date (YYYY-MM-DD).")
     .optional()
     .nullable(),
+  taskTypeId: z.string().uuid("Invalid task type.").optional().nullable(),
 });
 
 export type ExtensionCreateTaskInput = z.infer<

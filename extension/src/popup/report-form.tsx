@@ -5,7 +5,6 @@ import { getAnnotatedResult, getLastCapture } from "../capture/store";
 import { checkScreenshotSize, uploadScreenshotForTask } from "../submit/upload";
 import { collectEnvironmentMetadata } from "../capture/environment";
 import { collectPageContextOnActiveTab } from "../capture/page-context";
-import type { PickResult } from "../capture/element-picker";
 import { buildTaskDescription } from "../submit/describe";
 import { getLastReportContext, setLastReportContext } from "../state/preferences";
 import { getDraft, saveDraft, clearDraft, type ReportDraft } from "../submit/draft";
@@ -63,6 +62,7 @@ const PRIORITY_OPTIONS = [
 type Workspace = { id: string; name: string; slug: string };
 type Project = { id: string; name: string };
 type Member = { id: string; name: string };
+type TaskType = { id: string; name: string };
 
 type WorkspacesState =
   | { kind: "loading" }
@@ -72,7 +72,7 @@ type WorkspacesState =
 type WorkspaceContextState =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "loaded"; projects: Project[]; members: Member[] }
+  | { kind: "loaded"; projects: Project[]; members: Member[]; taskTypes: TaskType[] }
   | { kind: "error"; reason: string };
 
 type SubmitState =
@@ -91,12 +91,10 @@ export function ReportForm({
   accessToken,
   reporterId,
   reporterEmail,
-  pickedElement,
 }: {
   accessToken: string;
   reporterId?: string | null;
   reporterEmail?: string | null;
-  pickedElement?: Extract<PickResult, { ok: true }> | null;
 }) {
   const [workspacesState, setWorkspacesState] = useState<WorkspacesState>({
     kind: "loading",
@@ -106,6 +104,7 @@ export function ReportForm({
     kind: "idle",
   });
   const [projectId, setProjectId] = useState("");
+  const [taskTypeId, setTaskTypeId] = useState("");
   const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]["value"]>("todo");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -281,6 +280,7 @@ export function ReportForm({
     if (!workspaceId) {
       setWorkspaceContext({ kind: "idle" });
       setProjectId("");
+      setTaskTypeId("");
       setAssigneeId("");
       return;
     }
@@ -303,10 +303,14 @@ export function ReportForm({
           return;
         }
         const body = await res.json();
+        const taskTypes: TaskType[] = body.taskTypes ?? [];
+        const qaIssue = taskTypes.find((t) => t.name.toLowerCase() === "qa issue");
+        if (qaIssue) setTaskTypeId(qaIssue.id);
         setWorkspaceContext({
           kind: "loaded",
           projects: body.projects ?? [],
           members: body.members ?? [],
+          taskTypes,
         });
       })
       .catch(() => {
@@ -420,9 +424,7 @@ export function ReportForm({
     const finalDescription = buildTaskDescription({
       reporterText: description.trim(),
       environment,
-      element: pickedElement
-        ? { selector: pickedElement.selector, rect: pickedElement.rect }
-        : null,
+      element: null,
     });
 
     try {
@@ -440,6 +442,7 @@ export function ReportForm({
           priority: priority || undefined,
           assigneeId: assigneeId || undefined,
           dueDate: dueDate || undefined,
+          taskTypeId: taskTypeId || undefined,
         }),
       });
 
@@ -529,6 +532,7 @@ export function ReportForm({
     setAssigneeId("");
     setPriority("");
     setDueDate("");
+    // keep taskTypeId (workspace context hasn't changed, QA issue should stay selected)
     setSubmitState({ kind: "idle" });
   }
 
@@ -641,6 +645,28 @@ export function ReportForm({
               ))}
             </select>
           </div>
+
+          {workspaceContext.kind === "loaded" && workspaceContext.taskTypes.length > 0 && (
+            <div className="pm-field pm-field-primary">
+              <label htmlFor="report-task-type" className="pm-field-label">
+                Task type
+              </label>
+              <select
+                id="report-task-type"
+                data-testid="report-form-task-type"
+                className="pm-select"
+                value={taskTypeId}
+                onChange={(e) => setTaskTypeId(e.target.value)}
+              >
+                <option value="">No type</option>
+                {workspaceContext.taskTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="pm-field pm-field-primary">
             <label htmlFor="report-status" className="pm-field-label">

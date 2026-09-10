@@ -201,6 +201,7 @@ export async function POST(request: NextRequest) {
     priority: parsed.data.priority,
     assigneeId: parsed.data.assigneeId,
     dueDate: parsed.data.dueDate,
+    taskTypeId: parsed.data.taskTypeId,
   });
 
   if (!result.ok) {

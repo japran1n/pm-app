@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const [{ data: projectRows, error: projectsError }, { data: memberRows, error: membersError }] =
+  const [{ data: projectRows, error: projectsError }, { data: memberRows, error: membersError }, { data: taskTypeRows, error: taskTypesError }] =
     await Promise.all([
       admin
         .from("projects")
@@ -169,10 +169,15 @@ export async function GET(request: NextRequest) {
         .select("user_id")
         .eq("workspace_id", workspaceId)
         .eq("status", "active"),
+      admin
+        .from("task_types")
+        .select("id, name")
+        .eq("workspace_id", workspaceId)
+        .order("name", { ascending: true }),
     ]);
 
-  if (projectsError || membersError) {
-    logger.error("extension/context: failed to look up projects/members", { error: projectsError ?? membersError });
+  if (projectsError || membersError || taskTypesError) {
+    logger.error("extension/context: failed to look up projects/members/task-types", { error: projectsError ?? membersError ?? taskTypesError });
     return NextResponse.json(
       { error: "Something went wrong. Please try again in a moment." },
       { status: 500, headers },
@@ -244,6 +249,7 @@ export async function GET(request: NextRequest) {
     {
       projects: visibleProjectRows.map((row) => ({ id: row.id, name: row.name })),
       members,
+      taskTypes: (taskTypeRows ?? []).map((row) => ({ id: row.id, name: row.name })),
     },
     { status: 200, headers },
   );
