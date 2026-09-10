@@ -97,6 +97,14 @@ export function CreatePageDialog({
     });
   }
 
+  // AS-017: the "slug already exists" error comes back scoped to the slug
+  // field specifically -- surface it inline next to that input instead of
+  // (or in addition to) the generic error paragraph below the name field.
+  const isSlugError =
+    error !== null &&
+    (error.toLowerCase().includes("slug") ||
+      error.toLowerCase().includes("path"));
+
   return (
     <Dialog
       open={open}
@@ -144,10 +152,17 @@ export function CreatePageDialog({
                 value={slug}
                 placeholder="e.g. services/seo"
                 onChange={(changeEvent) => handleSlugChange(changeEvent.target.value)}
+                aria-invalid={isSlugError ? true : undefined}
+                aria-describedby={isSlugError ? "page-slug-error" : undefined}
               />
             </div>
+            {isSlugError && (
+              <p id="page-slug-error" role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
           </div>
-          {error && (
+          {error && !isSlugError && (
             <p id="page-name-error" role="alert" className="text-sm text-destructive">
               {error}
             </p>

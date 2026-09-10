@@ -1,21 +1,68 @@
-// Mission 20260910-182104, F010 (AS-001, AS-002, AS-031, AS-037):
-// createPage (lib/actions/architecture.ts). Standing decision 1: a page
-// IS a task with `page_slug` set and the workspace's `page` task type.
+// Mission 20260910-182104, F012 (AS-017, AS-018):
 //
-// Mocks `@/lib/supabase/admin`'s createAdminClient the same way
-// tests/unit/f024b-preview-write-guard.test.ts does for other action
-// tests -- a minimal chainable stub recording the insert row and the
-// `ensure_task_type` rpc call.
+//   AS-017: two pages in the same project cannot have the same slug.
+//   AS-018: a page cannot be saved with an empty slug.
+//
+// Reuses the same createAdminClient stub shape as
+// tests/unit/f010-create-page-action.test.ts for the action-level
+// uniqueness check, plus direct schema tests for the empty-slug case.
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { createPageSchema } from "@/lib/validation/architecture";
+
 vi.mock("server-only", () => ({}));
+
+describe("createPageSchema.slug (F012, AS-018)", () => {
+  it("test_AS_018_empty_slug_fails_validation", () => {
+    const result = createPageSchema.safeParse({
+      name: "Home",
+      slug: "",
+      page_kind: "static",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("test_AS_018_whitespace_only_slug_fails_validation", () => {
+    const result = createPageSchema.safeParse({
+      name: "Home",
+      slug: "   ",
+      page_kind: "static",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("a valid slug passes validation", () => {
+    const result = createPageSchema.safeParse({
+      name: "Home",
+      slug: "services/seo",
+      page_kind: "static",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a slug with a leading slash", () => {
+    const result = createPageSchema.safeParse({
+      name: "Home",
+      slug: "/services",
+      page_kind: "static",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a slug with a trailing slash", () => {
+    const result = createPageSchema.safeParse({
+      name: "Home",
+      slug: "services/",
+      page_kind: "static",
+    });
+    expect(result.success).toBe(false);
+  });
+});
 
 let insertedRow: Record<string, unknown> | null = null;
 let rpcCalls: { name: string; args: unknown }[] = [];
 let existingPageCount = 0;
-// F012 (AS-017): set to a truthy row to simulate an existing page with the
-// same slug already in this project.
 let existingSlugRow: { id: string } | null = null;
 
 function resetShared() {
@@ -68,7 +115,6 @@ vi.mock("@/lib/supabase/admin", () => ({
         return {
           select: (_columns: string, opts?: { count?: string; head?: boolean }) => {
             if (opts?.count) {
-              // count(head) query used to compute AS-037's page position.
               const builder = {
                 eq: () => builder,
                 is: () => builder,
@@ -76,8 +122,6 @@ vi.mock("@/lib/supabase/admin", () => ({
               };
               return builder;
             }
-            // F012 (AS-017): select("id").eq().eq().is().maybeSingle()
-            // slug-uniqueness lookup.
             const builder = {
               eq: () => builder,
               is: () => builder,
@@ -119,8 +163,10 @@ beforeEach(() => {
   resetShared();
 });
 
-describe("createPage (F010)", () => {
-  it("test_AS_001_created_page_is_a_task_with_a_page_slug_set", async () => {
+describe("createPage slug uniqueness (F012, AS-017)", () => {
+  it("test_AS_017_rejects_a_duplicate_slug_in_the_same_project", async () => {
+    existingSlugRow = { id: "99999999-9999-4999-8999-999999999999" };
+
     const { createPage } = await import("@/lib/actions/architecture");
     const result = await createPage("33333333-3333-4333-8333-333333333333", {
       name: "Home",
@@ -128,46 +174,15 @@ describe("createPage (F010)", () => {
       page_kind: "static",
     });
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data.pageSlug).toBe("home");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/already exists/i);
     }
-    expect(insertedRow?.page_slug).toBe("home");
+    expect(insertedRow).toBeNull();
   });
 
-  it("test_AS_002_created_page_carries_the_workspace_page_task_type", async () => {
-    const { createPage } = await import("@/lib/actions/architecture");
-    await createPage("33333333-3333-4333-8333-333333333333", {
-      name: "Home",
-      slug: "home",
-      page_kind: "static",
-    });
-
-    const ensureCall = rpcCalls.find((call) => call.name === "ensure_task_type");
-    expect(ensureCall).toBeDefined();
-    expect((ensureCall?.args as { p_system_key: string }).p_system_key).toBe(
-      "page",
-    );
-    expect(insertedRow?.task_type_id).toBe(
-      "22222222-2222-4222-8222-222222222222",
-    );
-  });
-
-  it("test_AS_031_new_page_defaults_to_page_kind_static", async () => {
-    const { createPage } = await import("@/lib/actions/architecture");
-    const result = await createPage("33333333-3333-4333-8333-333333333333", {
-      name: "Home",
-      slug: "home",
-    } as never);
-
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data.pageKind).toBe("static");
-    }
-  });
-
-  it("test_AS_037_new_page_is_placed_at_the_end_of_the_column_order", async () => {
-    existingPageCount = 3;
+  it("test_AS_017_allows_a_unique_slug_in_the_same_project", async () => {
+    existingSlugRow = null;
 
     const { createPage } = await import("@/lib/actions/architecture");
     const result = await createPage("33333333-3333-4333-8333-333333333333", {
@@ -177,20 +192,6 @@ describe("createPage (F010)", () => {
     });
 
     expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.data.position).toBe(4);
-    }
-  });
-
-  it("test_AS_039_page_name_cannot_be_empty", async () => {
-    const { createPage } = await import("@/lib/actions/architecture");
-    const result = await createPage("33333333-3333-4333-8333-333333333333", {
-      name: "   ",
-      slug: "home",
-      page_kind: "static",
-    });
-
-    expect(result.ok).toBe(false);
-    expect(insertedRow).toBeNull();
+    expect(insertedRow?.page_slug).toBe("about");
   });
 });
