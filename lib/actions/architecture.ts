@@ -1090,3 +1090,107 @@ export async function moveSectionToPage(
 
   return { success: true };
 }
+
+// Mission 20260910-182104, F022 (AS-046, AS-047): reorders the page
+// columns themselves on the Architecture board. A page IS a task with
+// `page_slug` set (standing decision 1), so this is the same batched
+// `position` update reorderSections already performs for sections --
+// mirrored here for the page-task rows instead of the section-task rows.
+// Every id in `updates` must resolve to a live page task (page_slug set)
+// whose owning workspace the caller is an active, write-capable member
+// of; if any single id fails that check the whole batch is rejected
+// rather than partially applied, same convention as reorderSections.
+export async function reorderPages(
+  updates: { id: string; position: number }[],
+): Promise<{ success: boolean; error?: string }> {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { success: false, error: "No pages to reorder." };
+  }
+
+  for (const update of updates) {
+    if (
+      typeof update.id !== "string" ||
+      !update.id ||
+      typeof update.position !== "number" ||
+      !Number.isFinite(update.position)
+    ) {
+      return { success: false, error: "Invalid reorder payload." };
+    }
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to reorder pages." };
+  }
+
+  const admin = createAdminClient();
+
+  const ids = updates.map((update) => update.id);
+
+  const { data: taskRows, error: taskError } = await admin
+    .from("tasks")
+    .select("id, page_slug, projects(workspace_id)")
+    .in("id", ids)
+    .is("deleted_at", null);
+
+  if (taskError || !taskRows || taskRows.length !== ids.length) {
+    return { success: false, error: "Page not found." };
+  }
+
+  const membershipCache = new Map<string, boolean>();
+
+  for (const taskRow of taskRows) {
+    if (!taskRow.page_slug) {
+      return { success: false, error: "Page not found." };
+    }
+
+    const workspaceId = (taskRow as { projects?: { workspace_id?: string } })
+      .projects?.workspace_id;
+
+    if (!workspaceId) {
+      return { success: false, error: "Page not found." };
+    }
+
+    if (!membershipCache.has(workspaceId)) {
+      const membership = await requireActiveMembership(admin, workspaceId, user.id);
+      const allowed = membership.ok && canWrite({ role: membership.role });
+      membershipCache.set(workspaceId, allowed);
+    }
+
+    if (!membershipCache.get(workspaceId)) {
+      return {
+        success: false,
+        error: "You don't have permission to reorder these pages.",
+      };
+    }
+  }
+
+  const results = await Promise.all(
+    updates.map((update) =>
+      admin.from("tasks").update({ position: update.position }).eq("id", update.id),
+    ),
+  );
+
+  const failed = results.find((result) => result.error);
+  if (failed) {
+    logger.error("reorderPages: update failed", { error: failed.error });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("reorderPages: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}

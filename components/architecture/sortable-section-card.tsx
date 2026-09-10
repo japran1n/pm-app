@@ -16,7 +16,7 @@ import type { BoardSection } from "@/lib/queries/architecture";
 
 export function SortableSectionCard({ section }: { section: BoardSection }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: section.id });
+    useSortable({ id: section.id, data: { type: "section" } });
 
   const style = {
     transform: CSS.Transform.toString(transform),
