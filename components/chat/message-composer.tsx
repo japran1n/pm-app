@@ -134,10 +134,8 @@ export function MessageComposer({
   const canSubmit = (useRichEditor ? !isEmptyDoc(richValue) : !!plainValue.trim()) || pendingAttachments.length > 0;
   const isUploading = pendingAttachments.some((a) => a.uploading);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !channelId) return;
-    e.target.value = "";
+  async function uploadFile(file: File) {
+    if (!channelId) return;
     const tempId = crypto.randomUUID();
     setPendingAttachments((prev) => [...prev, { id: tempId, fileName: file.name, uploading: true }]);
     const formData = new FormData();
@@ -146,12 +144,34 @@ export function MessageComposer({
     const result = await uploadChatAttachment(formData);
     if (result.ok) {
       setPendingAttachments((prev) =>
-        prev.map((a) => a.id === tempId ? { id: result.data.id, fileName: file.name } : a)
+        prev.map((a) => (a.id === tempId ? { id: result.data.id, fileName: file.name } : a)),
       );
     } else {
       setPendingAttachments((prev) => prev.filter((a) => a.id !== tempId));
       setError(result.error);
     }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await uploadFile(file);
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    if (!channelId) return;
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.kind === "file" && item.type.startsWith("image/"));
+    if (!imageItem) return;
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    // Name the pasted image after the current timestamp so multiple pastes
+    // don't all land as "image.png" in the attachment list.
+    const ext = file.type.split("/")[1] ?? "png";
+    const named = new File([file], `screenshot-${Date.now()}.${ext}`, { type: file.type });
+    void uploadFile(named);
   }
 
   async function removeAttachment(attachmentId: string) {
@@ -209,7 +229,7 @@ export function MessageComposer({
   }
 
   return (
-    <div className="border-t p-3">
+    <div className="border-t p-3" onPaste={handlePaste}>
       {pendingAttachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {pendingAttachments.map((a) => (
