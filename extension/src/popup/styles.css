@@ -129,6 +129,46 @@
   }
 }
 
+/* ── Backwards-compat aliases so Popup.tsx / report-form.tsx inline
+   styles still resolve (they still reference --pm-* names) ─────────── */
+:root {
+  /* Surfaces */
+  --pm-bg:      var(--ds-bg);
+  --pm-surface: var(--ds-card);
+  /* Foreground */
+  --pm-text-primary:   var(--ds-fg);
+  --pm-text-secondary: var(--ds-fg-muted);
+  /* Borders */
+  --pm-border: var(--ds-border);
+  /* Accent → brand */
+  --pm-accent:       var(--ds-brand);
+  --pm-accent-fg:    var(--ds-brand-fg);
+  --pm-accent-hover: oklch(from var(--ds-brand) calc(l - 0.04) c h);
+  --pm-focus-ring:   var(--ds-ring);
+  /* Semantic */
+  --pm-success:    var(--ds-success);
+  --pm-success-bg: var(--ds-success-bg);
+  --pm-error:      var(--ds-destructive);
+  --pm-error-bg:   var(--ds-destructive-bg);
+  --pm-warning:    var(--ds-warning);
+  --pm-warning-bg: var(--ds-warning-bg);
+  /* Spacing */
+  --pm-space-1: var(--ds-space-1);
+  --pm-space-2: var(--ds-space-2);
+  --pm-space-3: var(--ds-space-3);
+  --pm-space-4: var(--ds-space-4);
+  --pm-space-6: var(--ds-space-6);
+  /* Radius */
+  --pm-radius-sm: var(--ds-radius-sm);
+  --pm-radius-md: var(--ds-radius-md);
+  --pm-radius-lg: var(--ds-radius-lg);
+  /* Typography */
+  --pm-font-family:      var(--ds-font);
+  --pm-font-size-heading: var(--ds-size-heading);
+  --pm-font-size-body:    var(--ds-size-body);
+  --pm-font-size-meta:    var(--ds-size-meta);
+}
+
 /* ── Reset & base ─────────────────────────────────────────────────────── */
 *,
 *::before,

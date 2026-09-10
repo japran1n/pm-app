@@ -350,7 +350,7 @@ export function Popup() {
       data-testid="popup-root"
       style={{ padding: "var(--pm-space-4)", minWidth: 380, fontFamily: "var(--pm-font-family)" }}
     >
-      <h1 className="pm-heading" style={{ margin: "0 0 var(--pm-space-3)" }}>
+      <h1 className="pm-heading" style={{ margin: "0 0 var(--pm-space-2)", fontSize: 14 }}>
         PM-App QA Feedback
       </h1>
 
@@ -441,7 +441,6 @@ export function Popup() {
             type="button"
             onClick={handleSelectRegion}
             disabled={captureState.kind === "selecting" || captureState.kind === "capturing"}
-            style={{ width: "100%" }}
           >
             {captureState.kind === "selecting"
               ? "Draw a selection on the page…"
