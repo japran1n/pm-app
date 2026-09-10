@@ -116,6 +116,7 @@ export function MessageComposer({
   const [isPending, startTransition] = useTransition();
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   // F122: `RichTextEditor.onUpdate` fires (and applies Tiptap's own
   // autolink mark, WITH a real href) from inside the native "Enter"
   // keydown's own synchronous ProseMirror dispatch, which runs before the
@@ -134,6 +135,11 @@ export function MessageComposer({
   const canSubmit = (useRichEditor ? !isEmptyDoc(richValue) : !!plainValue.trim()) || pendingAttachments.length > 0;
   const isUploading = pendingAttachments.some((a) => a.uploading);
 
+  // Stable ref to the upload function so the capture-phase paste listener
+  // (registered once) can always call the latest closure without being
+  // re-registered every render.
+  const uploadFileRef = useRef<(file: File) => Promise<void>>(async () => {});
+
   async function uploadFile(file: File) {
     if (!channelId) return;
     const tempId = crypto.randomUUID();
@@ -151,6 +157,9 @@ export function MessageComposer({
       setError(result.error);
     }
   }
+  // Keep the ref current every render so the paste listener always calls
+  // the latest closure (with fresh channelId / state setters).
+  uploadFileRef.current = uploadFile;
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -159,20 +168,28 @@ export function MessageComposer({
     await uploadFile(file);
   }
 
-  function handlePaste(e: React.ClipboardEvent) {
-    if (!channelId) return;
-    const items = Array.from(e.clipboardData.items);
-    const imageItem = items.find((item) => item.kind === "file" && item.type.startsWith("image/"));
-    if (!imageItem) return;
-    const file = imageItem.getAsFile();
-    if (!file) return;
-    e.preventDefault();
-    // Name the pasted image after the current timestamp so multiple pastes
-    // don't all land as "image.png" in the attachment list.
-    const ext = file.type.split("/")[1] ?? "png";
-    const named = new File([file], `screenshot-${Date.now()}.${ext}`, { type: file.type });
-    void uploadFile(named);
-  }
+  // Registered in capture phase so it fires before Tiptap's own paste handler
+  // can call stopPropagation and swallow the event.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    function onPasteCapture(e: ClipboardEvent) {
+      if (!channelId) return;
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItem = items.find((i) => i.kind === "file" && i.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ext = file.type.split("/")[1] ?? "png";
+      const named = new File([file], `screenshot-${Date.now()}.${ext}`, { type: file.type });
+      void uploadFileRef.current(named);
+    }
+    el.addEventListener("paste", onPasteCapture, true);
+    return () => el.removeEventListener("paste", onPasteCapture, true);
+    // channelId as dep: if it changes the listener re-registers with the new value
+  }, [channelId]);
 
   async function removeAttachment(attachmentId: string) {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
@@ -229,7 +246,7 @@ export function MessageComposer({
   }
 
   return (
-    <div className="border-t p-3" onPaste={handlePaste}>
+    <div ref={composerRef} className="border-t p-3">
       {pendingAttachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {pendingAttachments.map((a) => (
