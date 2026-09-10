@@ -52,7 +52,7 @@ export function WorkspaceSwitcher({
           <Button
             variant="outline"
             size="sm"
-            className="max-w-56 gap-1.5 rounded-lg"
+            className="w-full max-w-56 gap-1.5 rounded-lg"
           >
             {current ? (
               <WorkspaceLogo
@@ -65,7 +65,7 @@ export function WorkspaceSwitcher({
             <span className="truncate font-mono uppercase">
               {current?.name ?? "Select workspace"}
             </span>
-            <ChevronsUpDown className="text-muted-foreground" />
+            <ChevronsUpDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           </Button>
         }
       />
