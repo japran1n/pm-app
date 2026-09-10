@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { LayoutTemplate } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
 
 // Mission 20260910-182104, F005 (AS-028, AS-030): the empty state shown on
 // a project's Architecture board when it has no pages yet. Mirrors
@@ -8,11 +12,13 @@ import { Button } from "@/components/ui/button";
 // supporting copy, primary action) so the Architecture tab feels
 // consistent with the existing Board tab.
 //
-// "Add first page" is a placeholder trigger for now -- the real
-// create-page action (lib/actions, a client dialog) lands in F010. Kept as
-// a plain disabled-looking button rather than wiring a stub onClick, so
-// nothing here silently no-ops once F010's worker replaces it.
-export function ArchitectureBoardEmptyState() {
+// F010 (AS-001, AS-002, AS-031, AS-037): "Add first page" now opens
+// <CreatePageDialog>, the real create-page action -- promoted from Client
+// Component (was a plain Server Component wrapping a static button)
+// since it now owns the dialog's open/close state.
+export function ArchitectureBoardEmptyState({ projectId }: { projectId: string }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed py-16 text-center">
       <div
@@ -28,7 +34,14 @@ export function ArchitectureBoardEmptyState() {
           architecture.
         </p>
       </div>
-      <Button type="button">Add first page</Button>
+      <Button type="button" onClick={() => setDialogOpen(true)}>
+        Add first page
+      </Button>
+      <CreatePageDialog
+        projectId={projectId}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      />
     </div>
   );
 }

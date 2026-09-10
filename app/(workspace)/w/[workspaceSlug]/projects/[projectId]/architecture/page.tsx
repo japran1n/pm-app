@@ -27,7 +27,7 @@ export default async function ProjectArchitecturePage({
   const board = result.ok ? result.data : { pages: [], components: [] };
 
   if (board.pages.length === 0) {
-    return <ArchitectureBoardEmptyState />;
+    return <ArchitectureBoardEmptyState projectId={projectId} />;
   }
 
   return <ArchitectureBoard pages={board.pages} components={board.components} />;

@@ -1,0 +1,140 @@
+"use client";
+
+// Mission 20260910-182104, F010 (AS-001, AS-002, AS-031, AS-037): the
+// "Add first page" / "Add page" dialog wired to `createPage`
+// (lib/actions/architecture.ts). Smallest possible client boundary
+// (tech-decisions.md convention), same shape as NewProjectDialog: a
+// Client Component owning only the form state, calling the Server Action
+// and refreshing on success.
+//
+// Slug: F011 is scoped to propose a slug from the name and let it be
+// edited before it stops tracking the name (standing decision 3). Until
+// that lands, this dialog uses the name itself as the slug -- the
+// simplest value that satisfies createPageSchema's non-empty
+// requirement -- so "Add first page" is fully usable now rather than
+// blocked on F011.
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { createPage } from "@/lib/actions/architecture";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+export function CreatePageDialog({
+  projectId,
+  open,
+  onOpenChange,
+}: {
+  projectId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function resetAndClose() {
+    setName("");
+    setError(null);
+    onOpenChange(false);
+  }
+
+  function handleSubmit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    setError(null);
+
+    const trimmedName = name.trim();
+
+    startTransition(async () => {
+      const result = await createPage(projectId, {
+        name: trimmedName,
+        slug: trimmedName,
+        page_kind: "static",
+      });
+
+      if (result.ok) {
+        toast.success(`${result.data.title} created.`);
+        resetAndClose();
+        router.refresh();
+      } else {
+        setError(result.error);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          resetAndClose();
+        } else {
+          onOpenChange(true);
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add page</DialogTitle>
+          <DialogDescription>
+            Adds a new column to this project&apos;s architecture board.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="page-name">Name</Label>
+            <Input
+              id="page-name"
+              name="name"
+              required
+              autoFocus
+              disabled={isPending}
+              value={name}
+              onChange={(changeEvent) => setName(changeEvent.target.value)}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "page-name-error" : undefined}
+            />
+          </div>
+          {error && (
+            <p id="page-name-error" role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <DialogClose
+              render={
+                <Button type="button" variant="ghost" disabled={isPending}>
+                  Cancel
+                </Button>
+              }
+            />
+            <Button type="submit" disabled={isPending}>
+              {isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  Creating...
+                </>
+              ) : (
+                "Add page"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
