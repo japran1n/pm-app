@@ -3,36 +3,44 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
-// Good Guys 3.0: the Figma button component (Style=Primary) is IBM Plex Mono
-// 14/1.3, uppercase, on a 2px radius. That treatment belongs on buttons that
-// carry an action label — default/secondary/outline/destructive/link — and is
-// deliberately NOT on `ghost`, which this app uses for icon buttons and dense
-// toolbar affordances where shouting would be noise.
+// Supabase Design System button anatomy: rounded-md, a border on every
+// variant (including primary), duration-200 transitions, and a subtle
+// press scale. See CLAUDE.md "Interaction rules" / "Shadow rule".
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none shadow-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border text-sm font-medium transition-all duration-200 outline-none select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 motion-safe:active:scale-[0.97] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
-        outline: "border border-border bg-transparent hover:bg-[#ffffff0d] hover:text-foreground active:bg-[#ffffff1a] aria-expanded:bg-[#ffffff0d] aria-expanded:text-foreground",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] active:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_10%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+        default:
+          "bg-secondary border-border text-secondary-foreground hover:bg-accent hover:border-border-control-hover",
+        primary: "bg-primary border-transparent text-primary-foreground hover:bg-primary/90",
+        outline:
+          "bg-transparent border-border text-foreground hover:bg-accent hover:border-border-control-hover",
         ghost:
-          "bg-transparent hover:bg-[#ffffff0d] hover:text-foreground active:bg-[#ffffff1a] aria-expanded:bg-[#ffffff0d] aria-expanded:text-foreground",
-        destructive: "bg-destructive/10 text-destructive hover:bg-destructive/20 active:bg-destructive/30 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-transparent border-transparent text-foreground hover:bg-accent hover:border-transparent",
+        dashed:
+          "bg-transparent border-dashed border-border text-foreground hover:border-border-control-hover hover:bg-accent",
+        destructive:
+          "bg-destructive/10 border-destructive/30 text-destructive hover:bg-destructive/20 hover:border-destructive",
+        link: "border-transparent bg-transparent text-primary underline-offset-4 hover:underline",
+        // Backward-compat: old Linear callers pass `secondary` expecting the
+        // subtle/default look. Alias it to `default`.
+        secondary:
+          "bg-secondary border-border text-secondary-foreground hover:bg-accent hover:border-border-control-hover",
       },
       size: {
-        default:
-          "h-7 gap-1.5 px-3 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-        icon: "size-8",
-        "icon-xs":
-          "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm":
-          "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
-        "icon-lg": "size-9",
+        tiny: "h-[26px] px-2.5 text-xs",
+        sm: "h-[34px] px-3 text-sm",
+        default: "h-[38px] px-4 text-sm",
+        lg: "h-[42px] px-5 text-sm",
+        xl: "h-[50px] px-6 text-base",
+        icon: "h-[38px] w-[38px] p-0",
+        "icon-sm": "h-[34px] w-[34px] p-0",
+        "icon-tiny": "h-[26px] w-[26px] p-0",
+        // Backward-compat aliases for old Linear size scale.
+        xs: "h-[26px] px-2.5 text-xs",
+        "icon-xs": "h-[26px] w-[26px] p-0",
+        "icon-lg": "h-[42px] w-[42px] p-0",
       },
     },
     defaultVariants: {
