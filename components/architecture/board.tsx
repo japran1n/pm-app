@@ -8,6 +8,14 @@ import { PageColumn } from "@/components/architecture/page-column";
 // `components` prop is threaded through now (unused here) so later
 // features (component hover highlighting, the component tray) don't need
 // to change this component's public contract.
+// F009 (AS-027): this same div is both the flex row and the scroll
+// container -- `overflow-x-auto` clips it to the viewport width and the
+// browser draws a horizontal scrollbar once the fixed-width PageColumns
+// (w-64 shrink-0, set in page-column.tsx) overflow it. `flex` without
+// `flex-wrap` keeps columns in a single non-wrapping row so the scroll is
+// horizontal, not a wrap-to-next-line. Nothing above this in the page tree
+// sets its own overflow-x, so the page body itself never scrolls
+// horizontally -- only this container does.
 export function ArchitectureBoard({
   pages,
   components,
