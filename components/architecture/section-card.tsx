@@ -1,4 +1,4 @@
-import type { BoardSection } from "@/lib/queries/architecture";
+"use client";
 
 // Mission 20260910-182104, F008 (AS-025): a section card shows the
 // section name. Also shows the linked component's name as secondary text
@@ -10,13 +10,145 @@ import type { BoardSection } from "@/lib/queries/architecture";
 // there is none) so F033's board-wide hover-linking can select every
 // section card sharing a component via `[data-component="<id>"]` once the
 // board root sets `data-hover-component`.
+//
+// Mission 20260910-182104, F015 (AS-007, AS-034, AS-040): the section
+// title is now inline-editable on the board, mirroring
+// PageColumnHeader's rename affordance (components/architecture/
+// page-column-header.tsx, F014) for a page. A section IS a subtask of
+// its page task (standing decision 1), so renaming it updates the same
+// `title` column the task list view reads elsewhere -- AS-007 falls out
+// for free from sharing that one column, with no separate display name
+// to keep in sync.
+//
+// Click the section title to enter edit mode (AS-034):
+// - Enter saves via `renameSection` (lib/actions/architecture.ts) and
+//   refreshes the route so the task list view picks up the new title.
+// - Escape cancels and reverts to the last saved name, discarding the
+//   in-progress edit.
+// - An empty (post-trim) name is rejected client-side before the action
+//   is even called, with a subtle inline error, and `renameSection`
+//   itself also rejects empty names server-side (AS-040, defense in
+//   depth).
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+
+import { renameSection } from "@/lib/actions/architecture";
+import { Input } from "@/components/ui/input";
+import type { BoardSection } from "@/lib/queries/architecture";
+import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
+
 export function SectionCard({ section }: { section: BoardSection }) {
+  const router = useRouter();
+  const [isEditing, setIsEditing] = useState(false);
+  const [value, setValue] = useState(section.title);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function startEditing() {
+    setValue(section.title);
+    setError(null);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setValue(section.title);
+    setError(null);
+    setIsEditing(false);
+  }
+
+  function save() {
+    const trimmed = value.trim();
+
+    // AS-040: a section cannot be saved with an empty name -- reject
+    // before ever calling the server action.
+    if (!trimmed) {
+      setError("Section name is required.");
+      return;
+    }
+
+    if (trimmed === section.title) {
+      setIsEditing(false);
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await renameSection(section.id, trimmed);
+
+      if (result.success) {
+        setIsEditing(false);
+        router.refresh();
+      } else {
+        setError(result.error ?? "Something went wrong. Please try again.");
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+      }
+    });
+  }
+
+  function handleKeyDown(keyEvent: React.KeyboardEvent<HTMLInputElement>) {
+    if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      save();
+    } else if (keyEvent.key === "Escape") {
+      keyEvent.preventDefault();
+      cancelEditing();
+    }
+  }
+
   return (
     <div
       data-component={section.component?.id ?? undefined}
-      className="w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
+      className="group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
     >
-      <p className="truncate text-sm font-medium">{section.title}</p>
+      <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <DeleteSectionButton
+          sectionId={section.id}
+          sectionTitle={section.title}
+        />
+      </div>
+      {isEditing ? (
+        <div className="flex min-w-0 flex-col gap-1">
+          <Input
+            autoFocus
+            disabled={isPending}
+            value={value}
+            onChange={(changeEvent) => {
+              setValue(changeEvent.target.value);
+              if (error) setError(null);
+            }}
+            onKeyDown={handleKeyDown}
+            onBlur={save}
+            aria-label="Section name"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? "section-name-rename-error" : undefined}
+            className="h-7 text-sm"
+          />
+          {error && (
+            <p
+              id="section-name-rename-error"
+              role="alert"
+              className="text-xs text-destructive"
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p
+          role="button"
+          tabIndex={0}
+          onClick={startEditing}
+          onKeyDown={(keyEvent) => {
+            if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+              keyEvent.preventDefault();
+              startEditing();
+            }
+          }}
+          className="truncate rounded-sm pr-6 text-sm font-medium hover:bg-muted/50"
+        >
+          {section.title}
+        </p>
+      )}
       {section.component ? (
         <p className="truncate text-xs text-muted-foreground">
           {section.component.name}
