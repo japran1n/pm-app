@@ -26,6 +26,7 @@ import {
   type CreateQuestionInput,
 } from "@/lib/validation/brief";
 import type { BriefQuestion, BriefQuestionAnswerType } from "@/lib/queries/brief";
+import { ChoiceOptionsEditor } from "@/components/brief/choice-options-editor";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -52,12 +53,17 @@ function isAnswerType(value: string): value is BriefQuestionAnswerType {
   return (ANSWER_TYPES as string[]).includes(value);
 }
 
+function isChoiceAnswerType(answerType: BriefQuestionAnswerType): boolean {
+  return answerType === "single_choice" || answerType === "multi_choice";
+}
+
 type QuestionFormValues = {
   prompt: string;
   category: string;
   answerType: BriefQuestionAnswerType;
   helpText: string;
   required: boolean;
+  options: string[];
 };
 
 function emptyValues(): QuestionFormValues {
@@ -67,6 +73,7 @@ function emptyValues(): QuestionFormValues {
     answerType: "short_text",
     helpText: "",
     required: false,
+    options: [],
   };
 }
 
@@ -77,6 +84,7 @@ function valuesFromQuestion(question: BriefQuestion): QuestionFormValues {
     answerType: question.answerType,
     helpText: question.helpText ?? "",
     required: question.required,
+    options: question.options ?? [],
   };
 }
 
@@ -117,6 +125,9 @@ export function QuestionForm({
       answerType: values.answerType,
       helpText: values.helpText || null,
       required: values.required,
+      options: isChoiceAnswerType(values.answerType)
+        ? values.options.filter((option) => option.trim().length > 0)
+        : undefined,
     };
 
     const schema = isEdit ? updateQuestionSchema : createQuestionSchema;
@@ -215,6 +226,15 @@ export function QuestionForm({
           </Select>
         </div>
       </div>
+
+      {isChoiceAnswerType(values.answerType) ? (
+        <ChoiceOptionsEditor
+          options={values.options}
+          onChange={(options) => update("options", options)}
+          disabled={isPending}
+          idPrefix={`question-option-${formId}`}
+        />
+      ) : null}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor={`question-help-text-${formId}`}>Help text (optional)</Label>
