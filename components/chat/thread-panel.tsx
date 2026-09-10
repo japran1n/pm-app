@@ -10,7 +10,7 @@
 // is ever open at a time and it's fully independent of the main message
 // list's own state.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { formatDistanceToNow, format, isAfter, subHours } from "date-fns";
 
@@ -125,6 +125,16 @@ export function ThreadPanel({
   const isLoadingCurrentThread = loadedThreadId !== parentMessageId;
   const visibleMessages = isLoadingCurrentThread ? null : messages;
 
+  // Bug fix: calling `onReplyCountChange` (a setter owned by the parent,
+  // ChannelView) directly inside a `setMessages` functional updater
+  // triggers React's "Cannot update a component while rendering a
+  // different component" error -- updater functions can run during the
+  // render phase, so updating a different component's state from inside
+  // one is unsafe. The updater below only queues the pending count into a
+  // ref; a separate useEffect (after `messages` commits) flushes it to
+  // the parent.
+  const pendingReplyCountRef = useRef<number | null>(null);
+
   // F10 acceptance: reply count updates realtime for another user who has
   // the thread panel open -- this reuses the same channel-wide Realtime
   // subscription every other chat surface uses, filtered down to this
@@ -140,8 +150,7 @@ export function ThreadPanel({
       if (event.type === "insert") {
         if (previous.some((m) => m.id === event.message.id)) return previous;
         const next = [...previous, event.message as ChatMessage];
-        const replyCount = next.filter((m) => m.id !== parentMessageId).length;
-        onReplyCountChange(parentMessageId, replyCount);
+        pendingReplyCountRef.current = next.filter((m) => m.id !== parentMessageId).length;
         return next;
       }
       return previous.map((m) =>
@@ -149,6 +158,14 @@ export function ThreadPanel({
       );
     });
   });
+
+  useEffect(() => {
+    if (pendingReplyCountRef.current !== null) {
+      onReplyCountChange(parentMessageId, pendingReplyCountRef.current);
+      pendingReplyCountRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   // F13: same channel-scoped mention suggestion source as ChannelView's
   // composer.
@@ -186,8 +203,7 @@ export function ThreadPanel({
       if (previous?.some((m) => m.id === result.data.id)) return previous;
       const next = previous ? [...previous, result.data as ChatMessage] : [result.data as ChatMessage];
       if (previous) {
-        const replyCount = next.filter((m) => m.id !== parentMessageId).length;
-        onReplyCountChange(parentMessageId, replyCount);
+        pendingReplyCountRef.current = next.filter((m) => m.id !== parentMessageId).length;
       }
       return next;
     });

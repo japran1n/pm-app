@@ -10,7 +10,7 @@
 // page) fetches via lib/queries/notifications.ts and passes the result
 // down; this component owns only the interactive part — marking read,
 // optimistic update + revert on failure.
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, Check, Loader2 } from "lucide-react";
@@ -181,16 +181,29 @@ export function NotificationPanel({
   // gets merged in immediately.
   const [appliedSnapshotVersion, setAppliedSnapshotVersion] =
     useState<number>(-1);
-  if (
-    liveSnapshot &&
-    liveSnapshotVersion !== undefined &&
-    liveSnapshotVersion !== appliedSnapshotVersion
-  ) {
-    setAppliedSnapshotVersion(liveSnapshotVersion);
-    setNotifications(liveSnapshot.list);
-    setUnreadCount(liveSnapshot.unreadCount);
-    onUnreadCountChange?.(liveSnapshot.unreadCount);
-  }
+  // Moved into a useEffect (rather than the render-time "adjusting state
+  // when a prop changes" pattern the comment above originally called for):
+  // calling `onUnreadCountChange` -- a SETTER OWNED BY THE PARENT
+  // (NotificationBell) -- synchronously during this component's render
+  // triggers React's "Cannot update a component while rendering a
+  // different component" warning/error, since updating another
+  // component's state is not safe during this component's render phase.
+  // The local `setNotifications`/`setUnreadCount`/`setAppliedSnapshotVersion`
+  // calls are fine to keep alongside it here since they must all apply
+  // atomically with the same guard condition.
+  useEffect(() => {
+    if (
+      liveSnapshot &&
+      liveSnapshotVersion !== undefined &&
+      liveSnapshotVersion !== appliedSnapshotVersion
+    ) {
+      setAppliedSnapshotVersion(liveSnapshotVersion);
+      setNotifications(liveSnapshot.list);
+      setUnreadCount(liveSnapshot.unreadCount);
+      onUnreadCountChange?.(liveSnapshot.unreadCount);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSnapshot, liveSnapshotVersion]);
 
   function updateUnreadCount(next: number) {
     setUnreadCount(next);
