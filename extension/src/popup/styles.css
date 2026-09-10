@@ -1,282 +1,362 @@
-/* F300-followup — shared design system for the extension popup.
+/* Extension popup — Supabase design system port.
  *
- * Loaded via a plain `import "./styles.css"` in main.tsx — Vite handles
- * `.css` imports natively (no extra plugin needed; verified against
- * vite.config.ts, which already ships @vitejs/plugin-react and has no CSS
- * config overrides, so Vite's built-in CSS handling applies unchanged).
- * This file is the ONLY place global styles live for the popup; the old
- * `<style>` block in index.html (just the F299 :focus-visible rule) has
- * been folded into `.pm-focusable:focus-visible` / a global fallback below
- * so that rule is not lost, just relocated and generalised.
+ * Token system mirrors globals.css exactly: same OKLCH engine (--hue: 159),
+ * same Inter 450 weight, same Source Code Pro for mono, same 6px --radius-md.
+ * Two color modes via prefers-color-scheme (the only theme signal available
+ * to MV3 popups — no host-app data-theme attribute is observable here).
  *
- * Scope for this pass (see feature brief): design tokens, base
- * typography/layout, and button variants (primary/secondary/icon). Applied
- * to the popup shell/status area and the annotation toolbar only — the
- * report form and other capture states are NOT restyled here (a second
- * pass covers those), though they still get the base tokens/typography for
- * free since they're just unstyled inline-style elements sitting inside
- * this same document.
- *
- * region-overlay.ts (the live third-party-page overlay) intentionally does
- * NOT use these tokens — it is not part of this stylesheet's scope and its
- * inline styles are left untouched.
+ * Token name mapping:
+ *   --ds-bg          → --background (lowest surface)
+ *   --ds-card        → --card       (e1 surface, +1 elevation step)
+ *   --ds-popover     → --popover    (e2 surface)
+ *   --ds-fg          → --foreground
+ *   --ds-fg-muted    → --muted-foreground
+ *   --ds-fg-subtle   → --tertiary-foreground
+ *   --ds-border      → --border
+ *   --ds-border-ctrl → --input      (stronger, for controls)
+ *   --ds-brand       → --primary    (oklch(0.76 0.15 159))
+ *   --ds-brand-fg    → --primary-foreground
+ *   --ds-accent      → bg-muted/50 equivalent (subtle hover fills)
+ *   --ds-destructive → --destructive
+ *   --ds-warning     → --warning
+ *   --ds-success     → status-done color (#12784f light / #4ade80-ish dark)
  */
 
+/* ── Google Fonts: Inter variable + Source Code Pro ────────────────────── */
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Source+Code+Pro:wght@400;500&display=swap");
+
+/* ── Light palette (default) ─────────────────────────────────────────── */
 :root {
   color-scheme: light dark;
 
-  /* Color tokens — light mode (default). */
-  --pm-bg: #ffffff;
-  --pm-surface: #f7f7f8;
-  --pm-text-primary: #16181d;
-  --pm-text-secondary: #5c6270;
-  --pm-border: #e2e4e9;
-  --pm-accent: #4f46e5;
-  --pm-accent-fg: #ffffff;
-  --pm-accent-hover: #4338ca;
-  --pm-success: #16a34a;
-  --pm-success-bg: #ecfdf3;
-  --pm-error: #dc2626;
-  --pm-error-bg: #fef2f2;
-  --pm-warning: #b45309;
-  --pm-warning-bg: #fffbeb;
-  --pm-focus-ring: #4f46e5;
+  /* OKLCH engine knobs — identical to globals.css */
+  --hue: 159;
+  --chroma: 0.016;
+  --surface: 0.17;        /* light mode: low = dark surface */
+  --foreground-lightness: 0.95;
+  --elevation-step: calc((var(--foreground-lightness) - var(--surface)) * 0.04);
 
-  /* Spacing scale. */
-  --pm-space-1: 4px;
-  --pm-space-2: 8px;
-  --pm-space-3: 12px;
-  --pm-space-4: 16px;
-  --pm-space-6: 24px;
+  /* Derived surfaces */
+  --ds-bg:      oklch(var(--surface) calc(var(--chroma) * 0.5) var(--hue));
+  --ds-card:    oklch(calc(var(--surface) + var(--elevation-step) * 1) calc(var(--chroma) * 0.5) var(--hue));
+  --ds-popover: oklch(calc(var(--surface) + var(--elevation-step) * 1.5) calc(var(--chroma) * 0.5) var(--hue));
+  --ds-secondary: oklch(calc(var(--surface) + var(--elevation-step) * 2) calc(var(--chroma) * 0.5) var(--hue));
 
-  /* Radius scale. */
-  --pm-radius-sm: 6px;
-  --pm-radius-md: 8px;
-  --pm-radius-lg: 12px;
+  /* Foreground */
+  --ds-fg:        oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.95) calc(var(--chroma) * 0.55) var(--hue));
+  --ds-fg-muted:  oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.80) calc(var(--chroma) * 0.55) var(--hue));
+  --ds-fg-subtle: oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.65) calc(var(--chroma) * 0.55) var(--hue));
 
-  /* Typography scale. */
-  --pm-font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, Helvetica, Arial, sans-serif;
-  --pm-font-size-heading: 16px;
-  --pm-font-size-body: 13px;
-  --pm-font-size-meta: 12px;
+  /* Borders */
+  --ds-border:      oklch(from var(--ds-fg) l calc(c * 0.54) h / 12%);
+  --ds-border-ctrl: oklch(from var(--ds-fg) l calc(c * 0.5) h / 22%);
+  --ds-border-hover: oklch(from var(--ds-fg) l calc(c * 0.5) h / 45%);
+
+  /* Brand (Supabase green, hue 159) */
+  --ds-brand:    oklch(0.76 0.15 159);
+  --ds-brand-fg: oklch(0.17 calc(0.016 * 0.45) 159);
+
+  /* Hover fill */
+  --ds-hover-fill: oklch(from var(--ds-fg) l c h / 6%);
+
+  /* Semantic status */
+  --ds-destructive:    oklch(0.75 0.14 25);
+  --ds-destructive-bg: oklch(from var(--ds-destructive) l c h / 10%);
+  --ds-warning:        oklch(0.80 0.14 75);
+  --ds-warning-bg:     oklch(from var(--ds-warning) l c h / 10%);
+  --ds-success:        oklch(0.50 0.14 159);
+  --ds-success-bg:     oklch(from var(--ds-success) l c h / 10%);
+
+  /* Focus ring */
+  --ds-ring: oklch(from var(--ds-brand) l c h / 55%);
+
+  /* Typography */
+  --ds-font: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --ds-font-mono: "Source Code Pro", ui-monospace, "Courier New", monospace;
+  --ds-font-feature: "cv01", "ss03";
+
+  /* Type scale (Supabase) */
+  --ds-size-heading: 15px;   /* text-base */
+  --ds-size-body:    13px;   /* text-sm  */
+  --ds-size-meta:    11px;
+
+  /* Radius */
+  --ds-radius-sm: 4px;
+  --ds-radius-md: 6px;
+  --ds-radius-lg: 8px;
+
+  /* Spacing */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-6: 24px;
 }
 
-/* Dark mode: MV3 popups have no reliable hook into the extension's/host
- * app's own theme toggle, so `prefers-color-scheme` (the OS-level signal)
- * is the correct mechanism here — it's what a popup can actually observe.
- * (https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-color-scheme,
- * verified 2026-08-21: broadly supported, no flag needed in Chrome, which
- * is the only engine this MV3 extension runs in.) */
+/* ── Dark palette ─────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   :root {
-    --pm-bg: #1c1d21;
-    --pm-surface: #26272c;
-    --pm-text-primary: #f2f3f5;
-    --pm-text-secondary: #9a9ea8;
-    --pm-border: #34363c;
-    --pm-accent: #818cf8;
-    --pm-accent-fg: #16181d;
-    --pm-accent-hover: #a5b4fc;
-    --pm-success: #4ade80;
-    --pm-success-bg: #052e16;
-    --pm-error: #f87171;
-    --pm-error-bg: #450a0a;
-    --pm-warning: #fbbf24;
-    --pm-warning-bg: #451a03;
-    --pm-focus-ring: #a5b4fc;
+    --surface: 0.165;
+    --foreground-lightness: 0.97;
+    --elevation-step: calc((var(--foreground-lightness) - var(--surface)) * 0.04);
+
+    --ds-bg:      oklch(var(--surface) calc(var(--chroma) * 0.5) var(--hue));
+    --ds-card:    oklch(calc(var(--surface) + var(--elevation-step) * 1) calc(var(--chroma) * 0.5) var(--hue));
+    --ds-popover: oklch(calc(var(--surface) + var(--elevation-step) * 1.5) calc(var(--chroma) * 0.5) var(--hue));
+    --ds-secondary: oklch(calc(var(--surface) + var(--elevation-step) * 2) calc(var(--chroma) * 0.5) var(--hue));
+
+    --ds-fg:        oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.95) calc(var(--chroma) * 0.55) var(--hue));
+    --ds-fg-muted:  oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.80) calc(var(--chroma) * 0.55) var(--hue));
+    --ds-fg-subtle: oklch(calc(var(--surface) + (var(--foreground-lightness) - var(--surface)) * 0.65) calc(var(--chroma) * 0.55) var(--hue));
+
+    --ds-border:       oklch(from var(--ds-fg) l calc(c * 0.54) h / 12%);
+    --ds-border-ctrl:  oklch(from var(--ds-fg) l calc(c * 0.5) h / 22%);
+    --ds-border-hover: oklch(from var(--ds-fg) l calc(c * 0.5) h / 45%);
+
+    --ds-brand:    oklch(0.76 0.15 159);
+    --ds-brand-fg: oklch(0.12 calc(0.016 * 0.45) 159);
+
+    --ds-hover-fill: oklch(from var(--ds-fg) l c h / 6%);
+
+    --ds-destructive:    oklch(0.75 0.14 25);
+    --ds-destructive-bg: oklch(from var(--ds-destructive) l c h / 12%);
+    --ds-warning:        oklch(0.80 0.14 75);
+    --ds-warning-bg:     oklch(from var(--ds-warning) l c h / 12%);
+    --ds-success:        oklch(0.70 0.14 159);
+    --ds-success-bg:     oklch(from var(--ds-success) l c h / 12%);
+
+    --ds-ring: oklch(from var(--ds-brand) l c h / 55%);
   }
 }
 
-* {
+/* ── Reset & base ─────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-width: 380px;
-  background: var(--pm-bg);
-  color: var(--pm-text-primary);
-  font-family: var(--pm-font-family);
-  font-size: var(--pm-font-size-body);
-  line-height: 1.45;
+  background: var(--ds-bg);
+  color: var(--ds-fg);
+  font-family: var(--ds-font);
+  font-size: var(--ds-size-body);
+  font-weight: 450;
+  font-feature-settings: var(--ds-font-feature);
+  font-optical-sizing: auto;
+  font-synthesis-weight: none;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1,
-h2 {
-  font-family: inherit;
-  color: var(--pm-text-primary);
+h2,
+h3 {
+  font-family: var(--ds-font);
+  font-weight: 600;
+  color: var(--ds-fg);
+  margin: 0;
 }
 
+/* Thin, sharp scrollbars — matches main app */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: oklch(from var(--ds-fg) l c h / 20%);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(from var(--ds-fg) l c h / 35%);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(from var(--ds-fg) l c h / 20%) transparent;
+}
+
+/* Focus ring — always visible for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--ds-ring);
+  outline-offset: 2px;
+}
+
+/* ── Typography helpers ───────────────────────────────────────────────── */
 .pm-heading {
-  font-size: var(--pm-font-size-heading);
+  font-size: var(--ds-size-heading);
   font-weight: 600;
+  color: var(--ds-fg);
   margin: 0;
 }
 
 .pm-body {
-  font-size: var(--pm-font-size-body);
+  font-size: var(--ds-size-body);
+  color: var(--ds-fg);
 }
 
 .pm-meta {
-  font-size: var(--pm-font-size-meta);
-  color: var(--pm-text-secondary);
+  font-size: var(--ds-size-meta);
+  color: var(--ds-fg-muted);
 }
 
-/* F299 (AS-570), relocated from index.html's old inline <style> block and
- * generalised: a real, explicit, always-visible focus indicator on every
- * keyboard-focusable control, via :focus-visible so it only shows for
- * keyboard/programmatic focus, never a mouse click. Kept as a bare
- * `:focus-visible` selector (not scoped to a class) so it keeps applying
- * to every interactive element in the popup exactly as before, including
- * ones outside this pass's scope (the report form, native <select>s, the
- * annotation canvas itself) — nothing loses its focus ring as a result of
- * this file replacing index.html's <style> block. */
-:focus-visible {
-  outline: 3px solid var(--pm-focus-ring);
-  outline-offset: 2px;
+/* Mono: dates, IDs, task keys, counts */
+.pm-mono {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-size-body);
 }
 
-/* --- Buttons --- */
+/* ── Buttons ──────────────────────────────────────────────────────────── */
 
+/* Base */
 .pm-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--pm-space-2);
-  font-family: inherit;
-  font-size: var(--pm-font-size-body);
+  gap: var(--ds-space-2);
+  font-family: var(--ds-font);
+  font-size: var(--ds-size-body);
   font-weight: 500;
-  padding: var(--pm-space-2) var(--pm-space-3);
-  border-radius: var(--pm-radius-md);
+  font-feature-settings: var(--ds-font-feature);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
 }
 
 .pm-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
-/* Primary: filled, accent-colored — the main action (e.g. "Select area to
- * capture", "Connect"). */
+@media (prefers-reduced-motion: no-preference) {
+  .pm-btn:not(:disabled):active {
+    transform: scale(0.97);
+  }
+}
+
+/* Primary — filled brand */
 .pm-btn-primary {
-  background: var(--pm-accent);
-  color: var(--pm-accent-fg);
-  border-color: var(--pm-accent);
+  background: var(--ds-brand);
+  color: var(--ds-brand-fg);
+  border-color: var(--ds-brand);
 }
 
 .pm-btn-primary:not(:disabled):hover {
-  background: var(--pm-accent-hover);
-  border-color: var(--pm-accent-hover);
+  background: oklch(from var(--ds-brand) calc(l - 0.04) c h);
+  border-color: oklch(from var(--ds-brand) calc(l - 0.04) c h);
 }
 
-/* Secondary: outlined/ghost — lower-emphasis actions (e.g. "Disconnect"). */
+/* Secondary — outlined ghost, matches main app's secondary variant */
 .pm-btn-secondary {
   background: transparent;
-  color: var(--pm-text-primary);
-  border-color: var(--pm-border);
+  color: var(--ds-fg);
+  border-color: var(--ds-border-ctrl);
 }
 
 .pm-btn-secondary:not(:disabled):hover {
-  background: var(--pm-surface);
+  background: var(--ds-hover-fill);
+  border-color: var(--ds-border-hover);
 }
 
-/* Icon-only: fixed square hit target for the annotation toolbar. Shares
- * the same radius/padding scale and focus-visible handling as the other
- * two variants. `aria-pressed="true"` (the selected tool) gets the accent
- * treatment so the current tool is visually obvious without relying on
- * color alone (paired with the pressed outline below). */
+/* Icon-only — annotation toolbar, 32×32, rounded-md */
 .pm-btn-icon {
   width: 32px;
   height: 32px;
   padding: 0;
-  border-radius: var(--pm-radius-sm);
+  border-radius: var(--ds-radius-md);
   background: transparent;
-  color: var(--pm-text-secondary);
+  color: var(--ds-fg-muted);
   border-color: transparent;
 }
 
 .pm-btn-icon:not(:disabled):hover {
-  background: var(--pm-surface);
-  color: var(--pm-text-primary);
+  background: var(--ds-hover-fill);
+  color: var(--ds-fg);
 }
 
 .pm-btn-icon[aria-pressed="true"] {
-  background: var(--pm-accent);
-  color: var(--pm-accent-fg);
-  border-color: var(--pm-accent);
+  background: var(--ds-brand);
+  color: var(--ds-brand-fg);
+  border-color: var(--ds-brand);
 }
 
 .pm-btn-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-/* --- Layout helpers --- */
+/* ── Layout helpers ───────────────────────────────────────────────────── */
 
+/* Card — e1 surface, shadow-xs, rounded-md */
 .pm-card {
-  background: var(--pm-surface);
-  border: 1px solid var(--pm-border);
-  border-radius: var(--pm-radius-lg);
-  padding: var(--pm-space-4);
+  background: var(--ds-card);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-space-4);
+  box-shadow: 0 1px 2px oklch(from var(--ds-fg) l c h / 4%);
 }
 
+/* Section divider */
 .pm-section {
-  margin-top: var(--pm-space-4);
-  padding-top: var(--pm-space-3);
-  border-top: 1px solid var(--pm-border);
+  margin-top: var(--ds-space-4);
+  padding-top: var(--ds-space-3);
+  border-top: 1px solid var(--ds-border);
 }
 
-.pm-status-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: var(--pm-space-2);
-}
-
+/* Annotation toolbar */
 .pm-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--pm-space-2);
-  padding: var(--pm-space-2);
-  background: var(--pm-surface);
-  border: 1px solid var(--pm-border);
-  border-radius: var(--pm-radius-md);
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2);
+  background: var(--ds-card);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
 }
 
 .pm-toolbar-divider {
   width: 1px;
   align-self: stretch;
-  background: var(--pm-border);
-  margin: 0 var(--pm-space-1);
+  background: var(--ds-border);
+  margin: 0 var(--ds-space-1);
 }
 
-/* --- Form fields (report-form.tsx) ---
- *
- * Native <select>/<input>/<textarea> elements only, styled via CSS — no
- * custom-widget replacements, per the redesign brief (keeps native
- * keyboard reachability intact for F296/F299's already-tested behaviour).
- */
+/* Status dot */
+.pm-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: var(--ds-space-2);
+  flex-shrink: 0;
+}
+
+/* ── Form fields ──────────────────────────────────────────────────────── */
 
 .pm-field {
-  margin-bottom: var(--pm-space-3);
+  margin-bottom: var(--ds-space-3);
 }
 
 .pm-field-label {
   display: block;
-  font-size: var(--pm-font-size-meta);
+  font-size: var(--ds-size-meta);
   font-weight: 500;
-  color: var(--pm-text-secondary);
-  margin-bottom: var(--pm-space-1);
+  color: var(--ds-fg-muted);
+  margin-bottom: var(--ds-space-1);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .pm-input,
@@ -284,98 +364,116 @@ h2 {
 .pm-textarea {
   width: 100%;
   box-sizing: border-box;
-  font-family: inherit;
-  font-size: var(--pm-font-size-body);
-  color: var(--pm-text-primary);
-  background: var(--pm-bg);
-  border: 1px solid var(--pm-border);
-  border-radius: var(--pm-radius-sm);
-  padding: var(--pm-space-2) var(--pm-space-3);
-  transition: border-color 120ms ease;
+  font-family: var(--ds-font);
+  font-size: var(--ds-size-body);
+  font-weight: 450;
+  font-feature-settings: var(--ds-font-feature);
+  color: var(--ds-fg);
+  background: var(--ds-bg);
+  border: 1px solid var(--ds-border-ctrl);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+  outline: none;
+}
+
+.pm-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  cursor: pointer;
 }
 
 .pm-textarea {
   resize: vertical;
-  min-height: 56px;
+  min-height: 72px;
 }
 
 .pm-input:hover,
 .pm-select:hover,
 .pm-textarea:hover {
-  border-color: var(--pm-text-secondary);
+  border-color: var(--ds-border-hover);
 }
 
 .pm-input:focus,
 .pm-select:focus,
 .pm-textarea:focus {
-  border-color: var(--pm-accent);
+  border-color: var(--ds-brand);
+  box-shadow: 0 0 0 3px oklch(from var(--ds-brand) l c h / 18%);
 }
 
-/* Primary field group: the required title (grouped with workspace/project/
- * status, the fields that actually gate submission) reads as more
- * prominent than the optional fields below it. */
+/* Primary field group — required fields get stronger label */
 .pm-field-primary .pm-field-label {
-  color: var(--pm-text-primary);
+  color: var(--ds-fg);
   font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--ds-size-body);
 }
 
-.pm-field-primary .pm-input {
-  font-size: 14px;
-  padding: var(--pm-space-3);
+.pm-field-primary .pm-input,
+.pm-field-primary .pm-textarea {
+  font-size: 13px;
+  padding: var(--ds-space-2) var(--ds-space-3);
 }
 
-/* Visual separator between the required/primary field group and the
- * optional fields (description/assignee/priority/due-date). */
+/* Divider between required and optional fields */
 .pm-field-group-divider {
-  margin: var(--pm-space-4) 0 var(--pm-space-3);
-  padding-top: var(--pm-space-3);
-  border-top: 1px dashed var(--pm-border);
+  margin: var(--ds-space-4) 0 var(--ds-space-3);
+  padding-top: var(--ds-space-3);
+  border-top: 1px dashed var(--ds-border);
 }
 
 .pm-field-optional .pm-field-label {
   font-weight: 400;
 }
 
-/* --- Banners (draft restoration, warnings, errors, success) --- */
+/* ── Banners ──────────────────────────────────────────────────────────── */
 
 .pm-banner {
   display: flex;
   align-items: flex-start;
-  gap: var(--pm-space-2);
-  padding: var(--pm-space-3);
-  border-radius: var(--pm-radius-md);
-  font-size: var(--pm-font-size-body);
-  margin-bottom: var(--pm-space-3);
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-size-body);
+  margin-bottom: var(--ds-space-3);
+  border: 1px solid;
 }
 
 .pm-banner-info {
-  background: var(--pm-surface);
-  border: 1px solid var(--pm-border);
-  color: var(--pm-text-primary);
+  background: var(--ds-card);
+  border-color: var(--ds-border);
+  color: var(--ds-fg);
 }
 
 .pm-banner-warning {
-  background: var(--pm-warning-bg);
-  border: 1px solid var(--pm-warning);
-  color: var(--pm-warning);
+  background: var(--ds-warning-bg);
+  border-color: oklch(from var(--ds-warning) l c h / 30%);
+  color: var(--ds-warning);
 }
 
 .pm-banner-error {
-  background: var(--pm-error-bg);
-  border: 1px solid var(--pm-error);
-  color: var(--pm-error);
+  background: var(--ds-destructive-bg);
+  border-color: oklch(from var(--ds-destructive) l c h / 30%);
+  color: var(--ds-destructive);
 }
 
 .pm-banner-success {
-  background: var(--pm-success-bg);
-  border: 1px solid var(--pm-success);
-  color: var(--pm-success);
+  background: var(--ds-success-bg);
+  border-color: oklch(from var(--ds-success) l c h / 30%);
+  color: var(--ds-success);
 }
 
-/* --- Success view (success.tsx) --- */
+/* ── Success view ─────────────────────────────────────────────────────── */
 
+/* Task key display — mono, matches main app task key rendering */
 .pm-success-key {
+  font-family: var(--ds-font-mono);
   font-size: 18px;
-  font-weight: 700;
-  color: var(--pm-text-primary);
+  font-weight: 600;
+  color: var(--ds-fg);
+  letter-spacing: -0.01em;
 }
