@@ -5,7 +5,7 @@
 // number the tile above still carries (that tile is untouched -- see
 // overview-tiles.tsx's own header for why the count stays there too).
 import Link from "next/link";
-import { ClipboardCheck, KeyRound, PackageX, Stamp } from "lucide-react";
+import { ClipboardCheck, FileQuestion, KeyRound, PackageX, Stamp } from "lucide-react";
 
 import type {
   WaitingOnYouItem,
@@ -32,6 +32,9 @@ const KIND_ICON: Record<WaitingOnYouItemKind, typeof Stamp> = {
   // A `project_accounts` row the client owns but hasn't provisioned yet
   // -- access to hand over, not a review or an overdue file.
   account: KeyRound,
+  // F064: the project questionnaire, still a draft with questions left
+  // to answer -- a form to fill in, not a decision or overdue file.
+  brief: FileQuestion,
 };
 
 function agedLabel(daysWaiting: number, kind: WaitingOnYouItemKind): string {

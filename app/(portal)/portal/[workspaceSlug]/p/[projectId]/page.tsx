@@ -17,6 +17,7 @@ import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/quer
 import { getOpenApprovalsForClient } from "@/lib/queries/approvals";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
 import { getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
+import { getBriefForClient } from "@/lib/queries/brief";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
@@ -116,6 +117,7 @@ export default async function PortalOverviewPage({
     deliverablesResult,
     accountsResult,
     warrantyRow,
+    briefResult,
   ] = await Promise.all([
     getProjectPhases(project.id),
     getPortalPages(project.id),
@@ -170,6 +172,12 @@ export default async function PortalOverviewPage({
     // (site/page.tsx's own identical comment). RLS already scopes this
     // SELECT the same as every other read on this page.
     supabase.from("projects").select("warranty_until").eq("id", project.id).maybeSingle(),
+    // F064 (AS-163, AS-164): the client-visible brief read (F048) --
+    // reused here to add "Project questionnaire" to "What we need from
+    // you" while the brief is still a draft with questions to answer.
+    // See `buildWaitingOnYouItems`'s own header for why no second query
+    // exists for this.
+    getBriefForClient(project.id),
   ]);
 
   // F085 (defect 1): usedMinutes/soldMinutes come from the SAME RPC
@@ -227,6 +235,13 @@ export default async function PortalOverviewPage({
     tasks: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
     deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
     accounts: accountsResult.ok ? accountsResult.data : [],
+    brief:
+      briefResult.ok && briefResult.data.brief
+        ? {
+            state: briefResult.data.brief.state,
+            questionCount: briefResult.data.questions.length,
+          }
+        : null,
     workspaceSlug: workspace.slug,
     projectId: project.id,
     todayIso: today,

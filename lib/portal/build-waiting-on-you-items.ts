@@ -26,8 +26,24 @@ import type { PortalApproval } from "@/lib/queries/approvals";
 import type { PortalOverviewTask } from "@/lib/queries/portal";
 import { isDeliverablePastDue, type ClientDeliverable } from "@/lib/queries/deliverables";
 import type { ProjectAccount } from "@/lib/queries/project-site";
+import type { BriefState } from "@/lib/queries/brief";
 
-export type WaitingOnYouItemKind = "approval" | "task" | "deliverable" | "account";
+export type WaitingOnYouItemKind = "approval" | "task" | "deliverable" | "account" | "brief";
+
+// F064 (AS-163, AS-164): the project questionnaire is "waiting on you"
+// while it is still in `draft` state AND has at least one question to
+// answer -- a brief with zero questions has nothing for the client to
+// do, so it never surfaces here even in `draft`. Once the client submits
+// (`state` becomes `submitted`, F061's `submitBrief`) or the team
+// approves it (`approved`), it drops out of this list (AS-164): a
+// `draft`-only, has-questions predicate captures both exits in one
+// check, matching `isDeliverablePastDue`'s pattern of a single shared
+// predicate rather than scattering the "is this still outstanding"
+// logic across callers.
+export type BriefOutstandingInfo = {
+  state: BriefState;
+  questionCount: number;
+} | null;
 
 export type WaitingOnYouItem = {
   key: string;
@@ -51,6 +67,7 @@ export function buildWaitingOnYouItems({
   tasks,
   deliverables,
   accounts,
+  brief,
   workspaceSlug,
   projectId,
   todayIso,
@@ -59,6 +76,7 @@ export function buildWaitingOnYouItems({
   tasks: PortalOverviewTask[];
   deliverables: ClientDeliverable[];
   accounts: ProjectAccount[];
+  brief?: BriefOutstandingInfo;
   workspaceSlug: string;
   projectId: string;
   todayIso: string;
@@ -66,6 +84,7 @@ export function buildWaitingOnYouItems({
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
   const approvalsHref = `${basePath}/approvals`;
   const siteHref = `${basePath}/site`;
+  const briefHref = `${basePath}/brief`;
   const items: WaitingOnYouItem[] = [];
   const claimedTaskIds = new Set<string>();
 
@@ -137,6 +156,20 @@ export function buildWaitingOnYouItems({
       href: siteHref,
       daysWaiting: 0,
       actionLabel: "Provide access",
+    });
+  }
+
+  // F064 (AS-163, AS-164): a draft brief with at least one question is
+  // outstanding for the client; a submitted or approved brief (or a
+  // draft brief with no questions) is not.
+  if (brief && brief.state === "draft" && brief.questionCount > 0) {
+    items.push({
+      key: "brief",
+      kind: "brief",
+      title: "Project questionnaire",
+      href: briefHref,
+      daysWaiting: 0,
+      actionLabel: "Answer",
     });
   }
 
