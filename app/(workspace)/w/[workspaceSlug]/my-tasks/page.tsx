@@ -154,7 +154,7 @@ export default async function MyTasksPage({
 
   if (totalCount === 0) {
     return (
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
         <PersonalTodoList
           workspaceId={workspace.id}
@@ -188,7 +188,7 @@ export default async function MyTasksPage({
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">My Tasks</h1>
         {/* F231 (AS-441): toggle is a plain link that flips the URL
@@ -223,7 +223,7 @@ export default async function MyTasksPage({
         return (
           <section key={key} className="flex flex-col gap-2">
             <h2 className="text-sm font-medium text-muted-foreground">
-              {label} ({rows.length})
+              {label} (<span className="font-mono">{rows.length}</span>)
             </h2>
             {/* Portal-parity fix ("My Tasks should look like Dashboard"):
                 the same rounded-border <Table> wrapper + header row

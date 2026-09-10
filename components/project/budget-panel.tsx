@@ -181,16 +181,16 @@ function BudgetRow({
 
   if (!isEditing) {
     return (
-      <li className="flex flex-col gap-1 rounded-md border border-border/60 p-3">
+      <li className="flex flex-col gap-1 rounded-md border border-border/60 p-3 hover:bg-muted/50">
         <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-sm font-medium">
+          <span className="font-mono text-sm font-medium">
             {formatDate(budget.periodStart)} – {formatDate(budget.periodEnd)}
           </span>
-          <span className="text-xs text-muted-foreground">
+          <span className="font-mono text-xs text-muted-foreground">
             {minutesToHoursLabel(budget.soldMinutes)} sold
           </span>
           {budget.rateAmount != null && (
-            <span className="text-xs text-muted-foreground">
+            <span className="font-mono text-xs text-muted-foreground">
               {budget.rateAmount}
               {budget.currency ? ` ${budget.currency}` : ""}/hr
             </span>
@@ -259,7 +259,7 @@ function BudgetRow({
           <Label className="text-xs">Period start</Label>
           <Input
             type="date"
-            className="w-40"
+            className="w-40 font-mono"
             value={periodStart}
             disabled={isSaving}
             onChange={(event) => setPeriodStart(event.target.value)}
@@ -270,7 +270,7 @@ function BudgetRow({
           <Label className="text-xs">Period end</Label>
           <Input
             type="date"
-            className="w-40"
+            className="w-40 font-mono"
             value={periodEnd}
             disabled={isSaving}
             onChange={(event) => setPeriodEnd(event.target.value)}
@@ -283,18 +283,26 @@ function BudgetRow({
             type="number"
             min={0}
             step={0.5}
-            className="w-28"
+            className="w-28 font-mono"
             value={soldHours}
             disabled={isSaving}
             onChange={(event) => setSoldHours(event.target.value)}
           />
           {/* AS-033 / this feature's own "not blind" requirement. */}
           <span className="text-xs text-muted-foreground" data-testid="budget-spent-preview">
-            {isPreviewing
-              ? "Checking logged hours…"
-              : spentPreview != null
-                ? `Already logged: ${minutesToHoursLabel(spentPreview)} in this period`
-                : "Set both dates to see hours already logged"}
+            {isPreviewing ? (
+              "Checking logged hours…"
+            ) : spentPreview != null ? (
+              <>
+                Already logged:{" "}
+                <span className="font-mono">
+                  {minutesToHoursLabel(spentPreview)}
+                </span>{" "}
+                in this period
+              </>
+            ) : (
+              "Set both dates to see hours already logged"
+            )}
           </span>
         </div>
       </div>
@@ -302,7 +310,7 @@ function BudgetRow({
         <div className="flex flex-col gap-1">
           <Label className="text-xs">Currency (optional)</Label>
           <Input
-            className="w-24"
+            className="w-24 font-mono"
             value={currency}
             disabled={isSaving}
             onChange={(event) => setCurrency(event.target.value)}
@@ -315,7 +323,7 @@ function BudgetRow({
             type="number"
             min={0}
             step={0.01}
-            className="w-28"
+            className="w-28 font-mono"
             value={rateAmount}
             disabled={isSaving}
             onChange={(event) => setRateAmount(event.target.value)}
@@ -543,7 +551,7 @@ export function BudgetPanel({
               <Input
                 id="budget-period-start"
                 type="date"
-                className="w-40"
+                className="w-40 font-mono"
                 value={periodStart}
                 disabled={isAdding}
                 onChange={(event) => setPeriodStart(event.target.value)}
@@ -557,7 +565,7 @@ export function BudgetPanel({
               <Input
                 id="budget-period-end"
                 type="date"
-                className="w-40"
+                className="w-40 font-mono"
                 value={periodEnd}
                 disabled={isAdding}
                 onChange={(event) => setPeriodEnd(event.target.value)}
@@ -573,7 +581,7 @@ export function BudgetPanel({
                 type="number"
                 min={0}
                 step={0.5}
-                className="w-28"
+                className="w-28 font-mono"
                 value={soldHours}
                 disabled={isAdding}
                 onChange={(event) => setSoldHours(event.target.value)}
@@ -582,11 +590,19 @@ export function BudgetPanel({
                 className="text-xs text-muted-foreground"
                 data-testid="budget-spent-preview-new"
               >
-                {isPreviewing
-                  ? "Checking logged hours…"
-                  : spentPreview != null
-                    ? `Already logged: ${minutesToHoursLabel(spentPreview)} in this period`
-                    : "Set both dates to see hours already logged"}
+                {isPreviewing ? (
+                  "Checking logged hours…"
+                ) : spentPreview != null ? (
+                  <>
+                    Already logged:{" "}
+                    <span className="font-mono">
+                      {minutesToHoursLabel(spentPreview)}
+                    </span>{" "}
+                    in this period
+                  </>
+                ) : (
+                  "Set both dates to see hours already logged"
+                )}
               </span>
             </div>
           </div>
@@ -597,7 +613,7 @@ export function BudgetPanel({
               </Label>
               <Input
                 id="budget-currency"
-                className="w-24"
+                className="w-24 font-mono"
                 value={currency}
                 disabled={isAdding}
                 onChange={(event) => setCurrency(event.target.value)}
@@ -613,7 +629,7 @@ export function BudgetPanel({
                 type="number"
                 min={0}
                 step={0.01}
-                className="w-28"
+                className="w-28 font-mono"
                 value={rateAmount}
                 disabled={isAdding}
                 onChange={(event) => setRateAmount(event.target.value)}

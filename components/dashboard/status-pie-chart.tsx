@@ -70,7 +70,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
               )}
               style={{ width: `${pct}%`, backgroundColor: datum.color }}
             >
-              {pct > 10 && <span className="truncate px-1">{datum.count}</span>}
+              {pct > 10 && <span className="truncate px-1 font-mono">{datum.count}</span>}
             </button>
           );
         })}
@@ -94,7 +94,7 @@ export function StatusPieChart({ data }: { data: StatusCountDatum[] }) {
                 style={{ backgroundColor: datum.color }}
               />
               <span className="text-muted-foreground">{datum.label}</span>
-              <span className="font-medium tabular-nums">{datum.count}</span>
+              <span className="font-mono font-medium tabular-nums">{datum.count}</span>
             </button>
           </li>
         ))}

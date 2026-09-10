@@ -226,7 +226,7 @@ export function BoardColumn({
             style={{ backgroundColor: resolvedColor }}
           />
           {resolvedLabel}
-          <span className="rounded-full bg-background px-1.5 py-0.5 text-xs font-normal text-muted-foreground ring-1 ring-border/60">
+          <span className="rounded-full bg-background px-1.5 py-0.5 font-mono text-xs font-normal text-muted-foreground ring-1 ring-border/60">
             ({tasks.length})
           </span>
         </h2>

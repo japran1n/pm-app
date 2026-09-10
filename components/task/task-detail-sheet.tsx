@@ -1738,7 +1738,7 @@ export function TaskDetailSheet({
                 themselves) already uses `p-4`; scrollable content deserves
                 at least as much, and slightly more since it's the dominant
                 area. */}
-            <div className="flex flex-col gap-6 overflow-y-auto px-6 py-6">
+            <div className="flex flex-col gap-6 overflow-y-auto p-6 pt-4 lg:p-8 lg:pt-8">
               <div className="flex flex-col gap-2">
                 <Label
                   htmlFor={`task-title-${task.id}`}
@@ -2116,6 +2116,7 @@ export function TaskDetailSheet({
                   onChange={(changeEvent) =>
                     handleStartDateChange(changeEvent.target.value)
                   }
+                  className="font-mono"
                 />
                 </div>
 
@@ -2145,6 +2146,7 @@ export function TaskDetailSheet({
                     handleDueDateChange(changeEvent.target.value)
                   }
                   className={cn(
+                    "font-mono",
                     isOverdue(task.dueDate, task.status, timezone, task.statusCategory) &&
                       "border-destructive text-destructive",
                   )}

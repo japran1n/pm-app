@@ -368,7 +368,7 @@ function MetricRow({
             submit({ name, unit, source, baselineValue, baselineAt, targetValue, direction, clientVisible })
           }
           disabled={isPending || isFrozen}
-          className="w-24"
+          className="w-24 font-mono"
           type="number"
           aria-label={`${metric.name} baseline value`}
           title={isFrozen ? "The baseline is frozen and can no longer be changed." : undefined}
@@ -381,7 +381,7 @@ function MetricRow({
             submit({ name, unit, source, baselineValue, baselineAt, targetValue, direction, clientVisible })
           }
           disabled={isPending || isFrozen}
-          className="w-40"
+          className="w-40 font-mono"
           aria-label={`${metric.name} baseline date`}
           title={isFrozen ? "The baseline is frozen and can no longer be changed." : undefined}
         />
@@ -398,7 +398,7 @@ function MetricRow({
             submit({ name, unit, source, baselineValue, baselineAt, targetValue, direction, clientVisible })
           }
           disabled={isPending}
-          className="w-24"
+          className="w-24 font-mono"
           type="number"
         />
 
@@ -428,7 +428,10 @@ function MetricRow({
 
       {metric.latestSnapshot && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          Latest measurement: {metric.latestSnapshot.value} on {metric.latestSnapshot.measuredAt}
+          Latest measurement:{" "}
+          <span className="font-mono">
+            {metric.latestSnapshot.value} on {metric.latestSnapshot.measuredAt}
+          </span>
           <Button
             type="button"
             variant="ghost"
@@ -474,7 +477,7 @@ function MetricRow({
           onChange={(event) => setSnapshotValue(event.target.value)}
           disabled={isSnapshotting}
           type="number"
-          className="w-24"
+          className="w-24 font-mono"
           placeholder="Value"
           aria-label={`New measurement value for ${metric.name}`}
         />
@@ -483,7 +486,7 @@ function MetricRow({
           value={snapshotDate}
           onChange={(event) => setSnapshotDate(event.target.value)}
           disabled={isSnapshotting}
-          className="w-40"
+          className="w-40 font-mono"
           aria-label={`New measurement date for ${metric.name}`}
         />
         <Button type="button" size="sm" onClick={handleAddSnapshot} disabled={isSnapshotting}>
@@ -763,7 +766,7 @@ export function MeasurementPanel({
             (frozenAt ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="baseline-frozen-badge">
                 <Lock className="h-3.5 w-3.5" aria-hidden />
-                Baseline frozen {new Date(frozenAt).toLocaleDateString()}
+                Baseline frozen <span className="font-mono">{new Date(frozenAt).toLocaleDateString()}</span>
               </span>
             ) : (
               <AlertDialog>
@@ -804,7 +807,7 @@ export function MeasurementPanel({
                   onRestored={restoreMetricToList}
                 />
               ) : (
-                <div key={metric.id} className="flex items-center gap-2 rounded-md border border-border p-3">
+                <div key={metric.id} className="flex items-center gap-2 rounded-md border border-border p-3 hover:bg-muted/50">
                   <span className="text-sm font-medium">{metric.name}</span>
                   <span className="ml-auto text-xs text-muted-foreground">
                     {STATUS_LABELS[deriveMetricMeasurementStatus(metric, metric.latestSnapshot)]}
@@ -855,7 +858,7 @@ export function MeasurementPanel({
                   onRestored={restoreImprovementToList}
                 />
               ) : (
-                <div key={improvement.id} className="rounded-md border border-border p-3">
+                <div key={improvement.id} className="rounded-md border border-border p-3 hover:bg-muted/50">
                   <span className="text-sm font-medium">{improvement.area}</span>
                 </div>
               ),

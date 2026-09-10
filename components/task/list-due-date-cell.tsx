@@ -88,7 +88,11 @@ export function ListDueDateCell({
   if (!canEdit) {
     return (
       <span className="h-8 px-2 text-xs text-muted-foreground">
-        {localValue ?? "No due date"}
+        {localValue ? (
+          <span className="font-mono">{localValue}</span>
+        ) : (
+          "No due date"
+        )}
       </span>
     );
   }

@@ -115,7 +115,7 @@ export default async function ProjectsPage({
   const canSaveTemplate = callerMembership?.role !== "viewer";
 
   return (
-    <div className="flex flex-col gap-8 p-6">
+    <div className="flex flex-col gap-8 p-6 pt-4 lg:p-8 lg:pt-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">Projects</h1>
@@ -241,7 +241,7 @@ export async function ProjectsGridSection({
       {projects && projects.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => (
-            <Card key={project.id}>
+            <Card key={project.id} className="hover-lift">
               <CardHeader className="flex flex-row items-start justify-between gap-2">
                 <Link
                   href={`/w/${workspaceSlug}/projects/${project.id}/list`}
@@ -303,7 +303,8 @@ export async function ProjectsGridSection({
                   </Badge>
                 ) : (
                   <Badge variant="secondary">
-                    {project.openTaskCount} open task
+                    <span className="font-mono">{project.openTaskCount}</span>{" "}
+                    open task
                     {project.openTaskCount === 1 ? "" : "s"}
                   </Badge>
                 )}

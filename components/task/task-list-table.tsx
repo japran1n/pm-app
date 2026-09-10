@@ -697,7 +697,7 @@ export function TaskListTable({
                 tabIndex={0}
                 className={[
                   "cursor-pointer",
-                  isChild ? "bg-muted/30 hover:bg-[#ffffff0d]" : "",
+                  isChild ? "bg-muted/30 hover:bg-muted/50" : "",
                   // j/k navigation: the same visible "current row" ring
                   // convention used elsewhere for keyboard focus state,
                   // distinct from row selection's checkbox highlighting.

@@ -66,7 +66,7 @@ export function PriorityBarChart({ data }: { data: PriorityCountDatum[] }) {
 
         const content = (
           <>
-            <span className="text-xs font-medium tabular-nums text-foreground">
+            <span className="font-mono text-xs font-medium tabular-nums text-foreground">
               {datum.count}
             </span>
             <div

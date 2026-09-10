@@ -116,7 +116,7 @@ export default async function ProjectDetailLayout({
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
       <ProjectBreadcrumb
         workspaceSlug={workspaceSlug}
         projectId={project.id}
@@ -145,7 +145,7 @@ export default async function ProjectDetailLayout({
 
         {(totalMinutes > 0 || timeTotals.estimateMinutes > 0) && (
           <div className="flex flex-col gap-1.5">
-            <p className="text-sm text-muted-foreground">
+            <p className="font-mono text-sm text-muted-foreground">
               {formatHours(totalMinutes)}h logged (
               {formatHours(timeTotals.billableMinutes)}h billable)
               {timeTotals.estimateMinutes > 0 &&

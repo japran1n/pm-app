@@ -145,11 +145,11 @@ function BucketRow({
     <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
       <span className="text-sm font-medium">{label}</span>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground tabular-nums">
+        <span className="font-mono text-sm text-muted-foreground tabular-nums">
           {formatDuration(total)} total
         </span>
         <Badge variant="secondary" className="text-xs">
-          {formatDuration(billable)} client sees this
+          <span className="font-mono">{formatDuration(billable)}</span> client sees this
         </Badge>
       </div>
     </div>
@@ -213,13 +213,13 @@ export function TeamHoursView({
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <span
                 className={cn(
-                  "text-3xl font-semibold tracking-tight tabular-nums",
+                  "font-mono text-3xl font-semibold tracking-tight tabular-nums",
                   isOverBudget && "text-destructive",
                 )}
               >
                 {minutesToHoursLabel(billableMinutes)}
               </span>
-              <span className="text-sm text-muted-foreground">
+              <span className="font-mono text-sm text-muted-foreground">
                 of {minutesToHoursLabel(budget.soldMinutes)} sold hours used
                 {isOverBudget && " · over budget"}
               </span>
@@ -229,7 +229,7 @@ export function TeamHoursView({
                 <ProgressIndicator className={cn(isOverBudget && "bg-destructive")} />
               </ProgressTrack>
             </Progress>
-            <span className="text-xs text-muted-foreground">{rawUsagePercent}% of budget</span>
+            <span className="font-mono text-xs text-muted-foreground">{rawUsagePercent}% of budget</span>
           </CardContent>
         </Card>
       )}
@@ -280,7 +280,7 @@ export function TeamHoursView({
 
       <Card aria-label="All time entries">
         <CardHeader>
-          <CardTitle>All entries ({formatDuration(totalMinutes)})</CardTitle>
+          <CardTitle>All entries (<span className="font-mono">{formatDuration(totalMinutes)}</span>)</CardTitle>
         </CardHeader>
         <CardContent className="px-0">
           {localEntries.length === 0 ? (
@@ -306,13 +306,13 @@ export function TeamHoursView({
                     <TableCell className="max-w-60 truncate whitespace-normal text-muted-foreground">
                       {entry.taskTitle}
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatDuration(entry.minutes)}</TableCell>
+                    <TableCell className="font-mono tabular-nums">{formatDuration(entry.minutes)}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="text-xs">
                         {entry.billable ? "Billable · client sees this" : "Non-billable"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{entry.entryDate}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{entry.entryDate}</TableCell>
                     <TableCell>
                       <CategoryCell
                         entryId={entry.entryId}

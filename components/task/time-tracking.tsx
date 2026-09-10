@@ -479,7 +479,7 @@ export function TimeTracking({
       <div className="flex items-center justify-between">
         <Label>Time tracked</Label>
         <span
-          className="inline-flex items-center gap-1.5 text-sm font-medium"
+          className="inline-flex items-center gap-1.5 font-mono text-sm font-medium"
           data-testid="time-tracking-total"
         >
           <Clock className="size-4" aria-hidden="true" />
@@ -494,7 +494,7 @@ export function TimeTracking({
       {estimateProgress && (
         <div className="flex flex-col gap-1.5" data-testid="estimate-progress">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
+            <span className="font-mono">
               {formatDuration(totalMinutes)} of{" "}
               {formatDuration(estimateMinutes as number)} estimated
             </span>
@@ -615,7 +615,7 @@ export function TimeTracking({
               type="number"
               min={1}
               step={1}
-              className="w-24"
+              className="w-24 font-mono"
               value={minutesDraft}
               disabled={isLogging || !canTrackTime}
               onChange={(event) => setMinutesDraft(event.target.value)}
@@ -628,7 +628,7 @@ export function TimeTracking({
             <Input
               id={`time-date-${taskId}`}
               type="date"
-              className="w-40"
+              className="w-40 font-mono"
               value={dateDraft}
               disabled={isLogging || !canTrackTime}
               onChange={(event) => setDateDraft(event.target.value)}
@@ -721,7 +721,7 @@ export function TimeTracking({
                     type="number"
                     min={1}
                     step={1}
-                    className="w-24"
+                    className="w-24 font-mono"
                     aria-label="Minutes"
                     value={editMinutes}
                     disabled={isSavingEdit}
@@ -729,7 +729,7 @@ export function TimeTracking({
                   />
                   <Input
                     type="date"
-                    className="w-40"
+                    className="w-40 font-mono"
                     aria-label="Date"
                     value={editDate}
                     disabled={isSavingEdit}
@@ -807,7 +807,7 @@ export function TimeTracking({
                   <span className="text-sm font-medium">
                     {personLabel(entry.userId, members)}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {formatDuration(entry.minutes)}
                   </span>
                   <Badge variant="secondary" className="text-xs">
@@ -816,7 +816,7 @@ export function TimeTracking({
                   <Badge variant="outline" className="text-xs">
                     {entry.workCategory ? CATEGORY_LABELS[entry.workCategory] : "Uncategorised"}
                   </Badge>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {formatEntryDate(entry.entryDate)}
                   </span>
                   <div className="ml-auto flex items-center gap-1">

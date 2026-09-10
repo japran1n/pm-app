@@ -127,7 +127,7 @@ export function MyTaskRowItem({
           options={taskTypeOptions}
         />
       </TableCell>
-      <TableCell className="text-right text-xs text-muted-foreground">
+      <TableCell className="text-right font-mono text-xs text-muted-foreground">
         {row.dueDate ? formatDueDate(row.dueDate, timezone) : "—"}
       </TableCell>
       {/* Portal-parity fix (Estimate/Logged columns): identical "—" for

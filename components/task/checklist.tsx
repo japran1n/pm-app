@@ -694,7 +694,7 @@ export function Checklist({
       <div className="flex items-center justify-between gap-2">
         <Label>Checklist</Label>
         {progress.total > 0 && (
-          <span className="text-xs text-muted-foreground">
+          <span className="font-mono text-xs text-muted-foreground">
             {progress.checked} of {progress.total} checked
           </span>
         )}

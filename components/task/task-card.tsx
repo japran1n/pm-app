@@ -297,12 +297,10 @@ export function TaskCard({
       }
       className={cn(
         "border border-border shadow-none bg-card",
-        // F009 (Linear row aesthetic): board cards use the same flat
-        // "surface fills in on hover" treatment as list rows
-        // (hover:bg-[#ffffff0d]) rather than the app-wide `.hover-lift`
-        // shadow-based card hover — no elevation change, just a faint
-        // surface tint, matching Linear's card aesthetic.
-        onClick && "hover:bg-[#ffffff0d]",
+        // Supabase DS: card-like clickable surfaces use `.hover-lift`
+        // (border/elevation on hover) instead of the flat
+        // background-tint hover this used to have.
+        onClick && "hover-lift",
         className,
       )}
     >
@@ -325,7 +323,7 @@ export function TaskCard({
         {task.dueDate && (
           <span
             className={cn(
-              "inline-flex items-center gap-1 text-xs",
+              "inline-flex items-center gap-1 font-mono text-xs",
               overdue
                 ? "font-medium text-destructive"
                 : "text-muted-foreground",
@@ -371,7 +369,7 @@ export function TaskCard({
           </span>
         )}
         {!!task.totalMinutes && task.totalMinutes > 0 && (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
             <Clock className="size-3" aria-hidden="true" />
             {formatDuration(task.totalMinutes)}
           </span>
@@ -419,7 +417,8 @@ export function TaskCard({
         {!!task.subtaskCount && task.subtaskCount > 0 && (
           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <ListTree className="size-3" aria-hidden="true" />
-            {task.subtaskCount} {task.subtaskCount === 1 ? "subtask" : "subtasks"}
+            <span className="font-mono">{task.subtaskCount}</span>{" "}
+            {task.subtaskCount === 1 ? "subtask" : "subtasks"}
           </span>
         )}
         {/* F157 (AS-283): "blocked" is icon + text, never colour alone —
@@ -481,7 +480,7 @@ export function TaskCard({
                 style={{ width: `${task.completion.percent}%` }}
               />
             </span>
-            {task.completion.percent}%
+            <span className="font-mono">{task.completion.percent}%</span>
           </span>
         )}
         {/* F161 (AS-287, AS-288): `assignees` (the multi-assignee array)

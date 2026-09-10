@@ -263,7 +263,7 @@ export function ActivityFeed({
                   <time
                     dateTime={row.createdAt}
                     title={formatTaskActivityTime(row.createdAt, timezone)}
-                    className="shrink-0 text-xs text-muted-foreground"
+                    className="shrink-0 font-mono text-xs text-muted-foreground"
                   >
                     {formatDistanceToNow(new Date(row.createdAt), {
                       addSuffix: true,
