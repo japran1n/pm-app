@@ -47,6 +47,7 @@
 import { usePathname } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { usePortalTitleOverride } from "@/components/portal/portal-title-context";
 import { PortalLinkStrip, type PortalKeyLink } from "@/components/portal/portal-link-strip";
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
@@ -158,14 +159,17 @@ export function PortalTopbar({
       <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">{projectName}</span>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-h4 font-semibold tracking-tight">{title}</h1>
-        {!isOverviewRoute && (
-          <div className="flex flex-wrap items-center gap-2" data-testid="topbar-launch-chips">
-            <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
-            <Badge variant="outline">
-              {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence —"}
-            </Badge>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isOverviewRoute && (
+            <div className="flex flex-wrap items-center gap-2" data-testid="topbar-launch-chips">
+              <Badge variant="outline">Launch {formatLaunchDate(targetLaunchDate)}</Badge>
+              <Badge variant="outline">
+                {launchConfidence ? CONFIDENCE_LABEL[launchConfidence] : "Confidence —"}
+              </Badge>
+            </div>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
       {keyLinks && <PortalLinkStrip links={keyLinks} />}
     </header>

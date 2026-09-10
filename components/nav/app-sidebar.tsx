@@ -41,6 +41,7 @@ import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/use
 // may relocate it), so the sidebar's workspace-switcher row is the only
 // reachable, always-visible chrome to put it in today.
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import type { NotificationListItem } from "@/lib/queries/notifications";
 // F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
 // section, server-fetched by the layout same as everything else here.
@@ -309,6 +310,7 @@ function SidebarContent({
             currentWorkspaceId={currentWorkspaceId}
           />
         </div>
+        <ThemeToggle />
         <NotificationBell
           workspaceSlug={workspaceSlug}
           workspaceId={currentWorkspaceId}
@@ -611,6 +613,7 @@ export function AppSidebar({
         </Sheet>
         {/* F208: the bell also needs to be reachable on mobile, where the
             desktop sidebar (and its own bell) is hidden entirely. */}
+        <ThemeToggle />
         <NotificationBell
           workspaceSlug={workspaceSlug}
           workspaceId={currentWorkspaceId}
