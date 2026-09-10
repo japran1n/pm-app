@@ -80,7 +80,7 @@ export function TeamCard({
                 {member.email && (
                   <a
                     href={`mailto:${member.email}`}
-                    className="mt-1 truncate text-xs text-primary underline underline-offset-2"
+                    className="mt-1 truncate font-mono text-xs text-primary underline underline-offset-2"
                   >
                     {member.email}
                   </a>

@@ -136,7 +136,7 @@ export default async function TeamMemberProfilePage({
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold">{label}</h1>
           {target.email && (
-            <p className="text-sm text-muted-foreground">{target.email}</p>
+            <p className="font-mono text-sm text-muted-foreground">{target.email}</p>
           )}
           <Badge
             variant={target.role === "owner" ? "default" : "secondary"}
