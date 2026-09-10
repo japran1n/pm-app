@@ -356,7 +356,7 @@ export function PortalTaskList({
                       >
                         {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
                         <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
-                        {formatDate(task.dueDate)}
+                        <span className="font-mono">{formatDate(task.dueDate)}</span>
                       </span>
                     )}
                   </Link>

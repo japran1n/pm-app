@@ -439,30 +439,6 @@
   --chart-5: var(--tertiary-foreground);
 }
 
-[data-surface="portal"] {
-  /* Good Guys 3.0 light tokens — portal stays light */
-  --background: #f7f8fa;
-  --foreground: #0f1115;
-  --card: #ffffff;
-  --card-foreground: #0f1115;
-  --popover: #ffffff;
-  --popover-foreground: #0f1115;
-  --primary: #3670e1;
-  --primary-foreground: #ffffff;
-  --secondary: #eef0f4;
-  --secondary-foreground: #3f4451;
-  --muted: #eef0f4;
-  --muted-foreground: #7b8291;
-  --accent: #e3e6ec;
-  --accent-foreground: #3f4451;
-  --destructive: #b8332a;
-  --destructive-foreground: #ffffff;
-  --border: #e3e6ec;
-  --input: #e3e6ec;
-  --ring: #3670e1;
-  --brand: #3670e1;
-  --brand-foreground: #ffffff;
-}
 
 @layer base {
   * {
@@ -504,7 +480,7 @@
    the dark workspace background. Declaring these vars directly on
    `.prose` here (still unlayered, so it still outranks the plugin's
    layered `.prose` rule for the same property) fixes that. */
-:not([data-surface="portal"]) .prose {
+.prose {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
   --tw-prose-lead: var(--muted-foreground);

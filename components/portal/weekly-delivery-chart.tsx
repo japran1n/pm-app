@@ -189,7 +189,7 @@ export function WeeklyDeliveryChart({ weeks }: { weeks: WeeklyDeliveryWeek[] }) 
                   x={column.xPx + BAR_WIDTH_PX / 2}
                   y={layout.chartHeightPx - 8}
                   textAnchor="middle"
-                  className="fill-muted-foreground text-[10px]"
+                  className="fill-muted-foreground text-[10px] font-mono"
                 >
                   {column.label}
                 </text>

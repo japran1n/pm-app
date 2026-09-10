@@ -690,7 +690,7 @@ export function PhaseTimeline({
                   <text
                     x={mark.xPx + 4}
                     y={14}
-                    className="fill-muted-foreground text-[10px]"
+                    className="fill-muted-foreground text-[10px] font-mono"
                   >
                     {mark.label}
                   </text>

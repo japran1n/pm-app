@@ -231,7 +231,7 @@ export function HoursBurndownChart({
               <text
                 x={4}
                 y={layout.ceilingYPx - 4}
-                className="fill-muted-foreground text-[10px]"
+                className="fill-muted-foreground text-[10px] font-mono"
               >
                 Budget · {minutesToHours(soldMinutes!)}
               </text>
@@ -265,7 +265,7 @@ export function HoursBurndownChart({
               <text
                 x={Math.min(layout.endpoint.xPx + 6, layout.chartWidthPx - 60)}
                 y={Math.max(layout.endpoint.yPx - 8, 12)}
-                className="fill-foreground text-[11px] font-medium"
+                className="fill-foreground text-[11px] font-medium font-mono"
               >
                 {minutesToHours(layout.endpoint.usedMinutes)} used
               </text>
@@ -278,7 +278,7 @@ export function HoursBurndownChart({
                 x={column.xPx}
                 y={layout.chartHeightPx - 8}
                 textAnchor="middle"
-                className="fill-muted-foreground text-[10px]"
+                className="fill-muted-foreground text-[10px] font-mono"
               >
                 {index % 2 === 0 ? column.label : ""}
               </text>
