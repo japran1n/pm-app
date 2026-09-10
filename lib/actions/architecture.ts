@@ -112,6 +112,34 @@ export async function createPage(
     };
   }
 
+  // AS-017: two pages in the same project cannot share a slug. Checked
+  // server-side (defense in depth against a stale client/race), scoped to
+  // this project only -- same slug in a different project is fine.
+  const { data: existingPage, error: existingPageError } = await admin
+    .from("tasks")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("page_slug", parsed.data.slug)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingPageError) {
+    logger.error("createPage: failed to check slug uniqueness", {
+      error: existingPageError,
+    });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  if (existingPage) {
+    return {
+      ok: false,
+      error: "A page with this slug already exists.",
+    };
+  }
+
   // AS-002: resolve (or lazily create, for a workspace that predates the
   // 'page' seed) the workspace's own `page` task type, via the same
   // `ensure_task_type` helper the generic task-creation path uses for its
@@ -839,6 +867,112 @@ export async function renameSection(
     revalidatePath("/w", "layout");
   } catch (revalidateError) {
     logger.error("renameSection: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
+
+// Mission 20260910-182104, F020 (AS-041, AS-042): reorders sections
+// within a single page column via drag-and-drop. A section IS a subtask
+// of its page task (standing decision 1), so reordering is a batched
+// `position` update across the dragged section's siblings, mirroring the
+// "append at count+1" position convention createSection already uses for
+// the initial order. Membership/permission is re-checked per-task
+// server-side (defense in depth) rather than trusting the client's drag
+// result wholesale -- every id in `updates` must resolve to a live
+// section (parent_task_id set) whose owning workspace the caller is an
+// active, write-capable member of; if any single id fails that check the
+// whole batch is rejected rather than partially applied.
+export async function reorderSections(
+  updates: { id: string; position: number }[],
+): Promise<{ success: boolean; error?: string }> {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { success: false, error: "No sections to reorder." };
+  }
+
+  for (const update of updates) {
+    if (
+      typeof update.id !== "string" ||
+      !update.id ||
+      typeof update.position !== "number" ||
+      !Number.isFinite(update.position)
+    ) {
+      return { success: false, error: "Invalid reorder payload." };
+    }
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to reorder sections." };
+  }
+
+  const admin = createAdminClient();
+
+  const ids = updates.map((update) => update.id);
+
+  const { data: taskRows, error: taskError } = await admin
+    .from("tasks")
+    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .in("id", ids)
+    .is("deleted_at", null);
+
+  if (taskError || !taskRows || taskRows.length !== ids.length) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const membershipCache = new Map<string, boolean>();
+
+  for (const taskRow of taskRows) {
+    if (taskRow.page_slug || !taskRow.parent_task_id) {
+      return { success: false, error: "Section not found." };
+    }
+
+    const workspaceId = (taskRow as { projects?: { workspace_id?: string } })
+      .projects?.workspace_id;
+
+    if (!workspaceId) {
+      return { success: false, error: "Section not found." };
+    }
+
+    if (!membershipCache.has(workspaceId)) {
+      const membership = await requireActiveMembership(admin, workspaceId, user.id);
+      const allowed = membership.ok && canWrite({ role: membership.role });
+      membershipCache.set(workspaceId, allowed);
+    }
+
+    if (!membershipCache.get(workspaceId)) {
+      return {
+        success: false,
+        error: "You don't have permission to reorder these sections.",
+      };
+    }
+  }
+
+  const results = await Promise.all(
+    updates.map((update) =>
+      admin.from("tasks").update({ position: update.position }).eq("id", update.id),
+    ),
+  );
+
+  const failed = results.find((result) => result.error);
+  if (failed) {
+    logger.error("reorderSections: update failed", { error: failed.error });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("reorderSections: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
   }

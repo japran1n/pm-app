@@ -1,7 +1,7 @@
 import type { BoardPage } from "@/lib/queries/architecture";
 import { PageKindSelector } from "@/components/architecture/page-kind-selector";
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
-import { SectionCard } from "@/components/architecture/section-card";
+import { SortableSectionList } from "@/components/architecture/sortable-section-list";
 import { DeletePageButton } from "@/components/architecture/delete-page-button";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
 
@@ -30,9 +30,7 @@ export function PageColumn({ page }: { page: BoardPage }) {
         <AddSectionButton pageTaskId={page.id} />
       </div>
       <div className="flex flex-col gap-2 p-3">
-        {page.sections.map((section) => (
-          <SectionCard key={section.id} section={section} />
-        ))}
+        <SortableSectionList sections={page.sections} pageId={page.id} />
       </div>
     </div>
   );
