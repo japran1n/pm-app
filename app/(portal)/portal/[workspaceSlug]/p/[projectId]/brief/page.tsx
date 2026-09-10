@@ -33,7 +33,7 @@ export default async function PortalBriefPage({
     );
   }
 
-  const { questions, answers } = briefResult.data;
+  const { brief, questions, answers } = briefResult.data;
 
   if (questions.length === 0) {
     return (
@@ -48,7 +48,11 @@ export default async function PortalBriefPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <PortalQuestionnaire questions={questions} initialAnswers={answers} />
+      <PortalQuestionnaire
+        questions={questions}
+        initialAnswers={answers}
+        briefId={brief?.id ?? null}
+      />
     </div>
   );
 }

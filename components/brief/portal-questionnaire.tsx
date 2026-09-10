@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
 import { saveBriefAnswer } from "@/lib/actions/brief";
@@ -53,13 +53,17 @@ export function PortalQuestionnaire({
   // current question changes so switching questions with Previous/Next
   // shows that question's own saved-or-in-progress answer, not the
   // previous question's draft (AS-114's "one question at a time" still
-  // applies to the input itself, not just the prompt).
+  // applies to the input itself, not just the prompt). Reset happens
+  // during render (the "adjusting state when a prop changes" pattern),
+  // not in an effect, so there's no extra render pass and no
+  // set-state-in-effect lint violation.
+  const [renderedQuestionId, setRenderedQuestionId] = useState(question?.id);
   const [draftText, setDraftText] = useState(existingAnswer?.answerText ?? "");
 
-  useEffect(() => {
+  if (question?.id !== renderedQuestionId) {
+    setRenderedQuestionId(question?.id);
     setDraftText(existingAnswer?.answerText ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question?.id]);
+  }
 
   // AS-116: no save control anywhere in this component -- saveFn fires
   // purely from `draftText` changing, debounced. AS-118 is then satisfied
