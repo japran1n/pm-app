@@ -64,6 +64,15 @@
   --color-status-blocked-bg: var(--status-blocked-bg);
   --color-status-done: var(--status-done);
   --color-status-done-bg: var(--status-done-bg);
+  /* F001 (missions/20260910-182104): Architecture board tint groups. */
+  --color-component: var(--component);
+  --color-component-foreground: var(--component-foreground);
+  --color-component-border: var(--component-border);
+  --color-component-border-hover: var(--component-border-hover);
+  --color-cms: var(--cms);
+  --color-cms-foreground: var(--cms-foreground);
+  --color-cms-border: var(--cms-border);
+  --color-cms-border-hover: var(--cms-border-hover);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -251,6 +260,39 @@
   --border-info: oklch(from var(--info) l c h / 30%);
   --border-brand: oklch(from var(--primary) l c h / 30%);
 
+  /* F001 (missions/20260910-182104): Architecture board tinted groups.
+     --component-* reads as Webflow's component green; --cms-* reads as
+     Webflow's CMS purple/lilac. Both are derived from the same OKLCH
+     knobs as every other semantic pair above, with their own hue-pull
+     offset off --primary-hue (mirrors --warning-hue / --info-hue). The
+     *-lightness knobs are overridden per theme exactly like
+     --warning-lightness / --destructive-lightness / --info-lightness. */
+  --component-lightness: 0.75;
+  --component-hue: clamp(
+    130,
+    calc(142 + (var(--primary-hue) - var(--brand-hue-reference)) * var(--status-hue-pull)),
+    160
+  );
+  --component: oklch(var(--component-lightness) var(--expressive-chroma) var(--component-hue));
+  --component-foreground: oklch(
+    from var(--component) clamp(0.12, calc((0.62 - l) * 100), 0.99) calc(c * 0.08) h
+  );
+  --component-border: oklch(from var(--component) l c h / 30%);
+  --component-border-hover: oklch(from var(--component) l c h / 50%);
+
+  --cms-lightness: 0.75;
+  --cms-hue: clamp(
+    270,
+    calc(285 + (var(--primary-hue) - var(--brand-hue-reference)) * var(--status-hue-pull)),
+    305
+  );
+  --cms: oklch(var(--cms-lightness) var(--expressive-chroma) var(--cms-hue));
+  --cms-foreground: oklch(
+    from var(--cms) clamp(0.12, calc((0.62 - l) * 100), 0.99) calc(c * 0.08) h
+  );
+  --cms-border: oklch(from var(--cms) l c h / 30%);
+  --cms-border-hover: oklch(from var(--cms) l c h / 50%);
+
   --border: oklch(
     from var(--foreground) l calc(c * 0.54) h / calc(2% + 20% * var(--contrast-border))
   );
@@ -378,6 +420,11 @@
   --destructive-400: 6.7deg 60% 20.6%;
   --destructive-300: 7.5deg 51.3% 15.3%;
   --destructive-200: 10.9deg 23.4% 9.2%;
+
+  /* F001 (missions/20260910-182104): explicit dark resolution, mirrors
+     the :root default so the token never resolves from only one place. */
+  --component-lightness: 0.75;
+  --cms-lightness: 0.75;
 }
 
 /* ══ packages/ui/build/css/themes/light.css — verbatim ══ */
@@ -427,6 +474,12 @@
   --destructive-400: 7.1deg 91.3% 91%;
   --destructive-300: 7.1deg 100% 96.7%;
   --destructive-200: 0deg 100% 99.4%;
+
+  /* F001 (missions/20260910-182104): lighter lightness for the light
+     theme, mirrors --warning-lightness / --destructive-lightness /
+     --info-lightness above. */
+  --component-lightness: 0.55;
+  --cms-lightness: 0.58;
 }
 
 /* radius + chart tokens the kit's shadcn components expect */
