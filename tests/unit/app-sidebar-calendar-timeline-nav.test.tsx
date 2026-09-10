@@ -38,7 +38,9 @@ describe("AppSidebar calendar nav item (F241)", () => {
       createElement(AppSidebar, { ...baseProps, isGuest: false }),
     );
 
-    expect(html).toContain("Calendar");
+    // UI polish: the sidebar label was renamed "Calendar" -> "Planner"
+    // (the route/href are unchanged).
+    expect(html).toContain("Planner");
     expect(html).toContain('href="/w/acme/calendar"');
   });
 

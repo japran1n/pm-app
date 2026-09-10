@@ -1,16 +1,12 @@
 // @vitest-environment jsdom
 //
-// Click-to-create: clicking an empty slot in the week time-grid must
-// immediately create a pending block AND show a popover the user can
-// actually see/interact with to set its title, end time, and color. Prior
-// to this fix, the popover's trigger was an invisible, unpositioned
-// `sr-only` span rendered as a grid sibling with no relationship to the
-// clicked cell -- `pendingCreate` state was set correctly, but the popup
-// itself could render off-screen/clipped, making the click look like it
-// did nothing. This file proves the popover actually becomes visible and
-// submittable after a plain click (zero-delta pointerdown/pointerup), and
-// that dismissing it clears `pendingCreate` so a later click doesn't leave
-// a ghost popover around.
+// Hover-"+"-to-create: a plain click on empty grid space must NOT create a
+// block anymore (UI polish pass) -- only clicking the "+" trigger that
+// appears on the hovered half-hour slot creates one. This file proves (a)
+// a bare pointerdown/pointerup on the column with no preceding hover does
+// nothing, (b) hovering (mousemove) then pressing the "+" trigger shows a
+// visible, submittable popover, and (c) dismissing it clears pending
+// state so a later interaction doesn't leave a ghost popover around.
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -61,8 +57,16 @@ function mockColumnRect(column: Element) {
   } as DOMRect);
 }
 
-describe("Week time-grid click-to-create popover (AS: clicking empty grid space creates a block and lets the user configure it)", () => {
-  it("test_a_plain_click_on_empty_grid_space_shows_a_visible_create_popover", async () => {
+function hoverSlot(column: Element, clientY: number) {
+  fireEvent.mouseMove(column, { clientY });
+}
+
+function findAddSlotButton() {
+  return screen.getByTestId(`calendar-week-add-slot-${DAY.date}`);
+}
+
+describe("Week time-grid hover-\"+\"-to-create (UI polish: a plain click on the grid must not create a block; only the hover \"+\" trigger does)", () => {
+  it("test_a_plain_click_on_empty_grid_space_with_no_prior_hover_creates_nothing", async () => {
     render(
       <WeekTimeGrid
         days={[DAY]}
@@ -76,12 +80,34 @@ describe("Week time-grid click-to-create popover (AS: clicking empty grid space 
     const column = screen.getByTestId(`calendar-week-column-${DAY.date}`);
     mockColumnRect(column);
 
-    // Plain click: pointerdown immediately followed by pointerup at the
-    // same coordinates, no pointermove -- must still create a pending
-    // block (see `dragRangeToTimes`'s zero-delta guarantee) AND show a
-    // popover the user can actually see.
+    // Plain click: pointerdown immediately followed by pointerup, with no
+    // preceding hover -- must NOT create a pending block/popover anymore.
     fireEvent.pointerDown(column, { pointerId: 1, clientY: 9 * 60 });
     fireEvent.pointerUp(column, { pointerId: 1, clientY: 9 * 60 });
+
+    expect(screen.queryByTestId("calendar-week-create-popover")).not.toBeInTheDocument();
+  });
+
+  it("test_hovering_a_slot_shows_a_plus_trigger_and_clicking_it_shows_a_visible_create_popover", async () => {
+    render(
+      <WeekTimeGrid
+        days={[DAY]}
+        tasksByDate={{}}
+        blocksByDate={{}}
+        workspaceSlug="acme"
+        workspaceId="workspace-1"
+      />,
+    );
+
+    const column = screen.getByTestId(`calendar-week-column-${DAY.date}`);
+    mockColumnRect(column);
+
+    hoverSlot(column, 9 * 60);
+    const addSlot = findAddSlotButton();
+    expect(addSlot).toBeVisible();
+
+    fireEvent.pointerDown(addSlot, { pointerId: 1, clientY: 9 * 60 });
+    fireEvent.pointerUp(addSlot, { pointerId: 1, clientY: 9 * 60 });
 
     const popover = await screen.findByTestId("calendar-week-create-popover");
     expect(popover).toBeVisible();
@@ -101,8 +127,10 @@ describe("Week time-grid click-to-create popover (AS: clicking empty grid space 
     const column = screen.getByTestId(`calendar-week-column-${DAY.date}`);
     mockColumnRect(column);
 
-    fireEvent.pointerDown(column, { pointerId: 1, clientY: 9 * 60 });
-    fireEvent.pointerUp(column, { pointerId: 1, clientY: 9 * 60 });
+    hoverSlot(column, 9 * 60);
+    const addSlot = findAddSlotButton();
+    fireEvent.pointerDown(addSlot, { pointerId: 1, clientY: 9 * 60 });
+    fireEvent.pointerUp(addSlot, { pointerId: 1, clientY: 9 * 60 });
 
     await screen.findByTestId("calendar-week-create-popover");
 
@@ -130,8 +158,10 @@ describe("Week time-grid click-to-create popover (AS: clicking empty grid space 
     const column = screen.getByTestId(`calendar-week-column-${DAY.date}`);
     mockColumnRect(column);
 
-    fireEvent.pointerDown(column, { pointerId: 1, clientY: 9 * 60 });
-    fireEvent.pointerUp(column, { pointerId: 1, clientY: 9 * 60 });
+    hoverSlot(column, 9 * 60);
+    const addSlot = findAddSlotButton();
+    fireEvent.pointerDown(addSlot, { pointerId: 1, clientY: 9 * 60 });
+    fireEvent.pointerUp(addSlot, { pointerId: 1, clientY: 9 * 60 });
 
     await screen.findByTestId("calendar-week-create-popover");
 

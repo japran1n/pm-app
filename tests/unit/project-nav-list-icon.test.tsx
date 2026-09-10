@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
-// Feature request "Project ikonica/emoji": the sidebar project list shows
-// a project's icon when set, falling back to the pre-existing key/folder
-// treatment otherwise.
+// UI polish: the sidebar project list row no longer shows a project's icon,
+// colour dot, or key abbreviation -- only [grip] [name] [star]. This
+// supersedes the earlier "Feature request 'Project ikonica/emoji'" test
+// (icon/key display), which is intentionally removed.
 import { createElement } from "react";
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,8 +24,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ProjectNavList project icon", () => {
-  it("renders the project's icon when set", () => {
+describe("ProjectNavList row identifier (UI polish: no icon/dot/key)", () => {
+  it("never renders the project's icon even when set", () => {
     render(
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
@@ -33,12 +34,12 @@ describe("ProjectNavList project icon", () => {
       }),
     );
 
-    expect(screen.getByText("🚀")).toBeInTheDocument();
-    // The key badge is suppressed once an icon is set.
+    expect(screen.queryByText("🚀")).not.toBeInTheDocument();
     expect(screen.queryByText("RK")).not.toBeInTheDocument();
+    expect(screen.getByText("Rocket Project")).toBeInTheDocument();
   });
 
-  it("falls back to the key when no icon is set", () => {
+  it("never renders the project's key abbreviation when no icon is set", () => {
     render(
       createElement(ProjectNavList, {
         workspaceSlug: "acme",
@@ -47,6 +48,7 @@ describe("ProjectNavList project icon", () => {
       }),
     );
 
-    expect(screen.getByText("PL")).toBeInTheDocument();
+    expect(screen.queryByText("PL")).not.toBeInTheDocument();
+    expect(screen.getByText("Plain Project")).toBeInTheDocument();
   });
 });

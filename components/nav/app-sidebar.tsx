@@ -136,7 +136,7 @@ function navGroups(
   // Timeline was removed entirely (dedicated feature request) -- its own
   // nav item, route, and dedicated components/queries no longer exist.
   const plan: NavItem[] = [
-    { href: `/w/${workspaceSlug}/calendar`, label: "Calendar", icon: CalendarDays },
+    { href: `/w/${workspaceSlug}/calendar`, label: "Planner", icon: CalendarDays },
     { href: `/w/${workspaceSlug}/time`, label: "Time", icon: Clock },
   ];
 

@@ -16,7 +16,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ChevronDown, FolderKanban, GripVertical } from "lucide-react";
+import { ChevronDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -67,53 +67,6 @@ export type SidebarProjectItem = {
   // props already follow.
   isFavorite?: boolean;
 };
-
-// Projects have no `color` column (checked supabase/migrations — F145's
-// project-keys migration added `key`/`task_counter` only, no colour field,
-// and no later migration adds one either). Per this feature's clarified
-// "simpler option, no new dependency, no second source of truth" answer:
-// rather than a schema migration just for a nav dot, the colour is derived
-// deterministically from the project id against a small fixed Tailwind
-// palette, so the same project always shows the same dot colour without
-// any stored state.
-// F269 (AS-526): the original -500 Tailwind shades measured below 3:1
-// against the sidebar background in the LIGHT theme (e.g. amber-500
-// 2.08:1, teal-500 2.41:1, sky-500 2.68:1) — swapped for the darker -600
-// shade in the same hue family (violet-500/-600 both cleared 3:1 on light
-// but failed on the dark theme's near-black sidebar, so violet was
-// replaced with purple-600, the nearest hue that clears 3:1 on BOTH
-// themes) so every dot now clears the WCAG AA 3:1 non-text contrast
-// threshold in both light and dark sidebars. See
-// tests/unit/project-nav-dot-contrast.test.ts for the automated check.
-//
-// F338 (M18 scrutiny MAJ-3/FU-G, AS-526): the row this dot sits in isn't
-// always plain `--sidebar` -- the active/hover state applies
-// `bg-sidebar-accent` (see the className below), a genuinely different
-// surface (#f5f5f5 light / #262626 dark) the original test never
-// measured. Re-measured against that real surface, two entries failed:
-// `bg-amber-600` (2.92:1 on the light accent row) and `bg-purple-600`
-// (2.81:1 on the dark accent row). Swapped amber-600 -> amber-700 (clears
-// both: 4.61:1 light / 3.01:1 dark) and purple-600 -> purple-500 (clears
-// all four surfaces: >=3.63:1 everywhere it's measured). See
-// tests/unit/project-nav-dot-contrast.test.ts.
-const DOT_COLORS = [
-  "bg-rose-600",
-  "bg-amber-700",
-  "bg-emerald-600",
-  "bg-sky-600",
-  "bg-purple-500",
-  "bg-pink-600",
-  "bg-teal-600",
-  "bg-orange-600",
-];
-
-function colorForProjectId(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
-  }
-  return DOT_COLORS[hash % DOT_COLORS.length];
-}
 
 export function ProjectNavList({
   workspaceSlug,
@@ -289,34 +242,10 @@ export function ProjectNavList({
             <GripVertical className="size-3.5" aria-hidden="true" />
           </button>
         )}
-        {project.icon ? (
-          // Feature request "Project ikonica/emoji": the icon replaces
-          // both the colour dot AND the key/folder-icon treatment below
-          // when set — it's already a distinct-enough visual identifier
-          // on its own.
-          <span aria-hidden="true" className="shrink-0 text-sm leading-none">
-            {project.icon}
-          </span>
-        ) : (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              colorForProjectId(project.id),
-            )}
-          />
-        )}
-        {!project.icon &&
-          (project.key ? (
-            <span className="shrink-0 text-xs font-semibold text-sidebar-foreground/50">
-              {project.key}
-            </span>
-          ) : (
-            <FolderKanban
-              className="size-3.5 shrink-0 text-sidebar-foreground/50"
-              aria-hidden="true"
-            />
-          ))}
+        {/* UX: the icon/colour-dot/key-abbreviation identifier chain was
+            removed from this row entirely -- the row is now just
+            [grip] [name] [star], per the "no icon, no dot, no key" polish
+            pass. */}
         <span className="min-w-0 flex-1 truncate">{project.name}</span>
         <ProjectFavoriteButton
           projectId={project.id}

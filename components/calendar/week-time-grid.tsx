@@ -32,6 +32,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
 import type { CalendarWeekDay } from "@/lib/calendar/week-grid";
@@ -50,6 +51,7 @@ import {
   applyResize,
   blockLayoutForDay,
   dragRangeToTimes,
+  pixelOffsetToTime,
 } from "@/lib/calendar/time-grid-layout";
 import { combineDateAndTime, formatBlockTimeRange } from "@/lib/calendar/block-datetime";
 import { getCalendarBlockDisplayColor } from "@/lib/calendar/block-colors";
@@ -69,6 +71,15 @@ import { useMembership } from "@/components/auth/membership-provider";
 import { cn } from "@/lib/utils";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
+// UX (hover "+" to create): the hovered slot's own "HH:MM" label -- reuses
+// the same pure `pixelOffsetToTime` snap the eventual drag-create commit
+// uses, so the label always matches what a plain click-on-"+" would
+// actually create.
+function formatHalfHourLabel(topPx: number): string {
+  const { hours, minutes } = pixelOffsetToTime(topPx);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
 
 // jsdom (our test environment) and a handful of older WebKit builds don't
 // implement the Pointer Events capture methods at all -- guard every call
@@ -131,6 +142,17 @@ export function WeekTimeGrid({
 
   const [blocksState, setBlocksState] = useState(blocksByDate);
   const [dragCreate, setDragCreate] = useState<DragCreateState | null>(null);
+  // UX (hover "+" to create): a plain click anywhere on the empty grid
+  // used to start a create-drag immediately (a zero-length drag still
+  // produced a block via `dragRangeToTimes`'s own minimum-width
+  // fallback), which meant an accidental single click silently created a
+  // block. Creation now only ever starts from this explicit "+" trigger,
+  // shown at the hovered half-hour slot with its own start time label --
+  // the column's own `onPointerDown` (below) no longer starts a
+  // create-drag at all, only the "+" button's `onPointerDown` does (and a
+  // real drag from there still works exactly as before, since pointer
+  // capture keeps the gesture alive through the same column handlers).
+  const [hoveredSlot, setHoveredSlot] = useState<{ date: string; top: number } | null>(null);
   const [resize, setResize] = useState<ResizeState | null>(null);
   const [resizePreviewPx, setResizePreviewPx] = useState<number | null>(null);
   const [pendingCreate, setPendingCreate] = useState<{
@@ -153,6 +175,43 @@ export function WeekTimeGrid({
     if (!el) return 0;
     const rect = el.getBoundingClientRect();
     return clientY - rect.top;
+  }
+
+  const HALF_HOUR_PX = PX_PER_HOUR / 2;
+
+  // UX (hover "+" to create): tracks which half-hour slot the mouse is
+  // currently over, snapped down to the slot's own top -- mouse-only
+  // (not pointer events) since the "+" affordance is a hover-only,
+  // pointing-device convenience; touch/stylus users still create blocks
+  // via a real press-drag directly on the grid the same way they always
+  // could (this hover overlay simply never appears for them).
+  function handleColumnMouseMove(date: string, event: React.MouseEvent) {
+    if (!canDrag || !workspaceId || dragCreate || resize) return;
+    const offset = offsetForEvent(date, event.clientY);
+    const snappedTop = Math.floor(offset / HALF_HOUR_PX) * HALF_HOUR_PX;
+    setHoveredSlot((current) =>
+      current && current.date === date && current.top === snappedTop
+        ? current
+        : { date, top: snappedTop },
+    );
+  }
+
+  function handleColumnMouseLeave(date: string) {
+    setHoveredSlot((current) => (current?.date === date ? null : current));
+  }
+
+  function handleAddSlotPointerDown(date: string, event: React.PointerEvent) {
+    // The "+" trigger sits above the column's own hour-line/block
+    // children but is still a descendant of the column div, so this
+    // pointerdown both starts the gesture AND (via bubbling, since
+    // pointer capture retargets subsequent events but preserves the DOM
+    // bubble path) keeps the column's existing onPointerMove/onPointerUp
+    // handlers driving the rest of the same create-drag exactly as
+    // before. The trigger stays mounted through the gesture (see its own
+    // render condition) rather than unmounting on this same tick, so a
+    // synthetic pointerup dispatched straight at it (tests) or a real
+    // one from the OS still bubbles to the column's commit handler.
+    handleColumnPointerDown(date, event);
   }
 
   function handleColumnPointerDown(date: string, event: React.PointerEvent) {
@@ -426,10 +485,11 @@ export function WeekTimeGrid({
               day.isToday && "border-t-2 border-t-primary",
             )}
             style={{ height: gridHeight, touchAction: "none" }}
-            onPointerDown={(event) => handleColumnPointerDown(day.date, event)}
             onPointerMove={handleGridPointerMove}
             onPointerUp={handleGridPointerUp}
             onPointerCancel={handleGridPointerUp}
+            onMouseMove={(event) => handleColumnMouseMove(day.date, event)}
+            onMouseLeave={() => handleColumnMouseLeave(day.date)}
           >
             {HOURS.map((hour) => (
               <div
@@ -438,6 +498,31 @@ export function WeekTimeGrid({
                 style={{ top: hour * PX_PER_HOUR }}
               />
             ))}
+
+            {/* UX (hover "+" to create): only the hovered half-hour slot
+                renders this trigger -- a plain click anywhere else on the
+                column no longer opens the create popover (see
+                handleColumnMouseMove's own doc comment above). Suppressed
+                while a drag-create/resize/pending-create is already in
+                flight for this column so it doesn't render on top of
+                those. */}
+            {canDrag &&
+              workspaceId &&
+              hoveredSlot?.date === day.date &&
+              !resize &&
+              !(pendingCreate && pendingCreate.date === day.date) && (
+                <button
+                  type="button"
+                  aria-label={`Add calendar block at ${formatHalfHourLabel(hoveredSlot.top)}`}
+                  data-testid={`calendar-week-add-slot-${day.date}`}
+                  className="absolute left-0.5 right-0.5 flex items-center gap-1 rounded border border-dashed border-primary/50 bg-primary/5 px-1 text-[10px] font-mono text-primary/80 hover:bg-primary/10"
+                  style={{ top: hoveredSlot.top, height: HALF_HOUR_PX }}
+                  onPointerDown={(event) => handleAddSlotPointerDown(day.date, event)}
+                >
+                  <Plus className="size-3 shrink-0" aria-hidden="true" />
+                  {formatHalfHourLabel(hoveredSlot.top)}
+                </button>
+              )}
 
             {(blocksState[day.date] ?? []).map((block) => {
               const layout = blockLayoutForDay(block.startsAt, block.endsAt, day.date);

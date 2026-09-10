@@ -69,10 +69,12 @@ describe("ProjectNavList (F262)", () => {
       }),
     );
 
+    // UI polish: the row no longer displays the project's key
+    // abbreviation (or an icon/colour dot) -- just the name.
     expect(screen.getByText("Marketing Site")).toBeInTheDocument();
     expect(screen.getByText("Mobile App")).toBeInTheDocument();
-    expect(screen.getByText("MS")).toBeInTheDocument();
-    expect(screen.getByText("MA")).toBeInTheDocument();
+    expect(screen.queryByText("MS")).not.toBeInTheDocument();
+    expect(screen.queryByText("MA")).not.toBeInTheDocument();
   });
 
   it("AS-511: the project matching the current pathname is highlighted (aria-current)", () => {
