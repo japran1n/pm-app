@@ -979,3 +979,114 @@ export async function reorderSections(
 
   return { success: true };
 }
+
+// Mission 20260910-182104, F021 (AS-043, AS-044, AS-045): a section can be
+// dragged from one page's column to another. A section IS a subtask of its
+// page task (standing decision 1), so "move to another page" is nothing
+// more than repointing `parent_task_id` at the destination page's task id
+// plus setting a `position` among the destination's existing sections --
+// the exact same `tasks` row, same id, same `component_id` the whole way
+// through (AS-045: the component link is never read or written here, so
+// it can't be cleared by a move). AS-044 falls out of the same
+// `parent_task_id` write reorderSections already relies on elsewhere: the
+// architecture board (and the task list's subtask view) both derive "is
+// this a subtask of that page" purely from `parent_task_id`.
+//
+// Membership/permission is re-checked server-side against BOTH the
+// section's current workspace and the destination page's workspace
+// (defense in depth, same convention as reorderSections) -- a page task
+// id supplied by the client is never trusted without an independent
+// lookup.
+export async function moveSectionToPage(
+  sectionTaskId: string,
+  newPageTaskId: string,
+  position: number,
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof sectionTaskId !== "string" || !sectionTaskId) {
+    return { success: false, error: "Invalid section." };
+  }
+
+  if (typeof newPageTaskId !== "string" || !newPageTaskId) {
+    return { success: false, error: "Invalid destination page." };
+  }
+
+  if (typeof position !== "number" || !Number.isFinite(position)) {
+    return { success: false, error: "Invalid position." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "You must be signed in to move sections." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: sectionRow, error: sectionError } = await admin
+    .from("tasks")
+    .select("id, page_slug, parent_task_id, projects(workspace_id)")
+    .eq("id", sectionTaskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (sectionError || !sectionRow || sectionRow.page_slug || !sectionRow.parent_task_id) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const { data: pageRow, error: pageError } = await admin
+    .from("tasks")
+    .select("id, page_slug, projects(workspace_id)")
+    .eq("id", newPageTaskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (pageError || !pageRow || !pageRow.page_slug) {
+    return { success: false, error: "Destination page not found." };
+  }
+
+  const sectionWorkspaceId = (sectionRow as { projects?: { workspace_id?: string } })
+    .projects?.workspace_id;
+  const pageWorkspaceId = (pageRow as { projects?: { workspace_id?: string } })
+    .projects?.workspace_id;
+
+  if (!sectionWorkspaceId || !pageWorkspaceId || sectionWorkspaceId !== pageWorkspaceId) {
+    return { success: false, error: "Destination page not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, sectionWorkspaceId, user.id);
+  if (!membership.ok || !canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "You don't have permission to move this section.",
+    };
+  }
+
+  // AS-045: `component_id` is deliberately absent from this update -- the
+  // section keeps whatever component link it already had, on the same
+  // row, untouched.
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ parent_task_id: newPageTaskId, position })
+    .eq("id", sectionTaskId);
+
+  if (updateError) {
+    logger.error("moveSectionToPage: update failed", { error: updateError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("moveSectionToPage: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}

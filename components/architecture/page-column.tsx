@@ -1,4 +1,4 @@
-import type { BoardPage } from "@/lib/queries/architecture";
+import type { BoardPage, BoardSection } from "@/lib/queries/architecture";
 import { PageKindSelector } from "@/components/architecture/page-kind-selector";
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
@@ -15,7 +15,20 @@ import { AddSectionButton } from "@/components/architecture/add-section-button";
 //
 // F008 (AS-025): sections render via SectionCard, showing the section
 // name (and its linked component's name, when set).
-export function PageColumn({ page }: { page: BoardPage }) {
+// F021 (AS-043): `orderedSectionIds` is the board's optimistic mirror of
+// this page's section order (board.tsx), threaded down so a cross-column
+// drag's target column always renders the section it just received
+// without waiting on a route refresh -- see SortableSectionList's own doc
+// comment for how it reconciles that id list against `page.sections`.
+export function PageColumn({
+  page,
+  orderedSectionIds,
+  sectionsById,
+}: {
+  page: BoardPage;
+  orderedSectionIds: string[];
+  sectionsById: Map<string, BoardSection>;
+}) {
   return (
     <div className="flex w-64 shrink-0 flex-col rounded-md border bg-card shadow-xs">
       <div className="sticky top-0 z-10 flex flex-col gap-1 rounded-t-md border-b bg-card p-3">
@@ -30,7 +43,11 @@ export function PageColumn({ page }: { page: BoardPage }) {
         <AddSectionButton pageTaskId={page.id} />
       </div>
       <div className="flex flex-col gap-2 p-3">
-        <SortableSectionList sections={page.sections} pageId={page.id} />
+        <SortableSectionList
+          pageId={page.id}
+          orderedSectionIds={orderedSectionIds}
+          sectionsById={sectionsById}
+        />
       </div>
     </div>
   );

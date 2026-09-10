@@ -28,6 +28,8 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+import { DndContext } from "@dnd-kit/core";
+
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
 import { reorderSections } from "@/lib/actions/architecture";
 import type { BoardSection } from "@/lib/queries/architecture";
@@ -54,7 +56,17 @@ describe("F020 reorder sections within a column", () => {
       makeSection({ id: "section-3", title: "Footer", position: 3 }),
     ];
 
-    render(<SortableSectionList sections={sections} pageId="page-1" />);
+    const sectionsById = new Map(sections.map((section) => [section.id, section]));
+
+    render(
+      <DndContext>
+        <SortableSectionList
+          pageId="page-1"
+          orderedSectionIds={sections.map((section) => section.id)}
+          sectionsById={sectionsById}
+        />
+      </DndContext>,
+    );
 
     const titles = screen
       .getAllByText(/Hero|Features|Footer/)
@@ -64,12 +76,18 @@ describe("F020 reorder sections within a column", () => {
     expect(screen.getAllByLabelText(/Reorder/)).toHaveLength(3);
   });
 
-  it("AS-041: renders nothing for a page with no sections yet", () => {
-    const { container } = render(
-      <SortableSectionList sections={[]} pageId="page-1" />,
+  it("AS-041: renders no section cards for a page with no sections yet", () => {
+    render(
+      <DndContext>
+        <SortableSectionList
+          pageId="page-1"
+          orderedSectionIds={[]}
+          sectionsById={new Map()}
+        />
+      </DndContext>,
     );
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryAllByLabelText(/Reorder/)).toHaveLength(0);
   });
 
   it("AS-042: reorderSections is callable with a well-formed batch of id/position updates", async () => {
