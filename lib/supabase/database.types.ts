@@ -428,6 +428,184 @@ export type Database = {
           },
         ]
       }
+      brief_answer_revisions: {
+        Row: {
+          answer_id: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          previous_options: string[] | null
+          previous_text: string | null
+        }
+        Insert: {
+          answer_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          previous_options?: string[] | null
+          previous_text?: string | null
+        }
+        Update: {
+          answer_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          previous_options?: string[] | null
+          previous_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brief_answer_revisions_answer_id_fkey"
+            columns: ["answer_id"]
+            isOneToOne: false
+            referencedRelation: "brief_answers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brief_answers: {
+        Row: {
+          answer_options: string[] | null
+          answer_text: string | null
+          answered_at: string | null
+          answered_by: string | null
+          brief_id: string
+          id: string
+          question_id: string | null
+          question_prompt_snapshot: string
+          updated_at: string
+        }
+        Insert: {
+          answer_options?: string[] | null
+          answer_text?: string | null
+          answered_at?: string | null
+          answered_by?: string | null
+          brief_id: string
+          id?: string
+          question_id?: string | null
+          question_prompt_snapshot: string
+          updated_at?: string
+        }
+        Update: {
+          answer_options?: string[] | null
+          answer_text?: string | null
+          answered_at?: string | null
+          answered_by?: string | null
+          brief_id?: string
+          id?: string
+          question_id?: string | null
+          question_prompt_snapshot?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brief_answers_brief_id_fkey"
+            columns: ["brief_id"]
+            isOneToOne: false
+            referencedRelation: "briefs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brief_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "brief_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brief_questions: {
+        Row: {
+          answer_type: string
+          category: string | null
+          help_text: string | null
+          id: string
+          options: string[] | null
+          position: number
+          project_id: string
+          prompt: string
+          required: boolean
+        }
+        Insert: {
+          answer_type: string
+          category?: string | null
+          help_text?: string | null
+          id?: string
+          options?: string[] | null
+          position?: number
+          project_id: string
+          prompt: string
+          required?: boolean
+        }
+        Update: {
+          answer_type?: string
+          category?: string | null
+          help_text?: string | null
+          id?: string
+          options?: string[] | null
+          position?: number
+          project_id?: string
+          prompt?: string
+          required?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brief_questions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      briefs: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          doc_id: string | null
+          id: string
+          project_id: string
+          state: string
+          submitted_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          doc_id?: string | null
+          id?: string
+          project_id: string
+          state?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          doc_id?: string | null
+          id?: string
+          project_id?: string
+          state?: string
+          submitted_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "briefs_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "docs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "briefs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calendar_blocks: {
         Row: {
           block_type: string
