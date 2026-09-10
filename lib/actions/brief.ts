@@ -32,6 +32,7 @@ import { calculatePosition } from "@/lib/board/position";
 import {
   createQuestionSchema,
   updateQuestionSchema,
+  reorderQuestionsSchema,
   type CreateQuestionInput,
   type UpdateQuestionInput,
 } from "@/lib/validation/brief";
@@ -290,4 +291,159 @@ export async function deleteBriefQuestion(questionId: string): Promise<DeleteBri
   }
 
   return { ok: true };
+}
+
+// Persists (creates or updates) one answer to one question, without any
+// explicit "save" control on the client -- F057, AS-116/AS-118. There is
+// no unique constraint on (brief_id, question_id) in brief_answers
+// (verified live via Supabase MCP + 20261122010000_f044_brief_tables.sql),
+// so this cannot use Postgres `on conflict`; instead it selects the
+// existing row for this brief+question first, then updates it if found or
+// inserts a fresh one otherwise -- same "select, then branch" shape
+// ensureBrief above already uses for briefs.project_id.
+//
+// question_prompt_snapshot is (re)stamped from the live
+// brief_questions.prompt on every save, per the spec -- this keeps the
+// snapshot fresh while the question still exists, and it's this same
+// snapshot that AS-118 partly rests on: even after a reload, the answer
+// row (and the prompt text it captured) is still there to read back.
+// answered_by/answered_at record who last saved and when; the
+// brief_answer_revisions row per change is written by a database trigger
+// (F045, standing-decisions.md #14), never from this action.
+export async function saveBriefAnswer(
+  briefId: string,
+  questionId: string,
+  answerText: string | null,
+  answerOptions: string[] | null,
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "You must be signed in to save an answer." };
+  }
+
+  const { data: question, error: questionError } = await supabase
+    .from("brief_questions")
+    .select("prompt")
+    .eq("id", questionId)
+    .maybeSingle();
+
+  if (questionError) {
+    logger.error("saveBriefAnswer: failed to load question prompt", {
+      error: questionError,
+      questionId,
+    });
+    return { success: false, error: "Couldn't save this answer." };
+  }
+
+  if (!question) {
+    return { success: false, error: "Couldn't save this answer. The question was not found." };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("brief_answers")
+    .select("id")
+    .eq("brief_id", briefId)
+    .eq("question_id", questionId)
+    .maybeSingle();
+
+  if (existingError) {
+    logger.error("saveBriefAnswer: failed to check for existing answer", {
+      error: existingError,
+      briefId,
+      questionId,
+    });
+    return { success: false, error: "Couldn't save this answer." };
+  }
+
+  const now = new Date().toISOString();
+
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("brief_answers")
+      .update({
+        question_prompt_snapshot: question.prompt,
+        answer_text: answerText,
+        answer_options: answerOptions,
+        answered_by: user.id,
+        answered_at: now,
+      })
+      .eq("id", existing.id);
+
+    if (updateError) {
+      logger.error("saveBriefAnswer: update failed", { error: updateError, briefId, questionId });
+      return { success: false, error: "Couldn't save this answer." };
+    }
+
+    return { success: true };
+  }
+
+  const { error: insertError } = await supabase.from("brief_answers").insert({
+    brief_id: briefId,
+    question_id: questionId,
+    question_prompt_snapshot: question.prompt,
+    answer_text: answerText,
+    answer_options: answerOptions,
+    answered_by: user.id,
+    answered_at: now,
+  });
+
+  if (insertError) {
+    logger.error("saveBriefAnswer: insert failed", { error: insertError, briefId, questionId });
+    return { success: false, error: "Couldn't save this answer." };
+  }
+
+  return { success: true };
+}
+
+// Persists a new question order after a drag-and-drop reorder (F052,
+// AS-107, AS-108). Mirrors lib/actions/projects.ts's `reorderProject`
+// "the client already computed the full target order, this action just
+// writes it" division of labour, except here the caller (the sortable
+// list component) sends every question's new `position` in one call
+// rather than this action recomputing positions server-side -- there's
+// no cross-project sibling scan needed since brief_questions.position is
+// a plain float column (20261122010000_f044_brief_tables.sql), not an
+// integer needing re-sequencing.
+//
+// `brief_questions_update_team` (20261122040000_f046_brief_rls.sql) is
+// the real enforcement boundary for "only a workspace writer can
+// reorder" -- same RLS-does-the-gating pattern documented at the top of
+// this file. A non-writer's updates simply affect 0 rows each; this
+// action does not attempt to distinguish that from "row missing" for the
+// same reason updateBriefQuestion above doesn't.
+export async function reorderBriefQuestions(
+  updates: { id: string; position: number }[],
+): Promise<{ success: boolean; error?: string }> {
+  const parsed = reorderQuestionsSchema.safeParse({ questions: updates });
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid question order.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "You must be signed in to reorder questions." };
+  }
+
+  const results = await Promise.all(
+    parsed.data.questions.map(({ id, position }) =>
+      supabase.from("brief_questions").update({ position }).eq("id", id),
+    ),
+  );
+
+  const failed = results.find((result) => result.error);
+  if (failed?.error) {
+    logger.error("reorderBriefQuestions: update failed", { error: failed.error });
+    return { success: false, error: "Couldn't save the new question order." };
+  }
+
+  return { success: true };
 }
