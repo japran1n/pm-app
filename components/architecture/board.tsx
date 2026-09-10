@@ -252,6 +252,40 @@ export function ArchitectureBoard({
     });
   }
 
+  // F023 (AS-048, AS-049): keyboard-driven reordering (KeyboardSensor,
+  // wired above) needs its own screen-reader feedback loop -- dnd-kit's
+  // default announcements are generic ("draggable item was moved"), so
+  // this overrides them with messages that name the actual dragged id,
+  // matching the aria-labelled grip handles in sortable-section-card.tsx
+  // and page-column.tsx.
+  const accessibility = {
+    announcements: {
+      onDragStart({ active }: { active: { id: string | number } }) {
+        return `Picked up item ${active.id}`;
+      },
+      onDragOver({
+        over,
+      }: {
+        active: { id: string | number };
+        over: { id: string | number } | null;
+      }) {
+        return over ? `Moving over ${over.id}` : undefined;
+      },
+      onDragEnd({
+        active,
+        over,
+      }: {
+        active: { id: string | number };
+        over: { id: string | number } | null;
+      }) {
+        return over ? `Dropped ${active.id} on ${over.id}` : `Dropped ${active.id}`;
+      },
+      onDragCancel({ active }: { active: { id: string | number } }) {
+        return `Cancelled drag of ${active.id}`;
+      },
+    },
+  };
+
   return (
     <DndContext
       id="architecture-section-dnd"
@@ -259,6 +293,7 @@ export function ArchitectureBoard({
       collisionDetection={closestCorners}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
+      accessibility={accessibility}
     >
       <SortableContext items={pageOrder} strategy={horizontalListSortingStrategy}>
         <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
