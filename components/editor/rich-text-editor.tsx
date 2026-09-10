@@ -27,7 +27,7 @@
 //     { ssr: false }
 //   )
 
-import { useEffect, useReducer, useRef } from "react"
+import { useEffect, useReducer, useRef, useState } from "react"
 import {
   EditorContent,
   useEditor,
@@ -52,6 +52,8 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import {
@@ -299,10 +301,9 @@ export interface RichTextEditorProps {
  * is reachable by Tab and activatable with Enter/Space (AS-313).
  */
 function Toolbar({ editor, disabled }: { editor: Editor; disabled?: boolean }) {
-  // Force a re-render whenever the editor's selection/marks change so the
-  // toolbar's aria-pressed/isActive state reflects the live editor rather
-  // than only the render that mounted it.
   const [, forceUpdate] = useReducer((n: number) => n + 1, 0)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkUrl, setLinkUrl] = useState("")
   useEffect(() => {
     editor.on("transaction", forceUpdate)
     editor.on("selectionUpdate", forceUpdate)
@@ -395,33 +396,69 @@ function Toolbar({ editor, disabled }: { editor: Editor; disabled?: boolean }) {
         </Button>
       ))}
       <Separator orientation="vertical" className="mx-1 h-5" />
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Link"
-        aria-pressed={editor.isActive("link")}
-        disabled={disabled}
-        onClick={() => {
-          const previousUrl = editor.getAttributes("link").href as
-            | string
-            | undefined
-          const url = window.prompt("URL", previousUrl ?? "")
-          if (url === null) return
-          if (url === "") {
-            editor.chain().focus().extendMarkRange("link").unsetLink().run()
-            return
+      <Popover open={linkOpen} onOpenChange={(open) => {
+        if (open) {
+          const existing = editor.getAttributes("link").href as string | undefined
+          setLinkUrl(existing ?? "")
+        }
+        setLinkOpen(open)
+      }}>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Link"
+              aria-pressed={editor.isActive("link")}
+              disabled={disabled}
+            >
+              <LinkIcon className="size-3.5" />
+            </Button>
           }
-          editor
-            .chain()
-            .focus()
-            .extendMarkRange("link")
-            .setLink({ href: url })
-            .run()
-        }}
-      >
-        <LinkIcon className="size-3.5" />
-      </Button>
+        />
+        <PopoverContent className="w-72 p-2" align="start">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const url = linkUrl.trim()
+              if (!url) {
+                editor.chain().focus().extendMarkRange("link").unsetLink().run()
+              } else {
+                const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+                editor.chain().focus().extendMarkRange("link").setLink({ href }).run()
+              }
+              setLinkOpen(false)
+            }}
+            className="flex gap-1"
+          >
+            <Input
+              autoFocus
+              placeholder="https://example.com"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              className="h-7 flex-1 text-xs"
+            />
+            <Button type="submit" size="sm" className="h-7 px-2 text-xs">
+              Apply
+            </Button>
+            {editor.isActive("link") && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  editor.chain().focus().extendMarkRange("link").unsetLink().run()
+                  setLinkOpen(false)
+                }}
+              >
+                Remove
+              </Button>
+            )}
+          </form>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }

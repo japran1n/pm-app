@@ -473,6 +473,7 @@ export function ChannelView({
         onSend={handleSend}
         onTyping={sendTyping}
         mentionSuggestions={mentionSuggestions}
+        channelId={channelId}
         initialDraft={initialMentionName ? `@${initialMentionName} ` : undefined}
       />
     </div>
