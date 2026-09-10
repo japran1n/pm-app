@@ -11,11 +11,20 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
 
 import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/architecture";
 import { PageColumn } from "@/components/architecture/page-column";
-import { reorderSections, moveSectionToPage } from "@/lib/actions/architecture";
+import {
+  reorderSections,
+  moveSectionToPage,
+  reorderPages,
+} from "@/lib/actions/architecture";
 
 // Mission 20260910-182104, F006 (AS-019): the Architecture board container.
 // Renders one PageColumn per page in a horizontally scrolling row. The
@@ -89,6 +98,29 @@ export function ArchitectureBoard({
     }
   }
 
+  // F022 (AS-046, AS-047): local, client-side-only mirror of the page
+  // column order itself -- same optimistic-update / rollback-on-failure
+  // convention as `orderByPage` above, just one level up (pages instead
+  // of sections within a page). Re-synced whenever the underlying set of
+  // page ids changes so a real navigation/refetch always wins over a
+  // stale local drag.
+  const pageIdsKey = pages.map((page) => page.id).join(",");
+  const [syncedPageIdsKey, setSyncedPageIdsKey] = useState(pageIdsKey);
+  const [pageOrder, setPageOrder] = useState<string[]>(() => pages.map((page) => page.id));
+
+  if (pageIdsKey !== syncedPageIdsKey) {
+    setSyncedPageIdsKey(pageIdsKey);
+    setPageOrder(pages.map((page) => page.id));
+  }
+
+  const pagesById = new Map<string, BoardPage>();
+  for (const page of pages) {
+    pagesById.set(page.id, page);
+  }
+  const orderedPages = pageOrder
+    .map((id) => pagesById.get(id))
+    .filter((page): page is BoardPage => Boolean(page));
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, {
@@ -105,12 +137,60 @@ export function ArchitectureBoard({
     return null;
   }
 
+  // F024 (AS-050): dnd-kit fires onDragCancel (Escape key, or the active
+  // draggable being unmounted mid-drag) instead of onDragEnd when a drag is
+  // cancelled -- no `over` target is ever supplied in that path, so nothing
+  // here ever mutated `orderByPage` for a cancelled drag in the first
+  // place. This handler exists to make that guarantee explicit and
+  // deliberate (rather than "just happens to work because we never called
+  // setOrderByPage"): it re-snapshots the optimistic order from the props
+  // passed in, discarding anything dnd-kit's internal drag state may have
+  // implied, and it never calls a persisting Server Action.
+  function handleDragCancel() {
+    setOrderByPage(
+      Object.fromEntries(
+        pages.map((page) => [page.id, page.sections.map((section) => section.id)]),
+      ),
+    );
+    setPageOrder(pages.map((page) => page.id));
+  }
+
+  // F022 (AS-046, AS-047): reorders the page columns themselves. Every
+  // column's useSortable call tags itself `data: { type: "page" }`
+  // (page-column.tsx) so this branch only ever fires for a column drag,
+  // never a section-card drag (tagged `type: "section"`,
+  // sortable-section-card.tsx) -- both share this one DndContext, same
+  // rationale F021's doc comment gives for why sections needed a single
+  // shared context to cross columns.
+  function handleColumnDragEnd(activeId: string, overId: string) {
+    const oldIndex = pageOrder.indexOf(activeId);
+    const newIndex = pageOrder.indexOf(overId);
+    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
+
+    const previousPageOrder = pageOrder;
+    const nextOrder = arrayMove(pageOrder, oldIndex, newIndex);
+    setPageOrder(nextOrder);
+
+    const updates = nextOrder.map((id, index) => ({ id, position: index + 1 }));
+    reorderPages(updates).then((result) => {
+      if (!result.success) {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+        setPageOrder(previousPageOrder);
+      }
+    });
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
 
     const activeId = String(active.id);
     const overId = String(over.id);
+
+    if (active.data.current?.type === "page") {
+      handleColumnDragEnd(activeId, overId);
+      return;
+    }
 
     const sourcePageId = findPageIdForSection(activeId);
     if (!sourcePageId) return;
@@ -178,17 +258,20 @@ export function ArchitectureBoard({
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
-      <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
-        {pages.map((page) => (
-          <PageColumn
-            key={page.id}
-            page={page}
-            orderedSectionIds={orderByPage[page.id] ?? []}
-            sectionsById={sectionsById}
-          />
-        ))}
-      </div>
+      <SortableContext items={pageOrder} strategy={horizontalListSortingStrategy}>
+        <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
+          {orderedPages.map((page) => (
+            <PageColumn
+              key={page.id}
+              page={page}
+              orderedSectionIds={orderByPage[page.id] ?? []}
+              sectionsById={sectionsById}
+            />
+          ))}
+        </div>
+      </SortableContext>
     </DndContext>
   );
 }
