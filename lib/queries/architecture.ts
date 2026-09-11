@@ -88,7 +88,7 @@ type ComponentRow = {
   position: number;
 };
 
-function buildBoardFromRows(
+export function buildBoardFromRows(
   taskRows: TaskRow[],
   componentRows: ComponentRow[],
 ): ArchitectureBoard {

@@ -1579,3 +1579,282 @@ export async function linkComponentToSection(
   return { success: true };
 }
 
+
+// Mission 20260910-182104, F028 (AS-057): renames a component. Sections
+// join to `page_components.name` via `tasks.component_id` (F026/F027) --
+// there is no per-instance copy of the name anywhere -- so this update is
+// the entire propagation mechanism: every section that links to this
+// component id renders the new name the next time `getArchitectureBoard`
+// (lib/queries/architecture.ts) is read, with no additional writes needed.
+export async function renameComponent(
+  componentId: string,
+  name: string,
+): Promise<{ success: boolean; error?: string }> {
+  // AS-066: a component cannot be renamed to an empty name.
+  const parsed = z
+    .string()
+    .trim()
+    .min(1, "Component name is required.")
+    .max(200, "Component name must be 200 characters or fewer.")
+    .safeParse(name);
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Component name is required.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to rename a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: componentRow, error: componentError } = await admin
+    .from("page_components")
+    .select("id, project_id, projects(workspace_id)")
+    .eq("id", componentId)
+    .maybeSingle();
+
+  if (
+    componentError ||
+    !componentRow ||
+    !(componentRow as { projects?: { workspace_id?: string } }).projects
+      ?.workspace_id
+  ) {
+    return { success: false, error: "Component not found." };
+  }
+
+  const workspaceId = (componentRow as { projects: { workspace_id: string } })
+    .projects.workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to rename this component.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to rename a component.",
+    };
+  }
+
+  // AS-065: unique(project_id, lower(name)) -- enforced by
+  // page_components_project_id_lower_name_idx
+  // (supabase/migrations/20261121010000_f002_page_components.sql).
+  const { error: updateError } = await admin
+    .from("page_components")
+    .update({ name: parsed.data })
+    .eq("id", componentId);
+
+  if (updateError) {
+    if (updateError.code === "23505") {
+      return {
+        success: false,
+        error: "A component with this name already exists.",
+      };
+    }
+
+    logger.error("renameComponent: update failed", { error: updateError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("renameComponent: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
+
+// Mission 20260910-182104, F029 (AS-058, AS-059): unlink a single section
+// instance from its component without touching any other instance and
+// without touching the section's own name.
+//
+// The update targets exactly one row (`WHERE id = sectionTaskId`), so
+// other sections sharing the same `component_id` are never selected or
+// written to -- AS-058 falls out of the WHERE clause alone, no extra
+// guard needed. `tasks.title` (the section's own name, standing decision
+// 8's "local title") is not part of this UPDATE's SET list at all, so it
+// is left exactly as it was -- AS-059.
+export async function unlinkComponentFromSection(
+  sectionTaskId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to unlink a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: sectionRow, error: sectionError } = await admin
+    .from("tasks")
+    .select("id, project_id, projects(workspace_id)")
+    .eq("id", sectionTaskId)
+    .maybeSingle();
+
+  if (
+    sectionError ||
+    !sectionRow ||
+    !(sectionRow as { projects?: { workspace_id?: string } }).projects
+      ?.workspace_id
+  ) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const workspaceId = (sectionRow as { projects: { workspace_id: string } })
+    .projects.workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to unlink a component in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to unlink a component.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ component_id: null })
+    .eq("id", sectionTaskId);
+
+  if (updateError) {
+    logger.error("unlinkComponentFromSection: update failed", {
+      error: updateError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error(
+      "unlinkComponentFromSection: revalidatePath failed (non-fatal)",
+      { error: revalidateError },
+    );
+  }
+
+  return { success: true };
+}
+
+// Mission 20260910-182104, F030 (AS-060, AS-061): delete a component.
+// The `tasks.component_id` foreign key is declared `ON DELETE SET NULL`
+// (see the migration that introduced `page_components` / F025), so
+// deleting the `page_components` row here is the entire implementation --
+// the database itself nulls out `component_id` on every instance
+// (AS-061) while leaving those `tasks` rows in place, untouched otherwise
+// (AS-060). No application-level cascade/cleanup code is needed or
+// wanted; duplicating what the FK already guarantees would just be a
+// second place for the two to drift apart.
+export async function deleteComponent(
+  componentId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to delete a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: componentRow, error: componentError } = await admin
+    .from("page_components")
+    .select("id, project_id, projects(workspace_id)")
+    .eq("id", componentId)
+    .maybeSingle();
+
+  if (
+    componentError ||
+    !componentRow ||
+    !(componentRow as { projects?: { workspace_id?: string } }).projects
+      ?.workspace_id
+  ) {
+    return { success: false, error: "Component not found." };
+  }
+
+  const workspaceId = (componentRow as { projects: { workspace_id: string } })
+    .projects.workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to delete a component in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to delete a component.",
+    };
+  }
+
+  const { error: deleteError } = await admin
+    .from("page_components")
+    .delete()
+    .eq("id", componentId);
+
+  if (deleteError) {
+    logger.error("deleteComponent: delete failed", { error: deleteError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("deleteComponent: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
