@@ -159,7 +159,9 @@ export function MessageComposer({
   }
   // Keep the ref current every render so the paste listener always calls
   // the latest closure (with fresh channelId / state setters).
-  uploadFileRef.current = uploadFile;
+  useEffect(() => {
+    uploadFileRef.current = uploadFile;
+  });
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

@@ -197,10 +197,13 @@ export function NotificationPanel({
       liveSnapshotVersion !== undefined &&
       liveSnapshotVersion !== appliedSnapshotVersion
     ) {
-      setAppliedSnapshotVersion(liveSnapshotVersion);
-      setNotifications(liveSnapshot.list);
-      setUnreadCount(liveSnapshot.unreadCount);
-      onUnreadCountChange?.(liveSnapshot.unreadCount);
+      const timer = setTimeout(() => {
+        setAppliedSnapshotVersion(liveSnapshotVersion);
+        setNotifications(liveSnapshot.list);
+        setUnreadCount(liveSnapshot.unreadCount);
+        onUnreadCountChange?.(liveSnapshot.unreadCount);
+      }, 0);
+      return () => clearTimeout(timer);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveSnapshot, liveSnapshotVersion]);
