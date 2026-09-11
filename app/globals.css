@@ -274,9 +274,17 @@
     160
   );
   --component: oklch(var(--component-lightness) var(--expressive-chroma) var(--component-hue));
-  --component-foreground: oklch(
-    from var(--component) clamp(0.12, calc((0.62 - l) * 100), 0.99) calc(c * 0.08) h
-  );
+  /* F086 (missions/20260910-182104, AS-179): --component is only ever
+     painted at low opacity (bg-component/10, bg-component/15) over --card,
+     never as a solid fill, so the foreground must contrast against --card
+     the same way ordinary body text does. Deriving the lightness from
+     --component itself (the previous approach) assumed a solid fill and
+     produced near-white text in light mode / near-black text in dark mode
+     — the wrong direction, failing WCAG AA. Inheriting --foreground's
+     lightness (already AA-compliant against --card/--background by the
+     base design system) and only borrowing --component's hue keeps the
+     tinted look while guaranteeing contrast in both themes. */
+  --component-foreground: oklch(from var(--foreground) l calc(c * 0.3 + 0.03) var(--component-hue));
   --component-border: oklch(from var(--component) l c h / 30%);
   --component-border-hover: oklch(from var(--component) l c h / 50%);
 
@@ -287,9 +295,10 @@
     305
   );
   --cms: oklch(var(--cms-lightness) var(--expressive-chroma) var(--cms-hue));
-  --cms-foreground: oklch(
-    from var(--cms) clamp(0.12, calc((0.62 - l) * 100), 0.99) calc(c * 0.08) h
-  );
+  /* F086: same reasoning as --component-foreground above — --cms is only
+     ever used as a low-opacity tint (bg-cms/10) behind --cms-foreground
+     text, never as a solid fill. */
+  --cms-foreground: oklch(from var(--foreground) l calc(c * 0.3 + 0.03) var(--cms-hue));
   --cms-border: oklch(from var(--cms) l c h / 30%);
   --cms-border-hover: oklch(from var(--cms) l c h / 50%);
 
