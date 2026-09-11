@@ -92,6 +92,7 @@ const DOC_KIND_LABELS: Record<SetDocKindInput["kind"], string> = {
   onboarding: "Onboarding",
   feedback: "Feedback",
   portal_guide: "Portal guide",
+  brief: "Brief",
 };
 
 // F114 (client-portal-phase-2-plan.md, items E-H): the "when does this

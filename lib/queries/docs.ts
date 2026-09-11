@@ -34,7 +34,13 @@ export type DocKind =
   | "handover"
   | "onboarding"
   | "feedback"
-  | "portal_guide";
+  | "portal_guide"
+  // F072/F073 (mission 20260910-182104): the brief document F071 generates
+  // is a plain `docs` row with `doc_kind = 'brief'` (widened onto
+  // `docs_doc_kind_check` by 20261122030000_f047_docs_brief_kind.sql).
+  // Included here so this type stays a faithful mirror of that CHECK
+  // constraint's full value set.
+  | "brief";
 
 export type Doc = {
   id: string;

@@ -173,6 +173,11 @@ export const docKindSchema = z.enum([
   "onboarding",
   "feedback",
   "portal_guide",
+  // F072/F073 (mission 20260910-182104): matches `docs_doc_kind_check`'s
+  // 'brief' value (20261122030000_f047_docs_brief_kind.sql) so the doc
+  // editor's kind selector (components/docs/markdown-editor.tsx) never
+  // receives a value it can't validate for a brief document.
+  "brief",
 ]);
 
 // F114: the "How we work" kinds, in the order the plan's own table lists
