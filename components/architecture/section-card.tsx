@@ -207,6 +207,31 @@ export function SectionCard({
             </p>
           )}
         </div>
+      ) : section.component ? (
+        // F027 (AS-054, AS-055, AS-056): when a component is linked, its
+        // name is the primary label -- the section's own title becomes a
+        // secondary "local title" shown underneath in muted text. The
+        // local title stays the click-to-edit target so renaming the
+        // section (not the component) keeps working exactly as before.
+        <div className="min-w-0 pr-6">
+          <p className="truncate text-sm font-medium">
+            {section.component.name}
+          </p>
+          <p
+            role="button"
+            tabIndex={0}
+            onClick={startEditing}
+            onKeyDown={(keyEvent) => {
+              if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                keyEvent.preventDefault();
+                startEditing();
+              }
+            }}
+            className="truncate rounded-sm text-xs text-muted-foreground hover:bg-muted/50"
+          >
+            {section.title}
+          </p>
+        </div>
       ) : (
         <p
           role="button"
@@ -223,11 +248,6 @@ export function SectionCard({
           {section.title}
         </p>
       )}
-      {section.component ? (
-        <p className="truncate text-xs text-muted-foreground">
-          {section.component.name}
-        </p>
-      ) : null}
     </div>
   );
 }
