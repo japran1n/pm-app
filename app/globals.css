@@ -730,3 +730,40 @@
     text-underline-offset: 2px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   F033 (AS-070, AS-071, AS-072, AS-073, AS-074) — hover-linked component
+   highlighting on the architecture board. CSS-driven, no React state: a
+   plain DOM listener (components/architecture/board.tsx) sets
+   `data-hover-component="<id>"` on the board root and
+   `data-component-active="true"` on every card sharing that id while the
+   pointer is over any one instance, then clears both on mouseleave. A
+   board of 480 cards never re-renders on pointer move.
+
+   Only sections that ARE linked to a component carry `data-component`
+   (section-card.tsx, F008/F027/F032) -- an unlinked section has no such
+   attribute at all, so it can never match `[data-component-active="true"]`
+   and AS-072 (hovering an unlinked section highlights nothing) falls out
+   for free: the mouseover handler finds no `[data-component]` ancestor,
+   writes `data-hover-component=""`, and the `:not([data-hover-component=""])`
+   guard below keeps every selector inert.
+
+   AS-074: the two declarations below touch only `border-color` and
+   `background-color` -- no `transform`, `width`, `height`, `top`/`left`,
+   or `box-shadow` change, so size, position and shadow are untouched by
+   hover.
+   ───────────────────────────────────────────────────────────────────────── */
+
+[data-hover-component]:not([data-hover-component=""])
+  [data-component]:not([data-component-active="true"]) {
+  border-color: var(--border);
+  background-color: transparent;
+  opacity: 0.6;
+}
+
+[data-hover-component]:not([data-hover-component=""])
+  [data-component][data-component-active="true"] {
+  border-color: var(--component-border-hover);
+  background-color: color-mix(in oklch, var(--component) 15%, transparent);
+  opacity: 1;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -69,6 +69,78 @@ export function ArchitectureBoard({
   // component in the project, closed by default so the board's default
   // view is unchanged.
   const [panelOpen, setPanelOpen] = useState(false);
+
+  // F035 (AS-084, AS-086): the component id the panel should open showing
+  // detail for. Set either by clicking a component in the panel's own
+  // list (ComponentPanel manages that internally) or by clicking a
+  // section card's linked component name (AS-084) -- `handleComponentClick`
+  // below opens the panel and pre-selects that component.
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+
+  function handleComponentClick(componentId: string) {
+    setSelectedComponentId(componentId);
+    setPanelOpen(true);
+  }
+
+  // AS-086: bring the chosen page's column into view on the board. Each
+  // page's section list root carries `data-page-id` (sortable-section-list.tsx).
+  function handlePageSelect(pageId: string) {
+    document
+      .querySelector(`[data-page-id="${pageId}"]`)
+      ?.scrollIntoView({ behavior: "smooth", inline: "center" });
+  }
+
+  // F033 (AS-070, AS-071, AS-072, AS-073, AS-074): hover-linked component
+  // highlighting is deliberately kept OUTSIDE React state -- standing
+  // decision 9 requires it to be CSS-driven so a board of 480 cards never
+  // re-renders on pointer move. This ref-backed vanilla DOM listener sets
+  // `data-hover-component="<id>"` on the board root and
+  // `data-component-active="true"` on every card sharing that id, mirrored
+  // by app/globals.css's `[data-hover-component]...` selectors, which
+  // touch only `border-color`/`background-color` (AS-074). Mouseleave on
+  // the board clears both attributes (AS-073). Sections without a linked
+  // component never carry `data-component` at all (section-card.tsx), so
+  // hovering one resolves to an empty id and the CSS guard
+  // `:not([data-hover-component=""])` keeps every card inert (AS-072).
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+
+    function setActive(componentId: string) {
+      if (!board) return;
+      board.setAttribute("data-hover-component", componentId);
+      board.querySelectorAll<HTMLElement>("[data-component]").forEach((el) => {
+        if (componentId && el.dataset.component === componentId) {
+          el.dataset.componentActive = "true";
+        } else {
+          delete el.dataset.componentActive;
+        }
+      });
+    }
+
+    function clearActive() {
+      if (!board) return;
+      board.removeAttribute("data-hover-component");
+      board.querySelectorAll<HTMLElement>("[data-component]").forEach((el) => {
+        delete el.dataset.componentActive;
+      });
+    }
+
+    function handleMouseOver(event: MouseEvent) {
+      const card = (event.target as Element).closest<HTMLElement>("[data-component]");
+      setActive(card?.dataset.component ?? "");
+    }
+
+    board.addEventListener("mouseover", handleMouseOver);
+    board.addEventListener("mouseleave", clearActive);
+
+    return () => {
+      board.removeEventListener("mouseover", handleMouseOver);
+      board.removeEventListener("mouseleave", clearActive);
+    };
+  }, []);
 
   const sectionsKey = pages
     .map((page) => `${page.id}:${page.sections.map((section) => section.id).join(",")}`)
@@ -291,7 +363,7 @@ export function ArchitectureBoard({
   };
 
   return (
-    <div className="relative min-h-0">
+    <div ref={boardRef} className="relative min-h-0">
       <div className="flex justify-end pb-2">
         <button
           type="button"
@@ -319,13 +391,24 @@ export function ArchitectureBoard({
                 orderedSectionIds={orderByPage[page.id] ?? []}
                 sectionsById={sectionsById}
                 components={components}
+                onComponentClick={handleComponentClick}
               />
             ))}
           </div>
         </SortableContext>
       </DndContext>
       {panelOpen ? (
-        <ComponentPanel components={components} onClose={() => setPanelOpen(false)} />
+        <ComponentPanel
+          components={components}
+          pages={pages}
+          selectedComponentId={selectedComponentId}
+          onSelectComponent={(component) => setSelectedComponentId(component.id)}
+          onPageSelect={handlePageSelect}
+          onClose={() => {
+            setPanelOpen(false);
+            setSelectedComponentId(null);
+          }}
+        />
       ) : null}
     </div>
   );
