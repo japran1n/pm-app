@@ -75,6 +75,7 @@ export type BriefAnswerRevision = {
   previousText: string | null;
   previousOptions: string[] | null;
   changedBy: string | null;
+  changedByName: string | null;
   changedAt: string;
 };
 
@@ -156,20 +157,24 @@ function mapBriefAnswerRow(row: {
   };
 }
 
-function mapBriefAnswerRevisionRow(row: {
-  id: string;
-  answer_id: string;
-  previous_text: string | null;
-  previous_options: string[] | null;
-  changed_by: string | null;
-  changed_at: string;
-}): BriefAnswerRevision {
+function mapBriefAnswerRevisionRow(
+  row: {
+    id: string;
+    answer_id: string;
+    previous_text: string | null;
+    previous_options: string[] | null;
+    changed_by: string | null;
+    changed_at: string;
+  },
+  changedByName: string | null,
+): BriefAnswerRevision {
   return {
     id: row.id,
     answerId: row.answer_id,
     previousText: row.previous_text,
     previousOptions: row.previous_options,
     changedBy: row.changed_by,
+    changedByName,
     changedAt: row.changed_at,
   };
 }
@@ -289,8 +294,41 @@ export async function getBriefWithRevisions(
     return { ok: false, error: revisionsError.message };
   }
 
+  const rows = revisionRows ?? [];
+
+  // AS-128/AS-155: name the user (team member or client contact) behind
+  // each revision. `changed_by` is a bare auth.users FK with no direct
+  // FK declared to `profiles` for PostgREST to embed automatically, so
+  // names are looked up in a second query keyed by the distinct ids
+  // present in this answer's revision history, then joined in memory.
+  const changedByIds = Array.from(
+    new Set(rows.map((row) => row.changed_by).filter((id): id is string => id !== null)),
+  );
+
+  let namesById = new Map<string, string | null>();
+  if (changedByIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, display_name")
+      .in("id", changedByIds);
+
+    if (profilesError) {
+      logger.error("getBriefWithRevisions: failed to load reviser profiles", {
+        error: profilesError,
+      });
+      return { ok: false, error: profilesError.message };
+    }
+
+    namesById = new Map((profileRows ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+  }
+
   return {
     ok: true,
-    data: { ...answer, revisions: (revisionRows ?? []).map(mapBriefAnswerRevisionRow) },
+    data: {
+      ...answer,
+      revisions: rows.map((row) =>
+        mapBriefAnswerRevisionRow(row, row.changed_by ? (namesById.get(row.changed_by) ?? null) : null),
+      ),
+    },
   };
 }

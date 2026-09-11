@@ -121,6 +121,7 @@ describe("F048: BriefAnswerRevision type shape matches brief_answer_revisions ta
       previousText: "Launch a landing page",
       previousOptions: null,
       changedBy: "00000000-0000-4000-8000-000000000005",
+      changedByName: "Jane Client",
       changedAt: "2026-09-09T00:00:00.000Z",
     };
     expect(revision.changedAt < "2026-09-10T00:00:00.000Z").toBe(true);
@@ -149,6 +150,7 @@ describe("F048: getBriefWithRevisions returns an answer with a revisions array, 
         previousText: "older",
         previousOptions: null,
         changedBy: null,
+        changedByName: null,
         changedAt: "2026-09-01T00:00:00.000Z",
       },
       {
@@ -157,6 +159,7 @@ describe("F048: getBriefWithRevisions returns an answer with a revisions array, 
         previousText: "newer",
         previousOptions: null,
         changedBy: null,
+        changedByName: null,
         changedAt: "2026-09-05T00:00:00.000Z",
       },
     ].sort((a, b) => (a.changedAt > b.changedAt ? -1 : 1));
