@@ -8,7 +8,7 @@
 // `component_id`.
 import { describe, expect, it, vi } from "vitest";
 
-const updateMock = vi.fn(() => ({
+const updateMock = vi.fn((_payload: Record<string, unknown>) => ({
   eq: vi.fn(async () => ({ error: null })),
 }));
 
