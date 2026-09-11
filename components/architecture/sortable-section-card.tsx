@@ -17,9 +17,11 @@ import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 export function SortableSectionCard({
   section,
   components = [],
+  onComponentClick,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
+  onComponentClick?: (componentId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });
@@ -41,7 +43,7 @@ export function SortableSectionCard({
       >
         <GripVertical className="size-3.5" aria-hidden="true" />
       </button>
-      <SectionCard section={section} components={components} />
+      <SectionCard section={section} components={components} onComponentClick={onComponentClick} />
     </div>
   );
 }

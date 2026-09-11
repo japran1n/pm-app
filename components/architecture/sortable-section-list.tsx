@@ -36,11 +36,13 @@ export function SortableSectionList({
   orderedSectionIds,
   sectionsById,
   components = [],
+  onComponentClick,
 }: {
   pageId: string;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
   components?: BoardComponent[];
+  onComponentClick?: (componentId: string) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: pageId });
 
@@ -63,6 +65,7 @@ export function SortableSectionList({
             key={section.id}
             section={section}
             components={components}
+            onComponentClick={onComponentClick}
           />
         ))}
       </div>

@@ -41,11 +41,13 @@ export function PageColumn({
   orderedSectionIds,
   sectionsById,
   components,
+  onComponentClick,
 }: {
   page: BoardPage;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
   components: BoardComponent[];
+  onComponentClick?: (componentId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });
@@ -88,6 +90,7 @@ export function PageColumn({
           orderedSectionIds={orderedSectionIds}
           sectionsById={sectionsById}
           components={components}
+          onComponentClick={onComponentClick}
         />
       </div>
     </div>
