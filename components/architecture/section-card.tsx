@@ -50,9 +50,11 @@ import { DeleteSectionButton } from "@/components/architecture/delete-section-bu
 export function SectionCard({
   section,
   components = [],
+  onComponentClick,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
+  onComponentClick?: (componentId: string) => void;
 }) {
   const router = useRouter();
   // Same convention as AddSectionButton (F013): the board route is scoped
@@ -260,9 +262,15 @@ export function SectionCard({
         // local title stays the click-to-edit target so renaming the
         // section (not the component) keeps working exactly as before.
         <div className="min-w-0 pr-6">
-          <p className="truncate text-sm font-medium">
+          {/* F035 (AS-084): clicking the linked component's name opens
+              that component's detail in the components panel. */}
+          <button
+            type="button"
+            onClick={() => onComponentClick?.(section.component!.id)}
+            className="block w-full truncate rounded-sm text-left text-sm font-medium hover:bg-muted/50"
+          >
             {section.component.name}
-          </p>
+          </button>
           <p
             role="button"
             tabIndex={0}
