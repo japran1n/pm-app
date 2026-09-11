@@ -15,12 +15,18 @@
 // component re-querying -- keeps this file a pure presentational read of
 // already-resolved data, same split as the rest of the brief queries.
 import { Badge } from "@/components/ui/badge";
-import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
+import { RevisionHistory } from "@/components/brief/revision-history";
+import type { BriefAnswer, BriefAnswerRevision, BriefQuestion } from "@/lib/queries/brief";
 
 export type TeamAnswersViewQuestion = {
   question: BriefQuestion;
   answer: BriefAnswer | null;
   hasRevisions: boolean;
+  // F067 (AS-132): the full revision history for this answer, resolved
+  // server-side (getBriefWithRevisions) only when hasRevisions is true.
+  // Undefined/empty for unedited answers -- <RevisionHistory> renders
+  // nothing in that case, so this stays a no-op for the common path.
+  revisions?: BriefAnswerRevision[];
 };
 
 function AnswerTypeBadge({ answerType }: { answerType: BriefQuestion["answerType"] }) {
@@ -66,7 +72,7 @@ function AnswerValue({ question, answer }: { question: BriefQuestion; answer: Br
 export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] }) {
   return (
     <div className="flex flex-col gap-6">
-      {items.map(({ question, answer, hasRevisions }) => {
+      {items.map(({ question, answer, hasRevisions, revisions }) => {
         const isAnswered =
           !!answer &&
           (question.answerType === "single_choice" || question.answerType === "multi_choice"
@@ -103,6 +109,9 @@ export function TeamAnswersView({ items }: { items: TeamAnswersViewQuestion[] })
             ) : (
               <p className="text-sm text-muted-foreground">Not answered yet</p>
             )}
+            {isAnswered && hasRevisions && revisions && revisions.length > 0 ? (
+              <RevisionHistory revisions={revisions} />
+            ) : null}
           </div>
         );
       })}

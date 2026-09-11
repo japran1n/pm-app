@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { getBrief } from "@/lib/queries/brief";
+import { getBrief, getBriefWithRevisions } from "@/lib/queries/brief";
 import {
   TeamAnswersView,
   type TeamAnswersViewQuestion,
@@ -54,10 +54,23 @@ export default async function ProjectBriefPage({
   // (resolved in lib/queries/brief.ts's loadBriefWithQuestionsAndAnswers
   // via one batched brief_answer_revisions lookup), so no per-question
   // getBriefWithRevisions round trip is needed here anymore.
-  const items: TeamAnswersViewQuestion[] = questions.map((question) => {
-    const answer = answersByQuestionId.get(question.id) ?? null;
-    return { question, answer, hasRevisions: answer?.hasRevisions ?? false };
-  });
+  // F067 (AS-132): fetch the full revision history only for questions
+  // whose answer is already known to have at least one revision
+  // (hasRevisions, from F066's batched lookup) -- avoids a
+  // getBriefWithRevisions round trip per unedited question.
+  const items: TeamAnswersViewQuestion[] = await Promise.all(
+    questions.map(async (question) => {
+      const answer = answersByQuestionId.get(question.id) ?? null;
+      const hasRevisions = answer?.hasRevisions ?? false;
+      if (!hasRevisions) {
+        return { question, answer, hasRevisions };
+      }
+      const revisionsResult = await getBriefWithRevisions(brief.id, question.id);
+      const revisions =
+        revisionsResult.ok && revisionsResult.data ? revisionsResult.data.revisions : [];
+      return { question, answer, hasRevisions, revisions };
+    }),
+  );
 
   // AS-139: generating a document is only offered once there is
   // something to quote (F071 -- "the team can generate a brief document
