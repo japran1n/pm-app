@@ -77,6 +77,14 @@ export type PortalNotificationKind =
 // below, so it was never going to fit that function either way).
 export type ChatNotificationKind = "chat_dm" | "chat_thread_reply";
 
+// F068: a brief answer saved/edited while the brief is already in state
+// 'submitted' or 'approved' -- fanned out to that project's decision
+// owners (project_decision_owners), never through computeFanoutRecipients
+// (a brief answer isn't one of the four task-shaped FanoutEvent variants
+// below either), same "direct call, bypasses this file" shape as
+// PortalNotificationKind/ChatNotificationKind above.
+export type BriefNotificationKind = "brief_answer_changed";
+
 // The four event shapes this feature's spec names: assignment, status
 // change, a new comment (which may itself carry mentions), and a
 // description mention (F205's diffed newly-mentioned set). Each event
