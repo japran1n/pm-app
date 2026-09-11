@@ -200,8 +200,44 @@ export type ProjectTemplateDeliverable = z.infer<
   typeof projectTemplateDeliverableSchema
 >;
 
+// F080 (missions/20260910-182104, AS-165/166/167): a single seeded brief
+// question inside a project template's payload. Field names mirror
+// `brief_questions`' own columns (supabase/migrations/
+// 20261122010000_f044_brief_tables.sql) exactly, minus `id`/`project_id`
+// (a template's questions are content, never tied to a specific project
+// row) -- same "the payload shape maps straight onto the source table's
+// columns" convention `projectTemplatePhaseSchema` and
+// `projectTemplateDeliverableSchema` already establish. Deliberately
+// carries QUESTIONS only, never answers: `brief_answers` is keyed by
+// `brief_id`, not `project_id`, so there is no answer row this snapshot
+// could even reach -- AS-167 ("no answers copied") holds structurally,
+// not just by omission here.
+export const projectTemplateBriefQuestionSchema = z.object({
+  category: z.string().nullable(),
+  prompt: z.string().trim().min(1, "Question prompt is required."),
+  help_text: z.string().nullable(),
+  answer_type: z.enum([
+    "short_text",
+    "long_text",
+    "single_choice",
+    "multi_choice",
+  ]),
+  options: z.array(z.string()).nullable(),
+  required: z.boolean().default(false),
+});
+export type ProjectTemplateBriefQuestion = z.infer<
+  typeof projectTemplateBriefQuestionSchema
+>;
+
 export const projectTemplatePayloadSchema = z.object({
   tasks: z.array(projectTemplateTaskSchema),
+  // F080 (AS-165): optional/defaulted -- not `.optional()` alone -- so a
+  // template saved BEFORE this feature, whose stored `payload` jsonb has
+  // no `briefQuestions` key at all, still parses successfully and
+  // createProjectFromTemplate still has a plain `[]` to seed with, same
+  // backward-compatibility mechanism `phases`/`deliverables` below already
+  // use for their own later additions.
+  briefQuestions: z.array(projectTemplateBriefQuestionSchema).default([]),
   // F013 (AS-028): optional/defaulted — not `.optional()` alone — so a
   // template saved BEFORE this feature, whose stored `payload` jsonb has
   // no `deliverables` key at all, still parses successfully and

@@ -940,6 +940,28 @@ export async function saveProjectAsTemplate(
     };
   }
 
+  // F080 (AS-165): snapshot this project's own brief questions, ordered
+  // the same way brief_questions_project_id_idx-backed reads elsewhere
+  // (lib/queries/brief.ts, lib/actions/brief.ts) already sort them --
+  // `position` ascending. Deliberately selects only the question columns
+  // (never brief_answers, which is keyed by brief_id, not project_id, so
+  // there is nothing to accidentally join in here) -- see
+  // projectTemplateBriefQuestionSchema's own comment for why "no answers"
+  // holds structurally.
+  const { data: briefQuestionRows, error: briefQuestionError } = await admin
+    .from("brief_questions")
+    .select("category, prompt, help_text, answer_type, options, required")
+    .eq("project_id", parsed.data.projectId)
+    .order("position", { ascending: true });
+
+  if (briefQuestionError) {
+    logger.error("saveProjectAsTemplate: brief question read failed", { error: briefQuestionError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
 
@@ -979,6 +1001,14 @@ export async function saveProjectAsTemplate(
         due_offset_days: dueOffsetDays,
       };
     }),
+    briefQuestions: (briefQuestionRows ?? []).map((row) => ({
+      category: row.category as string | null,
+      prompt: row.prompt as string,
+      help_text: row.help_text as string | null,
+      answer_type: row.answer_type as ProjectTemplatePayload["briefQuestions"][number]["answer_type"],
+      options: row.options as string[] | null,
+      required: row.required as boolean,
+    })),
   };
 
   const { data: inserted, error: insertError } = await admin
@@ -1229,6 +1259,44 @@ export async function createProjectFromTemplate(
     logger.error("createProjectFromTemplate: default decision types insert failed (non-fatal)", {
       error: decisionTypesError,
     });
+  }
+
+  // F080 (AS-166/AS-167): seed the new project's brief_questions from the
+  // template's snapshot, in the same order the template captured them
+  // (payload.briefQuestions preserves saveProjectAsTemplate's `position
+  // ascending` read order; `position` here is reassigned 0-based per new
+  // row, mirroring the phases loop's own 1-based `position` reassignment
+  // above rather than trying to preserve the source project's original
+  // position values, which have no meaning once questions belong to a
+  // different project). Best-effort, non-fatal on error -- same
+  // convention as the default views/decision types inserts immediately
+  // above (the project itself was already created successfully by the
+  // RPC; this is additive seeding on top of that, not the action's
+  // primary success signal). Deliberately does NOT touch brief_answers at
+  // all -- there is no source `brief_id` to read answers from in the
+  // template payload in the first place (AS-167: only questions are ever
+  // captured, never answers).
+  if (payload.briefQuestions.length > 0) {
+    const { error: briefQuestionsInsertError } = await admin
+      .from("brief_questions")
+      .insert(
+        payload.briefQuestions.map((question, index) => ({
+          project_id: created.project_id as string,
+          position: index * 1000,
+          category: question.category,
+          prompt: question.prompt,
+          help_text: question.help_text,
+          answer_type: question.answer_type,
+          options: question.options,
+          required: question.required,
+        })),
+      );
+
+    if (briefQuestionsInsertError) {
+      logger.error("createProjectFromTemplate: brief questions insert failed (non-fatal)", {
+        error: briefQuestionsInsertError,
+      });
+    }
   }
 
   // AS-376 (F316, follow-up to F313): `create_project_from_template`
