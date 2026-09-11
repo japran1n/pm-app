@@ -20,6 +20,7 @@ import {
 
 import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/architecture";
 import { PageColumn } from "@/components/architecture/page-column";
+import { ComponentPanel } from "@/components/architecture/component-panel";
 import {
   reorderSections,
   moveSectionToPage,
@@ -64,6 +65,11 @@ export function ArchitectureBoard({
   // underlying set of section ids (across ALL pages) changes, so a real
   // navigation/refetch always wins over a stale local drag, same
   // convention SortableSectionList already used pre-F021.
+  // F034 (AS-081): toggles the right-side ComponentPanel listing every
+  // component in the project, closed by default so the board's default
+  // view is unchanged.
+  const [panelOpen, setPanelOpen] = useState(false);
+
   const sectionsKey = pages
     .map((page) => `${page.id}:${page.sections.map((section) => section.id).join(",")}`)
     .join("|");
@@ -285,27 +291,42 @@ export function ArchitectureBoard({
   };
 
   return (
-    <DndContext
-      id="architecture-section-dnd"
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-      accessibility={accessibility}
-    >
-      <SortableContext items={pageOrder} strategy={horizontalListSortingStrategy}>
-        <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
-          {orderedPages.map((page) => (
-            <PageColumn
-              key={page.id}
-              page={page}
-              orderedSectionIds={orderByPage[page.id] ?? []}
-              sectionsById={sectionsById}
-              components={components}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
+    <div className="relative min-h-0">
+      <div className="flex justify-end pb-2">
+        <button
+          type="button"
+          onClick={() => setPanelOpen((current) => !current)}
+          aria-expanded={panelOpen}
+          className="rounded-md border border-border px-3 py-1.5 text-sm hover:border-border-control-hover"
+        >
+          Components
+        </button>
+      </div>
+      <DndContext
+        id="architecture-section-dnd"
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
+        accessibility={accessibility}
+      >
+        <SortableContext items={pageOrder} strategy={horizontalListSortingStrategy}>
+          <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
+            {orderedPages.map((page) => (
+              <PageColumn
+                key={page.id}
+                page={page}
+                orderedSectionIds={orderByPage[page.id] ?? []}
+                sectionsById={sectionsById}
+                components={components}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+      {panelOpen ? (
+        <ComponentPanel components={components} onClose={() => setPanelOpen(false)} />
+      ) : null}
+    </div>
   );
 }
