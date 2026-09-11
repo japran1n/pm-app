@@ -12,9 +12,15 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { SectionCard } from "@/components/architecture/section-card";
-import type { BoardSection } from "@/lib/queries/architecture";
+import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 
-export function SortableSectionCard({ section }: { section: BoardSection }) {
+export function SortableSectionCard({
+  section,
+  components = [],
+}: {
+  section: BoardSection;
+  components?: BoardComponent[];
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: section.id, data: { type: "section" } });
 
@@ -35,7 +41,7 @@ export function SortableSectionCard({ section }: { section: BoardSection }) {
       >
         <GripVertical className="size-3.5" aria-hidden="true" />
       </button>
-      <SectionCard section={section} />
+      <SectionCard section={section} components={components} />
     </div>
   );
 }

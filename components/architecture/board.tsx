@@ -57,8 +57,6 @@ export function ArchitectureBoard({
   pages: BoardPage[];
   components: BoardComponent[];
 }) {
-  void components;
-
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the
   // pre-drop snapshot if the persisting Server Action (reorderSections or
@@ -303,6 +301,7 @@ export function ArchitectureBoard({
               page={page}
               orderedSectionIds={orderByPage[page.id] ?? []}
               sectionsById={sectionsById}
+              components={components}
             />
           ))}
         </div>

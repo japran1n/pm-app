@@ -4,7 +4,7 @@ import { GripVertical } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import type { BoardPage, BoardSection } from "@/lib/queries/architecture";
+import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/architecture";
 import { PageKindSelector } from "@/components/architecture/page-kind-selector";
 import { PageColumnHeader } from "@/components/architecture/page-column-header";
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
@@ -40,10 +40,12 @@ export function PageColumn({
   page,
   orderedSectionIds,
   sectionsById,
+  components,
 }: {
   page: BoardPage;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
+  components: BoardComponent[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: page.id, data: { type: "page" } });
@@ -85,6 +87,7 @@ export function PageColumn({
           pageId={page.id}
           orderedSectionIds={orderedSectionIds}
           sectionsById={sectionsById}
+          components={components}
         />
       </div>
     </div>

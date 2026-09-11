@@ -33,15 +33,23 @@ import { useState, useTransition } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { Boxes } from "lucide-react";
+import { Boxes, Link2 } from "lucide-react";
 
 import { renameSection, createComponentFromSection } from "@/lib/actions/architecture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { BoardSection } from "@/lib/queries/architecture";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ComponentPicker } from "@/components/architecture/component-picker";
+import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
 
-export function SectionCard({ section }: { section: BoardSection }) {
+export function SectionCard({
+  section,
+  components = [],
+}: {
+  section: BoardSection;
+  components?: BoardComponent[];
+}) {
   const router = useRouter();
   // Same convention as AddSectionButton (F013): the board route is scoped
   // to a single project, so the project id is read from the route params
@@ -56,6 +64,7 @@ export function SectionCard({ section }: { section: BoardSection }) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isCreatingComponent, startCreatingComponent] = useTransition();
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   function handleCreateComponent() {
     startCreatingComponent(async () => {
@@ -126,18 +135,45 @@ export function SectionCard({ section }: { section: BoardSection }) {
     >
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         {section.component === null ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Create component"
-            title="Create component"
-            className="shrink-0"
-            disabled={isCreatingComponent}
-            onClick={handleCreateComponent}
-          >
-            <Boxes className="size-4" aria-hidden="true" />
-          </Button>
+          <>
+            <Popover open={isPickerOpen} onOpenChange={setIsPickerOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Link component"
+                    title="Link component"
+                    className="shrink-0"
+                  >
+                    <Link2 className="size-4" aria-hidden="true" />
+                  </Button>
+                }
+              />
+              <PopoverContent align="end" className="w-64 p-0">
+                <ComponentPicker
+                  projectId={projectId}
+                  sectionId={section.id}
+                  currentComponentId={null}
+                  components={components}
+                  onClose={() => setIsPickerOpen(false)}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Create component"
+              title="Create component"
+              className="shrink-0"
+              disabled={isCreatingComponent}
+              onClick={handleCreateComponent}
+            >
+              <Boxes className="size-4" aria-hidden="true" />
+            </Button>
+          </>
         ) : null}
         <DeleteSectionButton
           sectionId={section.id}

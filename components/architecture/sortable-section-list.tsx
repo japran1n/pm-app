@@ -29,16 +29,18 @@ import {
 } from "@dnd-kit/sortable";
 
 import { SortableSectionCard } from "@/components/architecture/sortable-section-card";
-import type { BoardSection } from "@/lib/queries/architecture";
+import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 
 export function SortableSectionList({
   pageId,
   orderedSectionIds,
   sectionsById,
+  components = [],
 }: {
   pageId: string;
   orderedSectionIds: string[];
   sectionsById: Map<string, BoardSection>;
+  components?: BoardComponent[];
 }) {
   const { setNodeRef } = useDroppable({ id: pageId });
 
@@ -57,7 +59,11 @@ export function SortableSectionList({
         data-page-id={pageId}
       >
         {orderedSections.map((section) => (
-          <SortableSectionCard key={section.id} section={section} />
+          <SortableSectionCard
+            key={section.id}
+            section={section}
+            components={components}
+          />
         ))}
       </div>
     </SortableContext>

@@ -1472,3 +1472,110 @@ export async function createComponent(
 
   return { success: true, id: inserted.id };
 }
+
+// Mission 20260910-182104, F026 (AS-053, AS-062, AS-067, AS-068): links an
+// existing component to a section. AS-062 (a section can only have one
+// component) falls out for free from `tasks.component_id` being a single
+// nullable column -- this update always replaces whatever was there
+// before, there is no separate join table to dedupe.
+export async function linkComponentToSection(
+  sectionTaskId: string,
+  componentId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to link a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: sectionRow, error: sectionError } = await admin
+    .from("tasks")
+    .select("id, project_id")
+    .eq("id", sectionTaskId)
+    .maybeSingle();
+
+  if (sectionError || !sectionRow) {
+    return { success: false, error: "Section not found." };
+  }
+
+  const { data: componentRow, error: componentError } = await admin
+    .from("page_components")
+    .select("id, project_id")
+    .eq("id", componentId)
+    .maybeSingle();
+
+  if (componentError || !componentRow) {
+    return { success: false, error: "Component not found." };
+  }
+
+  if (componentRow.project_id !== sectionRow.project_id) {
+    return {
+      success: false,
+      error: "Component does not belong to this project.",
+    };
+  }
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id")
+    .eq("id", sectionRow.project_id)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { success: false, error: "Project not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    projectRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to link a component in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to link a component.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ component_id: componentId })
+    .eq("id", sectionTaskId);
+
+  if (updateError) {
+    logger.error("linkComponentToSection: update failed", {
+      error: updateError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("linkComponentToSection: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true };
+}
+
