@@ -31,6 +31,7 @@ import {
   Globe,
   Inbox,
   LayoutDashboard,
+  LayoutTemplate,
   ListChecks,
   MessageSquare,
   ScrollText,
@@ -111,6 +112,11 @@ export function buildPortalNavItems(
       badgeTone: "danger",
     },
     { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
+    // F037 (missions/20260910-182104, AS-091): always shown, same
+    // convention "Pages" above already uses (no conditional -- the route
+    // itself renders a "No pages yet" message when the client-visible
+    // board is empty, rather than the nav hiding the tab entirely).
+    { key: "architecture", label: "Architecture", href: `${basePath}/architecture`, icon: LayoutTemplate },
     // Paket B: a fixed-price project has no hourly billing to show the
     // client -- Hours is omitted from the nav entirely (not shown
     // disabled/greyed) rather than pointing at a route that 404s.
