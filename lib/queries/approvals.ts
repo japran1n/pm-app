@@ -122,6 +122,42 @@ export async function getOpenApprovalsForClient(
   return { ok: true, data: (data ?? []).map(mapApprovalRow) };
 }
 
+// F078 (AS-152): "the brief approval appears in a dedicated discovery
+// approvals section" -- the brief team page (app/(workspace)/w/
+// [workspaceSlug]/projects/[projectId]/brief/page.tsx) shows the current
+// state of the request it created via requestBriefApproval
+// (lib/actions/brief.ts, subject_type: 'doc', subject_id: the brief
+// doc's id) without a second navigation to the workspace approvals
+// queue. This is a thin, single-row lookup by subject -- most recent
+// request first, since a withdrawn/declined request could in principle
+// be re-requested and the page only cares about the current one. RLS
+// (`approval_requests_select_team`) is the real access boundary; this
+// just reads through the ordinary client.
+export async function getLatestApprovalForSubject(
+  subjectType: ApprovalSubjectType,
+  subjectId: string,
+): Promise<PortalApproval | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("approval_requests")
+    .select(APPROVAL_COLUMNS)
+    .eq("subject_type", subjectType)
+    .eq("subject_id", subjectId)
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logger.error("getLatestApprovalForSubject: failed to load approval request", {
+      error,
+      subjectType,
+      subjectId,
+    });
+    return null;
+  }
+  return data ? mapApprovalRow(data) : null;
+}
+
 // AS-026: the decision history table (approved / changes_requested /
 // withdrawn), most recently decided first, WITH who decided -- a bare
 // `decided_by` uuid answers "I never approved that" no better than a

@@ -8,9 +8,11 @@ import {
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
 import { RequestApprovalButton } from "@/components/brief/request-approval-button";
 import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
+import { WithdrawApprovalButton } from "@/components/brief/withdraw-approval-button";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
 import { NotificationRecipientsPointer } from "@/components/brief/notification-recipients-pointer";
-import { getDecisionOwners } from "@/lib/queries/approvals";
+import { BriefApprovalStatus } from "@/components/brief/brief-approval-status";
+import { getDecisionOwners, getLatestApprovalForSubject } from "@/lib/queries/approvals";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -113,6 +115,14 @@ export default async function ProjectBriefPage({
       : null;
   }
 
+  // F078 (AS-152): the current state of the request F074's
+  // requestBriefApproval created for this doc, if any -- most recent
+  // request wins (same convention getLatestApprovalForSubject documents
+  // itself).
+  const briefApproval = existingDocument
+    ? await getLatestApprovalForSubject("doc", existingDocument.id)
+    : null;
+
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
       {hasAnswers ? (
@@ -141,7 +151,12 @@ export default async function ProjectBriefPage({
                       brief.state to 'approved'. */}
                   <ApproveBriefButton briefId={brief.id} />
                 </>
-              ) : null}
+              ) : (
+                // F077 (AS-151): only offered once approved -- withdrawal
+                // reverts brief.state to 'submitted', which unlocks
+                // answers again (F076's brief.state !== 'approved' checks).
+                <WithdrawApprovalButton briefId={brief.id} />
+              )}
             </>
           ) : (
             <GenerateDocumentButton
@@ -152,6 +167,7 @@ export default async function ProjectBriefPage({
           )}
         </div>
       ) : null}
+      <BriefApprovalStatus workspaceSlug={workspaceSlug} state={briefApproval?.state ?? null} />
       <NotificationRecipientsPointer
         workspaceSlug={workspaceSlug}
         projectId={projectId}
