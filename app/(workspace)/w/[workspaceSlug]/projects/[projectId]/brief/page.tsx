@@ -9,6 +9,8 @@ import { GenerateDocumentButton } from "@/components/brief/generate-document-but
 import { RequestApprovalButton } from "@/components/brief/request-approval-button";
 import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
 import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
+import { NotificationRecipientsPointer } from "@/components/brief/notification-recipients-pointer";
+import { getDecisionOwners } from "@/lib/queries/approvals";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -35,6 +37,17 @@ export default async function ProjectBriefPage({
   }
 
   const { brief, questions, answers } = briefResult.data;
+
+  // F069 (AS-138): recipients of the brief_answer_changed notification
+  // (F068, lib/notifications/fanout.ts's notifyDecisionOwnersOfAnswerChange)
+  // are project_decision_owners -- already configurable per project via
+  // project settings' "Who approves what" (components/approvals/
+  // decision-owners.tsx). This is a read-only pointer to that existing
+  // configurable list, not a second UI for editing it.
+  const decisionOwnersResult = await getDecisionOwners(projectId);
+  const decisionOwnerNames = decisionOwnersResult.ok
+    ? decisionOwnersResult.data.map((owner) => owner.name).filter((name): name is string => !!name)
+    : [];
 
   if (!brief || questions.length === 0) {
     return (
@@ -139,6 +152,11 @@ export default async function ProjectBriefPage({
           )}
         </div>
       ) : null}
+      <NotificationRecipientsPointer
+        workspaceSlug={workspaceSlug}
+        projectId={projectId}
+        recipientNames={decisionOwnerNames}
+      />
       <TeamAnswersView items={items} />
     </div>
   );
