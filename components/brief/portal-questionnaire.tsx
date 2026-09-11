@@ -193,6 +193,15 @@ export function PortalQuestionnaire({
           <p className="text-sm text-muted-foreground">{question.helpText}</p>
         )}
 
+        {existingAnswer?.hasRevisions && (
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="questionnaire-edited-indicator"
+          >
+            You&apos;ve edited this answer
+          </p>
+        )}
+
         <AnswerInput
           question={question}
           value={draft.text}

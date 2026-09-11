@@ -79,6 +79,7 @@ describe("F053 AS-110/AS-111: a deleted question's answer preserves its prompt t
       answeredBy: "user-1",
       answeredAt: "2026-09-10T00:00:00.000Z",
       updatedAt: "2026-09-10T00:00:00.000Z",
+      hasRevisions: false,
     };
 
     expect(orphanedAnswer.questionId).toBeNull();

@@ -124,6 +124,7 @@ describe("F055: AS-114 the questionnaire presents one question at a time", () =>
         answeredBy: "user-1",
         answeredAt: "2026-09-01T00:00:00Z",
         updatedAt: "2026-09-01T00:00:00Z",
+        hasRevisions: false,
       },
     ];
 

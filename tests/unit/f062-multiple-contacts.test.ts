@@ -63,6 +63,7 @@ describe("F062 (AS-154): BriefAnswer type shape allows any contact to be the las
       answeredBy: "00000000-0000-4000-8000-000000000005",
       answeredAt: "2026-09-10T00:00:00.000Z",
       updatedAt: "2026-09-10T00:00:00.000Z",
+      hasRevisions: false,
     };
 
     // A second contact overwrites the same answer row (same id/briefId/

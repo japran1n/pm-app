@@ -67,6 +67,14 @@ export type BriefAnswer = {
   answeredBy: string | null;
   answeredAt: string | null;
   updatedAt: string;
+  // F066 (AS-130/AS-131): true once at least one row exists in
+  // brief_answer_revisions for this answer -- i.e. the answer has been
+  // edited at least once since it was first saved. Resolved by a
+  // follow-up query against brief_answer_revisions rather than a
+  // PostgREST-embedded count, since brief_answer_revisions has no FK
+  // PostgREST can auto-embed a count through (see getBriefWithRevisions's
+  // comment on the same constraint for `changed_by`).
+  hasRevisions: boolean;
 };
 
 export type BriefAnswerRevision = {
@@ -133,17 +141,20 @@ function mapBriefQuestionRow(row: {
   };
 }
 
-function mapBriefAnswerRow(row: {
-  id: string;
-  brief_id: string;
-  question_id: string | null;
-  question_prompt_snapshot: string;
-  answer_text: string | null;
-  answer_options: string[] | null;
-  answered_by: string | null;
-  answered_at: string | null;
-  updated_at: string;
-}): BriefAnswer {
+function mapBriefAnswerRow(
+  row: {
+    id: string;
+    brief_id: string;
+    question_id: string | null;
+    question_prompt_snapshot: string;
+    answer_text: string | null;
+    answer_options: string[] | null;
+    answered_by: string | null;
+    answered_at: string | null;
+    updated_at: string;
+  },
+  hasRevisions = false,
+): BriefAnswer {
   return {
     id: row.id,
     briefId: row.brief_id,
@@ -154,6 +165,7 @@ function mapBriefAnswerRow(row: {
     answeredBy: row.answered_by,
     answeredAt: row.answered_at,
     updatedAt: row.updated_at,
+    hasRevisions,
   };
 }
 
@@ -226,9 +238,38 @@ async function loadBriefWithQuestionsAndAnswers(
     return { ok: false, error: answersError.message };
   }
 
+  const answers = answerRows ?? [];
+
+  // AS-130/AS-131: resolve which of these answers has ever been edited, in
+  // one follow-up query against brief_answer_revisions keyed by this
+  // brief's own answer ids, rather than a per-answer round trip.
+  let editedAnswerIds = new Set<string>();
+  if (answers.length > 0) {
+    const { data: revisionRows, error: revisionsError } = await supabase
+      .from("brief_answer_revisions")
+      .select("answer_id")
+      .in(
+        "answer_id",
+        answers.map((row) => row.id),
+      );
+
+    if (revisionsError) {
+      logger.error("loadBriefWithQuestionsAndAnswers: failed to load revision flags", {
+        error: revisionsError,
+      });
+      return { ok: false, error: revisionsError.message };
+    }
+
+    editedAnswerIds = new Set((revisionRows ?? []).map((row) => row.answer_id as string));
+  }
+
   return {
     ok: true,
-    data: { brief, questions, answers: (answerRows ?? []).map(mapBriefAnswerRow) },
+    data: {
+      brief,
+      questions,
+      answers: answers.map((row) => mapBriefAnswerRow(row, editedAnswerIds.has(row.id))),
+    },
   };
 }
 
@@ -279,12 +320,10 @@ export async function getBriefWithRevisions(
     return { ok: true, data: null };
   }
 
-  const answer = mapBriefAnswerRow(answerRow);
-
   const { data: revisionRows, error: revisionsError } = await supabase
     .from("brief_answer_revisions")
     .select(BRIEF_ANSWER_REVISION_COLUMNS)
-    .eq("answer_id", answer.id)
+    .eq("answer_id", answerRow.id)
     .order("changed_at", { ascending: false });
 
   if (revisionsError) {
@@ -295,6 +334,7 @@ export async function getBriefWithRevisions(
   }
 
   const rows = revisionRows ?? [];
+  const answer = mapBriefAnswerRow(answerRow, rows.length > 0);
 
   // AS-128/AS-155: name the user (team member or client contact) behind
   // each revision. `changed_by` is a bare auth.users FK with no direct

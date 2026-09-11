@@ -107,6 +107,7 @@ describe("F048: BriefAnswer type shape matches brief_answers table, keeps questi
       answeredBy: "00000000-0000-4000-8000-000000000005",
       answeredAt: "2026-09-10T00:00:00.000Z",
       updatedAt: "2026-09-10T00:00:00.000Z",
+      hasRevisions: false,
     };
     expect(answer.questionId).toBeNull();
     expect(answer.questionPromptSnapshot.length).toBeGreaterThan(0);

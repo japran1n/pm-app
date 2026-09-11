@@ -1,9 +1,14 @@
+import Link from "next/link";
+
 import { getBrief } from "@/lib/queries/brief";
 import {
   TeamAnswersView,
   type TeamAnswersViewQuestion,
 } from "@/components/brief/team-answers-view";
 import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
+import { RequestApprovalButton } from "@/components/brief/request-approval-button";
+import { ApproveBriefButton } from "@/components/brief/approve-brief-button";
+import { DocClientVisibilityToggle } from "@/components/docs/doc-client-visibility-toggle";
 import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
@@ -60,28 +65,65 @@ export default async function ProjectBriefPage({
   // project, since generateBriefDocument always inserts a fresh `docs`
   // row rather than updating one in place.
   const hasAnswers = answers.length > 0;
-  let hasExistingDocument = false;
+  // F072 (AS-143): the generated document defaults to `client_visible =
+  // false` (docs' own column default, 20261014010000_f022_links_
+  // accounts_docs_visibility.sql -- generateBriefDocument never sets it,
+  // so it inherits that default) and stays hidden from the client's
+  // portal until a team member flips this toggle. Loaded here so the
+  // team page can both link to the doc (F073, AS-144) and show/control
+  // its current sharing state without a second navigation.
+  let existingDocument: { id: string; clientVisible: boolean } | null = null;
   if (hasAnswers) {
     const supabase = await createClient();
     const { data: existingDoc } = await supabase
       .from("docs")
-      .select("id")
+      .select("id, client_visible")
       .eq("project_id", projectId)
       .eq("doc_kind", "brief")
       .limit(1)
       .maybeSingle();
-    hasExistingDocument = !!existingDoc;
+    existingDocument = existingDoc
+      ? { id: existingDoc.id, clientVisible: existingDoc.client_visible }
+      : null;
   }
 
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
-      {hasAnswers && !hasExistingDocument ? (
-        <div className="mb-4 flex justify-end">
-          <GenerateDocumentButton
-            workspaceSlug={workspaceSlug}
-            projectId={projectId}
-            briefId={brief.id}
-          />
+      {hasAnswers ? (
+        <div className="mb-4 flex items-center justify-end gap-2">
+          {existingDocument ? (
+            <>
+              <Link
+                href={`/w/${workspaceSlug}/projects/${projectId}/docs/${existingDocument.id}`}
+                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                View document
+              </Link>
+              <DocClientVisibilityToggle
+                docId={existingDocument.id}
+                clientVisible={existingDocument.clientVisible}
+              />
+              {brief.state !== "approved" ? (
+                <>
+                  {/* F074 (AS-145/AS-146): request approval of the
+                      generated brief document. */}
+                  <RequestApprovalButton
+                    projectId={projectId}
+                    documentId={existingDocument.id}
+                  />
+                  {/* F075 (AS-147): team-side approval, sets
+                      brief.state to 'approved'. */}
+                  <ApproveBriefButton briefId={brief.id} />
+                </>
+              ) : null}
+            </>
+          ) : (
+            <GenerateDocumentButton
+              workspaceSlug={workspaceSlug}
+              projectId={projectId}
+              briefId={brief.id}
+            />
+          )}
         </div>
       ) : null}
       <TeamAnswersView items={items} />
