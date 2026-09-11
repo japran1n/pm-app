@@ -35,7 +35,11 @@ import { toast } from "sonner";
 
 import { Boxes, Link2 } from "lucide-react";
 
-import { renameSection, createComponentFromSection } from "@/lib/actions/architecture";
+import {
+  renameSection,
+  createComponentFromSection,
+  unlinkComponentFromSection,
+} from "@/lib/actions/architecture";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -65,6 +69,24 @@ export function SectionCard({
   const [isPending, startTransition] = useTransition();
   const [isCreatingComponent, startCreatingComponent] = useTransition();
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isUnlinking, startUnlinking] = useTransition();
+
+  // Mission 20260910-182104, F029 (AS-058, AS-059): unlink this one
+  // section instance from its component. `unlinkComponentFromSection`
+  // only touches this section's row, so other instances of the same
+  // component are unaffected, and the section's own name (`title`) is
+  // never part of that update -- it survives unlinking untouched.
+  function handleUnlink() {
+    startUnlinking(async () => {
+      const result = await unlinkComponentFromSection(section.id);
+
+      if (result.success) {
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+      }
+    });
+  }
 
   function handleCreateComponent() {
     startCreatingComponent(async () => {
@@ -131,7 +153,18 @@ export function SectionCard({
   return (
     <div
       data-component={section.component?.id ?? undefined}
-      className="group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
+      className={
+        section.component
+          ? // F032 (AS-069): a section linked to a component is visually
+            // distinguished from an unlinked one via the same
+            // --component-* tint tokens used elsewhere on the board
+            // (F001), echoing Webflow's green component-card treatment --
+            // a tinted border, with a subtle fill tint added on hover so
+            // the distinction stays legible but doesn't compete with the
+            // component name label.
+            "group relative w-full rounded-md border border-component-border bg-card p-3 shadow-xs transition-colors hover:border-component-border-hover hover:bg-component/10"
+          : "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
+      }
     >
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         {section.component === null ? (
@@ -174,7 +207,20 @@ export function SectionCard({
               <Boxes className="size-4" aria-hidden="true" />
             </Button>
           </>
-        ) : null}
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Unlink component"
+            title="Unlink component"
+            className="shrink-0 text-xs text-muted-foreground"
+            disabled={isUnlinking}
+            onClick={handleUnlink}
+          >
+            Unlink
+          </Button>
+        )}
         <DeleteSectionButton
           sectionId={section.id}
           sectionTitle={section.title}
