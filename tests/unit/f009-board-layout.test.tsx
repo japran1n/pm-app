@@ -4,8 +4,13 @@
 // horizontally when its columns exceed the viewport width.
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {} }),
+  useParams: () => ({ workspaceSlug: "acme", projectId: "proj-1" }),
+}));
 
 import { ArchitectureBoard } from "@/components/architecture/board";
 import type { BoardPage } from "@/lib/queries/architecture";
@@ -38,7 +43,8 @@ describe("F009 architecture board horizontal layout", () => {
       <ArchitectureBoard pages={pages} components={[]} />,
     );
 
-    const board = container.firstElementChild as HTMLElement;
+    const board = container.querySelector(".overflow-x-auto") as HTMLElement;
+    expect(board).not.toBeNull();
     expect(board).toHaveClass("overflow-x-auto");
   });
 
@@ -52,7 +58,8 @@ describe("F009 architecture board horizontal layout", () => {
       <ArchitectureBoard pages={pages} components={[]} />,
     );
 
-    const board = container.firstElementChild as HTMLElement;
+    const board = container.querySelector(".overflow-x-auto") as HTMLElement;
+    expect(board).not.toBeNull();
     expect(board).toHaveClass("flex");
     expect(board.className).not.toMatch(/flex-wrap\b/);
   });

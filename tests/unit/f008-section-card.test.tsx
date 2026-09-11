@@ -4,8 +4,13 @@
 // section name.
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {} }),
+  useParams: () => ({ workspaceSlug: "acme", projectId: "proj-1" }),
+}));
 
 import { SectionCard } from "@/components/architecture/section-card";
 import type { BoardSection } from "@/lib/queries/architecture";

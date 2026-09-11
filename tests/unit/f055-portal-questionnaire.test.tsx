@@ -92,9 +92,15 @@ describe("F055: AS-114 the questionnaire presents one question at a time", () =>
   });
 
   it("Next is disabled on the last question and Previous returns to prior questions", () => {
+    // q2 is `required: true` (F060, AS-060): Next refuses to advance past
+    // it until it's answered, so this test answers it before continuing --
+    // otherwise it can never reach q3 to exercise the last-question state.
     render(<PortalQuestionnaire questions={questions} initialAnswers={[]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.change(screen.getByTestId("questionnaire-answer-stub"), {
+      target: { value: "An answer" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     expect(screen.getByText("Third question?")).toBeTruthy();
