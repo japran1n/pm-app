@@ -1,8 +1,10 @@
-import { getBrief, getBriefWithRevisions } from "@/lib/queries/brief";
+import { getBrief } from "@/lib/queries/brief";
 import {
   TeamAnswersView,
   type TeamAnswersViewQuestion,
 } from "@/components/brief/team-answers-view";
+import { GenerateDocumentButton } from "@/components/brief/generate-document-button";
+import { createClient } from "@/lib/supabase/server";
 
 // F054 (AS-130): team-side brief route. Server Component per the same
 // data-fetching pattern board/page.tsx uses -- data resolved here, handed
@@ -15,7 +17,7 @@ export default async function ProjectBriefPage({
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
 }) {
-  const { projectId } = await params;
+  const { workspaceSlug, projectId } = await params;
 
   const briefResult = await getBrief(projectId);
 
@@ -43,25 +45,45 @@ export default async function ProjectBriefPage({
     answers.filter((answer) => answer.questionId).map((answer) => [answer.questionId, answer]),
   );
 
-  // AS-130: per answered question, resolve whether it has any revisions
-  // at all (edited at least once) via getBriefWithRevisions -- run
-  // alongside each other rather than sequentially awaited, same pattern
-  // board/page.tsx uses for its independent fetches.
-  const items: TeamAnswersViewQuestion[] = await Promise.all(
-    questions.map(async (question) => {
-      const answer = answersByQuestionId.get(question.id) ?? null;
-      if (!answer) {
-        return { question, answer: null, hasRevisions: false };
-      }
-      const revisionsResult = await getBriefWithRevisions(brief.id, question.id);
-      const hasRevisions =
-        revisionsResult.ok && !!revisionsResult.data && revisionsResult.data.revisions.length > 0;
-      return { question, answer, hasRevisions };
-    }),
-  );
+  // F066 (AS-130): `hasRevisions` now comes straight off each answer row
+  // (resolved in lib/queries/brief.ts's loadBriefWithQuestionsAndAnswers
+  // via one batched brief_answer_revisions lookup), so no per-question
+  // getBriefWithRevisions round trip is needed here anymore.
+  const items: TeamAnswersViewQuestion[] = questions.map((question) => {
+    const answer = answersByQuestionId.get(question.id) ?? null;
+    return { question, answer, hasRevisions: answer?.hasRevisions ?? false };
+  });
+
+  // AS-139: generating a document is only offered once there is
+  // something to quote (F071 -- "the team can generate a brief document
+  // from the answers") and only while no brief doc exists yet for this
+  // project, since generateBriefDocument always inserts a fresh `docs`
+  // row rather than updating one in place.
+  const hasAnswers = answers.length > 0;
+  let hasExistingDocument = false;
+  if (hasAnswers) {
+    const supabase = await createClient();
+    const { data: existingDoc } = await supabase
+      .from("docs")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("doc_kind", "brief")
+      .limit(1)
+      .maybeSingle();
+    hasExistingDocument = !!existingDoc;
+  }
 
   return (
     <div className="p-6 pt-4 lg:p-8 lg:pt-8">
+      {hasAnswers && !hasExistingDocument ? (
+        <div className="mb-4 flex justify-end">
+          <GenerateDocumentButton
+            workspaceSlug={workspaceSlug}
+            projectId={projectId}
+            briefId={brief.id}
+          />
+        </div>
+      ) : null}
       <TeamAnswersView items={items} />
     </div>
   );

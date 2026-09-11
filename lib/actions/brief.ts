@@ -29,6 +29,9 @@
 import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { calculatePosition } from "@/lib/board/position";
+import { getBrief } from "@/lib/queries/brief";
+import { buildBriefDocumentContent } from "@/lib/brief/document";
+import { createNotification } from "@/lib/notifications/create-notification";
 import {
   createQuestionSchema,
   updateQuestionSchema,
@@ -310,6 +313,85 @@ export async function deleteBriefQuestion(questionId: string): Promise<DeleteBri
 // answered_by/answered_at record who last saved and when; the
 // brief_answer_revisions row per change is written by a database trigger
 // (F045, standing-decisions.md #14), never from this action.
+// F068: fans out a `brief_answer_changed` in-app notification to a
+// project's decision owners (project_decision_owners,
+// 20260916010000_approval_requests.sql) whenever an already-answered
+// question is changed while the brief is no longer 'draft' (AS-136).
+// Called only from saveBriefAnswer's `existing`/update branch -- the
+// first time a question is answered is not a "change" in the spec's
+// sense, and AS-137 requires this to never fire while brief.state =
+// 'draft', which the `state === 'submitted' || state === 'approved'`
+// gate below enforces regardless of how many decision owners exist (zero
+// owners is a no-op, not an error). Non-fatal, same convention as every
+// other createNotification call site: a failure here must never fail the
+// caller's answer save.
+async function notifyDecisionOwnersOfAnswerChange(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  briefId: string,
+  questionId: string,
+  actorUserId: string,
+): Promise<void> {
+  const { data: brief, error: briefError } = await supabase
+    .from("briefs")
+    .select("state, project_id")
+    .eq("id", briefId)
+    .maybeSingle();
+
+  if (briefError || !brief) {
+    logger.error("notifyDecisionOwnersOfAnswerChange: failed to load brief", {
+      error: briefError,
+      briefId,
+    });
+    return;
+  }
+
+  if (brief.state !== "submitted" && brief.state !== "approved") {
+    // AS-137: still 'draft' (or any other pre-submission state) -- no
+    // notification.
+    return;
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("workspace_id")
+    .eq("id", brief.project_id)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    logger.error("notifyDecisionOwnersOfAnswerChange: failed to load project", {
+      error: projectError,
+      projectId: brief.project_id,
+    });
+    return;
+  }
+
+  const { data: owners, error: ownersError } = await supabase
+    .from("project_decision_owners")
+    .select("user_id")
+    .eq("project_id", brief.project_id);
+
+  if (ownersError) {
+    logger.error("notifyDecisionOwnersOfAnswerChange: failed to load decision owners", {
+      error: ownersError,
+      projectId: brief.project_id,
+    });
+    return;
+  }
+
+  for (const owner of owners ?? []) {
+    await createNotification(
+      supabase,
+      {
+        userId: owner.user_id,
+        workspaceId: project.workspace_id,
+        kind: "brief_answer_changed",
+        payload: { project_id: brief.project_id, brief_id: briefId, question_id: questionId, changed_by: actorUserId },
+      },
+      "notifyDecisionOwnersOfAnswerChange",
+    );
+  }
+}
+
 export async function saveBriefAnswer(
   briefId: string,
   questionId: string,
@@ -376,6 +458,17 @@ export async function saveBriefAnswer(
       logger.error("saveBriefAnswer: update failed", { error: updateError, briefId, questionId });
       return { success: false, error: "Couldn't save this answer." };
     }
+
+    // F068 (AS-136/AS-137): only an already-answered question being
+    // CHANGED (this `existing` branch, not the first-time insert below)
+    // can possibly need a post-submission notice, and only once the
+    // brief has left 'draft' -- AS-137 ("changing an answer before
+    // submission sends no notification") is satisfied purely by this
+    // gate never firing while brief.state = 'draft'. Non-fatal: a
+    // notification failure must never fail the answer save itself, same
+    // convention every other fan-out call site in this codebase follows
+    // (see lib/notifications/create-notification.ts's header).
+    await notifyDecisionOwnersOfAnswerChange(supabase, briefId, questionId, user.id);
 
     return { success: true };
   }
@@ -504,4 +597,77 @@ export async function reorderBriefQuestions(
   }
 
   return { success: true };
+}
+
+// Generates the brief document (F071, AS-139/AS-140/AS-141/AS-142). No
+// AI involved (standing-decisions.md #11): `buildBriefDocumentContent`
+// (lib/brief/document.ts) is a fixed four-section template that quotes
+// each question's prompt and the client's current answer beneath it.
+// Stored as a normal `docs` row with `doc_kind = 'brief'` (AS-142), the
+// vocabulary F047 (20261122030000_f047_docs_brief_kind.sql) widened for
+// exactly this purpose -- no new table. `workspace_id` is required by
+// `docs` (20260904010000_docs_system.sql) but not carried on `briefs`,
+// so it's read off the parent `projects` row, same as `createDoc`
+// (lib/actions/docs.ts) resolves it from its caller.
+export async function generateBriefDocument(
+  projectId: string,
+  briefId: string,
+): Promise<{ success: boolean; documentId?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "You must be signed in to generate this document." };
+  }
+
+  const briefResult = await getBrief(projectId);
+  if (!briefResult.ok) {
+    logger.error("generateBriefDocument: failed to load brief", {
+      error: briefResult.error,
+      projectId,
+    });
+    return { success: false, error: "Couldn't generate the brief document." };
+  }
+
+  const { brief, questions, answers } = briefResult.data;
+  if (!brief || brief.id !== briefId) {
+    return { success: false, error: "Couldn't generate the brief document. The brief was not found." };
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("workspace_id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    logger.error("generateBriefDocument: failed to load project", {
+      error: projectError,
+      projectId,
+    });
+    return { success: false, error: "Couldn't generate the brief document." };
+  }
+
+  const content = buildBriefDocumentContent(questions, answers);
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("docs")
+    .insert({
+      workspace_id: project.workspace_id,
+      project_id: projectId,
+      title: "Project Brief",
+      content,
+      doc_kind: "brief",
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) {
+    logger.error("generateBriefDocument: insert failed", { error: insertError, projectId });
+    return { success: false, error: "Couldn't generate the brief document." };
+  }
+
+  return { success: true, documentId: inserted.id };
 }
