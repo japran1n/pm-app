@@ -1194,3 +1194,281 @@ export async function reorderPages(
 
   return { success: true };
 }
+
+// Mission 20260910-182104, F025 (AS-051, AS-052): turns an existing
+// section into a component. A section IS a subtask (standing decision 1);
+// "turning it into a component" means creating a `page_components` row
+// named after the section's own title (AS-052) and linking it back via
+// the same `tasks.component_id` column every other section-component
+// link uses (F008/F033 etc already read this column), so the section
+// card immediately shows the new component name for free.
+//
+// Guards against creating a duplicate component for a section that is
+// already linked -- returns a generic error rather than silently
+// creating a second, orphaned component.
+export async function createComponentFromSection(
+  sectionTaskId: string,
+  projectId: string,
+): Promise<{ success: boolean; error?: string; componentId?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to create a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  // Look up the section's owning project/workspace server-side (never
+  // trust the caller-supplied projectId for permission checks -- only for
+  // scoping the new component row once membership against the *real*
+  // workspace is confirmed), and confirm it is actually a section (has a
+  // parent page, no page_slug of its own) before touching it -- same
+  // convention as deleteSection/renameSection above.
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, title, page_slug, parent_task_id, component_id, projects(workspace_id)",
+    )
+    .eq("id", sectionTaskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    taskRow.page_slug ||
+    !taskRow.parent_task_id ||
+    !(taskRow as { projects?: { workspace_id?: string } }).projects?.workspace_id
+  ) {
+    return { success: false, error: "Section not found." };
+  }
+
+  if (taskRow.project_id !== projectId) {
+    return { success: false, error: "Section not found." };
+  }
+
+  if (taskRow.component_id) {
+    return {
+      success: false,
+      error: "Section already linked to a component",
+    };
+  }
+
+  const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
+    .workspace_id;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to create a component in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to create a component.",
+    };
+  }
+
+  // AS-065: two components in the same project cannot share a
+  // case-insensitive name (page_components_project_id_lower_name_idx,
+  // supabase/migrations/20261121010000_f002_page_components.sql).
+  // Section titles aren't guaranteed unique, so this can legitimately
+  // collide -- surfaced as a normal error rather than a 500.
+  const { count: existingComponentCount, error: countError } = await admin
+    .from("page_components")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
+
+  if (countError) {
+    logger.error("createComponentFromSection: failed to count components", {
+      error: countError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { data: insertedComponent, error: insertError } = await admin
+    .from("page_components")
+    .insert({
+      project_id: projectId,
+      name: taskRow.title,
+      position: (existingComponentCount ?? 0) + 1,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !insertedComponent) {
+    if (insertError?.code === "23505") {
+      return {
+        success: false,
+        error: "A component with this name already exists.",
+      };
+    }
+
+    logger.error("createComponentFromSection: insert failed", {
+      error: insertError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ component_id: insertedComponent.id })
+    .eq("id", sectionTaskId);
+
+  if (updateError) {
+    logger.error("createComponentFromSection: link update failed", {
+      error: updateError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("createComponentFromSection: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true, componentId: insertedComponent.id };
+}
+
+// Mission 20260910-182104, F025 (AS-065, AS-066): general-purpose
+// component creation, independent of any section. Same
+// membership/permission re-check and append-to-end position convention
+// as createPage.
+export async function createComponent(
+  projectId: string,
+  name: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  // AS-066: a component cannot be created with an empty name.
+  const parsed = z
+    .string()
+    .trim()
+    .min(1, "Component name is required.")
+    .max(200, "Component name must be 200 characters or fewer.")
+    .safeParse(name);
+
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? "Component name is required.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to create a component.",
+    };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { success: false, error: "Project not found." };
+  }
+
+  const membership = await requireActiveMembership(
+    admin,
+    projectRow.workspace_id,
+    user.id,
+  );
+
+  if (!membership.ok) {
+    return {
+      success: false,
+      error: "You don't have permission to create a component in this project.",
+    };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      success: false,
+      error: "Viewers don't have permission to create a component.",
+    };
+  }
+
+  const { count: existingComponentCount, error: countError } = await admin
+    .from("page_components")
+    .select("id", { count: "exact", head: true })
+    .eq("project_id", projectId);
+
+  if (countError) {
+    logger.error("createComponent: failed to count components", {
+      error: countError,
+    });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  // AS-065: unique(project_id, lower(name)) -- enforced by
+  // page_components_project_id_lower_name_idx
+  // (supabase/migrations/20261121010000_f002_page_components.sql).
+  const { data: inserted, error: insertError } = await admin
+    .from("page_components")
+    .insert({
+      project_id: projectId,
+      name: parsed.data,
+      position: (existingComponentCount ?? 0) + 1,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) {
+    if (insertError?.code === "23505") {
+      return {
+        success: false,
+        error: "A component with this name already exists.",
+      };
+    }
+
+    logger.error("createComponent: insert failed", { error: insertError });
+    return {
+      success: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("createComponent: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return { success: true, id: inserted.id };
+}

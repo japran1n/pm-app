@@ -22,6 +22,7 @@ vi.mock("@/lib/actions/architecture", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  useParams: () => ({ projectId: "test-project-id" }),
 }));
 
 vi.mock("sonner", () => ({

@@ -118,7 +118,10 @@ describe("renameSection (F015)", () => {
 describe("SectionCard (F015)", () => {
   it("test_AS_034_renders_the_section_name_and_shows_an_input_on_click", async () => {
     vi.resetModules();
-    vi.doMock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+    vi.doMock("next/navigation", () => ({
+      useRouter: () => ({ refresh: () => {} }),
+      useParams: () => ({ projectId: "test-project-id" }),
+    }));
     vi.doMock("@/lib/actions/architecture", () => ({
       renameSection: async () => ({ success: true }),
     }));

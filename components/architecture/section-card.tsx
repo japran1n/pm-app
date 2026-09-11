@@ -30,20 +30,44 @@
 //   itself also rejects empty names server-side (AS-040, defense in
 //   depth).
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { renameSection } from "@/lib/actions/architecture";
+import { Boxes } from "lucide-react";
+
+import { renameSection, createComponentFromSection } from "@/lib/actions/architecture";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { BoardSection } from "@/lib/queries/architecture";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
 
 export function SectionCard({ section }: { section: BoardSection }) {
   const router = useRouter();
+  // Same convention as AddSectionButton (F013): the board route is scoped
+  // to a single project, so the project id is read from the route params
+  // rather than threaded as a prop through ArchitectureBoard -> PageColumn
+  // -> SortableSectionList -> SortableSectionCard -- avoids widening every
+  // intermediate component's public contract just for this one action's
+  // second argument.
+  const params = useParams<{ projectId: string }>();
+  const projectId = params.projectId;
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(section.title);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isCreatingComponent, startCreatingComponent] = useTransition();
+
+  function handleCreateComponent() {
+    startCreatingComponent(async () => {
+      const result = await createComponentFromSection(section.id, projectId);
+
+      if (result.success) {
+        router.refresh();
+      } else {
+        toast.error(result.error ?? "Something went wrong. Please try again.");
+      }
+    });
+  }
 
   function startEditing() {
     setValue(section.title);
@@ -100,7 +124,21 @@ export function SectionCard({ section }: { section: BoardSection }) {
       data-component={section.component?.id ?? undefined}
       className="group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
     >
-      <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        {section.component === null ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label="Create component"
+            title="Create component"
+            className="shrink-0"
+            disabled={isCreatingComponent}
+            onClick={handleCreateComponent}
+          >
+            <Boxes className="size-4" aria-hidden="true" />
+          </Button>
+        ) : null}
         <DeleteSectionButton
           sectionId={section.id}
           sectionTitle={section.title}
