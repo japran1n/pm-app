@@ -3,6 +3,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock("@/lib/actions/architecture", () => ({
+  renameComponent: vi.fn(),
+  deleteComponent: vi.fn(),
+}));
+
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import type { BoardComponent } from "@/lib/queries/architecture";
 
