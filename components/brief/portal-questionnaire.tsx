@@ -53,11 +53,19 @@ export function PortalQuestionnaire({
   questions,
   initialAnswers,
   briefId,
+  briefState,
 }: {
   questions: BriefQuestion[];
   initialAnswers: BriefAnswer[];
   briefId?: string | null;
+  // F076 (AS-148/AS-149/AS-150): once the brief is approved, every answer
+  // input renders disabled and a banner explains why. Optional so existing
+  // render tests that don't pass a brief.state (F055/F057/etc.) keep
+  // passing unmodified -- undefined/any non-"approved" value behaves
+  // exactly like the pre-F076 always-editable state.
+  briefState?: "draft" | "submitted" | "approved" | null;
 }) {
+  const isLocked = briefState === "approved";
   // F058 (AS-117): resume at the first unanswered question on load rather
   // than always starting at index 0. An answer "counts" if it has non-empty
   // text or at least one selected option. If every question is answered,
@@ -123,7 +131,7 @@ export function PortalQuestionnaire({
   // server-side: saveBriefAnswer actually writes the row, so a later
   // reload's initialAnswers (re-fetched via getBriefForClient) includes it.
   const { saving, lastSaved } = useAutosave(draft, async (value) => {
-    if (!briefId || !question) return;
+    if (!briefId || !question || isLocked) return;
     const text = value.text != null && value.text.trim() === "" ? null : value.text;
     const optionsList = value.options && value.options.length > 0 ? value.options : null;
     await saveBriefAnswer(briefId, question.id, text, optionsList);
@@ -177,6 +185,15 @@ export function PortalQuestionnaire({
 
   return (
     <div className="flex flex-col gap-6" data-testid="portal-questionnaire">
+      {isLocked && (
+        <p
+          className="rounded-md border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground"
+          data-testid="questionnaire-approved-banner"
+        >
+          This brief has been approved. Answers are locked.
+        </p>
+      )}
+
       <QuestionnaireProgress currentIndex={currentIndex} total={total} />
 
       <div className="flex flex-col gap-3" data-testid="questionnaire-question">
@@ -210,6 +227,7 @@ export function PortalQuestionnaire({
             setDraft({ text, options });
             setValidationError(false);
           }}
+          disabled={isLocked}
         />
 
         {validationError && (

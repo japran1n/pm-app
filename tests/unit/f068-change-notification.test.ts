@@ -132,15 +132,19 @@ describe("F068: saveBriefAnswer post-submission change notification", () => {
     );
   });
 
-  it("test_AS_136_also_notifies_when_brief_is_approved", async () => {
+  // F076 (AS-149/AS-150) superseded this: once a brief is 'approved',
+  // saveBriefAnswer's own approval-lock guard rejects the write before
+  // it ever reaches the "changed after submission" notification path
+  // below -- an approved brief can no longer be the subject of a
+  // notified change at all, since it can't be changed. See
+  // tests/unit/f076-approval-lock.test.ts for the lock itself.
+  it("test_AS_137_does_not_notify_when_brief_is_approved_because_the_write_is_locked", async () => {
     table.brief = { data: { state: "approved", project_id: PROJECT_ID }, error: null };
 
-    await saveBriefAnswer(BRIEF_ID, QUESTION_ID, "Updated answer", null);
+    const result = await saveBriefAnswer(BRIEF_ID, QUESTION_ID, "Updated answer", null);
 
-    expect(mockRpc).toHaveBeenCalledWith(
-      "create_notification",
-      expect.objectContaining({ p_kind: "brief_answer_changed" }),
-    );
+    expect(result).toEqual({ success: false, error: "Brief is approved and answers are locked." });
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   it("test_AS_137_changing_an_answer_before_submission_sends_no_notification", async () => {

@@ -52,6 +52,7 @@ export default async function PortalBriefPage({
         questions={questions}
         initialAnswers={answers}
         briefId={brief?.id ?? null}
+        briefState={brief?.state ?? null}
       />
     </div>
   );

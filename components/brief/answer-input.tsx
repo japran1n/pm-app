@@ -34,11 +34,18 @@ export function AnswerInput({
   value,
   selectedOptions,
   onChange,
+  disabled,
 }: {
   question: BriefQuestion;
   value: string | null;
   selectedOptions: string[];
   onChange: (text: string | null, options: string[] | null) => void;
+  // F076 (AS-148/AS-149/AS-150): once the brief is approved, every input
+  // renders disabled -- the parent (PortalQuestionnaire) passes
+  // `brief.state === "approved"` down here so the read-only state is
+  // driven by the same brief.state RLS already freezes writes on
+  // (20261122040000_f046_brief_rls.sql), not a second parallel flag.
+  disabled?: boolean;
 }) {
   const options = question.options ?? [];
 
@@ -50,6 +57,7 @@ export function AnswerInput({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value, null)}
         placeholder="Your answer"
+        disabled={disabled}
       />
     );
   }
@@ -62,6 +70,7 @@ export function AnswerInput({
         onChange={(e) => onChange(e.target.value, null)}
         placeholder="Your answer"
         rows={4}
+        disabled={disabled}
       />
     );
   }
@@ -75,6 +84,7 @@ export function AnswerInput({
         data-testid="questionnaire-answer-radio-group"
         value={selectedOptions[0] ?? ""}
         onValueChange={(next) => onChange(null, next == null ? [] : [String(next)])}
+        disabled={disabled}
       >
         {options.map((option) => (
           <div key={option} className="flex items-center gap-2">
@@ -82,6 +92,7 @@ export function AnswerInput({
               value={option}
               id={`${question.id}-${option}`}
               data-testid={`questionnaire-answer-option-${option}`}
+              disabled={disabled}
             />
             <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
           </div>
@@ -106,6 +117,7 @@ export function AnswerInput({
               checked={checked}
               id={`${question.id}-${option}`}
               data-testid={`questionnaire-answer-option-${option}`}
+              disabled={disabled}
               onCheckedChange={(next) => {
                 const isChecked = next === true;
                 const nextOptions = isChecked

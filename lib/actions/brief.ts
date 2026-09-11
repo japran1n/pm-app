@@ -424,6 +424,28 @@ export async function saveBriefAnswer(
     return { success: false, error: "Couldn't save this answer. The question was not found." };
   }
 
+  // F076 (AS-149/AS-150): approval freezes answers for every role, no
+  // team-only escape hatch (standing decision #16). RLS
+  // (brief_answers_insert/_update, 20261122040000_f046_brief_rls.sql)
+  // already enforces this as the real boundary -- this check exists so
+  // the action surfaces a clear "locked" message instead of a generic
+  // RLS-denial error for both the client and team write paths this
+  // function serves.
+  const { data: brief, error: briefError } = await supabase
+    .from("briefs")
+    .select("state")
+    .eq("id", briefId)
+    .maybeSingle();
+
+  if (briefError) {
+    logger.error("saveBriefAnswer: failed to load brief state", { error: briefError, briefId });
+    return { success: false, error: "Couldn't save this answer." };
+  }
+
+  if (brief?.state === "approved") {
+    return { success: false, error: "Brief is approved and answers are locked." };
+  }
+
   const { data: existing, error: existingError } = await supabase
     .from("brief_answers")
     .select("id")
@@ -797,6 +819,49 @@ export async function approveBrief(briefId: string): Promise<ApproveBriefResult>
     return {
       success: false,
       error: "Couldn't approve this brief. It may not exist or you may not have permission.",
+    };
+  }
+
+  return { success: true };
+}
+
+export type WithdrawBriefApprovalResult = { success: boolean; error?: string };
+
+// F077 (AS-151): withdrawing approval makes answers editable again.
+// Reverts brief.state from 'approved' back to 'submitted' -- 'submitted'
+// rather than 'draft' because withdrawal is "undo the approval", not
+// "undo the client's submission" (the brief was already submitted before
+// it could be approved at all; briefs_update_team's RLS policy, which
+// this write relies on the same way approveBrief does, allows a
+// workspace writer to set any state, so the `.eq("state", "approved")`
+// guard below is this function's own safety net against a no-op
+// withdrawal silently "succeeding" on a brief that was never approved).
+export async function withdrawBriefApproval(briefId: string): Promise<WithdrawBriefApprovalResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { success: false, error: "You must be signed in to withdraw this approval." };
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("briefs")
+    .update({ state: "submitted" })
+    .eq("id", briefId)
+    .eq("state", "approved")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError) {
+    logger.error("withdrawBriefApproval: update failed", { error: updateError, briefId });
+    return { success: false, error: "Couldn't withdraw this approval." };
+  }
+
+  if (!updated) {
+    return {
+      success: false,
+      error: "Couldn't withdraw this approval. It may not exist or may not be approved.",
     };
   }
 
