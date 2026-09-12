@@ -34,7 +34,13 @@ export function MyTaskStatusCell({
       status={status}
       statusOptions={
         statusOptions && statusOptions.length > 0
-          ? (statusOptions as { value: TaskCardTask["status"]; label: string; color: string }[])
+          ? (statusOptions as unknown as {
+              value: TaskCardTask["status"];
+              label: string;
+              color: string;
+              category?: string | null;
+              displayGroup?: string | null;
+            }[])
           : undefined
       }
     />

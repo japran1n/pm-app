@@ -18,6 +18,14 @@ export type BoardColumnDef = {
   name: string;
   color: string;
   category: "not_started" | "in_progress" | "done";
+  // Ad-hoc status redesign (2026-09-12): the "Not started / Active / Done
+  // / Closed" dropdown section a status renders under — see
+  // lib/board/status-icons.ts's resolveStatusGroup for why this can't be
+  // derived from `category` alone (Done and Closed share the DB category
+  // `done`). Nullable: falls back to a category-derived group for any row
+  // that predates the `display_group` column (migration
+  // 20261125010000_status_set_v2.sql).
+  displayGroup?: string | null;
   position: number;
 };
 
@@ -28,7 +36,7 @@ export async function getProjectColumns(
 
   const { data, error } = await supabase
     .from("project_statuses")
-    .select("id, name, color, category, position")
+    .select("id, name, color, category, display_group, position")
     .eq("project_id", projectId)
     .order("position", { ascending: true });
 
@@ -41,6 +49,7 @@ export async function getProjectColumns(
     name: row.name,
     color: row.color,
     category: row.category as BoardColumnDef["category"],
+    displayGroup: (row as { display_group?: string | null }).display_group ?? null,
     position: row.position,
   }));
 }

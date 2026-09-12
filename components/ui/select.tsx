@@ -63,7 +63,20 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Bug fix (ad-hoc, 2026-09-12): Base UI's Positioner defaults
+  // `alignItemWithTrigger` to `true`, which OVERLAPS the popup with the
+  // trigger so the currently-selected item's row lines up with the
+  // trigger's value text — for any item that isn't the first in the
+  // list, that overlap shifts the whole popup UPWARD (sometimes well
+  // past the trigger, clipped against the viewport top), which reads as
+  // "the dropdown opens above the trigger" even though `side="bottom"` is
+  // set. This is what the status Select in a table row near the top of
+  // the viewport was doing. Defaulting this to `false` makes every
+  // Select in the app open flush against `side`/`sideOffset` with no
+  // trigger-overlap, i.e. reliably downward when `side="bottom"`
+  // (the default). A caller that still wants the overlap behaviour can
+  // pass `alignItemWithTrigger` explicitly.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

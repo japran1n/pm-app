@@ -132,10 +132,14 @@ export default async function ProjectListPage({
     value: NonNullable<TaskCardTask["status"]>;
     label: string;
     color: string;
+    category?: string | null;
+    displayGroup?: string | null;
   }[] = columns.map((column) => ({
     value: column.name as NonNullable<TaskCardTask["status"]>,
     label: statusLabelFor(column.name),
     color: column.color,
+    category: column.category,
+    displayGroup: column.displayGroup,
   }));
   // F229 (AS-433 dangling-member class): the set of assignee ids a
   // saved view's `assigneeId` filter is validated against — the same

@@ -2570,6 +2570,7 @@ export type Database = {
           client_description: string | null
           color: string
           created_at: string
+          display_group: string | null
           id: string
           name: string
           position: number
@@ -2581,6 +2582,7 @@ export type Database = {
           client_description?: string | null
           color: string
           created_at?: string
+          display_group?: string | null
           id?: string
           name: string
           position?: number
@@ -2592,6 +2594,7 @@ export type Database = {
           client_description?: string | null
           color?: string
           created_at?: string
+          display_group?: string | null
           id?: string
           name?: string
           position?: number

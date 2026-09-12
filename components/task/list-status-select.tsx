@@ -31,7 +31,9 @@ import type { TaskCardTask } from "@/components/task/task-card";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -41,16 +43,43 @@ import {
 // local STATUS_OPTIONS labels, which previously rendered no color at all.
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  STATUS_GROUP_LABELS,
+  STATUS_GROUP_ORDER,
+  resolveStatusGroup,
+  statusIconFor,
+  type StatusDisplayGroup,
+} from "@/lib/board/status-icons";
 
-// F223 (AS-411): the legacy fixed four, kept only as the fallback for
-// callers that don't have a single project's real columns to hand (the
-// workspace-wide dashboard task table — see list-filters.tsx's matching
-// DEFAULT_STATUS_OPTIONS comment for the same rationale).
-const DEFAULT_STATUS_OPTIONS: { value: TaskCardTask["status"]; label: string; color: string }[] = [
-  { value: "todo", label: STATUS_LABELS.todo, color: STATUS_COLORS.todo },
-  { value: "in_progress", label: STATUS_LABELS.in_progress, color: STATUS_COLORS.in_progress },
-  { value: "in_review", label: STATUS_LABELS.in_review, color: STATUS_COLORS.in_review },
-  { value: "done", label: STATUS_LABELS.done, color: STATUS_COLORS.done },
+// Ad-hoc status redesign (2026-09-12, product owner request): the new
+// 11-status default set (lib/queries/statuses.ts's getProjectColumns is
+// the real, per-project source of truth once migration
+// 20261125010000_status_set_v2.sql has run against a project — this
+// constant is only the fallback for callers that don't have a single
+// project's real columns to hand, same rationale as list-filters.tsx's
+// matching DEFAULT_STATUS_OPTIONS comment). Category is cast through
+// TaskCardTask["status"] the same way every other custom-column value
+// already is (see this file's option prop doc comment below) — the
+// value only ever flows into `moveTaskStatus`, whose schema accepts any
+// non-empty string.
+const DEFAULT_STATUS_OPTIONS: {
+  value: TaskCardTask["status"];
+  label: string;
+  color: string;
+  category?: string;
+  displayGroup?: string | null;
+}[] = [
+  { value: "Backlog" as TaskCardTask["status"], label: "Backlog", color: "#64748b", category: "not_started", displayGroup: "not_started" },
+  { value: "To Do" as TaskCardTask["status"], label: "To Do", color: "#64748b", category: "not_started", displayGroup: "not_started" },
+  { value: "Blocked" as TaskCardTask["status"], label: "Blocked", color: "#ea580c", category: "not_started", displayGroup: "not_started" },
+  { value: "Canceled" as TaskCardTask["status"], label: "Canceled", color: "#ef4444", category: "not_started", displayGroup: "not_started" },
+  { value: "In Design" as TaskCardTask["status"], label: "In Design", color: "#7c3aed", category: "in_progress", displayGroup: "active" },
+  { value: "In Dev" as TaskCardTask["status"], label: "In Dev", color: "#3b82f6", category: "in_progress", displayGroup: "active" },
+  { value: "QA by Dev" as TaskCardTask["status"], label: "QA by Dev", color: "#3b82f6", category: "in_progress", displayGroup: "active" },
+  { value: "QA by Design" as TaskCardTask["status"], label: "QA by Design", color: "#3b82f6", category: "in_progress", displayGroup: "active" },
+  { value: "Awaiting Client" as TaskCardTask["status"], label: "Awaiting Client", color: "#64748b", category: "in_progress", displayGroup: "active" },
+  { value: "Approved" as TaskCardTask["status"], label: "Approved", color: "#16a34a", category: "done", displayGroup: "done" },
+  { value: "Completed" as TaskCardTask["status"], label: "Completed", color: "#16a34a", category: "done", displayGroup: "closed" },
 ];
 
 export function ListStatusSelect({
@@ -69,7 +98,17 @@ export function ListStatusSelect({
    * `as TaskCardTask["status"]` cast), since the value only ever flows
    * into `moveTaskStatus`, whose schema accepts any non-empty string
    * (F221, lib/validation/tasks.ts's moveTaskStatusSchema). */
-  statusOptions?: { value: TaskCardTask["status"]; label: string; color: string }[];
+  statusOptions?: {
+    value: TaskCardTask["status"];
+    label: string;
+    color: string;
+    /** Ad-hoc status redesign (2026-09-12): optional because older
+     * callers/rows may still pass the pre-redesign two-field shape —
+     * falls back to a name-derived icon and a category-derived group
+     * (lib/board/status-icons.ts) when omitted. */
+    category?: string | null;
+    displayGroup?: string | null;
+  }[];
 }) {
   const [localStatus, setLocalStatus] = useState(status);
   // Re-sync local state if the row's underlying status changes via a fresh
@@ -145,13 +184,29 @@ export function ListStatusSelect({
   const optionByValue = new Map(
     statusOptions.map((option) => [option.value, option]),
   );
+  const currentOption = optionByValue.get(localStatus);
   const currentColor =
-    optionByValue.get(localStatus)?.color ??
+    currentOption?.color ??
     STATUS_COLORS[localStatus as keyof typeof STATUS_COLORS];
   const currentLabel =
-    optionByValue.get(localStatus)?.label ??
+    currentOption?.label ??
     STATUS_LABELS[localStatus as keyof typeof STATUS_LABELS] ??
     localStatus;
+  const currentIcon = statusIconFor(currentLabel, currentOption?.category);
+
+  // Ad-hoc status redesign (2026-09-12): every status section ("Not
+  // started" / "Active" / "Done" / "Closed"), in fixed display order,
+  // each holding only the options that resolve into it. Options with no
+  // section (shouldn't happen for the shipped 11-status set, but keeps
+  // a stray/legacy option from silently disappearing) fall into
+  // "not_started".
+  const groupedOptions = STATUS_GROUP_ORDER.map((group) => ({
+    group,
+    options: statusOptions.filter(
+      (option) =>
+        resolveStatusGroup(option.category, option.displayGroup) === group,
+    ),
+  })).filter(({ options }) => options.length > 0);
 
   // F251 (AS-489): viewer/guest gets plain, non-interactive text — not a
   // disabled control — matching the other three list-view cells. The
@@ -160,7 +215,7 @@ export function ListStatusSelect({
   if (!canChangeStatus) {
     return (
       <span className="flex items-center px-2">
-        <StatusBadge label={currentLabel} color={currentColor} />
+        <StatusBadge label={currentLabel} color={currentColor} icon={currentIcon} />
       </span>
     );
   }
@@ -170,7 +225,7 @@ export function ListStatusSelect({
       <Select value={localStatus} onValueChange={handleChange}>
         <SelectTrigger
           size="sm"
-          className="w-36"
+          className="w-40 border-transparent bg-transparent p-0 hover:border-transparent data-[size=sm]:h-auto"
           disabled={isSaving || !canChangeStatus}
           title={
             canChangeStatus
@@ -179,27 +234,39 @@ export function ListStatusSelect({
           }
           aria-label={`Change status for task ${taskId}`}
         >
-          <span className="flex items-center gap-1.5 overflow-hidden">
-            <span
-              aria-hidden="true"
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: currentColor }}
-            />
-            <SelectValue>{() => currentLabel}</SelectValue>
-          </span>
+          {/* "Full-cell colour" (ad-hoc request): the closed trigger is a
+           * complete coloured pill (background tint + border + coloured
+           * icon/label — StatusBadge, the same building block the
+           * viewer/guest read-only branch above already uses), not a
+           * small dot next to plain text. */}
+          <SelectValue>
+            {() => (
+              <StatusBadge
+                label={currentLabel}
+                color={currentColor}
+                icon={currentIcon}
+                className="w-full"
+              />
+            )}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {statusOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              <span className="flex items-center gap-1.5">
-                <span
-                  aria-hidden="true"
-                  className="size-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: option.color }}
-                />
-                {option.label}
-              </span>
-            </SelectItem>
+          {groupedOptions.map(({ group, options }, index) => (
+            <SelectGroup key={group}>
+              {index > 0 ? <div className="my-1 h-px bg-border" aria-hidden /> : null}
+              <SelectLabel>{STATUS_GROUP_LABELS[group as StatusDisplayGroup]}</SelectLabel>
+              {options.map((option) => {
+                const Icon = statusIconFor(option.label, option.category);
+                return (
+                  <SelectItem key={option.value} value={option.value}>
+                    <span className="flex items-center gap-1.5">
+                      <Icon aria-hidden className="size-3.5 shrink-0" style={{ color: option.color }} />
+                      {option.label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
+            </SelectGroup>
           ))}
         </SelectContent>
       </Select>

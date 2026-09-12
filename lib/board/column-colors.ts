@@ -26,6 +26,12 @@ export type ColumnColorOption = {
 // white / 3.41:1 on dark), the same replacement lib/task-colors.ts's
 // PRIORITY_COLORS.backlog now uses, so the two "neutral/no-emphasis"
 // swatches across the app stay visually consistent with each other.
+// AUTONOMOUS_DECISION (ad-hoc status redesign): "Purple" (violet-600) added
+// for the new "In Design" status (see lib/board/status-icons.ts) — the
+// only entry in the new 11-status set with no existing hue in this
+// palette. 5.35:1 on white / 3.29:1 on the dark card (oklch(0.205 0 0)),
+// clearing this file's own >=3:1 non-text contrast bar in both themes,
+// same convention every other entry below already follows.
 export const COLUMN_COLOR_PALETTE: ColumnColorOption[] = [
   { value: "#64748b", label: "Slate" },
   { value: "#3b82f6", label: "Blue" },
@@ -35,6 +41,7 @@ export const COLUMN_COLOR_PALETTE: ColumnColorOption[] = [
   { value: "#ea580c", label: "Orange" },
   { value: "#a16207", label: "Yellow" },
   { value: "#71717a", label: "Zinc" },
+  { value: "#7c3aed", label: "Purple" },
 ];
 
 export const DEFAULT_COLUMN_COLOR = COLUMN_COLOR_PALETTE[0].value;

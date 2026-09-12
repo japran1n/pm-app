@@ -49,7 +49,16 @@ const BUCKET_ORDER: { key: keyof MyTasksBuckets; label: string }[] = [
   { key: "later", label: "Later" },
 ];
 
-export type MyTaskStatusOption = { value: string; label: string; color: string };
+export type MyTaskStatusOption = {
+  value: string;
+  label: string;
+  color: string;
+  // Ad-hoc status redesign (2026-09-12): forwarded so <ListStatusSelect>
+  // can group this row's dropdown into "Not started / Active / Done /
+  // Closed" sections the same way the project List view does.
+  category?: string | null;
+  displayGroup?: string | null;
+};
 
 export default async function MyTasksPage({
   params,
@@ -130,7 +139,7 @@ export default async function MyTasksPage({
   if (distinctProjectIds.length > 0) {
     const { data: columnRows } = await supabase
       .from("project_statuses")
-      .select("project_id, name, color, position")
+      .select("project_id, name, color, category, display_group, position")
       .in("project_id", distinctProjectIds)
       .order("position", { ascending: true });
 
@@ -140,6 +149,8 @@ export default async function MyTasksPage({
         value: row.name,
         label: statusLabelFor(row.name),
         color: row.color,
+        category: row.category,
+        displayGroup: row.display_group,
       });
       statusOptionsByProject.set(row.project_id, list);
     }

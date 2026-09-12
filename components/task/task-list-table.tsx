@@ -190,7 +190,13 @@ export function TaskListTable({
    * ListStatusSelect fall back to its own legacy default — the
    * workspace-wide dashboard table (multi-project) doesn't pass this
    * yet, see this feature's handoff. */
-  statusOptions?: { value: TaskCardTask["status"]; label: string; color: string }[];
+  statusOptions?: {
+    value: TaskCardTask["status"];
+    label: string;
+    color: string;
+    category?: string | null;
+    displayGroup?: string | null;
+  }[];
   /** F251 (AS-488): the single project this table's rows belong to —
    * present only for the per-project List view (list/page.tsx), which
    * can subscribe to exactly one project's Realtime task changes. The
