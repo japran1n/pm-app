@@ -215,7 +215,7 @@ export function ListStatusSelect({
   if (!canChangeStatus) {
     return (
       <span className="flex items-center px-2">
-        <StatusBadge label={currentLabel} color={currentColor} icon={currentIcon} />
+        <StatusBadge label={currentLabel} color={currentColor} icon={currentIcon} variant="solid" />
       </span>
     );
   }
@@ -225,7 +225,8 @@ export function ListStatusSelect({
       <Select value={localStatus} onValueChange={handleChange}>
         <SelectTrigger
           size="sm"
-          className="w-40 border-transparent bg-transparent p-0 hover:border-transparent data-[size=sm]:h-auto"
+          hideChevronUntilHover
+          className="w-44 min-w-40 max-w-full border-transparent bg-transparent p-0 hover:border-transparent data-[size=sm]:h-auto"
           disabled={isSaving || !canChangeStatus}
           title={
             canChangeStatus
@@ -235,17 +236,16 @@ export function ListStatusSelect({
           aria-label={`Change status for task ${taskId}`}
         >
           {/* "Full-cell colour" (ad-hoc request): the closed trigger is a
-           * complete coloured pill (background tint + border + coloured
-           * icon/label — StatusBadge, the same building block the
-           * viewer/guest read-only branch above already uses), not a
-           * small dot next to plain text. */}
+           * complete coloured pill (solid fill + coloured border, ClickUp-
+           * style — StatusBadge's "solid" variant) that hugs its own
+           * label instead of stretching to fill the trigger. */}
           <SelectValue>
             {() => (
               <StatusBadge
                 label={currentLabel}
                 color={currentColor}
                 icon={currentIcon}
-                className="w-full"
+                variant="solid"
               />
             )}
           </SelectValue>

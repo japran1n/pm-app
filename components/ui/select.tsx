@@ -32,9 +32,19 @@ function SelectTrigger({
   className,
   size = "default",
   children,
+  // Ad-hoc status redesign (2026-09-12): opt-in for callers with a lot of
+  // rows on screen at once (e.g. the List view's per-row status trigger)
+  // that want the chevron to stay out of the way until the row is
+  // hovered/focused/open, instead of restyling every Select's chevron.
+  // The icon is never removed from the DOM (`opacity-0`, not
+  // `hidden`/conditional render) so keyboard/screen-reader users always
+  // have it; `data-[state=open]` keeps it visible for the whole time the
+  // popup is open, matching every other trigger's affordance.
+  hideChevronUntilHover = false,
   ...props
 }: SelectPrimitive.Trigger.Props & {
   size?: "sm" | "default"
+  hideChevronUntilHover?: boolean
 }) {
   return (
     <SelectPrimitive.Trigger
@@ -42,6 +52,7 @@ function SelectTrigger({
       data-size={size}
       className={cn(
         "flex w-fit items-center justify-between gap-1.5 rounded-md border border-border-control bg-field py-2 pr-2 pl-3 text-sm whitespace-nowrap transition-colors outline-none select-none hover:border-border-control-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-expanded:border-border-control-hover aria-expanded:ring-2 aria-expanded:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/20 data-placeholder:text-muted-foreground data-[size=default]:h-[34px] data-[size=sm]:h-[34px] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        hideChevronUntilHover && "group/status",
         className
       )}
       {...props}
@@ -49,7 +60,13 @@ function SelectTrigger({
       {children}
       <SelectPrimitive.Icon
         render={
-          <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+          <ChevronDownIcon
+            className={cn(
+              "pointer-events-none size-4 text-muted-foreground",
+              hideChevronUntilHover &&
+                "opacity-0 transition-opacity duration-200 group-hover/status:opacity-100 group-focus-visible/status:opacity-100 group-data-[state=open]/status:opacity-100"
+            )}
+          />
         }
       />
     </SelectPrimitive.Trigger>

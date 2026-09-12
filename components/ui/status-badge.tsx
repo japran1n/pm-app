@@ -20,6 +20,7 @@ export function StatusBadge({
   color,
   icon: Icon,
   className,
+  variant = "tint",
   "data-testid": dataTestId,
 }: {
   label: string;
@@ -35,19 +36,45 @@ export function StatusBadge({
     style?: CSSProperties;
   }>;
   className?: string;
+  /** Ad-hoc status redesign (2026-09-12): opt-in "solid" reading for the
+   * List view's status pill (ClickUp-style strong colour fill) without
+   * touching the default 10%-tint look every other caller (priority chip,
+   * portal status displays, etc.) already relies on. Darkens the fill via
+   * `color-mix` toward black rather than switching palette so the
+   * lighter/grey statuses (e.g. #64748b) stay legible with white text in
+   * light mode too. */
+  variant?: "tint" | "solid";
   "data-testid"?: string;
 }) {
+  const isSolid = variant === "solid";
   return (
     <span
       data-testid={dataTestId}
-      style={{ color, borderColor: `color-mix(in srgb, ${color} 30%, transparent)`, backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)` }}
+      style={
+        isSolid
+          ? {
+              color: "color-mix(in srgb, white 96%, black)",
+              borderColor: `color-mix(in srgb, ${color} 88%, black)`,
+              backgroundColor: `color-mix(in srgb, ${color} 88%, black)`,
+            }
+          : {
+              color,
+              borderColor: `color-mix(in srgb, ${color} 30%, transparent)`,
+              backgroundColor: `color-mix(in srgb, ${color} 10%, transparent)`,
+            }
+      }
       className={cn(
-        "inline-flex max-w-full items-center gap-1 rounded-md border px-[5.5px] py-[3px] text-[9px] font-medium tracking-[0.07em] uppercase",
+        "inline-flex max-w-full items-center gap-1 rounded-md border font-medium tracking-[0.07em] uppercase",
+        isSolid ? "px-2 py-[3px] text-[10px]" : "px-[5.5px] py-[3px] text-[9px]",
         className,
       )}
     >
       {Icon ? (
-        <Icon aria-hidden className="size-3 shrink-0" style={{ color }} />
+        <Icon
+          aria-hidden
+          className="size-3 shrink-0"
+          style={isSolid ? { color: "inherit" } : { color }}
+        />
       ) : null}
       <span className="truncate">{label}</span>
     </span>
