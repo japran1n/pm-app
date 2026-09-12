@@ -42,7 +42,6 @@ import {
 // and the dashboard's status pie chart) instead of this component's own
 // local STATUS_OPTIONS labels, which previously rendered no color at all.
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/task-colors";
-import { StatusBadge } from "@/components/ui/status-badge";
 import {
   STATUS_GROUP_LABELS,
   STATUS_GROUP_ORDER,
@@ -50,6 +49,16 @@ import {
   statusIconFor,
   type StatusDisplayGroup,
 } from "@/lib/board/status-icons";
+import type { LucideIcon } from "lucide-react";
+
+// Ad-hoc status UI revision (2026-09-12): a stable, module-scope component
+// so the icon returned by `statusIconFor` (a plain lookup, not something
+// created per render) can be rendered as JSX without eslint's
+// react-hooks/static-components rule mistaking the lookup result for a
+// component defined during render.
+function StatusIconGlyph({ icon: Icon, color }: { icon: LucideIcon; color: string }) {
+  return <Icon aria-hidden className="size-3.5 shrink-0" style={{ color }} />;
+}
 
 // Ad-hoc status redesign (2026-09-12, product owner request): the new
 // 11-status default set (lib/queries/statuses.ts's getProjectColumns is
@@ -192,7 +201,7 @@ export function ListStatusSelect({
     currentOption?.label ??
     STATUS_LABELS[localStatus as keyof typeof STATUS_LABELS] ??
     localStatus;
-  const currentIcon = statusIconFor(currentLabel, currentOption?.category);
+  const CurrentIcon = statusIconFor(currentLabel, currentOption?.category);
 
   // Ad-hoc status redesign (2026-09-12): every status section ("Not
   // started" / "Active" / "Done" / "Closed"), in fixed display order,
@@ -208,6 +217,19 @@ export function ListStatusSelect({
     ),
   })).filter(({ options }) => options.length > 0);
 
+  // Ad-hoc status UI revision (2026-09-12, supersedes the solid-pill
+  // trigger from adhoc-status-ui-2.md): the coloured look now lives on the
+  // SelectTrigger box itself — full-opacity colour stroke, low-opacity
+  // tinted fill — matching Priority/Type's plain-box convention instead of
+  // StatusBadge's pill treatment. Shared between the interactive trigger
+  // below and this read-only viewer/guest branch so the column reads
+  // consistently regardless of role.
+  const coloredBoxStyle = {
+    color: currentColor,
+    borderColor: currentColor,
+    backgroundColor: `color-mix(in srgb, ${currentColor} 12%, transparent)`,
+  };
+
   // F251 (AS-489): viewer/guest gets plain, non-interactive text — not a
   // disabled control — matching the other three list-view cells. The
   // server-side `moveTaskStatus` gate (lib/actions/tasks.ts) is the real
@@ -215,7 +237,13 @@ export function ListStatusSelect({
   if (!canChangeStatus) {
     return (
       <span className="flex items-center px-2">
-        <StatusBadge label={currentLabel} color={currentColor} icon={currentIcon} variant="solid" />
+        <span
+          style={coloredBoxStyle}
+          className="flex h-[34px] w-40 items-center gap-1.5 overflow-hidden rounded-md border px-3 py-2 text-sm"
+        >
+          <StatusIconGlyph icon={CurrentIcon} color={currentColor} />
+          <span className="truncate">{currentLabel}</span>
+        </span>
       </span>
     );
   }
@@ -225,8 +253,8 @@ export function ListStatusSelect({
       <Select value={localStatus} onValueChange={handleChange}>
         <SelectTrigger
           size="sm"
-          hideChevronUntilHover
-          className="w-44 min-w-40 max-w-full border-transparent bg-transparent p-0 hover:border-transparent data-[size=sm]:h-auto"
+          style={coloredBoxStyle}
+          className="w-40"
           disabled={isSaving || !canChangeStatus}
           title={
             canChangeStatus
@@ -235,18 +263,14 @@ export function ListStatusSelect({
           }
           aria-label={`Change status for task ${taskId}`}
         >
-          {/* "Full-cell colour" (ad-hoc request): the closed trigger is a
-           * complete coloured pill (solid fill + coloured border, ClickUp-
-           * style — StatusBadge's "solid" variant) that hugs its own
-           * label instead of stretching to fill the trigger. */}
+          {/* Same box as Priority/Type — coloured stroke at full opacity,
+           * tinted fill at low opacity, plain sentence-case label. */}
           <SelectValue>
             {() => (
-              <StatusBadge
-                label={currentLabel}
-                color={currentColor}
-                icon={currentIcon}
-                variant="solid"
-              />
+              <span className="flex items-center gap-1.5 overflow-hidden">
+                <StatusIconGlyph icon={CurrentIcon} color={currentColor} />
+                <span className="truncate text-sm">{currentLabel}</span>
+              </span>
             )}
           </SelectValue>
         </SelectTrigger>

@@ -660,7 +660,7 @@ export function TaskListTable({
             </TableHead>
             <TableHead>Key</TableHead>
             <TableHead>Title</TableHead>
-            <TableHead className="w-[180px]">Status</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead>Priority</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Assignee</TableHead>
