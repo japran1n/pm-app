@@ -31,15 +31,21 @@ vi.mock("@/lib/supabase/server", () => ({
             // thenable builder so any number of chained `.eq()` calls
             // resolve to the fully-filtered row set, same as the real
             // Supabase query builder.
-            const chain = {
+            const chain: {
+              eq: ReturnType<typeof vi.fn>;
+              is: ReturnType<typeof vi.fn>;
+            } = {
               eq: vi.fn((col: string, val: unknown) => {
                 filters.push(eqFilter(col, val));
-                return {
-                  eq: chain.eq,
-                  then: (resolve: (v: unknown) => void) =>
-                    resolve({ data: applyFilters(taskRows, filters), error: null }),
-                };
+                return next;
               }),
+              is: vi.fn(() => next),
+            };
+            const next = {
+              eq: chain.eq,
+              is: chain.is,
+              then: (resolve: (v: unknown) => void) =>
+                resolve({ data: applyFilters(taskRows, filters), error: null }),
             };
             return chain;
           }),

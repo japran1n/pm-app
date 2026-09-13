@@ -35,6 +35,7 @@ const componentRows = [
 
 type Chainable = {
   eq: ReturnType<typeof vi.fn>;
+  is: ReturnType<typeof vi.fn>;
   then: (onFulfilled: (v: unknown) => unknown) => unknown;
 };
 
@@ -72,12 +73,15 @@ beforeEach(() => {
   // spy call count is what "no N+1 / correct filters" assertions check.
   const currentTaskRows = taskRows;
   const eqSpy = vi.fn();
+  const isSpy = vi.fn();
   const chainable: Chainable = {
     eq: eqSpy,
+    is: isSpy,
     then: (onFulfilled: (v: unknown) => unknown) =>
       Promise.resolve({ data: currentTaskRows, error: null }).then(onFulfilled),
   };
   eqSpy.mockImplementation(() => chainable);
+  isSpy.mockImplementation(() => chainable);
 
   const selectSpy = vi.fn();
   const tasksChain: TasksChain = {

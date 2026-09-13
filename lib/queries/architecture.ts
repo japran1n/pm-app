@@ -219,6 +219,16 @@ export async function getArchitectureBoard(
 // (`page_components_select_client` / the tasks client SELECT policy),
 // matching every other portal read's double-guard convention
 // (lib/queries/page-links.ts, lib/queries/portal.ts).
+//
+// F002 (missions/20260914-portal-simplify, AS-003): also excludes
+// soft-deleted pages/sections with `.is("deleted_at", null)`, on top of
+// RLS's own `deleted_at is null` SELECT check -- same belt-and-suspenders
+// reasoning as the `client_visible` filter above. Because
+// `buildBoardFromRows`'s sections and instance counts are both derived
+// from this same already-filtered task row set, a soft-deleted page's
+// components are dropped from the board's instance counts for free; no
+// separate "components only for returned pages" filter is needed on the
+// `page_components` query itself.
 export async function getArchitectureBoardForClient(
   projectId: string,
 ): Promise<PortalQueryResult<ArchitectureBoard>> {
@@ -229,7 +239,8 @@ export async function getArchitectureBoardForClient(
       .from("tasks")
       .select(TASK_COLUMNS)
       .eq("project_id", projectId)
-      .eq("client_visible", true),
+      .eq("client_visible", true)
+      .is("deleted_at", null),
     supabase
       .from("page_components")
       .select(COMPONENT_COLUMNS)

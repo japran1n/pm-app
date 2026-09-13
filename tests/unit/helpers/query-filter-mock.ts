@@ -47,6 +47,15 @@ export function notNullFilter(col: string): RowFilter {
   return (row) => row[col] !== null && row[col] !== undefined;
 }
 
+// F002 (missions/20260914-portal-simplify, AS-003): `.is(col, null)` shape
+// (lib/queries/architecture.ts's `getArchitectureBoardForClient` excluding
+// soft-deleted rows) -- added alongside the other filter helpers rather
+// than reimplemented per test file, same reasoning this file's header
+// comment gives for those.
+export function isNullFilter(col: string): RowFilter {
+  return (row) => row[col] === null || row[col] === undefined;
+}
+
 export function ltFilter(col: string, val: unknown): RowFilter {
   return (row) => {
     const rowVal = row[col];
