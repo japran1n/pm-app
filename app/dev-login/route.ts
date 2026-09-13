@@ -17,7 +17,14 @@ import { createClient as createServerSupabaseClient } from "@/lib/supabase/serve
 // Usage: /dev-login?email=you@example.com
 
 export async function GET(request: Request) {
-  if (process.env.NODE_ENV !== "development") {
+  // Audit SEC-001: NODE_ENV alone is one misconfiguration away from letting
+  // this route mint a session for any email in a deployed environment. The
+  // explicit DEV_LOGIN_ENABLED opt-in must ALSO be set, and is set nowhere
+  // but a local developer's .env.
+  if (
+    process.env.NODE_ENV !== "development" ||
+    process.env.DEV_LOGIN_ENABLED !== "true"
+  ) {
     return new NextResponse("Not found", { status: 404 });
   }
 

@@ -19,6 +19,28 @@ import { configure } from "@testing-library/dom";
 
 configure({ asyncUtilTimeout: 5000 });
 
+// Audit TST-001: integration suites sign in real users and (some) mutate
+// the database they point at. CI runs them against an ephemeral local
+// stack (`supabase start`, see .github/workflows/ci.yml "W6"); running
+// them locally against the shared hosted project both trips Supabase
+// Auth's sign-in rate limit (mass red suite) and risks mutating real
+// data. Fail fast with an actionable message instead. Explicitly
+// override with ALLOW_HOSTED_TESTS=1 for the few catalog suites that
+// intentionally target the hosted project.
+{
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const isLocal =
+    url.includes("localhost") || url.includes("127.0.0.1") || url === "";
+  if (!isLocal && process.env.ALLOW_HOSTED_TESTS !== "1") {
+    throw new Error(
+      `Tests are pointed at a hosted Supabase project (${new URL(url).host}). ` +
+        "Run `supabase start` and export the local stack's env vars " +
+        "(see .github/workflows/ci.yml), or set ALLOW_HOSTED_TESTS=1 to " +
+        "deliberately run against the hosted project.",
+    );
+  }
+}
+
 // F093 follow-up: a jsdom-environment unit test must never open a real
 // WebSocket. jsdom's undici-based WebSocket polyfill throws
 // `TypeError: The "event" argument must be an instance of Event` once a

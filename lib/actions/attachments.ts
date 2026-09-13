@@ -286,9 +286,9 @@ export type DeleteAttachmentResult =
 // Storage-first was chosen because its failure mode degrades to a
 // detectable dangling reference (bad) rather than an untraceable orphan
 // (worse, and the literal thing AS-114 prohibits). The row-delete-failure
-// case is still logged to the server console (Sentry-equivalent per this
-// codebase's error-handling convention) so it is never *silent* even in
-// its worst case.
+// case is still logged via lib/observability/logger (stdout-only — this
+// repo has no external error-reporting service; see logger.ts header) so
+// it is never *silent* in server logs, though nothing alerts on it.
 export async function deleteAttachment(
   attachmentId: string,
 ): Promise<DeleteAttachmentResult> {
