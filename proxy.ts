@@ -3,7 +3,7 @@
 // follow". Do NOT rename this back to middleware.ts.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/proxy-helpers";
+import { hasAuthCookie, updateSession } from "@/lib/supabase/proxy-helpers";
 
 /**
  * Pure helper (AS-001): a request path requires an authenticated session if
@@ -22,6 +22,21 @@ export function requiresAuth(pathname: string): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // AS-005/AS-006: a request with no Supabase auth cookie at all cannot have
+  // a session — `updateSession`'s network round trip to `getUser()` could
+  // only ever come back with "no user" here, which we already know from the
+  // cookie's absence. Skip the call and reproduce today's unauthenticated
+  // outcome directly. Any request that *does* carry a cookie (even a stale
+  // or invalid one) still goes through `updateSession` unchanged, since only
+  // the server can verify it.
+  if (!hasAuthCookie(request)) {
+    if (requiresAuth(request.nextUrl.pathname)) {
+      const redirectUrl = new URL("/sign-in", request.url);
+      return NextResponse.redirect(redirectUrl);
+    }
+    return NextResponse.next({ request });
+  }
+
   const { supabaseResponse, user } = await updateSession(request);
 
   if (requiresAuth(request.nextUrl.pathname) && !user) {
