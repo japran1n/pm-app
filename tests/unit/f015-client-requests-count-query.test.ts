@@ -10,7 +10,7 @@
 // to "submitted" | "in_review" would have produced — the number on screen is
 // unchanged by this refactor.
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const selectMock = vi.fn();
 const fromMock = vi.fn();
@@ -50,6 +50,11 @@ function buildClientRequestsTable(count: number) {
 }
 
 describe("F015: client-requests badge count query", () => {
+  afterEach(() => {
+    fromMock.mockReset();
+  });
+
+
   it("AS-014: issues a single head/count-only query against client_requests, no row bodies", async () => {
     const projects = buildProjectsTable([{ id: "p1" }, { id: "p2" }]);
     const clientRequests = buildClientRequestsTable(3);
