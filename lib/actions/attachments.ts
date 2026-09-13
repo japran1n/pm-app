@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deleteAttachmentSchema,
@@ -80,10 +80,7 @@ export async function uploadAttachment(
     return { ok: false, error: "Invalid upload request." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
@@ -119,10 +116,7 @@ export async function getAttachmentSignedUrl(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -301,10 +295,7 @@ export async function deleteAttachment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a file." };

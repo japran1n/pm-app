@@ -13,6 +13,7 @@ import { logger } from "@/lib/observability/logger";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   createPersonalTodoSchema,
   toggleTodoSchema,
@@ -33,10 +34,7 @@ export async function createPersonalTodo(
     return { ok: false, error: parsed.error.issues[0]?.message ?? GENERIC_ERROR };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) return { ok: false, error: GENERIC_ERROR };
 
   const { data: existing } = await supabase

@@ -148,6 +148,25 @@ export function NotificationPanel({
 }) {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  // ARCH-009: while the panel is open, a revalidate/router.refresh() can
+  // deliver fresh `initialNotifications`/`initialUnreadCount` — previously
+  // ignored (state seeded once at mount), so the open panel kept a stale
+  // list until re-opened. Re-sync during render, per the repo's
+  // "adjusting state when a prop changes" convention
+  // (components/workspace/task-type-manager.tsx). Local state only:
+  // `onUnreadCountChange` is a PARENT-owned setter and must not be called
+  // during this component's render (see the useEffect below) — and the
+  // parent derived `initialUnreadCount` from the same server data, so it
+  // is already consistent. The AS-388 liveSnapshot path below stays as is;
+  // both sources are server-authoritative snapshots, so whichever arrives
+  // later simply wins.
+  const [syncedInitialNotifications, setSyncedInitialNotifications] =
+    useState(initialNotifications);
+  if (initialNotifications !== syncedInitialNotifications) {
+    setSyncedInitialNotifications(initialNotifications);
+    setNotifications(initialNotifications);
+    setUnreadCount(initialUnreadCount);
+  }
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [isMarkingAll, startMarkAllTransition] = useTransition();
 

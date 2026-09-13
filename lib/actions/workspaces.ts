@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import type { User } from "@supabase/supabase-js";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   createWorkspaceSchema,
@@ -108,10 +108,7 @@ export async function createWorkspace(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to create a workspace." };
@@ -281,10 +278,7 @@ export async function inviteMember(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to invite a member." };
@@ -514,10 +508,7 @@ export async function revokeInvite(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to revoke an invite." };
@@ -672,10 +663,7 @@ export async function changeMemberRole(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -848,10 +836,7 @@ export async function removeMember(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to remove a member." };
@@ -1022,10 +1007,7 @@ export async function transferOwnership(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1164,10 +1146,7 @@ export async function deleteWorkspace(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a workspace." };
@@ -1311,10 +1290,7 @@ export async function renameWorkspace(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to rename a workspace." };
@@ -1433,10 +1409,7 @@ export async function changeWorkspaceSlug(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to change a workspace's URL." };
@@ -1641,10 +1614,7 @@ export async function uploadWorkspaceLogo(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {

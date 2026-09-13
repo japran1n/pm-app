@@ -210,6 +210,16 @@ export function Board({
   // updated on drop by onDragEnd below (F102's moveAndReorderTask for
   // cross-column drags, F046's reorderTask for same-column reorders — both
   // rolled back to the pre-drop snapshot on failure).
+  // ARCH-009 (deliberately NOT re-synced from `initialTasks` on prop
+  // change): unlike record-panel/notification-panel, this state is
+  // reconciled live by useBoardRealtime below and carries optimistic
+  // local-only entries (quick-add tempId placeholders, in-flight drag
+  // snapshots). A render-time `initialTasks !== seeded` resync would let a
+  // stale server prop (a router.refresh() elsewhere racing a realtime
+  // event or an unresolved optimistic insert) clobber that reconciled
+  // state — dropping placeholders and reverting just-applied realtime
+  // moves. Freshness after revalidate is already provided by the realtime
+  // reconciliation itself.
   const [tasks, setTasks] = useState(initialTasks);
   const [activeTask, setActiveTask] = useState<TaskCardTask | null>(null);
 

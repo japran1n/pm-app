@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProjectById } from "@/lib/queries/projects";
 import { getDocById, getDocLinks } from "@/lib/queries/docs";
 import { getWorkspaceRoleForCurrentUser } from "@/lib/queries/portal";
-import { MarkdownEditor } from "@/components/docs/markdown-editor";
+import { MarkdownEditorLazy as MarkdownEditor } from "@/components/docs/markdown-editor-lazy";
 
 export default async function ProjectDocEditorPage({
   params,

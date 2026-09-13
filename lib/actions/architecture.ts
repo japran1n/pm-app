@@ -27,7 +27,7 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import type { BoardPageKind } from "@/lib/queries/architecture";
@@ -69,10 +69,7 @@ export async function createPage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to create a page." };
@@ -253,10 +250,7 @@ export async function changePageKind(
     return { success: false, error: "Invalid page kind." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to change a page's kind." };
@@ -350,10 +344,7 @@ export async function renamePage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to rename a page." };
@@ -438,10 +429,7 @@ export async function renamePage(
 export async function deletePage(
   taskId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to delete a page." };
@@ -536,10 +524,7 @@ export async function createSection(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to create a section." };
@@ -695,10 +680,7 @@ export async function createSection(
 export async function deleteSection(
   taskId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to delete a section." };
@@ -802,10 +784,7 @@ export async function renameSection(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -905,10 +884,7 @@ export async function reorderSections(
     }
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to reorder sections." };
@@ -1016,10 +992,7 @@ export async function moveSectionToPage(
     return { success: false, error: "Invalid position." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to move sections." };
@@ -1120,10 +1093,7 @@ export async function reorderPages(
     }
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: "You must be signed in to reorder pages." };
@@ -1212,10 +1182,7 @@ export async function createComponentFromSection(
   sectionTaskId: string,
   projectId: string,
 ): Promise<{ success: boolean; error?: string; componentId?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1377,10 +1344,7 @@ export async function createComponent(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1484,10 +1448,7 @@ export async function linkComponentToSection(
   sectionTaskId: string,
   componentId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1607,10 +1568,7 @@ export async function renameComponent(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1702,10 +1660,7 @@ export async function renameComponent(
 export async function unlinkComponentFromSection(
   sectionTaskId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1789,10 +1744,7 @@ export async function unlinkComponentFromSection(
 export async function deleteComponent(
   componentId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -1883,10 +1835,7 @@ export async function importPages(
     return { ok: false, error: "That sitemap is too large to import (limit 500 pages)." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to import a sitemap." };
   }

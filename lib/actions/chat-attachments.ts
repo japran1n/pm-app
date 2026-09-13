@@ -10,7 +10,7 @@ import { logger } from "@/lib/observability/logger";
 // only "use server" entry point into it, resolving `userId` itself from
 // the caller's authenticated cookie session, never accepted as an
 // argument (same BLOCKER-3 defense as the task-attachment action file).
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getChatAttachmentSignedUrlSchema } from "@/lib/validation/chat-attachments";
 import {
@@ -34,10 +34,7 @@ export async function uploadChatAttachment(
     return { ok: false, error: "Invalid upload request." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to attach a file." };
@@ -61,10 +58,7 @@ export type RemovePendingChatAttachmentResult =
 export async function removePendingChatAttachment(
   attachmentId: string,
 ): Promise<RemovePendingChatAttachmentResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -92,10 +86,7 @@ export async function getChatAttachmentSignedUrl(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

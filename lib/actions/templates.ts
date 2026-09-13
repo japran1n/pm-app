@@ -18,7 +18,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   saveTaskAsTemplateSchema,
@@ -76,10 +76,7 @@ export async function saveTaskAsTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to save a template." };
@@ -274,10 +271,7 @@ export async function createTaskFromTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -580,10 +574,7 @@ export async function renameTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to rename a template." };
@@ -682,10 +673,7 @@ export async function deleteTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a template." };
@@ -801,10 +789,7 @@ export async function saveProjectAsTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to save a template." };
@@ -1104,10 +1089,7 @@ export async function createProjectFromTemplate(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return {

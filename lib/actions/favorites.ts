@@ -25,6 +25,7 @@ import { logger } from "@/lib/observability/logger";
 // from favouriting a project they cannot see.
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { toggleProjectFavoriteSchema } from "@/lib/validation/favorites";
 
 export type ToggleProjectFavoriteResult =
@@ -68,10 +69,7 @@ export async function favoriteProject(
     return { ok: false, error: "Invalid project." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -107,10 +105,7 @@ export async function unfavoriteProject(
     return { ok: false, error: "Invalid project." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

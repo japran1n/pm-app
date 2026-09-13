@@ -19,7 +19,7 @@ import { logger } from "@/lib/observability/logger";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask } from "@/lib/auth/permissions";
@@ -46,10 +46,7 @@ export async function setTaskClientVisibility(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -147,10 +144,7 @@ export async function setPendingClientApproval(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

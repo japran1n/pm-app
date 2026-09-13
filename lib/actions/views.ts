@@ -26,7 +26,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 import { canManageSavedView } from "@/lib/auth/permissions";
@@ -233,10 +233,7 @@ export async function createSavedView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to save a view." };
   }
@@ -338,10 +335,7 @@ export async function updateSavedView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -471,10 +465,7 @@ export async function deleteSavedView(viewId: string): Promise<DeleteSavedViewRe
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -512,10 +503,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -570,10 +558,7 @@ export async function getSavedView(viewId: string): Promise<GetSavedViewResult> 
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to open a view." };
   }

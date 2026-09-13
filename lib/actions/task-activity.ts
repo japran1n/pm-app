@@ -26,7 +26,7 @@
 // this codebase uses.
 
 import { deleteTaskSchema } from "@/lib/validation/tasks";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getTaskActivityPage,
   type TaskActivityPage,
@@ -45,10 +45,7 @@ export async function getTaskActivityFeed(
     return { ok: false, error: "Invalid task." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to view this task." };

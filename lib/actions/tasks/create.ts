@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createTaskForUser } from "@/lib/tasks/create";
 
 export type CreateTaskResult =
@@ -105,10 +105,7 @@ export async function createTask(
   // route) already relies on. Only the New Task dialog supplies this.
   taskTypeId?: string | null,
 ): Promise<CreateTaskResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to create a task." };

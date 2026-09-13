@@ -60,7 +60,7 @@ import { logger } from "@/lib/observability/logger";
 // in this codebase works (there is no queue/cancellation primitive on the
 // server side for Server Actions).
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { searchWorkspaceTasks } from "@/lib/queries/search";
@@ -98,11 +98,7 @@ export async function searchPalette(
     return empty;
   }
 
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return empty;
@@ -206,10 +202,7 @@ export async function resolveRecentItems(
     return empty;
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return empty;

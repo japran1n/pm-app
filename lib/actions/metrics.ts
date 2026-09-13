@@ -28,7 +28,7 @@ import { z } from "zod";
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { writeAudit } from "@/lib/activity/audit";
 import {
   createMetricSchema,
@@ -1274,10 +1274,7 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
     return { ok: false, error: "That file type isn't supported." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
   }
@@ -1370,10 +1367,7 @@ export async function getImprovementImageSignedUrl(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid improvement." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in." };
   }

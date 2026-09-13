@@ -22,6 +22,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership, requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { canEditTask } from "@/lib/auth/permissions";
@@ -41,10 +42,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 export type TaskTypeActionResult = { ok: true } | { ok: false; error: string };
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   return user?.id ?? null;
 }
 

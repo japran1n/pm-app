@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { watchTaskSchema, unwatchTaskSchema } from "@/lib/validation/watchers";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -90,10 +90,7 @@ export async function watchTask(taskId: string): Promise<WatchTaskResult> {
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to watch a task." };
@@ -149,10 +146,7 @@ export async function unwatchTask(taskId: string): Promise<UnwatchTaskResult> {
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to unwatch a task." };

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { JSONContent } from "@tiptap/react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addCommentSchema,
@@ -136,10 +136,7 @@ export async function addComment(
   const projectedText =
     extractPlainText(validatedBodyJson) || parsed.data.text;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to comment." };
@@ -487,10 +484,7 @@ export async function deleteComment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a comment." };
@@ -767,10 +761,7 @@ export async function restoreComment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to restore a comment." };
@@ -1054,10 +1045,7 @@ export async function editComment(
   const projectedText =
     extractPlainText(validatedBodyJson) || parsed.data.text;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a comment." };
@@ -1374,10 +1362,7 @@ export type MentionCandidateResult =
 export async function getMentionCandidates(
   taskId: string,
 ): Promise<MentionCandidateResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

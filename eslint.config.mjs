@@ -17,6 +17,25 @@ const eslintConfig = defineConfig([
     // missions/20260818-213033/handoffs/F280-handoff.md Decisions Made.
     "extension/**",
   ]),
+  // ARCH-002: server actions must not hand-roll auth. Resolve identity via
+  // the request-cached `getCurrentUser()` (lib/auth/current-user.ts) or the
+  // `withAuthz` wrapper (lib/actions/authz.ts) — never a raw
+  // `supabase.auth.getUser()` per action, which costs one uncached Auth
+  // round trip per call.
+  {
+    files: ["lib/actions/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            'CallExpression[callee.property.name="getUser"][callee.object.property.name="auth"]',
+          message:
+            "Do not call supabase.auth.getUser() directly in lib/actions. Use getCurrentUser() from @/lib/auth/current-user (request-cached) or wrap the action with withAuthz from @/lib/actions/authz.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

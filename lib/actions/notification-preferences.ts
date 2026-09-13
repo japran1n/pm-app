@@ -12,7 +12,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { updateNotificationPreferencesSchema } from "@/lib/validation/notification-preferences";
 
 export type NotificationPreferences = {
@@ -106,10 +106,7 @@ export type GetNotificationPreferencesResult =
 // in the page, passed down as typed props" pattern) — the settings page
 // calls this, not the client form.
 export async function getNotificationPreferences(): Promise<GetNotificationPreferencesResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -183,10 +180,7 @@ export async function updateNotificationPreferences(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

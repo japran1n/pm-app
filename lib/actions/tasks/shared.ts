@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -213,10 +214,7 @@ export async function requireAssignActionContext(taskId: string): Promise<
     }
   | { ok: false; error: string }
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to change assignees." };

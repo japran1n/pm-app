@@ -54,7 +54,7 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
@@ -630,10 +630,7 @@ export type GetApprovalDocSnapshotUrlResult =
 export async function getApprovalDocSnapshotUrl(
   approvalId: string,
 ): Promise<GetApprovalDocSnapshotUrlResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

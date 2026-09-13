@@ -11,7 +11,7 @@
 // own RPCs.
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { flagAssumptionSchema } from "@/lib/validation/project-records";
@@ -37,10 +37,7 @@ export async function flagAssumption(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

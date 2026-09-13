@@ -28,7 +28,7 @@
 // to project scope since this table has no task_id.
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
@@ -214,10 +214,7 @@ export async function uploadScopeDocument(
     return { ok: false, error: "Choose a file to upload." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
@@ -458,10 +455,7 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour, same as getAttachmentSignedUr
 export async function getScopeDocumentSignedUrl(
   documentId: string,
 ): Promise<GetScopeDocumentSignedUrlResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

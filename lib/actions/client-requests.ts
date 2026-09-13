@@ -16,7 +16,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, isClient } from "@/lib/auth/permissions";
@@ -164,10 +164,7 @@ async function resolveAssumptionContext(
 }
 
 async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   return { supabase, user };
 }
 

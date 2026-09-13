@@ -99,6 +99,11 @@ export async function startClientPreview(
   const supabase = await createRealSessionClient();
   const {
     data: { user },
+    // ARCH-002: sanctioned direct call — this action must resolve the
+    // previewer's REAL session via `createRealSessionClient`, never the
+    // shared request-cached client that `getCurrentUser()` wraps (which
+    // could be preview-cookie-scoped).
+    // eslint-disable-next-line no-restricted-syntax
   } = await supabase.auth.getUser();
 
   if (!user) {

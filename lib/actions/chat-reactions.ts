@@ -18,7 +18,7 @@ import { logger } from "@/lib/observability/logger";
 //   supabase/migrations/20260904070000_message_reactions_channel_id.sql).
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toggleMessageReactionSchema } from "@/lib/validation/chat";
 
@@ -105,10 +105,7 @@ export async function toggleMessageReaction(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to react to a message." };

@@ -23,6 +23,7 @@ import { revalidatePath } from "next/cache";
 import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getThreadMessages, getChannelMessages, getMessageAttachments } from "@/lib/queries/chat";
 import {
@@ -485,10 +486,7 @@ export async function sendMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to send a message." };
@@ -609,10 +607,7 @@ export async function editMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a message." };
@@ -699,10 +694,7 @@ export async function deleteMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a message." };

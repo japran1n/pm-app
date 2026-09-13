@@ -36,7 +36,7 @@
 // 'delivered' at all until the RPC does).
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -90,10 +90,7 @@ export async function deliverPortalDeliverable(
     return { ok: false, error: "Choose a file to send." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to send a file." };

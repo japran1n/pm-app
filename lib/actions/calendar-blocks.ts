@@ -18,7 +18,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
@@ -148,10 +148,7 @@ export async function createCalendarBlock(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid block." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to add a calendar block." };
   }
@@ -227,10 +224,7 @@ export async function updateCalendarBlock(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid block." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage calendar blocks." };
   }
@@ -312,10 +306,7 @@ export async function deleteCalendarBlock(input: unknown): Promise<DeleteCalenda
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid block." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage calendar blocks." };
   }

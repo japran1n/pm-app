@@ -14,7 +14,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { createTimeOffSchema, deleteTimeOffSchema } from "@/lib/validation/time-off";
@@ -67,10 +67,7 @@ export async function createTimeOff(input: unknown): Promise<TimeOffEntryResult>
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid time off entry." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to add time off." };
   }
@@ -129,10 +126,7 @@ export async function deleteTimeOff(input: unknown): Promise<DeleteTimeOffResult
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid time off entry." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage time off." };
   }

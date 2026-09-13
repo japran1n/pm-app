@@ -18,7 +18,7 @@ import { logger } from "@/lib/observability/logger";
 // clarified "client-side for immediate feedback, re-validated by the
 // action's Zod schema server-side" answer — the panel's own optimistic
 // update is never trusted alone.
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   markNotificationReadSchema,
   markAllNotificationsReadSchema,
@@ -47,10 +47,7 @@ export async function markNotificationRead(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to do that." };
@@ -104,10 +101,7 @@ export async function markAllNotificationsRead(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to do that." };

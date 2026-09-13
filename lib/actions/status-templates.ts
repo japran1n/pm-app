@@ -27,6 +27,7 @@ import { logger } from "@/lib/observability/logger";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import {
@@ -49,10 +50,7 @@ export type StatusTemplateActionResult =
   | { ok: false; error: string };
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   return user?.id ?? null;
 }
 

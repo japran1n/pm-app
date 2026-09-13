@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   logTimeEntrySchema,
@@ -85,10 +85,7 @@ export async function logTimeEntry(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to log time." };
@@ -268,10 +265,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
     return { ok: false, error: "A task is required to start a timer." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to start a timer." };
@@ -390,10 +384,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
 // stale UI, or a duplicate double-click) is an expected, non-exceptional
 // case, not a crash.
 export async function stopTimer(): Promise<StopTimerResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to stop a timer." };
@@ -486,10 +477,7 @@ export async function editTimeEntry(
     return { ok: false, error: "No changes to save." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a time entry." };
@@ -663,10 +651,7 @@ export async function setTimeEntryCategory(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a time entry." };
@@ -794,10 +779,7 @@ export async function deleteTimeEntry(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a time entry." };

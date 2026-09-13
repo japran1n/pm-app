@@ -49,7 +49,7 @@ import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
@@ -861,10 +861,7 @@ export async function bulkSetTaskPhase(
   // resolves exactly one workspace/project per call) — same reasoning
   // `bulkUpdateTasks` (lib/actions/tasks.ts) documents for its own
   // per-task auth loop.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to update tasks." };
   }
