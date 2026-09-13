@@ -1611,8 +1611,19 @@ export async function getPortalActivitySummary(
 // making them open each task to find one. RLS-scoped exactly like this
 // file's other queries: attachments join back to tasks, and a client's own
 // SELECT on `tasks` already only returns client_visible rows (20260902010000),
-// so filtering here on client_visible again is belt-and-suspenders, not the
+// so filtering here on client_visible again is belt-and-surpenders, not the
 // real boundary.
+//
+// F001 (missions/20260914-portal-simplify, AS-001/AS-002): this used to be
+// workspace-wide -- a client on projects A and B viewing `p/A/files` saw
+// attachments from every readable project, including ones with
+// `portal_enabled=false`. `projectId` now scopes the `projects` read (and,
+// through it, every downstream `tasks`/`attachments` read) to exactly the
+// project the caller asked for, and that same read filters on
+// `portal_enabled` explicitly for the identical reason `getPortalRequests`/
+// `getPortalProjectOptions` above state on their own copies of this filter:
+// RLS does not gate an ordinary `projects` SELECT by that column, so a
+// portal-disabled project would otherwise still resolve here.
 
 export type PortalFile = {
   id: string;
@@ -1626,6 +1637,7 @@ export type PortalFile = {
 
 export async function getPortalFiles(
   workspaceId: string,
+  projectId: string,
 ): Promise<PortalFile[]> {
   const supabase = await getRequestClient();
 
@@ -1633,7 +1645,9 @@ export async function getPortalFiles(
     .from("projects")
     .select("id, name")
     .eq("workspace_id", workspaceId)
-    .is("deleted_at", null);
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .eq("portal_enabled", true);
 
   const projectIds = (projects ?? []).map((p) => p.id);
   const projectNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
