@@ -51,6 +51,7 @@ import { uploadImprovementImageSchema } from "@/lib/validation/metrics";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import { isClient } from "@/lib/auth/permissions";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type {
   MetricDirection,
@@ -176,6 +177,7 @@ async function loadMetricExtra(
 async function revalidateMeasurementSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/measurement`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("metrics: revalidatePath failed (non-fatal)", { error: revalidateError });
   }

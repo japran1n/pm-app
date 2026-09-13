@@ -55,6 +55,7 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
   createPhaseSchema,
   updatePhaseSchema,
@@ -124,6 +125,7 @@ async function revalidatePhaseSettings(workspaceSlug: string, projectId: string)
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/phases`, "page");
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/board`, "page");
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/list`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     // Non-fatal, same convention as lib/actions/statuses.ts's
     // revalidateProjectSettings.

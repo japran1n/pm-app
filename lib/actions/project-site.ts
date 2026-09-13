@@ -19,6 +19,7 @@ import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
   createProjectLinkSchema,
   updateProjectLinkSchema,
@@ -86,6 +87,7 @@ async function loadProjectExtra(
 async function revalidateSiteSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/site`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("project-site: revalidatePath failed (non-fatal)", {
       error: revalidateError,

@@ -28,6 +28,7 @@ import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 
 export type EditTaskResult =
   | {
@@ -123,7 +124,7 @@ export async function editTask(
       // sanitiseMentionsForVisibility, mirroring lib/actions/comments.ts's
       // addComment/editComment) are added here alongside the pre-existing
       // columns; nothing else about this select changes.
-      "id, deleted_at, title, priority, due_date, start_date, estimate_minutes, description_json, projects!inner(id, workspace_id, visibility)",
+      "id, deleted_at, title, priority, due_date, start_date, estimate_minutes, description_json, client_visible, projects!inner(id, workspace_id, visibility)",
     )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
@@ -510,6 +511,12 @@ export async function editTask(
   if (workspaceRow?.slug) {
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
+      // AS-006: title/priority/due-date/estimate edits on an already
+      // client-visible task (e.g. a shared deliverable/page task) must
+      // show up on the portal without a manual refresh.
+      if (taskRow.client_visible && project?.id) {
+        revalidatePortalProject(workspaceRow.slug, project.id);
+      }
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
       logger.error("editTask: revalidatePath failed (non-fatal)", { error: revalidateError });

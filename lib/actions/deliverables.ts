@@ -30,6 +30,7 @@ import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
   createDeliverableSchema,
   updateDeliverableSchema,
@@ -134,6 +135,7 @@ async function validateSameProjectLinks(
 async function revalidateDeliverableSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/deliverables`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("deliverables: revalidatePath failed (non-fatal)", {
       error: revalidateError,

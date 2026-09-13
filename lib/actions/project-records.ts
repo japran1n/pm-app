@@ -36,6 +36,7 @@ import {
   updateAssumptionSchema,
   deleteAssumptionSchema,
 } from "@/lib/validation/project-records";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type {
   ProjectScopeItem,
@@ -94,6 +95,7 @@ async function loadProjectExtra(
 async function revalidateRecordSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/record`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("project-records: revalidatePath failed (non-fatal)", {
       error: revalidateError,

@@ -28,6 +28,7 @@ import {
 } from "@/lib/validation/project-budgets";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import type { ProjectBudget, BudgetRollover } from "@/lib/queries/project-budgets";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
@@ -67,6 +68,7 @@ const BUDGET_COLUMNS =
 async function revalidateBudgetSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/budget`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("project-budgets: revalidatePath failed (non-fatal)", {
       error: revalidateError,
