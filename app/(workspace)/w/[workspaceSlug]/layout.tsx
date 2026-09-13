@@ -59,7 +59,7 @@ import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/proje
 // F010 (AS-027): the "Approvals" nav item's badge count — same
 // server-fetched-by-the-layout convention as every other sidebar figure
 // on this page.
-import { getOpenApprovalsForWorkspace } from "@/lib/queries/approvals";
+import { getOpenApprovalCountForWorkspace } from "@/lib/queries/approvals";
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 // Feature request (sidebar unread badges): total unread chat messages
 // across every channel the caller belongs to, for the sidebar's "Chat"
@@ -194,7 +194,7 @@ export default async function WorkspaceLayout({
     favoriteProjectIds,
     { count: clientMemberCount },
     { data: projectMemberRows, error: projectMemberRowsError },
-    openApprovals,
+    openApprovalsCount,
     openClientRequestCount,
     upcomingClientPresentations,
     chatUnreadTotal,
@@ -252,11 +252,13 @@ export default async function WorkspaceLayout({
       .eq("user_id", user.id)
       .eq("projects.workspace_id", activeWorkspace.id),
 
-    // F010 (AS-027): open-approvals count for the sidebar's "Approvals"
-    // badge. Non-fatal — getOpenApprovalsForWorkspace already fails open
-    // to an empty array internally (logging its own error), so a
-    // failure here shows an un-badged nav item, never a broken layout.
-    getOpenApprovalsForWorkspace(activeWorkspace.id),
+    // F010/F014 (AS-027): open-approvals count for the sidebar's
+    // "Approvals" badge. F014 (perf): uses getOpenApprovalCountForWorkspace,
+    // a `{ count: 'exact', head: true }` query, instead of fetching the
+    // full row set just to read `.length` — same filter, no row payload.
+    // Non-fatal — fails open to 0 internally (logging its own error), so
+    // a failure here shows an un-badged nav item, never a broken layout.
+    getOpenApprovalCountForWorkspace(activeWorkspace.id),
 
     // F083: open (submitted/in_review) client-request count for the
     // sidebar's "Client requests" badge — same "non-fatal, fails open to
@@ -433,7 +435,7 @@ export default async function WorkspaceLayout({
             icon: project.icon,
             isFavorite: favoriteProjectIds.has(project.id),
           }))}
-          approvalsCount={openApprovals.length}
+          approvalsCount={openApprovalsCount}
           requestsCount={openClientRequestCount}
           chatUnreadCount={chatUnreadTotal}
         />
