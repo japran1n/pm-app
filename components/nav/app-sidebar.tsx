@@ -87,6 +87,12 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   exact?: boolean;
   count?: number;
+  // F016 (AS-017): when the layout streams this item's badge in via its
+  // own async server component (approvals/requests/chat-unread), the
+  // fully-formed node (or `null`) is threaded through here instead of a
+  // plain `count`, so the render loop below never needs to know whether a
+  // given badge came from a synchronous number or a streamed figure.
+  badge?: React.ReactNode;
 };
 
 // UX-10: this used to be one flat 12-14 item list — no distinction between
@@ -110,7 +116,21 @@ function navGroups(
   approvalsCount: number,
   requestsCount: number,
   chatUnreadCount: number,
+  // F016 (AS-017): optional streamed badge nodes -- when provided (the
+  // real layout always provides these now, each resolved inside its own
+  // `<Suspense>`), they take priority over the plain counts above so the
+  // exact same markup renders whether the value arrived synchronously (as
+  // in every existing test in this file) or via a streamed figure.
+  approvalsBadge?: React.ReactNode,
+  requestsBadge?: React.ReactNode,
+  chatUnreadBadge?: React.ReactNode,
 ): { label: string | null; items: NavItem[] }[] {
+  const countBadge = (count: number) =>
+    typeof count === "number" && count > 0 ? (
+      <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px] font-mono">
+        {count}
+      </Badge>
+    ) : null;
   const work: NavItem[] = [
     { href: `/w/${workspaceSlug}`, label: "Dashboard", icon: LayoutDashboard, exact: true },
     // F230 (AS-435): "My Tasks" placed above "Projects" -- per the
@@ -128,7 +148,7 @@ function navGroups(
     // itself a thin sum over getWorkspaceChannels' per-channel
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
-    { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, count: chatUnreadCount },
+    { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
@@ -162,7 +182,7 @@ function navGroups(
             // F083: a change request is at least as time-sensitive as a
             // pending approval — same count-badge treatment as
             // "Approvals" directly below, threaded the same way.
-            count: requestsCount,
+            badge: requestsBadge ?? countBadge(requestsCount),
           },
           // F010: same "only present when the workspace has a client at
           // all" gating as Client requests above — an approval queue is
@@ -172,7 +192,7 @@ function navGroups(
             href: `/w/${workspaceSlug}/approvals`,
             label: "Approvals",
             icon: CheckSquare,
-            count: approvalsCount,
+            badge: approvalsBadge ?? countBadge(approvalsCount),
           },
         ]
       : []),
@@ -259,6 +279,11 @@ function SidebarContent({
   approvalsCount = 0,
   requestsCount = 0,
   chatUnreadCount = 0,
+  approvalsBadge,
+  requestsBadge,
+  chatUnreadBadge,
+  notificationBellSlot,
+  workspaceSwitcherSlot,
   onNavigate,
 }: {
   workspaceSlug: string;
@@ -284,6 +309,26 @@ function SidebarContent({
    * caller/test rendering the item with no badge instead of crashing,
    * same convention as `approvalsCount`/`requestsCount` above. */
   chatUnreadCount?: number;
+  /** F016 (AS-017): when provided, the layout's own streamed figure
+   * (`components/nav/figures/*-badge-figure.tsx`, each resolved inside its
+   * own `<Suspense fallback={null}>`) — takes priority over the plain
+   * `*Count` numbers above, which stay purely as the back-compat fallback
+   * every existing test in this file still exercises directly. */
+  approvalsBadge?: React.ReactNode;
+  requestsBadge?: React.ReactNode;
+  chatUnreadBadge?: React.ReactNode;
+  /** F016 (AS-017): the notification bell, streamed in by the layout via
+   * `components/nav/figures/notification-bell-figure.tsx` inside its own
+   * `<Suspense fallback={null}>`. When omitted, falls back to rendering
+   * `<NotificationBell>` directly from `initialNotifications`/
+   * `initialUnreadCount` (unchanged back-compat path for existing tests). */
+  notificationBellSlot?: React.ReactNode;
+  /** F016 (AS-017): the workspace switcher, streamed in by the layout via
+   * `components/nav/figures/workspace-switcher-figure.tsx` inside its own
+   * `<Suspense fallback={null}>`. When omitted, falls back to rendering
+   * `<WorkspaceSwitcher>` directly from the `workspaces` prop (unchanged
+   * back-compat path for existing tests). */
+  workspaceSwitcherSlot?: React.ReactNode;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -299,25 +344,32 @@ function SidebarContent({
     approvalsCount,
     requestsCount,
     chatUnreadCount,
+    approvalsBadge,
+    requestsBadge,
+    chatUnreadBadge,
   );
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 items-center gap-2 border-b px-3">
         <div className="min-w-0 flex-1">
-          <WorkspaceSwitcher
-            workspaces={workspaces}
-            currentWorkspaceId={currentWorkspaceId}
-          />
+          {workspaceSwitcherSlot ?? (
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              currentWorkspaceId={currentWorkspaceId}
+            />
+          )}
         </div>
         <ThemeToggle />
-        <NotificationBell
-          workspaceSlug={workspaceSlug}
-          workspaceId={currentWorkspaceId}
-          currentUserId={currentUser.id}
-          initialNotifications={initialNotifications}
-          initialUnreadCount={initialUnreadCount}
-        />
+        {notificationBellSlot ?? (
+          <NotificationBell
+            workspaceSlug={workspaceSlug}
+            workspaceId={currentWorkspaceId}
+            currentUserId={currentUser.id}
+            initialNotifications={initialNotifications}
+            initialUnreadCount={initialUnreadCount}
+          />
+        )}
       </div>
 
       {/* F253 (AS-491): anchor target for the onboarding tour's "sidebar"
@@ -367,7 +419,7 @@ function SidebarContent({
                   {group.label}
                 </p>
               )}
-              {group.items.map(({ href, label, icon: Icon, exact, count }) => {
+              {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
                 const isActive = exact
                   ? pathname === href
                   : pathname === href || pathname.startsWith(`${href}/`);
@@ -402,11 +454,7 @@ function SidebarContent({
                         unread count (components/notifications/notification-bell.tsx)
                         — 0/undefined renders nothing, so a settled workspace's
                         nav item looks exactly like any other plain link. */}
-                    {typeof count === "number" && count > 0 && (
-                      <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px] font-mono">
-                        {count}
-                      </Badge>
-                    )}
+                    {badge}
                   </Link>
                 );
               })}
@@ -503,6 +551,11 @@ export function AppSidebar({
   approvalsCount = 0,
   requestsCount = 0,
   chatUnreadCount = 0,
+  approvalsBadge,
+  requestsBadge,
+  chatUnreadBadge,
+  notificationBellSlot,
+  workspaceSwitcherSlot,
 }: {
   workspaceSlug: string;
   workspaces: SwitcherWorkspace[];
@@ -536,6 +589,15 @@ export function AppSidebar({
   /** Feature request (sidebar unread badges): total unread chat messages,
    * see SidebarContent's own doc comment for this prop. */
   chatUnreadCount?: number;
+  /** F016 (AS-017): streamed badge/bell/switcher slots — see
+   * SidebarContent's own doc comments for each. Threaded straight through
+   * to every `<SidebarContent>` instance below (desktop + mobile sheet)
+   * and to this component's own standalone mobile-bar bell. */
+  approvalsBadge?: React.ReactNode;
+  requestsBadge?: React.ReactNode;
+  chatUnreadBadge?: React.ReactNode;
+  notificationBellSlot?: React.ReactNode;
+  workspaceSwitcherSlot?: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -564,6 +626,11 @@ export function AppSidebar({
           approvalsCount={approvalsCount}
           requestsCount={requestsCount}
           chatUnreadCount={chatUnreadCount}
+          approvalsBadge={approvalsBadge}
+          requestsBadge={requestsBadge}
+          chatUnreadBadge={chatUnreadBadge}
+          notificationBellSlot={notificationBellSlot}
+          workspaceSwitcherSlot={workspaceSwitcherSlot}
         />
       </aside>
 
@@ -607,6 +674,11 @@ export function AppSidebar({
               approvalsCount={approvalsCount}
               requestsCount={requestsCount}
               chatUnreadCount={chatUnreadCount}
+              approvalsBadge={approvalsBadge}
+              requestsBadge={requestsBadge}
+              chatUnreadBadge={chatUnreadBadge}
+              notificationBellSlot={notificationBellSlot}
+              workspaceSwitcherSlot={workspaceSwitcherSlot}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
@@ -614,13 +686,15 @@ export function AppSidebar({
         {/* F208: the bell also needs to be reachable on mobile, where the
             desktop sidebar (and its own bell) is hidden entirely. */}
         <ThemeToggle />
-        <NotificationBell
-          workspaceSlug={workspaceSlug}
-          workspaceId={currentWorkspaceId}
-          currentUserId={currentUser.id}
-          initialNotifications={initialNotifications}
-          initialUnreadCount={initialUnreadCount}
-        />
+        {notificationBellSlot ?? (
+          <NotificationBell
+            workspaceSlug={workspaceSlug}
+            workspaceId={currentWorkspaceId}
+            currentUserId={currentUser.id}
+            initialNotifications={initialNotifications}
+            initialUnreadCount={initialUnreadCount}
+          />
+        )}
       </div>
     </>
   );

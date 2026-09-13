@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound, redirect, permanentRedirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -20,11 +21,17 @@ import { MembershipProvider } from "@/components/auth/membership-provider";
 // chat channel.
 import { WorkspacePresenceProvider } from "@/components/nav/workspace-presence-provider";
 import { canManageProject, type ProjectRole } from "@/lib/auth/permissions";
-// F208 (AS-379): the sidebar's notification bell needs its initial
-// unread-count + list server-fetched here, same "server-fetched in the
-// layout, passed down as props" convention every other sidebar-fed value
-// on this page already follows (currentUser, workspaces, isGuest).
-import { getNotificationsForWorkspace } from "@/lib/queries/notifications";
+// F016 (AS-017): every sidebar figure below now resolves inside its own
+// `<Suspense fallback={null}>`, wrapping a small async server component
+// from `components/nav/figures/*` that fetches its own value -- none of
+// them is awaited by this layout body anymore (see each figure's own
+// file-header comment for what it replaces).
+import { NotificationBellFigure } from "@/components/nav/figures/notification-bell-figure";
+import { TourFigure } from "@/components/nav/figures/tour-figure";
+import { ApprovalsBadgeFigure } from "@/components/nav/figures/approvals-badge-figure";
+import { RequestsBadgeFigure } from "@/components/nav/figures/requests-badge-figure";
+import { ChatUnreadBadgeFigure } from "@/components/nav/figures/chat-unread-badge-figure";
+import { WorkspaceSwitcherFigure } from "@/components/nav/figures/workspace-switcher-figure";
 // F241 (AS-459, AS-463, AS-464): mounted once here, alongside the other
 // persistent workspace chrome, so a single global Cmd+K/Ctrl+K listener
 // owns the shortcut rather than one instance fighting another per page.
@@ -48,24 +55,17 @@ import { ShortcutHelpDialog } from "@/components/command/shortcut-help";
 // server-fetched here (same "server-fetched... passed down as typed
 // props" pattern as everything else on this layout) so a returning user
 // never sees a flash of the tour before a client-side check catches up.
-import { OnboardingTour } from "@/components/onboarding/tour";
-import { getTourStatus } from "@/lib/actions/onboarding-tour";
 // F262 (AS-509, AS-511, AS-512, AS-513): the sidebar's own "Projects"
 // section reuses the exact same RLS-backed, guest-scoped query the
 // /projects page (F027) already calls — no second copy of the visibility
 // rule, and per this feature's clarified caching note, one fetch per
 // layout render (not a per-navigation client refetch).
-import { getWorkspaceProjects, getFavoriteProjectIds } from "@/lib/queries/projects";
-// F010 (AS-027): the "Approvals" nav item's badge count — same
-// server-fetched-by-the-layout convention as every other sidebar figure
-// on this page.
-import { getOpenApprovalCountForWorkspace } from "@/lib/queries/approvals";
-import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
-// Feature request (sidebar unread badges): total unread chat messages
-// across every channel the caller belongs to, for the sidebar's "Chat"
-// nav item badge -- same non-fatal, fails-open-to-0 convention as
-// openApprovals/openClientRequestCount above.
-import { getWorkspaceChatUnreadTotal } from "@/lib/queries/chat";
+import { getWorkspaceProjects } from "@/lib/queries/projects";
+// F016 (AS-017): favourites' own fetch, isolated into its own file — see
+// that file's own header comment for why it stays awaited here (not
+// deferred behind its own Suspense boundary) unlike every other figure
+// above.
+import { getFavoriteProjectIds } from "@/components/nav/figures/favorite-project-ids-figure";
 import { BreadcrumbProvider } from "@/components/nav/breadcrumb-context";
 // Client Presentation feature: computed fresh on every layout render
 // (see lib/calendar/client-presentation.ts's own file-header comment for
@@ -183,21 +183,25 @@ export default async function WorkspaceLayout({
   // All independent data fetches run in parallel — memberships, profile,
   // notifications, tour status, sidebar projects, favorites, client count,
   // and project roles are all independent of each other once user +
-  // activeWorkspace are known. This collapses 8 serial round-trips
-  // (~300–640 ms on a hosted Supabase instance) into one parallel batch.
+  // activeWorkspace are known. This collapses the serial round-trips into
+  // one parallel batch.
+  //
+  // F016 (AS-017): notifications, tour status, approvals/requests/chat
+  // badge counts, and the workspace switcher list used to be awaited
+  // here too. Each of those is now its own async server component under
+  // `components/nav/figures/`, rendered below inside its own `<Suspense
+  // fallback={null}>` — this layout body no longer awaits any of them, so
+  // it can return its own JSX as soon as the awaits below (auth,
+  // memberships, and the other values genuinely needed to decide what to
+  // render) settle.
   const [
     { data: memberships, error: membershipsError },
     { data: currentUserProfile, error: currentUserProfileError },
-    notificationsResult,
-    tourStatusResult,
     sidebarProjectsResult,
     favoriteProjectIds,
     { count: clientMemberCount },
     { data: projectMemberRows, error: projectMemberRowsError },
-    openApprovalsCount,
-    openClientRequestCount,
     upcomingClientPresentations,
-    chatUnreadTotal,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -215,14 +219,10 @@ export default async function WorkspaceLayout({
       .eq("id", user.id)
       .maybeSingle(),
 
-    // F208 (AS-379): initial notification bell state. Non-fatal — function
-    // already falls back to empty list / zero count internally.
-    getNotificationsForWorkspace(activeWorkspace.id),
-
-    // F253: first-run tour status. Fails open to "dismissed".
-    getTourStatus(),
-
-    // F262: sidebar projects. Fails open to empty list.
+    // F262: sidebar projects. Fails open to empty list. Still awaited
+    // here (not deferred) — `<ProjectSwitcher>` (the Cmd+P command
+    // palette, mounted directly below) needs this same list synchronously
+    // and isn't one of this feature's sidebar figures.
     getWorkspaceProjects(activeWorkspace.id).then(
       (projects) => ({ projects, error: null }),
       (error) => {
@@ -234,6 +234,9 @@ export default async function WorkspaceLayout({
     // F263 (AS-510): favourite project ids. getFavoriteProjectIds already fails open.
     // F004 (AS-004): pass the already-resolved user id so this call skips
     // its own `auth.getUser()` round trip.
+    // F016: see components/nav/figures/favorite-project-ids-figure.ts's own
+    // header comment for why this one figure stays awaited here instead of
+    // moving behind its own Suspense boundary.
     getFavoriteProjectIds(activeWorkspace.id, user.id),
 
     // C2: client member count for MembershipProvider's hasClient flag.
@@ -252,34 +255,10 @@ export default async function WorkspaceLayout({
       .eq("user_id", user.id)
       .eq("projects.workspace_id", activeWorkspace.id),
 
-    // F010/F014 (AS-027): open-approvals count for the sidebar's
-    // "Approvals" badge. F014 (perf): uses getOpenApprovalCountForWorkspace,
-    // a `{ count: 'exact', head: true }` query, instead of fetching the
-    // full row set just to read `.length` — same filter, no row payload.
-    // Non-fatal — fails open to 0 internally (logging its own error), so
-    // a failure here shows an un-badged nav item, never a broken layout.
-    getOpenApprovalCountForWorkspace(activeWorkspace.id),
-
-    // F083: open (submitted/in_review) client-request count for the
-    // sidebar's "Client requests" badge — same "non-fatal, fails open to
-    // 0" convention as openApprovals above.
-    getOpenClientRequestCountForWorkspace(activeWorkspace.id),
-
     // Client Presentation feature: "today"/"tomorrow" advance-notice
     // banner data. Already fails open to [] internally (see
-    // getUpcomingClientPresentations' own doc comment), same "non-fatal"
-    // convention as every other sidebar figure above.
+    // getUpcomingClientPresentations' own doc comment).
     getUpcomingClientPresentations(supabase, activeWorkspace.id),
-
-    // Feature request (sidebar unread badges): sums per-channel unread
-    // counts for the sidebar's "Chat" badge. getWorkspaceChatUnreadTotal
-    // wraps getWorkspaceChannels, which already fails open to [] (see that
-    // function's own doc comment), so a failure here surfaces as an
-    // un-badged nav item, not a broken layout.
-    getWorkspaceChatUnreadTotal(activeWorkspace.id).catch((error) => {
-      logger.error("WorkspaceLayout: failed to look up chat unread total for sidebar", { error });
-      return 0;
-    }),
   ]);
 
   if (membershipsError) {
@@ -304,9 +283,6 @@ export default async function WorkspaceLayout({
     redirect(`/portal/${activeWorkspace.slug}`);
   }
 
-  const { list: initialNotifications, unreadCount: initialUnreadCount } = notificationsResult;
-  const tourDismissed = tourStatusResult.ok ? tourStatusResult.dismissed : true;
-
   const workspaceIds = (memberships ?? []).map((m) => m.workspace_id);
 
   // F134 (AS-222): role in the active workspace specifically.
@@ -324,40 +300,10 @@ export default async function WorkspaceLayout({
     projectRoles[row.project_id] = row.project_role as ProjectRole;
   }
 
-  // Workspaces list for the switcher — needs workspaceIds from memberships,
-  // so runs after the parallel batch (single query, not a bottleneck).
-  const { data: workspaces, error: workspacesError } = workspaceIds.length
-    ? await supabase
-        .from("workspaces")
-        .select("id, name, slug, logo_url")
-        .in("id", workspaceIds)
-        .order("name", { ascending: true })
-    : { data: [], error: null };
-
-  if (workspacesError) {
-    logger.error("WorkspaceLayout: failed to look up member workspaces", { error: workspacesError });
-  }
-
-  // The active workspace is guaranteed to be an active membership (we just
-  // verified that above), so it must appear in `workspaces` unless the two
-  // queries raced with a concurrent membership change; fall back to
-  // including it explicitly so the switcher never omits the current
-  // workspace (AS-012/AS-013).
-  const workspacesWithFallback = (workspaces ?? []).some(
-    (w) => w.id === activeWorkspace.id,
-  )
-    ? (workspaces ?? [])
-    : [...(workspaces ?? []), activeWorkspace];
-
-  // F138 (AS-243): camelCase `logoUrl` for SwitcherWorkspace/AppSidebar's
-  // props, mapped once here rather than threading the raw snake_case
-  // column name through the client component boundary.
-  const switcherWorkspaces = workspacesWithFallback.map((w) => ({
-    id: w.id,
-    name: w.name,
-    slug: w.slug,
-    logoUrl: w.logo_url ?? null,
-  }));
+  // F016 (AS-017): the workspace switcher's own list-lookup query used to
+  // run here (needing `workspaceIds` from memberships above). It's now
+  // `<WorkspaceSwitcherFigure>`, rendered below inside its own `<Suspense
+  // fallback={null}>` — see that component's own file-header comment.
 
   // Persistent nav shell: AppSidebar renders both the always-on desktop
   // sidebar (workspace switcher, primary nav, sign-out) and, on narrow
@@ -391,7 +337,12 @@ export default async function WorkspaceLayout({
       />
       <ShortcutProvider />
       <ShortcutHelpDialog />
-      <OnboardingTour initialDismissed={tourDismissed} />
+      {/* F016 (AS-017): tour status is now its own async server component,
+          streamed in independently rather than awaited by this layout
+          body. */}
+      <Suspense fallback={null}>
+        <TourFigure />
+      </Suspense>
       <BreadcrumbProvider>
       {
         // F120 (AS-073): `h-svh` (a fixed height, not a minimum) caps this
@@ -412,7 +363,11 @@ export default async function WorkspaceLayout({
       <div className="flex h-svh">
         <AppSidebar
           workspaceSlug={workspaceSlug}
-          workspaces={switcherWorkspaces}
+          // F016: `workspaces` stays as the back-compat fallback prop (see
+          // AppSidebar's own doc comment) -- the real switcher list is now
+          // streamed in via `workspaceSwitcherSlot` below, so this array is
+          // never actually rendered by this real call site.
+          workspaces={[]}
           currentWorkspaceId={activeWorkspace.id}
           isGuest={isGuest}
           // F136 (AS-239): gates the sidebar's "Settings" nav item to
@@ -426,8 +381,6 @@ export default async function WorkspaceLayout({
             email: user.email ?? null,
             avatarUrl: currentUserProfile?.avatar_url ?? null,
           }}
-          initialNotifications={initialNotifications}
-          initialUnreadCount={initialUnreadCount}
           projects={sidebarProjects.map((project) => ({
             id: project.id,
             name: project.name,
@@ -435,9 +388,51 @@ export default async function WorkspaceLayout({
             icon: project.icon,
             isFavorite: favoriteProjectIds.has(project.id),
           }))}
-          approvalsCount={openApprovalsCount}
-          requestsCount={openClientRequestCount}
-          chatUnreadCount={chatUnreadTotal}
+          // F016 (AS-017): every value below used to be awaited by this
+          // layout body as part of the big `Promise.all` above. Each is
+          // now a small async server component
+          // (`components/nav/figures/*`), rendered here inside its own
+          // `<Suspense fallback={null}>` so a slow one never blocks any
+          // other figure or the rest of the page -- see each figure's own
+          // file-header comment for exactly what it replaces.
+          notificationBellSlot={
+            <Suspense fallback={null}>
+              <NotificationBellFigure
+                workspaceSlug={workspaceSlug}
+                workspaceId={activeWorkspace.id}
+                currentUserId={user.id}
+              />
+            </Suspense>
+          }
+          workspaceSwitcherSlot={
+            <Suspense fallback={null}>
+              <WorkspaceSwitcherFigure
+                workspaceIds={workspaceIds}
+                currentWorkspaceId={activeWorkspace.id}
+                activeWorkspaceFallback={{
+                  id: activeWorkspace.id,
+                  name: activeWorkspace.name,
+                  slug: activeWorkspace.slug,
+                  logo_url: activeWorkspace.logo_url ?? null,
+                }}
+              />
+            </Suspense>
+          }
+          approvalsBadge={
+            <Suspense fallback={null}>
+              <ApprovalsBadgeFigure workspaceId={activeWorkspace.id} />
+            </Suspense>
+          }
+          requestsBadge={
+            <Suspense fallback={null}>
+              <RequestsBadgeFigure workspaceId={activeWorkspace.id} />
+            </Suspense>
+          }
+          chatUnreadBadge={
+            <Suspense fallback={null}>
+              <ChatUnreadBadgeFigure workspaceId={activeWorkspace.id} />
+            </Suspense>
+          }
         />
         <div className="bg-background border border-border rounded-lg m-2 flex-1 min-h-0 min-w-0 flex flex-col">
           <WorkspaceMain>
