@@ -25,6 +25,7 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
   requireActiveMembership,
   requireWorkspaceAdmin,
@@ -439,6 +440,13 @@ export async function addComment(
     }
   }
 
+  // F004c (AS-006): a client-visible, non-internal comment appears on the
+  // portal's task thread — revalidate the portal layout too. An internal
+  // team-only comment on the same task never shows there, so it's excluded.
+  if (taskRow.client_visible && !isInternal && workspaceRow?.slug) {
+    revalidatePortalProject(workspaceRow.slug, taskRow.project_id);
+  }
+
   return {
     ok: true,
     data: {
@@ -504,7 +512,9 @@ export async function deleteComment(
   // found" (idempotent-safe), same convention as deleteTask.
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
-    .select("id, user_id, deleted_at, tasks(id, projects(workspace_id))")
+    .select(
+      "id, user_id, deleted_at, internal, tasks(id, project_id, client_visible, projects(workspace_id, workspaces(slug)))",
+    )
     .eq("id", parsed.data.commentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -516,18 +526,27 @@ export async function deleteComment(
   const task = commentRow.tasks as
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        client_visible: boolean;
+        projects:
+          | { workspace_id: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
+          | null;
       }
     | {
         id: string;
-        projects: { workspace_id: string } | { workspace_id: string }[] | null;
+        project_id: string;
+        client_visible: boolean;
+        projects:
+          | { workspace_id: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
+          | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
   const project = taskRow?.projects;
-  const workspaceId = Array.isArray(project)
-    ? project[0]?.workspace_id
-    : project?.workspace_id;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
   const commentTaskId = taskRow?.id;
 
   if (!workspaceId || !commentTaskId) {
@@ -714,6 +733,12 @@ export async function deleteComment(
     }
   }
 
+  // F004c (AS-006): deleting a client-visible, non-internal comment must
+  // also refresh the portal's task thread.
+  if (taskRow?.client_visible && !commentRow.internal && workspaceRow?.slug) {
+    revalidatePortalProject(workspaceRow.slug, taskRow.project_id);
+  }
+
   return {
     ok: true,
     data: {
@@ -781,7 +806,7 @@ export async function restoreComment(
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
     .select(
-      "id, task_id, user_id, text, body_json, created_at, deleted_at, tasks(id, project_id, projects(workspace_id, visibility))",
+      "id, task_id, user_id, text, body_json, created_at, deleted_at, internal, tasks(id, project_id, client_visible, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.commentId)
     .maybeSingle();
@@ -794,17 +819,19 @@ export async function restoreComment(
     | {
         id: string;
         project_id: string;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }
     | {
         id: string;
         project_id: string;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }[]
     | null;
@@ -982,6 +1009,12 @@ export async function restoreComment(
     }
   }
 
+  // F004c (AS-006): restoring a client-visible, non-internal comment must
+  // also refresh the portal's task thread.
+  if (taskRow?.client_visible && !commentRow.internal && workspaceRow?.slug) {
+    revalidatePortalProject(workspaceRow.slug, commentProjectId);
+  }
+
   return {
     ok: true,
     data: {
@@ -1070,7 +1103,7 @@ export async function editComment(
   const { data: commentRow, error: commentError } = await admin
     .from("comments")
     .select(
-      "id, user_id, deleted_at, body_json, tasks(id, project_id, projects(workspace_id, visibility))",
+      "id, user_id, deleted_at, body_json, internal, tasks(id, project_id, client_visible, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.commentId)
     .is("deleted_at", null)
@@ -1084,17 +1117,19 @@ export async function editComment(
     | {
         id: string;
         project_id: string;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }
     | {
         id: string;
         project_id: string;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }[]
     | null;
@@ -1335,6 +1370,12 @@ export async function editComment(
     } catch (revalidateError) {
       logger.error("editComment: revalidatePath failed (non-fatal)", { error: revalidateError });
     }
+  }
+
+  // F004c (AS-006): editing a client-visible, non-internal comment must
+  // also refresh the portal's task thread.
+  if (taskRow?.client_visible && !commentRow.internal && workspaceRow?.slug) {
+    revalidatePortalProject(workspaceRow.slug, commentProjectId);
   }
 
   return {

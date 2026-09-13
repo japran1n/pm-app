@@ -56,6 +56,15 @@ const PROJECT_ID = "00000000-0000-4000-8000-0000000000f1";
 
 let pageRow: Row | null;
 let parentPageRow: Row | null = { client_visible: true };
+let sectionsUpdateShouldFail = false;
+
+// F004c (item 4/5): tracks every `tasks.update(...)` call this mock
+// receives, so the rejection tests below can assert a rejected caller
+// never reaches the write at all (not just that the final result is
+// `ok:false`) — a permission check that "fails closed" only in its return
+// value but still issues the UPDATE underneath would be a real bug this
+// assertion is meant to catch.
+const taskUpdateSpy = vi.fn();
 
 function buildAdminMock() {
   return {
@@ -70,12 +79,21 @@ function buildAdminMock() {
               maybeSingle: vi.fn(async () => ({ data: parentPageRow, error: null })),
             })),
           })),
-          update: vi.fn(() => ({
-            eq: vi.fn(() => ({
-              is: vi.fn(() => ({ select: vi.fn(async () => ({ data: [], error: null })) })),
-              then: (resolve: (v: unknown) => void) => resolve({ error: null }),
-            })),
-          })),
+          update: vi.fn((patch: unknown) => {
+            taskUpdateSpy(patch);
+            return {
+              eq: vi.fn((column: string) => ({
+                is: vi.fn(() => ({
+                  select: vi.fn(async () =>
+                    column === "parent_task_id" && sectionsUpdateShouldFail
+                      ? { data: null, error: { message: "sections update failed" } }
+                      : { data: [], error: null },
+                  ),
+                })),
+                then: (resolve: (v: unknown) => void) => resolve({ error: null }),
+              })),
+            };
+          }),
           insert: vi.fn(() => ({
             select: vi.fn(() => ({
               single: vi.fn(async () => ({
@@ -129,8 +147,10 @@ import {
 
 beforeEach(() => {
   revalidatePath.mockClear();
+  taskUpdateSpy.mockClear();
   currentUser = { id: "user-1" };
   membershipResult = { ok: true, role: "owner" };
+  sectionsUpdateShouldFail = false;
   parentPageRow = { client_visible: true };
   pageRow = {
     id: "page-1",
@@ -149,24 +169,32 @@ describe("F004b / AS-006: share actions reject non-write callers", () => {
     currentUser = null;
     const result = await setPageClientVisibility(PAGE_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_viewer_sharing_a_page", async () => {
     membershipResult = { ok: true, role: "viewer" };
     const result = await setPageClientVisibility(PAGE_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_client_sharing_a_page", async () => {
     membershipResult = { ok: true, role: "client" };
     const result = await setPageClientVisibility(PAGE_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_non_member_sharing_a_page", async () => {
     membershipResult = { ok: false };
     const result = await setPageClientVisibility(PAGE_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_signed_out_caller_sharing_a_section", async () => {
@@ -180,6 +208,8 @@ describe("F004b / AS-006: share actions reject non-write callers", () => {
     };
     const result = await setSectionClientVisibility(SECTION_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_viewer_sharing_a_section", async () => {
@@ -193,6 +223,8 @@ describe("F004b / AS-006: share actions reject non-write callers", () => {
     };
     const result = await setSectionClientVisibility(SECTION_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_client_sharing_a_section", async () => {
@@ -206,6 +238,8 @@ describe("F004b / AS-006: share actions reject non-write callers", () => {
     };
     const result = await setSectionClientVisibility(SECTION_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("test_AS_006_rejects_non_member_sharing_a_section", async () => {
@@ -219,6 +253,8 @@ describe("F004b / AS-006: share actions reject non-write callers", () => {
     };
     const result = await setSectionClientVisibility(SECTION_TASK_ID, true);
     expect(result.ok).toBe(false);
+    expect(taskUpdateSpy).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
 
@@ -277,5 +313,29 @@ describe("F004b / AS-006: share toggles revalidate the portal layout, not just t
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.pageHidden).toBe(true);
+  });
+
+  // F004c (item 5): the page's own client_visible update already committed
+  // by the time the "share sections too" cascade update runs, so a
+  // cascade failure must surface as a reported partial failure
+  // (`sectionsShareFailed: true`) alongside `ok: true` — never `ok: false`,
+  // which would falsely tell the caller the page itself was never shared.
+  it("test_AS_006_sharing_a_page_with_a_failed_sections_cascade_reports_sectionsShareFailed", async () => {
+    sectionsUpdateShouldFail = true;
+
+    const result = await setPageClientVisibility(PAGE_TASK_ID, true, {
+      includeSections: true,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.sectionsShareFailed).toBe(true);
+    expect(result.data.sectionsShared).toBe(0);
+    // The page's own share still succeeded and still revalidates the
+    // portal — a failed cascade must not swallow the page-level effect.
+    expect(revalidatePath).toHaveBeenCalledWith(
+      `/portal/${WORKSPACE_SLUG}/p/${PROJECT_ID}`,
+      "layout",
+    );
   });
 });

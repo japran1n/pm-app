@@ -511,15 +511,24 @@ export async function editTask(
   if (workspaceRow?.slug) {
     try {
       revalidatePath(`/w/${workspaceRow.slug}`, "layout");
-      // AS-006: title/priority/due-date/estimate edits on an already
-      // client-visible task (e.g. a shared deliverable/page task) must
-      // show up on the portal without a manual refresh.
-      if (taskRow.client_visible && project?.id) {
-        revalidatePortalProject(workspaceRow.slug, project.id);
-      }
     } catch (revalidateError) {
       // Non-fatal cache-freshness rationale, same as createTask above.
       logger.error("editTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+    }
+
+    // F004c (item 8): moved out of the `/w` try/catch above for
+    // consistency with every other call site in this codebase (see
+    // ordering.ts/comments.ts/etc.) — revalidatePortalProject already has
+    // its own internal non-fatal try/catch (lib/actions/portal-
+    // revalidate.ts), so nesting it inside another try/catch never added
+    // any real safety, only made this one call site read differently from
+    // its siblings.
+    //
+    // AS-006: title/priority/due-date/estimate edits on an already
+    // client-visible task (e.g. a shared deliverable/page task) must
+    // show up on the portal without a manual refresh.
+    if (taskRow.client_visible && project?.id) {
+      revalidatePortalProject(workspaceRow.slug, project.id);
     }
   }
 

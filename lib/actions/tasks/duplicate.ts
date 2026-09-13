@@ -10,6 +10,10 @@ import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { Json } from "@/lib/supabase/database.types";
 import { syncMirrorAssigneeId } from "./shared";
 
@@ -103,7 +107,7 @@ const duplicateTaskImpl = withAuthz(
       const { data: sourceRow, error } = await admin
         .from("tasks")
         .select(
-          "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, task_type_id, deleted_at, projects(workspace_id, visibility)",
+          "id, project_id, title, description, description_json, status, priority, tags, position, estimate_minutes, task_type_id, deleted_at, projects(workspace_id, visibility, workspaces(slug))",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -112,8 +116,8 @@ const duplicateTaskImpl = withAuthz(
       if (error || !sourceRow) return { ok: false, error: "Task not found." };
 
       const project = sourceRow.projects as
-        | { workspace_id: string; visibility: string | null }
-        | { workspace_id: string; visibility: string | null }[]
+        | { workspace_id: string; visibility: string | null; workspaces?: { slug: string } | { slug: string }[] | null }
+        | { workspace_id: string; visibility: string | null; workspaces?: { slug: string } | { slug: string }[] | null }[]
         | null;
       const projectRow = Array.isArray(project) ? project[0] : project;
 
@@ -128,7 +132,10 @@ const duplicateTaskImpl = withAuthz(
         projectId: sourceRow.project_id,
         visibility:
           (projectRow?.visibility as ProjectVisibility) ?? "workspace",
-        extra: { sourceRow: sourceRow as unknown as DuplicateTaskSourceRow },
+        extra: {
+          sourceRow: sourceRow as unknown as DuplicateTaskSourceRow,
+          workspaceSlug: extractWorkspaceSlug(projectRow?.workspaces),
+        },
       };
     },
   },
@@ -210,8 +217,14 @@ const duplicateTaskImpl = withAuthz(
         // like every other task-creation path in this file
         // (createTaskForUser above never supplies one either) — never
         // copied from the source.
+        //
+        // F004c (AS-006): `client_visible` is deliberately NOT copied from
+        // the source — it defaults to false (F090 migration), same as
+        // every other task-creation path in this file. A duplicate of a
+        // shared task is never itself auto-shared with the client, so it
+        // never needs a portal revalidate below.
       })
-      .select("id, project_id, title, status, position, number")
+      .select("id, project_id, title, status, position, number, client_visible")
       .single();
 
     if (insertError || !inserted) {
@@ -295,6 +308,14 @@ const duplicateTaskImpl = withAuthz(
         // Non-fatal cache-freshness rationale, same as createTask above.
         logger.error("duplicateTask: revalidatePath failed (non-fatal)", { error: revalidateError });
       }
+    }
+
+    // F004c (AS-006): the new row's own `client_visible` (not the
+    // source's) decides whether the portal needs to know about it — see
+    // the insert's comment above for why these currently always match
+    // (false) but this check is future-proof if that default ever changes.
+    if (inserted.client_visible && ctx.workspaceSlug) {
+      revalidatePortalProject(ctx.workspaceSlug, sourceRow.project_id);
     }
 
     return {

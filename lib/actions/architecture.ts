@@ -26,7 +26,10 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -1007,6 +1010,10 @@ export async function reorderSections(
     return { success: false, error: "Section not found." };
   }
 
+  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
+  // in the SAME workspace share the same workspace slug, so a slug-keyed
+  // map would silently drop every project but the last one seen for that
+  // slug, and this batch can span multiple projects at once.
   const reorderSectionsPortalTargets = new Map<string, string>();
   for (const taskRow of taskRows) {
     const projects = (
@@ -1017,7 +1024,7 @@ export async function reorderSections(
     const workspace = projects?.workspaces;
     const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
     if (slug) {
-      reorderSectionsPortalTargets.set(slug, taskRow.project_id);
+      reorderSectionsPortalTargets.set(taskRow.project_id, slug);
     }
   }
 
@@ -1072,7 +1079,7 @@ export async function reorderSections(
     });
   }
 
-  for (const [slug, projectIdForSlug] of reorderSectionsPortalTargets) {
+  for (const [projectIdForSlug, slug] of reorderSectionsPortalTargets) {
     revalidatePortalProject(slug, projectIdForSlug);
   }
 
@@ -1251,6 +1258,8 @@ export async function reorderPages(
     return { success: false, error: "Page not found." };
   }
 
+  // F004c (AS-006): keyed by projectId, NOT slug — same rationale as
+  // reorderSections above (two projects in one workspace share a slug).
   const reorderPagesPortalTargets = new Map<string, string>();
   for (const taskRow of taskRows) {
     const projects = (
@@ -1261,7 +1270,7 @@ export async function reorderPages(
     const workspace = projects?.workspaces;
     const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
     if (slug) {
-      reorderPagesPortalTargets.set(slug, taskRow.project_id);
+      reorderPagesPortalTargets.set(taskRow.project_id, slug);
     }
   }
 
@@ -1316,7 +1325,7 @@ export async function reorderPages(
     });
   }
 
-  for (const [slug, projectIdForSlug] of reorderPagesPortalTargets) {
+  for (const [projectIdForSlug, slug] of reorderPagesPortalTargets) {
     revalidatePortalProject(slug, projectIdForSlug);
   }
 
@@ -2291,17 +2300,6 @@ export async function setSectionClientVisibility(
     return { ok: false, error: "Section not found." };
   }
 
-  // AS-004/AS-005 UI hint (item 10): look up whether this section's parent
-  // page is currently hidden from the client, so the caller can surface
-  // "Page is hidden from the client -- share the page too" when a section
-  // is shared underneath a still-hidden page.
-  const { data: parentPageRow } = await admin
-    .from("tasks")
-    .select("client_visible")
-    .eq("id", taskRow.parent_task_id)
-    .maybeSingle();
-  const pageHidden = parentPageRow ? !parentPageRow.client_visible : false;
-
   const project = taskRow.projects as
     | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
     | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
@@ -2327,6 +2325,35 @@ export async function setSectionClientVisibility(
       ok: false,
       error: "You don't have permission to change what the client sees.",
     };
+  }
+
+  // F004c (item 6): the parent-page lookup now runs AFTER the permission
+  // check (previously it ran before, doing an extra query even for a
+  // caller who was about to be rejected anyway) and ONLY when this call is
+  // actually sharing the section (`visible === true`) -- unsharing never
+  // needs the "page is still hidden" hint, since that hint only matters
+  // for a newly-shared section. A soft-deleted parent page is excluded
+  // (`.is("deleted_at", null)`) so a page that's been trashed is never
+  // treated as "hidden but shareable" -- it should read the same as "no
+  // parent page found" (pageHidden: false). A lookup error is logged
+  // rather than silently treated as "not hidden", so an operator can tell
+  // a genuine DB failure apart from a page that's simply visible.
+  let pageHidden = false;
+  if (parsed.data.visible) {
+    const { data: parentPageRow, error: parentPageError } = await admin
+      .from("tasks")
+      .select("client_visible")
+      .eq("id", taskRow.parent_task_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (parentPageError) {
+      logger.error("setSectionClientVisibility: parent page lookup failed (non-fatal)", {
+        error: parentPageError,
+      });
+    } else if (parentPageRow) {
+      pageHidden = !parentPageRow.client_visible;
+    }
   }
 
   const { error: updateError } = await admin
@@ -2359,7 +2386,7 @@ export async function setSectionClientVisibility(
     data: {
       taskId: parsed.data.taskId,
       clientVisible: parsed.data.visible,
-      pageHidden: parsed.data.visible && pageHidden,
+      pageHidden,
     },
   };
 }
@@ -2398,7 +2425,7 @@ export async function importPages(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -2471,5 +2498,22 @@ export async function importPages(
   }
 
   revalidatePath(`/w/[workspaceSlug]/projects/${projectId}/architecture`, "page");
+
+  // F004c (AS-006): mirrors createPage's own unconditional portal
+  // revalidate above — imported pages default `client_visible: false`
+  // (same as a single createPage call), but the site map's own layout
+  // (unshared pages still occupy slots for the team-visible parts of the
+  // Sitemap) is still touched by this write, so this uses the same
+  // "always revalidate on any page-creating write" convention as its
+  // single-page sibling rather than inventing a client_visible gate this
+  // action's sibling doesn't have.
+  const importPagesWorkspaceSlug = extractWorkspaceSlug(
+    (projectRow as { workspaces?: { slug: string } | { slug: string }[] | null })
+      .workspaces,
+  );
+  if (importPagesWorkspaceSlug) {
+    revalidatePortalProject(importPagesWorkspaceSlug, projectId);
+  }
+
   return { ok: true, created: rows.length, skipped: pages.length - rows.length };
 }

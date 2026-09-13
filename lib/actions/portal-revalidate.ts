@@ -22,3 +22,25 @@ export function revalidatePortalProject(workspaceSlug: string, projectId: string
     });
   }
 }
+
+// F004c: many call sites select a nested `workspaces(slug)` relation off a
+// project/task row to feed revalidatePortalProject above without an extra
+// round trip. Supabase's PostgREST client types (and sometimes returns, for
+// `!inner` joins vs. plain joins) this relation as either a single object or
+// a one-element array depending on the join shape, so every call site needs
+// the same defensive unwrap. Centralized here instead of repeated inline.
+// Returns undefined (and warns) when the slug is missing so callers can
+// treat "no slug" as "skip the portal revalidate" rather than throwing.
+export function extractWorkspaceSlug(
+  workspaces: { slug: string } | { slug: string }[] | null | undefined,
+): string | undefined {
+  const row = Array.isArray(workspaces) ? workspaces[0] : workspaces;
+  const slug = row?.slug;
+  if (!slug) {
+    logger.warn("portal-revalidate: workspace slug missing from join", {
+      workspaces,
+    });
+    return undefined;
+  }
+  return slug;
+}

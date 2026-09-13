@@ -40,6 +40,12 @@ export default async function PortalFilesPage({
 
   if (!workspace) notFound();
 
+  // F004c (missions/20260914-portal-simplify, AS-006): this page reads
+  // straight from `getPortalFiles` (lib/queries/portal.ts) on every
+  // render, so the ordering.ts/attachments.ts/comments.ts/etc. revalidate
+  // calls this remediation adds just need to tell Next "this route's cache
+  // is stale" — they must NOT change `getPortalFiles`'s own query shape or
+  // return contract, which stays exactly as F001 left it.
   const files = await getPortalFiles(workspace.id, projectId);
 
   return (
