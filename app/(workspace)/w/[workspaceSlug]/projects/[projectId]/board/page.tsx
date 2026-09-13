@@ -77,16 +77,15 @@ export default async function ProjectBoardPage({
     : { groupBy: "none" as const, collapsedLanes: {} };
   const { data: workspace } = workspaceResult;
 
-  const workspaceMembers = workspace
-    ? await getWorkspaceMembers(workspace.id)
-    : { active: [], pending: [] };
-
-  // F183 (AS-330 UI half): task templates available for "New from
-  // template" — resolved once here, same fetch-and-pass-down pattern as
-  // assigneeOptions above.
-  const templates = workspace
-    ? await getWorkspaceTaskTemplateOptions(workspace.id)
-    : [];
+  // F022 (AS-016): members and templates depend only on the resolved
+  // workspace, not on each other — fetched together instead of one
+  // waiting its turn behind the other.
+  const [workspaceMembers, templates] = workspace
+    ? await Promise.all([
+        getWorkspaceMembers(workspace.id),
+        getWorkspaceTaskTemplateOptions(workspace.id),
+      ])
+    : [{ active: [], pending: [] }, []];
 
   const assigneeOptions = workspaceMembers.active.map((member) => ({
     id: member.userId,

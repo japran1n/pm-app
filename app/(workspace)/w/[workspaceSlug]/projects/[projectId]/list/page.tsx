@@ -117,9 +117,17 @@ export default async function ProjectListPage({
       .eq("slug", workspaceSlug)
       .maybeSingle(),
   ]);
-  const workspaceMembers = workspace
-    ? await getWorkspaceMembers(workspace.id)
-    : { active: [], pending: [] };
+  // F022 (AS-016): members, task types and saved views depend only on
+  // the resolved workspace/project and the caller — not on each other,
+  // and not on the view-resolution logic below — so they're fetched
+  // together here instead of members waiting its turn alone before
+  // task types/saved views got folded into a later batch.
+  const [workspaceMembers, taskTypes, templates, savedViews] = await Promise.all([
+    workspace ? getWorkspaceMembers(workspace.id) : Promise.resolve({ active: [], pending: [] }),
+    workspace ? getTaskTypes(workspace.id) : Promise.resolve([]),
+    workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
+    listSavedViewsForProject(projectId, "list"),
+  ]);
 
   const validStatusNames = new Set(columns.map((column) => column.name));
   // F221's own convention for a custom column name flowing through the
@@ -255,20 +263,15 @@ export default async function ProjectListPage({
 
   // F124 (AS-207): the viewer's timezone is resolved ONCE per request here
   // (lib/queries/profile.ts's getCurrentUserTimezone) and threaded down to
-  // <TaskListTable> as a prop — never re-queried per row. F229: the
-  // project's saved views (listSavedViewsForProject) join the same
-  // independent-fetches batch — RLS-scoped, so this never returns a view
-  // the caller shouldn't see (AS-429/AS-434).
-  const [rawFilteredTasks, timezone, taskTypes, templates, savedViews] = await Promise.all([
+  // <TaskListTable> as a prop — never re-queried per row. taskTypes,
+  // templates and savedViews used to join this batch (F229/F434-F440); F022
+  // (AS-016) moved them up into the workspaceMembers batch above since none
+  // of the three depend on `filters`/`sort` (which do depend on the
+  // view-resolution logic that runs between the two batches), so they no
+  // longer need to wait behind that resolution at all.
+  const [rawFilteredTasks, timezone] = await Promise.all([
     getProjectListTasks(projectId, filters, sort),
     getCurrentUserTimezone(supabase),
-    // F434-F440: fetched alongside the rest of this page's independent
-    // batch — workspace is already resolved above.
-    workspace ? getTaskTypes(workspace.id) : Promise.resolve([]),
-    // F183 (AS-330 UI half): same fetch-and-pass-down pattern as the board
-    // page's own templates prop.
-    workspace ? getWorkspaceTaskTemplateOptions(workspace.id) : Promise.resolve([]),
-    listSavedViewsForProject(projectId, "list"),
   ]);
 
   // Follow-up (nested AND/OR groups): when the applied view's filter tree
