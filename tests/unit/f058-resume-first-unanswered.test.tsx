@@ -8,7 +8,6 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
-import * as briefActions from "@/lib/actions/brief";
 import { PortalQuestionnaire } from "@/components/brief/portal-questionnaire";
 import type { BriefAnswer, BriefQuestion } from "@/lib/queries/brief";
 

@@ -55,7 +55,7 @@ export default async function ArchivePage({
     redirect("/onboarding");
   }
 
-  const { user, workspace, role } = ctx;
+  const { workspace, role } = ctx;
 
   // AS-256/access: page-level gate for guests, evaluated before the
   // archived-projects query runs — same "redirect away, not just hide UI"

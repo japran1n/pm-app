@@ -6,7 +6,6 @@ import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   canManageMembers,
   canViewMembersList,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import { logger } from "@/lib/observability/logger";
 import { InviteMemberForm } from "@/components/invite-member-form";

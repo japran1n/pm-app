@@ -7,7 +7,6 @@ import {
   getOpenBlockersSchema,
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type WorkspaceRole } from "@/lib/auth/permissions";
@@ -16,7 +15,6 @@ import {
   type ProjectVisibility,
 } from "@/lib/actions/project-visibility";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
-import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";

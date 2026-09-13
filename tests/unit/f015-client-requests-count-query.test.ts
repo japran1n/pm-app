@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const selectMock = vi.fn();
+const _selectMock = vi.fn();
 const fromMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
