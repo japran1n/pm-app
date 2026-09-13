@@ -180,17 +180,29 @@ export async function getMyTasks(
 ): Promise<MyTasksBuckets> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("tasks")
-    .select(`${TASK_SELECT_COLUMNS}, task_assignees!inner(user_id)`)
-    .eq("projects.workspace_id", workspaceId)
-    .is("projects.deleted_at", null)
-    .is("deleted_at", null)
-    .eq("task_assignees.user_id", userId);
+  // F011 (AS-010, AS-011): drive this from `task_assignees` filtered by
+  // `user_id` instead of scanning every RLS-visible task and filtering
+  // down via a `task_assignees!inner` join predicate. `task_assignees.user_id`
+  // is indexed, so `.eq("user_id", userId)` here narrows to this caller's
+  // handful of assignment rows first; the embedded `tasks!inner(...)` then
+  // joins through to the task exactly like the previous shape did, so the
+  // returned columns/order are unchanged -- only the outer scan direction
+  // is reversed (assignee-row-driven, not task-row-driven).
+  const { data: assignedRows, error } = await supabase
+    .from("task_assignees")
+    .select(`task_id, tasks!inner(${TASK_SELECT_COLUMNS})`)
+    .eq("user_id", userId)
+    .eq("tasks.projects.workspace_id", workspaceId)
+    .is("tasks.projects.deleted_at", null)
+    .is("tasks.deleted_at", null);
 
   if (error) {
     throw error;
   }
+
+  const data = (assignedRows ?? [])
+    .map((row) => firstRelated(row.tasks))
+    .filter((task): task is NonNullable<typeof task> => task !== null);
 
   const rowsById = new Map<string, MyTaskRow>();
 
@@ -198,10 +210,10 @@ export async function getMyTasks(
   // — same "batch once, never per-row" rationale getTaskLoggedMinutes's own
   // doc comment documents for the project List view.
   const assignedLoggedMinutes = await getTaskLoggedMinutes(
-    (data ?? []).map((task) => task.id),
+    data.map((task) => task.id),
   );
 
-  for (const task of data ?? []) {
+  for (const task of data) {
     const row = toRow(task, timeZone, assignedLoggedMinutes.get(task.id) ?? 0);
     row.isAssigned = true;
     rowsById.set(row.id, row);

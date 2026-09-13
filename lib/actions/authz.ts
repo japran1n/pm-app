@@ -20,10 +20,9 @@
 // centralizing every AUTH decision (membership, write gate, visibility).
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import type { ZodType } from "zod";
-import { cache } from "react";
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import {
   canWrite,
@@ -141,13 +140,12 @@ export type AuthzFailure = { ok: false; error: string };
 //    header comment (W11) exists to centralize a defense against. Caching
 //    the RESULT of a verified call is not the same thing as skipping
 //    verification, and this change never does the latter.
-const getAuthenticatedUser = cache(async function getAuthenticatedUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return { supabase, user };
-});
+// F001 (mission 20260913-perf-latency, AS-003): moved to
+// lib/auth/current-user.ts so every call site in the app (not just this
+// file's `withAuthz`) shares the same `cache()`-wrapped resolver instead of
+// each declaring its own. Re-bound to the old local name so the rest of
+// this file (and its reasoning above) needs no further changes.
+const getAuthenticatedUser = getCurrentUser;
 
 // Wraps `handler` with the standard auth pipeline. Returns a function that
 // takes the RAW (unparsed) input a Server Action received, so a thin

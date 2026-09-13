@@ -8,7 +8,7 @@
 // query") -- this file adds no parallel authorization logic of its own,
 // it just shapes the RLS-scoped rows for the UI.
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import type { SavedViewConfig, SavedViewScope, SavedViewType } from "@/lib/validation/views";
 
 export type SavedViewListItem = {
@@ -32,10 +32,7 @@ export async function listSavedViewsForProject(
   projectId: string,
   viewType: SavedViewType = "list",
 ): Promise<SavedViewListItem[]> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -69,10 +66,7 @@ export async function getMyDefaultSavedView(
   projectId: string,
   viewType: SavedViewType = "list",
 ): Promise<{ id: string } | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) return null;
 
   const { data, error } = await supabase

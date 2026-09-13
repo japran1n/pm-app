@@ -1,0 +1,11 @@
+# Unit test files already failing at mission start (commit 10c01066), verified
+# identical in the user's checkout at ~/Desktop/pm-app — none of these is
+# caused by this mission or by the worktree.
+#
+# The gate treats these as the baseline: a worker is blocked only when a file
+# NOT on this list fails. Removing a line is allowed and good (it means the
+# file now passes); adding one is not — that is the regression the gate exists
+# to catch.
+tests/unit/app-sidebar-project-nav-list.test.tsx
+tests/unit/f038-as024-coverage.test.ts
+tests/unit/xss-sanitization-audit.test.ts

@@ -15,7 +15,7 @@ import { logger } from "@/lib/observability/logger";
 // client or SECURITY DEFINER RPC needed for a user writing their own
 // row), generic user-facing errors with details only logged server-side.
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 
 export type GetTourStatusResult =
   | { ok: true; dismissed: boolean }
@@ -26,10 +26,7 @@ export type GetTourStatusResult =
 // workspace layout calls this once and passes the boolean down, rather
 // than the client tour component querying Supabase directly on mount.
 export async function getTourStatus(): Promise<GetTourStatusResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -74,10 +71,7 @@ export async function replayTour(): Promise<SetTourStatusResult> {
 async function writeTourCompletedAt(
   value: string | null,
 ): Promise<SetTourStatusResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

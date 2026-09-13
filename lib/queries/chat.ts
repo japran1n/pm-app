@@ -4,9 +4,12 @@ import { logger } from "@/lib/observability/logger";
 // a channel's messages.
 import "server-only";
 
+import { cache } from "react";
+
 import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolvePeople, type PersonSummary } from "@/lib/queries/people";
 
 export type ChatMessageRow = {
@@ -168,11 +171,27 @@ export type WorkspaceChannelRow = {
  * the caller's own session: `channels_select_members_or_workspace` /
  * `channel_members_select_own_or_shared_channel` RLS is the real filter,
  * this query just orders + shapes the result.
+ *
+ * F008 (missions/20260913-perf-latency): `cache()`-wrapped, keyed by the
+ * single `workspaceId` string argument -- the chat layout (channel list)
+ * and the chat index page each call this with the same primitive
+ * workspace id string, so under the real Next.js per-request dispatcher
+ * both collapse onto one execution of this multi-step chain instead of
+ * two. F013: the workspace layout's own sidebar unread badge no longer
+ * calls this at all -- see `getWorkspaceChatUnreadTotal` below, which now
+ * calls the `get_workspace_chat_unread_total` RPC directly instead of
+ * summing this function's per-channel `unreadCount`. Same convention as
+ * `getWorkspaceBySlug` (lib/queries/workspaces.ts) and `getCurrentUser`
+ * (lib/auth/current-user.ts) -- see those files' own header comments, and
+ * this feature's test file, for why `cache()` cannot be observed to
+ * memoise under plain Vitest (no per-request dispatcher there) and why the
+ * test here is structural rather than a call-count assertion.
  */
-export async function getWorkspaceChannels(
+export const getWorkspaceChannels = cache(async function getWorkspaceChannels(
   workspaceId: string,
 ): Promise<WorkspaceChannelRow[]> {
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
+  const currentUserId = user?.id ?? "";
 
   // F5/W3: last_read_at itself is no longer read here -- the summary RPC
   // below re-derives it from the caller's own channel_members row via
@@ -182,7 +201,7 @@ export async function getWorkspaceChannels(
   const { data: memberRows, error: memberError } = await supabase
     .from("channel_members")
     .select("channel_id")
-    .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    .eq("user_id", currentUserId);
 
   if (memberError) {
     logger.error("getWorkspaceChannels: membership query failed", { error: memberError });
@@ -244,7 +263,6 @@ export async function getWorkspaceChannels(
   const dmChannelIds = channelRows.filter((row) => row.kind === "dm").map((row) => row.id);
   const dmOtherNameByChannel = new Map<string, string>();
   if (dmChannelIds.length > 0) {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id ?? "";
     const { data: dmMemberRows } = await supabase
       .from("channel_members")
       .select("channel_id, user_id")
@@ -280,19 +298,31 @@ export async function getWorkspaceChannels(
       const bTime = b.lastMessageAt ?? b.createdAt;
       return bTime.localeCompare(aTime);
     });
-}
+});
 
-// Feature request (sidebar unread badges): the sidebar's own "Chat" nav
-// item wants a single number, not the whole per-channel channel list this
-// module already exposes via getWorkspaceChannels — this is a thin wrapper
-// that sums that same per-channel `unreadCount` rather than a second RPC
-// round-trip, so it inherits getWorkspaceChannels' own fail-open-to-[]
-// behaviour (a query failure here surfaces as an un-badged nav item, never
-// a broken layout, matching the sidebar's existing approvals/requests
-// badge convention).
+// F013 (missions/20260913-perf-latency): the sidebar's own "Chat" nav item
+// wants a single number, not the whole per-channel channel list/membership
+// lookup/last-message summary chain getWorkspaceChannels builds -- this now
+// calls the get_workspace_chat_unread_total RPC (F012) directly, a single
+// round trip that derives the caller's own channels and last_read_at from
+// auth.uid() internally (security definer), rather than reusing
+// getWorkspaceChannels' full 8-step chain (membership query, channel query,
+// summary RPC, DM member/name resolution) just to sum one field off it.
+// Fails open to 0 on a query error, same convention as the
+// approvals/requests badges above it in the workspace layout.
 export async function getWorkspaceChatUnreadTotal(workspaceId: string): Promise<number> {
-  const channels = await getWorkspaceChannels(workspaceId);
-  return channels.reduce((total, channel) => total + channel.unreadCount, 0);
+  const { supabase } = await getCurrentUser();
+
+  const { data, error } = await supabase.rpc("get_workspace_chat_unread_total", {
+    p_workspace_id: workspaceId,
+  });
+
+  if (error) {
+    logger.error("getWorkspaceChatUnreadTotal: RPC failed", { error });
+    return 0;
+  }
+
+  return data ?? 0;
 }
 
 // ---------------------------------------------------------------------

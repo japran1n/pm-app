@@ -47,6 +47,7 @@ import { logger } from "@/lib/observability/logger";
 // replace the email. `email` itself is still returned unchanged (full
 // address) for callers that want it verbatim (e.g. a mailto link).
 
+import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PersonSummary = {
@@ -69,8 +70,25 @@ export function emailLocalPart(email: string): string {
 export async function resolvePeople(
   ids: string[],
 ): Promise<Map<string, PersonSummary>> {
+  if (ids.length === 0) return new Map();
+
+  // F008b (perf): `cache()` from React memoizes by argument identity, and
+  // arrays are compared by reference -- two calls with equal-but-distinct
+  // arrays (e.g. `resolvePeople([a, b])` called from four different call
+  // sites within the same request) would each be treated as a cache miss.
+  // Sorting the ids and joining them into a stable string gives `cache()`
+  // a primitive key so identical id sets (regardless of input order or
+  // array identity) collapse into a single `get_users_by_ids` round-trip
+  // per request.
+  const sortedIds = [...ids].sort();
+  return resolvePeopleCached(sortedIds.join(","), sortedIds);
+}
+
+const resolvePeopleCached = cache(async function resolvePeopleInner(
+  _sortedKey: string,
+  ids: string[],
+): Promise<Map<string, PersonSummary>> {
   const summaries = new Map<string, PersonSummary>();
-  if (ids.length === 0) return summaries;
 
   const admin = createAdminClient();
 
@@ -144,4 +162,4 @@ export async function resolvePeople(
   }
 
   return summaries;
-}
+});

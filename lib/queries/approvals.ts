@@ -466,6 +466,46 @@ export async function getOpenApprovalsForWorkspace(
   });
 }
 
+// F014 (perf): lightweight sibling of getOpenApprovalsForWorkspace above,
+// for the sidebar badge which only ever needs a number, never the full
+// rows (requester names, "what it blocks" resolution, etc.). Same
+// workspace -> projects -> pending approval_requests filter, but a
+// `{ count: 'exact', head: true }` query instead of a row fetch — no
+// row payload, no follow-up batched queries for task/doc/phase names.
+// Fails open to 0 (same "non-fatal, un-badged nav item" convention the
+// layout's own comment on getOpenApprovalsForWorkspace documents), never
+// throws for the caller.
+export async function getOpenApprovalCountForWorkspace(workspaceId: string): Promise<number> {
+  const supabase = await createClient();
+
+  const { data: projects, error: projectsError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (projectsError) {
+    logger.error("getOpenApprovalCountForWorkspace: failed to load projects", {
+      error: projectsError,
+    });
+    return 0;
+  }
+  const projectIds = (projects ?? []).map((p) => p.id);
+  if (projectIds.length === 0) return 0;
+
+  const { count, error } = await supabase
+    .from("approval_requests")
+    .select("id", { count: "exact", head: true })
+    .in("project_id", projectIds)
+    .eq("state", "pending");
+
+  if (error) {
+    logger.error("getOpenApprovalCountForWorkspace: failed to load approval count", { error });
+    return 0;
+  }
+  return count ?? 0;
+}
+
 // --- Client member picker for F008's "Who approves what" settings UI --
 //
 // "a client member of the project" (spec's own words) resolves, per this

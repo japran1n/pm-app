@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceBySlug } from "@/lib/queries/workspaces";
 import { getProjectById } from "@/lib/queries/projects";
 import {
   getProjectEstimateAndLoggedByPerson,
@@ -51,16 +52,10 @@ export default async function ProjectDetailLayout({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
-
   // Parent workspace layout already verified auth and active membership —
   // no redundant getUser() needed here. The workspace lookup is still
   // required because this layout needs workspace.id for getProjectById.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {
     notFound();
@@ -82,38 +77,6 @@ export default async function ProjectDetailLayout({
   }
 
   const isArchived = Boolean(project.deletedAt);
-
-  // F114 (AS-172): total logged time, split into billable/non-billable,
-  // rendered as a small stat in the project header. AS-174 (excluding a
-  // soft-deleted task's time) is enforced inside the RPC itself
-  // (get_project_time_totals), not here.
-  // F168 (AS-303): the same RPC also returns the project's summed task
-  // estimate, rendered alongside the logged total. AS-304 (excluding a
-  // soft-deleted task's estimate) is likewise enforced inside the RPC.
-  // timeTotals and personRollup are independent of each other — run in
-  // parallel (P4: eliminates one serial round-trip per project page load).
-  // Internal "quick links" strip (Figma/staging/live/etc): fetched
-  // alongside the other independent per-project reads already made here.
-  // Unfiltered by client_visible (getProjectLinks, not
-  // getClientVisiblePortalLinks) -- this is the team's own surface, so a
-  // link the team hasn't yet marked client-visible should still be one
-  // click away for the team itself.
-  const [timeTotals, personRollup, linksResult] = await Promise.all([
-    getProjectTimeTotals(project.id),
-    getProjectEstimateAndLoggedByPerson(project.id),
-    getProjectLinks(project.id),
-  ]);
-  const projectLinks = linksResult.ok ? linksResult.data : [];
-  const totalMinutes =
-    timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
-  // F414: per-person rollup display names — depends on personRollup, so serial.
-  const personNames = await resolvePeople(
-    personRollup.map((row) => row.userId),
-  );
-  const formatHours = (minutes: number) => {
-    const hours = minutes / 60;
-    return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
-  };
 
   return (
     <div className="flex flex-col gap-6 p-6 pt-4 lg:p-8 lg:pt-8">
@@ -143,48 +106,25 @@ export default async function ProjectDetailLayout({
           </Link>
         </div>
 
-        {(totalMinutes > 0 || timeTotals.estimateMinutes > 0) && (
-          <div className="flex flex-col gap-1.5">
-            <p className="font-mono text-sm text-muted-foreground">
-              {formatHours(totalMinutes)}h logged (
-              {formatHours(timeTotals.billableMinutes)}h billable)
-              {timeTotals.estimateMinutes > 0 &&
-                ` of ${formatHours(timeTotals.estimateMinutes)}h estimated`}
-            </p>
-            {/* F413: a bar alongside the existing text line — the number
-                alone requires doing the division in your head to see
-                whether a project is over. Only rendered once there is an
-                estimate to measure against; a bar with nothing to compare
-                to would just be a full-width bar for every project. */}
-            {timeTotals.estimateMinutes > 0 && (
-              <div
-                className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted"
-                role="img"
-                aria-label={`${formatHours(totalMinutes)} of ${formatHours(timeTotals.estimateMinutes)} hours estimated logged`}
-              >
-                <div
-                  className={
-                    totalMinutes > timeTotals.estimateMinutes
-                      ? "h-full bg-destructive"
-                      : "h-full bg-primary"
-                  }
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      (totalMinutes / timeTotals.estimateMinutes) * 100,
-                    )}%`,
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        )}
+        <Suspense
+          fallback={
+            <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+          }
+        >
+          <TimeRollup projectId={project.id} />
+        </Suspense>
 
-        {personRollup.length > 0 && (
-          <PersonEstimateRollup rows={personRollup} names={personNames} />
-        )}
+        <Suspense
+          fallback={
+            <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+          }
+        >
+          <PersonRollup projectId={project.id} />
+        </Suspense>
 
-        <ProjectLinkStrip links={projectLinks} />
+        <Suspense fallback={null}>
+          <LinkStrip projectId={project.id} />
+        </Suspense>
 
         <Separator />
 
@@ -194,4 +134,97 @@ export default async function ProjectDetailLayout({
       {children}
     </div>
   );
+}
+
+function formatHours(minutes: number) {
+  const hours = minutes / 60;
+  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+}
+
+// F020 (AS-016, AS-017): the hours-logged line + estimate progress bar
+// require a Supabase RPC round trip (get_project_time_totals). Streaming it
+// behind its own Suspense boundary lets the header (breadcrumb/name/tabs)
+// paint before this resolves, instead of blocking the whole layout on it.
+async function TimeRollup({ projectId }: { projectId: string }) {
+  // F114 (AS-172): total logged time, split into billable/non-billable.
+  // AS-174 (excluding a soft-deleted task's time) is enforced inside the
+  // RPC itself (get_project_time_totals), not here.
+  // F168 (AS-303): the same RPC also returns the project's summed task
+  // estimate. AS-304 (excluding a soft-deleted task's estimate) is
+  // likewise enforced inside the RPC.
+  const timeTotals = await getProjectTimeTotals(projectId);
+  const totalMinutes =
+    timeTotals.billableMinutes + timeTotals.nonBillableMinutes;
+
+  if (totalMinutes <= 0 && timeTotals.estimateMinutes <= 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <p className="font-mono text-sm text-muted-foreground">
+        {formatHours(totalMinutes)}h logged (
+        {formatHours(timeTotals.billableMinutes)}h billable)
+        {timeTotals.estimateMinutes > 0 &&
+          ` of ${formatHours(timeTotals.estimateMinutes)}h estimated`}
+      </p>
+      {/* F413: a bar alongside the existing text line — the number alone
+          requires doing the division in your head to see whether a
+          project is over. Only rendered once there is an estimate to
+          measure against; a bar with nothing to compare to would just be
+          a full-width bar for every project. */}
+      {timeTotals.estimateMinutes > 0 && (
+        <div
+          className="h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-muted"
+          role="img"
+          aria-label={`${formatHours(totalMinutes)} of ${formatHours(timeTotals.estimateMinutes)} hours estimated logged`}
+        >
+          <div
+            className={
+              totalMinutes > timeTotals.estimateMinutes
+                ? "h-full bg-destructive"
+                : "h-full bg-primary"
+            }
+            style={{
+              width: `${Math.min(
+                100,
+                (totalMinutes / timeTotals.estimateMinutes) * 100,
+              )}%`,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// F020 (AS-016, AS-017): per-person estimate/logged rollup also depends on
+// the time-entries RPC plus a serial resolvePeople lookup for display
+// names — streamed independently of TimeRollup so one slow query doesn't
+// hold up the other.
+async function PersonRollup({ projectId }: { projectId: string }) {
+  const personRollup = await getProjectEstimateAndLoggedByPerson(projectId);
+
+  if (personRollup.length === 0) {
+    return null;
+  }
+
+  // F414: per-person rollup display names — depends on personRollup, so serial.
+  const personNames = await resolvePeople(
+    personRollup.map((row) => row.userId),
+  );
+
+  return <PersonEstimateRollup rows={personRollup} names={personNames} />;
+}
+
+// F020 (AS-016, AS-017): internal "quick links" strip (Figma/staging/
+// live/etc), streamed behind its own boundary. Unfiltered by
+// client_visible (getProjectLinks, not getClientVisiblePortalLinks) --
+// this is the team's own surface, so a link the team hasn't yet marked
+// client-visible should still be one click away for the team itself.
+async function LinkStrip({ projectId }: { projectId: string }) {
+  const linksResult = await getProjectLinks(projectId);
+  const projectLinks = linksResult.ok ? linksResult.data : [];
+
+  return <ProjectLinkStrip links={projectLinks} />;
 }

@@ -310,11 +310,30 @@ export async function getWorkspaceStatusOptions(
 ): Promise<CalendarStatusOption[]> {
   const supabase = await createClient();
 
+  // Perf (F009): constrain the project_statuses scan to this workspace's
+  // visible project ids instead of joining/filtering across all rows
+  // (995ms on 30,998 rows). Same visible-project resolution pattern as
+  // my-tasks/page.tsx's own project_statuses query.
+  const { data: visibleProjects, error: projectsError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (projectsError) {
+    throw projectsError;
+  }
+
+  const projectIds = (visibleProjects ?? []).map((row) => row.id);
+
+  if (projectIds.length === 0) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("project_statuses")
-    .select("name, color, category, position, projects!inner(workspace_id, deleted_at)")
-    .eq("projects.workspace_id", workspaceId)
-    .is("projects.deleted_at", null)
+    .select("name, color, category, position")
+    .in("project_id", projectIds)
     .order("position", { ascending: true });
 
   if (error) {

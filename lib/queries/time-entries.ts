@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { logger } from "@/lib/observability/logger";
 
 export type ProjectTimeTotals = {
@@ -320,10 +321,7 @@ export type ActiveTimer = {
 // actually enforces that a caller only ever sees their own row here (the
 // UNIQUE constraint on user_id means there is at most one anyway).
 export async function getActiveTimer(): Promise<ActiveTimer | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return null;

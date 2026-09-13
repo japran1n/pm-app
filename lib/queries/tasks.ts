@@ -506,6 +506,33 @@ export async function getWorkspaceListTasks(
 ): Promise<TaskCardTask[]> {
   const supabase = await createClient();
 
+  // Perf (F010): constrain the tasks scan to this workspace's visible
+  // project ids instead of relying solely on RLS + the
+  // `.eq("projects.workspace_id", ...)` embedded-table filter below, which
+  // still requires Postgres to evaluate `tasks_select_active_members` RLS
+  // over every live task row (4,738 rows, 323ms measured) before the join
+  // narrows it down. Same visible-project resolution pattern as
+  // getWorkspaceStatusOptions (F009) / my-tasks/page.tsx's own
+  // project_statuses query. If the workspace has no visible projects,
+  // short-circuit to an empty result — matches this function's existing
+  // "no rows" shape for filters that resolve to no ids (see
+  // assigneeTaskIds/blockedIds below).
+  const { data: visibleProjects, error: projectsError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null);
+
+  if (projectsError) {
+    throw projectsError;
+  }
+
+  const projectIds = (visibleProjects ?? []).map((row) => row.id);
+
+  if (projectIds.length === 0) {
+    return [];
+  }
+
   let query = supabase
     .from("tasks")
     .select(
@@ -528,6 +555,7 @@ export async function getWorkspaceListTasks(
       // Type column before this.
       "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, blocked_reason, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
+    .in("project_id", projectIds)
     .eq("projects.workspace_id", workspaceId)
     .is("projects.deleted_at", null)
     .is("deleted_at", null);
