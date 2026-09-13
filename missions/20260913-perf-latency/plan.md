@@ -84,6 +84,18 @@ and parallel workers in one worktree would collide.
 - Same for `lib/queries/views.ts` (two call sites), `lib/queries/profile.ts`, `lib/queries/time-entries.ts`
 **Files:** `lib/queries/chat.ts`, `lib/queries/views.ts`, `lib/queries/profile.ts`, `lib/queries/time-entries.ts`
 
+### F005b: Thread user id into portal queries
+**Est:** 45 min · **Depends on:** F005
+**Covers:** AS-004
+- Created from F005's `SUGGESTED FOLLOWUP` after it stopped short of
+  `lib/queries/portal.ts` rather than guess about preview mode
+- The orchestrator established that one request is single-identity by
+  construction, so the `cache()` leak F005 feared cannot occur. The open
+  question is narrower: whether each call site wants the *effective* identity
+  (`createClient`, previewed under preview) or the *real* one
+  (`createRealSessionClient`, the previewer). See the feature spec
+**Files:** `lib/queries/portal.ts`
+
 ### F006: Proxy skips the auth call when no session cookie is present
 **Est:** 30 min · **Depends on:** none
 **Covers:** AS-005, AS-006
