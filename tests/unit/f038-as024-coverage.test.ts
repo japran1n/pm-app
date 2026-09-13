@@ -155,6 +155,29 @@ vi.mock("@/lib/actions/palette-search", () => ({
   resolveRecentItems: vi.fn(async () => ({ projects: [], tasks: [] })),
 }));
 
+// The real PALETTE_ACTIONS no longer contains any action whose `run()`
+// returns no `navigateTo` (the "Toggle theme" quick action this test was
+// written against was removed from the palette), but the AS-024 branch it
+// exercises — `setOpen(false)` + `resetPaletteState()` without
+// `navigate()` — still exists in command-palette.tsx. Append a synthetic
+// no-navigate action so the branch stays covered.
+vi.mock("@/components/command/actions", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/command/actions")>();
+  return {
+    ...actual,
+    PALETTE_ACTIONS: [
+      ...actual.PALETTE_ACTIONS,
+      {
+        id: "test-no-navigate",
+        label: "Toggle theme",
+        isVisible: () => true,
+        run: () => ({ navigateTo: null }),
+      },
+    ],
+  };
+});
+
 import { CommandPalette } from "@/components/command/command-palette";
 
 describe("CommandPalette navigate(): resetPaletteState clears the realtime patch map (AS-024)", () => {

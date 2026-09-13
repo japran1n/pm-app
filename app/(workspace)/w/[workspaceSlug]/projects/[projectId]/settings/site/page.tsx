@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canWrite} from "@/lib/auth/permissions";
 import { getProjectAccounts, getProjectLinks } from "@/lib/queries/project-site";
 import { SitePanel } from "@/components/project/site-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -21,23 +22,20 @@ export default async function ProjectSiteSettingsPage({
 
   const supabase = await createClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -51,19 +49,11 @@ export default async function ProjectSiteSettingsPage({
     notFound();
   }
 
-  const [{ data: ownWorkspaceMembership }, linksResult, accountsResult] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
+  const [linksResult, accountsResult] = await Promise.all([
     getProjectLinks(project.id),
     getProjectAccounts(project.id),
   ]);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const canManage = canWrite({ role: workspaceRole });
 
   return (

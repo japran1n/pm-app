@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   canManageMembers,
@@ -54,33 +55,23 @@ export default async function MembersPage({
   const { workspaceSlug } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
+
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  const { user, workspace, role } = ctx;
 
   // F134 (AS-222): a guest cannot see the workspace members list at all —
   // deny, not merely hide, so this page also rejects direct navigation.
@@ -90,7 +81,7 @@ export default async function MembersPage({
   // gating and any future server-side re-check both call (AS-230).
   if (
     !canViewMembersList({
-      role: (ownMembership?.role ?? "guest") as WorkspaceRole,
+      role,
     })
   ) {
     redirect(`/w/${workspaceSlug}`);
@@ -112,15 +103,13 @@ export default async function MembersPage({
   }
 
   const canInvite =
-    ownMembership?.role === "owner" || ownMembership?.role === "admin";
+    role === "owner" || role === "admin";
   // AS-218 (F129, superseding mission-1's owner-only AS-014/AS-015): owner
   // OR admin may change another member's role — same line as `canInvite`,
   // via the shared `canManageMembers` predicate (AS-230: one permission
   // helper backs both UI gating and the server-side re-check in
   // `changeMemberRole`).
-  const canChangeRoles = canManageMembers({
-    role: (ownMembership?.role ?? "guest") as WorkspaceRole,
-  });
+  const canChangeRoles = canManageMembers({ role });
 
   // F134 (AS-220): the invite-as-guest UI needs a project list to scope the
   // invite to. RLS-scoped select is sufficient here (an owner/admin — the
@@ -142,7 +131,7 @@ export default async function MembersPage({
   // Candidates are built only from `members.active` (already excludes
   // pending invites — AS-234) and exclude the caller's own row (there is
   // nothing to transfer to yourself).
-  const isOwner = ownMembership?.role === "owner";
+  const isOwner = role === "owner";
   const transferCandidates: TransferOwnershipCandidate[] =
     isOwner && members
       ? members.active

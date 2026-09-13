@@ -1,7 +1,8 @@
 import { cache } from "react";
 
 import { logger } from "@/lib/observability/logger";
-import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
+import { getRequestClient } from "@/lib/auth/current-user";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import type { WorkspaceRole } from "@/lib/auth/permissions";
 
 // Shared "default workspace" lookup (AS-005 / AS-003 adjacent).

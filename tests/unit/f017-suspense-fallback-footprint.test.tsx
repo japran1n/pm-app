@@ -54,11 +54,14 @@ describe("AS-017/AS-020: Suspense fallbacks hold each figure's exact footprint",
     const nullFallbacks = codeLines.filter((line) =>
       line.includes("<Suspense fallback={null}>"),
     );
-    // Only TourFigure keeps fallback={null} -- it renders `null` until
-    // active and, once active, only `position: fixed` overlay elements
-    // that never participate in document flow, so there is no footprint
-    // to reserve.
-    expect(nullFallbacks).toHaveLength(1);
+    // Two figures legitimately keep fallback={null}:
+    // - TourFigure: renders `null` until active and, once active, only
+    //   `position: fixed` overlay elements that never participate in
+    //   document flow, so there is no footprint to reserve.
+    // - ClientPresentationBannerFigure (added after this test): renders
+    //   nothing at all for most users (non-client sessions), so reserving
+    //   a footprint would show a permanent empty gap instead.
+    expect(nullFallbacks).toHaveLength(2);
 
     expect(source).toMatch(/fallback=\{<NotificationBellSkeleton \/>\}/);
     expect(source).toMatch(/fallback=\{<WorkspaceSwitcherSkeleton \/>\}/);

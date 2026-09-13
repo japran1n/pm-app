@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
-import { canManageProject, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canManageProject} from "@/lib/auth/permissions";
 import { getTaskTypes } from "@/lib/queries/task-types";
 import { TaskTypeManager } from "@/components/workspace/task-type-manager";
 
@@ -19,34 +19,20 @@ export default async function TaskTypesSettingsPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const role = (ownMembership?.role ?? "guest") as WorkspaceRole;
+  const { workspace, role } = ctx;
 
   if (role === "guest" || role === "client") {
     redirect(`/w/${workspaceSlug}`);

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Archive } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getArchivedWorkspaceProjects } from "@/lib/queries/projects";
 import { RestoreProjectButton } from "@/components/project/restore-project-button";
 import { Badge } from "@/components/ui/badge";
@@ -40,36 +40,22 @@ export default async function ArchivePage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const role = ownMembership?.role ?? "guest";
+  const { user, workspace, role } = ctx;
 
   // AS-256/access: page-level gate for guests, evaluated before the
   // archived-projects query runs — same "redirect away, not just hide UI"

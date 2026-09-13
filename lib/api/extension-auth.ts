@@ -154,19 +154,15 @@ export function withExtensionAuth(
 
     // ARCH-007: per-user fixed-window rate limit. Fail OPEN on RPC error.
     const { bucket, limit, windowSeconds } = options.rateLimit;
-    // Cast: the generated Database types (lib/supabase/database.types.ts)
-    // are regenerated from the LIVE schema, and the migration adding this
-    // RPC is written but deliberately not applied yet. Fail-open below
-    // also covers the pre-migration "function does not exist" error.
-    const { data: allowed, error: rateLimitError } = (await admin.rpc(
-      "bump_extension_rate_limit" as never,
+    const { data: allowed, error: rateLimitError } = await admin.rpc(
+      "bump_extension_rate_limit",
       {
         p_user_id: user.id,
         p_bucket: bucket,
         p_limit: limit,
         p_window_seconds: windowSeconds,
-      } as never,
-    )) as { data: boolean | null; error: { message: string } | null };
+      },
+    );
 
     if (rateLimitError) {
       logger.error(

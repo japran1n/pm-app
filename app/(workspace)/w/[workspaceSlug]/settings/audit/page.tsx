@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
-import { canViewAudit, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canViewAudit} from "@/lib/auth/permissions";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
   DEFAULT_AUDIT_PAGE_SIZE,
@@ -44,36 +44,22 @@ export default async function AuditLogPage({
   const { workspaceSlug } = await params;
   const resolvedSearchParams = await searchParams;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const role = (ownMembership?.role ?? "guest") as WorkspaceRole;
+  const { workspace, role } = ctx;
 
   // AS-246: page-level gate, evaluated before the audit_log query runs.
   if (!canViewAudit({ role })) {

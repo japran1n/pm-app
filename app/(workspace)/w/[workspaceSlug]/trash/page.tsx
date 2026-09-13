@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getWorkspaceTrash } from "@/lib/queries/trash";
 import { TrashFilters } from "@/components/trash/trash-filters";
 import { TrashList } from "@/components/trash/trash-list";
@@ -51,57 +51,36 @@ export default async function TrashPage({
   const { workspaceSlug } = await params;
   const resolvedSearchParams = await searchParams;
 
-  const supabase = await createClient();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  // Perf (W9): auth and the workspace-by-slug lookup are independent of
-  // each other.
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
-
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { workspace, role } = ctx;
 
   let allItems: Awaited<ReturnType<typeof getWorkspaceTrash>> = [];
   let loadError = false;
 
-  // Perf (W9): the caller's membership role and the trash list both
-  // depend only on `workspace.id`/`user.id` (already known), not on each
-  // other -- fetched in parallel. The guest redirect below still runs
-  // before anything is rendered, so a guest never sees this page's
-  // content even though the (cheap, RLS-scoped) trash query already ran
-  // alongside the role check.
-  const [{ data: ownMembership }, trashResult] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
-    getWorkspaceTrash(workspace.id).then(
-      (items) => ({ items, error: null as unknown }),
-      (error) => {
-        logger.error("TrashPage: failed to load trash", { error: error });
-        return { items: [] as Awaited<ReturnType<typeof getWorkspaceTrash>>, error };
-      },
-    ),
-  ]);
-
-  const role = ownMembership?.role ?? "guest";
+  // The guest redirect below still runs before anything is rendered, so
+  // a guest never sees this page's content even though the (cheap,
+  // RLS-scoped) trash query already ran alongside the role check.
+  const trashResult = await getWorkspaceTrash(workspace.id).then(
+    (items) => ({ items, error: null as unknown }),
+    (error) => {
+      logger.error("TrashPage: failed to load trash", { error: error });
+      return { items: [] as Awaited<ReturnType<typeof getWorkspaceTrash>>, error };
+    },
+  );
 
   if (role === "guest") {
     redirect(`/w/${workspaceSlug}`);

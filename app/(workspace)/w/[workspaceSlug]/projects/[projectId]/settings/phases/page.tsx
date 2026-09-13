@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canWrite} from "@/lib/auth/permissions";
 import { getProjectPhasesForTeam } from "@/lib/queries/phases";
 import { PhaseList } from "@/components/project/phase-list";
 // F002 (missions/20260903-portal): lets this page link to the sibling
@@ -42,23 +43,20 @@ export default async function ProjectPhasesSettingsPage({
 
   const supabase = await createClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -72,18 +70,8 @@ export default async function ProjectPhasesSettingsPage({
     notFound();
   }
 
-  const [{ data: ownWorkspaceMembership }, phases] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
-    getProjectPhasesForTeam(project.id),
-  ]);
+  const phases = await getProjectPhasesForTeam(project.id);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const canManage = canWrite({ role: workspaceRole });
 
   return (

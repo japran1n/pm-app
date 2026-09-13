@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canWrite} from "@/lib/auth/permissions";
 import { getProjectHoursTeam } from "@/lib/queries/hours";
 import { getProjectBudgets } from "@/lib/queries/project-budgets";
 import { resolvePeople } from "@/lib/queries/people";
@@ -39,23 +40,20 @@ export default async function ProjectHoursPage({
 
   const supabase = await createClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -68,16 +66,6 @@ export default async function ProjectHoursPage({
   if (!project) {
     notFound();
   }
-
-  const { data: ownWorkspaceMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
 
   // "Team, not client": a client role never sees this route at all, per
   // this page's own doc comment above.
