@@ -7,6 +7,7 @@ import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { withAuthz } from "@/lib/actions/authz";
 import { canEditTask } from "@/lib/auth/permissions";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 
 // F173 (AS-311): recursively finds the `taskItem` node carrying `itemId`
 // (its `id` attr, assigned client-side by
@@ -100,7 +101,7 @@ const toggleDescriptionChecklistItemImpl = withAuthz(
       const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
-          "id, deleted_at, description_json, projects!inner(id, workspace_id, visibility)",
+          "id, deleted_at, description_json, client_visible, projects!inner(id, workspace_id, visibility)",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -121,6 +122,7 @@ const toggleDescriptionChecklistItemImpl = withAuthz(
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
         extra: {
           descriptionJson: taskRow.description_json as JSONContent | null,
+          clientVisible: Boolean(taskRow.client_visible),
         },
       };
     },
@@ -177,6 +179,14 @@ const toggleDescriptionChecklistItemImpl = withAuthz(
           "toggleDescriptionChecklistItem: revalidatePath failed (non-fatal):",
           revalidateError,
         );
+      }
+
+      // AS-006 scrutiny remediation: a checklist toggle on a client-visible
+      // task's description is visible on the portal task detail, so it must
+      // also revalidate the portal. Gated on `client_visible` (loaded above
+      // with no extra round trip).
+      if (ctx.clientVisible) {
+        revalidatePortalProject(workspaceRow.slug, ctx.projectId!);
       }
     }
 

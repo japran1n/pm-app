@@ -10,6 +10,7 @@ import { logger } from "@/lib/observability/logger";
 import { withAuthz } from "@/lib/actions/authz";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeTaskFieldChanges } from "@/lib/activity/task-activity";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 
 export type DeleteTaskResult =
   | {
@@ -98,7 +99,9 @@ const deleteTaskImpl = withAuthz(
     resolveWorkspace: async (input, admin) => {
       const { data: taskRow, error } = await admin
         .from("tasks")
-        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .select(
+          "id, deleted_at, client_visible, projects!inner(id, workspace_id, visibility)",
+        )
         .eq("id", input.taskId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -116,7 +119,7 @@ const deleteTaskImpl = withAuthz(
         workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-        extra: {},
+        extra: { clientVisible: Boolean(taskRow.client_visible) },
       };
     },
   },
@@ -153,6 +156,14 @@ const deleteTaskImpl = withAuthz(
       } catch (revalidateError) {
         // Non-fatal cache-freshness rationale, same as createTask above.
         logger.error("deleteTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+
+      // AS-006 scrutiny remediation: a client-visible task disappearing
+      // from the team side must also disappear from the portal. Gated on
+      // `client_visible` (loaded above with no extra round trip) so a
+      // non-shared task's delete never touches the portal path.
+      if (ctx.clientVisible) {
+        revalidatePortalProject(workspaceRow.slug, ctx.projectId!);
       }
     }
 
@@ -289,7 +300,7 @@ const restoreTaskImpl = withAuthz(
       const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
-          "id, project_id, status, deleted_at, deleted_via_task_id, projects!inner(id, workspace_id, visibility)",
+          "id, project_id, status, deleted_at, deleted_via_task_id, client_visible, projects!inner(id, workspace_id, visibility)",
         )
         .eq("id", input.taskId)
         .not("deleted_at", "is", null)
@@ -308,7 +319,7 @@ const restoreTaskImpl = withAuthz(
         workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-        extra: {},
+        extra: { clientVisible: Boolean(taskRow.client_visible) },
       };
     },
   },
@@ -380,6 +391,13 @@ const restoreTaskImpl = withAuthz(
       } catch (revalidateError) {
         // Non-fatal cache-freshness rationale, same as createTask above.
         logger.error("restoreTask: revalidatePath failed (non-fatal)", { error: revalidateError });
+      }
+
+      // AS-006 scrutiny remediation: a client-visible task reappearing on
+      // the team side must also reappear on the portal. Gated on
+      // `client_visible` (loaded above with no extra round trip).
+      if (ctx.clientVisible) {
+        revalidatePortalProject(workspaceRow.slug, ctx.projectId!);
       }
     }
 

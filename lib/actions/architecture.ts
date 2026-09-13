@@ -26,6 +26,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -85,7 +86,7 @@ export async function createPage(
   // createTaskForUser's project lookup uses (lib/tasks/create.ts).
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -93,6 +94,14 @@ export async function createPage(
   if (projectError || !projectRow) {
     return { ok: false, error: "Project not found." };
   }
+
+  const createPageWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createPageWorkspaceSlug = Array.isArray(createPageWorkspace)
+    ? createPageWorkspace[0]?.slug
+    : createPageWorkspace?.slug;
 
   const membership = await requireActiveMembership(
     admin,
@@ -227,6 +236,10 @@ export async function createPage(
     });
   }
 
+  if (createPageWorkspaceSlug) {
+    revalidatePortalProject(createPageWorkspaceSlug, projectId);
+  }
+
   return {
     ok: true,
     data: {
@@ -268,7 +281,7 @@ export async function changePageKind(
   // it is actually a page (page_slug set), before touching it.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -284,6 +297,12 @@ export async function changePageKind(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const changePageKindWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const changePageKindWorkspaceSlug = Array.isArray(changePageKindWorkspace)
+    ? changePageKindWorkspace[0]?.slug
+    : changePageKindWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -320,6 +339,10 @@ export async function changePageKind(
     logger.error("changePageKind: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (changePageKindWorkspaceSlug) {
+    revalidatePortalProject(changePageKindWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -363,7 +386,7 @@ export async function renamePage(
 
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -379,6 +402,12 @@ export async function renamePage(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const renamePageWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const renamePageWorkspaceSlug = Array.isArray(renamePageWorkspace)
+    ? renamePageWorkspace[0]?.slug
+    : renamePageWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -415,6 +444,10 @@ export async function renamePage(
     logger.error("renamePage: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (renamePageWorkspaceSlug) {
+    revalidatePortalProject(renamePageWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -454,7 +487,7 @@ export async function deletePage(
   // convention as changePageKind/renamePage above.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -470,6 +503,12 @@ export async function deletePage(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const deletePageWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const deletePageWorkspaceSlug = Array.isArray(deletePageWorkspace)
+    ? deletePageWorkspace[0]?.slug
+    : deletePageWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -508,6 +547,10 @@ export async function deletePage(
     logger.error("deletePage: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (deletePageWorkspaceSlug) {
+    revalidatePortalProject(deletePageWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -552,7 +595,7 @@ export async function createSection(
   // uses.
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -560,6 +603,14 @@ export async function createSection(
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const createSectionWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createSectionWorkspaceSlug = Array.isArray(createSectionWorkspace)
+    ? createSectionWorkspace[0]?.slug
+    : createSectionWorkspace?.slug;
 
   const membership = await requireActiveMembership(
     admin,
@@ -678,6 +729,10 @@ export async function createSection(
     });
   }
 
+  if (createSectionWorkspaceSlug) {
+    revalidatePortalProject(createSectionWorkspaceSlug, projectId);
+  }
+
   return { success: true, id: inserted.id };
 }
 
@@ -711,7 +766,9 @@ export async function deleteSection(
   // own) before touching it -- same convention as deletePage above.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))",
+    )
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -728,6 +785,12 @@ export async function deleteSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const deleteSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const deleteSectionWorkspaceSlug = Array.isArray(deleteSectionWorkspace)
+    ? deleteSectionWorkspace[0]?.slug
+    : deleteSectionWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -766,6 +829,10 @@ export async function deleteSection(
     logger.error("deleteSection: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (deleteSectionWorkspaceSlug) {
+    revalidatePortalProject(deleteSectionWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -818,7 +885,7 @@ export async function renameSection(
 
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, parent_task_id, projects(workspace_id)")
+    .select("id, project_id, parent_task_id, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -835,6 +902,12 @@ export async function renameSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const renameSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const renameSectionWorkspaceSlug = Array.isArray(renameSectionWorkspace)
+    ? renameSectionWorkspace[0]?.slug
+    : renameSectionWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -871,6 +944,10 @@ export async function renameSection(
     logger.error("renameSection: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (renameSectionWorkspaceSlug) {
+    revalidatePortalProject(renameSectionWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -920,12 +997,28 @@ export async function reorderSections(
 
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))",
+    )
     .in("id", ids)
     .is("deleted_at", null);
 
   if (taskError || !taskRows || taskRows.length !== ids.length) {
     return { success: false, error: "Section not found." };
+  }
+
+  const reorderSectionsPortalTargets = new Map<string, string>();
+  for (const taskRow of taskRows) {
+    const projects = (
+      taskRow as {
+        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
+      }
+    ).projects;
+    const workspace = projects?.workspaces;
+    const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+    if (slug) {
+      reorderSectionsPortalTargets.set(slug, taskRow.project_id);
+    }
   }
 
   const membershipCache = new Map<string, boolean>();
@@ -979,6 +1072,10 @@ export async function reorderSections(
     });
   }
 
+  for (const [slug, projectIdForSlug] of reorderSectionsPortalTargets) {
+    revalidatePortalProject(slug, projectIdForSlug);
+  }
+
   return { success: true };
 }
 
@@ -1029,7 +1126,7 @@ export async function moveSectionToPage(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, page_slug, parent_task_id, projects(workspace_id)")
+    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))")
     .eq("id", sectionTaskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1057,6 +1154,13 @@ export async function moveSectionToPage(
   if (!sectionWorkspaceId || !pageWorkspaceId || sectionWorkspaceId !== pageWorkspaceId) {
     return { success: false, error: "Destination page not found." };
   }
+
+  const moveSectionWorkspace = (
+    sectionRow as { projects?: { workspaces?: { slug: string } | { slug: string }[] | null } }
+  ).projects?.workspaces;
+  const moveSectionWorkspaceSlug = Array.isArray(moveSectionWorkspace)
+    ? moveSectionWorkspace[0]?.slug
+    : moveSectionWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, sectionWorkspaceId, user.id);
   if (!membership.ok || !canWrite({ role: membership.role })) {
@@ -1088,6 +1192,10 @@ export async function moveSectionToPage(
     logger.error("moveSectionToPage: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (moveSectionWorkspaceSlug) {
+    revalidatePortalProject(moveSectionWorkspaceSlug, sectionRow.project_id);
   }
 
   return { success: true };
@@ -1135,12 +1243,26 @@ export async function reorderPages(
 
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select("id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .in("id", ids)
     .is("deleted_at", null);
 
   if (taskError || !taskRows || taskRows.length !== ids.length) {
     return { success: false, error: "Page not found." };
+  }
+
+  const reorderPagesPortalTargets = new Map<string, string>();
+  for (const taskRow of taskRows) {
+    const projects = (
+      taskRow as {
+        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
+      }
+    ).projects;
+    const workspace = projects?.workspaces;
+    const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+    if (slug) {
+      reorderPagesPortalTargets.set(slug, taskRow.project_id);
+    }
   }
 
   const membershipCache = new Map<string, boolean>();
@@ -1194,6 +1316,10 @@ export async function reorderPages(
     });
   }
 
+  for (const [slug, projectIdForSlug] of reorderPagesPortalTargets) {
+    revalidatePortalProject(slug, projectIdForSlug);
+  }
+
   return { success: true };
 }
 
@@ -1235,7 +1361,7 @@ export async function createComponentFromSection(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, title, page_slug, parent_task_id, component_id, projects(workspace_id)",
+      "id, project_id, title, page_slug, parent_task_id, component_id, projects(workspace_id, workspaces(slug))",
     )
     .eq("id", sectionTaskId)
     .is("deleted_at", null)
@@ -1264,6 +1390,14 @@ export async function createComponentFromSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const createComponentFromSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const createComponentFromSectionWorkspaceSlug = Array.isArray(
+    createComponentFromSectionWorkspace,
+  )
+    ? createComponentFromSectionWorkspace[0]?.slug
+    : createComponentFromSectionWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1351,6 +1485,10 @@ export async function createComponentFromSection(
     });
   }
 
+  if (createComponentFromSectionWorkspaceSlug) {
+    revalidatePortalProject(createComponentFromSectionWorkspaceSlug, projectId);
+  }
+
   return { success: true, componentId: insertedComponent.id };
 }
 
@@ -1393,13 +1531,21 @@ export async function createComponent(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id")
+    .select("id, workspace_id, workspaces(slug)")
     .eq("id", projectId)
     .maybeSingle();
 
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const createComponentWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createComponentWorkspaceSlug = Array.isArray(createComponentWorkspace)
+    ? createComponentWorkspace[0]?.slug
+    : createComponentWorkspace?.slug;
 
   const membership = await requireActiveMembership(
     admin,
@@ -1472,6 +1618,10 @@ export async function createComponent(
     });
   }
 
+  if (createComponentWorkspaceSlug) {
+    revalidatePortalProject(createComponentWorkspaceSlug, projectId);
+  }
+
   return { success: true, id: inserted.id };
 }
 
@@ -1527,13 +1677,21 @@ export async function linkComponentToSection(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id")
+    .select("id, workspace_id, workspaces(slug)")
     .eq("id", sectionRow.project_id)
     .maybeSingle();
 
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const linkComponentWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const linkComponentWorkspaceSlug = Array.isArray(linkComponentWorkspace)
+    ? linkComponentWorkspace[0]?.slug
+    : linkComponentWorkspace?.slug;
 
   const membership = await requireActiveMembership(
     admin,
@@ -1576,6 +1734,10 @@ export async function linkComponentToSection(
     logger.error("linkComponentToSection: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (linkComponentWorkspaceSlug) {
+    revalidatePortalProject(linkComponentWorkspaceSlug, sectionRow.project_id);
   }
 
   return { success: true };
@@ -1623,7 +1785,7 @@ export async function renameComponent(
 
   const { data: componentRow, error: componentError } = await admin
     .from("page_components")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", componentId)
     .maybeSingle();
 
@@ -1638,6 +1800,14 @@ export async function renameComponent(
 
   const workspaceId = (componentRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const renameComponentWorkspace = (
+    componentRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const renameComponentWorkspaceSlug = Array.isArray(renameComponentWorkspace)
+    ? renameComponentWorkspace[0]?.slug
+    : renameComponentWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1686,6 +1856,10 @@ export async function renameComponent(
     });
   }
 
+  if (renameComponentWorkspaceSlug) {
+    revalidatePortalProject(renameComponentWorkspaceSlug, componentRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -1718,7 +1892,7 @@ export async function unlinkComponentFromSection(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", sectionTaskId)
     .maybeSingle();
 
@@ -1733,6 +1907,14 @@ export async function unlinkComponentFromSection(
 
   const workspaceId = (sectionRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const unlinkComponentWorkspace = (
+    sectionRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const unlinkComponentWorkspaceSlug = Array.isArray(unlinkComponentWorkspace)
+    ? unlinkComponentWorkspace[0]?.slug
+    : unlinkComponentWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1774,6 +1956,10 @@ export async function unlinkComponentFromSection(
     );
   }
 
+  if (unlinkComponentWorkspaceSlug) {
+    revalidatePortalProject(unlinkComponentWorkspaceSlug, sectionRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -1805,7 +1991,7 @@ export async function deleteComponent(
 
   const { data: componentRow, error: componentError } = await admin
     .from("page_components")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", componentId)
     .maybeSingle();
 
@@ -1820,6 +2006,14 @@ export async function deleteComponent(
 
   const workspaceId = (componentRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const deleteComponentWorkspace = (
+    componentRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const deleteComponentWorkspaceSlug = Array.isArray(deleteComponentWorkspace)
+    ? deleteComponentWorkspace[0]?.slug
+    : deleteComponentWorkspace?.slug;
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1858,6 +2052,10 @@ export async function deleteComponent(
     });
   }
 
+  if (deleteComponentWorkspaceSlug) {
+    revalidatePortalProject(deleteComponentWorkspaceSlug, componentRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -1883,7 +2081,12 @@ export async function deleteComponent(
 export type SetPageClientVisibilityResult =
   | {
       ok: true;
-      data: { taskId: string; clientVisible: boolean; sectionsShared: number };
+      data: {
+        taskId: string;
+        clientVisible: boolean;
+        sectionsShared: number;
+        sectionsShareFailed?: boolean;
+      };
     }
   | { ok: false; error: string };
 
@@ -1973,6 +2176,7 @@ export async function setPageClientVisibility(
   }
 
   let sectionsShared = 0;
+  let sectionsShareFailed = false;
 
   if (parsed.data.visible && options.includeSections) {
     const { data: sectionRows, error: sectionsUpdateError } = await admin
@@ -1986,6 +2190,14 @@ export async function setPageClientVisibility(
       logger.error("setPageClientVisibility: sections update failed", {
         error: sectionsUpdateError,
       });
+      // AS-006/scrutiny remediation: the page's own client_visible update
+      // above already committed successfully -- returning ok:false here
+      // would falsely tell the caller the whole action failed and the page
+      // is still hidden. Instead this is surfaced as a partial failure so
+      // the UI can show a warning toast ("Page shared, but its sections
+      // could not be shared") while still reporting the page share as a
+      // success.
+      sectionsShareFailed = true;
     } else {
       sectionsShared = sectionRows?.length ?? 0;
     }
@@ -1993,16 +2205,14 @@ export async function setPageClientVisibility(
 
   try {
     revalidatePath("/w", "layout");
-    if (workspaceSlug) {
-      revalidatePath(
-        `/portal/${workspaceSlug}/p/${taskRow.project_id}/architecture`,
-        "page",
-      );
-    }
   } catch (revalidateError) {
     logger.error("setPageClientVisibility: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
   }
 
   return {
@@ -2011,6 +2221,7 @@ export async function setPageClientVisibility(
       taskId: parsed.data.taskId,
       clientVisible: parsed.data.visible,
       sectionsShared,
+      sectionsShareFailed,
     },
   };
 }
@@ -2021,7 +2232,19 @@ export async function setPageClientVisibility(
 // row (`WHERE id = sectionTaskId`) -- other sections and the parent page
 // are never touched.
 export type SetSectionClientVisibilityResult =
-  | { ok: true; data: { taskId: string; clientVisible: boolean } }
+  | {
+      ok: true;
+      data: {
+        taskId: string;
+        clientVisible: boolean;
+        // AS-004/AS-005 UI hint (scrutiny remediation, item 10): true when
+        // this section was just shared but its parent page is still
+        // hidden from the client, so the UI can prompt "share the page
+        // too" -- a section the client can't reach because its page is
+        // hidden is otherwise a silent no-op from the client's view.
+        pageHidden: boolean;
+      };
+    }
   | { ok: false; error: string };
 
 export async function setSectionClientVisibility(
@@ -2068,6 +2291,17 @@ export async function setSectionClientVisibility(
     return { ok: false, error: "Section not found." };
   }
 
+  // AS-004/AS-005 UI hint (item 10): look up whether this section's parent
+  // page is currently hidden from the client, so the caller can surface
+  // "Page is hidden from the client -- share the page too" when a section
+  // is shared underneath a still-hidden page.
+  const { data: parentPageRow } = await admin
+    .from("tasks")
+    .select("client_visible")
+    .eq("id", taskRow.parent_task_id)
+    .maybeSingle();
+  const pageHidden = parentPageRow ? !parentPageRow.client_visible : false;
+
   const project = taskRow.projects as
     | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
     | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
@@ -2110,21 +2344,23 @@ export async function setSectionClientVisibility(
 
   try {
     revalidatePath("/w", "layout");
-    if (workspaceSlug) {
-      revalidatePath(
-        `/portal/${workspaceSlug}/p/${taskRow.project_id}/architecture`,
-        "page",
-      );
-    }
   } catch (revalidateError) {
     logger.error("setSectionClientVisibility: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
   }
 
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
+  }
+
   return {
     ok: true,
-    data: { taskId: parsed.data.taskId, clientVisible: parsed.data.visible },
+    data: {
+      taskId: parsed.data.taskId,
+      clientVisible: parsed.data.visible,
+      pageHidden: parsed.data.visible && pageHidden,
+    },
   };
 }
 

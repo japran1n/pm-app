@@ -1611,7 +1611,7 @@ export async function getPortalActivitySummary(
 // making them open each task to find one. RLS-scoped exactly like this
 // file's other queries: attachments join back to tasks, and a client's own
 // SELECT on `tasks` already only returns client_visible rows (20260902010000),
-// so filtering here on client_visible again is belt-and-surpenders, not the
+// so filtering here on client_visible again is belt-and-suspenders, not the
 // real boundary.
 //
 // F001 (missions/20260914-portal-simplify, AS-001/AS-002): this used to be

@@ -64,7 +64,14 @@ export function PageClientVisibilityToggle({ page }: { page: BoardPage }) {
         return;
       }
 
-      if (includeSections && result.data.sectionsShared > 0) {
+      if (includeSections && result.data.sectionsShareFailed) {
+        // Scrutiny remediation (item 4): the page itself DID share
+        // successfully -- only the section cascade failed -- so this is a
+        // warning, not an error toast.
+        toast.warning(
+          "Page shared, but its sections could not be shared. Try sharing them individually.",
+        );
+      } else if (includeSections && result.data.sectionsShared > 0) {
         toast.success(
           `Shared with the client, including ${result.data.sectionsShared} section${
             result.data.sectionsShared === 1 ? "" : "s"
@@ -100,7 +107,7 @@ export function PageClientVisibilityToggle({ page }: { page: BoardPage }) {
         aria-pressed={isShared}
         aria-label={isShared ? "Hide page from client" : "Share page with client"}
         title={isShared ? "Visible to client" : "Internal only"}
-        className={isShared ? "shrink-0 text-emerald-600" : "shrink-0"}
+        className={isShared ? "shrink-0 text-primary" : "shrink-0 text-muted-foreground"}
       >
         {isPending ? (
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />

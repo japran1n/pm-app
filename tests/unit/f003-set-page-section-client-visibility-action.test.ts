@@ -35,6 +35,7 @@ vi.mock("@/lib/auth/permissions", () => ({
 type Row = Record<string, unknown>;
 
 let pageRow: Row | null;
+const parentPageRow: Row | null = { client_visible: true };
 let updateCalls: { table: string; payload: Row; matchId: string }[] = [];
 let sectionsUpdateSelectResult: { data: Row[] | null; error: unknown };
 
@@ -48,6 +49,10 @@ function buildAdminMock() {
               is: vi.fn(() => ({
                 maybeSingle: vi.fn(async () => ({ data: pageRow, error: null })),
               })),
+              // Item 10 (F004b remediation): setSectionClientVisibility
+              // also looks up the parent page's client_visible directly
+              // via .eq().maybeSingle(), with no .is() in between.
+              maybeSingle: vi.fn(async () => ({ data: parentPageRow, error: null })),
             })),
           })),
           update: vi.fn((payload: Row) => ({

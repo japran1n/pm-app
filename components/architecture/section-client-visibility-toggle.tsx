@@ -45,7 +45,16 @@ export function SectionClientVisibilityToggle({ section }: { section: BoardSecti
         return;
       }
 
-      toast.success(next ? "Shared with the client." : "Hidden from the client.");
+      if (result.data.pageHidden) {
+        // Scrutiny remediation (item 10): sharing a section whose parent
+        // page is still hidden is a no-op from the client's point of view
+        // -- the client can't reach a section on a page they can't see.
+        toast.warning(
+          "Shared with the client, but the page is hidden -- share the page too.",
+        );
+      } else {
+        toast.success(next ? "Shared with the client." : "Hidden from the client.");
+      }
     });
   }
 
@@ -59,7 +68,7 @@ export function SectionClientVisibilityToggle({ section }: { section: BoardSecti
       aria-pressed={isShared}
       aria-label={isShared ? "Hide section from client" : "Share section with client"}
       title={isShared ? "Visible to client" : "Internal only"}
-      className={isShared ? "shrink-0 text-emerald-600" : "shrink-0 text-muted-foreground"}
+      className={isShared ? "shrink-0 text-primary" : "shrink-0 text-muted-foreground"}
     >
       {isPending ? (
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
