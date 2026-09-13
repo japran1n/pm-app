@@ -9,6 +9,7 @@ import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canPurge } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F192 (AS-348, AS-349): permanently (hard-)deletes an already-trashed
 // task or comment, plus every dependent row/Storage object it owns. This
@@ -43,9 +44,7 @@ import { logger } from "@/lib/observability/logger";
 // does that).
 const ATTACHMENTS_BUCKET = "task-attachments";
 
-export type PurgeTrashItemResult =
-  | { ok: true; data: { itemId: string; itemType: "task" | "comment" } }
-  | { ok: false; error: string };
+export type PurgeTrashItemResult = ActionResult<{ itemId: string; itemType: "task" | "comment" }>;
 
 export async function purgeTrashItem(
   itemId: string,

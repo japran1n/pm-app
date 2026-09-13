@@ -27,10 +27,9 @@ import {
   getNotificationsForWorkspace,
   type NotificationListItem,
 } from "@/lib/queries/notifications";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
-export type MarkNotificationReadResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type MarkNotificationReadResult = ActionOutcome;
 
 // AS-386: marks a single notification read. Idempotent — marking an
 // already-read notification read again is a harmless no-op (the UPDATE
@@ -129,9 +128,7 @@ export async function markAllNotificationsRead(
   return { ok: true };
 }
 
-export type NotificationSnapshotResult =
-  | { ok: true; list: NotificationListItem[]; unreadCount: number }
-  | { ok: false; error: string };
+export type NotificationSnapshotResult = ActionOutcome<{ list: NotificationListItem[]; unreadCount: number }>;
 
 // F209 (AS-388): a fresh, server-authoritative snapshot of the caller's
 // notification inbox for `workspaceId` — the single source of truth this

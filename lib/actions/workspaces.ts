@@ -28,45 +28,28 @@ import {
 } from "@/lib/auth/require-membership";
 import { writeAudit } from "@/lib/activity/audit";
 import { matchesDeclaredAvatarMimeType } from "@/lib/validation/profile";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
-export type CreateWorkspaceResult =
-  | { ok: true; slug: string }
-  | { ok: false; error: string };
+export type CreateWorkspaceResult = ActionOutcome<{ slug: string }>;
 
-export type InviteMemberResult =
-  | { ok: true; invitedEmail: string }
-  | { ok: false; error: string };
+export type InviteMemberResult = ActionOutcome<{ invitedEmail: string }>;
 
-export type RevokeInviteResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type RevokeInviteResult = ActionOutcome;
 
-export type ChangeMemberRoleResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type ChangeMemberRoleResult = ActionOutcome;
 
-export type RemoveMemberResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type RemoveMemberResult = ActionOutcome;
 
-export type TransferOwnershipResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type TransferOwnershipResult = ActionOutcome;
 
 export type DeleteWorkspaceResult =
   | { ok: false; error: string };
 
-export type RenameWorkspaceResult =
-  | { ok: true; data: { name: string } }
-  | { ok: false; error: string };
+export type RenameWorkspaceResult = ActionResult<{ name: string }>;
 
-export type ChangeWorkspaceSlugResult =
-  | { ok: true; data: { slug: string } }
-  | { ok: false; error: string };
+export type ChangeWorkspaceSlugResult = ActionResult<{ slug: string }>;
 
-export type UploadWorkspaceLogoResult =
-  | { ok: true; data: { logoUrl: string } }
-  | { ok: false; error: string };
+export type UploadWorkspaceLogoResult = ActionResult<{ logoUrl: string }>;
 
 // Creates a workspace and makes the calling user its owner (AS-005, AS-006).
 //

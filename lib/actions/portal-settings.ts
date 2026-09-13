@@ -16,7 +16,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
@@ -82,9 +82,7 @@ async function revalidatePortalSettings(workspaceSlug: string, projectId: string
 // setPortalEnabled
 // ---------------------------------------------------------------------
 
-export type SetPortalEnabledResult =
-  | { ok: true; data: { projectId: string; portalEnabled: boolean; portalEnabledAt: string | null } }
-  | { ok: false; error: string };
+export type SetPortalEnabledResult = ActionResult<{ projectId: string; portalEnabled: boolean; portalEnabledAt: string | null }>;
 
 const setPortalEnabledImpl = withAuthz(
   setPortalEnabledSchema,
@@ -181,19 +179,14 @@ export async function setPortalEnabled(
 // `setPortalEnabled` above.
 // ---------------------------------------------------------------------
 
-export type UpdateProjectLaunchResult =
-  | {
-      ok: true;
-      data: {
+export type UpdateProjectLaunchResult = ActionResult<{
         projectId: string;
         targetLaunchDate: string | null;
         launchConfidence: "on_track" | "at_risk" | "slipped" | null;
         launchNote: string | null;
         warrantyUntil: string | null;
         warrantyTerms: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const updateProjectLaunchImpl = withAuthz(
   updateProjectLaunchSchema,

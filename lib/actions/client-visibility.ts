@@ -23,15 +23,14 @@ import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask } from "@/lib/auth/permissions";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const setTaskClientVisibilitySchema = z.object({
   taskId: z.string().uuid("Invalid task."),
   visible: z.boolean(),
 });
 
-export type SetTaskClientVisibilityResult =
-  | { ok: true; data: { taskId: string; clientVisible: boolean } }
-  | { ok: false; error: string };
+export type SetTaskClientVisibilityResult = ActionResult<{ taskId: string; clientVisible: boolean }>;
 
 export async function setTaskClientVisibility(
   taskId: string,
@@ -127,9 +126,7 @@ const setPendingClientApprovalSchema = z.object({
   pending: z.boolean(),
 });
 
-export type SetPendingClientApprovalResult =
-  | { ok: true; data: { taskId: string; pendingClientApproval: boolean } }
-  | { ok: false; error: string };
+export type SetPendingClientApprovalResult = ActionResult<{ taskId: string; pendingClientApproval: boolean }>;
 
 export async function setPendingClientApproval(
   taskId: string,

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { withAuthz, type ResolveWorkspaceResult } from "@/lib/actions/authz";
+import { type ActionOutcome, type ActionResult, withAuthz, type ResolveWorkspaceResult } from "@/lib/actions/authz";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import {
   setProjectRoleSchema,
@@ -68,9 +68,7 @@ async function revalidateProjectRoleSurfaces() {
 // unique`).
 // ---------------------------------------------------------------------
 
-export type SetProjectRoleResult =
-  | { ok: true; data: { id: string; userId: string; role: ProjectRoleValue; note: string | null } }
-  | { ok: false; error: string };
+export type SetProjectRoleResult = ActionResult<{ id: string; userId: string; role: ProjectRoleValue; note: string | null }>;
 
 const setProjectRoleImpl = withAuthz(
   setProjectRoleSchema,
@@ -146,7 +144,7 @@ export async function setProjectRole(
 // removeProjectRole
 // ---------------------------------------------------------------------
 
-export type RemoveProjectRoleResult = { ok: true } | { ok: false; error: string };
+export type RemoveProjectRoleResult = ActionOutcome;
 
 const removeProjectRoleImpl = withAuthz(
   removeProjectRoleSchema,

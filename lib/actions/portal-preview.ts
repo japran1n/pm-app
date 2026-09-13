@@ -38,6 +38,7 @@ import {
   PORTAL_PREVIEW_LABEL_COOKIE,
   PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
 } from "@/lib/portal/preview-cookies";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 // F024b (AS-053, "the cookies carry no maxAge"): 30 minutes -- enough to
 // actually look at what the client sees, short enough that an admin who
@@ -69,9 +70,7 @@ const startSchema = z.object({
   taskId: z.string().uuid().optional(),
 });
 
-export type StartClientPreviewResult =
-  | { ok: true; redirectTo: string }
-  | { ok: false; error: string };
+export type StartClientPreviewResult = ActionOutcome<{ redirectTo: string }>;
 
 // Returns a redirect target rather than calling `redirect()` itself --
 // the caller (a Client Component form) navigates client-side after a

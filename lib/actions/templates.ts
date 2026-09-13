@@ -43,19 +43,15 @@ import {
 } from "@/lib/comments/mentions";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import type { Json } from "@/lib/supabase/database.types";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // --- saveTaskAsTemplate -----------------------------------------------------
 
-export type SaveTaskAsTemplateResult =
-  | {
-      ok: true;
-      data: {
+export type SaveTaskAsTemplateResult = ActionResult<{
         id: string;
         name: string;
         workspaceId: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Snapshots a task's clonable fields (the SAME allow-list F176's
 // cloneTaskFields/F180's duplicateTask use: title, description,
@@ -216,10 +212,7 @@ export async function saveTaskAsTemplate(
 
 // --- createTaskFromTemplate -------------------------------------------------
 
-export type CreateTaskFromTemplateResult =
-  | {
-      ok: true;
-      data: {
+export type CreateTaskFromTemplateResult = ActionResult<{
         id: string;
         projectId: string;
         title: string;
@@ -232,9 +225,7 @@ export type CreateTaskFromTemplateResult =
         // dropping them rather than failing").
         assigneeIds: string[];
         droppedAssigneeIds: string[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Creates a new task pre-filled from a template's saved payload
 // (AS-330). The new task gets its own key/number via the SAME atomic
@@ -544,9 +535,7 @@ export async function createTaskFromTemplate(
 
 // --- renameTemplate ----------------------------------------------------------
 
-export type RenameTemplateResult =
-  | { ok: true; data: { id: string; name: string } }
-  | { ok: false; error: string };
+export type RenameTemplateResult = ActionResult<{ id: string; name: string }>;
 
 // AS-331: only the template's creator OR a workspace admin/owner may
 // rename it. RLS on `task_templates` (F181's
@@ -650,9 +639,7 @@ export async function renameTemplate(
 
 // --- deleteTemplate ----------------------------------------------------------
 
-export type DeleteTemplateResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteTemplateResult = ActionResult<{ id: string }>;
 
 // AS-331 (same permission rule as renameTemplate: creator or workspace
 // admin/owner only). AS-332: deleting a template does not affect any task
@@ -757,17 +744,12 @@ export async function deleteTemplate(
 // then position within each column) so createProjectFromTemplate
 // recreates them in a sensible order.
 
-export type SaveProjectAsTemplateResult =
-  | {
-      ok: true;
-      data: {
+export type SaveProjectAsTemplateResult = ActionResult<{
         id: string;
         name: string;
         workspaceId: string;
         taskCount: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const STATUS_ORDER: Record<string, number> = {
   todo: 0,
@@ -1043,18 +1025,13 @@ export async function saveProjectAsTemplate(
 
 // --- createProjectFromTemplate -----------------------------------------------
 
-export type CreateProjectFromTemplateResult =
-  | {
-      ok: true;
-      data: {
+export type CreateProjectFromTemplateResult = ActionResult<{
         id: string;
         key: string;
         name: string;
         workspaceId: string;
         taskCount: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // AS-333: creates a new project AND every one of the template's tasks,
 // in ONE atomic unit — delegated to the `create_project_from_template`

@@ -15,7 +15,7 @@ import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
 import { canWrite } from "@/lib/auth/permissions";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -33,9 +33,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-export type ProjectBudgetActionResult =
-  | { ok: true; data: ProjectBudget }
-  | { ok: false; error: string };
+export type ProjectBudgetActionResult = ActionResult<ProjectBudget>;
 
 function toBudgetActionData(row: {
   id: string;
@@ -453,9 +451,7 @@ export async function restoreProjectBudget(input: {
 // entered with context rather than blind"). requireWrite is NOT set here
 // (a read, not a mutation) but requireVisibility still is — only a team
 // member who can see the project may preview its spend.
-export type PreviewProjectBudgetSpentResult =
-  | { ok: true; data: { minutes: number } }
-  | { ok: false; error: string };
+export type PreviewProjectBudgetSpentResult = ActionResult<{ minutes: number }>;
 
 const previewProjectBudgetSpentImpl = withAuthz(
   previewProjectBudgetSpentSchema,
@@ -527,9 +523,7 @@ export async function previewProjectBudgetSpent(
 // `withAuthz` pipeline and `canWrite` gate as every other mutation in
 // this file -- a viewer/client cannot flip this any more than they can
 // edit a budget period.
-export type UpdateProjectBillingModelResult =
-  | { ok: true; data: { billingModel: "hourly" | "fixed_price" } }
-  | { ok: false; error: string };
+export type UpdateProjectBillingModelResult = ActionResult<{ billingModel: "hourly" | "fixed_price" }>;
 
 const updateProjectBillingModelImpl = withAuthz(
   updateProjectBillingModelSchema,

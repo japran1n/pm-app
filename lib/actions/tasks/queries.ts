@@ -9,7 +9,7 @@ import {
 import { logger } from "@/lib/observability/logger";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type WorkspaceRole } from "@/lib/auth/permissions";
 import {
   isProjectVisibleToCaller,
@@ -24,9 +24,7 @@ import type { SubtaskListChildTask } from "@/components/task/subtask-list";
 import type { ChecklistListItem } from "@/components/task/checklist";
 import type { DependencyRelatedTask } from "@/components/task/dependencies";
 
-export type GetOpenBlockersResult =
-  | { ok: true; data: DependencyRelatedTask[] }
-  | { ok: false; error: string };
+export type GetOpenBlockersResult = ActionResult<DependencyRelatedTask[]>;
 
 // F158 (AS-280, AS-281): the ONE server-side source of "which of this
 // task's blockers are still open (not done, not soft-deleted)" — called
@@ -209,10 +207,7 @@ export async function getOpenBlockers(
 // file resolve" info and is not otherwise exercised by this codebase's
 // existing components (both TaskDetailSheet and AttachmentList only ever
 // call getAttachmentSignedUrl for actually opening a file).
-export type GetTaskDetailResult =
-  | {
-      ok: true;
-      data: {
+export type GetTaskDetailResult = ActionResult<{
         task: TaskDetailSheetTask;
         comments: TaskComment[];
         attachments: TaskAttachment[];
@@ -221,9 +216,7 @@ export type GetTaskDetailResult =
         // full WorkspaceRole (adds "viewer" | "guest") — see
         // lib/auth/require-membership.ts's matching widening.
         currentUserRole: WorkspaceRole;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 export async function getTaskDetail(
   taskId: string,

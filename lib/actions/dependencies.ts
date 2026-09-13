@@ -13,6 +13,7 @@ import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { formatTaskKey, parseTaskKeyQuery } from "@/lib/tasks/task-key";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // F156: createDependency (AS-278). Mirrors lib/actions/checklist.ts's
 // shape: Zod-validated input, membership re-checked server-side (defense
@@ -115,16 +116,11 @@ async function revalidateWorkspace(
   }
 }
 
-export type CreateDependencyResult =
-  | {
-      ok: true;
-      data: {
+export type CreateDependencyResult = ActionResult<{
         id: string;
         blockingTaskId: string;
         blockedTaskId: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Creates a "blocking task blocks blocked task" dependency (AS-276's
 // write path, extended here with AS-278's cycle guard). See this file's
@@ -252,9 +248,7 @@ export async function createDependency(
   };
 }
 
-export type DeleteDependencyResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type DeleteDependencyResult = ActionOutcome;
 
 // F157 (AS-282): a dependency can be removed by EITHER side of the
 // relationship. This action takes only the dependency row's own id — it
@@ -365,9 +359,7 @@ export type DependencyCandidate = {
   number: number;
 };
 
-export type GetDependencyCandidatesResult =
-  | { ok: true; data: DependencyCandidate[] }
-  | { ok: false; error: string };
+export type GetDependencyCandidatesResult = ActionResult<DependencyCandidate[]>;
 
 const DEPENDENCY_CANDIDATE_LIMIT = 25;
 

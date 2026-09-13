@@ -29,14 +29,13 @@ import {
 } from "@/lib/validation/calendar-blocks";
 import { logger } from "@/lib/observability/logger";
 import type { CalendarBlock } from "@/lib/queries/calendar-blocks";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "Block not found.";
 const PERMISSION_DENIED_ERROR = "You don't have permission to manage this block.";
 
-export type CalendarBlockActionResult =
-  | { ok: true; data: CalendarBlock }
-  | { ok: false; error: string };
+export type CalendarBlockActionResult = ActionResult<CalendarBlock>;
 
 function toBlock(row: {
   id: string;
@@ -296,9 +295,7 @@ export async function updateCalendarBlock(
   return { ok: true, data: toBlock(updated) };
 }
 
-export type DeleteCalendarBlockResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteCalendarBlockResult = ActionResult<{ id: string }>;
 
 export async function deleteCalendarBlock(input: unknown): Promise<DeleteCalendarBlockResult> {
   const parsed = deleteCalendarBlockSchema.safeParse(input);

@@ -32,6 +32,7 @@ import { addComment } from "@/lib/actions/comments";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 type PortalApprovalResult =
   | { ok: true; data: { taskId: string } }
@@ -358,10 +359,7 @@ const decideApprovalSchema = z
     }
   });
 
-export type DecideApprovalResult =
-  | {
-      ok: true;
-      data: {
+export type DecideApprovalResult = ActionResult<{
         requestId: string;
         state: string;
         decidedAt: string;
@@ -371,9 +369,7 @@ export type DecideApprovalResult =
         // portal card SAY the work was created without ever forming a
         // link to it (approval-card.tsx never renders it as a link).
         resultingTaskId: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 function friendlyDecideApprovalError(message: string): string {
   // The RPC's own exception text (20260916010000/20260920010000) is
@@ -441,9 +437,7 @@ export async function decideApproval(
   };
 }
 
-export type NudgeApprovalOwnerResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type NudgeApprovalOwnerResult = ActionOutcome;
 
 const nudgeApprovalOwnerSchema = z.object({
   requestId: z.string().uuid("Invalid approval request."),

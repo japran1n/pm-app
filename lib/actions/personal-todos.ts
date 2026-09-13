@@ -19,12 +19,11 @@ import {
   toggleTodoSchema,
   deleteTodoSchema,
 } from "@/lib/validation/personal-todos";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type PersonalTodoActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type PersonalTodoActionResult = ActionOutcome;
 
 export async function createPersonalTodo(
   input: unknown,

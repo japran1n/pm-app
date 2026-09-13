@@ -39,6 +39,7 @@ import {
   type SavedViewType,
   type SavedViewConfig,
 } from "@/lib/validation/views";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "View not found.";
@@ -58,9 +59,7 @@ export type SavedViewRecord = {
   isDefault: boolean;
 };
 
-export type SavedViewActionResult =
-  | { ok: true; data: SavedViewRecord }
-  | { ok: false; error: string };
+export type SavedViewActionResult = ActionResult<SavedViewRecord>;
 
 function toRecord(row: {
   id: string;
@@ -456,7 +455,7 @@ export async function updateSavedView(input: {
   return { ok: true, data: toRecord(finalRow) };
 }
 
-export type DeleteSavedViewResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteSavedViewResult = ActionResult<{ id: string }>;
 
 // AS-430: only the creator, or a workspace admin/owner (for a shared
 // view), can delete a view.
@@ -546,7 +545,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
   return { ok: true, data: toRecord(updated) };
 }
 
-export type GetSavedViewResult = { ok: true; data: SavedViewRecord } | { ok: false; error: string };
+export type GetSavedViewResult = ActionResult<SavedViewRecord>;
 
 // AS-428: read a view (through the caller's own RLS-scoped session --
 // `saved_views`' SELECT policy is the real visibility boundary here, no

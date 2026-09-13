@@ -31,7 +31,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite, isClient } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
@@ -137,9 +137,7 @@ const AUTHZ_ERRORS = {
   visibilityError: "You don't have permission to manage this project's scope.",
 };
 
-export type ScopeDocumentActionResult =
-  | { ok: true; data: ScopeDocument }
-  | { ok: false; error: string };
+export type ScopeDocumentActionResult = ActionResult<ScopeDocument>;
 
 // ---------------------------------------------------------------------
 // Link (createScopeDocumentLink)
@@ -388,9 +386,7 @@ async function loadDocumentExtra(
   };
 }
 
-export type DeleteScopeDocumentResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteScopeDocumentResult = ActionResult<{ id: string }>;
 
 const deleteScopeDocumentImpl = withAuthz(
   deleteScopeDocumentSchema,
@@ -446,9 +442,7 @@ export async function deleteScopeDocument(
 // Signed URL for an 'upload'-kind document
 // ---------------------------------------------------------------------
 
-export type GetScopeDocumentSignedUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetScopeDocumentSignedUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour, same as getAttachmentSignedUrl
 

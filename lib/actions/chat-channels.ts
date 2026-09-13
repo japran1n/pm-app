@@ -22,6 +22,7 @@ import {
   findOrCreateDmSchema,
 } from "@/lib/validation/chat";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 function revalidateChat() {
   try {
@@ -39,9 +40,7 @@ async function requireUser() {
   return { supabase, user };
 }
 
-export type CreateChannelResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type CreateChannelResult = ActionResult<{ id: string }>;
 
 // Creates a channel (or a DM thread) and enrolls the creator plus any
 // explicitly listed members. Per the plan's spec: if project-scoped,
@@ -174,7 +173,7 @@ export async function createChannel(input: {
   return { ok: true, data: { id: channelId as string } };
 }
 
-export type AddChannelMemberResult = { ok: true } | { ok: false; error: string };
+export type AddChannelMemberResult = ActionOutcome;
 
 // Adds a member to a channel. Per the plan's explicit acceptance test: a
 // non-member cannot add themselves (or anyone else) to a private/DM
@@ -272,9 +271,7 @@ export async function addChannelMember(
   return { ok: true };
 }
 
-export type FindOrCreateDmResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type FindOrCreateDmResult = ActionResult<{ id: string }>;
 
 // Team 1:1 DM ("privatni chat" feature): find-or-create the DM channel
 // between the caller and `otherUserId` in `workspaceId`, rather than the
@@ -335,7 +332,7 @@ export async function findOrCreateDirectMessage(
   return { ok: true, data: { id: channelId as string } };
 }
 
-export type RemoveChannelMemberResult = { ok: true } | { ok: false; error: string };
+export type RemoveChannelMemberResult = ActionOutcome;
 
 export async function removeChannelMember(
   channelId: string,

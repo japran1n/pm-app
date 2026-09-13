@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { watchTaskSchema, unwatchTaskSchema } from "@/lib/validation/watchers";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F164: self-serve watch/unwatch Server Actions (AS-295, AS-296). Pattern
 // mirrors lib/actions/comments.ts's addComment: Zod-validated input,
@@ -25,13 +26,9 @@ import { logger } from "@/lib/observability/logger";
 // this self-serve path (unlike the auto-watch-on-comment path in
 // addComment below, which writes on behalf of the commenter using the
 // admin client that action already holds).
-export type WatchTaskResult =
-  | { ok: true; data: { taskId: string; isWatching: true } }
-  | { ok: false; error: string };
+export type WatchTaskResult = ActionResult<{ taskId: string; isWatching: true }>;
 
-export type UnwatchTaskResult =
-  | { ok: true; data: { taskId: string; isWatching: false } }
-  | { ok: false; error: string };
+export type UnwatchTaskResult = ActionResult<{ taskId: string; isWatching: false }>;
 
 // Shared lookup: resolves the task's owning workspace and re-verifies the
 // caller is an active member of it, server-side, never trusting the UI to

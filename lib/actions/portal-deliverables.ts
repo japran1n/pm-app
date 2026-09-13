@@ -51,13 +51,12 @@ import type { DeliverableState } from "@/lib/queries/deliverables";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const ATTACHMENTS_BUCKET = "task-attachments";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type DeliverPortalDeliverableResult =
-  | { ok: true; data: { id: string; state: DeliverableState } }
-  | { ok: false; error: string };
+export type DeliverPortalDeliverableResult = ActionResult<{ id: string; state: DeliverableState }>;
 
 // Takes a FormData for the same reason `uploadAttachment` does — Server
 // Actions receive `File` objects through FormData, not plain arguments.

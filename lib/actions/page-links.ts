@@ -14,7 +14,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -151,9 +151,7 @@ const AUTHZ_ERRORS = {
   visibilityError: "You don't have permission to manage this page's links.",
 };
 
-export type PageLinkActionResult =
-  | { ok: true; data: PageLink }
-  | { ok: false; error: string };
+export type PageLinkActionResult = ActionResult<PageLink>;
 
 const PAGE_LINK_COLUMNS = "id, task_id, kind, label, url, client_visible, position";
 
@@ -286,9 +284,7 @@ export async function updatePageLink(input: {
   return updatePageLinkImpl(input);
 }
 
-export type DeletePageLinkResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeletePageLinkResult = ActionResult<{ id: string }>;
 
 const deletePageLinkImpl = withAuthz(
   deletePageLinkSchema,

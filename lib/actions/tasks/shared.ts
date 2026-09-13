@@ -19,6 +19,7 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // ---------------------------------------------------------------------
 // F160: multi-assignee actions over `task_assignees` (AS-289, AS-290).
@@ -194,9 +195,7 @@ export type TaskAssigneesData = {
   mirrorAssigneeId: string | null;
 };
 
-export type TaskAssigneesActionResult =
-  | { ok: true; data: TaskAssigneesData }
-  | { ok: false; error: string };
+export type TaskAssigneesActionResult = ActionResult<TaskAssigneesData>;
 
 // Shared preflight for every multi-assignee action: resolves the caller's
 // identity, the task's owning project/workspace (not-found for a missing

@@ -3,18 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { updateTaskTagsSchema } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 
-export type UpdateTaskTagsResult =
-  | {
-      ok: true;
-      data: {
+export type UpdateTaskTagsResult = ActionResult<{
         id: string;
         tags: string[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Updates a task's tag list (F041: AS-065, AS-066). Pattern mirrors
 // editTask/assignTask above: Zod-validated input (array of non-empty

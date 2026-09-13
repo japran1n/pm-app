@@ -16,14 +16,13 @@ import { logger } from "@/lib/observability/logger";
 import { z } from "zod";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 const markChannelReadSchema = z.object({
   channelId: z.string().uuid("Invalid channel."),
 });
 
-export type MarkChannelReadResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type MarkChannelReadResult = ActionOutcome;
 
 export async function markChannelRead(
   channelId: string,

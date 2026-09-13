@@ -18,6 +18,7 @@ import {
   deletePendingChatAttachmentForUser,
   type UploadChatAttachmentResult,
 } from "@/lib/attachments/upload-chat";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 export type { UploadChatAttachmentResult };
 
@@ -51,9 +52,7 @@ export async function uploadChatAttachment(
   });
 }
 
-export type RemovePendingChatAttachmentResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type RemovePendingChatAttachmentResult = ActionOutcome;
 
 export async function removePendingChatAttachment(
   attachmentId: string,
@@ -67,9 +66,7 @@ export async function removePendingChatAttachment(
   return deletePendingChatAttachmentForUser(user.id, attachmentId);
 }
 
-export type GetChatAttachmentSignedUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetChatAttachmentSignedUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 // Mints a fresh signed URL for an existing (pending or already-sent) chat
 // attachment. Same "never persist/reuse a signed URL, mint on demand"

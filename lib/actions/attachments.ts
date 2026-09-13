@@ -19,6 +19,7 @@ import {
   uploadAttachmentForUser,
   type UploadAttachmentResult,
 } from "@/lib/attachments/upload";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // Re-exported so existing callers of `UploadAttachmentResult` from this
 // module keep working unchanged.
@@ -100,9 +101,7 @@ export async function uploadAttachment(
 // Generates a fresh signed URL for an existing attachment (AS-108). Any UI
 // that displays/lists attachments must call this rather than persisting a
 // URL, since the bucket is private and signed URLs expire.
-export type GetAttachmentSignedUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetAttachmentSignedUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 export async function getAttachmentSignedUrl(
   attachmentId: string,
@@ -237,9 +236,7 @@ export async function getAttachmentSignedUrl(
   return { ok: true, signedUrl: signedUrlData.signedUrl };
 }
 
-export type DeleteAttachmentResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteAttachmentResult = ActionResult<{ id: string }>;
 
 // Deletes an attachment (F067: AS-110, AS-111, AS-114). Pattern mirrors
 // deleteComment in lib/actions/comments.ts: Zod-validated input, the

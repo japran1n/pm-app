@@ -19,24 +19,20 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { createTimeOffSchema, deleteTimeOffSchema } from "@/lib/validation/time-off";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "Time off entry not found.";
 const PERMISSION_DENIED_ERROR = "You don't have permission to manage this time off entry.";
 
-export type TimeOffEntryResult =
-  | {
-      ok: true;
-      data: {
+export type TimeOffEntryResult = ActionResult<{
         id: string;
         workspaceId: string;
         userId: string;
         startDate: string;
         endDate: string;
         note: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const SELECT_COLUMNS = "id, workspace_id, user_id, start_date, end_date, note";
 
@@ -114,9 +110,7 @@ export async function createTimeOff(input: unknown): Promise<TimeOffEntryResult>
   };
 }
 
-export type DeleteTimeOffResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteTimeOffResult = ActionResult<{ id: string }>;
 
 // Delete a PTO entry -- its own owner, or an owner/admin of the
 // workspace, per `time_off_entries_delete_own_or_admin`.

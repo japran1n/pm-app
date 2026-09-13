@@ -16,7 +16,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -103,9 +103,7 @@ const AUTHZ_ERRORS = {
 // project_links
 // ---------------------------------------------------------------------
 
-export type ProjectLinkActionResult =
-  | { ok: true; data: ProjectLink }
-  | { ok: false; error: string };
+export type ProjectLinkActionResult = ActionResult<ProjectLink>;
 
 const LINK_COLUMNS = "id, project_id, kind, label, url, client_visible, position";
 
@@ -285,9 +283,7 @@ export async function updateProjectLink(input: {
   return updateProjectLinkImpl(input);
 }
 
-export type DeleteProjectLinkResult =
-  | { ok: true; data: { id: string; restore: ProjectLink } }
-  | { ok: false; error: string };
+export type DeleteProjectLinkResult = ActionResult<{ id: string; restore: ProjectLink }>;
 
 const deleteProjectLinkImpl = withAuthz(
   deleteProjectLinkSchema,
@@ -397,15 +393,10 @@ export async function restoreProjectLink(input: {
   return restoreProjectLinkImpl(input);
 }
 
-export type ReorderProjectLinkResult =
-  | {
-      ok: true;
-      data: {
+export type ReorderProjectLinkResult = ActionResult<{
         moved: { id: string; position: number };
         swappedWith: { id: string; position: number } | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const reorderProjectLinkImpl = withAuthz(
   reorderProjectLinkSchema,
@@ -475,9 +466,7 @@ export async function reorderProjectLink(
 // project_accounts
 // ---------------------------------------------------------------------
 
-export type ProjectAccountActionResult =
-  | { ok: true; data: ProjectAccount }
-  | { ok: false; error: string };
+export type ProjectAccountActionResult = ActionResult<ProjectAccount>;
 
 const ACCOUNT_COLUMNS =
   "id, project_id, service, owner, status, renewal_date, note, client_visible, position";
@@ -679,9 +668,7 @@ export async function updateProjectAccount(input: {
   return updateProjectAccountImpl(input);
 }
 
-export type DeleteProjectAccountResult =
-  | { ok: true; data: { id: string; restore: ProjectAccount } }
-  | { ok: false; error: string };
+export type DeleteProjectAccountResult = ActionResult<{ id: string; restore: ProjectAccount }>;
 
 const deleteProjectAccountImpl = withAuthz(
   deleteProjectAccountSchema,
@@ -800,15 +787,10 @@ export async function restoreProjectAccount(input: {
   return restoreProjectAccountImpl(input);
 }
 
-export type ReorderProjectAccountResult =
-  | {
-      ok: true;
-      data: {
+export type ReorderProjectAccountResult = ActionResult<{
         moved: { id: string; position: number };
         swappedWith: { id: string; position: number } | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const reorderProjectAccountImpl = withAuthz(
   reorderProjectAccountSchema,

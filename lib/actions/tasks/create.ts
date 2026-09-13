@@ -2,11 +2,9 @@
 
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createTaskForUser } from "@/lib/tasks/create";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type CreateTaskResult =
-  | {
-      ok: true;
-      data: {
+export type CreateTaskResult = ActionResult<{
         id: string;
         projectId: string;
         title: string;
@@ -29,9 +27,7 @@ export type CreateTaskResult =
         // already destructures only the specific fields it needs, so this
         // additive field is backward compatible.
         number: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Creates a task within a project (AS-043, AS-044, AS-045, AS-046). Pattern
 // mirrors lib/actions/projects.ts's createProject: Zod-validated input,

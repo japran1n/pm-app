@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { duplicateTaskSchema } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 import { calculatePosition } from "@/lib/board/position";
 import { cloneTaskFields } from "@/lib/recurrence/clone-fields";
@@ -13,19 +13,14 @@ import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
 import { syncMirrorAssigneeId } from "./shared";
 
-export type DuplicateTaskResult =
-  | {
-      ok: true;
-      data: {
+export type DuplicateTaskResult = ActionResult<{
         id: string;
         projectId: string;
         title: string;
         status: string;
         position: number;
         number: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Duplicates a task (F180: AS-324, AS-325, AS-326, AS-327). Reuses F176's
 // `cloneTaskFields` (lib/recurrence/clone-fields.ts) verbatim for the

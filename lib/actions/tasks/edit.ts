@@ -28,11 +28,9 @@ import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type EditTaskResult =
-  | {
-      ok: true;
-      data: {
+export type EditTaskResult = ActionResult<{
         id: string;
         title: string;
         description: string | null;
@@ -57,9 +55,7 @@ export type EditTaskResult =
         // F006c (missions/20260903-portal, AS-013): mirrors pageSlug's
         // own always-present convention above.
         phaseId: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Edits a task's title/description/priority/due date (F037: AS-054,
 // AS-061). Pattern mirrors assignTask above: Zod-validated partial input,

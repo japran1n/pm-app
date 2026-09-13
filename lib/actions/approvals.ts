@@ -53,7 +53,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
+import { type ActionOutcome, type ActionResult, withAuthz, type AuthzExtra } from "@/lib/actions/authz";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
@@ -157,9 +157,7 @@ export type RequestApprovalActionData = {
   round: number;
 };
 
-export type RequestApprovalResult =
-  | { ok: true; data: RequestApprovalActionData }
-  | { ok: false; error: string };
+export type RequestApprovalResult = ActionResult<RequestApprovalActionData>;
 
 // Uploads a doc's current markdown body as the approval's immutable
 // snapshot. Deliberately namespaced under `approval-requests/{request_id}/`
@@ -444,9 +442,7 @@ async function loadRequestExtra(
   };
 }
 
-export type WithdrawApprovalResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type WithdrawApprovalResult = ActionResult<{ id: string }>;
 
 const withdrawApprovalImpl = withAuthz(
   withdrawApprovalSchema,
@@ -503,9 +499,7 @@ export async function withdrawApproval(requestId: string): Promise<WithdrawAppro
 // (lib/actions/phases.ts).
 // ---------------------------------------------------------------------
 
-export type GetDecisionOwnersResult =
-  | { ok: true; data: { owners: PortalDecisionOwner[]; decisionTypes: ProjectDecisionType[] } }
-  | { ok: false; error: string };
+export type GetDecisionOwnersResult = ActionResult<{ owners: PortalDecisionOwner[]; decisionTypes: ProjectDecisionType[] }>;
 
 const getDecisionOwnersImpl = withAuthz(
   projectIdSchema,
@@ -539,9 +533,7 @@ export async function getDecisionOwnersForDialog(
 // project_decision_owners row for one (project, decisionType) pair.
 // ---------------------------------------------------------------------
 
-export type SetDecisionOwnerResult =
-  | { ok: true; data: { decisionType: ApprovalDecisionType; userId: string | null } }
-  | { ok: false; error: string };
+export type SetDecisionOwnerResult = ActionResult<{ decisionType: ApprovalDecisionType; userId: string | null }>;
 
 const setDecisionOwnerImpl = withAuthz(
   setDecisionOwnerSchema,
@@ -623,9 +615,7 @@ const setDecisionOwnerImpl = withAuthz(
 // comment) — never to re-decide visibility.
 const SNAPSHOT_SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour, matches attachments.ts
 
-export type GetApprovalDocSnapshotUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetApprovalDocSnapshotUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 export async function getApprovalDocSnapshotUrl(
   approvalId: string,
@@ -677,9 +667,7 @@ export async function setDecisionOwner(
 // comment gives for its own single-table insert.
 // ---------------------------------------------------------------------
 
-export type AddProjectDecisionTypeResult =
-  | { ok: true; data: ProjectDecisionType }
-  | { ok: false; error: string };
+export type AddProjectDecisionTypeResult = ActionResult<ProjectDecisionType>;
 
 const addProjectDecisionTypeImpl = withAuthz(
   addProjectDecisionTypeSchema,
@@ -742,9 +730,7 @@ export async function addProjectDecisionType(
   return addProjectDecisionTypeImpl({ projectId, name, description });
 }
 
-export type RemoveProjectDecisionTypeResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type RemoveProjectDecisionTypeResult = ActionResult<{ id: string }>;
 
 const removeProjectDecisionTypeImpl = withAuthz(
   removeProjectDecisionTypeSchema,

@@ -40,14 +40,13 @@ import {
   reorderTemplateItemSchema,
   applyStatusTemplateSchema,
 } from "@/lib/validation/status-templates";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 const PERMISSION_DENIED_ERROR =
   "You don't have permission to manage status templates.";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type StatusTemplateActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type StatusTemplateActionResult = ActionOutcome;
 
 async function currentUserId(): Promise<string | null> {
   const { user } = await getCurrentUser();

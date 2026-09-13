@@ -31,10 +31,9 @@ import {
   getTaskActivityPage,
   type TaskActivityPage,
 } from "@/lib/queries/task-activity";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type GetTaskActivityFeedResult =
-  | { ok: true; data: TaskActivityPage }
-  | { ok: false; error: string };
+export type GetTaskActivityFeedResult = ActionResult<TaskActivityPage>;
 
 export async function getTaskActivityFeed(
   taskId: string,

@@ -21,6 +21,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toggleMessageReactionSchema } from "@/lib/validation/chat";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // Postgres unique-violation error code, used below to detect the "row
 // already exists" branch of the toggle without a separate read -- same
@@ -28,12 +29,7 @@ import { toggleMessageReactionSchema } from "@/lib/validation/chat";
 // lib/actions/comment-reactions.ts.
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
-export type ToggleMessageReactionResult =
-  | {
-      ok: true;
-      data: { messageId: string; emoji: string; reacted: boolean };
-    }
-  | { ok: false; error: string };
+export type ToggleMessageReactionResult = ActionResult<{ messageId: string; emoji: string; reacted: boolean }>;
 
 // Resolves the message's channel + workspace, and re-verifies the caller
 // is a member of that channel -- the same predicate

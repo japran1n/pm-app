@@ -17,11 +17,9 @@ import {
 } from "@/lib/auth/require-membership";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type LogTimeEntryResult =
-  | {
-      ok: true;
-      data: {
+export type LogTimeEntryResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -31,9 +29,7 @@ export type LogTimeEntryResult =
         note: string | null;
         createdAt: string;
         workCategory: WorkCategory | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Logs a manual time entry on a task (F110: AS-161, AS-162, AS-163).
 // Pattern mirrors lib/actions/comments.ts's addComment / lib/actions/
@@ -212,17 +208,9 @@ export async function logTimeEntry(
   };
 }
 
-export type StartTimerResult =
-  | {
-      ok: true;
-      data: { id: string; taskId: string; userId: string; startedAt: string };
-    }
-  | { ok: false; error: string };
+export type StartTimerResult = ActionResult<{ id: string; taskId: string; userId: string; startedAt: string }>;
 
-export type StopTimerResult =
-  | {
-      ok: true;
-      data: {
+export type StopTimerResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -231,9 +219,7 @@ export type StopTimerResult =
         entryDate: string;
         note: string | null;
         createdAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // startTimer (F111: AS-164, AS-165, AS-166, AS-168): starts a live timer on
 // `taskId` for the caller. Membership is re-checked server-side the same
@@ -422,10 +408,7 @@ export async function stopTimer(): Promise<StopTimerResult> {
   };
 }
 
-export type EditTimeEntryResult =
-  | {
-      ok: true;
-      data: {
+export type EditTimeEntryResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -434,9 +417,7 @@ export type EditTimeEntryResult =
         workCategory?: WorkCategory | null;
         entryDate: string;
         note: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // editTimeEntry (F112: AS-169). ONLY the entry's own author (caller's
 // user_id matches the row's user_id) may edit — not an admin/owner, not
@@ -622,9 +603,7 @@ export async function editTimeEntry(
   };
 }
 
-export type SetTimeEntryCategoryResult =
-  | { ok: true; data: { id: string; workCategory: WorkCategory | null } }
-  | { ok: false; error: string };
+export type SetTimeEntryCategoryResult = ActionResult<{ id: string; workCategory: WorkCategory | null }>;
 
 // setTimeEntryCategory (F018): the ONE field of a time entry any project
 // team writer may set, not just the entry's own author. editTimeEntry
@@ -754,9 +733,7 @@ export async function setTimeEntryCategory(
   };
 }
 
-export type DeleteTimeEntryResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteTimeEntryResult = ActionResult<{ id: string }>;
 
 // deleteTimeEntry (F112: AS-170). The entry's own author OR a workspace
 // admin/owner may delete — unlike editTimeEntry, an admin override is

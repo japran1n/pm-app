@@ -27,7 +27,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -45,9 +45,7 @@ const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-export type DeliverableActionResult =
-  | { ok: true; data: ClientDeliverable }
-  | { ok: false; error: string };
+export type DeliverableActionResult = ActionResult<ClientDeliverable>;
 
 function toDeliverableActionData(row: {
   id: string;
@@ -565,15 +563,10 @@ export async function deleteDeliverable(deliverableId: string): Promise<DeleteDe
 // reorderDeliverables
 // ---------------------------------------------------------------------
 
-export type ReorderDeliverableResult =
-  | {
-      ok: true;
-      data: {
+export type ReorderDeliverableResult = ActionResult<{
         moved: { id: string; position: number };
         swappedWith: { id: string; position: number } | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const reorderDeliverableImpl = withAuthz(
   reorderDeliverableSchema,
@@ -657,9 +650,7 @@ export async function reorderDeliverables(
 // accept_deliverable_atomic.
 // ---------------------------------------------------------------------
 
-export type DecideDeliverableResult =
-  | { ok: true; data: { id: string; state: DeliverableState } }
-  | { ok: false; error: string };
+export type DecideDeliverableResult = ActionResult<{ id: string; state: DeliverableState }>;
 
 const decideDeliverableImpl = withAuthz(
   decideDeliverableSchema,

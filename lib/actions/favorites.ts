@@ -27,10 +27,9 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { toggleProjectFavoriteSchema } from "@/lib/validation/favorites";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type ToggleProjectFavoriteResult =
-  | { ok: true; data: { projectId: string; isFavorite: boolean } }
-  | { ok: false; error: string };
+export type ToggleProjectFavoriteResult = ActionResult<{ projectId: string; isFavorite: boolean }>;
 
 async function resolveVisibleProject(
   supabase: Awaited<ReturnType<typeof createClient>>,

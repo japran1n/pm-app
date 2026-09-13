@@ -10,6 +10,7 @@ import {
   matchesDeclaredAvatarMimeType,
 } from "@/lib/validation/profile";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // Storage bucket + path convention fixed by F121
 // (supabase/migrations/20260818201642_create_avatars_bucket.sql): bucket
@@ -23,14 +24,9 @@ import { logger } from "@/lib/observability/logger";
 // path segment as the owning user's id.
 const AVATARS_BUCKET = "avatars";
 
-export type UploadAvatarResult =
-  | {
-      ok: true;
-      data: {
+export type UploadAvatarResult = ActionResult<{
         avatarUrl: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Uploads/replaces the signed-in user's avatar (F121: AS-203, AS-205,
 // AS-206). Pattern mirrors lib/actions/attachments.ts's uploadAttachment:
@@ -167,15 +163,10 @@ export async function uploadAvatar(
   return { ok: true, data: { avatarUrl } };
 }
 
-export type UpdateProfileResult =
-  | {
-      ok: true;
-      data: {
+export type UpdateProfileResult = ActionResult<{
         displayName: string;
         timezone: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Sets the signed-in user's display name and timezone (F123: AS-202 —
 // "a user can set their display name, and that name is shown instead of

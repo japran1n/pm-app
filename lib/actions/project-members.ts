@@ -32,6 +32,7 @@ import {
 } from "@/lib/validation/project-members";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { writeAudit } from "@/lib/activity/audit";
+import type { ActionResult } from "@/lib/actions/authz";
 
 type ProjectContext = {
   id: string;
@@ -116,12 +117,7 @@ async function revalidateWorkspace(
   }
 }
 
-export type AddProjectMemberResult =
-  | {
-      ok: true;
-      data: { id: string; projectId: string; userId: string; projectRole: string };
-    }
-  | { ok: false; error: string };
+export type AddProjectMemberResult = ActionResult<{ id: string; projectId: string; userId: string; projectRole: string }>;
 
 // Adds a user to a project's explicit member list (AS-224). Only a
 // workspace owner/admin, or an existing project lead, may call this
@@ -239,9 +235,7 @@ export async function addProjectMember(
   };
 }
 
-export type RemoveProjectMemberResult =
-  | { ok: true; data: { projectId: string; userId: string } }
-  | { ok: false; error: string };
+export type RemoveProjectMemberResult = ActionResult<{ projectId: string; userId: string }>;
 
 // Removes a user from a project's explicit member list. Same authorization
 // as addProjectMember (owner/admin or existing lead); RLS
@@ -314,9 +308,7 @@ export async function removeProjectMember(
   };
 }
 
-export type UpdateProjectVisibilityResult =
-  | { ok: true; data: { id: string; visibility: "workspace" | "private" } }
-  | { ok: false; error: string };
+export type UpdateProjectVisibilityResult = ActionResult<{ id: string; visibility: "workspace" | "private" }>;
 
 // F133: toggles a project between "workspace" (visible to every active,
 // non-guest workspace member) and "private" (visible only to explicit

@@ -14,10 +14,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { updateStatusNoteSchema } from "@/lib/validation/status-note";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type UpdateStatusNoteResult =
-  | { ok: true; data: { note: string | null; until: string | null } }
-  | { ok: false; error: string };
+export type UpdateStatusNoteResult = ActionResult<{ note: string | null; until: string | null }>;
 
 // Sets/clears the caller's own status note for `workspaceId`. Sending
 // `note: null` (or an empty string) clears the note entirely -- `until`

@@ -40,11 +40,9 @@ import {
   type CreateQuestionInput,
   type UpdateQuestionInput,
 } from "@/lib/validation/brief";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
-export type BriefQuestionResult =
-  | {
-      ok: true;
-      data: {
+export type BriefQuestionResult = ActionResult<{
         id: string;
         projectId: string;
         prompt: string;
@@ -54,11 +52,9 @@ export type BriefQuestionResult =
         required: boolean;
         options: string[] | null;
         position: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
-export type DeleteBriefQuestionResult = { ok: true } | { ok: false; error: string };
+export type DeleteBriefQuestionResult = ActionOutcome;
 
 const QUESTION_COLUMNS =
   "id, project_id, prompt, category, answer_type, help_text, required, options, position";

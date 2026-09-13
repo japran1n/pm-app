@@ -25,6 +25,7 @@ import { canManageSavedView } from "@/lib/auth/permissions";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import type { SavedViewScope } from "@/lib/validation/views";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "View not found.";
@@ -152,9 +153,7 @@ async function revalidateViewRoutes(
   }
 }
 
-export type ViewTaskActionResult =
-  | { ok: true; data: { viewId: string; taskId: string } }
-  | { ok: false; error: string };
+export type ViewTaskActionResult = ActionResult<{ viewId: string; taskId: string }>;
 
 // Manually pins `taskId` into `viewId`, independent of the view's own
 // filter config. Idempotent by design (unique (view_id, task_id)): adding
@@ -311,9 +310,7 @@ export async function reorderTaskInView(input: {
   return { ok: true, data: { viewId: view.id, taskId: parsed.data.taskId } };
 }
 
-export type ListViewTaskIdsResult =
-  | { ok: true; data: string[] }
-  | { ok: false; error: string };
+export type ListViewTaskIdsResult = ActionResult<string[]>;
 
 // Reads the manually pinned task ids for a view, in position order.
 // Session-scoped client -- `view_tasks_select_visible`'s RLS policy
