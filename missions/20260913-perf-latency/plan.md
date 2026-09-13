@@ -24,6 +24,24 @@ and parallel workers in one worktree would collide.
 
 ---
 
+## M0 — Make the gate trustworthy
+
+### F000: Declare the `server-only` dependency
+**Est:** 30 min · **Depends on:** none
+**Covers:** AS-023
+- `lib/queries/chat.ts` imports `server-only`, which appears in neither
+  `package.json` nor the lockfile. Next's bundler resolves it; vitest does not,
+  so every test whose import graph reaches that file dies before it runs —
+  including `tests/unit/sign-out-back-navigation.test.ts`, which guards the
+  workspace layout that M1 and M4 rewrite
+- Add it as a dependency at its current published version and install
+- `server-only` throws by design when a client component imports it. If adding
+  it surfaces failures in files that were green, that is a real pre-existing
+  layering violation: **report it in the handoff, do not fix it** — it is not
+  this mission's scope and the orchestrator decides what happens to it
+- Remove from `tools/known-failing.txt` any file that now passes
+**Files:** `package.json`, `package-lock.json`, `missions/20260913-perf-latency/tools/known-failing.txt`
+
 ## M1 — Request-level deduplication
 
 ### F001: Request-scoped current-user helper

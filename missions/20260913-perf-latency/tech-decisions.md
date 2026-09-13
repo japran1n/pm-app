@@ -80,10 +80,41 @@ render or invoke the unit under test, then assert on `mock.calls.length`.
 Several tests in `tests/unit/` already mock this module; follow the closest
 existing one rather than inventing a new harness.
 
+## The suite is red before this mission starts
+
+Measured at the base commit `10c01066`, in this worktree and in the user's
+checkout identically:
+
+| Suite | Result | Duration |
+|---|---|---|
+| `tests/unit` (394 files) | 4 files / 5 tests fail | 92 s |
+| full `vitest run` (691 files) | 115 files / 120 tests fail | 777 s |
+
+The difference is `tests/integration` — 261 files that open real connections
+to the shared Supabase project. None of this is caused by this mission.
+
+Two of the four unit failures are worth naming because this mission works in
+the same files. `tests/unit/sign-out-back-navigation.test.ts` cannot load at
+all: `lib/queries/chat.ts` imports `server-only`, which is not in
+`package.json` or the lockfile — Next's bundler resolves it, vitest does not.
+`tests/unit/app-sidebar-project-nav-list.test.tsx` asserts the sidebar
+receives the workspace's projects, which is exactly the surface M4 rewrites.
+A worker in M4 that could not distinguish its own breakage from this
+inherited breakage would be working blind, which is why F000 comes first.
+
 ## How to run tests
 
 ```
-npm run test
+missions/20260913-perf-latency/tools/test-gate.sh
+```
+
+The gate runs `tests/unit` and fails only on a failure that is **new** against
+`tools/known-failing.txt`. See that script's header for why the full suite is
+not the per-worker gate, and where the integration tests moved to instead.
+To run the raw suite:
+
+```
+npx vitest run tests/unit
 ```
 
 ## How to run linter
