@@ -32,6 +32,11 @@ import { ApprovalsBadgeFigure } from "@/components/nav/figures/approvals-badge-f
 import { RequestsBadgeFigure } from "@/components/nav/figures/requests-badge-figure";
 import { ChatUnreadBadgeFigure } from "@/components/nav/figures/chat-unread-badge-figure";
 import { WorkspaceSwitcherFigure } from "@/components/nav/figures/workspace-switcher-figure";
+import {
+  NavBadgeSkeleton,
+  NotificationBellSkeleton,
+  WorkspaceSwitcherSkeleton,
+} from "@/components/nav/figures/skeletons";
 // F241 (AS-459, AS-463, AS-464): mounted once here, alongside the other
 // persistent workspace chrome, so a single global Cmd+K/Ctrl+K listener
 // owns the shortcut rather than one instance fighting another per page.
@@ -396,7 +401,7 @@ export default async function WorkspaceLayout({
           // other figure or the rest of the page -- see each figure's own
           // file-header comment for exactly what it replaces.
           notificationBellSlot={
-            <Suspense fallback={null}>
+            <Suspense fallback={<NotificationBellSkeleton />}>
               <NotificationBellFigure
                 workspaceSlug={workspaceSlug}
                 workspaceId={activeWorkspace.id}
@@ -405,7 +410,7 @@ export default async function WorkspaceLayout({
             </Suspense>
           }
           workspaceSwitcherSlot={
-            <Suspense fallback={null}>
+            <Suspense fallback={<WorkspaceSwitcherSkeleton />}>
               <WorkspaceSwitcherFigure
                 workspaceIds={workspaceIds}
                 currentWorkspaceId={activeWorkspace.id}
@@ -419,17 +424,17 @@ export default async function WorkspaceLayout({
             </Suspense>
           }
           approvalsBadge={
-            <Suspense fallback={null}>
+            <Suspense fallback={<NavBadgeSkeleton />}>
               <ApprovalsBadgeFigure workspaceId={activeWorkspace.id} />
             </Suspense>
           }
           requestsBadge={
-            <Suspense fallback={null}>
+            <Suspense fallback={<NavBadgeSkeleton />}>
               <RequestsBadgeFigure workspaceId={activeWorkspace.id} />
             </Suspense>
           }
           chatUnreadBadge={
-            <Suspense fallback={null}>
+            <Suspense fallback={<NavBadgeSkeleton />}>
               <ChatUnreadBadgeFigure workspaceId={activeWorkspace.id} />
             </Suspense>
           }
