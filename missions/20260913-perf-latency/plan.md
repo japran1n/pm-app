@@ -119,6 +119,23 @@ and parallel workers in one worktree would collide.
 - Drop the chat page's own call where the layout already supplies the list
 **Files:** `lib/queries/chat.ts`, `app/(workspace)/w/[workspaceSlug]/chat/layout.tsx`, `app/(workspace)/w/[workspaceSlug]/chat/page.tsx`
 
+### F008b: Deduplicate `resolvePeople` within a request
+**Est:** 30 min · **Depends on:** F008
+**Covers:** AS-004
+- Measured, not predicted: one render of `/projects/<id>/list` issues **four**
+  `rpc/get_users_by_ids` calls. See `milestones/M1-verification.md`
+- `resolvePeople` (`lib/queries/people.ts`) is called from several chains that
+  each resolve overlapping id sets, and it makes a second RPC round trip
+  whenever any id lacks a display name
+- Wrap it in `cache()`. Its argument is an id **array**, and `cache()` keys on
+  argument identity — a fresh array every call never hits. Key on a stable derived
+  string (sorted, joined) or memoise an inner single-id resolver. A `cache()`
+  that never hits is worse than none: it looks fixed and is not
+- Verify by the same method M1 used: one isolated request, then count
+  `rpc/get_users_by_ids` in the Supabase edge logs for that window. Four must
+  become one or two
+**Files:** `lib/queries/people.ts`
+
 ---
 
 ## M2 — Query narrowing
