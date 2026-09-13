@@ -18,7 +18,7 @@ import { HeaderSearch } from "@/components/nav/header-search";
 import { AppBreadcrumb } from "@/components/nav/app-breadcrumb";
 import { GlobalTimeTracker } from "@/components/time/global-time-tracker";
 import { WhatsNewPanel } from "@/components/whats-new/whats-new-panel";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { getActiveTimer, getMyRecentTimeEntries } from "@/lib/queries/time-entries";
 
 export async function AppHeader({
@@ -37,10 +37,7 @@ export async function AppHeader({
   // caller never reaches this layout (workspace layout guard), but the
   // lookups are defensive against a null user regardless, same as every
   // other query in lib/queries/time-entries.ts.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const [activeTimer, recentEntries] = user
     ? await Promise.all([

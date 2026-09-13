@@ -1,6 +1,7 @@
 import { notFound, redirect, permanentRedirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getWorkspaceBySlug } from "@/lib/queries/workspaces";
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { logger } from "@/lib/observability/logger";
 // F267 (AS-519, AS-520, AS-521, AS-522): the header search bar, rendered
@@ -114,10 +115,7 @@ export default async function WorkspaceLayout({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");
@@ -127,16 +125,7 @@ export default async function WorkspaceLayout({
   // non-deleted workspaces the caller is an active member of, so a null
   // result here covers "doesn't exist", "soft-deleted", and "not an active
   // member" alike.
-  const { data: activeWorkspace, error: activeWorkspaceError } =
-    await supabase
-      .from("workspaces")
-      .select("id, name, slug, logo_url")
-      .eq("slug", workspaceSlug)
-      .maybeSingle();
-
-  if (activeWorkspaceError) {
-    logger.error("WorkspaceLayout: failed to look up workspace by slug", { error: activeWorkspaceError });
-  }
+  const activeWorkspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!activeWorkspace) {
     // F137 (AS-241): before giving up with a generic 404, check whether
