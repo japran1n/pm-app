@@ -32,8 +32,6 @@
 // same RLS-scoped lookup pattern as the project detail layout above this
 // route.
 
-import { redirect } from "next/navigation";
-
 import { createClient } from "@/lib/supabase/server";
 import {
   getProjectListTasks,
@@ -106,7 +104,6 @@ export default async function ProjectListPage({
 }) {
   const { workspaceSlug, projectId } = await params;
   const query = await searchParams;
-  const basePath = `/w/${workspaceSlug}/projects/${projectId}/list`;
 
   // F223 (AS-411) + workspace members: run in parallel — columns and
   // workspace lookup are independent of each other (P5: eliminates one
@@ -149,15 +146,16 @@ export default async function ProjectListPage({
   // producing zero rows.
   const validAssigneeIds = new Set(workspaceMembers.active.map((m) => m.userId));
 
-  // F229 (AS-431): with NEITHER a view opened NOR any filter/sort param
-  // present at all, redirect to the caller's own default view for this
-  // project (if one exists) so "opening the project" auto-applies it —
-  // server-side, before any tasks are fetched. Guarded by "no params at
-  // all" (not just "no viewId") so a link to a specific, unfiltered state
-  // (e.g. a bookmarked plain `?sort=due_date_asc`) is never silently
-  // overridden by the default, and so this can never redirect-loop (the
-  // redirect target always carries `viewId`, which short-circuits this
-  // branch on the next render).
+  // F229 (AS-431) / F021 (AS-021, AS-022): with NEITHER a view opened NOR
+  // any filter/sort param present at all, this project's default saved
+  // view (if one exists) is applied for "opening the project" — resolved
+  // and used directly in THIS request rather than via a server redirect to
+  // `?viewId=<id>`, which used to replay the proxy and both layouts for a
+  // second full request. Guarded by "no params at all" (not just "no
+  // viewId") so a link to a specific, unfiltered state (e.g. a bookmarked
+  // plain `?sort=due_date_asc`) is never silently overridden by the
+  // default — same guard the old redirect used, just applied in-request
+  // now instead of via a round trip.
   const hasAnyViewOrFilterParam = Boolean(
     query.viewId ||
       query.status ||
@@ -166,10 +164,11 @@ export default async function ProjectListPage({
       query.taskTypeId ||
       query.sort,
   );
+  let effectiveViewId = query.viewId;
   if (!hasAnyViewOrFilterParam) {
     const defaultView = await getMyDefaultSavedView(projectId, "list");
     if (defaultView) {
-      redirect(`${basePath}?viewId=${defaultView.id}`);
+      effectiveViewId = defaultView.id;
     }
   }
 
@@ -194,8 +193,8 @@ export default async function ProjectListPage({
   // applied in memory afterward instead.
   let nonTrivialFilterGroup: FilterGroup | undefined;
 
-  if (query.viewId) {
-    const viewResult = await getSavedView(query.viewId);
+  if (effectiveViewId) {
+    const viewResult = await getSavedView(effectiveViewId);
     if (viewResult.ok && viewResult.data.projectId === projectId) {
       appliedViewId = viewResult.data.id;
       const resolved = resolveListViewFilters(viewResult.data.config, {
