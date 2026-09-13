@@ -15,14 +15,20 @@
 // be reachable for a real signed-in user).
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { getCurrentUser } from "@/lib/auth/current-user";
+
 export const DEFAULT_TIMEZONE = "UTC";
 
+// F124/F005 (AS-004, AS-207): identity is resolved via the shared
+// request-scoped `getCurrentUser()` (which reuses the layout's already-made
+// `auth.getUser()` call within the same request) rather than this
+// function's own `supabase.auth.getUser()` -- callers still pass their own
+// `supabase` client for the actual profile row read below, since that
+// client (and its RLS-scoped session) is unchanged by this.
 export async function getCurrentUserTimezone(
   supabase: SupabaseClient,
 ): Promise<string> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return DEFAULT_TIMEZONE;
 

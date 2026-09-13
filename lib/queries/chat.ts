@@ -7,6 +7,7 @@ import "server-only";
 import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolvePeople, type PersonSummary } from "@/lib/queries/people";
 
 export type ChatMessageRow = {
@@ -172,7 +173,8 @@ export type WorkspaceChannelRow = {
 export async function getWorkspaceChannels(
   workspaceId: string,
 ): Promise<WorkspaceChannelRow[]> {
-  const supabase = await createClient();
+  const { supabase, user } = await getCurrentUser();
+  const currentUserId = user?.id ?? "";
 
   // F5/W3: last_read_at itself is no longer read here -- the summary RPC
   // below re-derives it from the caller's own channel_members row via
@@ -182,7 +184,7 @@ export async function getWorkspaceChannels(
   const { data: memberRows, error: memberError } = await supabase
     .from("channel_members")
     .select("channel_id")
-    .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
+    .eq("user_id", currentUserId);
 
   if (memberError) {
     logger.error("getWorkspaceChannels: membership query failed", { error: memberError });
@@ -244,7 +246,6 @@ export async function getWorkspaceChannels(
   const dmChannelIds = channelRows.filter((row) => row.kind === "dm").map((row) => row.id);
   const dmOtherNameByChannel = new Map<string, string>();
   if (dmChannelIds.length > 0) {
-    const currentUserId = (await supabase.auth.getUser()).data.user?.id ?? "";
     const { data: dmMemberRows } = await supabase
       .from("channel_members")
       .select("channel_id, user_id")

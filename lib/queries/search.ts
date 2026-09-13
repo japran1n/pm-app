@@ -74,7 +74,7 @@
 // tasks.search_vector by 20260819064522_task_key_search_fts.sql, so the
 // same task can legitimately appear in both sets).
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { parseTaskKeyQuery } from "@/lib/tasks/task-key";
@@ -124,17 +124,13 @@ export async function searchWorkspaceTasks(
     return [];
   }
 
-  const supabase = await createClient();
-
   // AS-118/AS-122 (F070 hardening): defense-in-depth re-check that the
   // caller is an active member of the workspace being searched, before
   // touching any project/task data — independent of RLS, so a caller who
   // is only a member of some other, unrelated workspace gets an empty
   // result here rather than relying solely on the projects query below to
   // filter correctly.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return [];
