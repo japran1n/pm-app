@@ -4,6 +4,8 @@ import { logger } from "@/lib/observability/logger";
 // a channel's messages.
 import "server-only";
 
+import { cache } from "react";
+
 import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
@@ -169,8 +171,21 @@ export type WorkspaceChannelRow = {
  * the caller's own session: `channels_select_members_or_workspace` /
  * `channel_members_select_own_or_shared_channel` RLS is the real filter,
  * this query just orders + shapes the result.
+ *
+ * F008 (missions/20260913-perf-latency): `cache()`-wrapped, keyed by the
+ * single `workspaceId` string argument -- the workspace layout (sidebar
+ * unread badge, via `getWorkspaceChatUnreadTotal`), the chat layout
+ * (channel list) and the chat index page each call this with the same
+ * primitive workspace id string, so under the real Next.js per-request
+ * dispatcher all three collapse onto one execution of this multi-step
+ * chain instead of three. Same convention as `getWorkspaceBySlug`
+ * (lib/queries/workspaces.ts) and `getCurrentUser`
+ * (lib/auth/current-user.ts) -- see those files' own header comments, and
+ * this feature's test file, for why `cache()` cannot be observed to
+ * memoise under plain Vitest (no per-request dispatcher there) and why the
+ * test here is structural rather than a call-count assertion.
  */
-export async function getWorkspaceChannels(
+export const getWorkspaceChannels = cache(async function getWorkspaceChannels(
   workspaceId: string,
 ): Promise<WorkspaceChannelRow[]> {
   const { supabase, user } = await getCurrentUser();
@@ -281,7 +296,7 @@ export async function getWorkspaceChannels(
       const bTime = b.lastMessageAt ?? b.createdAt;
       return bTime.localeCompare(aTime);
     });
-}
+});
 
 // Feature request (sidebar unread badges): the sidebar's own "Chat" nav
 // item wants a single number, not the whole per-channel channel list this
