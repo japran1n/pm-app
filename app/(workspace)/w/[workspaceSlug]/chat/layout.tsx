@@ -12,7 +12,8 @@
 // this layout's own always-mounted panel.
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getWorkspaceBySlug } from "@/lib/queries/workspaces";
 import { getWorkspaceChannels, getDmCandidates } from "@/lib/queries/chat";
 import { ChatNavList } from "@/components/chat/chat-nav-list";
 import { ChatMessageSearch } from "@/components/chat/chat-message-search";
@@ -27,20 +28,13 @@ export default async function ChatLayout({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {
     redirect(`/w/${workspaceSlug}`);
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const [channels, dmCandidates] = await Promise.all([
     getWorkspaceChannels(workspace.id),

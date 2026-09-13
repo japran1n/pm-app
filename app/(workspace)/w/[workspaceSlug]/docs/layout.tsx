@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import { getWorkspaceBySlug } from "@/lib/queries/workspaces";
 import { getDocFolders, getAllDocs } from "@/lib/queries/docs";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
 
@@ -23,20 +24,13 @@ export default async function DocsLayout({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {
     redirect("/onboarding");

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceBySlug } from "@/lib/queries/workspaces";
 import { getProjectById } from "@/lib/queries/projects";
 import {
   getProjectEstimateAndLoggedByPerson,
@@ -51,16 +51,10 @@ export default async function ProjectDetailLayout({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
-
   // Parent workspace layout already verified auth and active membership —
   // no redundant getUser() needed here. The workspace lookup is still
   // required because this layout needs workspace.id for getProjectById.
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
 
   if (!workspace) {
     notFound();
