@@ -44,3 +44,47 @@ package-lock.json
 ## Notes for the next worker
 - The gate output prints a "Note — these were failing at mission start and now pass" block when a known-failing file starts passing; it did not print that block on this run, confirming none of the four baseline failures were fixed by this change (expected, since the spec anticipated this fix would surface a real violation rather than silently fix the file).
 - Any worker touching `lib/queries/chat.ts` or the chat client components listed above should be aware of the client/server layering violation described in "Out-of-scope work needed" — it will surface again the moment a test actually renders/imports the affected client components in the same process as the workspace layout.
+
+---
+
+## Orchestrator correction, appended after review
+
+**The "real pre-existing layering violation" reported above does not exist.**
+The worker read the text of the thrown error as a diagnosis. It is not one.
+
+`server-only`'s `package.json` declares a conditional export:
+
+```json
+"exports": { ".": { "react-server": "./empty.js", "default": "./index.js" } }
+```
+
+`empty.js` is empty. `index.js` is nothing but an unconditional `throw`. So
+the module throws for **every** importer that does not resolve under the
+`react-server` condition — server and client alike. The message names Client
+Components because that is the case it was written to catch, not because the
+importer was one.
+
+Next sets `react-server` when it builds a Server Component, so the app
+resolves to `empty.js` and is unaffected. Vitest sets no such condition, so it
+resolves to `index.js` and throws. That, and only that, is why
+`tests/unit/sign-out-back-navigation.test.ts` fails.
+
+The six files listed above were checked individually. Two import from
+`lib/queries/chat.ts` and both do so with `import type`, which is erased
+before any runtime import exists:
+
+- `components/chat/channel-view.tsx:26` — `import type { MessageReactionSummary }`
+- `components/chat/chat-message-search.tsx:21` — `import type { MessageSearchResult }`
+
+The other four do not import it at all; they mention the path in comments.
+
+Confirmed empirically: `npm run build` completes successfully at commit
+`c4667cc6` (exit 0, every route compiled). A genuine client-component import
+of a `server-only` module fails the build. It did not.
+
+**Consequence for the mission.** F000 was correct to declare a dependency the
+code imports, and it changed no behaviour — but it did not achieve what it was
+for: the test guarding the workspace layout still cannot load. F000b does
+that, by making vitest resolve `server-only` the way the React Server
+Components runtime already does. No follow-up feature should be created for
+the layering violation described above, because there is none.
