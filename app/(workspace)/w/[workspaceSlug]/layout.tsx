@@ -98,6 +98,38 @@ import { WorkspaceMain } from "@/components/nav/workspace-main";
 // layout's own `!user` -> redirect("/sign-in") check below.
 export const dynamic = "force-dynamic";
 
+// F018 (AS-016, AS-018): the advance-notice banner's own data isn't needed to
+// decide what this layout renders (unlike the membership check above it never
+// gates access, and unlike the sidebar figures it isn't already covered by an
+// F016 component) -- it only feeds a single, purely decorative slot inside
+// `<WorkspaceMain>`. Isolating its fetch into its own async component lets the
+// layout body return its shell without waiting on it, matching every other
+// F016 sidebar figure's `<Suspense fallback={null}>` pattern instead of
+// blocking on a third round trip alongside auth + workspace resolution.
+async function ClientPresentationBannerFigure({
+  supabase,
+  workspaceId,
+  workspaceSlug,
+}: {
+  supabase: Awaited<ReturnType<typeof getCurrentUser>>["supabase"];
+  workspaceId: string;
+  workspaceSlug: string;
+}) {
+  // Already fails open to [] internally -- see this function's own doc
+  // comment in lib/calendar/client-presentation.ts.
+  const upcomingClientPresentations = await getUpcomingClientPresentations(
+    supabase,
+    workspaceId,
+  );
+
+  return (
+    <ClientPresentationBanner
+      presentations={upcomingClientPresentations}
+      workspaceSlug={workspaceSlug}
+    />
+  );
+}
+
 // Server Component layout (AS-012, AS-013, AS-042, AS-144): resolves the
 // active workspace from the URL slug, verifies the caller has an active
 // membership, and fetches every active-membership workspace for the
@@ -186,10 +218,9 @@ export default async function WorkspaceLayout({
   }
 
   // All independent data fetches run in parallel — memberships, profile,
-  // notifications, tour status, sidebar projects, favorites, client count,
-  // and project roles are all independent of each other once user +
-  // activeWorkspace are known. This collapses the serial round-trips into
-  // one parallel batch.
+  // sidebar projects, favorites, client count, and project roles are all
+  // independent of each other once user + activeWorkspace are known. This
+  // collapses the serial round-trips into one parallel batch.
   //
   // F016 (AS-017): notifications, tour status, approvals/requests/chat
   // badge counts, and the workspace switcher list used to be awaited
@@ -199,6 +230,16 @@ export default async function WorkspaceLayout({
   // it can return its own JSX as soon as the awaits below (auth,
   // memberships, and the other values genuinely needed to decide what to
   // render) settle.
+  //
+  // F018 (AS-016, AS-018): the client-presentation banner's data moved out
+  // of this batch the same way — see `ClientPresentationBannerFigure`
+  // above, rendered below inside its own `<Suspense fallback={null}>`.
+  // Everything still awaited below is either the membership check itself
+  // (gates whether the page renders at all) or a value a slot renders
+  // synchronously (sidebar projects/favorites/profile feed `<AppSidebar>`
+  // and `<ProjectSwitcher>` props directly, not a Suspense-wrapped slot;
+  // client count/project roles feed `<MembershipProvider>`, which wraps
+  // every child on the page).
   const [
     { data: memberships, error: membershipsError },
     { data: currentUserProfile, error: currentUserProfileError },
@@ -206,7 +247,6 @@ export default async function WorkspaceLayout({
     favoriteProjectIds,
     { count: clientMemberCount },
     { data: projectMemberRows, error: projectMemberRowsError },
-    upcomingClientPresentations,
   ] = await Promise.all([
     // F134 (AS-222): caller's active memberships for workspace switcher +
     // role resolution. Two-step query (not embedded select) — see original
@@ -259,11 +299,6 @@ export default async function WorkspaceLayout({
       .select("project_id, project_role, projects!inner(workspace_id)")
       .eq("user_id", user.id)
       .eq("projects.workspace_id", activeWorkspace.id),
-
-    // Client Presentation feature: "today"/"tomorrow" advance-notice
-    // banner data. Already fails open to [] internally (see
-    // getUpcomingClientPresentations' own doc comment).
-    getUpcomingClientPresentations(supabase, activeWorkspace.id),
   ]);
 
   if (membershipsError) {
@@ -441,10 +476,13 @@ export default async function WorkspaceLayout({
         />
         <div className="bg-background border border-border rounded-lg m-2 flex-1 min-h-0 min-w-0 flex flex-col">
           <WorkspaceMain>
-            <ClientPresentationBanner
-              presentations={upcomingClientPresentations}
-              workspaceSlug={workspaceSlug}
-            />
+            <Suspense fallback={null}>
+              <ClientPresentationBannerFigure
+                supabase={supabase}
+                workspaceId={activeWorkspace.id}
+                workspaceSlug={workspaceSlug}
+              />
+            </Suspense>
             <AppHeader
               workspaceId={activeWorkspace.id}
               workspaceSlug={workspaceSlug}
