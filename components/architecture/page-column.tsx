@@ -10,6 +10,7 @@ import { PageColumnHeader } from "@/components/architecture/page-column-header";
 import { SortableSectionList } from "@/components/architecture/sortable-section-list";
 import { DeletePageButton } from "@/components/architecture/delete-page-button";
 import { AddSectionButton } from "@/components/architecture/add-section-button";
+import { PageClientVisibilityToggle } from "@/components/architecture/page-client-visibility-toggle";
 
 // Mission 20260910-182104, F006 (AS-019, AS-020, AS-021): a single page
 // column on the Architecture board. One column per page (AS-019), showing
@@ -77,6 +78,7 @@ export function PageColumn({
           </button>
           <PageColumnHeader page={page} />
           <PageKindSelector taskId={page.id} kind={page.pageKind} />
+          <PageClientVisibilityToggle page={page} />
           <DeletePageButton page={page} />
         </div>
         {page.description ? (

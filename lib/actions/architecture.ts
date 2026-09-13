@@ -1861,6 +1861,273 @@ export async function deleteComponent(
   return { success: true };
 }
 
+// F003 (missions/20260914-portal-simplify, AS-004, AS-005): "share this
+// page with the client" from the Architecture board. A page IS a task
+// (standing decision 1), so this reuses the exact same
+// `tasks.client_visible` column, membership/permission gate, and
+// discriminated-union return shape lib/actions/client-visibility.ts's
+// `setTaskClientVisibility` already established for the task detail
+// sheet's toggle -- no parallel visibility mechanism for pages/sections.
+//
+// `includeSections` (offered by the UI when sharing a page that has
+// sections, per this feature's clarified spec) additionally flips every
+// live section under this page to `client_visible = true` in the same
+// action call, so the team doesn't have to re-open each section
+// individually right after sharing its page. It is a no-op on unshare --
+// hiding a page never touches its sections, so re-sharing later restores
+// exactly the section-level choices the team made before.
+//
+// Looks up the page's owning workspace (and its slug, for the portal
+// revalidate below) server-side, never trusting a workspace id supplied
+// by the client -- same convention as every other action in this file.
+export type SetPageClientVisibilityResult =
+  | {
+      ok: true;
+      data: { taskId: string; clientVisible: boolean; sectionsShared: number };
+    }
+  | { ok: false; error: string };
+
+export async function setPageClientVisibility(
+  taskId: string,
+  visible: boolean,
+  options: { includeSections?: boolean } = {},
+): Promise<SetPageClientVisibilityResult> {
+  const parsed = z
+    .object({ taskId: z.string().uuid("Invalid page."), visible: z.boolean() })
+    .safeParse({ taskId, visible });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid page.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    !taskRow.page_slug ||
+    taskRow.parent_task_id !== null
+  ) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
+  const workspaceSlug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change what the client sees.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ client_visible: parsed.data.visible })
+    .eq("id", parsed.data.taskId);
+
+  if (updateError) {
+    logger.error("setPageClientVisibility: update failed", { error: updateError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  let sectionsShared = 0;
+
+  if (parsed.data.visible && options.includeSections) {
+    const { data: sectionRows, error: sectionsUpdateError } = await admin
+      .from("tasks")
+      .update({ client_visible: true })
+      .eq("parent_task_id", parsed.data.taskId)
+      .is("deleted_at", null)
+      .select("id");
+
+    if (sectionsUpdateError) {
+      logger.error("setPageClientVisibility: sections update failed", {
+        error: sectionsUpdateError,
+      });
+    } else {
+      sectionsShared = sectionRows?.length ?? 0;
+    }
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+    if (workspaceSlug) {
+      revalidatePath(
+        `/portal/${workspaceSlug}/p/${taskRow.project_id}/architecture`,
+        "page",
+      );
+    }
+  } catch (revalidateError) {
+    logger.error("setPageClientVisibility: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return {
+    ok: true,
+    data: {
+      taskId: parsed.data.taskId,
+      clientVisible: parsed.data.visible,
+      sectionsShared,
+    },
+  };
+}
+
+// F003 (AS-004, AS-005): same share/unshare toggle as
+// setPageClientVisibility above, for a single section. A section IS a
+// subtask of its page (standing decision 1), so this targets exactly one
+// row (`WHERE id = sectionTaskId`) -- other sections and the parent page
+// are never touched.
+export type SetSectionClientVisibilityResult =
+  | { ok: true; data: { taskId: string; clientVisible: boolean } }
+  | { ok: false; error: string };
+
+export async function setSectionClientVisibility(
+  taskId: string,
+  visible: boolean,
+): Promise<SetSectionClientVisibilityResult> {
+  const parsed = z
+    .object({ taskId: z.string().uuid("Invalid section."), visible: z.boolean() })
+    .safeParse({ taskId, visible });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid section.",
+    };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    taskRow.page_slug ||
+    !taskRow.parent_task_id
+  ) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
+  const workspaceSlug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change what the client sees.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ client_visible: parsed.data.visible })
+    .eq("id", parsed.data.taskId);
+
+  if (updateError) {
+    logger.error("setSectionClientVisibility: update failed", { error: updateError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+    if (workspaceSlug) {
+      revalidatePath(
+        `/portal/${workspaceSlug}/p/${taskRow.project_id}/architecture`,
+        "page",
+      );
+    }
+  } catch (revalidateError) {
+    logger.error("setSectionClientVisibility: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  return {
+    ok: true,
+    data: { taskId: parsed.data.taskId, clientVisible: parsed.data.visible },
+  };
+}
+
 // Bulk page creation for the Architecture canvas's sitemap import.
 //
 // Reuses createPage's guard order deliberately -- project lookup, active

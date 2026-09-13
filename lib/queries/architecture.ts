@@ -45,6 +45,7 @@ export type BoardSection = {
   position: number;
   kind: BoardSectionKind;
   component: BoardSectionComponent | null;
+  clientVisible?: boolean;
 };
 
 export type BoardPage = {
@@ -55,6 +56,7 @@ export type BoardPage = {
   position: number;
   description: string | null;
   sections: BoardSection[];
+  clientVisible?: boolean;
 };
 
 export type BoardComponent = {
@@ -71,7 +73,7 @@ export type ArchitectureBoard = {
 };
 
 const TASK_COLUMNS =
-  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text";
+  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text, client_visible";
 
 type TaskRow = {
   id: string;
@@ -83,6 +85,7 @@ type TaskRow = {
   parent_task_id: string | null;
   position: number;
   description_text: string | null;
+  client_visible?: boolean | null;
 };
 
 const COMPONENT_COLUMNS = "id, name, description, position";
@@ -145,6 +148,7 @@ export function buildBoardFromRows(
         position: section.position,
         kind: section.section_kind === "cms" ? "cms" : "static",
         component: component ? { id: component.id, name: component.name } : null,
+        clientVisible: section.client_visible === true,
       };
     });
 
@@ -159,6 +163,7 @@ export function buildBoardFromRows(
           ? page.description_text
           : null,
       sections,
+      clientVisible: page.client_visible === true,
     };
   });
 
