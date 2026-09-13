@@ -33,6 +33,13 @@ import {
 export function EditProjectDialog({
   workspaceId,
   project,
+  // Ad-hoc "Projects page card redesign": see the matching comment in
+  // SaveProjectAsTemplateDialog — lets the "..." hover menu wrapper lift
+  // this dialog's open state into a DropdownMenuItem-driven controlled
+  // value instead of this component's own trigger button.
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: {
   workspaceId: string;
   project: {
@@ -43,9 +50,13 @@ export function EditProjectDialog({
     endDate: string | null;
     icon?: string | null;
   };
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
   const [startDate, setStartDate] = useState(project.startDate ?? "");
@@ -55,7 +66,8 @@ export function EditProjectDialog({
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
+    setUncontrolledOpen(nextOpen);
+    controlledOnOpenChange?.(nextOpen);
     if (nextOpen) {
       // Reset to the latest known values every time the dialog opens, in
       // case a previous edit (or another viewer's edit + router.refresh())
@@ -84,7 +96,7 @@ export function EditProjectDialog({
 
       if (result.ok) {
         toast.success(`${result.data.name} updated.`);
-        setOpen(false);
+        handleOpenChange(false);
         router.refresh();
       } else {
         setError(result.error);
@@ -95,17 +107,19 @@ export function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={`Edit ${project.name}`}
-          >
-            <Pencil className="size-4" aria-hidden="true" />
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Edit ${project.name}`}
+            >
+              <Pencil className="size-4" aria-hidden="true" />
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Project</DialogTitle>

@@ -37,19 +37,33 @@ export function SaveProjectAsTemplateDialog({
   projectName,
   disabled = false,
   disabledTitle,
+  // Ad-hoc "Projects page card redesign": lets a parent (the "..." hover
+  // menu wrapper) lift the open state and control it from a
+  // DropdownMenuItem instead of this dialog's own trigger button, so
+  // closing the dropdown doesn't unmount the dialog. Uncontrolled
+  // (self-managed `open`/its own trigger) is still the default — every
+  // OTHER caller of this dialog is unaffected.
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: {
   projectId: string;
   projectName: string;
   disabled?: boolean;
   disabledTitle?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
   const [name, setName] = useState(projectName);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
+    setUncontrolledOpen(nextOpen);
+    controlledOnOpenChange?.(nextOpen);
     if (nextOpen) {
       setName(projectName);
       setError(null);
@@ -73,7 +87,7 @@ export function SaveProjectAsTemplateDialog({
             result.data.taskCount === 1 ? "" : "s"
           }.`,
         );
-        setOpen(false);
+        handleOpenChange(false);
       } else {
         // Failure handling (clarified spec): the dialog stays open with
         // the entered name intact and a plain-language error, so the
@@ -86,20 +100,22 @@ export function SaveProjectAsTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={disabled}
-            title={disabled ? disabledTitle : "Save as template"}
-            aria-label="Save as template"
-          >
-            <LayoutTemplate className="size-4" aria-hidden="true" />
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              disabled={disabled}
+              title={disabled ? disabledTitle : "Save as template"}
+              aria-label="Save as template"
+            >
+              <LayoutTemplate className="size-4" aria-hidden="true" />
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Save as template</DialogTitle>

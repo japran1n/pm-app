@@ -426,6 +426,14 @@ export async function getArchivedWorkspaceProjects(
 export type ProjectHealthQueryInput = {
   overdueTaskCount: number;
   totalTaskCount: number;
+  // Ad-hoc "Projects page card redesign": derived from this SAME
+  // `taskRows` fetch (its own `status` column), never a second query and
+  // never mixed with `getWorkspaceProjects`'s RPC-based `openTaskCount` --
+  // that RPC's category-based "open" and this literal `status === "done"`
+  // are different definitions and must not be subtracted from one
+  // another. `doneTaskCount` here is always consistent with
+  // `totalTaskCount` above because both come from the same rows.
+  doneTaskCount: number;
   currentPhase: {
     state: "not_started" | "active" | "blocked" | "done";
     plannedStart: string | null;
@@ -458,8 +466,12 @@ export async function getProjectHealthInputs(
 
   const totalByProject = new Map<string, number>();
   const overdueByProject = new Map<string, number>();
+  const doneByProject = new Map<string, number>();
   for (const task of taskRows ?? []) {
     totalByProject.set(task.project_id, (totalByProject.get(task.project_id) ?? 0) + 1);
+    if (task.status === "done") {
+      doneByProject.set(task.project_id, (doneByProject.get(task.project_id) ?? 0) + 1);
+    }
     const isOverdue =
       task.status !== "done" &&
       typeof task.due_date === "string" &&
@@ -502,6 +514,7 @@ export async function getProjectHealthInputs(
     result.set(projectId, {
       overdueTaskCount: overdueByProject.get(projectId) ?? 0,
       totalTaskCount: totalByProject.get(projectId) ?? 0,
+      doneTaskCount: doneByProject.get(projectId) ?? 0,
       currentPhase: currentPhaseByProject.get(projectId) ?? null,
     });
   }

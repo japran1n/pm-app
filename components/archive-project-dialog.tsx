@@ -30,12 +30,27 @@ import {
 export function ArchiveProjectDialog({
   workspaceId,
   project,
+  // Ad-hoc "Projects page card redesign": see the matching comment in
+  // SaveProjectAsTemplateDialog — lets the "..." hover menu wrapper lift
+  // this dialog's open state into a DropdownMenuItem-driven controlled
+  // value instead of this component's own trigger button.
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideTrigger = false,
 }: {
   workspaceId: string;
   project: { id: string; name: string };
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = (nextOpen: boolean) => {
+    setUncontrolledOpen(nextOpen);
+    controlledOnOpenChange?.(nextOpen);
+  };
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -57,17 +72,19 @@ export function ArchiveProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={`Archive ${project.name}`}
-          >
-            <Archive className="size-4" aria-hidden="true" />
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Archive ${project.name}`}
+            >
+              <Archive className="size-4" aria-hidden="true" />
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Archive Project</DialogTitle>
