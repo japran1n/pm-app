@@ -17,8 +17,8 @@ import { logger } from "@/lib/observability/logger";
 // missing policy is a bug that must be loud, not one quietly compensated
 // for in a query builder.
 
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
 import {
   getDeliverablesPastDueCount,
   getWorstOverdueBlockingDeliverableRisk,
@@ -132,7 +132,7 @@ function todayIso(): string {
 export async function getPortalProjects(
   workspaceId: string,
 ): Promise<PortalProject[]> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: projects, error: projectsError } = await supabase
     .from("projects")
@@ -360,7 +360,7 @@ export type PortalPhase = {
 export async function getProjectPhases(
   projectId: string,
 ): Promise<PortalQueryResult<PortalPhase[]>> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: phases, error: phasesError } = await supabase
     .from("project_phases")
@@ -477,7 +477,7 @@ export async function getWorkspaceRoleForCurrentUser(
   workspaceId: string,
   userId: string,
 ): Promise<string | null> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
   const { data, error } = await supabase
     .from("workspace_members")
     .select("role")
@@ -502,7 +502,7 @@ export async function getWorkspaceRoleForCurrentUser(
 export async function getPortalCurrentUserProfile(
   userId: string,
 ): Promise<{ displayName: string | null; avatarUrl: string | null } | null> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
   const { data, error } = await supabase
     .from("profiles")
     .select("display_name, avatar_url")
@@ -570,11 +570,7 @@ export type PortalBadgeCounts = {
 // 0, honestly (there is nothing they can decide), not the full pending
 // count.
 export async function getPortalBadgeCounts(projectId: string): Promise<PortalBadgeCounts> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     // No session -- the layout that calls this already redirects an
@@ -678,11 +674,7 @@ export async function getPortalBadgeCounts(projectId: string): Promise<PortalBad
 export async function getPortalWaitingOnYouCount(
   projectId: string,
 ): Promise<PortalQueryResult<number>> {
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "Not signed in." };
@@ -809,7 +801,7 @@ export async function getPortalWaitingOnYou(
   projectId: string,
   projectName: string,
 ): Promise<PortalQueryResult<PortalOverviewTask[]>> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data, error } = await supabase
     .from("tasks")
@@ -1170,7 +1162,7 @@ export type PortalRequest = {
 export async function getPortalRequests(
   workspaceId: string,
 ): Promise<PortalRequest[]> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: projects } = await supabase
     .from("projects")
@@ -1236,7 +1228,7 @@ export type PortalProjectOption = { id: string; name: string };
 export async function getPortalProjectOptions(
   workspaceId: string,
 ): Promise<PortalProjectOption[]> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
   const { data } = await supabase
     .from("projects")
     .select("id, name")
@@ -1277,7 +1269,7 @@ export async function getPortalTaskDetail(
   taskId: string,
   currentUserId: string,
 ): Promise<PortalTaskDetail | null> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: task, error } = await supabase
     .from("tasks")
@@ -1384,7 +1376,7 @@ export type PortalOverview = {
 export async function getPortalOverview(
   workspaceId: string,
 ): Promise<PortalOverview> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: projects } = await supabase
     .from("projects")
@@ -1516,7 +1508,7 @@ export async function getPortalActivitySummary(
 
   const since = memberRow?.portal_last_seen_at ?? null;
 
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: projects } = await supabase
     .from("projects")
@@ -1635,7 +1627,7 @@ export type PortalFile = {
 export async function getPortalFiles(
   workspaceId: string,
 ): Promise<PortalFile[]> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: projects } = await supabase
     .from("projects")
@@ -1752,7 +1744,7 @@ const WORKSPACE_ROLE_LABELS: Record<string, string> = {
 };
 
 export async function getPortalPages(projectId: string): Promise<PortalPage[]> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   const { data: project } = await supabase
     .from("projects")
@@ -1901,7 +1893,7 @@ export async function getPortalWeeklyDelivery(
   projectStartDate: string | null,
   todayIso: string,
 ): Promise<PortalQueryResult<WeeklyDeliveryWeek[]>> {
-  const supabase = await createClient();
+  const supabase = await getRequestClient();
 
   // Same `client_visible` scoping every other business-logic read in this
   // file applies explicitly (getProjectPhases's own comment: RLS already
