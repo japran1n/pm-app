@@ -13,15 +13,7 @@ import { EmptyState } from "@/components/empty-state";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
 import { countWaitingOnYouByProject } from "@/lib/portal/waiting-on-you-by-project";
-
-function formatDate(iso: string): string {
-  // Same fixed en-GB short form as project-progress.tsx, for the same
-  // server/client hydration reason.
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
+import { formatDayMonth } from "@/lib/format";
 
 // C4 / F003 (missions/20260903-portal, "Project scope"): the portal's
 // project chooser. The prototype is project-first (a client works inside
@@ -151,7 +143,7 @@ export default async function PortalOverviewPage({
             changed" framing makes no sense — nothing renders in that case. */}
         {activity && activity.since && (
           <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-            Since your last visit ({formatDate(activity.since)}):{" "}
+            Since your last visit ({formatDayMonth(activity.since)}):{" "}
             <span className="font-medium text-foreground">
               {activity.completed.length}{" "}
               {activity.completed.length === 1 ? "task" : "tasks"} completed
@@ -214,7 +206,7 @@ export default async function PortalOverviewPage({
 
                   {project.targetLaunchDate && (
                     <span className="text-xs text-muted-foreground">
-                      Target launch: {formatDate(project.targetLaunchDate)}
+                      Target launch: {formatDayMonth(project.targetLaunchDate)}
                     </span>
                   )}
 

@@ -43,26 +43,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-function formatDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { formatDuration, toIsoDate } from "@/lib/format";
 
 function defaultRange(): { start: string; end: string } {
   const now = new Date();
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  return { start: formatDate(firstOfMonth), end: formatDate(now) };
-}
-
-function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins}m`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
+  return { start: toIsoDate(firstOfMonth), end: toIsoDate(now) };
 }
 
 export default async function TimeReportPage({
@@ -277,13 +263,13 @@ export default async function TimeReportPage({
                       </Link>
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {formatMinutes(billable)}
+                      {formatDuration(billable)}
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {formatMinutes(nonBillable)}
+                      {formatDuration(nonBillable)}
                     </TableCell>
                     <TableCell className="text-right font-mono font-medium tabular-nums">
-                      {formatMinutes(billable + nonBillable)}
+                      {formatDuration(billable + nonBillable)}
                     </TableCell>
                   </TableRow>
                 );

@@ -1,7 +1,8 @@
 import { cache } from "react";
 
 import { logger } from "@/lib/observability/logger";
-import { getRequestClient } from "@/lib/auth/current-user";
+import { getCurrentUser, getRequestClient } from "@/lib/auth/current-user";
+import type { WorkspaceRole } from "@/lib/auth/permissions";
 
 // Shared "default workspace" lookup (AS-005 / AS-003 adjacent).
 //
@@ -116,4 +117,58 @@ export const getWorkspaceBySlug = cache(async function getWorkspaceBySlug(
   }
 
   return workspace;
+});
+
+// ARCH-001 (audit 2026-09-13): the shared "who is the caller, which
+// workspace is this slug, and what is the caller's role in it" resolver.
+//
+// Before this helper existed, ~20 leaf pages under
+// app/(workspace)/w/[workspaceSlug]/** each carried the same three-step
+// block: `auth.getUser()`, `workspaces` by slug, then the caller's own
+// `workspace_members` row (`role`, `status = "active"`, `maybeSingle`)
+// with a `?? "guest"` fallback. This helper is that block, defined once.
+//
+// Deliberately returns nulls instead of redirecting/404ing: which
+// response a missing user or workspace maps to (redirect("/sign-in"),
+// redirect("/onboarding"), notFound()) is a per-page decision, and the
+// pages keep making it exactly as before. Same reasoning as
+// getWorkspaceBySlug's own "no slug-history fallback here" note above —
+// this helper resolves state, the call site decides the semantics.
+//
+// The role default: a resolvable workspace with no active membership row
+// for the caller yields `role: "guest"` — the exact `?? "guest"` fallback
+// every one of the replaced blocks applied. The two pages that defaulted
+// to "member" instead (the workspace dashboard and the per-person time
+// drill-down) do NOT use this helper; they keep their own blocks.
+//
+// `cache()`-wrapped like getWorkspaceBySlug above (and built on the
+// cached getCurrentUser/getRequestClient), so a layout and any number of
+// leaf pages resolving the same slug in one request share one set of
+// round trips.
+export const getWorkspaceContext = cache(async function getWorkspaceContext(
+  workspaceSlug: string,
+) {
+  const { supabase, user } = await getCurrentUser();
+
+  if (!user) {
+    return { user: null, workspace: null, role: null };
+  }
+
+  const workspace = await getWorkspaceBySlug(workspaceSlug);
+
+  if (!workspace) {
+    return { user, workspace: null, role: null };
+  }
+
+  const { data: ownMembership } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", workspace.id)
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const role = (ownMembership?.role ?? "guest") as WorkspaceRole;
+
+  return { user, workspace, role };
 });

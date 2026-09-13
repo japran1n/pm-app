@@ -5,6 +5,7 @@
 // `getProjectDecisions` ever fetches it (AS-045).
 import { Badge } from "@/components/ui/badge";
 import type { DecisionType, ProjectDecision } from "@/lib/queries/project-records";
+import { formatDateUTC } from "@/lib/format";
 
 const DECISION_TYPE_LABELS: Record<DecisionType, string> = {
   content: "Content",
@@ -12,16 +13,6 @@ const DECISION_TYPE_LABELS: Record<DecisionType, string> = {
   technical: "Technical",
   commercial: "Commercial",
 };
-
-function formatDate(iso: string): string {
-  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
-  return new Date(isoWithTime).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 export function DecisionLog({ decisions }: { decisions: ProjectDecision[] }) {
   const sorted = [...decisions].sort((a, b) => (a.decidedOn < b.decidedOn ? 1 : -1));
@@ -38,7 +29,7 @@ export function DecisionLog({ decisions }: { decisions: ProjectDecision[] }) {
             <p className="text-sm font-medium text-foreground">{decision.title}</p>
             <Badge variant="secondary">{DECISION_TYPE_LABELS[decision.decisionType]}</Badge>
             <span className="ml-auto text-xs text-muted-foreground">
-              {formatDate(decision.decidedOn)}
+              {formatDateUTC(decision.decidedOn)}
             </span>
           </div>
           {decision.rationale && (

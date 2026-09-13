@@ -11,11 +11,15 @@ import {
   searchChannelMessages,
   type MessageSearchResult,
 } from "@/lib/queries/chat";
+import { searchInputSchema } from "@/lib/validation/palette-search";
 
 export async function searchMessages(
   workspaceId: string,
   query: string,
 ): Promise<MessageSearchResult[]> {
-  if (!workspaceId || !query.trim()) return [];
-  return searchChannelMessages(workspaceId, query);
+  // Audit NX-008: zod boundary — malformed args return empty instead of
+  // reaching the query layer.
+  const parsed = searchInputSchema.safeParse({ workspaceId, query });
+  if (!parsed.success || !parsed.data.query.trim()) return [];
+  return searchChannelMessages(parsed.data.workspaceId, parsed.data.query);
 }

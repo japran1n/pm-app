@@ -14,22 +14,12 @@
 // `aria-label="<name>, <date-or-week-label>, <hours> hours"`. No client
 // JS needed — this is plain markup with inline `backgroundColor` opacity.
 import type { HeatmapGrid } from "@/lib/time/team-heatmap-data";
+import { formatHoursFixed } from "@/lib/format";
 
 export type TeamHeatmapPerson = {
   userId: string;
   label: string;
 };
-
-// Always renders one decimal place so every cell (including true zero-hour
-// cells) uses the same number format -- previously whole-hour values (and
-// exact zero) printed without a decimal ("0", "2") while partial hours
-// printed with one ("1.5"), which made "0" and near-zero-but-nonzero
-// values ("0.0") look like two different concepts side by side in the
-// same table.
-function formatHours(minutes: number): string {
-  const hours = minutes / 60;
-  return hours.toFixed(1);
-}
 
 export function TeamHeatmap({
   grid,
@@ -80,7 +70,7 @@ export function TeamHeatmap({
                     grid.maxMinutes > 0 ? cell.totalMinutes / grid.maxMinutes : 0;
                   const columnLabel =
                     grid.columns.find((c) => c.key === cell.columnKey)?.label ?? cell.columnKey;
-                  const hoursLabel = formatHours(cell.totalMinutes);
+                  const hoursLabel = formatHoursFixed(cell.totalMinutes);
                   return (
                     <td
                       key={cell.columnKey}

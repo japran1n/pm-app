@@ -33,6 +33,7 @@ import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items"
 import { buildNextFromYouAnswer } from "@/lib/portal/build-next-from-you";
 import { computeBurndownSeries } from "@/lib/hours/burndown-series";
 import type { ClientBucket } from "@/components/portal/status-label";
+import { formatDayMonth } from "@/lib/format";
 
 // F006 (missions/20260903-portal, AS-002, AS-003, AS-010, AS-031): the
 // prototype's own Overview -- a risk banner slot, four tiles, the phase
@@ -57,16 +58,6 @@ const WIDE_FROM = "2000-01-01";
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatDate(iso: string): string {
-  // Same fixed en-GB short form used elsewhere in this file's siblings
-  // (project-progress.tsx, portal-overview-live.tsx), for the same
-  // server/client hydration reason.
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
 }
 
 function computeDaysToLaunch(targetLaunchDate: string | null, today: string): number | null {
@@ -418,7 +409,7 @@ export default async function PortalOverviewPage({
                 <h2 className="text-sm font-semibold">Since your last visit</h2>
                 {activity.since && (
                   <span className="text-xs text-muted-foreground">
-                    {formatDate(activity.since)}
+                    {formatDayMonth(activity.since)}
                   </span>
                 )}
               </div>

@@ -66,6 +66,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { searchWorkspaceTasks } from "@/lib/queries/search";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import {
+  searchInputSchema,
+  resolveRecentItemsSchema,
+} from "@/lib/validation/palette-search";
+import {
   PALETTE_RESULT_CAP_PER_GROUP,
   RECENT_ITEMS_CAP,
   type PaletteMemberResult,
@@ -80,8 +84,15 @@ export async function searchPalette(
   workspaceId: string,
   query: string,
 ): Promise<PaletteSearchResults> {
-  const trimmed = query.trim();
   const empty: PaletteSearchResults = { projects: [], tasks: [], members: [] };
+
+  // Audit NX-008: zod boundary — malformed args return the empty result
+  // instead of reaching the query layer.
+  const parsedInput = searchInputSchema.safeParse({ workspaceId, query });
+  if (!parsedInput.success) {
+    return empty;
+  }
+  const trimmed = parsedInput.data.query.trim();
 
   if (!trimmed) {
     return empty;
@@ -186,7 +197,12 @@ export async function resolveRecentItems(
 ): Promise<ResolvedRecentItems> {
   const empty: ResolvedRecentItems = { projects: [], tasks: [] };
 
-  if (pointers.length === 0) {
+  // Audit NX-008: zod boundary — malformed args resolve to nothing.
+  const parsedInput = resolveRecentItemsSchema.safeParse({
+    workspaceId,
+    pointers,
+  });
+  if (!parsedInput.success || parsedInput.data.pointers.length === 0) {
     return empty;
   }
 

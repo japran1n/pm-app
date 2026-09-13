@@ -15,6 +15,7 @@
 import { AlertTriangle, CheckCircle2, OctagonAlert } from "lucide-react";
 
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
+import { formatDateLongUTC } from "@/lib/format";
 
 const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   on_track: "On track",
@@ -35,15 +36,6 @@ const CONFIDENCE_COLOR: Record<PortalLaunchConfidence, string> = {
   at_risk: "text-status-waiting",
   slipped: "text-status-blocked",
 };
-
-function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 export function LaunchHeadline({
   targetLaunchDate,
@@ -110,7 +102,7 @@ export function LaunchHeadline({
         </span>
         <span className="text-h4 font-medium text-muted-foreground">
           {targetLaunchDate
-            ? `${hasLaunched ? "Launched" : "Launching"} ${formatDate(targetLaunchDate)}`
+            ? `${hasLaunched ? "Launched" : "Launching"} ${formatDateLongUTC(targetLaunchDate)}`
             : "Launch date not set yet"}
         </span>
       </div>
