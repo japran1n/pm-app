@@ -6,6 +6,21 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL(".", import.meta.url)),
+      // F000b (AS-023): `server-only`'s package exports map sends the
+      // `react-server` condition to a no-op `empty.js` and everything else
+      // to `index.js`, whose entire body is an unconditional `throw`. Next
+      // sets `react-server` when building a Server Component, so the app
+      // resolves to the no-op and is unaffected (`npm run build` passes).
+      // Vitest sets no such condition, so it resolves to the throwing file
+      // and any test whose import graph reaches `import "server-only"`
+      // dies on load. Alias the bare specifier straight to the package's
+      // own `empty.js` -- the same no-op the RSC runtime picks -- instead
+      // of adding `react-server` to `resolve.conditions`, which would also
+      // change how `react` itself resolves and affect every
+      // client-component test rendered through testing-library.
+      "server-only": fileURLToPath(
+        new URL("./node_modules/server-only/empty.js", import.meta.url),
+      ),
     },
   },
   test: {

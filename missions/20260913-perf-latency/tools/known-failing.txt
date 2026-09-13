@@ -8,5 +8,4 @@
 # to catch.
 tests/unit/app-sidebar-project-nav-list.test.tsx
 tests/unit/f038-as024-coverage.test.ts
-tests/unit/sign-out-back-navigation.test.ts
 tests/unit/xss-sanitization-audit.test.ts
