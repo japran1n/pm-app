@@ -232,7 +232,9 @@ export default async function WorkspaceLayout({
     ),
 
     // F263 (AS-510): favourite project ids. getFavoriteProjectIds already fails open.
-    getFavoriteProjectIds(activeWorkspace.id),
+    // F004 (AS-004): pass the already-resolved user id so this call skips
+    // its own `auth.getUser()` round trip.
+    getFavoriteProjectIds(activeWorkspace.id, user.id),
 
     // C2: client member count for MembershipProvider's hasClient flag.
     supabase

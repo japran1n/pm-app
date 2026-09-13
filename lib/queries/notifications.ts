@@ -21,7 +21,7 @@ import { logger } from "@/lib/observability/logger";
 // per-item network call" budget): one query for the notification rows,
 // one batched query for their tasks (+ project key), and one batched
 // resolvePeople() call for their actors — never one query per row.
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { resolvePeople } from "@/lib/queries/people";
 import { formatTaskKey } from "@/lib/tasks/task-key";
 import type { UserAvatarPerson } from "@/components/user-avatar";
@@ -166,10 +166,7 @@ export async function getNotificationsForWorkspace(
    * mission's "typed error, caller decides how to surface it" convention. */
   error?: string;
 }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { list: [], unreadCount: 0 };
