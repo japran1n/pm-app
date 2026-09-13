@@ -61,13 +61,14 @@ describe("F084 keyboard reachability", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     // All native <button> elements must not be arbitrarily removed from
     // the tab order.
@@ -89,13 +90,14 @@ describe("F084 keyboard reachability", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     // Section title (rename target) is a role="button" <p> — must be
     // reachable via Tab (tabIndex 0), not skipped.
@@ -114,13 +116,14 @@ describe("F084 keyboard reachability", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const pageHandle = screen.getByRole("button", { name: "Reorder Home" });
     const sectionHandle = screen.getByRole("button", { name: "Reorder Hero" });
@@ -149,6 +152,7 @@ describe("F085 accessible names", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
@@ -156,7 +160,7 @@ describe("F085 accessible names", () => {
     ];
     const components: BoardComponent[] = [makeComponent({})];
 
-    render(<ArchitectureBoard pages={pages} components={components} />);
+    render(<ArchitectureBoard pages={pages} components={components} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const buttons = screen.getAllByRole("button", { hidden: true });
     for (const button of buttons) {
@@ -173,7 +177,7 @@ describe("F085 accessible names", () => {
       makePage({ id: "page-1", title: "Pricing", pageSlug: "pricing" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(
       screen.getByRole("button", { name: "Delete Pricing" })
@@ -191,13 +195,14 @@ describe("F085 accessible names", () => {
             id: "section-1",
             title: "Sidebar",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(
       screen.getByRole("button", { name: "Reorder Dashboard" })
@@ -210,7 +215,7 @@ describe("F085 accessible names", () => {
   it("AS-178: the components panel toggle has visible text serving as its accessible name", () => {
     const pages: BoardPage[] = [makePage({ id: "page-1", title: "Home", pageSlug: "home" })];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(screen.getByRole("button", { name: "Components" })).toBeInTheDocument();
   });

@@ -114,7 +114,7 @@ describe("F022 reorder page columns", () => {
       makePage({ id: "page-3", title: "About", pageSlug: "about" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const headings = screen.getAllByText(/Home|Pricing|About/);
     const order = headings.map((node) => node.textContent);

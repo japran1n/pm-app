@@ -402,8 +402,16 @@ export function ChannelView({
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
+    // Always upsert: if realtime INSERT arrived first (race), it added the
+    // message without attachments. Replace it with the server result which
+    // has the fully-linked attachments + signed URLs.
     setMessages((previous) => {
-      if (previous.some((m) => m.id === result.data.id)) return previous;
+      const exists = previous.some((m) => m.id === result.data.id);
+      if (exists) {
+        return previous.map((m) =>
+          m.id === result.data.id ? (result.data as ChatMessage) : m,
+        );
+      }
       return [...previous, result.data as ChatMessage];
     });
     // The caller sent this message themselves, so their own read-cursor

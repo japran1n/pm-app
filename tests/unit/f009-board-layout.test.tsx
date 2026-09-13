@@ -40,7 +40,7 @@ describe("F009 architecture board horizontal layout", () => {
     ];
 
     const { container } = render(
-      <ArchitectureBoard pages={pages} components={[]} />,
+      <ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const board = container.querySelector(".overflow-x-auto") as HTMLElement;
@@ -55,7 +55,7 @@ describe("F009 architecture board horizontal layout", () => {
     ];
 
     const { container } = render(
-      <ArchitectureBoard pages={pages} components={[]} />,
+      <ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const board = container.querySelector(".overflow-x-auto") as HTMLElement;
@@ -73,7 +73,7 @@ describe("F009 architecture board horizontal layout", () => {
       }),
     );
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     pages.forEach((page) => {
       expect(screen.getByText(page.title)).toBeInTheDocument();

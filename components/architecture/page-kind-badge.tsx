@@ -8,12 +8,13 @@ import type { BoardPageKind } from "@/lib/queries/architecture";
 const LABELS: Record<BoardPageKind, string> = {
   static: "Static",
   cms: "CMS",
+  cms_template: "Template",
   utility: "Utility",
 };
 
 export function PageKindBadge({ kind }: { kind: BoardPageKind | null }) {
   const resolved = kind ?? "static";
-  const isCms = resolved === "cms";
+  const isCms = resolved === "cms" || resolved === "cms_template";
 
   return (
     <span

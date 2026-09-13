@@ -58,9 +58,9 @@ function makePages(): BoardPage[] {
       pageKind: "static",
       position: 0,
       sections: [
-        { id: "section-1", title: "Nav 1", position: 0, component: componentA },
-        { id: "section-2", title: "Foot 1", position: 1, component: componentB },
-        { id: "section-3", title: "Plain", position: 2, component: null },
+        { id: "section-1", title: "Nav 1", position: 0, kind: "static" as const, component: componentA },
+        { id: "section-2", title: "Foot 1", position: 1, kind: "static" as const, component: componentB },
+        { id: "section-3", title: "Plain", position: 2, kind: "static" as const, component: null },
       ],
     },
     {
@@ -70,7 +70,7 @@ function makePages(): BoardPage[] {
       pageKind: "static",
       position: 1,
       sections: [
-        { id: "section-4", title: "Nav 2", position: 0, component: componentA },
+        { id: "section-4", title: "Nav 2", position: 0, kind: "static" as const, component: componentA },
       ],
     },
   ] as unknown as BoardPage[];
@@ -79,7 +79,7 @@ function makePages(): BoardPage[] {
 describe("F033 hover-linked highlighting", () => {
   it("has no data-hover-component on the board root by default", () => {
     const { container } = render(
-      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} />,
+      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const board = container.querySelector("[data-hover-component]");
@@ -87,7 +87,7 @@ describe("F033 hover-linked highlighting", () => {
   });
 
   it("AS-070: hovering a linked instance marks every instance of that component active", () => {
-    render(<ArchitectureBoard pages={makePages()} components={[componentA, componentB]} />);
+    render(<ArchitectureBoard pages={makePages()} components={[componentA, componentB]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const nav1 = screen.getByText("Nav 1").closest<HTMLElement>("[data-component]")!;
     fireEvent.mouseOver(nav1);
@@ -98,7 +98,7 @@ describe("F033 hover-linked highlighting", () => {
   });
 
   it("AS-071: hovering one component's instance does not activate a different component's instances", () => {
-    render(<ArchitectureBoard pages={makePages()} components={[componentA, componentB]} />);
+    render(<ArchitectureBoard pages={makePages()} components={[componentA, componentB]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const nav1 = screen.getByText("Nav 1").closest<HTMLElement>("[data-component]")!;
     fireEvent.mouseOver(nav1);
@@ -109,7 +109,7 @@ describe("F033 hover-linked highlighting", () => {
 
   it("AS-072: hovering an unlinked section activates nothing and sets an empty hover id", () => {
     const { container } = render(
-      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} />,
+      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const plain = screen.getByText("Plain");
@@ -128,7 +128,7 @@ describe("F033 hover-linked highlighting", () => {
 
   it("AS-073: the highlight clears when the pointer leaves the board", () => {
     const { container } = render(
-      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} />,
+      <ArchitectureBoard pages={makePages()} components={[componentA, componentB]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const board = container.querySelector<HTMLElement>(".relative.min-h-0")!;

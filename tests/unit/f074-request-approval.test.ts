@@ -26,8 +26,8 @@ describe("F074 AS-145: the team can request approval of the brief document", () 
 });
 
 describe("F074 AS-146: an approval request for a brief records the document as its subject", () => {
-  it("builds a payload whose subject is the brief document (subject_type 'doc', subject_id = docId)", () => {
-    const payload = briefActions.buildBriefApprovalRequestPayload(
+  it("builds a payload whose subject is the brief document (subject_type 'doc', subject_id = docId)", async () => {
+    const payload = await briefActions.buildBriefApprovalRequestPayload(
       "project-1",
       "doc-1",
       "user-1",
@@ -37,8 +37,8 @@ describe("F074 AS-146: an approval request for a brief records the document as i
     expect(payload.subject_id).toBe("doc-1");
   });
 
-  it("scopes the request to the given project and records who requested it", () => {
-    const payload = briefActions.buildBriefApprovalRequestPayload(
+  it("scopes the request to the given project and records who requested it", async () => {
+    const payload = await briefActions.buildBriefApprovalRequestPayload(
       "project-1",
       "doc-1",
       "user-1",
@@ -48,13 +48,13 @@ describe("F074 AS-146: an approval request for a brief records the document as i
     expect(payload.requested_by).toBe("user-1");
   });
 
-  it("produces a different subject_id for a different document, never a hardcoded value", () => {
-    const payloadA = briefActions.buildBriefApprovalRequestPayload(
+  it("produces a different subject_id for a different document, never a hardcoded value", async () => {
+    const payloadA = await briefActions.buildBriefApprovalRequestPayload(
       "project-1",
       "doc-a",
       "user-1",
     );
-    const payloadB = briefActions.buildBriefApprovalRequestPayload(
+    const payloadB = await briefActions.buildBriefApprovalRequestPayload(
       "project-1",
       "doc-b",
       "user-1",

@@ -37,10 +37,15 @@ export function CreatePageDialog({
   projectId,
   open,
   onOpenChange,
+  parentSlug,
 }: {
   projectId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, the proposed slug is nested under this path ("services" ->
+   *  "services/seo"). The canvas passes the parent node's slug so "Add
+   *  child page" lands in the right place in the hierarchy (AS-016). */
+  parentSlug?: string;
 }) {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -63,7 +68,8 @@ export function CreatePageDialog({
     // has manually edited the slug field; once edited, the slug is
     // frozen and no longer tracks the name.
     if (!slugEdited) {
-      setSlug(slugify(nextName));
+      const base = slugify(nextName);
+      setSlug(parentSlug && base ? `${parentSlug}/${base}` : base);
     }
   }
 
@@ -118,9 +124,11 @@ export function CreatePageDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add page</DialogTitle>
+          <DialogTitle>{parentSlug ? "Add child page" : "Add page"}</DialogTitle>
           <DialogDescription>
-            Adds a new column to this project&apos;s architecture board.
+            {parentSlug
+              ? `Nested under /${parentSlug} in the sitemap.`
+              : "Adds a new page to this project's architecture."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

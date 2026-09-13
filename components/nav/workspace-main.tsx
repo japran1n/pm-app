@@ -23,7 +23,7 @@ export function WorkspaceMain({ children }: { children: React.ReactNode }) {
   return (
     <main
       className={cn(
-        "flex min-w-0 flex-1 flex-col min-h-0",
+        "flex min-w-0 flex-1 flex-col min-h-0 overflow-x-hidden",
         isChat ? "overflow-y-auto" : "overflow-y-auto",
       )}
     >

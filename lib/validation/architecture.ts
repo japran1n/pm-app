@@ -10,7 +10,7 @@ import { z } from "zod";
 // lib/validation/tasks.ts's createTaskSchema.
 
 // AS-031: new pages default to `page_kind = 'static'` when not supplied.
-export const pageKindEnum = z.enum(["static", "cms", "utility"]);
+export const pageKindEnum = z.enum(["static", "cms", "cms_template", "utility"]);
 
 // AS-039 (this mission's naming assertion): name is required, non-empty
 // after trimming.

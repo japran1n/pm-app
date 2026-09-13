@@ -12,7 +12,7 @@ import type { BoardPageKind } from "@/lib/queries/architecture";
 // after creation. Renders the existing PageKindBadge (F007) plus a small
 // popover offering the three page kinds; selecting one calls
 // changePageKind (lib/actions/architecture.ts) and refreshes the board.
-const KINDS: BoardPageKind[] = ["static", "cms", "utility"];
+const KINDS: BoardPageKind[] = ["static", "cms", "cms_template", "utility"];
 
 export function PageKindSelector({
   taskId,

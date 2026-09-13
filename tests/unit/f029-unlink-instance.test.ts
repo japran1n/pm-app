@@ -23,6 +23,7 @@ type TaskRow = {
   id: string;
   project_id: string;
   title: string;
+  section_kind: null,
   component_id: string | null;
 };
 
@@ -34,12 +35,14 @@ function resetShared() {
       id: SECTION_A_ID,
       project_id: PROJECT_ID,
       title: "Hero",
+      section_kind: null,
       component_id: COMPONENT_ID,
     },
     [SECTION_B_ID]: {
       id: SECTION_B_ID,
       project_id: PROJECT_ID,
       title: "Hero copy",
+      section_kind: null,
       component_id: COMPONENT_ID,
     },
   };

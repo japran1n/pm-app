@@ -716,7 +716,7 @@ export async function generateBriefDocument(
 // `decision_type: 'content'` is the closest fit among the existing
 // closed vocabulary (content/brand/technical/commercial) for a written
 // brief document.
-export function buildBriefApprovalRequestPayload(
+export async function buildBriefApprovalRequestPayload(
   projectId: string,
   docId: string,
   requestedBy: string,

@@ -27,6 +27,7 @@ let sectionRow: {
   project_id: string;
   page_slug: string | null;
   parent_task_id: string | null;
+  section_kind: null,
   component_id: string | null;
   projects: { workspace_id: string };
 } | null = null;
@@ -40,6 +41,7 @@ function resetShared() {
     project_id: PROJECT_ID,
     page_slug: null,
     parent_task_id: "55555555-5555-4555-8555-555555555555",
+    section_kind: null,
     component_id: "existing-component-id",
     projects: { workspace_id: WORKSPACE_ID },
   };

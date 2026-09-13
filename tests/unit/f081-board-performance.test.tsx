@@ -79,7 +79,7 @@ describe("F081 board performance at scale", () => {
   it("AS-173: renders 40 pages x 12 sections (480 cards) without error", () => {
     const pages = makeLargeBoard();
     expect(() =>
-      render(<ArchitectureBoard pages={pages} components={[sharedComponent]} />),
+      render(<ArchitectureBoard pages={pages} components={[sharedComponent]} projectId={"00000000-0000-4000-8000-000000000001"} />),
     ).not.toThrow();
 
     // Spot-check first and last cards actually rendered.
@@ -91,7 +91,7 @@ describe("F081 board performance at scale", () => {
     const pages = makeLargeBoard();
 
     const start = performance.now();
-    render(<ArchitectureBoard pages={pages} components={[sharedComponent]} />);
+    render(<ArchitectureBoard pages={pages} components={[sharedComponent]} projectId={"00000000-0000-4000-8000-000000000001"} />);
     const elapsed = performance.now() - start;
 
     expect(elapsed).toBeLessThan(2000);
@@ -104,7 +104,7 @@ describe("F081 board performance at scale", () => {
     render(
       <>
         <RenderCounter counterRef={counterRef} />
-        <ArchitectureBoard pages={pages} components={[sharedComponent]} />
+        <ArchitectureBoard pages={pages} components={[sharedComponent]} projectId={"00000000-0000-4000-8000-000000000001"} />
       </>,
     );
 
@@ -128,7 +128,7 @@ describe("F081 board performance at scale", () => {
   it("does not require virtualization at this scale: all 480 cards are present in the DOM at once", () => {
     const pages = makeLargeBoard();
     const { container } = render(
-      <ArchitectureBoard pages={pages} components={[sharedComponent]} />,
+      <ArchitectureBoard pages={pages} components={[sharedComponent]} projectId={"00000000-0000-4000-8000-000000000001"} />,
     );
 
     const cards = container.querySelectorAll(".group.relative.w-full.rounded-md");

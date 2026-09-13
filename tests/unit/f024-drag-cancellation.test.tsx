@@ -89,7 +89,7 @@ describe("F024 drag cancellation", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(capturedOnDragCancel).toBeInstanceOf(Function);
 
@@ -112,7 +112,7 @@ describe("F024 drag cancellation", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     capturedOnDragCancel?.();
 
@@ -131,7 +131,7 @@ describe("F024 drag cancellation", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(capturedOnDragEnd).toBeInstanceOf(Function);
 

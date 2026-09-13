@@ -24,6 +24,7 @@ function makeSection(overrides: Partial<BoardSection>): BoardSection {
     id: "section-1",
     title: "Hero",
     position: 0,
+    kind: "static",
     component: null,
     ...overrides,
   };
@@ -41,6 +42,7 @@ describe("F008 section card", () => {
       <SectionCard
         section={makeSection({
           title: "Nav",
+          kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
       />,
@@ -54,6 +56,7 @@ describe("F008 section card", () => {
       <SectionCard
         section={makeSection({
           title: "Nav",
+          kind: "static",
           component: { id: "comp-1", name: "Navbar" },
         })}
       />,

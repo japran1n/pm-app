@@ -30,6 +30,7 @@
 //   itself also rejects empty names server-side (AS-040, defense in
 //   depth).
 import { useState, useTransition } from "react";
+import { cn } from "@/lib/utils";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -155,18 +156,21 @@ export function SectionCard({
   return (
     <div
       data-component={section.component?.id ?? undefined}
-      className={
-        section.component
-          ? // F032 (AS-069): a section linked to a component is visually
-            // distinguished from an unlinked one via the same
-            // --component-* tint tokens used elsewhere on the board
-            // (F001), echoing Webflow's green component-card treatment --
-            // a tinted border, with a subtle fill tint added on hover so
-            // the distinction stays legible but doesn't compete with the
-            // component name label.
-            "group relative w-full rounded-md border border-component-border bg-card p-3 shadow-xs transition-colors hover:border-component-border-hover hover:bg-component/10"
-          : "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors hover:border-border-control-hover"
-      }
+      data-section-kind={section.kind}
+      // F032 (AS-069): a section linked to a component is tinted with the
+      // --component-* tokens, echoing Webflow's green component card.
+      // CMS-driven sections take the --cms-* lilac instead, matching the
+      // CMS page badge -- and CMS wins when a section is both, because
+      // "where does this content come from" is the more load-bearing fact
+      // when reading a sitemap than "which component renders it".
+      className={cn(
+        "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
+        section.kind === "cms"
+          ? "border-cms-border hover:border-cms-border-hover hover:bg-cms/10"
+          : section.component
+            ? "border-component-border hover:border-component-border-hover hover:bg-component/10"
+            : "hover:border-border-control-hover",
+      )}
     >
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         {section.component === null ? (

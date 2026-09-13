@@ -44,6 +44,7 @@ function makeSection(overrides: Partial<BoardSection>): BoardSection {
     id: "section-1",
     title: "Hero",
     position: 1,
+    kind: "static",
     component: null,
     ...overrides,
   };

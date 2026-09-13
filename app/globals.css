@@ -73,6 +73,10 @@
   --color-cms-foreground: var(--cms-foreground);
   --color-cms-border: var(--cms-border);
   --color-cms-border-hover: var(--cms-border-hover);
+  --color-folder: var(--folder);
+  --color-folder-foreground: var(--folder-foreground);
+  --color-folder-border: var(--folder-border);
+  --color-folder-border-hover: var(--folder-border-hover);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -302,6 +306,25 @@
   --cms-border: oklch(from var(--cms) l c h / 30%);
   --cms-border-hover: oklch(from var(--cms) l c h / 50%);
 
+  /* Architecture canvas folders: a path segment that groups pages but has
+     no page of its own. Amber, derived off --primary-hue with the same
+     hue-pull offset as --component / --cms above, so it is a third
+     sibling in that set rather than a hand-written colour. Distinct from
+     --warning: a folder is structure, not a problem. */
+  --folder-lightness: 0.75;
+  --folder-hue: clamp(
+    55,
+    calc(70 + (var(--primary-hue) - var(--brand-hue-reference)) * var(--status-hue-pull)),
+    95
+  );
+  --folder: oklch(var(--folder-lightness) var(--expressive-chroma) var(--folder-hue));
+  /* Same reasoning as --component-foreground: --folder is only ever a
+     low-opacity tint over --card, so the text borrows --foreground's
+     AA-compliant lightness and only --folder's hue. */
+  --folder-foreground: oklch(from var(--foreground) l calc(c * 0.3 + 0.03) var(--folder-hue));
+  --folder-border: oklch(from var(--folder) l c h / 30%);
+  --folder-border-hover: oklch(from var(--folder) l c h / 50%);
+
   --border: oklch(
     from var(--foreground) l calc(c * 0.54) h / calc(2% + 20% * var(--contrast-border))
   );
@@ -434,6 +457,7 @@
      the :root default so the token never resolves from only one place. */
   --component-lightness: 0.75;
   --cms-lightness: 0.75;
+  --folder-lightness: 0.75;
 }
 
 /* ══ packages/ui/build/css/themes/light.css — verbatim ══ */

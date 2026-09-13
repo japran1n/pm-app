@@ -40,11 +40,12 @@ describe("F037 client board view", () => {
         title: "Home",
         pageSlug: "home",
         sections: [
-          { id: "section-1", title: "Hero", position: 0, component: null },
+          { id: "section-1", title: "Hero", position: 0, kind: "static" as const, component: null },
           {
             id: "section-2",
             title: "Pricing tiers",
             position: 1,
+            kind: "static",
             component: { id: "component-1", name: "PricingCard" },
           },
         ],
@@ -79,7 +80,7 @@ describe("F037 client board view", () => {
       makePage({
         id: "page-1",
         title: "Home",
-        sections: [{ id: "section-1", title: "Hero", position: 0, component: null }],
+        sections: [{ id: "section-1", title: "Hero", position: 0, kind: "static" as const, component: null }],
       }),
     ];
 

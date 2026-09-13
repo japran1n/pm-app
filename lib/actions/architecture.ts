@@ -30,8 +30,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
+import type { BoardPageKind } from "@/lib/queries/architecture";
 import {
   createPageSchema,
+  pageKindEnum,
   createSectionSchema,
   type CreatePageInput,
 } from "@/lib/validation/architecture";
@@ -245,9 +247,9 @@ export async function createPage(
 // the client).
 export async function changePageKind(
   taskId: string,
-  kind: "static" | "cms" | "utility",
+  kind: BoardPageKind,
 ): Promise<{ success: boolean; error?: string }> {
-  if (kind !== "static" && kind !== "cms" && kind !== "utility") {
+  if (!pageKindEnum.safeParse(kind).success) {
     return { success: false, error: "Invalid page kind." };
   }
 
@@ -1857,4 +1859,114 @@ export async function deleteComponent(
   }
 
   return { success: true };
+}
+
+// Bulk page creation for the Architecture canvas's sitemap import.
+//
+// Reuses createPage's guard order deliberately -- project lookup, active
+// membership, write role -- but resolves them ONCE for the whole batch
+// rather than per row, because an import of a real site is routinely 50+
+// pages and re-running the membership round trip per page would turn a
+// paste into a visible stall.
+//
+// Slugs already present in the project are skipped rather than rejected,
+// so re-importing a sitemap after adding a few pages by hand is a safe,
+// idempotent top-up instead of an all-or-nothing failure.
+export async function importPages(
+  projectId: string,
+  pages: { path: string; title: string; kind?: string }[],
+): Promise<{ ok: true; created: number; skipped: number } | { ok: false; error: string }> {
+  if (pages.length === 0) {
+    return { ok: false, error: "That file didn't contain any pages." };
+  }
+  if (pages.length > 500) {
+    return { ok: false, error: "That sitemap is too large to import (limit 500 pages)." };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, error: "You must be signed in to import a sitemap." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: projectRow, error: projectError } = await admin
+    .from("projects")
+    .select("id, workspace_id, deleted_at")
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (projectError || !projectRow) {
+    return { ok: false, error: "Project not found." };
+  }
+
+  const membership = await requireActiveMembership(admin, projectRow.workspace_id, user.id);
+  if (!membership.ok || !canWrite({ role: membership.role })) {
+    return { ok: false, error: "You don't have permission to import pages into this project." };
+  }
+
+  // Same self-healing lookup createPage uses -- resolves (and seeds when
+  // absent) the workspace's 'page' task type.
+  const { data: pageTaskTypeId, error: ensureError } = await admin.rpc("ensure_task_type", {
+    p_workspace_id: projectRow.workspace_id,
+    p_system_key: "page",
+    p_name: "Page",
+    p_color: "#3670e1",
+    p_is_billable: false,
+    p_default_client_visible: false,
+  });
+
+  if (ensureError || !pageTaskTypeId) {
+    logger.error("importPages: failed to resolve 'page' task type", { error: ensureError });
+    return { ok: false, error: "Couldn't import those pages. Please try again." };
+  }
+
+  const { data: existingRows } = await admin
+    .from("tasks")
+    .select("page_slug, position")
+    .eq("project_id", projectId)
+    .not("page_slug", "is", null)
+    .is("deleted_at", null);
+
+  const takenSlugs = new Set((existingRows ?? []).map((row) => row.page_slug));
+  const startPosition =
+    Math.max(0, ...(existingRows ?? []).map((row) => row.position ?? 0)) + 1;
+
+  const rows = [];
+  for (const page of pages) {
+    const parsedPage = createPageSchema.safeParse({
+      name: page.title,
+      slug: page.path,
+      page_kind: pageKindEnum.safeParse(page.kind).success ? page.kind : "static",
+    });
+    if (!parsedPage.success || takenSlugs.has(parsedPage.data.slug)) continue;
+
+    takenSlugs.add(parsedPage.data.slug);
+    rows.push({
+      project_id: projectId,
+      title: parsedPage.data.name,
+      page_slug: parsedPage.data.slug,
+      page_kind: parsedPage.data.page_kind,
+      position: startPosition + rows.length,
+      author_id: user.id,
+      task_type_id: pageTaskTypeId,
+    });
+  }
+
+  if (rows.length === 0) {
+    return { ok: true, created: 0, skipped: pages.length };
+  }
+
+  const { error: insertError } = await admin.from("tasks").insert(rows);
+  if (insertError) {
+    logger.error("importPages: insert failed", { error: insertError });
+    return { ok: false, error: "Couldn't import those pages. Please try again." };
+  }
+
+  revalidatePath(`/w/[workspaceSlug]/projects/${projectId}/architecture`, "page");
+  return { ok: true, created: rows.length, skipped: pages.length - rows.length };
 }

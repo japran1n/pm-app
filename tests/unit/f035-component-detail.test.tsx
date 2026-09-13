@@ -76,6 +76,7 @@ describe("ComponentPanel detail view (F035)", () => {
             id: "section-1",
             title: "Hero",
             position: 1,
+            kind: "static",
             component: { id: "1", name: "Header" },
           },
         ],
@@ -88,6 +89,7 @@ describe("ComponentPanel detail view (F035)", () => {
             id: "section-2",
             title: "Top",
             position: 1,
+            kind: "static",
             component: { id: "1", name: "Header" },
           },
         ],
@@ -100,6 +102,7 @@ describe("ComponentPanel detail view (F035)", () => {
             id: "section-3",
             title: "Footer bit",
             position: 1,
+            kind: "static",
             component: { id: "2", name: "Footer" },
           },
         ],
@@ -136,7 +139,7 @@ describe("ComponentPanel detail view (F035)", () => {
         id: "page-1",
         title: "Home",
         sections: [
-          { id: "section-1", title: "Hero", position: 1, component: { id: "1", name: "Header" } },
+          { id: "section-1", title: "Hero", position: 1, kind: "static" as const, component: { id: "1", name: "Header" } },
         ],
       }),
     ];

@@ -41,7 +41,7 @@ describe("F006 architecture board page column shell", () => {
       makePage({ id: "page-3", title: "About", pageSlug: "about" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(screen.getByText("Home")).toBeInTheDocument();
     expect(screen.getByText("Pricing")).toBeInTheDocument();
@@ -53,7 +53,7 @@ describe("F006 architecture board page column shell", () => {
       makePage({ id: "page-1", title: "Dashboard", pageSlug: "dashboard" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
   });
@@ -68,7 +68,7 @@ describe("F006 architecture board page column shell", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(
       screen.getByText("The signed-in landing page"),
@@ -85,7 +85,7 @@ describe("F006 architecture board page column shell", () => {
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     // Only the page name paragraph renders in the header, no second
     // description line.

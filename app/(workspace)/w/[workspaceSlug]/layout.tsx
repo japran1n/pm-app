@@ -446,7 +446,7 @@ export default async function WorkspaceLayout({
           requestsCount={openClientRequestCount}
           chatUnreadCount={chatUnreadTotal}
         />
-        <div className="bg-background border border-border rounded-lg m-2 flex-1 min-h-0 flex flex-col">
+        <div className="bg-background border border-border rounded-lg m-2 flex-1 min-h-0 min-w-0 flex flex-col">
           <WorkspaceMain>
             <ClientPresentationBanner
               presentations={upcomingClientPresentations}

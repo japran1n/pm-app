@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -21,6 +21,8 @@ import {
 import type { BoardComponent, BoardPage, BoardSection } from "@/lib/queries/architecture";
 import { PageColumn } from "@/components/architecture/page-column";
 import { ComponentPanel } from "@/components/architecture/component-panel";
+import { CreatePageDialog } from "@/components/architecture/create-page-dialog";
+import { useComponentHover } from "@/lib/architecture/use-component-hover";
 import {
   reorderSections,
   moveSectionToPage,
@@ -54,9 +56,11 @@ import {
 export function ArchitectureBoard({
   pages,
   components,
+  projectId,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
+  projectId: string;
 }) {
   // Local, client-side-only mirror of every page's section id order, keyed
   // by page id -- optimistically updated on drop, rolled back to the
@@ -69,6 +73,7 @@ export function ArchitectureBoard({
   // component in the project, closed by default so the board's default
   // view is unchanged.
   const [panelOpen, setPanelOpen] = useState(false);
+  const [addPageOpen, setAddPageOpen] = useState(false);
 
   // F035 (AS-084, AS-086): the component id the panel should open showing
   // detail for. Set either by clicking a component in the panel's own
@@ -102,45 +107,7 @@ export function ArchitectureBoard({
   // component never carry `data-component` at all (section-card.tsx), so
   // hovering one resolves to an empty id and the CSS guard
   // `:not([data-hover-component=""])` keeps every card inert (AS-072).
-  const boardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const board = boardRef.current;
-    if (!board) return;
-
-    function setActive(componentId: string) {
-      if (!board) return;
-      board.setAttribute("data-hover-component", componentId);
-      board.querySelectorAll<HTMLElement>("[data-component]").forEach((el) => {
-        if (componentId && el.dataset.component === componentId) {
-          el.dataset.componentActive = "true";
-        } else {
-          delete el.dataset.componentActive;
-        }
-      });
-    }
-
-    function clearActive() {
-      if (!board) return;
-      board.removeAttribute("data-hover-component");
-      board.querySelectorAll<HTMLElement>("[data-component]").forEach((el) => {
-        delete el.dataset.componentActive;
-      });
-    }
-
-    function handleMouseOver(event: MouseEvent) {
-      const card = (event.target as Element).closest<HTMLElement>("[data-component]");
-      setActive(card?.dataset.component ?? "");
-    }
-
-    board.addEventListener("mouseover", handleMouseOver);
-    board.addEventListener("mouseleave", clearActive);
-
-    return () => {
-      board.removeEventListener("mouseover", handleMouseOver);
-      board.removeEventListener("mouseleave", clearActive);
-    };
-  }, []);
+  const boardRef = useComponentHover<HTMLDivElement>();
 
   const sectionsKey = pages
     .map((page) => `${page.id}:${page.sections.map((section) => section.id).join(",")}`)
@@ -363,7 +330,7 @@ export function ArchitectureBoard({
   };
 
   return (
-    <div ref={boardRef} className="relative min-h-0">
+    <div ref={boardRef} className="relative min-h-0 min-w-0 overflow-x-hidden">
       <div className="flex justify-end pb-2">
         <button
           type="button"
@@ -383,7 +350,7 @@ export function ArchitectureBoard({
         accessibility={accessibility}
       >
         <SortableContext items={pageOrder} strategy={horizontalListSortingStrategy}>
-          <div className="flex min-h-0 gap-4 overflow-x-auto pb-4">
+          <div className="flex min-h-0 gap-4 overflow-x-auto pb-4 min-w-0">
             {orderedPages.map((page) => (
               <PageColumn
                 key={page.id}
@@ -394,6 +361,21 @@ export function ArchitectureBoard({
                 onComponentClick={handleComponentClick}
               />
             ))}
+            <div className="shrink-0 w-52">
+              <button
+                type="button"
+                onClick={() => setAddPageOpen(true)}
+                className="flex h-9 w-full items-center gap-1.5 rounded-md border border-dashed border-border px-3 text-sm text-muted-foreground hover:border-border-control-hover hover:text-foreground transition-colors"
+              >
+                <span className="text-base leading-none">+</span>
+                <span>Add page</span>
+              </button>
+              <CreatePageDialog
+                projectId={projectId}
+                open={addPageOpen}
+                onOpenChange={setAddPageOpen}
+              />
+            </div>
           </div>
         </SortableContext>
       </DndContext>

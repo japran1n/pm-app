@@ -138,6 +138,7 @@ describe("SectionCard (F015)", () => {
       id: "section-1",
       title: "Hero",
       position: 1,
+      kind: "static" as const,
       component: null,
     };
 

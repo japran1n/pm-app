@@ -99,13 +99,14 @@ describe("F023 keyboard drag and drop", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(capturedProps).not.toBeNull();
     expect(capturedProps?.sensors?.length).toBeGreaterThanOrEqual(2);
@@ -122,13 +123,14 @@ describe("F023 keyboard drag and drop", () => {
             id: "section-1",
             title: "Hero",
             position: 0,
+            kind: "static",
             component: null,
           },
         ],
       }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const handle = screen.getByRole("button", { name: "Reorder Hero" });
     expect(handle).toBeInTheDocument();
@@ -141,7 +143,7 @@ describe("F023 keyboard drag and drop", () => {
       makePage({ id: "page-2", title: "Pricing", pageSlug: "pricing" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     expect(
       screen.getByRole("button", { name: "Reorder Home" }),
@@ -156,7 +158,7 @@ describe("F023 keyboard drag and drop", () => {
       makePage({ id: "page-1", title: "Home", pageSlug: "home" }),
     ];
 
-    render(<ArchitectureBoard pages={pages} components={[]} />);
+    render(<ArchitectureBoard pages={pages} components={[]} projectId={"00000000-0000-4000-8000-000000000001"} />);
 
     const announcements = capturedProps?.accessibility?.announcements;
     expect(announcements).toBeDefined();

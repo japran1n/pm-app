@@ -82,24 +82,67 @@ The user does NOT, ever:
 
 The active mission ID lives in `missions/CURRENT`. If absent, no mission is active and the only valid command is `/mission-scope`.
 
-## Linear Design System — active rules (Good Guys 4.0)
+## Supabase Design System — active rules
 
-The workspace now runs on a Linear-reproduced dark design system. Portal stays on Good Guys 3.0 light tokens under `[data-surface="portal"]`.
+The workspace and the portal both run on Supabase's design system, ported
+from `packages/ui` in the `supabase/supabase` monorepo. There is no longer a
+separate palette for the portal.
+
+The previous rules (Good Guys 4.0 / Linear) are retired. Mission
+`20260909-linear-ds` and its validation contract stay byte-identical as
+history; the supersession record lives in
+`missions/20260910-supabase-ds/validation-contract.md`.
 
 ### Scope rule (test every PR)
-> Would a user who knows the app by heart need to learn anything new? If yes — out of scope of design system work.
+> Would a user who knows the app by heart need to learn anything new? If yes —
+> out of scope of design system work.
+
+One deliberate exception is on record: the light/dark theme switch
+(SD-020…SD-024). It is validated as a feature, not as styling.
 
 ### Token rules
-- `--text-quaternary` (#62666d) is for decorative/non-essential elements only (IDs, keyboard hints, empty-state labels). NEVER use it for text the user must read to operate the app — it fails AA contrast.
-- One filled (bg-primary) button per screen maximum. All other buttons are transparent with hover fill.
-- `--line-row` (#202122) for row separators; `--border` (#23252a) for panel borders. They are different families — do not interchange.
+- Colours are **derived, not written**. The palette comes out of six knobs in
+  OKLCH — `--hue`, `--chroma`, `--surface`, `--foreground-lightness`,
+  `--contrast`, `--elevation-step`. Never hand-write a hex value for a
+  semantic token.
+- Surfaces step by elevation: `--background` → `--card` (e1) → `--popover`
+  (e2) → `--secondary` (e3). Reach for the next step, not a new colour.
+- `--tertiary-foreground` is for decorative text only. Never use it for text
+  the user must read to operate the app.
+- Both themes must resolve. A colour defined only inside one theme block is a
+  bug.
+
+### Typography rules
+- Inter at weight **450** for normal, 500 medium, 600 semibold. Never 510/590.
+- Source Code Pro for mono. IBM Plex Mono is gone.
+- Type scale is Supabase's Inter-tuned one: `text-sm` is 13px, `text-base` is
+  15px. Use plain Tailwind classes — the `text-mini` / `text-micro` /
+  `title-*` utilities are deleted.
+- **Data is mono.** Dates, timestamps, emails, IDs, keys, counts, durations,
+  amounts, sizes, percentages. Human-written content stays sans.
 
 ### Shadow rule
-Shadows only on overlays: dropdown, popover, dialog, sheet, command, tooltip.
-Cards, panels, sidebar, nav, buttons, inputs — zero shadow. Elevation comes from bg-level changes.
+Cards carry `shadow-xs`. Overlays carry their own. Nothing else carries a
+shadow — elevation comes from the surface step.
 
-### Font weight rule
-Use weight 510 for "medium" text and 590 for "semibold". Not 500/600. These are variable Inter weights.
+### Interaction rules
+- Hover lifts the **border** (`--border-control-hover`) or fills with
+  `bg-muted/50`. The `#ffffff0d` literal is gone; do not reintroduce it.
+- Buttons: `rounded-md`, a border on every variant including primary,
+  `duration-200`, `motion-safe:active:scale-[0.97]`.
+- Badges: pill, uppercase, 9px, `tracking-[0.07em]`, 1px border, 10% tint.
+  No colour dot.
+
+### Spacing rules
+Page headers `p-6 pt-4 lg:p-8 lg:pt-8`. Sections `px-6 lg:px-12`. Table edge
+cells `first:pl-6 lg:first:pl-8` / `last:pr-6 lg:last:pr-8`.
 
 ### Behavioral integrity
-`resolveClientBucket` in `components/portal/status-label.ts` must never be changed. The validation contract at `missions/20260909-linear-ds/validation-contract.md` is immutable.
+`resolveClientBucket` in `components/portal/status-label.ts` must never be
+changed. The validation contract at
+`missions/20260910-supabase-ds/validation-contract.md` is immutable.
+
+### Reference implementation
+`~/Desktop/supabase-ds-lab` — the Members screen on Supabase's real theme CSS
+and component anatomy. It is the accepted visual target. It is a separate
+project and is not a dependency.

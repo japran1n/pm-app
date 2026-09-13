@@ -28,7 +28,11 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import type { PortalQueryResult } from "@/lib/queries/portal";
 
-export type BoardPageKind = "static" | "cms" | "utility";
+export type BoardPageKind = "static" | "cms" | "cms_template" | "utility";
+
+/** Where a section's content comes from. Orthogonal to `component` --
+ *  a section can be CMS-driven AND rendered by a shared component. */
+export type BoardSectionKind = "static" | "cms";
 
 export type BoardSectionComponent = {
   id: string;
@@ -39,6 +43,7 @@ export type BoardSection = {
   id: string;
   title: string;
   position: number;
+  kind: BoardSectionKind;
   component: BoardSectionComponent | null;
 };
 
@@ -66,13 +71,14 @@ export type ArchitectureBoard = {
 };
 
 const TASK_COLUMNS =
-  "id, title, page_slug, page_kind, component_id, parent_task_id, position, description_text";
+  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text";
 
 type TaskRow = {
   id: string;
   title: string;
   page_slug: string | null;
   page_kind: string | null;
+  section_kind: string | null;
   component_id: string | null;
   parent_task_id: string | null;
   position: number;
@@ -137,6 +143,7 @@ export function buildBoardFromRows(
         id: section.id,
         title: section.title,
         position: section.position,
+        kind: section.section_kind === "cms" ? "cms" : "static",
         component: component ? { id: component.id, name: component.name } : null,
       };
     });
