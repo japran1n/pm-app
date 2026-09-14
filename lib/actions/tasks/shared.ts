@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -18,6 +19,7 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // ---------------------------------------------------------------------
 // F160: multi-assignee actions over `task_assignees` (AS-289, AS-290).
@@ -193,9 +195,7 @@ export type TaskAssigneesData = {
   mirrorAssigneeId: string | null;
 };
 
-export type TaskAssigneesActionResult =
-  | { ok: true; data: TaskAssigneesData }
-  | { ok: false; error: string };
+export type TaskAssigneesActionResult = ActionResult<TaskAssigneesData>;
 
 // Shared preflight for every multi-assignee action: resolves the caller's
 // identity, the task's owning project/workspace (not-found for a missing
@@ -213,10 +213,7 @@ export async function requireAssignActionContext(taskId: string): Promise<
     }
   | { ok: false; error: string }
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to change assignees." };

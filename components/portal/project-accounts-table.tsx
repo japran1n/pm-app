@@ -19,6 +19,7 @@ import type {
 } from "@/lib/queries/project-site";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
+import { formatDateUTC } from "@/lib/format";
 
 const OWNER_LABEL: Record<ProjectAccountOwner, string> = {
   client: "You own this",
@@ -47,15 +48,6 @@ const STATUS_COLOR_CLASS: Record<ProjectAccountStatus, string> = {
   provisioned: "border-emerald-300 bg-emerald-50 text-emerald-700",
   transferred: "border-slate-300 bg-slate-100 text-slate-700",
 };
-
-function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 export function ProjectAccountsTable({ accounts }: { accounts: ProjectAccount[] }) {
   if (accounts.length === 0) {
@@ -91,7 +83,7 @@ export function ProjectAccountsTable({ accounts }: { accounts: ProjectAccount[] 
             <div className="flex items-center gap-2">
               {account.renewalDate && (
                 <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">
-                  Renews {formatDate(account.renewalDate)}
+                  Renews {formatDateUTC(account.renewalDate)}
                 </span>
               )}
               <Badge

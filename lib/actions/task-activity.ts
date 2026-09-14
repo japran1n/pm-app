@@ -26,15 +26,14 @@
 // this codebase uses.
 
 import { deleteTaskSchema } from "@/lib/validation/tasks";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   getTaskActivityPage,
   type TaskActivityPage,
 } from "@/lib/queries/task-activity";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type GetTaskActivityFeedResult =
-  | { ok: true; data: TaskActivityPage }
-  | { ok: false; error: string };
+export type GetTaskActivityFeedResult = ActionResult<TaskActivityPage>;
 
 export async function getTaskActivityFeed(
   taskId: string,
@@ -45,10 +44,7 @@ export async function getTaskActivityFeed(
     return { ok: false, error: "Invalid task." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to view this task." };

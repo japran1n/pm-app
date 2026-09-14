@@ -428,6 +428,10 @@ export function WeekTimeGrid({
       height: layout.height,
       label: formatBlockTimeRange(startsAt, endsAt),
     };
+    // `findBlock` is a plain per-render closure over `blocksState`, which
+    // IS in the deps — listing the function itself would require a
+    // useCallback wrapper for zero behavioral difference.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resize, resizePreviewPx, blocksState]);
 
   return (

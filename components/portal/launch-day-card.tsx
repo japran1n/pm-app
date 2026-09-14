@@ -15,21 +15,13 @@
 import { Calendar, RotateCcw, Radar, ShieldCheck } from "lucide-react";
 
 import type { PortalLaunchConfidence } from "@/lib/queries/portal";
+import { formatDateLongUTC } from "@/lib/format";
 
 const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
   on_track: "On track",
   at_risk: "At risk",
   slipped: "Slipped",
 };
-
-function formatDate(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 function Row({
   icon: Icon,
@@ -77,7 +69,7 @@ export function LaunchDayCard({
           label="Planned launch"
           value={
             targetLaunchDate
-              ? `${formatDate(targetLaunchDate)}${
+              ? `${formatDateLongUTC(targetLaunchDate)}${
                   launchConfidence ? ` — ${CONFIDENCE_LABEL[launchConfidence]}` : ""
                 }`
               : "Not set yet"
@@ -101,7 +93,7 @@ export function LaunchDayCard({
           label="Warranty period"
           value={
             warrantyUntil
-              ? `Covered until ${formatDate(warrantyUntil)}${
+              ? `Covered until ${formatDateLongUTC(warrantyUntil)}${
                   warrantyTerms ? ` — ${warrantyTerms}` : ""
                 }`
               : "Not set yet"

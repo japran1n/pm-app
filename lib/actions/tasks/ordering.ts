@@ -7,7 +7,7 @@ import {
   moveAndReorderTaskSchema,
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
 import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
@@ -21,15 +21,10 @@ import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferenc
 import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
 
-export type MoveTaskStatusResult =
-  | {
-      ok: true;
-      data: {
+export type MoveTaskStatusResult = ActionResult<{
         id: string;
         status: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Updates a task's status when its card is dropped into a different board
 // column (F045: AS-069). Pattern mirrors assignTask/editTask/deleteTask
@@ -279,15 +274,10 @@ export async function moveTaskStatus(
   return moveTaskStatusImpl({ taskId, status: newStatus });
 }
 
-export type ReorderTaskResult =
-  | {
-      ok: true;
-      data: {
+export type ReorderTaskResult = ActionResult<{
         id: string;
         position: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Persists a task's new `position` after a drag-and-drop reorder (F046:
 // AS-070, AS-078, AS-079, AS-080). Pattern mirrors moveTaskStatus above:
@@ -414,16 +404,11 @@ export async function reorderTask(
   return reorderTaskImpl({ taskId, position: newPosition });
 }
 
-export type MoveAndReorderTaskResult =
-  | {
-      ok: true;
-      data: {
+export type MoveAndReorderTaskResult = ActionResult<{
         id: string;
         status: string;
         position: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Atomically updates both `status` and `position` for a cross-column drag
 // (F102: AS-077, follow-up on scrutiny-validator's M5-scrutiny.md Finding

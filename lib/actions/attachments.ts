@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deleteAttachmentSchema,
@@ -19,6 +19,7 @@ import {
   uploadAttachmentForUser,
   type UploadAttachmentResult,
 } from "@/lib/attachments/upload";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // Re-exported so existing callers of `UploadAttachmentResult` from this
 // module keep working unchanged.
@@ -80,10 +81,7 @@ export async function uploadAttachment(
     return { ok: false, error: "Invalid upload request." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
@@ -103,9 +101,7 @@ export async function uploadAttachment(
 // Generates a fresh signed URL for an existing attachment (AS-108). Any UI
 // that displays/lists attachments must call this rather than persisting a
 // URL, since the bucket is private and signed URLs expire.
-export type GetAttachmentSignedUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetAttachmentSignedUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 export async function getAttachmentSignedUrl(
   attachmentId: string,
@@ -119,10 +115,7 @@ export async function getAttachmentSignedUrl(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -243,9 +236,7 @@ export async function getAttachmentSignedUrl(
   return { ok: true, signedUrl: signedUrlData.signedUrl };
 }
 
-export type DeleteAttachmentResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteAttachmentResult = ActionResult<{ id: string }>;
 
 // Deletes an attachment (F067: AS-110, AS-111, AS-114). Pattern mirrors
 // deleteComment in lib/actions/comments.ts: Zod-validated input, the
@@ -286,9 +277,9 @@ export type DeleteAttachmentResult =
 // Storage-first was chosen because its failure mode degrades to a
 // detectable dangling reference (bad) rather than an untraceable orphan
 // (worse, and the literal thing AS-114 prohibits). The row-delete-failure
-// case is still logged to the server console (Sentry-equivalent per this
-// codebase's error-handling convention) so it is never *silent* even in
-// its worst case.
+// case is still logged via lib/observability/logger (stdout-only — this
+// repo has no external error-reporting service; see logger.ts header) so
+// it is never *silent* in server logs, though nothing alerts on it.
 export async function deleteAttachment(
   attachmentId: string,
 ): Promise<DeleteAttachmentResult> {
@@ -301,10 +292,7 @@ export async function deleteAttachment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a file." };

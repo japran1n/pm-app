@@ -26,7 +26,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 import { canManageSavedView } from "@/lib/auth/permissions";
@@ -39,6 +39,7 @@ import {
   type SavedViewType,
   type SavedViewConfig,
 } from "@/lib/validation/views";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "View not found.";
@@ -58,9 +59,7 @@ export type SavedViewRecord = {
   isDefault: boolean;
 };
 
-export type SavedViewActionResult =
-  | { ok: true; data: SavedViewRecord }
-  | { ok: false; error: string };
+export type SavedViewActionResult = ActionResult<SavedViewRecord>;
 
 function toRecord(row: {
   id: string;
@@ -233,10 +232,7 @@ export async function createSavedView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to save a view." };
   }
@@ -338,10 +334,7 @@ export async function updateSavedView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -462,7 +455,7 @@ export async function updateSavedView(input: {
   return { ok: true, data: toRecord(finalRow) };
 }
 
-export type DeleteSavedViewResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteSavedViewResult = ActionResult<{ id: string }>;
 
 // AS-430: only the creator, or a workspace admin/owner (for a shared
 // view), can delete a view.
@@ -471,10 +464,7 @@ export async function deleteSavedView(viewId: string): Promise<DeleteSavedViewRe
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -512,10 +502,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -558,7 +545,7 @@ export async function setDefaultSavedView(viewId: string): Promise<SavedViewActi
   return { ok: true, data: toRecord(updated) };
 }
 
-export type GetSavedViewResult = { ok: true; data: SavedViewRecord } | { ok: false; error: string };
+export type GetSavedViewResult = ActionResult<SavedViewRecord>;
 
 // AS-428: read a view (through the caller's own RLS-scoped session --
 // `saved_views`' SELECT policy is the real visibility boundary here, no
@@ -570,10 +557,7 @@ export async function getSavedView(viewId: string): Promise<GetSavedViewResult> 
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to open a view." };
   }

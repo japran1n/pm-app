@@ -92,8 +92,8 @@ describe.skipIf(!haveCreds)("F117 — chat security hardening", () => {
   let outsiderWorkspaceId: string;
   let outsiderId: string; // active member of a DIFFERENT workspace entirely
 
-  let ownerSession: SupabaseClient;
-  let projectMemberSession: SupabaseClient;
+  let _ownerSession: SupabaseClient;
+  let _projectMemberSession: SupabaseClient;
   let clientSession: SupabaseClient;
   let outsiderSession: SupabaseClient;
 
@@ -187,8 +187,8 @@ describe.skipIf(!haveCreds)("F117 — chat security hardening", () => {
       if (error) throw new Error(`sign in ${email}: ${error.message}`);
       return session;
     };
-    ownerSession = await signIn(owner.email);
-    projectMemberSession = await signIn(projMember.email);
+    _ownerSession = await signIn(owner.email);
+    _projectMemberSession = await signIn(projMember.email);
     clientSession = await signIn(client.email);
     outsiderSession = await signIn(outsider.email);
   }, 60_000);

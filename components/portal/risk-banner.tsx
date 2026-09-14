@@ -21,15 +21,7 @@ import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 
 import type { PortalRisk } from "@/lib/queries/portal";
-
-function formatDate(iso: string): string {
-  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
-  return new Date(isoWithTime).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
+import { formatDayMonthUTC } from "@/lib/format";
 
 export function RiskBanner({
   risks,
@@ -61,7 +53,7 @@ export function RiskBanner({
               className="flex flex-col gap-0.5 hover:underline"
             >
               <span className="font-medium">
-                {risk.itemName} · Was due {formatDate(risk.dueAt)}
+                {risk.itemName} · Was due {formatDayMonthUTC(risk.dueAt)}
               </span>
               <span>{risk.message}</span>
             </Link>

@@ -35,15 +35,7 @@ import {
   reconcilePortalRealtimeTask,
   type PortalRealtimeRow,
 } from "@/lib/portal/reconcile-portal-realtime-task";
-
-function formatDate(iso: string): string {
-  const date = new Date(`${iso}T00:00:00Z`);
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
+import { formatDayMonthUTC } from "@/lib/format";
 
 // Tasks are grouped by the *name* of the board column they sit in, so the
 // client sees the team's own vocabulary ("In review", "Blocked") rather
@@ -356,7 +348,7 @@ export function PortalTaskList({
                       >
                         {overdue && <TriangleAlert className="size-3" aria-hidden="true" />}
                         <span className={overdue ? "sr-only" : "hidden"}>Overdue:</span>
-                        <span className="font-mono">{formatDate(task.dueDate)}</span>
+                        <span className="font-mono">{formatDayMonthUTC(task.dueDate)}</span>
                       </span>
                     )}
                   </Link>

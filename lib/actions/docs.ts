@@ -22,13 +22,14 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   setDocClientVisibilitySchema,
   setDocKindSchema,
   type SetDocClientVisibilityInput,
   type SetDocKindInput,
 } from "@/lib/validation/project-site";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 function revalidateDocs() {
   try {
@@ -41,10 +42,7 @@ function revalidateDocs() {
 }
 
 async function requireUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   return { supabase, user };
 }
 
@@ -318,9 +316,7 @@ export async function moveDoc(
 // matching updateDoc's own convention exactly.
 // ---------------------------------------------------------------------
 
-export type SetDocClientVisibilityResult =
-  | { ok: true; data: { docId: string; clientVisible: boolean } }
-  | { ok: false; error: string };
+export type SetDocClientVisibilityResult = ActionResult<{ docId: string; clientVisible: boolean }>;
 
 export async function setDocClientVisibility(
   docId: string,
@@ -355,9 +351,7 @@ export async function setDocClientVisibility(
   return { ok: true, data: { docId: parsed.data.docId, clientVisible: parsed.data.visible } };
 }
 
-export type SetDocKindResult =
-  | { ok: true; data: { docId: string; kind: SetDocKindInput["kind"] } }
-  | { ok: false; error: string };
+export type SetDocKindResult = ActionResult<{ docId: string; kind: SetDocKindInput["kind"] }>;
 
 export async function setDocKind(
   docId: string,
@@ -405,9 +399,7 @@ import {
   type SetDocRelevantFromInput,
 } from "@/lib/validation/project-site";
 
-export type SetDocRelevantFromResult =
-  | { ok: true; data: { docId: string; relevantFrom: SetDocRelevantFromInput["relevantFrom"] } }
-  | { ok: false; error: string };
+export type SetDocRelevantFromResult = ActionResult<{ docId: string; relevantFrom: SetDocRelevantFromInput["relevantFrom"] }>;
 
 // The app's "always" maps to the DB's `null` (docs_relevant_from_check)
 // at this exact boundary — see relevantFromSchema's own comment for why
@@ -447,7 +439,7 @@ export async function setDocRelevantFrom(
   return { ok: true, data: { docId: parsed.data.docId, relevantFrom: parsed.data.relevantFrom } };
 }
 
-export type AddDocLinkResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type AddDocLinkResult = ActionResult<{ id: string }>;
 
 export async function addDocLink(input: AddDocLinkInput): Promise<AddDocLinkResult> {
   const parsed = addDocLinkSchema.safeParse(input);
@@ -483,7 +475,7 @@ export async function addDocLink(input: AddDocLinkInput): Promise<AddDocLinkResu
   return { ok: true, data: { id: data.id } };
 }
 
-export type DeleteDocLinkResult = { ok: true } | { ok: false; error: string };
+export type DeleteDocLinkResult = ActionOutcome;
 
 export async function deleteDocLink(linkId: string): Promise<DeleteDocLinkResult> {
   const parsed = deleteDocLinkSchema.safeParse({ linkId } satisfies DeleteDocLinkInput);

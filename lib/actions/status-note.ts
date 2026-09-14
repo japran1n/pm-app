@@ -9,15 +9,14 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { updateStatusNoteSchema } from "@/lib/validation/status-note";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type UpdateStatusNoteResult =
-  | { ok: true; data: { note: string | null; until: string | null } }
-  | { ok: false; error: string };
+export type UpdateStatusNoteResult = ActionResult<{ note: string | null; until: string | null }>;
 
 // Sets/clears the caller's own status note for `workspaceId`. Sending
 // `note: null` (or an empty string) clears the note entirely -- `until`
@@ -29,10 +28,7 @@ export async function updateStatusNote(input: unknown): Promise<UpdateStatusNote
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid status note." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to update your status note." };
   }

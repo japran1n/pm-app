@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { toggleDescriptionChecklistItemSchema } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
 import type { JSONContent } from "@/components/editor/rich-text-editor";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { canEditTask } from "@/lib/auth/permissions";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 
@@ -41,9 +41,7 @@ function setTaskItemChecked(
   return null;
 }
 
-export type ToggleDescriptionChecklistItemResult =
-  | { ok: true; data: { descriptionJson: JSONContent } }
-  | { ok: false; error: string };
+export type ToggleDescriptionChecklistItemResult = ActionResult<{ descriptionJson: JSONContent }>;
 
 // F173 (AS-311): toggles a single checkbox inside a task description's
 // rich-text content WITHOUT opening the full editor and without the

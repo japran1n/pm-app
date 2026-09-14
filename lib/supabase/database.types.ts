@@ -1313,6 +1313,27 @@ export type Database = {
           },
         ]
       }
+      extension_rate_limits: {
+        Row: {
+          bucket: string
+          count: number
+          user_id: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          user_id: string
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          user_id?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       f016i_gated_function_oids: {
         Row: {
           gated_at: string
@@ -3162,6 +3183,7 @@ export type Database = {
           recurrence: Json | null
           recurrence_parent_id: string | null
           search_vector: unknown
+          section_kind: string
           start_date: string | null
           status: string
           status_id: string | null
@@ -3201,6 +3223,7 @@ export type Database = {
           recurrence?: Json | null
           recurrence_parent_id?: string | null
           search_vector?: unknown
+          section_kind?: string
           start_date?: string | null
           status?: string
           status_id?: string | null
@@ -3240,6 +3263,7 @@ export type Database = {
           recurrence?: Json | null
           recurrence_parent_id?: string | null
           search_vector?: unknown
+          section_kind?: string
           start_date?: string | null
           status?: string
           status_id?: string | null
@@ -3857,6 +3881,15 @@ export type Database = {
         }
         Returns: string[]
       }
+      bump_extension_rate_limit: {
+        Args: {
+          p_bucket: string
+          p_limit: number
+          p_user_id: string
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
       can_modify_comment: {
         Args: { target_comment_id: string }
         Returns: boolean
@@ -4132,6 +4165,10 @@ export type Database = {
           raw_user_meta_data: Json
         }[]
       }
+      get_workspace_chat_unread_total: {
+        Args: { p_workspace_id: string }
+        Returns: number
+      }
       get_workspace_time_by_person: {
         Args: {
           p_end_date: string
@@ -4367,6 +4404,7 @@ export type Database = {
           recurrence: Json | null
           recurrence_parent_id: string | null
           search_vector: unknown
+          section_kind: string
           start_date: string | null
           status: string
           status_id: string | null
@@ -4415,6 +4453,7 @@ export type Database = {
           recurrence: Json | null
           recurrence_parent_id: string | null
           search_vector: unknown
+          section_kind: string
           start_date: string | null
           status: string
           status_id: string | null

@@ -12,31 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { MetricComparisonCard } from "@/components/portal/metric-comparison-card";
 import { ResultsImprovements, type ResolvedImprovement } from "@/components/portal/results-improvements";
-
-// F021 (missions/20260903-portal, AS-041, AS-042): replaces F003's
-// `PortalComingSoon` stub. Reads `getProjectMetricsWithLatestSnapshot` /
-// `deriveMetricMeasurementStatus` / `getProjectImprovements` (all exported
-// from lib/queries/metrics.ts specifically for this feature to call
-// directly, per F020's own "out-of-scope work needed" note on itself) --
-// the ordinary RLS-respecting server client, so a client caller only ever
-// sees `client_visible = true` rows of a portal-enabled project it belongs
-// to, same "one visibility path, not two" convention every other portal
-// page in this mission already documents on itself (see hours/page.tsx,
-// p/page.tsx).
-//
-// The three honesty rules this feature's own spec is explicit about:
-//  1. `direction` (F020) decides whether "Now" is an improvement, not a
-//     smaller-is-always-better assumption -- `deriveMetricMeasurementStatus`
-//     is the ONE place that decision is made (see its own header comment)
-//     and this page never re-derives it.
-//  2. A metric with no snapshot renders "not measured yet", never a zero
-//     bar and never an em dash standing in for a real value.
-//  3. The Improvements list stands on its own text -- images are additive.
-function formatDate(dateIso: string): string {
-  const date = new Date(`${dateIso}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return dateIso;
-  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-}
+import { formatDateLong } from "@/lib/format";
 
 export default async function PortalResultsPage({
   params,
@@ -138,7 +114,7 @@ export default async function PortalResultsPage({
       <div className="rounded-lg border border-border bg-muted/40 p-4">
         <p className="text-sm text-muted-foreground" data-testid="results-header-note">
           {baselineFrozenAt
-            ? `Baseline frozen on ${formatDate(baselineFrozenAt)}. Every "Now" measurement below is taken the same way as the baseline, so the two numbers are directly comparable.`
+            ? `Baseline frozen on ${formatDateLong(baselineFrozenAt)}. Every "Now" measurement below is taken the same way as the baseline, so the two numbers are directly comparable.`
             : "This project's baseline has not been frozen yet — measurements below may still change as the baseline method is finalised."}
         </p>
       </div>

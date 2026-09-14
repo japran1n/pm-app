@@ -7,19 +7,14 @@ import {
   promoteSubtaskSchema,
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeTaskFieldChanges } from "@/lib/activity/task-activity";
 
-export type DeleteTaskResult =
-  | {
-      ok: true;
-      data: {
+export type DeleteTaskResult = ActionResult<{
         id: string;
         deletedAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Soft-deletes a task (F038: AS-055, AS-056, AS-057; F149: AS-267 —
 // cascades to children). Pattern mirrors editTask/assignTask above:
@@ -170,10 +165,7 @@ export async function deleteTask(taskId: string): Promise<DeleteTaskResult> {
   return deleteTaskImpl({ taskId });
 }
 
-export type RestoreTaskResult =
-  | {
-      ok: true;
-      data: {
+export type RestoreTaskResult = ActionResult<{
         id: string;
         projectId: string;
         status: string;
@@ -188,9 +180,7 @@ export type RestoreTaskResult =
         // caller-defined-columns feature, F218, lands), but the field
         // exists so the UI never has to guess.
         statusWasReset: boolean;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Restores a soft-deleted task (F189: AS-344, AS-351). Pattern mirrors
 // deleteTask/editTask above: Zod-validated input, membership re-checked
@@ -400,15 +390,10 @@ export async function restoreTask(taskId: string): Promise<RestoreTaskResult> {
   return restoreTaskImpl({ taskId });
 }
 
-export type PromoteSubtaskResult =
-  | {
-      ok: true;
-      data: {
+export type PromoteSubtaskResult = ActionResult<{
         id: string;
         parentTaskId: null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Promotes a child task to a top-level task, detaching it from its
 // parent (F149: AS-268). Pattern mirrors deleteTask/editTask above:

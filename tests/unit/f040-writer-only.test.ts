@@ -174,10 +174,14 @@ describe("F040 writer-only affordances", () => {
   // full behavioural coverage of those actions); this suite adds the
   // writer-gate proof on top.
   it("AS-090: createComponent and createComponentFromSection re-check canWrite before mutating", () => {
-    const source = readFileSync(
-      path.join(process.cwd(), "lib/actions/architecture.ts"),
-      "utf8",
-    );
+    const source = ["pages", "sections", "components"]
+      .map((m) =>
+        readFileSync(
+          path.join(process.cwd(), `lib/actions/architecture/${m}.ts`),
+          "utf8",
+        ),
+      )
+      .join("\n");
 
     const functionsRequiringWriteCheck = [
       "createPage",
@@ -216,10 +220,14 @@ describe("F040 writer-only affordances", () => {
   // row -- since canWrite() returns false for role "client" (and for
   // "viewer"), a client caller is rejected the same way a viewer is.
   it("AS-094: reorderSections and reorderPages gate on canWrite (rejects client/viewer)", () => {
-    const source = readFileSync(
-      path.join(process.cwd(), "lib/actions/architecture.ts"),
-      "utf8",
-    );
+    const source = ["pages", "sections", "components"]
+      .map((m) =>
+        readFileSync(
+          path.join(process.cwd(), `lib/actions/architecture/${m}.ts`),
+          "utf8",
+        ),
+      )
+      .join("\n");
 
     for (const fnName of ["reorderSections", "reorderPages"]) {
       const fnStart = source.indexOf(`export async function ${fnName}(`);

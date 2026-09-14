@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const selectMock = vi.fn();
+const _selectMock = vi.fn();
 const fromMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -28,6 +28,7 @@ vi.mock("@/lib/observability/logger", () => ({
 import { getOpenClientRequestCountForWorkspace } from "@/lib/queries/client-requests";
 
 function buildProjectsTable(rows: Array<{ id: string }>) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal thenable query-builder stub
   const query: any = {
     select: vi.fn(() => query),
     eq: vi.fn(() => query),
@@ -37,13 +38,15 @@ function buildProjectsTable(rows: Array<{ id: string }>) {
 }
 
 function buildClientRequestsTable(count: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal thenable query-builder stub
   const query: any = {
     select: vi.fn((_cols: string, opts?: { count?: string; head?: boolean }) => {
       expect(opts).toEqual({ count: "exact", head: true });
       return query;
     }),
     in: vi.fn(() => query),
-    then: (resolve: any) => resolve({ count, error: null }),
+    then: (resolve: (value: { count: number; error: null }) => void) =>
+      resolve({ count, error: null }),
   };
   // Make `query` awaitable (thenable) so `await supabase.from(...).select(...).in().in()` resolves.
   return query;

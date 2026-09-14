@@ -1,22 +1,20 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   deleteTaskSchema,
   getOpenBlockersSchema,
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import type { JSONContent } from "@/components/editor/rich-text-editor";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { type WorkspaceRole } from "@/lib/auth/permissions";
 import {
   isProjectVisibleToCaller,
   type ProjectVisibility,
 } from "@/lib/actions/project-visibility";
 import { isDoneStatus } from "@/lib/tasks/blocked-guard";
-import type { Json } from "@/lib/supabase/database.types";
 import type { TaskDetailSheetTask } from "@/components/task/task-detail-sheet";
 import type { TaskComment } from "@/components/task/comment-list";
 import type { TaskAttachment } from "@/components/task/attachment-list";
@@ -24,9 +22,7 @@ import type { SubtaskListChildTask } from "@/components/task/subtask-list";
 import type { ChecklistListItem } from "@/components/task/checklist";
 import type { DependencyRelatedTask } from "@/components/task/dependencies";
 
-export type GetOpenBlockersResult =
-  | { ok: true; data: DependencyRelatedTask[] }
-  | { ok: false; error: string };
+export type GetOpenBlockersResult = ActionResult<DependencyRelatedTask[]>;
 
 // F158 (AS-280, AS-281): the ONE server-side source of "which of this
 // task's blockers are still open (not done, not soft-deleted)" — called
@@ -209,10 +205,7 @@ export async function getOpenBlockers(
 // file resolve" info and is not otherwise exercised by this codebase's
 // existing components (both TaskDetailSheet and AttachmentList only ever
 // call getAttachmentSignedUrl for actually opening a file).
-export type GetTaskDetailResult =
-  | {
-      ok: true;
-      data: {
+export type GetTaskDetailResult = ActionResult<{
         task: TaskDetailSheetTask;
         comments: TaskComment[];
         attachments: TaskAttachment[];
@@ -221,9 +214,7 @@ export type GetTaskDetailResult =
         // full WorkspaceRole (adds "viewer" | "guest") — see
         // lib/auth/require-membership.ts's matching widening.
         currentUserRole: WorkspaceRole;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 export async function getTaskDetail(
   taskId: string,
@@ -234,10 +225,7 @@ export async function getTaskDetail(
     return { ok: false, error: "Invalid task." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to view this task." };

@@ -4,16 +4,9 @@
 // on every bar, never colour alone" accessibility convention as
 // components/dashboard/priority-bar-chart.tsx (F087 audit).
 import type { PersonTimeDaily } from "@/lib/queries/time-entries";
+import { formatDuration } from "@/lib/format";
 
 const BAR_AREA_HEIGHT_PX = 120;
-
-function formatMinutes(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (hours === 0) return `${mins}m`;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
-}
 
 export function PersonDailyBarChart({ data }: { data: PersonTimeDaily[] }) {
   if (data.length === 0) {
@@ -26,7 +19,7 @@ export function PersonDailyBarChart({ data }: { data: PersonTimeDaily[] }) {
     <div
       role="group"
       aria-label={data
-        .map((d) => `${d.entryDate}: ${formatMinutes(d.totalMinutes)}`)
+        .map((d) => `${d.entryDate}: ${formatDuration(d.totalMinutes)}`)
         .join(", ")}
       className="flex items-end gap-1 overflow-x-auto"
       style={{ height: BAR_AREA_HEIGHT_PX + 40 }}
@@ -41,10 +34,10 @@ export function PersonDailyBarChart({ data }: { data: PersonTimeDaily[] }) {
             key={datum.entryDate}
             data-testid="daily-bar"
             className="flex min-w-8 flex-1 flex-col items-center gap-1"
-            title={`${datum.entryDate}: ${formatMinutes(datum.totalMinutes)}`}
+            title={`${datum.entryDate}: ${formatDuration(datum.totalMinutes)}`}
           >
             <span className="text-[10px] tabular-nums text-muted-foreground">
-              {datum.totalMinutes > 0 ? formatMinutes(datum.totalMinutes) : ""}
+              {datum.totalMinutes > 0 ? formatDuration(datum.totalMinutes) : ""}
             </span>
             <div
               className="flex w-full items-end justify-center"

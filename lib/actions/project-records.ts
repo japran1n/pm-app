@@ -21,7 +21,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import {
@@ -111,9 +111,7 @@ const AUTHZ_ERRORS = {
 // Scope items
 // ---------------------------------------------------------------------
 
-export type ScopeItemActionResult =
-  | { ok: true; data: ProjectScopeItem }
-  | { ok: false; error: string };
+export type ScopeItemActionResult = ActionResult<ProjectScopeItem>;
 
 function toScopeItem(row: {
   id: string;
@@ -430,9 +428,7 @@ export async function restoreScopeItem(input: {
 // Decisions
 // ---------------------------------------------------------------------
 
-export type DecisionActionResult =
-  | { ok: true; data: ProjectDecision }
-  | { ok: false; error: string };
+export type DecisionActionResult = ActionResult<ProjectDecision>;
 
 function toDecision(row: {
   id: string;
@@ -900,9 +896,7 @@ export async function createDecisionFromComment(input: {
 // Assumptions
 // ---------------------------------------------------------------------
 
-export type AssumptionActionResult =
-  | { ok: true; data: ProjectAssumption }
-  | { ok: false; error: string };
+export type AssumptionActionResult = ActionResult<ProjectAssumption>;
 
 function toAssumption(row: {
   id: string;
@@ -1080,9 +1074,7 @@ export async function updateAssumption(input: {
   return updateAssumptionImpl(input);
 }
 
-export type DeleteAssumptionResult =
-  | { ok: true; data: { id: string; restore: ProjectAssumption } }
-  | { ok: false; error: string };
+export type DeleteAssumptionResult = ActionResult<{ id: string; restore: ProjectAssumption }>;
 
 const deleteAssumptionImpl = withAuthz(
   deleteAssumptionSchema,

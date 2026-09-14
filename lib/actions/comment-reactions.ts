@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { toggleReactionSchema } from "@/lib/validation/comment-reactions";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F200: toggle a reaction on a comment (AS-367). Pattern mirrors
 // lib/actions/watchers.ts / lib/actions/comments.ts: Zod-validated input,
@@ -19,12 +20,7 @@ import { logger } from "@/lib/observability/logger";
 // already exists" branch of the toggle without a separate read.
 const POSTGRES_UNIQUE_VIOLATION = "23505";
 
-export type ToggleReactionResult =
-  | {
-      ok: true;
-      data: { commentId: string; emoji: string; reacted: boolean };
-    }
-  | { ok: false; error: string };
+export type ToggleReactionResult = ActionResult<{ commentId: string; emoji: string; reacted: boolean }>;
 
 // Resolves the comment's owning task/workspace and re-verifies the caller
 // is an active, writable member -- exactly the same shape as
@@ -135,10 +131,7 @@ export async function toggleReaction(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to react to a comment." };

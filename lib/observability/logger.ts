@@ -5,9 +5,11 @@
 // development, falls through to console.* with a readable "[level]"
 // prefix so local terminals stay easy to scan.
 //
-// Future: a Sentry transport hook can be added here (e.g. call
-// Sentry.captureMessage/captureException from `error`/`warn`) once a
-// DSN is wired up — no call-site changes required.
+// IMPORTANT (audit ARCH-006): there is NO external error-reporting
+// service wired up — no Sentry, no alerting. In production this is
+// stdout only; nothing pages anyone when errors spike. If/when a DSN is
+// provisioned, `emit` below is the single seam to add a transport to —
+// no call-site changes required.
 
 type LogContext = Record<string, unknown>;
 

@@ -49,6 +49,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { formatDateEnUS } from "@/lib/format";
 
 // Paket B (client-portal redesign): matches `project_billing_model`
 // (20261105010000_project_billing_model.sql).
@@ -68,17 +69,6 @@ const ROLLOVER_LABELS: Record<BudgetRollover, string> = {
 function minutesToHoursLabel(minutes: number): string {
   const hours = minutes / 60;
   return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
-}
-
-function formatDate(value: string): string {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
 }
 
 function BudgetRow({
@@ -184,7 +174,7 @@ function BudgetRow({
       <li className="flex flex-col gap-1 rounded-md border border-border/60 p-3 hover:bg-muted/50">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="font-mono text-sm font-medium">
-            {formatDate(budget.periodStart)} – {formatDate(budget.periodEnd)}
+            {formatDateEnUS(budget.periodStart)} – {formatDateEnUS(budget.periodEnd)}
           </span>
           <span className="font-mono text-xs text-muted-foreground">
             {minutesToHoursLabel(budget.soldMinutes)} sold

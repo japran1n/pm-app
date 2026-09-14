@@ -53,7 +53,11 @@ function loadDotEnv() {
 loadDotEnv();
 
 const hasSupabaseEnv =
-  !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SECRET_KEY;
+  !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
+  !!process.env.SUPABASE_SECRET_KEY &&
+  // tests/setup/testing-library.ts fills placeholder values (and sets this
+  // flag) when no Supabase env is configured — skip rather than dial them.
+  process.env.TEST_SUPABASE_ENV_DUMMY !== "1";
 
 const describeIfEnv = hasSupabaseEnv ? describe : describe.skip;
 

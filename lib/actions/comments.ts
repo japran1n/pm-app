@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { JSONContent } from "@tiptap/react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addCommentSchema,
@@ -33,11 +33,9 @@ import { canWrite, isClient, type WorkspaceRole } from "@/lib/auth/permissions";
 import { writeTaskCommentEvent } from "@/lib/activity/task-activity";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type AddCommentResult =
-  | {
-      ok: true;
-      data: {
+export type AddCommentResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -46,9 +44,7 @@ export type AddCommentResult =
          * stored/rendered for this comment. */
         bodyJson: JSONContent;
         createdAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Adds a text comment to a task (AS-094, AS-095). Pattern mirrors
 // lib/actions/tasks.ts's createTask: Zod-validated input, membership
@@ -136,10 +132,7 @@ export async function addComment(
   const projectedText =
     extractPlainText(validatedBodyJson) || parsed.data.text;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to comment." };
@@ -452,9 +445,7 @@ export async function addComment(
   };
 }
 
-export type DeleteCommentResult =
-  | { ok: true; data: { id: string; deletedAt: string } }
-  | { ok: false; error: string };
+export type DeleteCommentResult = ActionResult<{ id: string; deletedAt: string }>;
 
 // Soft-deletes a comment (F061: AS-098, AS-099, AS-100). Pattern mirrors
 // deleteTask in lib/actions/tasks.ts: Zod-validated input, membership
@@ -487,10 +478,7 @@ export async function deleteComment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a comment." };
@@ -723,19 +711,14 @@ export async function deleteComment(
   };
 }
 
-export type RestoreCommentResult =
-  | {
-      ok: true;
-      data: {
+export type RestoreCommentResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
         text: string;
         bodyJson: JSONContent;
         createdAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Restores a soft-deleted comment (F191: AS-346). Pattern and
 // authorization rule mirror deleteComment above exactly (same
@@ -767,10 +750,7 @@ export async function restoreComment(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to restore a comment." };
@@ -995,19 +975,14 @@ export async function restoreComment(
   };
 }
 
-export type EditCommentResult =
-  | {
-      ok: true;
-      data: {
+export type EditCommentResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
         text: string;
         bodyJson: JSONContent;
         editedAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Edits a comment's content (F197: AS-362, AS-364). Pattern mirrors
 // deleteComment/restoreComment's shape (Zod-validated input, membership
@@ -1054,10 +1029,7 @@ export async function editComment(
   const projectedText =
     extractPlainText(validatedBodyJson) || parsed.data.text;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a comment." };
@@ -1350,9 +1322,7 @@ export async function editComment(
   };
 }
 
-export type MentionCandidateResult =
-  | { ok: true; data: { userIds: string[] } }
-  | { ok: false; error: string };
+export type MentionCandidateResult = ActionResult<{ userIds: string[] }>;
 
 // F204 follow-up (AS-376, "not offered in the picker" half): returns the
 // ids of workspace members who are actually visible (mentionable) to the
@@ -1374,10 +1344,7 @@ export type MentionCandidateResult =
 export async function getMentionCandidates(
   taskId: string,
 ): Promise<MentionCandidateResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

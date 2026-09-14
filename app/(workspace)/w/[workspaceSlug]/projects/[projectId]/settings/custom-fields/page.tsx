@@ -1,10 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import {
   canManageColumns,
   type ProjectRole,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import {
   CustomFieldsManager,
@@ -34,23 +34,20 @@ export default async function ProjectCustomFieldsSettingsPage({
 
   const supabase = await createClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { user, workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -65,17 +62,9 @@ export default async function ProjectCustomFieldsSettingsPage({
   }
 
   const [
-    { data: ownWorkspaceMembership },
     { data: ownProjectMembership },
     { data: fieldsData, error: fieldsError },
   ] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
     supabase
       .from("project_members")
       .select("project_role")
@@ -89,7 +78,6 @@ export default async function ProjectCustomFieldsSettingsPage({
       .order("position", { ascending: true }),
   ]);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const projectRole = (ownProjectMembership?.project_role ?? null) as ProjectRole;
 
   const canManage = canManageColumns({ role: workspaceRole, projectRole });

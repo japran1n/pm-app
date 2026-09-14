@@ -64,15 +64,7 @@ import {
   type PortalOverviewRealtimeEvent,
 } from "@/components/portal/use-portal-overview-realtime";
 import type { PortalOverviewRealtimeRow } from "@/lib/portal/subscribe-portal-overview-realtime";
-
-function formatDate(iso: string): string {
-  // Same fixed en-GB short form used by the page/project-progress.tsx, for
-  // the same server/client hydration reason.
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
+import { formatDayMonth } from "@/lib/format";
 
 function toOverviewTask(
   row: PortalOverviewRealtimeRow,
@@ -236,7 +228,7 @@ export function PortalOverviewLive({
                 >
                   <span className="min-w-0 truncate">{task.title}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {formatDate(task.updatedAt)}
+                    {formatDayMonth(task.updatedAt)}
                   </span>
                 </Link>
               </li>

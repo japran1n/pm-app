@@ -22,10 +22,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership, requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import { canEditTask } from "@/lib/auth/permissions";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { getTaskTypes, type TaskType } from "@/lib/queries/task-types";
 import {
   createTaskTypeSchema,
@@ -38,13 +39,10 @@ import {
 const PERMISSION_DENIED_ERROR = "You don't have permission to manage task types.";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type TaskTypeActionResult = { ok: true } | { ok: false; error: string };
+export type TaskTypeActionResult = ActionOutcome;
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   return user?.id ?? null;
 }
 
@@ -304,9 +302,7 @@ const getProjectTaskTypeOptionsSchema = z.object({
   projectId: z.string().uuid("Invalid project."),
 });
 
-export type GetProjectTaskTypeOptionsResult =
-  | { ok: true; data: { taskTypes: TaskType[] } }
-  | { ok: false; error: string };
+export type GetProjectTaskTypeOptionsResult = ActionResult<{ taskTypes: TaskType[] }>;
 
 const getProjectTaskTypeOptionsImpl = withAuthz(
   getProjectTaskTypeOptionsSchema,

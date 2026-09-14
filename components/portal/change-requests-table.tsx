@@ -11,6 +11,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import type { ProjectChangeRequest } from "@/lib/queries/project-records";
+import { formatDate, formatDateUTC } from "@/lib/format";
 
 const STATUS_LABELS: Record<ProjectChangeRequest["status"], string> = {
   submitted: "Submitted",
@@ -18,33 +19,6 @@ const STATUS_LABELS: Record<ProjectChangeRequest["status"], string> = {
   accepted: "Accepted",
   declined: "Declined",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-// F079 (missions/20260903-portal audit, defect 3): `quote_valid_until` is
-// a genuine `date` column (20260930010000_f016_change_requests_quote_gate
-// .sql), unlike `createdAt`/`decidedAt` above (both `timestamptz`, real
-// moments — correctly left on `formatDate`'s local-timezone rendering).
-// Rendered through `formatDate`, a client west of UTC could see "Valid
-// until 20 Oct" for a quote the server -- which compares the raw date
-// string, never a local-timezone-shifted one -- rejects as expired
-// starting the 20th itself. Same UTC-pin fix as deliverable-row.tsx's own
-// `formatDate` for its (also genuinely `date`-typed) `dueAt`.
-function formatDateOnly(iso: string): string {
-  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
-  return new Date(isoWithTime).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 function formatAmount(amount: number, currency: string | null): string {
   try {
@@ -145,7 +119,7 @@ export function ChangeRequestsTable({
                   <span>Price: {formatAmount(request.quotedAmount, request.quoteCurrency)}</span>
                 )}
                 {request.quoteValidUntil && (
-                  <span>Valid until {formatDateOnly(request.quoteValidUntil)}</span>
+                  <span>Valid until {formatDateUTC(request.quoteValidUntil)}</span>
                 )}
               </div>
             )}

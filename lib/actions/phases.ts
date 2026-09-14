@@ -48,8 +48,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz, type AuthzExtra } from "@/lib/actions/authz";
-import { createClient } from "@/lib/supabase/server";
+import { type ActionResult, withAuthz, type AuthzExtra } from "@/lib/actions/authz";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canEditTask, type WorkspaceRole } from "@/lib/auth/permissions";
@@ -89,9 +89,7 @@ export type PhaseActionData = {
   blockedReason: string | null;
 };
 
-export type PhaseActionResult =
-  | { ok: true; data: PhaseActionData }
-  | { ok: false; error: string };
+export type PhaseActionResult = ActionResult<PhaseActionData>;
 
 function toPhaseActionData(row: {
   id: string;
@@ -399,9 +397,7 @@ export type PhaseRestoreSnapshot = PhaseActionData & {
   actualEnd: string | null;
 };
 
-export type DeletePhaseResult =
-  | { ok: true; data: { id: string; restore: PhaseRestoreSnapshot } }
-  | { ok: false; error: string };
+export type DeletePhaseResult = ActionResult<{ id: string; restore: PhaseRestoreSnapshot }>;
 
 const PHASE_COLUMNS =
   "id, project_id, name, client_description, state, planned_start, planned_end, client_visible, position, blocked_reason";
@@ -560,15 +556,10 @@ export async function restorePhase(input: PhaseRestoreSnapshot): Promise<PhaseAc
 // reorderPhases
 // ---------------------------------------------------------------------
 
-export type ReorderPhaseResult =
-  | {
-      ok: true;
-      data: {
+export type ReorderPhaseResult = ActionResult<{
         moved: { id: string; position: number };
         swappedWith: { id: string; position: number } | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const reorderPhaseImpl = withAuthz(
   reorderPhaseSchema,
@@ -653,9 +644,7 @@ export async function reorderPhases(
 // seedDefaultPhases
 // ---------------------------------------------------------------------
 
-export type SeedDefaultPhasesResult =
-  | { ok: true; data: { seeded: boolean } }
-  | { ok: false; error: string };
+export type SeedDefaultPhasesResult = ActionResult<{ seeded: boolean }>;
 
 const seedDefaultPhasesImpl = withAuthz(
   seedDefaultPhasesSchema,
@@ -715,9 +704,7 @@ export async function seedDefaultPhases(
 // ("Server Actions are safe to import and call from a Client Component").
 // ---------------------------------------------------------------------
 
-export type GetProjectPhaseOptionsResult =
-  | { ok: true; data: { phases: ProjectPhaseOption[] } }
-  | { ok: false; error: string };
+export type GetProjectPhaseOptionsResult = ActionResult<{ phases: ProjectPhaseOption[] }>;
 
 const getProjectPhaseOptionsImpl = withAuthz(
   createPhaseSchema.pick({ projectId: true }),
@@ -747,9 +734,7 @@ type TaskPhaseExtra = AuthzExtra & {
   currentPhaseId: string | null;
 };
 
-export type SetTaskPhaseResult =
-  | { ok: true; data: { id: string; phaseId: string | null } }
-  | { ok: false; error: string };
+export type SetTaskPhaseResult = ActionResult<{ id: string; phaseId: string | null }>;
 
 const setTaskPhaseImpl = withAuthz(
   setTaskPhaseSchema,
@@ -836,15 +821,10 @@ export async function setTaskPhase(
 // edit is reported in `failedIds` rather than failing the whole batch.
 // ---------------------------------------------------------------------
 
-export type BulkSetTaskPhaseResult =
-  | {
-      ok: true;
-      data: {
+export type BulkSetTaskPhaseResult = ActionResult<{
         succeededIds: string[];
         failedIds: { id: string; reason: string }[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 export async function bulkSetTaskPhase(
   taskIds: string[],
@@ -861,10 +841,7 @@ export async function bulkSetTaskPhase(
   // resolves exactly one workspace/project per call) — same reasoning
   // `bulkUpdateTasks` (lib/actions/tasks.ts) documents for its own
   // per-task auth loop.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to update tasks." };
   }

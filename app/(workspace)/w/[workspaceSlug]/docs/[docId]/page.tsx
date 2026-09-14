@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { getDocById } from "@/lib/queries/docs";
-import { MarkdownEditor } from "@/components/docs/markdown-editor";
+import { MarkdownEditorLazy as MarkdownEditor } from "@/components/docs/markdown-editor-lazy";
 
 // W4 (docs/docs-system-plan.md): the workspace-scoped doc editor page.
 //
@@ -12,13 +12,11 @@ import { MarkdownEditor } from "@/components/docs/markdown-editor";
 //
 // `MarkdownEditor` is a `"use client"` component with `immediatelyRender:
 // false` set on its `useEditor` call (avoids the SSR/hydration mismatch
-// Tiptap would otherwise hit) — it is imported directly here rather than via
-// `next/dynamic({ ssr: false })`, since this Next.js version rejects
-// `ssr: false` inside a Server Component's `next/dynamic` call ("`ssr: false`
-// is not allowed with `next/dynamic` in Server Components. Please move it
-// into a Client Component.", confirmed via `npm run build`). Deviates from
-// the spec's literal wording ("dynamic import sa `{ ssr: false }`") for this
-// reason — see handoff.
+// Tiptap would otherwise hit). This Next.js version rejects `ssr: false`
+// inside a Server Component's `next/dynamic` call, so the code-splitting
+// (NX-006) lives one level down in the MarkdownEditorLazy client wrapper
+// (components/docs/markdown-editor-lazy.tsx), which this page imports
+// instead of the editor itself.
 
 export default async function DocEditorPage({
   params,

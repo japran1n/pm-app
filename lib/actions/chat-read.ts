@@ -15,15 +15,14 @@ import { logger } from "@/lib/observability/logger";
 // way lib/actions/chat-messages.ts's edit/delete actions do for messages.
 import { z } from "zod";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 const markChannelReadSchema = z.object({
   channelId: z.string().uuid("Invalid channel."),
 });
 
-export type MarkChannelReadResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type MarkChannelReadResult = ActionOutcome;
 
 export async function markChannelRead(
   channelId: string,
@@ -34,10 +33,7 @@ export async function markChannelRead(
     return { ok: false, error: "Invalid channel." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

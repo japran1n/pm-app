@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { QuoteDialog } from "@/components/client-requests/quote-dialog";
+import { formatDate } from "@/lib/format";
 
 const STATUS_LABEL: Record<TeamClientRequest["status"], string> = {
   submitted: "New",
@@ -22,14 +23,6 @@ const STATUS_LABEL: Record<TeamClientRequest["status"], string> = {
   accepted: "Accepted",
   declined: "Declined",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export function TeamRequestInbox({
   requests,

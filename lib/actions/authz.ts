@@ -100,6 +100,22 @@ export type AuthzOptions<TInput, TExtra extends AuthzExtra = AuthzExtra> = {
 
 export type AuthzFailure = { ok: false; error: string };
 
+// ARCH-011: the one generic result shape behind lib/actions' many bespoke
+// `*Result` aliases. Domain aliases keep their names (and stay exported)
+// at each action's definition site; they just point here now instead of
+// re-spelling the same discriminated union.
+//
+// `ActionResult<T>` is for actions that return their payload under a
+// `data` field; `ActionOutcome<TSuccess>` is for the (more common) actions
+// that spread success fields at the top level next to `ok: true` — with no
+// type argument it is exactly `{ ok: true } | { ok: false; error: string }`.
+export type ActionResult<T> = { ok: true; data: T } | AuthzFailure;
+
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type ActionOutcome<TSuccess extends object = {}> =
+  | ({ ok: true } & TSuccess)
+  | AuthzFailure;
+
 // F124 (AS-081, AS-083, AS-085): every `withAuthz`-wrapped action used to
 // pay two, fully sequential, unconditional network round trips before its
 // own resolveWorkspace step even started: createClient() (reads request

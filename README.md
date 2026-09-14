@@ -8,6 +8,24 @@ custom statuses/swimlanes, a list/table view, a calendar view, a timeline
 (Gantt-style) view, full-text search, a command palette, and a home
 dashboard with charts (tasks by status/priority).
 
+## Getting started
+
+1. `npm install` (Node ≥ 24 — matches CI).
+2. Copy `.env.example` to `.env` and fill in the Supabase values
+   (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`,
+   `SUPABASE_SECRET_KEY`, `SUPABASE_PROJECT_REF`). Optional local
+   conveniences: `DEV_LOGIN_ENABLED=true` (instant `/dev-login?email=...`)
+   and `ALLOW_USERNAME_LOGIN=true`.
+3. `npm run dev` — app on http://localhost:3000.
+4. Demo data: `npm run seed:demo` (or `seed:full-demo`).
+5. Tests: `npm test` requires a **local** Supabase stack — install the
+   Supabase CLI, run `supabase start`, and point the `.env` Supabase vars
+   at the local stack (the same way `.github/workflows/ci.yml` does).
+   Pointing tests at the hosted project fails fast by design
+   (`tests/setup/testing-library.ts`); override only with
+   `ALLOW_HOSTED_TESTS=1`.
+6. E2E: `npx playwright test` (needs the dev server + seeded data).
+
 This README covers the v1 baseline plus everything added by mission
 `20260818-213033` (M10–M19). See ["What changed since
 v1"](#what-changed-since-v1) for a quick orientation if you already know

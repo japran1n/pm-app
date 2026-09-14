@@ -49,6 +49,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { UserAvatar } from "@/components/user-avatar";
+import { formatDate } from "@/lib/format";
 
 export type ProjectMemberListItem = {
   id: string;
@@ -60,18 +61,6 @@ export type ProjectMemberListItem = {
   addedByName: string | null;
   createdAt: string;
 };
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 // --- Member list row remove control ---------------------------------------
 

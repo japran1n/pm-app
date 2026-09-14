@@ -19,12 +19,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageSavedView } from "@/lib/auth/permissions";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
 import type { SavedViewScope } from "@/lib/validation/views";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "View not found.";
@@ -152,9 +153,7 @@ async function revalidateViewRoutes(
   }
 }
 
-export type ViewTaskActionResult =
-  | { ok: true; data: { viewId: string; taskId: string } }
-  | { ok: false; error: string };
+export type ViewTaskActionResult = ActionResult<{ viewId: string; taskId: string }>;
 
 // Manually pins `taskId` into `viewId`, independent of the view's own
 // filter config. Idempotent by design (unique (view_id, task_id)): adding
@@ -171,10 +170,7 @@ export async function addTaskToView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -237,10 +233,7 @@ export async function removeTaskFromView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -286,10 +279,7 @@ export async function reorderTaskInView(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage views." };
   }
@@ -320,9 +310,7 @@ export async function reorderTaskInView(input: {
   return { ok: true, data: { viewId: view.id, taskId: parsed.data.taskId } };
 }
 
-export type ListViewTaskIdsResult =
-  | { ok: true; data: string[] }
-  | { ok: false; error: string };
+export type ListViewTaskIdsResult = ActionResult<string[]>;
 
 // Reads the manually pinned task ids for a view, in position order.
 // Session-scoped client -- `view_tasks_select_visible`'s RLS policy
@@ -334,10 +322,7 @@ export async function listViewTaskIds(viewId: string): Promise<ListViewTaskIdsRe
     return { ok: false, error: "Invalid view." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to view this." };
   }

@@ -6,6 +6,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import { serverEnv } from "@/lib/env";
+
 // F024 (missions/20260903-portal, AS-052): "view the portal as a specific
 // client" is implemented by minting a REAL session for that client
 // (lib/actions/portal-preview.ts) and storing its access/refresh tokens
@@ -144,8 +146,8 @@ function wrapPreviewClientReadOnly<T extends ReturnType<typeof createServerClien
 export async function createRealSessionClient() {
   const cookieStore = await cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    serverEnv().NEXT_PUBLIC_SUPABASE_URL,
+    serverEnv().NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll() {
@@ -180,8 +182,8 @@ export async function createClient() {
     // sets this one request-scoped client instance's in-memory auth
     // state — nothing is written anywhere.
     const previewClient = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      serverEnv().NEXT_PUBLIC_SUPABASE_URL,
+      serverEnv().NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
       {
         cookies: {
           getAll: () => [],
@@ -202,8 +204,8 @@ export async function createClient() {
   }
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    serverEnv().NEXT_PUBLIC_SUPABASE_URL,
+    serverEnv().NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll() {

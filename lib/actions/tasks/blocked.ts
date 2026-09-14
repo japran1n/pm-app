@@ -3,13 +3,11 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { setTaskBlockedReasonSchema } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { canEditTask } from "@/lib/auth/permissions";
 import { type ProjectVisibility } from "@/lib/actions/project-visibility";
 
-export type SetTaskBlockedReasonResult =
-  | { ok: true; data: { id: string; blockedReason: string | null } }
-  | { ok: false; error: string };
+export type SetTaskBlockedReasonResult = ActionResult<{ id: string; blockedReason: string | null }>;
 
 async function loadTaskForBlockedReason(
   admin: ReturnType<typeof createAdminClient>,
