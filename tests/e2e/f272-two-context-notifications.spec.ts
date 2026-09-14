@@ -389,7 +389,10 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
       const trigger = sheet.locator(`#task-assignee-${taskId}`);
       await trigger.click();
 
-      const recipientOption = actorPage.getByRole("menuitemcheckbox", {
+      // The sheet's assignee picker renders a listbox of role="option"
+      // rows (components/task/task-detail-sheet.tsx), not a dropdown
+      // menu of menuitemcheckbox — the old locator predates that UI.
+      const recipientOption = actorPage.getByRole("option", {
         name: new RegExp(recipientName),
       });
       await expect(recipientOption).toBeVisible({ timeout: 10_000 });
@@ -477,73 +480,73 @@ test.describe("F272: two-context realtime notification journeys (AS-530)", () =>
       const bell = recipientPage.getByRole("button", { name: "Notifications" });
       await expect(bell).toBeVisible();
 
+      // The task-detail sheet no longer carries a comment composer (the
+      // Comments tab was removed per product decision — see
+      // components/task/task-detail-sections.tsx), so the surviving
+      // real-UI mention surface is CHAT (F13: the same Tiptap mention
+      // picker, and lib/actions/chat-messages.ts fans out the same
+      // kind='mention' notification). Seed a channel with both users and
+      // drive the mention through the real chat composer.
+      const { data: channelRow, error: channelErr } = await adminClient
+        .from("channels")
+        .insert({
+          workspace_id: workspaceId,
+          kind: "channel",
+          name: `f272-mention-${Date.now()}`,
+          created_by: actorUserId,
+        })
+        .select("id")
+        .single();
+      if (channelErr || !channelRow) {
+        throw new Error(`Failed to seed channel: ${channelErr?.message}`);
+      }
+      const { error: chanMembersErr } = await adminClient
+        .from("channel_members")
+        .insert([
+          { channel_id: channelRow.id, user_id: actorUserId },
+          { channel_id: channelRow.id, user_id: recipientUserId },
+        ]);
+      if (chanMembersErr) {
+        throw new Error(`Failed to seed channel members: ${chanMembersErr.message}`);
+      }
+
       await actorPage.goto(
-        `${baseURL}/w/${workspaceSlug}/projects/${projectId}/board`,
+        `${baseURL}/w/${workspaceSlug}/chat/${channelRow.id}`,
       );
       await actorPage.waitForURL(
-        `**/w/${workspaceSlug}/projects/${projectId}/board`,
+        `**/w/${workspaceSlug}/chat/${channelRow.id}`,
         { timeout: 15_000 },
       );
-      await actorPage.getByText("F272 Two-Context Mention Task").click();
-      const sheet = actorPage.getByRole("dialog");
-      await expect(sheet.getByLabel("Title")).toHaveValue(
-        "F272 Two-Context Mention Task",
-      );
 
-      // Real @-mention, typed into the actual Tiptap comment composer, and
-      // selected from the real picker (mention-list.tsx) — this part
-      // genuinely drives the UI end to end and is kept exactly as such.
-      //
-      // F339 (M18 scrutiny BLOCKER-4 fix): submitting via the real "Post"
-      // button used to reproducibly 500 on the server whenever the body
-      // contained a real `mention` node — see lib/comments/rich-text.ts's
-      // `toPlainJson` doc comment for the live-reproduced root cause (a
-      // shared/interned ProseMirror `attrs` object reference being encoded
-      // as an unreadable React "temporary reference" instead of plain data
-      // across the Server Action boundary) and comments-list.tsx's use of
-      // it at both the add- and edit-comment call sites. Now that the
-      // underlying product bug is fixed, this test submits via the real
-      // "Post" button — no more admin-client `insert` +
-      // `create_notification` RPC stand-in — so it exercises the actual
-      // product fan-out path end to end, matching every other assertion in
-      // this file.
-      const composer = sheet.getByRole("textbox", { name: "Add a comment" });
+      const composer = actorPage.getByRole("textbox", { name: "Message", exact: true });
       await composer.click();
       await composer.pressSequentially(`@${recipientName.slice(0, 12)}`, {
         delay: 30,
       });
 
-      // The mention picker (mention-list.tsx) is rendered into a floating
-      // element mounted outside the Sheet's own dialog subtree (Tiptap's
-      // Suggestion `render().mount` appends it near the caret, not inside
-      // the dialog DOM node) — so this must be scoped to the page, not
-      // `sheet`.
+      // The mention picker (mention-list.tsx) mounts in a floating
+      // element outside the composer's own subtree — scope to the page.
       const mentionOption = actorPage.getByRole("option", {
         name: new RegExp(recipientName),
       });
       await expect(mentionOption).toBeVisible({ timeout: 10_000 });
-      // Select via the same Enter key the picker's own keyboard contract
-      // (mention-list.tsx's onKeyDown) documents, rather than a mouse
-      // click on a floating, caret-anchored popup element — more robust
-      // against the popup repositioning under the pointer mid-animation.
-      await composer.press("Enter");
+      // Select by CLICK, not Enter: the chat composer's DOM-level
+      // capture-phase Enter handler (message-composer.tsx onEnterSubmit)
+      // wins the race against the mention picker's own keyboard contract
+      // and would SEND the half-typed message instead of selecting.
+      await mentionOption.click();
       await expect(mentionOption).toHaveCount(0);
-      // Confirm the mention chip really rendered in the composer (the
-      // real-UI part of this test that IS asserted end to end).
       await expect(
-        sheet.getByText(new RegExp(recipientName)).first(),
+        composer.getByText(new RegExp(recipientName)).first(),
       ).toBeVisible({ timeout: 5_000 });
 
-      await composer.pressSequentially(" welcome to the task", { delay: 20 });
+      await composer.pressSequentially(" welcome to the channel", { delay: 20 });
+      // Enter now sends (message-composer.tsx's onEnterSubmit).
+      await composer.press("Enter");
 
-      const postButton = sheet.getByRole("button", { name: "Post" });
-      await expect(postButton).toBeEnabled();
-      await postButton.click();
-
-      // The composer clears (setDraft(null)) once addComment resolves
-      // ok:true — the real, end-to-end confirmation that the Server
-      // Action succeeded rather than 500ing, before this test asserts on
-      // the other context's live delivery below.
+      // The composer clears once sendMessage resolves ok — the real
+      // end-to-end confirmation the Server Action succeeded before this
+      // test asserts on the other context's live delivery below.
       await expect(composer).toHaveText("", { timeout: 10_000 });
 
       // Confirm the mention notification fan-out itself landed

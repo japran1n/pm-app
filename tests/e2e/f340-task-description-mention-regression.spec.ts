@@ -339,15 +339,15 @@ test.describe("F340: task description mention save (M18 scrutiny FU-M18P2-1)", (
       { delay: 30 },
     );
 
-    const mentionOption = page.getByRole("option", {
-      name: new RegExp(mentionTargetName),
-    });
-    await expect(mentionOption).toBeVisible({ timeout: 10_000 });
-    await descriptionEditor.press("Enter");
-    await expect(mentionOption).toHaveCount(0);
+    // Product change: the description editor now runs RichTextEditor in
+    // mode="plain" (components/task/task-detail-fields.tsx), which
+    // disables the @-mention picker for descriptions entirely — the
+    // typed "@..." stays literal text and no floating option list may
+    // appear. The regression this spec guards (the blur-save Server
+    // Action 500ing on description_json) is asserted unchanged below.
     await expect(
-      sheet.getByText(new RegExp(mentionTargetName)).first(),
-    ).toBeVisible({ timeout: 5_000 });
+      page.getByRole("option", { name: new RegExp(mentionTargetName) }),
+    ).toHaveCount(0);
 
     // Blur the editor (click elsewhere in the sheet) to trigger
     // handleDescriptionJsonBlur's save — the exact call site this feature
@@ -356,8 +356,9 @@ test.describe("F340: task description mention save (M18 scrutiny FU-M18P2-1)", (
 
     // Pre-fix: this save 500s server-side ("Cannot access id on the
     // server..."), the toast never fires, and description_json is never
-    // persisted with the mention. Post-fix: a real success toast fires
-    // and the row is actually updated.
+    // persisted. Post-fix: a real success toast fires and the row is
+    // actually updated. (Plain mode: the "@..." text persists literally
+    // — no mention node/uuid is expected in the JSON any more.)
     await expect(page.getByText("Description updated.")).toBeVisible({
       timeout: 10_000,
     });
@@ -370,7 +371,7 @@ test.describe("F340: task description mention save (M18 scrutiny FU-M18P2-1)", (
         .single();
       if (error) throw error;
       expect(JSON.stringify(data?.description_json)).toContain(
-        mentionTargetUserId,
+        `@${mentionTargetName.slice(0, 12)}`,
       );
     }).toPass({ timeout: 10_000 });
   });
