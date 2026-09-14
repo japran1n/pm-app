@@ -111,7 +111,7 @@ describe("ApprovalCard (F009)", () => {
     renderCard({ isOwner: false, ownerName: "Jane Doe" });
 
     expect(screen.getByRole("button", { name: /approve/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /request changes/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /ask for changes/i })).toBeDisabled();
     expect(screen.getByText(/only jane doe can decide this/i)).toBeInTheDocument();
     // Presentation only -- decideApproval is never even attempted from a
     // disabled control; the real enforcement (AS-022) lives in the RPC,
@@ -219,7 +219,7 @@ describe("ApprovalCard (F009)", () => {
   it("test_AS_023_request_changes_requires_a_note_before_sending", () => {
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     const sendButton = screen.getByRole("button", { name: /^send$/i });
     expect(sendButton).toBeDisabled();
 
@@ -244,7 +244,7 @@ describe("ApprovalCard (F009)", () => {
 
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });
@@ -273,7 +273,7 @@ describe("ApprovalCard (F009)", () => {
 
     renderCard();
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });

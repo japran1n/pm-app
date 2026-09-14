@@ -16,8 +16,6 @@ import {
 import { getProjectCurrentBudgetPeriod, getProjectHoursClient } from "@/lib/queries/hours";
 import { getOpenApprovalsForClient } from "@/lib/queries/approvals";
 import { getClientDeliverables } from "@/lib/queries/deliverables";
-import { getClientVisiblePortalAccounts } from "@/lib/queries/project-site";
-import { getBriefForClient } from "@/lib/queries/brief";
 import { createClient } from "@/lib/supabase/server";
 import { EmptyState } from "@/components/empty-state";
 import { OverviewTiles } from "@/components/portal/overview-tiles";
@@ -28,9 +26,9 @@ import { LiveNow } from "@/components/portal/live-now";
 import { TeamCard } from "@/components/portal/team-card";
 import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
 import { LaunchHeadline } from "@/components/portal/launch-headline";
-import { WaitingOnYouBlock } from "@/components/portal/waiting-on-you-block";
-import { buildWaitingOnYouItems } from "@/lib/portal/build-waiting-on-you-items";
+import { WaitingOnYouCallout } from "@/components/portal/waiting-on-you-callout";
 import { buildNextFromYouAnswer } from "@/lib/portal/build-next-from-you";
+import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
 import { computeBurndownSeries } from "@/lib/hours/burndown-series";
 import type { ClientBucket } from "@/components/portal/status-label";
 
@@ -115,9 +113,8 @@ export default async function PortalOverviewPage({
     currentPeriod,
     openApprovalsResult,
     deliverablesResult,
-    accountsResult,
     warrantyRow,
-    briefResult,
+    waitingOnYouCountResult,
   ] = await Promise.all([
     getProjectPhases(project.id),
     getPortalPages(project.id),
@@ -130,11 +127,12 @@ export default async function PortalOverviewPage({
     //
     // F107 round 2 (missions/20260903-portal, coordinator review): the
     // separate `getPortalWaitingOnYouCount` union read that used to feed
-    // the now-removed "Waiting on you" TILE is gone -- `WaitingOnYouBlock`
-    // below is built from THIS list plus `openApprovalsResult`/
-    // `deliverablesResult` (already fetched for the block), and restating
-    // the same rows as a bare count directly beneath their own named list
-    // was the exact duplication the coordinator's review named.
+    // the now-removed "Waiting on you" TILE is gone. Mission
+    // 20260914-portal-simplify (F010): this project-scoped task list still
+    // feeds the "since your last visit" rail below; the itemised
+    // "Waiting on you" list that used to render under the phase timeline
+    // was replaced by the single Home callout (AS-018), sourced from
+    // `getWaitingOnYouCount` instead.
     getPortalWaitingOnYou(project.id, project.name),
     getPortalRisks(project.id),
     getPortalLiveNow(project.id),
@@ -150,19 +148,13 @@ export default async function PortalOverviewPage({
     // Hours page uses -- see this file's own WIDE_FROM comment.
     getProjectCurrentBudgetPeriod(project.id),
     // F107 (missions/20260903-portal, docs/client-portal-visual-plan.md
-    // 2.2): the exact read the Approvals view itself renders -- reused
-    // here to build "What we need from you", never a second query for
-    // the same rows. See `buildWaitingOnYouItems`'s own header for why
-    // no fourth path exists.
+    // 2.2): the exact read the Approvals view itself renders -- also the
+    // exact read `getWaitingOnYouCount` (F005) wraps for its own
+    // "decisions" half, never a second query for the same rows.
     getOpenApprovalsForClient(project.id),
     // F107 (2.2): the exact read the Your list view renders -- reused
     // here (filtered to past-due) for the same reason.
     getClientDeliverables(project.id),
-    // Package C: accounts the client owns but hasn't provisioned yet are
-    // their own "waiting on you" obligation -- same client-visible read
-    // the "Your site" accounts table renders, reused here rather than a
-    // second query. See `buildWaitingOnYouItems`'s own header.
-    getClientVisiblePortalAccounts(project.id),
     // F115 round 2 (coordinator review, docs/client-portal-phase-2-plan.md
     // C): case 4's warranty-window fallback and the headline's own
     // "Launched"/"Launching" tense both need `warranty_until` -- not
@@ -172,12 +164,14 @@ export default async function PortalOverviewPage({
     // (site/page.tsx's own identical comment). RLS already scopes this
     // SELECT the same as every other read on this page.
     supabase.from("projects").select("warranty_until").eq("id", project.id).maybeSingle(),
-    // F064 (AS-163, AS-164): the client-visible brief read (F048) --
-    // reused here to add "Project questionnaire" to "What we need from
-    // you" while the brief is still a draft with questions to answer.
-    // See `buildWaitingOnYouItems`'s own header for why no second query
-    // exists for this.
-    getBriefForClient(project.id),
+    // Mission 20260914-portal-simplify, F010 (AS-018): the SAME number
+    // F008's "For you" sidebar badge shows, so Home's callout and the
+    // badge can never disagree for the same project. `getWaitingOnYouCount`
+    // (F005) is called once here rather than re-derived from
+    // `openApprovalsResult`/`deliverablesResult` above so a future change
+    // to that helper's own definition of "waiting" can't drift from what
+    // the callout renders.
+    getWaitingOnYouCount(project.id, today),
   ]);
 
   // F085 (defect 1): usedMinutes/soldMinutes come from the SAME RPC
@@ -221,38 +215,16 @@ export default async function PortalOverviewPage({
     today,
   ).map((point) => point.usedMinutes);
 
-  // F107 (2.2): "What we need from you" -- built from the three reads
-  // above (open approvals, the project-scoped pending-approval task
-  // list already fetched for the list under the phase timeline, and
-  // past-due deliverables), never a fourth path to the same data. A
-  // failed approvals or deliverables read degrades to an empty list for
-  // that source rather than failing the whole page -- the tile above
-  // already carries the honest "we couldn't load this" state for the
-  // union count; this block just may show fewer rows than that count
-  // implies until the read succeeds again.
-  const waitingOnYouItems = buildWaitingOnYouItems({
-    approvals: openApprovalsResult.ok ? openApprovalsResult.data : [],
-    tasks: waitingOnYouResult.ok ? waitingOnYouResult.data : [],
-    deliverables: deliverablesResult.ok ? deliverablesResult.data : [],
-    accounts: accountsResult.ok ? accountsResult.data : [],
-    brief:
-      briefResult.ok && briefResult.data.brief
-        ? {
-            state: briefResult.data.brief.state,
-            questionCount: briefResult.data.questions.length,
-          }
-        : null,
-    workspaceSlug: workspace.slug,
-    projectId: project.id,
-    todayIso: today,
-  });
+  // Mission 20260914-portal-simplify, F010 (AS-018): the Home callout's
+  // own count and overdue note. Hidden entirely (component returns
+  // `null`) on a failed read or a `total` of 0 -- never a fabricated
+  // zero, same honesty rule `getWaitingOnYouCount` documents on itself.
+  const waitingOnYouCount = waitingOnYouCountResult.ok ? waitingOnYouCountResult.data : null;
 
   // F115 (missions/20260903-portal, docs/client-portal-phase-2-plan.md
   // C): "what happens next" -- reuses the SAME open-approvals,
-  // deliverables and phases reads already fetched above (for
-  // `waitingOnYouItems` and the phase timeline), never a fourth query.
-  // A failed read degrades to an empty list for that source, same
-  // posture as `waitingOnYouItems` above.
+  // deliverables and phases reads already fetched above, never a fourth
+  // query. A failed read degrades to an empty list for that source.
   const warrantyUntil = warrantyRow.data?.warranty_until ?? null;
 
   const nextFromYou = buildNextFromYouAnswer({
@@ -318,10 +290,18 @@ export default async function PortalOverviewPage({
         yourListHref={`/portal/${workspace.slug}/p/${project.id}/for-you?filter=materials`}
       />
 
-      {/* F107 (2.2): "what do you need from me?" answered second, as a
-          named, actionable block -- not buried inside the tile strip
-          below. */}
-      <WaitingOnYouBlock items={waitingOnYouItems} />
+      {/* Mission 20260914-portal-simplify, F010 (AS-018): "what do you
+          need from me?" answered second, as one actionable callout
+          linking straight to "For you" -- replaces the old itemised
+          "Waiting on you" list, which restated the same rows "For you"
+          (F006) already lists in full. */}
+      {waitingOnYouCount && (
+        <WaitingOnYouCallout
+          total={waitingOnYouCount.total}
+          overdue={waitingOnYouCount.overdue}
+          href={`/portal/${workspace.slug}/p/${project.id}/for-you`}
+        />
+      )}
 
       <OverviewTiles
         pagesReadyCount={pagesReadyCount}

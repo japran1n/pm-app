@@ -483,7 +483,7 @@ export function ApprovalCard({
               onClick={() => setIsRequestingChanges(true)}
             >
               <MessageSquareWarning className="size-4" aria-hidden="true" />
-              Request changes
+              Ask for changes
             </Button>
           </div>
           {/* AS-022: presentation only -- naming who decides, not a
