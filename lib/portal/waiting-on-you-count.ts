@@ -28,6 +28,7 @@ import {
   isDeliverablePastDue,
 } from "@/lib/queries/deliverables";
 import type { PortalQueryResult } from "@/lib/queries/portal";
+import { isApprovalPastDue } from "@/lib/portal/is-past-due";
 
 export type WaitingOnYouCount = {
   /** Open approvals this client can act on (`getOpenApprovalsForClient`). */
@@ -50,10 +51,6 @@ export type WaitingOnYouCount = {
   overdue: number;
 };
 
-function isApprovalPastDue(dueAt: string | null, todayIso: string): boolean {
-  return dueAt !== null && dueAt < todayIso;
-}
-
 // AS-007: a failed read from EITHER source must not silently render as
 // "nothing waiting" -- same honesty rule `getOpenApprovalsForClient` and
 // `getClientDeliverablesForPortal` already enforce with their own
@@ -74,8 +71,16 @@ export async function getWaitingOnYouCount(
 
   const decisions = approvalsResult.data.length;
 
+  // F017 (portal-simplify, M2 scrutiny): a `delivered` material is
+  // waiting on the TEAM to review it, not on the client -- it must not
+  // inflate this "waiting on YOU" count (the bug this fix addresses: the
+  // badge/callout counted it as outstanding for the client while "For
+  // you" itself, once fixed, no longer lists it as an action item, so
+  // the two disagreed). Same `not_started`/`in_progress`-only definition
+  // `outstandingDeliverables` (lib/portal/build-for-you-items.ts) now
+  // uses, so this count and the "For you" page it links to always agree.
   const outstandingMaterials = deliverablesResult.data.filter(
-    (deliverable) => deliverable.state !== "accepted" && deliverable.state !== "waived",
+    (deliverable) => deliverable.state === "not_started" || deliverable.state === "in_progress",
   );
   const materials = outstandingMaterials.length;
 

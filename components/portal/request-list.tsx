@@ -28,7 +28,9 @@ import type {
 
 import { withdrawClientRequest } from "@/lib/actions/client-requests";
 import type { PortalRequest } from "@/lib/queries/portal";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import type { VariantProps } from "class-variance-authority";
 import { createClient } from "@/lib/supabase/client";
 import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
@@ -40,11 +42,21 @@ const STATUS_LABEL: Record<PortalRequest["status"], string> = {
   declined: "Declined",
 };
 
-const STATUS_CLASS: Record<PortalRequest["status"], string> = {
-  submitted: "text-muted-foreground",
-  in_review: "text-blue-600",
-  accepted: "text-emerald-600",
-  declined: "text-destructive",
+// F017 (portal-simplify design pass): status renders as the design
+// system's own pill badge (uppercase, 9px, tracking-[0.07em], 1px
+// border, 10% tint -- see components/ui/badge.tsx's own header comment)
+// instead of a bare coloured span, and the two hard-coded Tailwind
+// colours (`text-blue-600`, `text-emerald-600`) are gone in favour of the
+// badge's existing semantic variants -- colours are derived from the six
+// design-system knobs, never hand-written here.
+const STATUS_BADGE_VARIANT: Record<
+  PortalRequest["status"],
+  VariantProps<typeof badgeVariants>["variant"]
+> = {
+  submitted: "secondary",
+  in_review: "warning",
+  accepted: "success",
+  declined: "destructive",
 };
 
 function formatDate(iso: string): string {
@@ -239,18 +251,23 @@ export function RequestList({
               <div className="flex flex-col gap-1">
                 <span className="font-medium">{request.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {request.projectName} · sent {formatDate(request.createdAt)}
-                  {request.desiredBy
-                    ? ` · needed by ${formatDate(request.desiredBy)}`
-                    : ""}
+                  {request.projectName} · sent{" "}
+                  <span className="font-mono">{formatDate(request.createdAt)}</span>
+                  {request.desiredBy ? (
+                    <>
+                      {" "}
+                      · needed by{" "}
+                      <span className="font-mono">{formatDate(request.desiredBy)}</span>
+                    </>
+                  ) : (
+                    ""
+                  )}
                 </span>
               </div>
 
-              <span
-                className={`text-xs font-medium ${STATUS_CLASS[request.status]}`}
-              >
+              <Badge variant={STATUS_BADGE_VARIANT[request.status]}>
                 {STATUS_LABEL[request.status]}
-              </span>
+              </Badge>
             </div>
 
             {request.body && (

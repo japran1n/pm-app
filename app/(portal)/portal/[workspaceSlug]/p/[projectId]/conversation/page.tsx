@@ -96,8 +96,11 @@ export default async function PortalConversationPage({
     .eq("kind", "channel")
     .maybeSingle();
 
+  // F017 (portal-simplify design pass): page-header spacing per the
+  // design system's own rule ("Page headers p-6 pt-4 lg:p-8 lg:pt-8"),
+  // replacing the bespoke p-4/pb-0 this route had drifted to.
   const header = (
-    <div className="flex flex-col gap-1 p-4 pb-0">
+    <div className="flex flex-col gap-1 p-6 pt-4 lg:p-8 lg:pt-8">
       <h1 className="text-2xl font-semibold tracking-tight">Messages</h1>
       <p className="text-sm text-muted-foreground">
         Talk to the team, or ask for something new.

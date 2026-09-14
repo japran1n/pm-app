@@ -11,6 +11,7 @@
 import { isDeliverablePastDue } from "@/lib/queries/deliverables";
 import type { PortalApproval } from "@/lib/queries/approvals";
 import type { PortalDeliverable } from "@/lib/queries/deliverables";
+import { isApprovalPastDue, toUtcDateOnly } from "@/lib/portal/is-past-due";
 
 export type ForYouFilter = "all" | "decisions" | "materials";
 
@@ -36,21 +37,33 @@ export type ForYouCounts = {
   materials: number;
 };
 
-// `getOpenApprovalsForClient` only ever returns `state === "pending"` rows
-// (see that query's own header comment), so every approval here is by
-// definition still open -- this is just "does it have a due date, and has
-// that date passed", same shape of test as
-// `waiting-on-you-count.ts`'s own `isApprovalPastDue` (not re-exported from
-// there because that module is intentionally the count-only surface; this
-// is the ordering/grouping surface).
-function isApprovalPastDue(dueAt: string | null, todayIso: string): boolean {
-  return dueAt !== null && dueAt < todayIso;
+// F017 (portal-simplify, M2 scrutiny): `isApprovalPastDue` used to be a
+// second, verbatim copy of `waiting-on-you-count.ts`'s own private
+// function -- deduplicated into `lib/portal/is-past-due.ts`, imported by
+// both call sites, so a future edit to the predicate can't apply to one
+// and silently miss the other.
+
+/** Materials the CLIENT still has to act on -- not yet delivered at all
+ * (`not_started`/`in_progress`). F017's own bug fix: a `delivered`
+ * material is waiting on the TEAM to review it (see
+ * `components/portal/deliverable-row.tsx`'s "Waiting for us to check it"
+ * copy -- that IS this state's whole meaning), so it must never appear
+ * in the "waiting on you" merged list or its counts; the previous filter
+ * (`state !== "accepted" && state !== "waived"`) incorrectly counted it
+ * as still outstanding FOR THE CLIENT. Kept in the "For you" list's
+ * empty-state contract via `awaitingReviewDeliverables` below instead --
+ * visible, but in the history disclosure, not counted as action-needed. */
+export function outstandingDeliverables(deliverables: PortalDeliverable[]): PortalDeliverable[] {
+  return deliverables.filter((d) => d.state === "not_started" || d.state === "in_progress");
 }
 
-/** Outstanding materials: not yet accepted or waived -- same filter
- * `getWaitingOnYouCount` and Your list's `classifyBucket` both already use. */
-export function outstandingDeliverables(deliverables: PortalDeliverable[]): PortalDeliverable[] {
-  return deliverables.filter((d) => d.state !== "accepted" && d.state !== "waived");
+/** Delivered, not yet accepted/waived by the team -- awaiting THEIR
+ * action, not the client's. Surfaced in "For you"'s history disclosure
+ * (never counted in the chip/badge numbers) so the client can still see
+ * "sent, waiting for review" without it reading as something they still
+ * owe. */
+export function awaitingReviewDeliverables(deliverables: PortalDeliverable[]): PortalDeliverable[] {
+  return deliverables.filter((d) => d.state === "delivered");
 }
 
 export function settledDeliverables(deliverables: PortalDeliverable[]): PortalDeliverable[] {
@@ -82,8 +95,22 @@ export function buildForYouItems(
     deliverable,
   }));
 
+  // F017 (portal-simplify, M2 scrutiny): a decision's `dueAt` is a full
+  // `timestamptz`, a material's is a plain `date` -- comparing the raw
+  // strings sorted a decision due "2026-09-14T09:00:00Z" AFTER a material
+  // due "2026-09-14" even though both are due the same calendar day
+  // (the longer timestamp string is lexicographically greater). Both
+  // sides are truncated to their UTC calendar date (`toUtcDateOnly`,
+  // the same rule `is-past-due.ts` uses) before comparing, so same-day
+  // items sort as equal -- ties then fall through to Array.prototype.sort's
+  // own stable ordering (decisions-then-materials, this function's
+  // insertion order), never an accidental type-driven reshuffle.
   return [...decisionItems, ...materialItems].sort((a, b) => {
-    if (a.dueAt && b.dueAt) return a.dueAt < b.dueAt ? -1 : a.dueAt > b.dueAt ? 1 : 0;
+    if (a.dueAt && b.dueAt) {
+      const aDate = toUtcDateOnly(a.dueAt);
+      const bDate = toUtcDateOnly(b.dueAt);
+      return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
+    }
     if (a.dueAt) return -1;
     if (b.dueAt) return 1;
     return 0;

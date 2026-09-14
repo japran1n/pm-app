@@ -25,6 +25,7 @@ import type { JSONContent } from "@tiptap/react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { docFromPlainText, extractPlainText, toPlainJson } from "@/lib/comments/rich-text";
 import {
@@ -323,12 +324,10 @@ export function MessageComposer({
     <div ref={composerRef} className="border-t p-3">
       {onFileRequest && (
         <label className="mb-2 flex w-fit items-center gap-2 text-sm text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={isRequest}
-            onChange={(e) => setIsRequest(e.target.checked)}
+            onCheckedChange={(checked) => setIsRequest(checked === true)}
             disabled={disabled || isPending}
-            className="size-3.5 rounded border-input"
           />
           This is a request for new work
         </label>

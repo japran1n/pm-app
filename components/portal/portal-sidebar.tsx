@@ -147,7 +147,7 @@ function NavBadge({ item }: { item: PortalNavItem }) {
   return (
     <Badge
       variant={item.badgeTone === "danger" ? "destructive" : "secondary"}
-      className="ml-auto h-5 min-w-5 justify-center px-1"
+      className="ml-auto h-5 min-w-5 justify-center px-1 font-mono"
     >
       {item.badge > 99 ? "99+" : item.badge}
     </Badge>
@@ -190,7 +190,7 @@ function NavRow({
         active
           ? "bg-primary text-primary-foreground"
           : variant === "secondary"
-            ? "text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            ? "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
@@ -330,7 +330,7 @@ export function PortalSidebar({
         <span className="truncate text-sm font-semibold tracking-tight">
           {workspaceName}
         </span>
-        <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Client portal</span>
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Client portal</span>
       </span>
     </Link>
   );
@@ -340,12 +340,12 @@ export function PortalSidebar({
       href={`/portal/${workspaceSlug}`}
       className="hover-surface flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2"
     >
-      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </Link>
   ) : (
     <div className="flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2">
-      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </div>
   );

@@ -127,14 +127,57 @@ describe("AS-008: For you lists decisions and materials together, soonest due fi
     expect(items.map((item) => item.id)).toEqual(["d-open"]);
   });
 
-  it("AS-008_a_delivered_but_past_due_material_still_counts_as_overdue", () => {
+  // F017 (portal-simplify, M2 scrutiny): a `delivered` material is
+  // awaiting the TEAM's review, not the client's action -- it must not
+  // appear in the "waiting on you" merged list at all (previously it did,
+  // and even counted as "overdue for the client", which is exactly the
+  // count/page disagreement this fix addresses). It's still visible to
+  // the client, just via `awaitingReviewDeliverables`, in the history
+  // section, never in this list.
+  it("AS-008_a_delivered_material_never_appears_in_the_merged_waiting_on_you_list", () => {
     const items = buildForYouItems(
       [],
       [deliverable({ id: "d1", state: "delivered", dueAt: "2026-09-01" })],
       TODAY,
     );
 
-    expect(items[0].overdue).toBe(true);
+    expect(items).toHaveLength(0);
+  });
+});
+
+describe("F017: awaitingReviewDeliverables / outstandingDeliverables agree on what's client-actionable", () => {
+  it("test_AS_009_awaitingReviewDeliverables_returns_only_delivered_state_rows", async () => {
+    const { awaitingReviewDeliverables, outstandingDeliverables } = await import(
+      "@/lib/portal/build-for-you-items"
+    );
+    const deliverables = [
+      deliverable({ id: "d-not-started", state: "not_started" }),
+      deliverable({ id: "d-in-progress", state: "in_progress" }),
+      deliverable({ id: "d-delivered", state: "delivered" }),
+      deliverable({ id: "d-accepted", state: "accepted" }),
+      deliverable({ id: "d-waived", state: "waived" }),
+    ];
+
+    expect(awaitingReviewDeliverables(deliverables).map((d) => d.id)).toEqual(["d-delivered"]);
+    expect(outstandingDeliverables(deliverables).map((d) => d.id).sort()).toEqual(
+      ["d-in-progress", "d-not-started"].sort(),
+    );
+  });
+});
+
+describe("F017: same-day items sort consistently across timestamptz and date columns", () => {
+  it("test_AS_008_a_decision_and_a_material_due_the_same_calendar_day_sort_by_insertion_order_not_string_length", () => {
+    const items = buildForYouItems(
+      [approval({ id: "a-same-day", dueAt: "2026-09-20T23:00:00.000Z" })],
+      [deliverable({ id: "d-same-day", dueAt: "2026-09-20", state: "not_started" })],
+      TODAY,
+    );
+
+    // Same UTC calendar day -- decisions are built (and appear) before
+    // materials in `buildForYouItems`'s own insertion order, and a
+    // same-day tie must preserve that rather than reordering based on
+    // which string happened to be lexicographically larger.
+    expect(items.map((item) => item.id)).toEqual(["a-same-day", "d-same-day"]);
   });
 });
 

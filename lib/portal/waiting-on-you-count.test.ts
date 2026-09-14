@@ -92,9 +92,13 @@ describe("AS-007: single waiting-on-you count", () => {
 
     const result = await getWaitingOnYouCount(PROJECT_ID, TODAY);
 
+    // F017 (portal-simplify, M2 scrutiny): `d4` (state "delivered") is
+    // waiting on the TEAM to review it, not on the client -- it must NOT
+    // inflate this "waiting on you" count. Only `d1` (not_started)
+    // counts as an outstanding material here.
     expect(result).toEqual({
       ok: true,
-      data: { decisions: 2, materials: 2, total: 4, overdue: 0 },
+      data: { decisions: 2, materials: 1, total: 3, overdue: 0 },
     });
   });
 
@@ -129,9 +133,12 @@ describe("AS-007: single waiting-on-you count", () => {
 
     const result = await getWaitingOnYouCount(PROJECT_ID, TODAY);
 
+    // F017: `d3` is delivered (awaiting the team, not the client) and a
+    // past-due delivered item is no longer "overdue FOR THE CLIENT" --
+    // only `d1` (not_started, past due) counts.
     expect(result).toEqual({
       ok: true,
-      data: { decisions: 0, materials: 3, total: 3, overdue: 2 },
+      data: { decisions: 0, materials: 2, total: 2, overdue: 1 },
     });
   });
 

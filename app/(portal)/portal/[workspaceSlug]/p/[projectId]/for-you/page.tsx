@@ -11,6 +11,7 @@ import { getClientDeliverablesForPortal } from "@/lib/queries/deliverables";
 import { getPortalProjects } from "@/lib/queries/portal";
 import { createClient } from "@/lib/supabase/server";
 import {
+  awaitingReviewDeliverables,
   buildForYouItems,
   countForYouItems,
   filterForYouItems,
@@ -114,6 +115,13 @@ export default async function PortalForYouPage({
 
   const bothFailed = !approvalsResult.ok && !deliverablesResult.ok;
   const settled = settledDeliverables(deliverables);
+  // F017 (portal-simplify, M2 scrutiny): `delivered` materials are
+  // awaiting the TEAM's review, not the client's action -- never in the
+  // main "waiting on you" list/counts, but still worth the client being
+  // able to see "sent, waiting for review" somewhere. Shown here, in the
+  // history disclosure, alongside (but visually distinct from) settled
+  // materials.
+  const awaitingReview = awaitingReviewDeliverables(deliverables);
 
   return (
     <div className="flex flex-col gap-8">
@@ -268,6 +276,17 @@ export default async function PortalForYouPage({
           Completed &amp; decision history
         </summary>
         <div className="flex flex-col gap-4 pt-2">
+          {deliverablesResult.ok && awaitingReview.length > 0 && (
+            <div className="flex flex-col gap-3" data-testid="for-you-history-awaiting-review">
+              <h2 className="text-sm font-medium text-muted-foreground">Awaiting our review</h2>
+              <ul className="flex flex-col gap-2">
+                {awaitingReview.map((deliverable) => (
+                  <DeliverableRow key={deliverable.id} deliverable={deliverable} today={today} variant="outstanding" />
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-muted-foreground">Delivered materials</h2>
             {!deliverablesResult.ok ? (
