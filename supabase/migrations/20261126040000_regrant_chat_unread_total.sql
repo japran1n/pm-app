@@ -1,0 +1,15 @@
+-- get_workspace_chat_unread_total was applied to the hosted project
+-- chronologically AFTER f016g's blanket revoke-then-allowlist
+-- (20261004010000), so its `grant execute ... to authenticated` stands
+-- there — but its FILE timestamp (20260913120000, a repaired drift
+-- record from the perf mission) sorts BEFORE f016g, so on any fresh
+-- replay (CI's `supabase start`) the blanket revoke runs after it and
+-- strips the grant: every e2e session then logs
+-- `42501 permission denied for function get_workspace_chat_unread_total`
+-- and the chat unread badge silently shows nothing.
+--
+-- Re-state the deliberate grant in a migration that sorts after f016g.
+-- Idempotent — a plain re-grant on the hosted project where it already
+-- holds. The function is SECURITY DEFINER and scopes strictly to the
+-- caller's own channel memberships (see its own header comment).
+grant execute on function public.get_workspace_chat_unread_total(uuid) to authenticated;
