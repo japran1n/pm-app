@@ -116,6 +116,22 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
       .single();
     if (projectErr || !project) throw new Error(`Failed to seed project: ${projectErr?.message}`);
     createdProjectIds.push(project.id);
+    // status_set_v2: seed the legacy four as this project's own columns so
+    // the "todo"-status task below resolves to a real column (same
+    // convention as the other specs / tests/helpers/legacy-status-columns).
+    {
+      const { error: legacyColErr } = await adminClient.from("project_statuses").upsert(
+        [
+          { project_id: project.id, name: "todo", color: "#64748b", category: "not_started", position: 100 },
+          { project_id: project.id, name: "in_progress", color: "#3b82f6", category: "in_progress", position: 200 },
+          { project_id: project.id, name: "in_review", color: "#8b5cf6", category: "in_progress", position: 300 },
+          { project_id: project.id, name: "done", color: "#16a34a", category: "done", position: 400 },
+        ],
+        { onConflict: "project_id,name" },
+      );
+      if (legacyColErr) throw new Error(`legacy columns: ${legacyColErr.message}`);
+    }
+
 
     // Due "today" (server clock) so it always lands in the default-opened
     // month regardless of when this test runs.

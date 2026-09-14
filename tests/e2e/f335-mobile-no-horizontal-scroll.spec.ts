@@ -135,6 +135,24 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
       throw new Error(`Failed to seed project: ${projectErr?.message}`);
     }
     projectId = project.id;
+    // status_set_v2 seeds v2-named default columns; this spec's fixtures
+    // and UI interactions use the legacy four names as literal
+    // column/status values. Seed them as this project's own (PM-named)
+    // columns — same convention as the integration suites
+    // (tests/helpers/legacy-status-columns.ts).
+    {
+      const { error: legacyColErr } = await adminClient.from("project_statuses").upsert(
+        [
+          { project_id: projectId, name: "todo", color: "#64748b", category: "not_started", position: 100 },
+          { project_id: projectId, name: "in_progress", color: "#3b82f6", category: "in_progress", position: 200 },
+          { project_id: projectId, name: "in_review", color: "#8b5cf6", category: "in_progress", position: 300 },
+          { project_id: projectId, name: "done", color: "#16a34a", category: "done", position: 400 },
+        ],
+        { onConflict: "project_id,name" },
+      );
+      if (legacyColErr) throw new Error(`legacy columns: ${legacyColErr.message}`);
+    }
+
 
     // A handful of tasks with long titles: board cards, list rows,
     // calendar chips and timeline bars all need real content to prove
