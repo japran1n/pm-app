@@ -47,6 +47,13 @@ export function CustomFieldsSection({ taskId, canEdit }: { taskId: string; canEd
         setFields([]);
         toast.error("Couldn't load this task's custom fields.");
       }
+    }).catch(() => {
+      // A rejected action call (network drop, aborted navigation) must
+      // never surface as an unhandled rejection — degrade to the same
+      // empty-with-toast state as an { ok: false } result.
+      if (cancelled) return;
+      setFields([]);
+      toast.error("Couldn't load this task's custom fields.");
     });
     return () => {
       cancelled = true;
