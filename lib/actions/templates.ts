@@ -20,6 +20,7 @@ import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveProjectStatusName } from "@/lib/tasks/resolve-status";
 import {
   saveTaskAsTemplateSchema,
   createTaskFromTemplateSchema,
@@ -362,7 +363,19 @@ export async function createTaskFromTemplate(
     .filter((entry) => !entry.membership.ok)
     .map((entry) => entry.assigneeId);
 
-  const targetStatus = parsed.data.status ?? "todo";
+  // Legacy default "todo" no longer exists post-status_set_v2 — resolve
+  // through the shared mapping (lib/tasks/resolve-status.ts).
+  const targetStatus = await resolveProjectStatusName(
+    admin,
+    parsed.data.projectId,
+    parsed.data.status ?? "todo",
+  );
+  if (!targetStatus) {
+    return {
+      ok: false,
+      error: "That column no longer exists. Refresh the board and try again.",
+    };
+  }
 
   const { data: lastInColumn } = await admin
     .from("tasks")

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/observability/logger";
+import { resolveProjectStatusName } from "@/lib/tasks/resolve-status";
 
 // F177 (AS-315, AS-320, AS-321): generates the next occurrence of a
 // recurring task when it completes. Pure orchestration over the pieces
@@ -141,13 +142,23 @@ export async function generateNextOccurrence(
     estimate_minutes: source.estimate_minutes,
   });
 
-  // Appended to the end of the new occurrence's (project, todo) column —
-  // same convention createTaskForUser uses for a brand-new task.
+  // Legacy "todo" no longer exists post-status_set_v2 — resolve the
+  // initial column through the shared mapping (lib/tasks/resolve-status.ts)
+  // before both the position read and the insert below.
+  const initialStatus =
+    (await resolveProjectStatusName(
+      admin,
+      source.project_id,
+      RECURRENCE_INITIAL_STATUS,
+    )) ?? RECURRENCE_INITIAL_STATUS;
+
+  // Appended to the end of the new occurrence's initial column — same
+  // convention createTaskForUser uses for a brand-new task.
   const { data: lastInColumn } = await admin
     .from("tasks")
     .select("position")
     .eq("project_id", source.project_id)
-    .eq("status", RECURRENCE_INITIAL_STATUS)
+    .eq("status", initialStatus)
     .is("deleted_at", null)
     .order("position", { ascending: false })
     .limit(1)
@@ -172,7 +183,7 @@ export async function generateNextOccurrence(
         title: cloned.title,
         description: cloned.description,
         description_json: cloned.description_json as Json,
-        status: cloned.status,
+        status: initialStatus,
         priority: cloned.priority,
         estimate_minutes: cloned.estimate_minutes,
         due_date: nextDueDate,

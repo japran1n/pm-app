@@ -28,6 +28,7 @@ import { revalidatePath } from "next/cache";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createTaskSchema } from "@/lib/validation/tasks";
+import { resolveProjectStatusName } from "@/lib/tasks/resolve-status";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canWrite } from "@/lib/auth/permissions";
 import {
@@ -258,14 +259,18 @@ export async function createTaskForUser(
   // stale/forged column name (e.g. a column deleted after the quick-add
   // control rendered) from reaching the insert with `status_id` silently
   // left null by the DB trigger.
-  const { data: statusColumnMatch } = await admin
-    .from("project_statuses")
-    .select("id")
-    .eq("project_id", parsed.data.projectId)
-    .eq("name", parsed.data.status)
-    .maybeSingle();
+  // status_set_v2 renamed the legacy default columns (todo -> To Do,
+  // etc.) on every project, while several callers still arrive with
+  // createTaskSchema's legacy "todo" default (AS-045) — see
+  // lib/tasks/resolve-status.ts. A stale/forged CUSTOM name still
+  // hard-fails exactly as F248/AS-479 requires.
+  const resolvedStatus = await resolveProjectStatusName(
+    admin,
+    parsed.data.projectId,
+    parsed.data.status,
+  );
 
-  if (!statusColumnMatch) {
+  if (!resolvedStatus) {
     return {
       ok: false,
       error: "That column no longer exists. Refresh the board and try again.",
@@ -287,7 +292,7 @@ export async function createTaskForUser(
     .from("tasks")
     .select("position")
     .eq("project_id", parsed.data.projectId)
-    .eq("status", parsed.data.status)
+    .eq("status", resolvedStatus)
     .is("deleted_at", null)
     .order("position", { ascending: false })
     .limit(1)
@@ -334,7 +339,7 @@ export async function createTaskForUser(
       project_id: parsed.data.projectId,
       title: parsed.data.title,
       description: parsed.data.description,
-      status: parsed.data.status,
+      status: resolvedStatus,
       priority: parsed.data.priority,
       assignee_id: parsed.data.assigneeId,
       due_date: parsed.data.dueDate,
