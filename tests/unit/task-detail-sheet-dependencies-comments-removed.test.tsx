@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 //
-// Task detail sheet UI change: the "Blocked by"/"Blocks" dependency list
-// and the "Comments" tab are no longer rendered in the internal workspace
-// task detail view. Only the read-only Activity feed remains where
-// "Comments & activity" used to be. This does NOT touch:
+// Task detail sheet UI change: the "Comments" tab is no longer rendered
+// in the internal workspace task detail view — only the read-only
+// Activity feed remains where "Comments & activity" used to be.
+//
+// UPDATE 2026-09-14 (audit follow-up, session-owner decision): the
+// "Blocked by"/"Blocks" Dependencies section — removed by the same
+// product-cleanup commit — has been RESTORED in
+// components/task/task-detail-sections.tsx, because its removal left the
+// feature with no management UI anywhere while the blocked-done guard
+// still enforced blockers users couldn't see or clear. The first test
+// below now asserts the restored state. This file does NOT touch:
 //   - components/task/dependencies.tsx itself (still has its own render
 //     tests in tests/unit/dependencies-ui-render.test.ts)
 //   - components/task/blocked-done-guard.tsx's guard against marking a
@@ -149,8 +156,10 @@ const TASKS: TaskCardTask[] = [
   },
 ];
 
-describe("TaskDetailSheet no longer renders Dependencies UI or a Comments tab", () => {
-  it("test_dependencies_blocked_by_and_blocks_lists_are_not_rendered", async () => {
+describe("TaskDetailSheet renders the restored Dependencies UI but no Comments tab", () => {
+  // Restored 2026-09-14 — see this file's header comment. Previously
+  // asserted these were absent.
+  it("test_dependencies_blocked_by_and_blocks_lists_are_rendered", async () => {
     render(
       createElement(Board, {
         projectId: "project-1",
@@ -168,9 +177,9 @@ describe("TaskDetailSheet no longer renders Dependencies UI or a Comments tab", 
       ).toBeInTheDocument(),
     );
 
-    expect(screen.queryByText("Blocked by")).not.toBeInTheDocument();
-    expect(screen.queryByText("Blocks")).not.toBeInTheDocument();
-    expect(screen.queryByText("Blocker task")).not.toBeInTheDocument();
+    expect(screen.getByText("Blocked by")).toBeInTheDocument();
+    expect(screen.getByText("Blocks")).toBeInTheDocument();
+    expect(screen.getByText("Blocker task")).toBeInTheDocument();
   });
 
   it("test_comments_tab_and_comment_content_are_not_rendered_only_activity_remains", async () => {

@@ -34,6 +34,14 @@ import {
 // down, component calls its own Server Action" convention as TagsEditor/
 // Checklist above.
 import { RecurrenceEditor } from "@/components/task/recurrence-editor";
+// F157 (AS-277, AS-282) — restored 2026-09-14 (audit follow-up): the
+// section was removed by a product-cleanup commit, but that left the
+// dependency feature with NO management UI anywhere while the
+// blocked-done guard still enforced blockers users could neither see
+// nor clear. Decision by the session owner: restore a compact
+// Dependencies section here, wired exactly like the sibling
+// Subtasks/Checklist sections.
+import { Dependencies } from "@/components/task/dependencies";
 import { MobileCollapsibleSection } from "@/components/task/task-detail-fields";
 import type {
   TaskDetailSheetMember,
@@ -116,11 +124,21 @@ export function TaskDetailSections({
 
       <Separator />
 
-      {/* Dependencies ("Blocked by"/"Blocks") UI removed from this
-          view per product decision — `blocked-done-guard.tsx` still
-          enforces the underlying block on marking a task Done using
-          the same `lib/actions/dependencies.ts` data, unaffected by
-          removing this display. */}
+      {/* F157 (AS-277, AS-282): Dependencies ("Blocked by"/"Blocks")
+          restored 2026-09-14 — see the import comment above. The data
+          rides on `task.dependencies` (getTaskDetail), defaulting to
+          empty arrays for callers/fixtures that don't pass it, same
+          "safe default" convention as `children`/`checklistItems`. */}
+      <MobileCollapsibleSection title="Dependencies">
+        <Dependencies
+          taskId={task.id}
+          blockedBy={task.dependencies?.blockedBy ?? []}
+          blocks={task.dependencies?.blocks ?? []}
+          onOpenTask={onOpenTask}
+        />
+      </MobileCollapsibleSection>
+
+      <Separator />
 
       {/* F196 (AS-358, AS-361) Comments tab removed from this view
           per product decision — only the read-only day-grouped

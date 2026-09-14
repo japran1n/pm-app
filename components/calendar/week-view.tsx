@@ -14,6 +14,7 @@ import type { TimeOffEntry } from "@/lib/queries/time-off";
 import { eachDateInRange } from "@/lib/queries/time-off";
 import { isoToLocalDateOnly } from "@/lib/calendar/block-datetime";
 import { WeekTimeGrid } from "@/components/calendar/week-time-grid";
+import { WeekAgenda } from "@/components/calendar/week-agenda";
 import { TimeOffDayStrip } from "@/components/calendar/time-off-day-strip";
 import { AddTimeOffDialog } from "@/components/calendar/add-time-off-dialog";
 import { Button } from "@/components/ui/button";
@@ -128,11 +129,12 @@ export function WeekView({
           workspaceId={workspaceId}
         />
       </div>
-      <p className="text-xs text-muted-foreground md:hidden" data-testid="calendar-week-mobile-fallback">
-        The time-grid week view is available on wider screens. Rotate your
-        device or use a larger screen to see this week&apos;s tasks and
-        blocks here.
-      </p>
+      <WeekAgenda
+        days={week.days}
+        tasksByDate={tasksByDateObject}
+        blocksByDate={blocksByDate}
+        workspaceSlug={workspaceSlug}
+      />
     </div>
   );
 }

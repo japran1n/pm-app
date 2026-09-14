@@ -25,29 +25,15 @@
 // theme-toggle.spec.ts already established — see any of those files for
 // the full rationale; not re-explained line-by-line here.
 //
-// Product change since this spec was first written: the task detail
-// sheet's whole Dependencies ("Blocked by"/"Blocks") section was removed
-// (commit 0c9daf3 "drop dependency list and comments tab from task
-// detail"; see components/task/task-detail-sections.tsx's own comment at
-// ~:119). `components/task/dependencies.tsx` still exists but is no
-// longer imported/rendered anywhere — it is dead code. The underlying
-// blocked->done rule is unaffected and is covered separately by
-// tests/e2e/blocked-done-guard.spec.ts. A grep across components/ and
-// app/ turns up no surviving surface that shows a dependency ROW (with a
-// remove control) or lets a user pick a task to add a new dependency to
-// — the board card's own "Blocked" indicator (AS-283) is the only
-// dependency-related UI still on screen anywhere.
-//
-// Covers (rewritten):
-//   - AS-283: the blocked task's board card shows the icon+text "Blocked"
-//     indicator, and it goes away once the blocker is removed (removal
-//     done directly via the admin client, since there is no UI control
-//     left to do it through).
-//   - AS-277 (add) and AS-282 (remove): both `test.skip`'d below with a
-//     comment — there is no remaining UI to add or remove a dependency
-//     through. Not deleted, so the intent stays discoverable if/when a
-//     replacement surface (e.g. a command-menu action or a list-view
-//     column control) is added.
+// History: the sheet's Dependencies section was removed by a
+// product-cleanup commit (0c9daf3), which `test.skip`'d AS-277/AS-282
+// here. Restored 2026-09-14 (audit follow-up, session-owner decision —
+// the removal left the feature with no management UI while the
+// blocked-done guard still enforced blockers users couldn't see or
+// clear): the section renders again in
+// components/task/task-detail-sections.tsx as a MobileCollapsibleSection,
+// so AS-277/AS-282 run again below. AS-283's rewrite (blocker removed via
+// the admin client to prove the card indicator tracks live data) is kept.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -313,6 +299,33 @@ test.describe("Dependency UI (F157: AS-277, AS-282, AS-283)", () => {
       `**/w/${workspaceSlug}/projects/${projectId}/board`,
       { timeout: 15_000 },
     );
+
+    // F272: the first-run onboarding tour overlay intercepts pointer
+    // events — same dismissal as tests/e2e/checklist-ui.spec.ts (see
+    // that file's dismissTourIfPresent doc comments for the full
+    // rationale, including why it must be repeated after every reload).
+    await dismissTourIfPresent(page);
+  }
+
+  // Copied verbatim from tests/e2e/checklist-ui.spec.ts (F272) — see
+  // that file for the full rationale (broken persistence + dev-mode
+  // hydration remount mean a single Skip click isn't reliably enough).
+  async function dismissTourIfPresent(page: Page) {
+    const skipButton = page.getByRole("button", { name: "Skip" });
+    const deadline = Date.now() + 4_000;
+    let lastSeenVisible = false;
+    while (Date.now() < deadline) {
+      const visible = await skipButton
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      if (visible) {
+        lastSeenVisible = true;
+        await skipButton.click().catch(() => {});
+      } else if (lastSeenVisible) {
+        return;
+      }
+      await page.waitForTimeout(300);
+    }
   }
 
   test("AS-283: the blocked task's board card carries the icon+text 'Blocked' indicator, and it goes away once the blocker is removed", async ({
@@ -348,6 +361,7 @@ test.describe("Dependency UI (F157: AS-277, AS-282, AS-283)", () => {
     createdDependencyIds.length = 0;
 
     await page.reload();
+    await dismissTourIfPresent(page);
     const blockedCardAfter = page.locator('[data-slot="card"]', {
       hasText: blockedTitle,
     });
@@ -356,30 +370,158 @@ test.describe("Dependency UI (F157: AS-277, AS-282, AS-283)", () => {
     ).toHaveCount(0);
   });
 
-  // AS-277 ("both directions of a dependency are shown on the task, and
-  // a new one can be added from either side") — the task detail sheet's
-  // whole Dependencies section (the only surface that ever showed
-  // "Blocked by"/"Blocks" or offered an "Add" picker) was removed; see
-  // this file's own header comment. There is no remaining surface where
-  // a user can browse/search for a task and create a new dependency to
-  // it. Skipped rather than deleted so the gap stays discoverable if a
-  // replacement affordance (e.g. a board card context-menu action) is
-  // added later.
-  test.skip(
-    "AS-277: a new dependency can be added from the task detail view",
-    () => {},
-  );
+  // AS-277 — un-skipped (restored section, see header comment). Both
+  // directions show in the sheet, and a new dependency can be added via
+  // the "Blocks" section's picker. Seeds its own dependency pair because
+  // the AS-283 test above deletes the original seeded row.
+  test("AS-277: both directions are shown in the sheet, and a new dependency can be added from the task detail view", async ({
+    page,
+    baseURL,
+  }) => {
+    await loginAndGoToBoard(page, baseURL!);
 
-  // AS-282 ("a dependency can be removed from either side") — same
-  // removed-section cause as AS-277 above: the remove control
-  // (`getByRole("button", { name: /Remove dependency on/ })`) lived only
-  // inside that now-deleted section. There is no remaining UI control
-  // that deletes a task_dependencies row; the AS-283 test above uses the
-  // admin client directly to prove the CARD indicator reacts to removal,
-  // but that is not a user-facing remove control. Skipped rather than
-  // deleted for the same discoverability reason as AS-277.
-  test.skip(
-    "AS-282: a dependency can be removed via a UI control on either the blocking or blocked task",
-    () => {},
-  );
+    const { data: dependency, error: dependencyErr } = await adminClient
+      .from("task_dependencies")
+      .insert({
+        blocking_task_id: blockerTaskId,
+        blocked_task_id: blockedTaskId,
+        created_by: memberUserId,
+      })
+      .select("id")
+      .single();
+    expect(dependencyErr).toBeNull();
+    if (dependency) createdDependencyIds.push(dependency.id);
+    await page.reload();
+    await dismissTourIfPresent(page);
+
+    // The blocked task's own sheet shows the blocker under "Blocked by".
+    await page.getByText(blockedTitle).click();
+    const blockedSheet = page.getByRole("dialog");
+    await expect(blockedSheet.getByLabel("Title")).toHaveValue(blockedTitle, {
+      timeout: 15_000,
+    });
+    await expect(blockedSheet.getByText("Blocked by")).toBeVisible();
+    await expect(blockedSheet.getByText(blockerTitle)).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Wait for the sheet to actually unmount before clicking the next
+    // card — the closing animation otherwise races the next click.
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // The blocker task's own sheet shows the blocked task under "Blocks".
+    await page.getByText(blockerTitle).click();
+    const blockerSheet = page.getByRole("dialog");
+    await expect(blockerSheet.getByLabel("Title")).toHaveValue(blockerTitle, {
+      timeout: 15_000,
+    });
+    await expect(
+      blockerSheet.getByText("Blocks", { exact: true }),
+    ).toBeVisible();
+    await expect(blockerSheet.getByText(blockedTitle)).toBeVisible();
+
+    // Add: use the "Blocks" section's picker to search for and select
+    // the independent candidate task — the new row appears immediately
+    // without a reload. (cmdk renders results as role="option", same as
+    // the sheet's assignee listbox rows.)
+    const blocksSection = blockerSheet
+      .getByText("Blocks", { exact: true })
+      .locator("..");
+    await blocksSection.getByRole("button", { name: "Add" }).click();
+    await page
+      .getByPlaceholder("Search by key or title…")
+      .fill("F157 E2E Candidate");
+    await page
+      .getByRole("option", { name: new RegExp(candidateTitle) })
+      .click();
+    await expect(blockerSheet.getByText(candidateTitle)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Track the created row for afterAll cleanup.
+    const { data: createdRows } = await adminClient
+      .from("task_dependencies")
+      .select("id")
+      .eq("blocking_task_id", blockerTaskId);
+    for (const row of createdRows ?? []) {
+      if (!createdDependencyIds.includes(row.id)) {
+        createdDependencyIds.push(row.id);
+      }
+    }
+  });
+
+  // AS-282 — un-skipped (restored section, see header comment). The
+  // remove control on a dependency row deletes the row from either
+  // side's own section.
+  test("AS-282: a dependency can be removed via a UI control on either the blocking or blocked task", async ({
+    page,
+    baseURL,
+  }) => {
+    await loginAndGoToBoard(page, baseURL!);
+
+    // Seed a fresh, independent pair so this test doesn't depend on (or
+    // disturb) the other tests' rows.
+    const { data: taskA, error: taskAErr } = await adminClient
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: "F157 E2E Remove-Test A",
+        author_id: memberUserId,
+        status: "todo",
+        position: 400,
+      })
+      .select("id")
+      .single();
+    expect(taskAErr).toBeNull();
+    const { data: taskB, error: taskBErr } = await adminClient
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        title: "F157 E2E Remove-Test B",
+        author_id: memberUserId,
+        status: "todo",
+        position: 500,
+      })
+      .select("id")
+      .single();
+    expect(taskBErr).toBeNull();
+    if (!taskA || !taskB) return;
+    createdTaskIds.push(taskA.id, taskB.id);
+
+    const { data: dependency, error: dependencyErr } = await adminClient
+      .from("task_dependencies")
+      .insert({
+        blocking_task_id: taskA.id,
+        blocked_task_id: taskB.id,
+        created_by: memberUserId,
+      })
+      .select("id")
+      .single();
+    expect(dependencyErr).toBeNull();
+    if (dependency) createdDependencyIds.push(dependency.id);
+
+    await page.reload();
+    await dismissTourIfPresent(page);
+    await page.getByText("F157 E2E Remove-Test B").click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByLabel("Title")).toHaveValue(
+      "F157 E2E Remove-Test B",
+      { timeout: 15_000 },
+    );
+    await expect(sheet.getByText("F157 E2E Remove-Test A")).toBeVisible();
+
+    // Remove it from the BLOCKED task's own "Blocked by" section.
+    await sheet.getByRole("button", { name: /Remove dependency on/ }).click();
+    // Dev-mode server-action round trips can be slow — allow up to 15s
+    // for the row to disappear after the remove click.
+    await expect(sheet.getByText("F157 E2E Remove-Test A")).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(sheet.getByText("Not blocked by any task.")).toBeVisible();
+
+    const { data: reread } = await adminClient
+      .from("task_dependencies")
+      .select("id")
+      .eq("id", dependency!.id)
+      .maybeSingle();
+    expect(reread).toBeNull();
+  });
 });

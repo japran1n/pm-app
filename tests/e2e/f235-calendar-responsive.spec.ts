@@ -20,17 +20,14 @@
 //     (`calendar-week-time-grid`) is visible, and the seeded task is
 //     reachable as a real link into the task board/detail sheet.
 //   - At 375px, `week-view.tsx` hides that same time-grid body
-//     (`hidden md:block`) and shows a static `md:hidden` paragraph
-//     (`calendar-week-mobile-fallback`) telling the user to use a wider
-//     screen -- there is currently NO agenda/list equivalent affordance
-//     on this viewport, so the seeded task is NOT reachable at 375px.
-//     That is a genuine regression against this assertion's original
-//     intent ("usable on a phone-width viewport" implies the task stays
-//     reachable) -- flagged in the suggested-followup/handoff rather
-//     than silently asserted as correct. This test only pins today's
-//     actual behaviour (fallback shown, grid hidden, filters still
-//     usable, no horizontal page scroll) so a future fix shows up as an
-//     intentional, reviewed diff instead of a silent test rewrite.
+//     (`hidden md:block`) and shows the week agenda
+//     (components/calendar/week-agenda.tsx, keeping the historical
+//     `calendar-week-mobile-fallback` testid on its container): the
+//     visible week's tasks/blocks grouped by day, with each task a real
+//     link to the same `?taskId=` board route the desktop chips use. The
+//     former dead end (a static "use a wider screen" paragraph with no
+//     reachable task) is fixed -- this test now asserts the seeded task
+//     IS reachable and clickable at 375px.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -219,7 +216,7 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
     await page.waitForURL(`**/w/${workspaceSlug}/calendar`, { timeout: 15_000 });
   }
 
-  test("AS-449: desktop shows the week time-grid with the seeded task reachable; 375px hides it behind a static fallback (no month/agenda view left)", async ({
+  test("AS-449: desktop shows the week time-grid with the seeded task reachable; 375px shows the agenda with the same task reachable and clickable", async ({
     page,
     baseURL,
   }) => {
@@ -241,15 +238,18 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
 
-    // Week is the only view (Month/agenda views were removed) --
-    // week-view.tsx hides the time-grid body at this width and shows a
-    // static "use a wider screen" message instead, with no fallback list
-    // of its own. This is today's actual behaviour: the seeded task is
-    // NOT reachable at this viewport. See this file's own header comment
-    // -- flagged as a real product regression, not asserted as desired.
+    // Week is the only view; at this width week-view.tsx hides the
+    // time-grid body and shows the week agenda (week-agenda.tsx, same
+    // `calendar-week-mobile-fallback` container testid) -- the seeded
+    // task must be REACHABLE here: visible in the agenda and clickable
+    // through to the same `?taskId=` board route the desktop grid uses.
     await expect(weekGrid).toBeHidden();
     await expect(mobileFallback).toBeVisible();
-    await expect(page.getByRole("link", { name: new RegExp(taskTitle) })).toHaveCount(0);
+    const mobileTaskLink = mobileFallback.getByRole("link", {
+      name: new RegExp(taskTitle),
+    });
+    await expect(mobileTaskLink).toBeVisible();
+    await expect(mobileTaskLink).toHaveAttribute("href", /\/board\?taskId=/);
 
     // The filter bar (AS-448) stays usable at this width -- not
     // clipped/hidden, since it uses the same `flex-wrap` convention
@@ -267,5 +267,11 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
     await page.screenshot({
       path: "test-results/f235-evidence/calendar-375px.png",
     });
+
+    // And actually click through: tapping the agenda row must land on the
+    // board's deep-linked task view, proving the task is not just listed
+    // but reachable on a phone.
+    await mobileTaskLink.click();
+    await page.waitForURL(/\/board\?taskId=/, { timeout: 15_000 });
   });
 });
