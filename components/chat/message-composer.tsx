@@ -65,6 +65,7 @@ function useRichTextModule(): RichTextEditorModule | null {
 }
 
 const EMPTY_DOC: JSONContent = { type: "doc", content: [] };
+const REQUEST_ATTACHMENT_ERROR = "Attachments can't be added to a request yet — send them as a message.";
 
 // BUG FIX (empty/whitespace-only messages reaching the DB): the previous
 // implementation only checked `doc.content.length === 0`, which is true for
@@ -149,6 +150,19 @@ export function MessageComposer({
     initialDraft ? docFromPlainText(initialDraft) : EMPTY_DOC,
   );
 
+  // Portal polish follow-up (F015 request-mode attachment blocking): the
+  // "Attachments can't be added to a request yet" error is only ever true
+  // while BOTH request mode is on AND attachments are still pending --
+  // derived here (rather than cleared via a `useEffect` + `setState` pair,
+  // which would trip this repo's `react-hooks/set-state-in-effect` rule)
+  // so it disappears the instant either condition stops holding
+  // (attachments removed, or request mode turned back off) instead of
+  // lingering on screen describing a state that no longer exists.
+  const displayedError =
+    error === REQUEST_ATTACHMENT_ERROR && (!isRequest || pendingAttachments.length === 0)
+      ? null
+      : error;
+
   const useRichEditor = !!richText && mentionSuggestions !== undefined;
   const canSubmit = (useRichEditor ? !isEmptyDoc(richValue) : !!plainValue.trim()) || pendingAttachments.length > 0;
   const isUploading = pendingAttachments.some((a) => a.uploading);
@@ -216,6 +230,7 @@ export function MessageComposer({
     await removePendingChatAttachment(attachmentId);
   }
 
+
   function submit() {
     if (isPending || disabled || isUploading) return;
 
@@ -246,7 +261,7 @@ export function MessageComposer({
       // feature's spec picked -- an explicit, actionable error beats a
       // silent drop.
       if (pendingAttachments.length > 0) {
-        setError("Attachments can't be added to a request yet — send them as a message.");
+        setError(REQUEST_ATTACHMENT_ERROR);
         return;
       }
 
@@ -452,7 +467,7 @@ export function MessageComposer({
           )}
         </Button>
       </div>
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      {displayedError && <p className="mt-1 text-xs text-destructive">{displayedError}</p>}
     </div>
   );
 }
