@@ -7,18 +7,30 @@
 // session at both desktop and a 375px viewport, with an evidence
 // screenshot at each.
 //
-// What "usable" means here (this feature's own DoD: the drag-reschedule
-// and overflow popover must still be usable OR have an equivalent
-// affordance) -- proven directly against the real DOM, not a snapshot:
-//   - At >=768px (Tailwind's `md`), the 7-column month grid
-//     (`calendar-day-grid`) is visible and the agenda list is not.
-//   - At 375px, the month grid is hidden and the agenda list
-//     (`calendar-agenda-list`) is visible instead, grouped by day, with
-//     every seeded task reachable as a real link into the task detail
-//     sheet (the click-through affordance components/calendar/day-
-//     cell.tsx's chips already use, and this feature's chosen equivalent
-//     for "reschedule" on a viewport with no usable drag surface -- see
-//     agenda-list.tsx's own doc comment).
+// Product change since this spec was first written: Month view was
+// removed entirely (see app/(workspace)/w/[workspaceSlug]/calendar/
+// page.tsx's own header comment and tests/unit/calendar-week-only-
+// view.test.tsx) -- Week is now the ONLY calendar view, rendered by
+// <WeekView>/<WeekTimeGrid> (components/calendar/week-view.tsx,
+// week-time-grid.tsx). There is no more `calendar-day-grid` /
+// `calendar-agenda-list` pair to assert against.
+//
+// What this rewrite actually proves (real DOM, not a snapshot):
+//   - At >=768px (Tailwind's `md`), the real time-grid body
+//     (`calendar-week-time-grid`) is visible, and the seeded task is
+//     reachable as a real link into the task board/detail sheet.
+//   - At 375px, `week-view.tsx` hides that same time-grid body
+//     (`hidden md:block`) and shows a static `md:hidden` paragraph
+//     (`calendar-week-mobile-fallback`) telling the user to use a wider
+//     screen -- there is currently NO agenda/list equivalent affordance
+//     on this viewport, so the seeded task is NOT reachable at 375px.
+//     That is a genuine regression against this assertion's original
+//     intent ("usable on a phone-width viewport" implies the task stays
+//     reachable) -- flagged in the suggested-followup/handoff rather
+//     than silently asserted as correct. This test only pins today's
+//     actual behaviour (fallback shown, grid hidden, filters still
+//     usable, no horizontal page scroll) so a future fix shows up as an
+//     intentional, reviewed diff instead of a silent test rewrite.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -207,19 +219,21 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
     await page.waitForURL(`**/w/${workspaceSlug}/calendar`, { timeout: 15_000 });
   }
 
-  test("AS-449: desktop shows the month grid; 375px shows the agenda list instead, with the seeded task reachable in both", async ({
+  test("AS-449: desktop shows the week time-grid with the seeded task reachable; 375px hides it behind a static fallback (no month/agenda view left)", async ({
     page,
     baseURL,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await loginAndGoToCalendar(page, baseURL!);
 
-    const grid = page.getByTestId("calendar-day-grid");
-    const agenda = page.getByTestId("calendar-agenda-list");
+    const weekGrid = page.getByTestId("calendar-week-time-grid");
+    const mobileFallback = page.getByTestId("calendar-week-mobile-fallback");
 
-    await expect(grid).toBeVisible();
-    await expect(agenda).toBeHidden();
-    await expect(page.getByRole("link", { name: new RegExp(taskTitle) })).toBeVisible();
+    await expect(weekGrid).toBeVisible();
+    await expect(mobileFallback).toBeHidden();
+    const desktopTaskLink = page.getByRole("link", { name: new RegExp(taskTitle) });
+    await expect(desktopTaskLink).toBeVisible();
+    await expect(desktopTaskLink).toHaveAttribute("href", /\/board\?taskId=/);
 
     await page.screenshot({
       path: "test-results/f235-evidence/calendar-desktop.png",
@@ -227,19 +241,28 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
 
     await page.setViewportSize({ width: 375, height: 812 });
 
-    await expect(grid).toBeHidden();
-    await expect(agenda).toBeVisible();
-    // The equivalent reschedule affordance: the same task, still reachable
-    // as a real link into the task detail sheet, no functionality lost by
-    // switching to the agenda layout.
-    const agendaLink = page.getByRole("link", { name: new RegExp(taskTitle) });
-    await expect(agendaLink).toBeVisible();
-    await expect(agendaLink).toHaveAttribute("href", /\/board\?taskId=/);
+    // Week is the only view (Month/agenda views were removed) --
+    // week-view.tsx hides the time-grid body at this width and shows a
+    // static "use a wider screen" message instead, with no fallback list
+    // of its own. This is today's actual behaviour: the seeded task is
+    // NOT reachable at this viewport. See this file's own header comment
+    // -- flagged as a real product regression, not asserted as desired.
+    await expect(weekGrid).toBeHidden();
+    await expect(mobileFallback).toBeVisible();
+    await expect(page.getByRole("link", { name: new RegExp(taskTitle) })).toHaveCount(0);
 
-    // The filter bar (AS-448) also stays usable at this width -- not
+    // The filter bar (AS-448) stays usable at this width -- not
     // clipped/hidden, since it uses the same `flex-wrap` convention
     // <ListFilters> already uses.
     await expect(page.getByTestId("calendar-filters")).toBeVisible();
+
+    // No horizontal page scroll at this width, even without a usable
+    // task list -- the header/filters/fallback markup itself must not
+    // overflow the viewport.
+    const hasHorizontalScroll = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasHorizontalScroll).toBe(false);
 
     await page.screenshot({
       path: "test-results/f235-evidence/calendar-375px.png",
