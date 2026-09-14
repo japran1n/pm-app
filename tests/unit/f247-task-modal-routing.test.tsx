@@ -16,6 +16,27 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+// Audit fix: TaskDetailSheet unconditionally mounts CustomFieldsSection
+// and PageLinksEditor, both of which call a server action on mount
+// (getCustomFieldsForTaskAction / getPageLinksForTaskAction). Those
+// actions reach lib/supabase/server.ts's createClient(), which calls
+// next/headers's cookies() outside a request scope in Vitest and rejects
+// asynchronously, after this file's own assertions have already run --
+// an unhandled rejection attributed to whichever file happens to be
+// mid-flight, unrelated to what this file actually tests. Mock both
+// action modules the same way sibling tests already mock
+// @/lib/actions/tasks etc.
+vi.mock("@/lib/actions/custom-fields", () => ({
+  getCustomFieldsForTaskAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  setTaskCustomFieldValue: vi.fn().mockResolvedValue({ ok: true }),
+}));
+vi.mock("@/lib/actions/page-links", () => ({
+  getPageLinksForTaskAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  createPageLink: vi.fn(),
+  updatePageLink: vi.fn(),
+  deletePageLink: vi.fn(),
+}));
+
 
 let currentSearch = new URLSearchParams();
 const historyLength = 2;
