@@ -10,6 +10,7 @@ import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PortalQueryResult } from "@/lib/queries/portal";
+import { toUtcDateOnly } from "@/lib/portal/is-past-due";
 import { formatDayMonthUTC } from "@/lib/format";
 
 export type DeliverableKind = "copy" | "image" | "access" | "decision" | "data" | "other";
@@ -116,7 +117,17 @@ export function isDeliverablePastDue(
   dueAt: string | null,
   today: string,
 ): boolean {
-  return state !== "accepted" && state !== "waived" && dueAt !== null && dueAt < today;
+  // F017 (portal-simplify, M2 scrutiny): compared via the same
+  // `toUtcDateOnly` UTC-calendar-day truncation `isApprovalPastDue`
+  // (lib/portal/is-past-due.ts) now uses, so a decision and a material
+  // due on the same calendar date are never treated as different days
+  // just because one column is a `timestamptz` and the other a `date`.
+  return (
+    state !== "accepted" &&
+    state !== "waived" &&
+    dueAt !== null &&
+    toUtcDateOnly(dueAt) < today
+  );
 }
 
 // F016e (missions/20260903-portal, M3-scrutiny defect 1, AS-003): the

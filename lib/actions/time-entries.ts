@@ -17,6 +17,10 @@ import {
 } from "@/lib/auth/require-membership";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { ActionResult } from "@/lib/actions/authz";
 
 export type LogTimeEntryResult = ActionResult<{
@@ -96,7 +100,9 @@ export async function logTimeEntry(
   // convention.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, deleted_at, projects(workspace_id, visibility)")
+    .select(
+      "id, project_id, deleted_at, projects(workspace_id, visibility, workspaces(slug))",
+    )
     .eq("id", parsed.data.taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -106,11 +112,13 @@ export async function logTimeEntry(
   }
 
   const project = taskRow.projects as
-    | { workspace_id: string; visibility: string }
-    | { workspace_id: string; visibility: string }[]
+    | { workspace_id: string; visibility: string; workspaces: { slug: string } | { slug: string }[] | null }
+    | { workspace_id: string; visibility: string; workspaces: { slug: string } | { slug: string }[] | null }[]
     | null;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
+  const workspaceSlugRaw = projectRow?.workspaces;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -190,6 +198,13 @@ export async function logTimeEntry(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // AS-006: hourly time entries feed the portal's client-visible Hours
+  // page (app/(portal)/portal/[workspaceSlug]/p/[projectId]/hours), so a
+  // freshly logged entry must show up there without a manual refresh.
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
   }
 
   return {
@@ -472,7 +487,7 @@ export async function editTimeEntry(
   const { data: entryRow, error: entryError } = await admin
     .from("time_entries")
     .select(
-      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.entryId)
     .maybeSingle();
@@ -481,22 +496,21 @@ export async function editTimeEntry(
     return { ok: false, error: "Time entry not found." };
   }
 
+  type ProjectShape = {
+    workspace_id: string;
+    visibility: string;
+    workspaces: { slug: string } | { slug: string }[] | null;
+  };
   const task = entryRow.tasks as
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
@@ -508,6 +522,8 @@ export async function editTimeEntry(
   const project = taskRow.projects;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
+  const workspaceSlugRaw = projectRow?.workspaces;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -588,6 +604,11 @@ export async function editTimeEntry(
     };
   }
 
+  // AS-006: same portal Hours page as logTimeEntry.
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
+  }
+
   return {
     ok: true,
     data: {
@@ -641,7 +662,7 @@ export async function setTimeEntryCategory(
   const { data: entryRow, error: entryError } = await admin
     .from("time_entries")
     .select(
-      "id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+      "id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.entryId)
     .maybeSingle();
@@ -650,22 +671,21 @@ export async function setTimeEntryCategory(
     return { ok: false, error: "Time entry not found." };
   }
 
+  type ProjectShape = {
+    workspace_id: string;
+    visibility: string;
+    workspaces: { slug: string } | { slug: string }[] | null;
+  };
   const task = entryRow.tasks as
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
@@ -677,6 +697,8 @@ export async function setTimeEntryCategory(
   const project = taskRow.projects;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
+  const workspaceSlugRaw = projectRow?.workspaces;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -727,6 +749,12 @@ export async function setTimeEntryCategory(
     };
   }
 
+  // AS-006: the portal Hours page breaks minutes down by work category
+  // (lib/queries/hours.ts), so recategorising an entry must refresh it.
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
+  }
+
   return {
     ok: true,
     data: { id: updated.id, workCategory: updated.work_category as WorkCategory | null },
@@ -767,7 +795,7 @@ export async function deleteTimeEntry(
   const { data: entryRow, error: entryError } = await admin
     .from("time_entries")
     .select(
-      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+      "id, user_id, task_id, tasks(project_id, deleted_at, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.entryId)
     .maybeSingle();
@@ -776,22 +804,21 @@ export async function deleteTimeEntry(
     return { ok: false, error: "Time entry not found." };
   }
 
+  type ProjectShape = {
+    workspace_id: string;
+    visibility: string;
+    workspaces: { slug: string } | { slug: string }[] | null;
+  };
   const task = entryRow.tasks as
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }
     | {
         project_id: string;
         deleted_at: string | null;
-        projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
-          | null;
+        projects: ProjectShape | ProjectShape[] | null;
       }[]
     | null;
   const taskRow = Array.isArray(task) ? task[0] : task;
@@ -803,6 +830,8 @@ export async function deleteTimeEntry(
   const project = taskRow.projects;
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
+  const workspaceSlugRaw = projectRow?.workspaces;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -886,6 +915,11 @@ export async function deleteTimeEntry(
       ok: false,
       error: "Something went wrong. Please try again in a moment.",
     };
+  }
+
+  // AS-006: same portal Hours page as logTimeEntry/editTimeEntry.
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
   }
 
   return { ok: true, data: { id: parsed.data.entryId } };

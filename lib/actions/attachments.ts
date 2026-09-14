@@ -19,6 +19,10 @@ import {
   uploadAttachmentForUser,
   type UploadAttachmentResult,
 } from "@/lib/attachments/upload";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // Re-exported so existing callers of `UploadAttachmentResult` from this
@@ -306,7 +310,7 @@ export async function deleteAttachment(
   const { data: attachmentRow, error: attachmentError } = await admin
     .from("attachments")
     .select(
-      "id, file_url, uploaded_by, tasks(project_id, deleted_at, projects(workspace_id, visibility))",
+      "id, file_url, uploaded_by, tasks(project_id, deleted_at, client_visible, projects(workspace_id, visibility, workspaces(slug)))",
     )
     .eq("id", parsed.data.attachmentId)
     .maybeSingle();
@@ -319,17 +323,19 @@ export async function deleteAttachment(
     | {
         project_id: string;
         deleted_at: string | null;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }
     | {
         project_id: string;
         deleted_at: string | null;
+        client_visible: boolean;
         projects:
-          | { workspace_id: string; visibility: string }
-          | { workspace_id: string; visibility: string }[]
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }
+          | { workspace_id: string; visibility: string; workspaces?: { slug: string } | { slug: string }[] | null }[]
           | null;
       }[]
     | null;
@@ -457,6 +463,15 @@ export async function deleteAttachment(
       // Non-fatal cache-freshness rationale, same as the other actions in
       // this file.
       logger.error("deleteAttachment: revalidatePath failed (non-fatal)", { error: revalidateError });
+    }
+  }
+
+  // F004c (AS-006): deleting an attachment off a client-visible task must
+  // also refresh the portal, which shows that task's attachments.
+  if (taskRow.client_visible) {
+    const slug = extractWorkspaceSlug(projectRow?.workspaces);
+    if (slug) {
+      revalidatePortalProject(slug, taskRow.project_id);
     }
   }
 

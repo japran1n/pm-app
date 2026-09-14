@@ -40,7 +40,59 @@ import {
   type CreateQuestionInput,
   type UpdateQuestionInput,
 } from "@/lib/validation/brief";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
+
+// F004c (AS-006): the brief questionnaire is entirely portal-visible (the
+// portal's Questionnaire page renders questions/answers straight from
+// these tables), so EVERY mutation in this file revalidates the portal,
+// unlike most other actions in this codebase that gate on a per-row
+// `client_visible` flag. None of this file's existing selects carry a
+// workspace slug (this module deliberately never touches `workspaces` —
+// see the file's own header comment on RLS being the enforcement
+// boundary), so this is one small extra lookup per mutation rather than a
+// widened existing select — acceptable here since these are editor-save
+// paths, not a drag/board hot path.
+async function revalidatePortalForBriefProject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+): Promise<void> {
+  // Non-fatal, whole-function try/catch (not just around the query): this
+  // must never turn a real save/submit/approve into a failure just because
+  // the portal-refresh side effect couldn't resolve a slug, matching every
+  // other `revalidate*` helper's own non-fatal convention in this
+  // codebase.
+  try {
+    const { data: projectRow, error } = await supabase
+      .from("projects")
+      .select("workspaces(slug)")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (error) {
+      logger.error("revalidatePortalForBriefProject: failed to load workspace slug", {
+        error,
+        projectId,
+      });
+      return;
+    }
+
+    const slug = extractWorkspaceSlug(
+      projectRow?.workspaces as { slug: string } | { slug: string }[] | null,
+    );
+    if (slug) {
+      revalidatePortalProject(slug, projectId);
+    }
+  } catch (unexpectedError) {
+    logger.error("revalidatePortalForBriefProject: unexpected failure (non-fatal)", {
+      error: unexpectedError,
+      projectId,
+    });
+  }
+}
 
 export type BriefQuestionResult = ActionResult<{
         id: string;
@@ -194,6 +246,8 @@ export async function createBriefQuestion(
     };
   }
 
+  await revalidatePortalForBriefProject(supabase, projectId);
+
   return { ok: true, data: mapQuestionRow(inserted) };
 }
 
@@ -246,6 +300,8 @@ export async function updateBriefQuestion(
     };
   }
 
+  await revalidatePortalForBriefProject(supabase, updated.project_id);
+
   return { ok: true, data: mapQuestionRow(updated) };
 }
 
@@ -266,7 +322,7 @@ export async function deleteBriefQuestion(questionId: string): Promise<DeleteBri
     .from("brief_questions")
     .delete()
     .eq("id", questionId)
-    .select("id")
+    .select("id, project_id")
     .maybeSingle();
 
   if (deleteError) {
@@ -280,6 +336,8 @@ export async function deleteBriefQuestion(questionId: string): Promise<DeleteBri
       error: "Couldn't delete this question. It may not exist or you may not have permission.",
     };
   }
+
+  await revalidatePortalForBriefProject(supabase, deleted.project_id);
 
   return { ok: true };
 }
@@ -418,7 +476,7 @@ export async function saveBriefAnswer(
   // function serves.
   const { data: brief, error: briefError } = await supabase
     .from("briefs")
-    .select("state")
+    .select("state, project_id")
     .eq("id", briefId)
     .maybeSingle();
 
@@ -477,6 +535,10 @@ export async function saveBriefAnswer(
     // (see lib/notifications/create-notification.ts's header).
     await notifyDecisionOwnersOfAnswerChange(supabase, briefId, questionId, user.id);
 
+    if (brief?.project_id) {
+      await revalidatePortalForBriefProject(supabase, brief.project_id);
+    }
+
     return { success: true };
   }
 
@@ -493,6 +555,10 @@ export async function saveBriefAnswer(
   if (insertError) {
     logger.error("saveBriefAnswer: insert failed", { error: insertError, briefId, questionId });
     return { success: false, error: "Couldn't save this answer." };
+  }
+
+  if (brief?.project_id) {
+    await revalidatePortalForBriefProject(supabase, brief.project_id);
   }
 
   return { success: true };
@@ -518,7 +584,7 @@ export async function submitBrief(briefId: string): Promise<{ success: boolean; 
 
   const { data: brief, error: briefError } = await supabase
     .from("briefs")
-    .select("id, state")
+    .select("id, state, project_id")
     .eq("id", briefId)
     .maybeSingle();
 
@@ -549,6 +615,8 @@ export async function submitBrief(briefId: string): Promise<{ success: boolean; 
     logger.error("submitBrief: update failed", { error: updateError, briefId });
     return { success: false, error: "Couldn't submit this brief." };
   }
+
+  await revalidatePortalForBriefProject(supabase, brief.project_id);
 
   return { success: true };
 }
@@ -595,6 +663,23 @@ export async function reorderBriefQuestions(
   if (failed?.error) {
     logger.error("reorderBriefQuestions: update failed", { error: failed.error });
     return { success: false, error: "Couldn't save the new question order." };
+  }
+
+  // F004c (AS-006): resolve the (single, in practice) project these
+  // reordered questions belong to from the rows just updated — one extra
+  // query covering the whole batch, not one per question.
+  const { data: projectRows } = await supabase
+    .from("brief_questions")
+    .select("project_id")
+    .in(
+      "id",
+      parsed.data.questions.map((q) => q.id),
+    );
+  const projectIds = new Set(
+    (projectRows ?? []).map((row) => row.project_id as string),
+  );
+  for (const projectId of projectIds) {
+    await revalidatePortalForBriefProject(supabase, projectId);
   }
 
   return { success: true };
@@ -666,6 +751,8 @@ export async function generateBriefDocument(
     logger.error("generateBriefDocument: insert failed", { error: insertError, projectId });
     return { success: false, error: "Couldn't generate the brief document." };
   }
+
+  await revalidatePortalForBriefProject(supabase, projectId);
 
   return { success: true, documentId: inserted.id };
 }
@@ -756,6 +843,8 @@ export async function requestBriefApproval(
     };
   }
 
+  await revalidatePortalForBriefProject(supabase, projectId);
+
   return { success: true };
 }
 
@@ -777,7 +866,7 @@ export async function approveBrief(briefId: string): Promise<ApproveBriefResult>
     .from("briefs")
     .update({ state: "approved" })
     .eq("id", briefId)
-    .select("id")
+    .select("id, project_id")
     .maybeSingle();
 
   if (updateError) {
@@ -791,6 +880,8 @@ export async function approveBrief(briefId: string): Promise<ApproveBriefResult>
       error: "Couldn't approve this brief. It may not exist or you may not have permission.",
     };
   }
+
+  await revalidatePortalForBriefProject(supabase, updated.project_id);
 
   return { success: true };
 }
@@ -817,7 +908,7 @@ export async function withdrawBriefApproval(briefId: string): Promise<WithdrawBr
     .update({ state: "submitted" })
     .eq("id", briefId)
     .eq("state", "approved")
-    .select("id")
+    .select("id, project_id")
     .maybeSingle();
 
   if (updateError) {
@@ -831,6 +922,8 @@ export async function withdrawBriefApproval(briefId: string): Promise<WithdrawBr
       error: "Couldn't withdraw this approval. It may not exist or may not be approved.",
     };
   }
+
+  await revalidatePortalForBriefProject(supabase, updated.project_id);
 
   return { success: true };
 }

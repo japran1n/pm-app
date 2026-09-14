@@ -21,6 +21,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
 import { writeAudit } from "@/lib/activity/audit";
 import { canManagePortalSettings } from "@/lib/auth/permissions";
+import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
 import {
   setPortalEnabledSchema,
   updateProjectLaunchSchema,
@@ -71,6 +72,7 @@ async function loadProjectExtra(
 async function revalidatePortalSettings(workspaceSlug: string, projectId: string) {
   try {
     revalidatePath(`/w/${workspaceSlug}/projects/${projectId}/settings/portal`, "page");
+    revalidatePortalProject(workspaceSlug, projectId);
   } catch (revalidateError) {
     logger.error("portal-settings: revalidatePath failed (non-fatal)", {
       error: revalidateError,

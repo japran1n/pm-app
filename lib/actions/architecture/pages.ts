@@ -26,6 +26,10 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -79,7 +83,7 @@ export async function createPage(
   // createTaskForUser's project lookup uses (lib/tasks/create.ts).
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -87,6 +91,12 @@ export async function createPage(
   if (projectError || !projectRow) {
     return { ok: false, error: "Project not found." };
   }
+
+  const createPageWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createPageWorkspaceSlug = extractWorkspaceSlug(createPageWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -221,6 +231,10 @@ export async function createPage(
     });
   }
 
+  if (createPageWorkspaceSlug) {
+    revalidatePortalProject(createPageWorkspaceSlug, projectId);
+  }
+
   return {
     ok: true,
     data: {
@@ -259,7 +273,7 @@ export async function changePageKind(
   // it is actually a page (page_slug set), before touching it.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -275,6 +289,10 @@ export async function changePageKind(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const changePageKindWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const changePageKindWorkspaceSlug = extractWorkspaceSlug(changePageKindWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -311,6 +329,10 @@ export async function changePageKind(
     logger.error("changePageKind: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (changePageKindWorkspaceSlug) {
+    revalidatePortalProject(changePageKindWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -351,7 +373,7 @@ export async function renamePage(
 
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -367,6 +389,10 @@ export async function renamePage(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const renamePageWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const renamePageWorkspaceSlug = extractWorkspaceSlug(renamePageWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -405,6 +431,10 @@ export async function renamePage(
     });
   }
 
+  if (renamePageWorkspaceSlug) {
+    revalidatePortalProject(renamePageWorkspaceSlug, taskRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -439,7 +469,7 @@ export async function deletePage(
   // convention as changePageKind/renamePage above.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -455,6 +485,10 @@ export async function deletePage(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const deletePageWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const deletePageWorkspaceSlug = extractWorkspaceSlug(deletePageWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -474,7 +508,7 @@ export async function deletePage(
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
-    { p_task_id: taskId },
+    { p_task_id: taskId, p_deleted_by: user.id },
   );
 
   if (cascadeError || !cascadeResult) {
@@ -493,6 +527,10 @@ export async function deletePage(
     logger.error("deletePage: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (deletePageWorkspaceSlug) {
+    revalidatePortalProject(deletePageWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -537,12 +575,30 @@ export async function reorderPages(
 
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select("id, page_slug, projects(workspace_id)")
+    .select("id, project_id, page_slug, projects(workspace_id, workspaces(slug))")
     .in("id", ids)
     .is("deleted_at", null);
 
   if (taskError || !taskRows || taskRows.length !== ids.length) {
     return { success: false, error: "Page not found." };
+  }
+
+  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
+  // in the SAME workspace share the same workspace slug, so a slug-keyed
+  // map would silently drop every project but the last one seen for that
+  // slug, and this batch can span multiple projects at once.
+  const reorderPagesPortalTargets = new Map<string, string>();
+  for (const taskRow of taskRows) {
+    const projects = (
+      taskRow as {
+        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
+      }
+    ).projects;
+    const workspace = projects?.workspaces;
+    const slug = extractWorkspaceSlug(workspace);
+    if (slug) {
+      reorderPagesPortalTargets.set(taskRow.project_id, slug);
+    }
   }
 
   const membershipCache = new Map<string, boolean>();
@@ -596,7 +652,170 @@ export async function reorderPages(
     });
   }
 
+  for (const [projectIdForSlug, slug] of reorderPagesPortalTargets) {
+    revalidatePortalProject(slug, projectIdForSlug);
+  }
+
   return { success: true };
+}
+
+// F003 (missions/20260914-portal-simplify, AS-004, AS-005): "share this
+// page with the client" from the Architecture board. A page IS a task
+// (standing decision 1), so this reuses the exact same
+// `tasks.client_visible` column, membership/permission gate, and
+// discriminated-union return shape lib/actions/client-visibility.ts's
+// `setTaskClientVisibility` already established for the task detail
+// sheet's toggle -- no parallel visibility mechanism for pages/sections.
+//
+// `includeSections` (offered by the UI when sharing a page that has
+// sections, per this feature's clarified spec) additionally flips every
+// live section under this page to `client_visible = true` in the same
+// action call, so the team doesn't have to re-open each section
+// individually right after sharing its page. It is a no-op on unshare --
+// hiding a page never touches its sections, so re-sharing later restores
+// exactly the section-level choices the team made before.
+//
+// Looks up the page's owning workspace (and its slug, for the portal
+// revalidate below) server-side, never trusting a workspace id supplied
+// by the client -- same convention as every other action in this file.
+export type SetPageClientVisibilityResult = ActionResult<{
+  taskId: string;
+  clientVisible: boolean;
+  sectionsShared: number;
+  sectionsShareFailed?: boolean;
+}>;
+
+export async function setPageClientVisibility(
+  taskId: string,
+  visible: boolean,
+  options: { includeSections?: boolean } = {},
+): Promise<SetPageClientVisibilityResult> {
+  const parsed = z
+    .object({ taskId: z.string().uuid("Invalid page."), visible: z.boolean() })
+    .safeParse({ taskId, visible });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid page.",
+    };
+  }
+
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    !taskRow.page_slug ||
+    taskRow.parent_task_id !== null
+  ) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
+  const workspaceSlug = extractWorkspaceSlug(workspace);
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return { ok: false, error: "Page not found." };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change what the client sees.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ client_visible: parsed.data.visible })
+    .eq("id", parsed.data.taskId);
+
+  if (updateError) {
+    logger.error("setPageClientVisibility: update failed", { error: updateError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  let sectionsShared = 0;
+  let sectionsShareFailed = false;
+
+  if (parsed.data.visible && options.includeSections) {
+    const { data: sectionRows, error: sectionsUpdateError } = await admin
+      .from("tasks")
+      .update({ client_visible: true })
+      .eq("parent_task_id", parsed.data.taskId)
+      .is("deleted_at", null)
+      .select("id");
+
+    if (sectionsUpdateError) {
+      logger.error("setPageClientVisibility: sections update failed", {
+        error: sectionsUpdateError,
+      });
+      // AS-006/scrutiny remediation: the page's own client_visible update
+      // above already committed successfully -- returning ok:false here
+      // would falsely tell the caller the whole action failed and the page
+      // is still hidden. Instead this is surfaced as a partial failure so
+      // the UI can show a warning toast ("Page shared, but its sections
+      // could not be shared") while still reporting the page share as a
+      // success.
+      sectionsShareFailed = true;
+    } else {
+      sectionsShared = sectionRows?.length ?? 0;
+    }
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("setPageClientVisibility: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
+  }
+
+  return {
+    ok: true,
+    data: {
+      taskId: parsed.data.taskId,
+      clientVisible: parsed.data.visible,
+      sectionsShared,
+      sectionsShareFailed,
+    },
+  };
 }
 
 // Bulk page creation for the Architecture canvas's sitemap import.
@@ -630,7 +849,7 @@ export async function importPages(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -703,5 +922,22 @@ export async function importPages(
   }
 
   revalidatePath(`/w/[workspaceSlug]/projects/${projectId}/architecture`, "page");
+
+  // F004c (AS-006): mirrors createPage's own unconditional portal
+  // revalidate above — imported pages default `client_visible: false`
+  // (same as a single createPage call), but the site map's own layout
+  // (unshared pages still occupy slots for the team-visible parts of the
+  // Sitemap) is still touched by this write, so this uses the same
+  // "always revalidate on any page-creating write" convention as its
+  // single-page sibling rather than inventing a client_visible gate this
+  // action's sibling doesn't have.
+  const importPagesWorkspaceSlug = extractWorkspaceSlug(
+    (projectRow as { workspaces?: { slug: string } | { slug: string }[] | null })
+      .workspaces,
+  );
+  if (importPagesWorkspaceSlug) {
+    revalidatePortalProject(importPagesWorkspaceSlug, projectId);
+  }
+
   return { ok: true, created: rows.length, skipped: pages.length - rows.length };
 }

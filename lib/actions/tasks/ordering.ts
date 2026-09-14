@@ -19,6 +19,10 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { Json } from "@/lib/supabase/database.types";
 
 export type MoveTaskStatusResult = ActionResult<{
@@ -55,6 +59,7 @@ type MoveTaskStatusTaskRow = {
   recurrence_parent_id: string | null;
   status: string;
   task_type_id: string;
+  client_visible: boolean;
 };
 
 // W11: migrated onto withAuthz — see deleteTaskImpl above and
@@ -75,7 +80,7 @@ const moveTaskStatusImpl = withAuthz(
       const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
-          "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, task_type_id, projects!inner(id, workspace_id, visibility)",
+          "id, deleted_at, project_id, title, description, description_json, priority, estimate_minutes, due_date, recurrence, recurrence_parent_id, status, task_type_id, client_visible, projects!inner(id, workspace_id, visibility, workspaces(slug))",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -98,7 +103,13 @@ const moveTaskStatusImpl = withAuthz(
         workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-        extra: { taskRow: taskFields as MoveTaskStatusTaskRow },
+        extra: {
+          taskRow: taskFields as MoveTaskStatusTaskRow,
+          workspaceSlug: extractWorkspaceSlug(
+            (project as { workspaces?: { slug: string } | { slug: string }[] })
+              .workspaces,
+          ),
+        },
       };
     },
   },
@@ -254,6 +265,14 @@ const moveTaskStatusImpl = withAuthz(
       }
     }
 
+    // F004c (AS-006): a client-visible task's status column is shown on the
+    // portal's Board — revalidate the portal layout too, gated on
+    // client_visible (loaded in the same select above, no extra round
+    // trip) so a non-shared task's move never touches the portal path.
+    if (taskRow.client_visible && ctx.workspaceSlug) {
+      revalidatePortalProject(ctx.workspaceSlug, ctx.projectId as string);
+    }
+
     return {
       ok: true,
       data: {
@@ -330,7 +349,9 @@ const reorderTaskImpl = withAuthz(
     resolveWorkspace: async (input, admin) => {
       const { data: taskRow, error } = await admin
         .from("tasks")
-        .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+        .select(
+          "id, deleted_at, client_visible, projects!inner(id, workspace_id, visibility, workspaces(slug))",
+        )
         .eq("id", input.taskId)
         .is("deleted_at", null)
         .maybeSingle();
@@ -348,7 +369,13 @@ const reorderTaskImpl = withAuthz(
         workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-        extra: {},
+        extra: {
+          clientVisible: taskRow.client_visible as boolean,
+          workspaceSlug: extractWorkspaceSlug(
+            (project as { workspaces?: { slug: string } | { slug: string }[] })
+              .workspaces,
+          ),
+        },
       };
     },
   },
@@ -385,6 +412,12 @@ const reorderTaskImpl = withAuthz(
         // Non-fatal cache-freshness rationale, same as createTask above.
         logger.error("reorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
       }
+    }
+
+    // F004c (AS-006): reordering a client-visible task changes its Board
+    // position on the portal too.
+    if (ctx.clientVisible && ctx.workspaceSlug) {
+      revalidatePortalProject(ctx.workspaceSlug, ctx.projectId as string);
     }
 
     return {
@@ -455,7 +488,7 @@ const moveAndReorderTaskImpl = withAuthz(
       const { data: taskRow, error } = await admin
         .from("tasks")
         .select(
-          "id, deleted_at, status, projects!inner(id, workspace_id, visibility)",
+          "id, deleted_at, status, client_visible, projects!inner(id, workspace_id, visibility, workspaces(slug))",
         )
         .eq("id", input.taskId)
         .is("deleted_at", null)
@@ -474,7 +507,14 @@ const moveAndReorderTaskImpl = withAuthz(
         workspaceId: project.workspace_id,
         projectId: project.id,
         visibility: (project.visibility as ProjectVisibility) ?? "workspace",
-        extra: { previousStatus: taskRow.status as string },
+        extra: {
+          previousStatus: taskRow.status as string,
+          clientVisible: taskRow.client_visible as boolean,
+          workspaceSlug: extractWorkspaceSlug(
+            (project as { workspaces?: { slug: string } | { slug: string }[] })
+              .workspaces,
+          ),
+        },
       };
     },
   },
@@ -587,6 +627,12 @@ const moveAndReorderTaskImpl = withAuthz(
         // Non-fatal cache-freshness rationale, same as createTask above.
         logger.error("moveAndReorderTask: revalidatePath failed (non-fatal)", { error: revalidateError });
       }
+    }
+
+    // F004c (AS-006): a cross-column drag of a client-visible task changes
+    // both its status and position on the portal's Board.
+    if (ctx.clientVisible && ctx.workspaceSlug) {
+      revalidatePortalProject(ctx.workspaceSlug, ctx.projectId as string);
     }
 
     return {

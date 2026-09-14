@@ -47,6 +47,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ComponentPicker } from "@/components/architecture/component-picker";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
+import { SectionClientVisibilityToggle } from "@/components/architecture/section-client-visibility-toggle";
 
 export function SectionCard({
   section,
@@ -227,6 +228,7 @@ export function SectionCard({
             Unlink
           </Button>
         )}
+        <SectionClientVisibilityToggle section={section} />
         <DeleteSectionButton
           sectionId={section.id}
           sectionTitle={section.title}

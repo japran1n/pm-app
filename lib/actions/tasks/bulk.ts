@@ -20,6 +20,10 @@ import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferenc
 import { createNotification } from "@/lib/notifications/create-notification";
 import { revalidateWorkspaceForTaskAssignment } from "./shared";
 import { restoreTask } from "./lifecycle";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { ActionResult } from "@/lib/actions/authz";
 
 // ---------------------------------------------------------------------
@@ -48,7 +52,29 @@ type BulkTaskAuthContext = {
   workspaceId: string;
   projectId: string;
   visibility: ProjectVisibility;
+  clientVisible: boolean;
+  workspaceSlug?: string;
 };
+
+// F004c (AS-006): after a bulk action's writes succeed, revalidate the
+// portal layout once per DISTINCT (workspaceSlug, projectId) pair touched
+// by any succeeded, client-visible task in this call — never once per
+// task, matching this file's own "one statement/call per batch, not a
+// per-row loop" performance convention.
+function revalidatePortalForBulkContexts(
+  contexts: Map<string, BulkTaskAuthContext>,
+  succeededIds: string[],
+) {
+  const seen = new Set<string>();
+  for (const id of succeededIds) {
+    const context = contexts.get(id);
+    if (!context?.clientVisible || !context.workspaceSlug) continue;
+    const key = `${context.workspaceSlug}:${context.projectId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    revalidatePortalProject(context.workspaceSlug, context.projectId);
+  }
+}
 
 // Loads (id -> {workspaceId, projectId, visibility}) for every requested
 // task id in one query, excluding soft-deleted rows outright (a
@@ -62,7 +88,9 @@ async function loadBulkTaskAuthContexts(
 ): Promise<Map<string, BulkTaskAuthContext>> {
   const { data: rows } = await admin
     .from("tasks")
-    .select("id, deleted_at, projects!inner(id, workspace_id, visibility)")
+    .select(
+      "id, deleted_at, client_visible, projects!inner(id, workspace_id, visibility, workspaces(slug))",
+    )
     .in("id", taskIds)
     .is("deleted_at", null);
 
@@ -76,6 +104,11 @@ async function loadBulkTaskAuthContexts(
       workspaceId: project.workspace_id,
       projectId: project.id,
       visibility: (project.visibility as ProjectVisibility) ?? "workspace",
+      clientVisible: Boolean(row.client_visible),
+      workspaceSlug: extractWorkspaceSlug(
+        (project as { workspaces?: { slug: string } | { slug: string }[] })
+          .workspaces,
+      ),
     });
   }
   return contexts;
@@ -415,6 +448,8 @@ export async function bulkUpdateTasks(
     );
   }
 
+  revalidatePortalForBulkContexts(contexts, succeededIds);
+
   return { ok: true, data: { succeededIds, failedIds } };
 }
 
@@ -606,6 +641,8 @@ export async function bulkDeleteTasks(
       "bulkDeleteTasks",
     );
   }
+
+  revalidatePortalForBulkContexts(contexts, succeededIds);
 
   return { ok: true, data: { succeededIds, failedIds } };
 }

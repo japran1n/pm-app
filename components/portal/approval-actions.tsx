@@ -202,7 +202,7 @@ export function PortalApprovalActions({ taskId }: { taskId: string }) {
           onClick={() => setIsRequestingChanges(true)}
         >
           <MessageSquareWarning className="size-4" aria-hidden="true" />
-          Request changes
+          Ask for changes
         </Button>
       </div>
     </div>

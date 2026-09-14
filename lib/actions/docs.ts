@@ -29,6 +29,10 @@ import {
   type SetDocClientVisibilityInput,
   type SetDocKindInput,
 } from "@/lib/validation/project-site";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 function revalidateDocs() {
@@ -38,6 +42,41 @@ function revalidateDocs() {
     // Non-fatal cache-freshness rationale, same convention as every other
     // action in this codebase (see lib/actions/tasks.ts's createTask etc.).
     logger.error("docs action: revalidatePath failed (non-fatal)", { error: revalidateError });
+  }
+}
+
+// F004c/F004d (AS-006): unlike revalidateDocs' broad `/w` fallback (this
+// file's own documented reason: the action layer here never loads a
+// workspaceSlug), the portal path DOES need the real slug + projectId, so
+// this is a small extra lookup keyed off the doc's own row — one query,
+// gated on the doc's CURRENT `client_visible` value by default. Callers that
+// know the visibility flag just flipped FROM visible (e.g. unsharing a doc)
+// must pass `force: true` so the portal still revalidates even though the
+// doc's row now reads `client_visible: false` — otherwise the stale
+// "still shared" version would keep serving from cache.
+async function revalidatePortalForDoc(
+  supabase: Awaited<ReturnType<typeof getCurrentUser>>["supabase"],
+  docId: string,
+  options: { force?: boolean } = {},
+): Promise<void> {
+  const { data: docRow, error } = await supabase
+    .from("docs")
+    .select("project_id, client_visible, projects(workspaces(slug))")
+    .eq("id", docId)
+    .maybeSingle();
+
+  if (error || !docRow?.project_id || (!docRow.client_visible && !options.force)) {
+    return;
+  }
+
+  const projects = docRow.projects as
+    | { workspaces?: { slug: string } | { slug: string }[] | null }
+    | { workspaces?: { slug: string } | { slug: string }[] | null }[]
+    | null;
+  const projectRow = Array.isArray(projects) ? projects[0] : projects;
+  const slug = extractWorkspaceSlug(projectRow?.workspaces);
+  if (slug) {
+    revalidatePortalProject(slug, docRow.project_id);
   }
 }
 
@@ -255,6 +294,7 @@ export async function updateDoc(
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, docId);
 
   return {};
 }
@@ -265,6 +305,14 @@ export async function deleteDoc(docId: string): Promise<{ error?: string }> {
     return { error: "You must be signed in to delete a document." };
   }
 
+  // F004c (AS-006): read client_visible + project BEFORE the delete — the
+  // row (and its client_visible flag) won't exist to check afterward.
+  const { data: docRowBeforeDelete } = await supabase
+    .from("docs")
+    .select("project_id, client_visible, projects(workspaces(slug))")
+    .eq("id", docId)
+    .maybeSingle();
+
   const { error } = await supabase.from("docs").delete().eq("id", docId);
 
   if (error) {
@@ -273,6 +321,18 @@ export async function deleteDoc(docId: string): Promise<{ error?: string }> {
   }
 
   revalidateDocs();
+
+  if (docRowBeforeDelete?.client_visible && docRowBeforeDelete.project_id) {
+    const projects = docRowBeforeDelete.projects as
+      | { workspaces?: { slug: string } | { slug: string }[] | null }
+      | { workspaces?: { slug: string } | { slug: string }[] | null }[]
+      | null;
+    const projectRow = Array.isArray(projects) ? projects[0] : projects;
+    const slug = extractWorkspaceSlug(projectRow?.workspaces);
+    if (slug) {
+      revalidatePortalProject(slug, docRowBeforeDelete.project_id);
+    }
+  }
 
   return {};
 }
@@ -302,6 +362,7 @@ export async function moveDoc(
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, docId);
 
   return {};
 }
@@ -336,6 +397,17 @@ export async function setDocClientVisibility(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // F004d (AS-006): read the PREVIOUS visibility before the write so we can
+  // still revalidate the portal on unshare — after the update the row will
+  // read `client_visible: false` and the lookup-based gate alone would skip
+  // the revalidate entirely, leaving the portal serving a stale shared copy.
+  const { data: previousRow } = await supabase
+    .from("docs")
+    .select("client_visible")
+    .eq("id", parsed.data.docId)
+    .maybeSingle();
+  const wasVisible = previousRow?.client_visible === true;
+
   const { error } = await supabase
     .from("docs")
     .update({ client_visible: parsed.data.visible, updated_by: user.id })
@@ -347,6 +419,9 @@ export async function setDocClientVisibility(
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, parsed.data.docId, {
+    force: wasVisible || parsed.data.visible,
+  });
 
   return { ok: true, data: { docId: parsed.data.docId, clientVisible: parsed.data.visible } };
 }
@@ -379,6 +454,7 @@ export async function setDocKind(
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, parsed.data.docId);
 
   return { ok: true, data: { docId: parsed.data.docId, kind: parsed.data.kind } };
 }
@@ -435,6 +511,7 @@ export async function setDocRelevantFrom(
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, parsed.data.docId);
 
   return { ok: true, data: { docId: parsed.data.docId, relevantFrom: parsed.data.relevantFrom } };
 }
@@ -471,6 +548,7 @@ export async function addDocLink(input: AddDocLinkInput): Promise<AddDocLinkResu
   }
 
   revalidateDocs();
+  await revalidatePortalForDoc(supabase, parsed.data.docId);
 
   return { ok: true, data: { id: data.id } };
 }
@@ -489,6 +567,14 @@ export async function deleteDocLink(linkId: string): Promise<DeleteDocLinkResult
     return { ok: false, error: "You must be signed in." };
   }
 
+  // F004c (AS-006): capture the owning doc id before delete so it can
+  // still be resolved for the portal-revalidate check afterward.
+  const { data: linkRow } = await supabase
+    .from("doc_links")
+    .select("doc_id")
+    .eq("id", parsed.data.linkId)
+    .maybeSingle();
+
   const { error } = await supabase.from("doc_links").delete().eq("id", parsed.data.linkId);
 
   if (error) {
@@ -497,6 +583,9 @@ export async function deleteDocLink(linkId: string): Promise<DeleteDocLinkResult
   }
 
   revalidateDocs();
+  if (linkRow?.doc_id) {
+    await revalidatePortalForDoc(supabase, linkRow.doc_id);
+  }
 
   return { ok: true };
 }

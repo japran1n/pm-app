@@ -163,6 +163,13 @@ export function extractPlainText(
       const label = resolveLabel?.(id) ?? id;
       return `@${label}`;
     }
+    // F015 (portal-simplify, AS-012): a Shift+Enter hard break inside a
+    // paragraph is a leaf node (no `.content`) -- it used to fall through
+    // to the final `return ""`, silently collapsing a soft line break
+    // into nothing rather than the newline the author actually typed.
+    if (node.type === "hardBreak") {
+      return "\n";
+    }
     if (Array.isArray(node.content)) {
       return node.content.map(collect).join("");
     }

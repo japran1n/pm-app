@@ -1,0 +1,23 @@
+# Validation contract — 20260914-portal-simplify
+
+- AS-001: A client on projects A and B, viewing `p/A/files`, sees only attachments of client-visible tasks from project A.
+- AS-002: Attachments from a project with `portal_enabled=false` never appear in any portal Files view.
+- AS-003: A soft-deleted architecture page or section never appears in the portal Site map.
+- AS-004: A team member can mark an architecture page (and a section) visible to the client from the architecture board, and unmark it.
+- AS-005: After sharing a page, a client of that project sees it in the portal Site map; after unsharing, it disappears.
+- AS-006: Every team action that changes client-visible project data revalidates that project's portal layout path.
+- AS-007: The For you nav badge and the Home callout show the same number for the same project, and show no number when the read fails.
+- AS-008: For you lists open decisions and outstanding materials together, soonest due first, overdue items marked.
+- AS-009: Filter chips All / Decisions / Materials filter the list and show counts that match the rows.
+- AS-010: A decision can be approved or sent back ("Ask for changes") from the For you row, only by its decision owner; others see who can approve.
+- AS-011: Completed items and decision history are reachable from For you; with nothing open, a positive empty state shows.
+- AS-012: A client can file a request for new work from Messages; it appears to the team in the existing requests inbox for that project.
+- AS-013: The client's requests and their current status (incl. decline reason) are visible on Messages.
+- AS-014: The portal sidebar shows exactly Home, For you, Messages, Project (+ its children); Hours appears only for hourly projects.
+- AS-015: Results and Questionnaire (brief) are reachable from portal navigation.
+- AS-016: On any Project child route the Project group is expanded and the child is marked current.
+- AS-017: Visiting old `p/approvals`, `p/your-list`, `p/requests` redirects to the new routes; no in-app link points to the old routes.
+- AS-018: Home shows "N things are waiting on you" linking to For you when N>0 and hides it at 0.
+- AS-019: No client-facing control says "Request changes"; it says "Ask for changes".
+- AS-020: Project settings tabs and the architecture board tell the team the portal name each surface appears under.
+- AS-021: `resolveClientBucket` is byte-identical to main; `tsc`, lint, unit tests and `next build` pass.

@@ -51,6 +51,18 @@ vi.mock("@/lib/queries/portal", () => ({
   getPortalCurrentUserProfile: vi.fn(async () => null),
 }));
 
+// Mission 20260914-portal-simplify, F008: the layout now sources the
+// sidebar's "For you" badge from `getWaitingOnYouCount` (F005) instead of
+// `getPortalBadgeCounts` -- mocked here the same way, so this guard test
+// doesn't need the narrow Supabase client mock below to support the real
+// approvals/deliverables query chains it never exercised before.
+vi.mock("@/lib/portal/waiting-on-you-count", () => ({
+  getWaitingOnYouCount: vi.fn(async () => ({
+    ok: true,
+    data: { decisions: 0, materials: 0, total: 0, overdue: 0 },
+  })),
+}));
+
 vi.mock("@/lib/queries/project-site", () => ({
   getClientVisiblePortalLinks: vi.fn(async () => ({ ok: true, data: [] })),
 }));

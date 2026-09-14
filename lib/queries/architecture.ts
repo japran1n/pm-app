@@ -45,6 +45,7 @@ export type BoardSection = {
   position: number;
   kind: BoardSectionKind;
   component: BoardSectionComponent | null;
+  clientVisible?: boolean;
 };
 
 export type BoardPage = {
@@ -55,6 +56,7 @@ export type BoardPage = {
   position: number;
   description: string | null;
   sections: BoardSection[];
+  clientVisible?: boolean;
 };
 
 export type BoardComponent = {
@@ -71,7 +73,7 @@ export type ArchitectureBoard = {
 };
 
 const TASK_COLUMNS =
-  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text";
+  "id, title, page_slug, page_kind, section_kind, component_id, parent_task_id, position, description_text, client_visible";
 
 type TaskRow = {
   id: string;
@@ -83,6 +85,7 @@ type TaskRow = {
   parent_task_id: string | null;
   position: number;
   description_text: string | null;
+  client_visible?: boolean | null;
 };
 
 const COMPONENT_COLUMNS = "id, name, description, position";
@@ -145,6 +148,7 @@ export function buildBoardFromRows(
         position: section.position,
         kind: section.section_kind === "cms" ? "cms" : "static",
         component: component ? { id: component.id, name: component.name } : null,
+        clientVisible: section.client_visible === true,
       };
     });
 
@@ -159,6 +163,7 @@ export function buildBoardFromRows(
           ? page.description_text
           : null,
       sections,
+      clientVisible: page.client_visible === true,
     };
   });
 
@@ -219,6 +224,16 @@ export async function getArchitectureBoard(
 // (`page_components_select_client` / the tasks client SELECT policy),
 // matching every other portal read's double-guard convention
 // (lib/queries/page-links.ts, lib/queries/portal.ts).
+//
+// F002 (missions/20260914-portal-simplify, AS-003): also excludes
+// soft-deleted pages/sections with `.is("deleted_at", null)`, on top of
+// RLS's own `deleted_at is null` SELECT check -- same belt-and-suspenders
+// reasoning as the `client_visible` filter above. Because
+// `buildBoardFromRows`'s sections and instance counts are both derived
+// from this same already-filtered task row set, a soft-deleted page's
+// components are dropped from the board's instance counts for free; no
+// separate "components only for returned pages" filter is needed on the
+// `page_components` query itself.
 export async function getArchitectureBoardForClient(
   projectId: string,
 ): Promise<PortalQueryResult<ArchitectureBoard>> {
@@ -229,7 +244,8 @@ export async function getArchitectureBoardForClient(
       .from("tasks")
       .select(TASK_COLUMNS)
       .eq("project_id", projectId)
-      .eq("client_visible", true),
+      .eq("client_visible", true)
+      .is("deleted_at", null),
     supabase
       .from("page_components")
       .select(COMPONENT_COLUMNS)

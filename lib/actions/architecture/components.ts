@@ -7,6 +7,10 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -54,7 +58,7 @@ export async function createComponentFromSection(
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
     .select(
-      "id, project_id, title, page_slug, parent_task_id, component_id, projects(workspace_id)",
+      "id, project_id, title, page_slug, parent_task_id, component_id, projects(workspace_id, workspaces(slug))",
     )
     .eq("id", sectionTaskId)
     .is("deleted_at", null)
@@ -83,6 +87,12 @@ export async function createComponentFromSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const createComponentFromSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const createComponentFromSectionWorkspaceSlug = extractWorkspaceSlug(
+    createComponentFromSectionWorkspace,
+  );
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -170,6 +180,10 @@ export async function createComponentFromSection(
     });
   }
 
+  if (createComponentFromSectionWorkspaceSlug) {
+    revalidatePortalProject(createComponentFromSectionWorkspaceSlug, projectId);
+  }
+
   return { success: true, componentId: insertedComponent.id };
 }
 
@@ -209,13 +223,19 @@ export async function createComponent(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id")
+    .select("id, workspace_id, workspaces(slug)")
     .eq("id", projectId)
     .maybeSingle();
 
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const createComponentWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createComponentWorkspaceSlug = extractWorkspaceSlug(createComponentWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -288,6 +308,10 @@ export async function createComponent(
     });
   }
 
+  if (createComponentWorkspaceSlug) {
+    revalidatePortalProject(createComponentWorkspaceSlug, projectId);
+  }
+
   return { success: true, id: inserted.id };
 }
 
@@ -340,13 +364,19 @@ export async function linkComponentToSection(
 
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id")
+    .select("id, workspace_id, workspaces(slug)")
     .eq("id", sectionRow.project_id)
     .maybeSingle();
 
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const linkComponentWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const linkComponentWorkspaceSlug = extractWorkspaceSlug(linkComponentWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -391,6 +421,10 @@ export async function linkComponentToSection(
     });
   }
 
+  if (linkComponentWorkspaceSlug) {
+    revalidatePortalProject(linkComponentWorkspaceSlug, sectionRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -433,7 +467,7 @@ export async function renameComponent(
 
   const { data: componentRow, error: componentError } = await admin
     .from("page_components")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", componentId)
     .maybeSingle();
 
@@ -448,6 +482,12 @@ export async function renameComponent(
 
   const workspaceId = (componentRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const renameComponentWorkspace = (
+    componentRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const renameComponentWorkspaceSlug = extractWorkspaceSlug(renameComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -496,6 +536,10 @@ export async function renameComponent(
     });
   }
 
+  if (renameComponentWorkspaceSlug) {
+    revalidatePortalProject(renameComponentWorkspaceSlug, componentRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -525,7 +569,7 @@ export async function unlinkComponentFromSection(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", sectionTaskId)
     .maybeSingle();
 
@@ -540,6 +584,12 @@ export async function unlinkComponentFromSection(
 
   const workspaceId = (sectionRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const unlinkComponentWorkspace = (
+    sectionRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const unlinkComponentWorkspaceSlug = extractWorkspaceSlug(unlinkComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -581,6 +631,10 @@ export async function unlinkComponentFromSection(
     );
   }
 
+  if (unlinkComponentWorkspaceSlug) {
+    revalidatePortalProject(unlinkComponentWorkspaceSlug, sectionRow.project_id);
+  }
+
   return { success: true };
 }
 
@@ -609,7 +663,7 @@ export async function deleteComponent(
 
   const { data: componentRow, error: componentError } = await admin
     .from("page_components")
-    .select("id, project_id, projects(workspace_id)")
+    .select("id, project_id, projects(workspace_id, workspaces(slug))")
     .eq("id", componentId)
     .maybeSingle();
 
@@ -624,6 +678,12 @@ export async function deleteComponent(
 
   const workspaceId = (componentRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const deleteComponentWorkspace = (
+    componentRow as {
+      projects: { workspaces: { slug: string } | { slug: string }[] | null };
+    }
+  ).projects.workspaces;
+  const deleteComponentWorkspaceSlug = extractWorkspaceSlug(deleteComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -660,6 +720,10 @@ export async function deleteComponent(
     logger.error("deleteComponent: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (deleteComponentWorkspaceSlug) {
+    revalidatePortalProject(deleteComponentWorkspaceSlug, componentRow.project_id);
   }
 
   return { success: true };

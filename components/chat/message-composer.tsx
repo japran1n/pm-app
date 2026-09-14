@@ -22,8 +22,10 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Loader2, SendHorizonal, Paperclip, X } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { docFromPlainText, extractPlainText, toPlainJson } from "@/lib/comments/rich-text";
 import {
@@ -92,6 +94,7 @@ export function MessageComposer({
   mentionSuggestions,
   channelId,
   initialDraft,
+  onFileRequest,
 }: {
   onSend: (bodyJson: JSONContent, attachmentIds?: string[]) => Promise<{ ok: boolean; error?: string }>;
   onTyping?: () => void;
@@ -106,6 +109,20 @@ export function MessageComposer({
   // mechanism" the feature asked for, not a full mention-suggestion
   // auto-resolve on load.
   initialDraft?: string;
+  // F007 (portal-simplify, AS-012/AS-013): when set, this composer -- the
+  // portal's Messages page -- gains a "This is a request for new work"
+  // checkbox. Only the portal Messages page passes this prop (see
+  // ChannelView's own `onFileRequest` doc comment); every other caller of
+  // this shared composer (staff chat, portal task-thread) leaves it
+  // undefined and renders exactly as before -- no checkbox, no behaviour
+  // change, per this feature's "no change to team-side" requirement.
+  // Title is derived from the first line of the composed text and the full
+  // text is kept as the description, per the clarified spec, since the
+  // rich-text composer has no separate title field of its own.
+  onFileRequest?: (payload: {
+    title: string;
+    body: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const richText = useRichTextModule();
   const [plainValue, setPlainValue] = useState(initialDraft ?? "");
@@ -114,6 +131,7 @@ export function MessageComposer({
   );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isRequest, setIsRequest] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -218,6 +236,61 @@ export function MessageComposer({
     const hasAttachments = pendingAttachments.length > 0;
     if (!hasContent && !hasAttachments) return;
 
+    if (isRequest && onFileRequest) {
+      // F015 (portal-simplify, AS-012): a request queued with attachments
+      // would otherwise silently drop them -- client_requests has no
+      // attachment concept of its own, and the ordinary onSend path
+      // (which DOES persist chat attachments) is never reached from this
+      // branch. Blocking (over silently carrying them into the message
+      // path, or into the request's body as a note) is the option this
+      // feature's spec picked -- an explicit, actionable error beats a
+      // silent drop.
+      if (pendingAttachments.length > 0) {
+        setError("Attachments can't be added to a request yet — send them as a message.");
+        return;
+      }
+
+      // AS-012/AS-013: filing a request has no rich-formatting concept of
+      // its own (client_requests is a plain title+body row), so this
+      // branch never reaches the ordinary sendMessage/onSend path below --
+      // only plain text is extracted and handed to the request action.
+      // The title is the first line, the full text stays as the
+      // body/description, per the clarified spec. `mentionSuggestions` is
+      // reused (the same list the rich editor renders "@Name" pills from)
+      // so a mention in a request resolves to the person's real name
+      // here too, not the raw user id `extractPlainText`'s id-only
+      // fallback would otherwise produce.
+      const resolveLabel = (userId: string) =>
+        mentionSuggestions?.find((m) => m.id === userId)?.label ?? null;
+      const fullText = (
+        useRichEditor
+          ? extractPlainText(richValueRef.current, resolveLabel)
+          : plainValue
+      ).trim();
+      if (!fullText) return;
+      const firstLine = (fullText.split("\n")[0] ?? fullText).trim();
+      const title = firstLine.slice(0, 200);
+      const titleWasTruncated = firstLine.length > title.length;
+      setError(null);
+      startTransition(async () => {
+        const result = await onFileRequest({ title, body: fullText });
+        if (result.ok) {
+          setPlainValue("");
+          setRichValue(EMPTY_DOC);
+          richValueRef.current = EMPTY_DOC;
+          setIsRequest(false);
+          toast.success(
+            titleWasTruncated
+              ? "Request sent — the title was shortened to fit the length limit."
+              : "Request sent",
+          );
+        } else {
+          setError(result.error ?? "Something went wrong. Please try again.");
+        }
+      });
+      return;
+    }
+
     // F123: `richValueRef.current` is Tiptap's live JSONContent, whose
     // nested `attrs` objects cross the sendMessage server-action boundary
     // as temporary client references rather than plain data (React RSC
@@ -249,6 +322,16 @@ export function MessageComposer({
 
   return (
     <div ref={composerRef} className="border-t p-3">
+      {onFileRequest && (
+        <label className="mb-2 flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox
+            checked={isRequest}
+            onCheckedChange={(checked) => setIsRequest(checked === true)}
+            disabled={disabled || isPending}
+          />
+          This is a request for new work
+        </label>
+      )}
       {pendingAttachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {pendingAttachments.map((a) => (

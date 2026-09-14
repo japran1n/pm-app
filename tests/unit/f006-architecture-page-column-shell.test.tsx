@@ -29,6 +29,7 @@ function makePage(overrides: Partial<BoardPage>): BoardPage {
     position: 0,
     description: null,
     sections: [],
+    clientVisible: false,
     ...overrides,
   };
 }

@@ -463,7 +463,7 @@ export function ApprovalCard({
               onClick={() => setIsRequestingChanges(true)}
             >
               <MessageSquareWarning className="size-4" aria-hidden="true" />
-              Request changes
+              Ask for changes
             </Button>
           </div>
           {/* AS-022: presentation only -- naming who decides, not a
@@ -498,7 +498,7 @@ export function ApprovalCard({
               )}
               {!ownerName && (
                 <Link
-                  href={`/portal/${workspaceSlug}/p/${projectId}/approvals`}
+                  href={`/portal/${workspaceSlug}/p/${projectId}/for-you?filter=decisions`}
                   className="font-medium text-primary hover:underline"
                 >
                   See who to raise it with

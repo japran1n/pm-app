@@ -88,7 +88,7 @@ describe("PortalTopbar (F003)", () => {
 
     mockPathname = "/portal/acme/p/proj-1";
     const overviewHtml = renderToStaticMarkup(createElement(PortalTopbar, baseProps));
-    expect(overviewHtml).toContain("Overview");
+    expect(overviewHtml).toContain("Home");
   });
 
   // F107 round 2: the chip duplicates `LaunchHeadline` on Overview --
@@ -126,15 +126,22 @@ describe("resolvePortalStaticTitle (F006e)", () => {
   const basePath = "/portal/acme/p/proj-1";
 
   it("test_AS_004_titles_the_overview_route_at_the_exact_project_root", () => {
-    expect(resolvePortalStaticTitle(basePath, basePath)).toBe("Overview");
+    expect(resolvePortalStaticTitle(basePath, basePath)).toBe("Home");
+  });
+
+  // F008 (AS-014): Conversation -> Messages, Architecture -> Site map.
+  it("test_AS_014_renames_conversation_to_messages", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/conversation`, basePath)).toBe("Messages");
+  });
+
+  it("test_AS_014_renames_architecture_to_site_map", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/architecture`, basePath)).toBe("Site map");
   });
 
   // Side-effect verification (this feature's own DoD): the eight primary
   // views keep the exact labels `buildPortalNavItems` gives them, now
   // resolved independently rather than by looking that list up.
   it.each([
-    ["approvals", "Approvals"],
-    ["your-list", "Your list"],
     ["pages", "Pages"],
     ["hours", "Hours"],
     ["results", "Results"],
@@ -157,7 +164,14 @@ describe("resolvePortalStaticTitle (F006e)", () => {
     expect(resolvePortalStaticTitle(`${basePath}/files`, basePath)).toBe("Files");
   });
 
-  it("test_AS_004_titles_the_relocated_requests_route_reachable_from_the_sidebar", () => {
+  // F013 (AS-017): `approvals`, `your-list`, and project-scoped
+  // `requests` are dead, redirect-only routes as of F009 -- they never
+  // render this shell, so their titles were removed from the static map
+  // and now fall through to the humanized fallback like any other
+  // unlisted segment.
+  it("test_AS_017_the_dead_legacy_routes_no_longer_have_dedicated_titles", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/approvals`, basePath)).toBe("Approvals");
+    expect(resolvePortalStaticTitle(`${basePath}/your-list`, basePath)).toBe("Your List");
     expect(resolvePortalStaticTitle(`${basePath}/requests`, basePath)).toBe("Requests");
   });
 

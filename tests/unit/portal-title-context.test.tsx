@@ -81,6 +81,6 @@ describe("PortalTitleProvider + PortalTaskTitleAnnouncer (F006e)", () => {
       </PortalTitleProvider>,
     );
 
-    expect(getByRole("heading", { level: 1 }).textContent).toBe("Overview");
+    expect(getByRole("heading", { level: 1 }).textContent).toBe("Home");
   });
 });

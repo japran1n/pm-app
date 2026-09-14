@@ -3,16 +3,25 @@
 // F003 (missions/20260903-portal, AS-001, AS-004, AS-006): the portal's
 // persistent shell nav, replacing `portal-nav.tsx` (a two-item top bar
 // left over from the pre-prototype, workspace-first portal). This is the
-// prototype's own left sidebar: brand, a project card, the eight views,
-// and a footer holding the signed-in client's identity, the theme toggle
-// and sign-out.
+// prototype's own left sidebar: brand, a project card, the primary
+// views, and a footer holding the signed-in client's identity, the theme
+// toggle and sign-out.
+//
+// Mission 20260914-portal-simplify, F008 (AS-014, AS-015, AS-016):
+// collapsed from the eight-item (later ten-item, split primary/secondary)
+// nav down to four top-level entries -- Home, For you, Messages, and an
+// expandable "Project" group holding everything else. `buildPortalNavItems`
+// now returns only the three flat top-level rows; `buildPortalSecondaryNavItems`
+// is gone (there is no more visually-secondary tier) and its old
+// call sites/behaviour are replaced by `buildPortalProjectNavItems`, the
+// Project group's own children.
 //
 // Client Component (same reason `portal-nav.tsx` and
 // `components/nav/app-sidebar.tsx` both are): `usePathname()` is the only
-// way to know which of the eight views is active for `aria-current`
-// (AS-001/AS-004), and the layout wrapping this is a Server Component
-// that fetches everything this needs and passes it down as plain props --
-// this component makes no query of its own.
+// way to know which view is active for `aria-current` (AS-016), and the
+// layout wrapping this is a Server Component that fetches everything this
+// needs and passes it down as plain props -- this component makes no
+// query of its own.
 //
 // Renders two representations of the SAME nav data, exactly the way
 // `app-sidebar.tsx` renders a desktop `<aside>` and a mobile
@@ -23,18 +32,21 @@
 // `Sheet`.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   BookOpen,
-  CheckCircle2,
+  ChevronDown,
   Clock,
+  FileQuestion,
   FileText,
+  FolderKanban,
   Globe,
-  Inbox,
-  LayoutDashboard,
+  Home,
   LayoutTemplate,
   ListChecks,
   MessageSquare,
   ScrollText,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,15 +55,18 @@ import { Badge } from "@/components/ui/badge";
 import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 import { UserAvatar, personLabel, type UserAvatarPerson } from "@/components/user-avatar";
 import { SignOutButton } from "@/components/portal/portal-sign-out-button";
-import type { PortalBadgeCounts, PortalBillingModel } from "@/lib/queries/portal";
+import type { PortalBillingModel } from "@/lib/queries/portal";
 
-// F006f (missions/20260903-portal, AS-002): re-exported, not redefined --
-// `lib/queries/portal.ts` is this shape's one source of truth (its
-// `approvalsAwaiting` field is a `PortalQueryResult`, not a plain
-// number, since a failed read is a different value from a real zero). A
-// second, hand-copied definition here could drift from the query's own
-// return type without either side's compiler catching it.
-export type { PortalBadgeCounts };
+// Mission 20260914-portal-simplify, F005 (AS-007): the single number
+// this nav's "For you" badge renders -- `getWaitingOnYouCount`'s own
+// `{ decisions, materials, total, overdue }` shape, already the same
+// read the Home callout (F010) uses, so the two can never disagree. A
+// failed read renders no badge at all (same "undefined, not 0" honesty
+// rule the old `PortalBadgeCounts` shape used before this feature
+// replaced it).
+export type PortalForYouBadge =
+  | { ok: true; total: number; overdue: number }
+  | { ok: false };
 
 export type PortalNavItem = {
   key: string;
@@ -59,8 +74,7 @@ export type PortalNavItem = {
   href: string;
   icon: LucideIcon;
   exact?: boolean;
-  /** Present only for the two items AS-002/AS-003 assign a badge to.
-   * `undefined` (not 0) means "this item never carries a badge" --
+  /** `undefined` (not 0) means "this item never carries a badge" --
    * distinct from a real, current count of 0, which renders nothing per
    * `NavBadge` below (a "0" badge on every visit would be noise, not
    * data). */
@@ -72,93 +86,52 @@ export type PortalNavItem = {
   badgeTone?: "neutral" | "danger";
 };
 
-// The eight views, in the prototype's own order (AS-001's assertion text
-// lists them in this exact order). `basePath` is
-// `/portal/<slug>/p/<projectId>` -- Overview is that path's INDEX route
-// (see p/[projectId]/page.tsx), not a `/overview` sub-route, so its
-// `href` is `basePath` itself and its match is `exact`.
-// Paket B (client-portal redesign, `projects.billing_model`): defaults
-// to "fixed_price" (the DB column's own default) when a caller doesn't
-// pass one, so any test/call site written before this parameter existed
-// keeps its old seven-item behaviour rather than silently losing Hours --
-// but every real call site now threads the project's actual value
-// through instead of relying on this fallback.
+// The three top-level rows (AS-014's own list, in order). `basePath` is
+// `/portal/<slug>/p/<projectId>` -- Home is that path's INDEX route (see
+// p/[projectId]/page.tsx), not a `/home` sub-route, so its `href` is
+// `basePath` itself and its match is `exact`.
 export function buildPortalNavItems(
   basePath: string,
-  badges: PortalBadgeCounts,
-  billingModel: PortalBillingModel = "fixed_price",
+  forYouBadge: PortalForYouBadge,
 ): PortalNavItem[] {
   return [
-    { key: "overview", label: "Overview", href: basePath, icon: LayoutDashboard, exact: true },
+    { key: "home", label: "Home", href: basePath, icon: Home, exact: true },
     {
-      key: "approvals",
-      label: "Approvals",
-      href: `${basePath}/approvals`,
-      icon: CheckCircle2,
-      // F006f (missions/20260903-portal, AS-002): a failed read renders
-      // no badge at all (the same "undefined, not 0" honesty this
-      // object's own comment above already documents for a real zero) --
-      // never a `0` a client cannot tell apart from "nothing is waiting
-      // on you".
-      badge: badges.approvalsAwaiting.ok ? badges.approvalsAwaiting.data : undefined,
-      badgeTone: "neutral",
+      key: "for-you",
+      label: "For you",
+      href: `${basePath}/for-you`,
+      icon: Sparkles,
+      // AS-007/F005: a failed read renders no badge at all -- never a
+      // `0` a client cannot tell apart from "nothing is waiting on you".
+      badge: forYouBadge.ok ? forYouBadge.total : undefined,
+      badgeTone: forYouBadge.ok && forYouBadge.overdue > 0 ? "danger" : "neutral",
     },
-    {
-      key: "your-list",
-      label: "Your list",
-      href: `${basePath}/your-list`,
-      icon: ListChecks,
-      badge: badges.deliverablesPastDue,
-      badgeTone: "danger",
-    },
-    { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
-    // F037 (missions/20260910-182104, AS-091): always shown, same
-    // convention "Pages" above already uses (no conditional -- the route
-    // itself renders a "No pages yet" message when the client-visible
-    // board is empty, rather than the nav hiding the tab entirely).
-    { key: "architecture", label: "Architecture", href: `${basePath}/architecture`, icon: LayoutTemplate },
-    // Paket B: a fixed-price project has no hourly billing to show the
-    // client -- Hours is omitted from the nav entirely (not shown
-    // disabled/greyed) rather than pointing at a route that 404s.
-    ...(billingModel === "hourly"
-      ? [{ key: "hours", label: "Hours", href: `${basePath}/hours`, icon: Clock }]
-      : []),
-    { key: "scope", label: "Scope & decisions", href: `${basePath}/scope`, icon: ScrollText },
-    { key: "site", label: "Your site", href: `${basePath}/site`, icon: Globe },
+    { key: "messages", label: "Messages", href: `${basePath}/conversation`, icon: MessageSquare },
   ];
 }
 
-// TEMPORARY (F006e, missions/20260903-portal M1 remediation): Requests
-// has no other entry point besides this row and (as of F023) the "Your
-// site" view's own "More" section. F003 deleted `portal-nav.tsx` (the
-// only link to it); F003b then relocated the route under this project
-// shell without adding a replacement, so until F006e it was unreachable
-// UI -- and Requests is the client's only *write* path in the whole
-// portal. F003b's own spec says Requests belongs inside "Scope &
-// decisions" (F016) once that view exists; it is still a stub today.
-// Files had the identical problem and identical fix, but F023 (this
-// mission's M5) gives it a permanent home inside "Your site" per F003b's
-// own spec, so its row here was removed -- DELETE this function and its
-// remaining call site the moment F016 lands with a real entry point for
-// Requests; do not carry it forward as a permanent nav item.
-//
-// F116 (docs/client-portal-phase-2-plan.md item A): Conversation joins
-// this row too, deliberately NOT as a tenth item in `buildPortalNavItems`.
-// A review already called the eight primary views borderline too many; a
-// ninth item used constantly (chat) belongs in the tier that is already
-// visually secondary, not one that grows the primary set further. Unlike
-// Requests this is NOT temporary -- there is no future feature that gives
-// chat a "real" home elsewhere the way Scope & decisions will eventually
-// absorb Requests, so this row stays.
-export function buildPortalSecondaryNavItems(basePath: string): PortalNavItem[] {
+// The "Project" group's children (AS-014/AS-015's own list, in order).
+// Hours is omitted entirely (not shown disabled/greyed) for a fixed-price
+// project -- same Paket B rule the old flat nav applied.
+export function buildPortalProjectNavItems(
+  basePath: string,
+  billingModel: PortalBillingModel = "fixed_price",
+): PortalNavItem[] {
   return [
-    { key: "requests", label: "Requests", href: `${basePath}/requests`, icon: Inbox },
-    { key: "conversation", label: "Conversation", href: `${basePath}/conversation`, icon: MessageSquare },
-    // A3 (Paket A, client-portal redesign): "How we work" moved out of
-    // "Your site" into its own route -- secondary tier, same reasoning
-    // as Requests/Conversation above: useful but not one of the eight
-    // views reviewed constantly, and content here rarely changes once a
-    // project is underway.
+    { key: "pages", label: "Pages", href: `${basePath}/pages`, icon: FileText },
+    // "Architecture" is labelled "Site map" in the portal (user decision,
+    // plan.md's own header) -- the route itself is unchanged.
+    { key: "architecture", label: "Site map", href: `${basePath}/architecture`, icon: LayoutTemplate },
+    { key: "site", label: "Your site", href: `${basePath}/site`, icon: Globe },
+    { key: "scope", label: "Scope & decisions", href: `${basePath}/scope`, icon: ScrollText },
+    // AS-015: Results is now reachable from portal navigation (audit gap 3).
+    { key: "results", label: "Results", href: `${basePath}/results`, icon: ListChecks },
+    ...(billingModel === "hourly"
+      ? [{ key: "hours", label: "Hours", href: `${basePath}/hours`, icon: Clock }]
+      : []),
+    // AS-015: Questionnaire (brief) is now reachable from portal
+    // navigation (audit gap 4).
+    { key: "brief", label: "Questionnaire", href: `${basePath}/brief`, icon: FileQuestion },
     { key: "how-we-work", label: "How we work", href: `${basePath}/how-we-work`, icon: BookOpen },
   ];
 }
@@ -169,12 +142,27 @@ function isItemActive(pathname: string, item: PortalNavItem): boolean {
     : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function NavBadge({ item }: { item: PortalNavItem }) {
+function NavBadge({ item, active }: { item: PortalNavItem; active: boolean }) {
   if (!item.badge) return null;
   return (
     <Badge
       variant={item.badgeTone === "danger" ? "destructive" : "secondary"}
-      className="ml-auto h-5 min-w-5 justify-center px-1"
+      className={cn(
+        "ml-auto h-5 min-w-5 justify-center px-1 font-mono",
+        // F018 (UX validation defect, low): the destructive/secondary
+        // variants both derive border+fill+text from `currentColor` at a
+        // low opacity (badge.tsx's own "10% tint" convention), which reads
+        // fine against the page background but loses contrast sitting on
+        // top of THIS row's own solid `bg-primary` active state -- worst
+        // in dark theme, where the danger tint's red text nearly
+        // disappears into the bright primary fill. On the active row the
+        // badge instead borrows `--primary-foreground` (the colour
+        // already guaranteed to read against `--primary`, same token the
+        // row's own label/icon use) for its border and 15%-tint fill,
+        // keeping the pill visible in both themes without needing a
+        // colour that resolves against two different fills at once.
+        active && "!border-primary-foreground/40 !bg-primary-foreground/15 !text-primary-foreground",
+      )}
     >
       {item.badge > 99 ? "99+" : item.badge}
     </Badge>
@@ -185,19 +173,14 @@ function NavRow({
   item,
   active,
   onNavigate,
-  // TEMPORARY (F006e): "secondary" renders smaller and dimmer than the
-  // eight primary views, per this feature's own "visually secondary"
-  // instruction -- delete this prop along with `buildPortalSecondaryNavItems`
-  // once F016/F023 give Files and Requests a permanent home.
   variant = "primary",
   // F085 (missions/20260903-portal audit, layout defect): `w-full` only
   // makes sense inside the desktop `<aside>`'s vertical `<nav>`, where
   // every row should fill the sidebar's width. The mobile strip
   // (`overflow-x-auto`, below) is a horizontal flex row -- `w-full` there
   // means "100% of the row", so the FIRST item fills the whole scroll
-  // container and every other item is pushed off-screen (at 375px, only
-  // "Overview" was ever visible). Defaults to "desktop" so the existing
-  // `<aside>` call sites are unchanged.
+  // container and every other item is pushed off-screen. Defaults to
+  // "desktop" so the existing `<aside>` call sites are unchanged.
   layout = "desktop",
 }: {
   item: PortalNavItem;
@@ -218,21 +201,115 @@ function NavRow({
         layout === "desktop" && "w-full",
         variant === "secondary"
           ? "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
-          : "gap-2.5 px-3 py-2 text-sm font-medium",
+          : // F018 (UX validation defect, low): the mobile strip's four
+            // top-level rows (Home, For you, Messages, Project) used the
+            // same desktop `gap-2.5 px-3 py-2 text-sm` sizing, which
+            // doesn't fit all four inside a 375px viewport without
+            // clipping the last one -- tighter gap/padding/type size on
+            // mobile only (`layout === "mobile"`), same icon-plus-label
+            // shape, just smaller, so every row stays fully visible
+            // instead of relying on the scroll affordance to reach it.
+            layout === "mobile"
+            ? "gap-1.5 px-2 py-1.5 text-xs font-medium"
+            : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : variant === "secondary"
-            ? "text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            ? "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
       )}
     >
       <Icon
-        className={variant === "secondary" ? "size-3.5 shrink-0" : "size-4 shrink-0"}
+        className={cn(
+          "shrink-0",
+          variant === "secondary" || layout === "mobile" ? "size-3.5" : "size-4",
+        )}
         aria-hidden="true"
       />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      <NavBadge item={item} />
+      <NavBadge item={item} active={active} />
     </Link>
+  );
+}
+
+// F008 (AS-016): "Project" is a fourth top-level row that expands into
+// its own children rather than a `Link`. It auto-expands (and cannot be
+// collapsed) while the user is actually on one of its child routes --
+// `forceExpanded` -- but is otherwise plain user-toggled state, per this
+// feature's own spec ("collapsed/expanded otherwise toggled by the
+// user"). The button carries `aria-expanded` so its open/closed state is
+// programmatically discoverable, matching `app-sidebar.tsx`'s own
+// disclosure convention.
+function ProjectNavGroup({
+  projectItems,
+  pathname,
+  expanded,
+  onToggle,
+  onNavigate,
+  layout,
+}: {
+  projectItems: PortalNavItem[];
+  pathname: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate?: () => void;
+  layout: "desktop" | "mobile";
+}) {
+  return (
+    <div className={cn(layout === "mobile" && "flex shrink-0 items-center gap-1")}>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={cn(
+          "flex shrink-0 items-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          layout === "desktop" && "w-full",
+          // F018 (UX validation defect, low): same 375px overflow fix as
+          // `NavRow` above -- this button is the fourth top-level row
+          // ("Project") on the mobile strip and was still using the
+          // desktop gap/padding/type size, which is what pushed it past
+          // the viewport edge in the first place.
+          layout === "mobile"
+            ? "gap-1.5 px-2 py-1.5 text-xs"
+            : "gap-2.5 px-3 py-2 text-sm",
+        )}
+      >
+        <FolderKanban
+          className={cn("shrink-0", layout === "mobile" ? "size-3.5" : "size-4")}
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate text-left">Project</span>
+        <ChevronDown
+          className={cn(
+            "shrink-0 transition-transform",
+            layout === "mobile" ? "size-3.5" : "size-4",
+            expanded && "rotate-180",
+          )}
+          aria-hidden="true"
+        />
+      </button>
+
+      {expanded && (
+        <div
+          className={cn(
+            layout === "desktop"
+              ? "flex flex-col gap-0.5 pl-2"
+              : "flex shrink-0 items-center gap-1",
+          )}
+        >
+          {projectItems.map((item) => (
+            <NavRow
+              key={item.key}
+              item={item}
+              active={isItemActive(pathname, item)}
+              variant="secondary"
+              layout={layout}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -244,7 +321,7 @@ export function PortalSidebar({
   projectId,
   projectName,
   hasMultipleProjects,
-  badges,
+  forYouBadge,
   billingModel,
   currentUser,
 }: {
@@ -255,15 +332,34 @@ export function PortalSidebar({
   projectId: string;
   projectName: string;
   hasMultipleProjects: boolean;
-  badges: PortalBadgeCounts;
+  forYouBadge: PortalForYouBadge;
   billingModel: PortalBillingModel;
   currentUser: UserAvatarPerson;
 }) {
   const pathname = usePathname();
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
-  const items = buildPortalNavItems(basePath, badges, billingModel);
-  // TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s own comment.
-  const secondaryItems = buildPortalSecondaryNavItems(basePath);
+  const items = buildPortalNavItems(basePath, forYouBadge);
+  const projectItems = buildPortalProjectNavItems(basePath, billingModel);
+
+  // F016 (portal-simplify, AS-016): the Project group must expand on ANY
+  // route under this project except the three top-level ones (Home
+  // exact, For you, Messages) -- not just the routes `buildPortalProjectNavItems`
+  // happens to list. `/files` and the task-detail route `/t/[taskId]`
+  // are real, reachable routes under this shell (see p/[projectId]/layout.tsx)
+  // that have no Project-group nav row of their own, so the old
+  // `projectItems.some(isItemActive)` check never expanded the group for
+  // them -- M2 scrutiny's own finding. Detecting by ROUTE PREFIX instead
+  // (anything under `basePath` that isn't one of the three top-level
+  // items) covers every current and future child route without needing a
+  // nav-item entry for each one; a matching Project-group item is still
+  // marked current when one exists, and none is when it doesn't (e.g.
+  // `/files`, `/t/abc`).
+  const isOnTopLevelRoute = items.some((item) => isItemActive(pathname, item));
+  const isOnProjectRoute = !isOnTopLevelRoute && pathname.startsWith(`${basePath}/`);
+  const [manuallyExpanded, setManuallyExpanded] = useState(false);
+  const expanded = isOnProjectRoute || manuallyExpanded;
+
+  const toggleProject = () => setManuallyExpanded((value) => !value);
 
   const brand = (
     <Link href={`/portal/${workspaceSlug}`} className="flex items-center gap-2.5">
@@ -277,7 +373,7 @@ export function PortalSidebar({
         <span className="truncate text-sm font-semibold tracking-tight">
           {workspaceName}
         </span>
-        <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Client portal</span>
+        <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Client portal</span>
       </span>
     </Link>
   );
@@ -287,12 +383,12 @@ export function PortalSidebar({
       href={`/portal/${workspaceSlug}`}
       className="hover-surface flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2"
     >
-      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </Link>
   ) : (
     <div className="flex flex-col gap-0.5 rounded-md border border-sidebar-border px-3 py-2">
-      <span className="text-xs font-medium uppercase tracking-[0.07em] text-sidebar-foreground/60">Project</span>
+      <span className="text-xs font-medium uppercase tracking-[0.07em] text-muted-foreground">Project</span>
       <span className="truncate text-sm font-medium">{projectName}</span>
     </div>
   );
@@ -323,19 +419,13 @@ export function PortalSidebar({
             <NavRow key={item.key} item={item} active={isItemActive(pathname, item)} />
           ))}
 
-          {/* TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s
-              own comment for why these two rows exist and when to
-              remove them. */}
-          <div className="mt-2 flex flex-col gap-0.5 border-t border-sidebar-border pt-2">
-            {secondaryItems.map((item) => (
-              <NavRow
-                key={item.key}
-                item={item}
-                active={isItemActive(pathname, item)}
-                variant="secondary"
-              />
-            ))}
-          </div>
+          <ProjectNavGroup
+            projectItems={projectItems}
+            pathname={pathname}
+            expanded={expanded}
+            onToggle={toggleProject}
+            layout="desktop"
+          />
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-sidebar-border p-3">
@@ -350,7 +440,8 @@ export function PortalSidebar({
           the sidebar collapses to a horizontal scrolling nav above the
           content -- not a hamburger drawer, so identity/theme/sign-out
           stay reachable in the same compact strip rather than behind an
-          extra tap. */}
+          extra tap. Exposes the same four-row structure (Home, For you,
+          Messages, Project [+children]) as the desktop `<aside>`. */}
       <div className="flex flex-col border-b border-sidebar-border bg-sidebar text-sidebar-foreground md:hidden">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
           {brand}
@@ -368,19 +459,13 @@ export function PortalSidebar({
               layout="mobile"
             />
           ))}
-          {/* TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems`'s
-              own comment for why these two rows exist and when to
-              remove them. Same horizontal strip, no separate row on
-              mobile (there is no vertical space to spare for one). */}
-          {secondaryItems.map((item) => (
-            <NavRow
-              key={item.key}
-              item={item}
-              active={isItemActive(pathname, item)}
-              variant="secondary"
-              layout="mobile"
-            />
-          ))}
+          <ProjectNavGroup
+            projectItems={projectItems}
+            pathname={pathname}
+            expanded={expanded}
+            onToggle={toggleProject}
+            layout="mobile"
+          />
         </nav>
       </div>
     </>

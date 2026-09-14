@@ -1,465 +1,78 @@
 // @vitest-environment jsdom
 //
-// F008 (AS-018, AS-019, AS-020, AS-024): component test for
-// components/portal/portal-overview-live.tsx -- the live "Waiting on you"
-// region on the client portal overview. Renders the real component
-// (@testing-library/react + jsdom, per tests/unit/user-avatar.test.tsx's
-// established pattern) with a mocked Supabase client and a mocked
-// subscribe function so no live channel/network is involved (AS-034).
-//
-// Each test derives from the assertion text, not the implementation:
-// AS-018/019 assert on what's IN the rendered "Waiting on you" list after
-// a realtime event, AS-020 asserts a row that fails the visibility
-// predicate is never rendered even though the raw event reaches the
-// client, and AS-024 asserts the mocked unsubscribe function is called on
-// unmount -- deleting the cleanup call in the component would fail that
-// test regardless of any other change.
+// Mission 20260914-portal-simplify, F018 (UX validation defect,
+// AS-007/AS-018): `PortalOverviewLive` used to render a live "Waiting on
+// you" card alongside "Delivered this week" (F008, missions/20260903-portal).
+// That card's own empty state ("Nothing waiting on you right now.") sat
+// directly beneath Home's `WaitingOnYouCallout` ("N things are waiting on
+// you") -- the same fact, restated, and able to disagree with the callout's
+// own count. The card (and the realtime wiring that only ever fed it) is
+// removed; these tests replace the old AS-018/AS-019/AS-020/AS-024
+// (missions/20260903-portal) component tests, deriving from what the
+// component still does: render the project's "Delivered this week" list
+// from server-seeded props, nothing live, no "Waiting on you" text
+// anywhere in its output.
 
-import { act, createElement } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
+import type { PortalOverview } from "@/lib/queries/portal";
 
 afterEach(() => {
   cleanup();
-  unsubscribeSpy.mockClear();
-  capturedOnChange = undefined;
-  getSessionMock = vi.fn(() =>
-    Promise.resolve({
-      data: { session: { access_token: "test-access-token" } },
-    }),
-  );
-});
-
-// F012/F023: usePortalOverviewRealtime (via the shared
-// `subscribeWhenAuthenticated` helper) now awaits `auth.getSession()` and
-// hands its token to `realtime.setAuth()` BEFORE subscribing (fixes
-// AS-029's real-world unauthenticated-join race -- see that helper's own
-// comment). The mocked client needs both, resolving immediately by
-// default, so this component test's existing synchronous
-// `capturedOnChange` assertions keep working without adding a real async
-// wait to every test below. `getSessionMock` is reassignable per-test so
-// the AS-024 regression tests below can exercise a pending/rejected
-// session promise.
-let getSessionMock: () => Promise<{
-  data: { session: { access_token: string } | null };
-}> = vi.fn(() =>
-  Promise.resolve({
-    data: { session: { access_token: "test-access-token" } },
-  }),
-);
-vi.mock("@/lib/supabase/client", () => ({
-  createClient: vi.fn(() => ({
-    auth: {
-      getSession: (...args: unknown[]) => getSessionMock(...(args as [])),
-    },
-    realtime: { setAuth: vi.fn(() => Promise.resolve()) },
-  })),
-}));
-
-const unsubscribeSpy = vi.fn();
-let capturedOnChange: ((event: unknown) => void) | undefined;
-
-vi.mock("@/lib/portal/subscribe-portal-overview-realtime", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/lib/portal/subscribe-portal-overview-realtime")
-  >("@/lib/portal/subscribe-portal-overview-realtime");
-  return {
-    ...actual,
-    subscribeToPortalOverviewRealtime: vi.fn(
-      (_supabase: unknown, _workspaceId: string, onChange: (event: unknown) => void) => {
-        capturedOnChange = onChange;
-        return unsubscribeSpy;
-      },
-    ),
-  };
-});
-
-import { PortalOverviewLive } from "@/components/portal/portal-overview-live";
-import { subscribeToPortalOverviewRealtime } from "@/lib/portal/subscribe-portal-overview-realtime";
-import type { PortalOverview } from "@/lib/queries/portal";
-
-const subscribeMock = vi.mocked(subscribeToPortalOverviewRealtime);
-
-afterEach(() => {
-  subscribeMock.mockClear();
 });
 
 const baseOverview: PortalOverview = {
-  waitingOnYou: [
+  waitingOnYou: [],
+  deliveredThisWeek: [
     {
       id: "t1",
-      title: "Review homepage copy",
+      title: "Ship homepage copy",
       projectId: "p1",
       projectName: "Website relaunch",
       dueDate: null,
       updatedAt: "2026-08-30T00:00:00Z",
     },
   ],
-  deliveredThisWeek: [],
 };
 
-async function renderLive(
-  overview: PortalOverview = baseOverview,
-  waitingOnYouFailed?: boolean,
-  projectId?: string | null,
-) {
-  const result = render(
-    createElement(PortalOverviewLive, {
-      workspaceId: "ws-1",
-      workspaceSlug: "acme",
-      initialOverview: overview,
-      waitingOnYouFailed,
-      projectId,
-    }),
-  );
-  // F012: the hook's effect now awaits `getSession()` then `setAuth()`
-  // (both mocked to resolve immediately) before it actually subscribes --
-  // flush those microtasks so `capturedOnChange`/`subscribeMock` are set
-  // before each test interacts with them, same as the real browser does
-  // once session hydration settles.
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-  return result;
-}
-
 describe("PortalOverviewLive", () => {
-  it("test_AS_004_waiting_on_you_link_points_at_the_relocated_project_scoped_task_detail_route", async () => {
-    await renderLive();
-
-    // F003b (missions/20260903-portal): task detail moved from
-    // `/portal/<slug>/t/<taskId>` to `/portal/<slug>/p/<projectId>/t/<taskId>`.
-    // This overview widget spans every project (each row carries its own
-    // `projectId`), so the link must use that task's own project, not a
-    // single project id threaded from above.
-    const link = screen.getByRole("link", { name: /Review homepage copy/i });
-    expect(link).toHaveAttribute("href", "/portal/acme/p/p1/t/t1");
-  });
-
-  it("test_AS_018_task_leaving_pending_approval_leaves_waiting_on_you", async () => {
-    await renderLive();
-
-    expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
-
-    act(() => {
-      capturedOnChange?.({
-      eventType: "UPDATE",
-      schema: "public",
-      table: "tasks",
-      new: {
-        id: "t1",
-        title: "Review homepage copy",
-        project_id: "p1",
-        due_date: null,
-        updated_at: "2026-09-01T00:00:00Z",
-        pending_client_approval: false,
-        client_visible: true,
-        deleted_at: null,
-      },
-      old: { id: "t1" },
-    });
-    });
-
-    expect(
-      screen.queryByText("Review homepage copy"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing waiting on you right now."),
-    ).toBeInTheDocument();
-  });
-
-  it("test_AS_019_task_becoming_pending_approval_and_client_visible_appears_in_waiting_on_you", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
-
-    expect(
-      screen.getByText("Nothing waiting on you right now."),
-    ).toBeInTheDocument();
-
-    act(() => {
-      capturedOnChange?.({
-      eventType: "UPDATE",
-      schema: "public",
-      table: "tasks",
-      new: {
-        id: "t2",
-        title: "Approve new logo",
-        project_id: "p1",
-        due_date: null,
-        updated_at: "2026-09-01T00:00:00Z",
-        pending_client_approval: true,
-        client_visible: true,
-        deleted_at: null,
-      },
-      old: { id: "t2" },
-    });
-    });
-
-    expect(screen.getByText("Approve new logo")).toBeInTheDocument();
-  });
-
-  it("test_AS_020_row_failing_client_visible_predicate_is_never_rendered", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] });
-
-    // Reaches the client as a raw event exactly as AS-020 describes, but
-    // client_visible is false -- must never render, whether it's a brand
-    // new INSERT or the first update this session sees for it.
-    act(() => {
-      capturedOnChange?.({
-      eventType: "INSERT",
-      schema: "public",
-      table: "tasks",
-      new: {
-        id: "t3",
-        title: "Internal-only task",
-        project_id: "p1",
-        due_date: null,
-        updated_at: "2026-09-01T00:00:00Z",
-        pending_client_approval: true,
-        client_visible: false,
-        deleted_at: null,
-      },
-      old: {},
-    });
-    });
-
-    expect(screen.queryByText("Internal-only task")).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing waiting on you right now."),
-    ).toBeInTheDocument();
-  });
-
-  it("test_AS_020_row_that_was_visible_and_becomes_invisible_is_removed", async () => {
-    await renderLive();
-
-    expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
-
-    act(() => {
-      capturedOnChange?.({
-      eventType: "UPDATE",
-      schema: "public",
-      table: "tasks",
-      new: {
-        id: "t1",
-        title: "Review homepage copy",
-        project_id: "p1",
-        due_date: null,
-        updated_at: "2026-09-01T00:00:00Z",
-        pending_client_approval: true,
-        client_visible: false,
-        deleted_at: null,
-      },
-      old: { id: "t1" },
-    });
-    });
-
-    expect(
-      screen.queryByText("Review homepage copy"),
-    ).not.toBeInTheDocument();
-  });
-
-  // F009 (missions/20260903-portal): the amendment this feature carries --
-  // "PortalOverviewLive is workspace-wide today while the shell is
-  // project-scoped, so its strip can surface another project's rows."
-  // The subscription itself stays workspace-wide (RLS does the real
-  // scoping, same as every other row this component admits), but a live
-  // event for a DIFFERENT project's task must never enter this list once
-  // `projectId` is set -- proving the leak this amendment names is closed
-  // for the per-project shell, not just for the still-workspace-wide
-  // chooser page (which passes no `projectId` and keeps its pre-existing
-  // behaviour, covered by AS-019 above).
-  it("test_F009_project_scoped_mount_ignores_a_different_projects_pending_approval_event", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false, "p1");
-
-    act(() => {
-      capturedOnChange?.({
-        eventType: "INSERT",
-        schema: "public",
-        table: "tasks",
-        new: {
-          id: "t-other-project",
-          title: "A different project's approval",
-          project_id: "p-different",
-          due_date: null,
-          updated_at: "2026-09-01T00:00:00Z",
-          pending_client_approval: true,
-          client_visible: true,
-          deleted_at: null,
-        },
-        old: {},
-      });
-    });
-
-    expect(screen.queryByText("A different project's approval")).not.toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing waiting on you right now."),
-    ).toBeInTheDocument();
-  });
-
-  it("test_F009_project_scoped_mount_still_admits_this_projects_pending_approval_event", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false, "p1");
-
-    act(() => {
-      capturedOnChange?.({
-        eventType: "INSERT",
-        schema: "public",
-        table: "tasks",
-        new: {
-          id: "t-same-project",
-          title: "This project's approval",
-          project_id: "p1",
-          due_date: null,
-          updated_at: "2026-09-01T00:00:00Z",
-          pending_client_approval: true,
-          client_visible: true,
-          deleted_at: null,
-        },
-        old: {},
-      });
-    });
-
-    expect(screen.getByText("This project's approval")).toBeInTheDocument();
-  });
-
-  it("test_AS_024_subscription_is_torn_down_on_unmount", async () => {
-    const { unmount } = await renderLive();
-
-    expect(unsubscribeSpy).not.toHaveBeenCalled();
-
-    unmount();
-
-    expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("test_AS_024_subscription_is_torn_down_and_reacquired_when_workspace_id_changes", async () => {
-    const { rerender } = await renderLive();
-
-    expect(subscribeMock).toHaveBeenCalledTimes(1);
-    expect(subscribeMock.mock.calls[0]?.[1]).toBe("ws-1");
-    expect(unsubscribeSpy).not.toHaveBeenCalled();
-
-    // Same component instance, but the workspace it's scoped to changes
-    // mid-life (e.g. the portal viewer navigates to a different client
-    // workspace without a full page reload). The old channel must be
-    // released and a new one acquired for the new workspaceId -- staying
-    // subscribed to the old workspace's topic would leak stale updates
-    // (or none at all) into the new workspace's view.
-    rerender(
-      createElement(PortalOverviewLive, {
-        workspaceId: "ws-2",
-        workspaceSlug: "acme",
-        initialOverview: baseOverview,
-      }),
-    );
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(unsubscribeSpy).toHaveBeenCalledTimes(1);
-    expect(subscribeMock).toHaveBeenCalledTimes(2);
-    expect(subscribeMock.mock.calls[1]?.[1]).toBe("ws-2");
-  });
-
-  // F023: closes the regression scrutiny-2 found in F012's own fix -- an
-  // unmount that happens BEFORE `getSession()` resolves must never let the
-  // deferred `subscribe()` call run afterwards. Reverting the `cancelled`
-  // guard in `lib/realtime/subscribe-when-authenticated.ts` makes this
-  // fail (subscribeMock gets called after unmount).
-  it("test_AS_024_unmount_before_session_resolves_never_subscribes", async () => {
-    let resolveSession: (value: {
-      data: { session: { access_token: string } | null };
-    }) => void = () => {};
-    getSessionMock = vi.fn(
-      () =>
-        new Promise<{
-          data: { session: { access_token: string } | null };
-        }>((resolve) => {
-          resolveSession = resolve;
-        }),
-    );
-
-    const { unmount } = render(
-      createElement(PortalOverviewLive, {
-        workspaceId: "ws-1",
-        workspaceSlug: "acme",
-        initialOverview: baseOverview,
-      }),
-    );
-
-    // Unmount happens before `getSession()` ever resolves.
-    unmount();
-
-    resolveSession({ data: { session: { access_token: "late-token" } } });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(subscribeMock).not.toHaveBeenCalled();
-  });
-
-  // F023: a rejected `getSession()` must not surface as an unhandled
-  // promise rejection and must leave the mount with no live subscription.
-  it("test_AS_024_rejected_getSession_does_not_throw_or_subscribe", async () => {
-    getSessionMock = vi.fn(() => Promise.reject(new Error("network down")));
-
+  it("test_AS_018_never_renders_the_old_waiting_on_you_card_home_already_covers_it_with_the_callout", () => {
     render(
-      createElement(PortalOverviewLive, {
-        workspaceId: "ws-1",
-        workspaceSlug: "acme",
-        initialOverview: baseOverview,
-      }),
+      <PortalOverviewLive workspaceSlug="acme" initialOverview={baseOverview} />,
     );
 
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(subscribeMock).not.toHaveBeenCalled();
-  });
-});
-
-// F006f (missions/20260903-portal, AS-002): the caller (the per-project
-// Overview page) passes `waitingOnYouFailed` when its own project-scoped
-// read of "what's waiting on you" errored. An empty `waitingOnYou` array
-// is what both a real "nothing waiting" AND a failed read look like from
-// this component's own props -- `waitingOnYouFailed` is what tells them
-// apart, so the list renders an honest state instead of quietly implying
-// zero.
-describe("PortalOverviewLive — F006f (AS-002): honest failure state", () => {
-  it("test_AS_002_renders_an_honest_failure_state_not_nothing_waiting_on_you_when_the_read_failed", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, true);
-
+    // Neither the old card's heading nor its empty-state copy should ever
+    // appear -- Home's `WaitingOnYouCallout` is the one place that fact is
+    // stated now.
+    expect(screen.queryByText("Waiting on you")).not.toBeInTheDocument();
     expect(
       screen.queryByText("Nothing waiting on you right now."),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByText("We couldn't load this. Try refreshing the page."),
-    ).toBeInTheDocument();
   });
 
-  it("still renders the ordinary empty state when nothing failed", async () => {
-    await renderLive({ waitingOnYou: [], deliveredThisWeek: [] }, false);
+  it("test_AS_007_renders_delivered_this_week_rows_from_server_seeded_props", () => {
+    render(
+      <PortalOverviewLive workspaceSlug="acme" initialOverview={baseOverview} />,
+    );
 
-    expect(
-      screen.getByText("Nothing waiting on you right now."),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("We couldn't load this. Try refreshing the page."),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Delivered this week")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /Ship homepage copy/i });
+    expect(link).toHaveAttribute("href", "/portal/acme/p/p1/t/t1");
   });
 
-  it("does not show the failure caveat once the list actually has rows", async () => {
-    await renderLive(baseOverview, true);
+  it("test_AS_007_renders_the_honest_empty_state_when_nothing_delivered", () => {
+    render(
+      <PortalOverviewLive
+        workspaceSlug="acme"
+        initialOverview={{ waitingOnYou: [], deliveredThisWeek: [] }}
+      />,
+    );
 
-    expect(screen.getByText("Review homepage copy")).toBeInTheDocument();
     expect(
-      screen.queryByText("We couldn't load this. Try refreshing the page."),
-    ).not.toBeInTheDocument();
+      screen.getByText("Nothing delivered in the last 7 days."),
+    ).toBeInTheDocument();
   });
 });

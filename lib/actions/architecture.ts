@@ -1,9 +1,9 @@
 // Barrel for the Architecture board's server actions.
 //
-// The implementations used to live in this single file (1,921 lines). They
-// were split into cohesive modules under `lib/actions/architecture/` as a
-// PURE MOVE — no behaviour, comment, or call site changed. This file stays
-// put so every module that `import { ... } from "@/lib/actions/architecture"`
+// The implementations used to live in this single file. They were split
+// into cohesive modules under `lib/actions/architecture/` as a PURE MOVE --
+// no behaviour, comment, or call site changed. This file stays put so
+// every module that `import { ... } from "@/lib/actions/architecture"`
 // keeps working unchanged.
 //
 // No `"use server"` directive here on purpose: each leaf module under
@@ -19,9 +19,13 @@ export {
   renamePage,
   deletePage,
   reorderPages,
+  setPageClientVisibility,
   importPages,
 } from "./architecture/pages";
-export type { CreatePageResult } from "./architecture/pages";
+export type {
+  CreatePageResult,
+  SetPageClientVisibilityResult,
+} from "./architecture/pages";
 
 export {
   createSection,
@@ -29,7 +33,9 @@ export {
   renameSection,
   reorderSections,
   moveSectionToPage,
+  setSectionClientVisibility,
 } from "./architecture/sections";
+export type { SetSectionClientVisibilityResult } from "./architecture/sections";
 
 export {
   createComponentFromSection,

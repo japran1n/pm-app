@@ -47,12 +47,23 @@ export function ArchitectureViewToggle({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       {/* Toggle */}
-      <div className="flex items-center justify-between px-1">
-        <p className="text-xs text-muted-foreground">
-          Pages and sections here are the same records as tasks and subtasks
-          in the List and Board task views -- edits made in one view show up
-          in the other.
-        </p>
+      <div className="flex items-center justify-between gap-3 px-1">
+        <div className="flex flex-col gap-0.5">
+          <p className="text-xs text-muted-foreground">
+            Pages and sections here are the same records as tasks and subtasks
+            in the List and Board task views -- edits made in one view show up
+            in the other.
+          </p>
+          {/* Mission 20260914-portal-simplify, F011 (AS-020): tells the
+              team where a client-visible section of this board actually
+              surfaces in the portal -- "Site map" (F008's renamed portal
+              nav item, formerly "Architecture"), reached from a
+              section's own client-visibility toggle, not every page here
+              (a page must be marked client-visible first). */}
+          <p data-testid="architecture-client-visibility-note" className="text-xs text-muted-foreground">
+            Shared pages appear to the client under Site map.
+          </p>
+        </div>
         <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
           <button
             type="button"

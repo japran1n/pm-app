@@ -271,7 +271,7 @@ describe("PortalApprovalActions (F005)", () => {
 
     render(createElement(PortalApprovalActions, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });
@@ -334,7 +334,7 @@ describe("PortalApprovalActions (F005)", () => {
 
     render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });
@@ -402,7 +402,7 @@ describe("PortalApprovalActions (F005)", () => {
 
     render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });
@@ -438,7 +438,7 @@ describe("PortalApprovalActions (F005)", () => {
   it("test_AS_016_request_changes_with_whitespace_only_message_issues_no_call", async () => {
     render(createElement(PortalApprovalActions, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "   " },
     });
@@ -492,7 +492,7 @@ describe("PortalApprovalActions (F005)", () => {
 
     render(createElement(UnguardedUiComponent, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "   " },
     });
@@ -519,7 +519,7 @@ describe("PortalApprovalActions (F005)", () => {
 
     render(createElement(PortalApprovalActions, { taskId: "task-1" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes/i }));
+    fireEvent.click(screen.getByRole("button", { name: /ask for changes/i }));
     fireEvent.change(screen.getByPlaceholderText(/describe what you'd like changed/i), {
       target: { value: "please fix the header" },
     });

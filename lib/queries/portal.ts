@@ -1,5 +1,3 @@
-// Data-fetching for the client portal (C3/C4, docs/client-portal-plan.md).
-//
 // This file is a pure re-export barrel: the implementations live in the
 // cohesive modules under lib/queries/portal/ (see lib/queries/portal/
 // shared.ts's header for the RLS conventions the whole family follows).

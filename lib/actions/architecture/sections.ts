@@ -7,6 +7,10 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -15,6 +19,7 @@ import { createSectionSchema } from "@/lib/validation/architecture";
 import { z } from "zod";
 
 import type { MutationResult, MutationWithIdResult } from "./shared";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // Mission 20260910-182104, F013 (AS-003, AS-029, AS-038): creates a section
 // under a page. Standing decision 1: a section IS a subtask of the page
@@ -52,7 +57,7 @@ export async function createSection(
   // uses.
   const { data: projectRow, error: projectError } = await admin
     .from("projects")
-    .select("id, workspace_id, deleted_at")
+    .select("id, workspace_id, deleted_at, workspaces(slug)")
     .eq("id", projectId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -60,6 +65,12 @@ export async function createSection(
   if (projectError || !projectRow) {
     return { success: false, error: "Project not found." };
   }
+
+  const createSectionWorkspace = projectRow.workspaces as
+    | { slug: string }
+    | { slug: string }[]
+    | null;
+  const createSectionWorkspaceSlug = extractWorkspaceSlug(createSectionWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -178,6 +189,10 @@ export async function createSection(
     });
   }
 
+  if (createSectionWorkspaceSlug) {
+    revalidatePortalProject(createSectionWorkspaceSlug, projectId);
+  }
+
   return { success: true, id: inserted.id };
 }
 
@@ -208,7 +223,9 @@ export async function deleteSection(
   // own) before touching it -- same convention as deletePage above.
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))",
+    )
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -225,6 +242,10 @@ export async function deleteSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } }).projects
     .workspace_id;
+  const deleteSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const deleteSectionWorkspaceSlug = extractWorkspaceSlug(deleteSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -244,7 +265,7 @@ export async function deleteSection(
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
-    { p_task_id: taskId },
+    { p_task_id: taskId, p_deleted_by: user.id },
   );
 
   if (cascadeError || !cascadeResult) {
@@ -263,6 +284,10 @@ export async function deleteSection(
     logger.error("deleteSection: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (deleteSectionWorkspaceSlug) {
+    revalidatePortalProject(deleteSectionWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -312,7 +337,7 @@ export async function renameSection(
 
   const { data: taskRow, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, parent_task_id, projects(workspace_id)")
+    .select("id, project_id, parent_task_id, projects(workspace_id, workspaces(slug))")
     .eq("id", taskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -329,6 +354,10 @@ export async function renameSection(
 
   const workspaceId = (taskRow as { projects: { workspace_id: string } })
     .projects.workspace_id;
+  const renameSectionWorkspace = (
+    taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
+  ).projects.workspaces;
+  const renameSectionWorkspaceSlug = extractWorkspaceSlug(renameSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -365,6 +394,10 @@ export async function renameSection(
     logger.error("renameSection: revalidatePath failed (non-fatal)", {
       error: revalidateError,
     });
+  }
+
+  if (renameSectionWorkspaceSlug) {
+    revalidatePortalProject(renameSectionWorkspaceSlug, taskRow.project_id);
   }
 
   return { success: true };
@@ -411,12 +444,32 @@ export async function reorderSections(
 
   const { data: taskRows, error: taskError } = await admin
     .from("tasks")
-    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id)")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))",
+    )
     .in("id", ids)
     .is("deleted_at", null);
 
   if (taskError || !taskRows || taskRows.length !== ids.length) {
     return { success: false, error: "Section not found." };
+  }
+
+  // F004c (AS-006): keyed by projectId, NOT slug — two different projects
+  // in the SAME workspace share the same workspace slug, so a slug-keyed
+  // map would silently drop every project but the last one seen for that
+  // slug, and this batch can span multiple projects at once.
+  const reorderSectionsPortalTargets = new Map<string, string>();
+  for (const taskRow of taskRows) {
+    const projects = (
+      taskRow as {
+        projects?: { workspaces?: { slug: string } | { slug: string }[] | null } | null;
+      }
+    ).projects;
+    const workspace = projects?.workspaces;
+    const slug = extractWorkspaceSlug(workspace);
+    if (slug) {
+      reorderSectionsPortalTargets.set(taskRow.project_id, slug);
+    }
   }
 
   const membershipCache = new Map<string, boolean>();
@@ -470,6 +523,10 @@ export async function reorderSections(
     });
   }
 
+  for (const [projectIdForSlug, slug] of reorderSectionsPortalTargets) {
+    revalidatePortalProject(slug, projectIdForSlug);
+  }
+
   return { success: true };
 }
 
@@ -517,7 +574,7 @@ export async function moveSectionToPage(
 
   const { data: sectionRow, error: sectionError } = await admin
     .from("tasks")
-    .select("id, page_slug, parent_task_id, projects(workspace_id)")
+    .select("id, project_id, page_slug, parent_task_id, projects(workspace_id, workspaces(slug))")
     .eq("id", sectionTaskId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -545,6 +602,11 @@ export async function moveSectionToPage(
   if (!sectionWorkspaceId || !pageWorkspaceId || sectionWorkspaceId !== pageWorkspaceId) {
     return { success: false, error: "Destination page not found." };
   }
+
+  const moveSectionWorkspace = (
+    sectionRow as { projects?: { workspaces?: { slug: string } | { slug: string }[] | null } }
+  ).projects?.workspaces;
+  const moveSectionWorkspaceSlug = extractWorkspaceSlug(moveSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, sectionWorkspaceId, user.id);
   if (!membership.ok || !canWrite({ role: membership.role })) {
@@ -578,5 +640,157 @@ export async function moveSectionToPage(
     });
   }
 
+  if (moveSectionWorkspaceSlug) {
+    revalidatePortalProject(moveSectionWorkspaceSlug, sectionRow.project_id);
+  }
+
   return { success: true };
+}
+
+// F003 (AS-004, AS-005): same share/unshare toggle as
+// setPageClientVisibility above, for a single section. A section IS a
+// subtask of its page (standing decision 1), so this targets exactly one
+// row (`WHERE id = sectionTaskId`) -- other sections and the parent page
+// are never touched.
+export type SetSectionClientVisibilityResult = ActionResult<{
+  taskId: string;
+  clientVisible: boolean;
+  // AS-004/AS-005 UI hint (scrutiny remediation, item 10): true when
+  // this section was just shared but its parent page is still hidden
+  // from the client, so the UI can prompt "share the page too" -- a
+  // section the client can't reach because its page is hidden is
+  // otherwise a silent no-op from the client's view.
+  pageHidden: boolean;
+}>;
+
+export async function setSectionClientVisibility(
+  taskId: string,
+  visible: boolean,
+): Promise<SetSectionClientVisibilityResult> {
+  const parsed = z
+    .object({ taskId: z.string().uuid("Invalid section."), visible: z.boolean() })
+    .safeParse({ taskId, visible });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid section.",
+    };
+  }
+
+  const { user } = await getCurrentUser();
+
+  if (!user) {
+    return { ok: false, error: "You must be signed in." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: taskRow, error: taskError } = await admin
+    .from("tasks")
+    .select(
+      "id, project_id, page_slug, parent_task_id, projects!inner(workspace_id, workspaces(slug))",
+    )
+    .eq("id", parsed.data.taskId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (
+    taskError ||
+    !taskRow ||
+    taskRow.page_slug ||
+    !taskRow.parent_task_id
+  ) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  const project = taskRow.projects as
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }
+    | { workspace_id: string; workspaces: { slug: string } | { slug: string }[] | null }[]
+    | null;
+  const projectRow = Array.isArray(project) ? project[0] : project;
+  const workspaceId = projectRow?.workspace_id;
+
+  if (!workspaceId) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
+  const workspaceSlug = extractWorkspaceSlug(workspace);
+
+  const membership = await requireActiveMembership(admin, workspaceId, user.id);
+
+  if (!membership.ok) {
+    return { ok: false, error: "Section not found." };
+  }
+
+  if (!canWrite({ role: membership.role })) {
+    return {
+      ok: false,
+      error: "You don't have permission to change what the client sees.",
+    };
+  }
+
+  // F004c (item 6): the parent-page lookup now runs AFTER the permission
+  // check (previously it ran before, doing an extra query even for a
+  // caller who was about to be rejected anyway) and ONLY when this call is
+  // actually sharing the section (`visible === true`) -- unsharing never
+  // needs the "page is still hidden" hint, since that hint only matters
+  // for a newly-shared section. A soft-deleted parent page is excluded
+  // (`.is("deleted_at", null)`) so a page that's been trashed is never
+  // treated as "hidden but shareable" -- it should read the same as "no
+  // parent page found" (pageHidden: false). A lookup error is logged
+  // rather than silently treated as "not hidden", so an operator can tell
+  // a genuine DB failure apart from a page that's simply visible.
+  let pageHidden = false;
+  if (parsed.data.visible) {
+    const { data: parentPageRow, error: parentPageError } = await admin
+      .from("tasks")
+      .select("client_visible")
+      .eq("id", taskRow.parent_task_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (parentPageError) {
+      logger.error("setSectionClientVisibility: parent page lookup failed (non-fatal)", {
+        error: parentPageError,
+      });
+    } else if (parentPageRow) {
+      pageHidden = !parentPageRow.client_visible;
+    }
+  }
+
+  const { error: updateError } = await admin
+    .from("tasks")
+    .update({ client_visible: parsed.data.visible })
+    .eq("id", parsed.data.taskId);
+
+  if (updateError) {
+    logger.error("setSectionClientVisibility: update failed", { error: updateError });
+    return {
+      ok: false,
+      error: "Something went wrong. Please try again in a moment.",
+    };
+  }
+
+  try {
+    revalidatePath("/w", "layout");
+  } catch (revalidateError) {
+    logger.error("setSectionClientVisibility: revalidatePath failed (non-fatal)", {
+      error: revalidateError,
+    });
+  }
+
+  if (workspaceSlug) {
+    revalidatePortalProject(workspaceSlug, taskRow.project_id);
+  }
+
+  return {
+    ok: true,
+    data: {
+      taskId: parsed.data.taskId,
+      clientVisible: parsed.data.visible,
+      pageHidden,
+    },
+  };
 }

@@ -8,6 +8,13 @@ import { getRequestClient } from "@/lib/auth/current-user";
 // SELECT on `tasks` already only returns client_visible rows (20260902010000),
 // so filtering here on client_visible again is belt-and-suspenders, not the
 // real boundary.
+//
+// missions/20260914-portal-simplify: scoped to a single `projectId` (not
+// every project in the workspace) — the Files nav item lives under a
+// project's own portal shell, same "per-project, not per-workspace" scope
+// every other portal query in this project-scoped family uses. Also
+// excludes a project with `portal_enabled = false`, same convention as
+// this file's siblings.
 
 export type PortalFile = {
   id: string;
@@ -21,6 +28,7 @@ export type PortalFile = {
 
 export async function getPortalFiles(
   workspaceId: string,
+  projectId: string,
 ): Promise<PortalFile[]> {
   const supabase = await getRequestClient();
 
@@ -28,7 +36,9 @@ export async function getPortalFiles(
     .from("projects")
     .select("id, name")
     .eq("workspace_id", workspaceId)
-    .is("deleted_at", null);
+    .eq("id", projectId)
+    .is("deleted_at", null)
+    .eq("portal_enabled", true);
 
   const projectIds = (projects ?? []).map((p) => p.id);
   const projectNames = new Map((projects ?? []).map((p) => [p.id, p.name]));
