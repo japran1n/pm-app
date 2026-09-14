@@ -222,7 +222,13 @@ test.describe("board drag-and-drop reorder (F090: AS-150)", () => {
     // (implicit flow — see comment above); the app's own callback route
     // doesn't understand that shape and bounces to this exact error page,
     // fragment intact.
-    await page.waitForURL(/\/sign-in\?error=auth_failed#/, {
+    // The verify redirect's landing PATH differs by environment: the
+    // hosted project's PKCE flow errors out at the app callback and lands
+    // on /sign-in?error=auth_failed#<tokens>, while the local stack's
+    // GoTrue redirects straight to site_url with the tokens in the
+    // fragment at the root path. Either way the tokens are in the URL
+    // fragment — wait for THAT, not for a specific path.
+    await page.waitForURL(/#access_token=/, {
       timeout: 15_000,
     });
 

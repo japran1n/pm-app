@@ -233,7 +233,13 @@ test.describe("Dependency UI (F157: AS-277, AS-282, AS-283)", () => {
     }
 
     await page.goto(linkData.properties.action_link);
-    await page.waitForURL(/\/sign-in\?error=auth_failed#/, {
+    // The verify redirect's landing PATH differs by environment: the
+    // hosted project's PKCE flow errors out at the app callback and lands
+    // on /sign-in?error=auth_failed#<tokens>, while the local stack's
+    // GoTrue redirects straight to site_url with the tokens in the
+    // fragment at the root path. Either way the tokens are in the URL
+    // fragment — wait for THAT, not for a specific path.
+    await page.waitForURL(/#access_token=/, {
       timeout: 15_000,
     });
 

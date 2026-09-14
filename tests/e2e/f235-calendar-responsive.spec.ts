@@ -158,7 +158,9 @@ test.describe("AS-449: the calendar on a phone-width viewport", () => {
     }
 
     await page.goto(linkData.properties.action_link);
-    await page.waitForURL(/\/sign-in\?error=auth_failed#/, { timeout: 15_000 });
+    // Landing path differs by environment (hosted: /sign-in?error=auth_failed;
+    // local stack: site_url root) — the tokens are in the fragment either way.
+    await page.waitForURL(/#access_token=/, { timeout: 15_000 });
 
     const fragment = new URL(page.url()).hash.slice(1);
     const params = new URLSearchParams(fragment);

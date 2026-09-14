@@ -209,6 +209,11 @@ jobs:
         # chain without touching the stack config.
         env:
           PLAYWRIGHT_PORT: "3000"
+          # portal-approve.spec signs in via /dev-login, which (audit
+          # SEC-001) requires this explicit opt-in on top of
+          # NODE_ENV=development. Safe here: the target is the job's
+          # ephemeral local Supabase stack, torn down right after.
+          DEV_LOGIN_ENABLED: "true"
         run: |
           npx playwright install --with-deps
           npx playwright test
