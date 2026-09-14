@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation";
 import { MessageSquare } from "lucide-react";
 
-import { getPortalProjects } from "@/lib/queries/portal";
+import { getPortalProjects, getPortalRequests } from "@/lib/queries/portal";
 import { getChannelMessages, getChannelMembers, getReplyCounts } from "@/lib/queries/chat";
 import { createClient } from "@/lib/supabase/server";
+import { createClientRequest } from "@/lib/actions/client-requests";
 import { ChannelView } from "@/components/chat/channel-view";
+import { RequestList } from "@/components/portal/request-list";
 import { EmptyState } from "@/components/empty-state";
 
 // F116 (docs/client-portal-phase-2-plan.md item A): the portal's
@@ -49,13 +51,43 @@ export default async function PortalConversationPage({
 
   if (!user) notFound();
 
-  const workspaceProjects = await getPortalProjects(
-    (
-      await supabase.from("workspaces").select("id").eq("slug", workspaceSlug).maybeSingle()
-    ).data?.id ?? "",
-  );
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("id")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+  const workspaceId = workspace?.id ?? "";
+
+  const workspaceProjects = await getPortalProjects(workspaceId);
   const project = workspaceProjects.find((p) => p.id === projectId);
   if (!project) notFound();
+
+  // F007 (portal-simplify, AS-012/AS-013): a client's requests for THIS
+  // project, same "read stays wide, this caller narrows it" convention
+  // `p/[projectId]/requests/page.tsx` already established for the same
+  // workspace-wide `getPortalRequests` read (see that file's own comment).
+  const allRequests = await getPortalRequests(workspaceId);
+  const requests = allRequests.filter((request) => request.projectId === projectId);
+
+  // F007: an inline Server Action (closes over this route's own
+  // `projectId`) so the checkbox in MessageComposer -- gated by
+  // `onFileRequest` -- files a request against exactly this project, never
+  // a caller-supplied one. Delegates entirely to the existing
+  // `createClientRequest` action (same validation, same notification,
+  // same RLS re-check) via a FormData built here, rather than duplicating
+  // any of that logic.
+  async function fileMessagesRequest(payload: {
+    title: string;
+    body: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    "use server";
+    const formData = new FormData();
+    formData.set("projectId", projectId);
+    formData.set("title", payload.title);
+    formData.set("body", payload.body);
+    const result = await createClientRequest(null, formData);
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
+  }
 
   const { data: channel } = await supabase
     .from("channels")
@@ -64,15 +96,37 @@ export default async function PortalConversationPage({
     .eq("kind", "channel")
     .maybeSingle();
 
+  const header = (
+    <div className="flex flex-col gap-1 p-4 pb-0">
+      <h1 className="text-2xl font-semibold tracking-tight">Messages</h1>
+      <p className="text-sm text-muted-foreground">
+        Talk to the team, or ask for something new.
+      </p>
+    </div>
+  );
+
+  const requestsSection = (
+    <div className="flex flex-col gap-3 p-4">
+      <h2 className="text-sm font-medium text-muted-foreground">
+        Your requests
+      </h2>
+      <RequestList requests={requests} projectId={project.id} />
+    </div>
+  );
+
   if (!channel) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
-        <EmptyState
-          icon={MessageSquare}
-          title="No conversation yet"
-          description="Once your team starts this project's conversation, you'll see it here."
-          testId="portal-conversation-empty"
-        />
+      <div className="flex h-full flex-col gap-4">
+        {header}
+        <div className="flex flex-1 items-center justify-center p-8">
+          <EmptyState
+            icon={MessageSquare}
+            title="No conversation yet"
+            description="Once your team starts this project's conversation, you'll see it here."
+            testId="portal-conversation-empty"
+          />
+        </div>
+        {requestsSection}
       </div>
     );
   }
@@ -94,15 +148,22 @@ export default async function PortalConversationPage({
     : undefined;
 
   return (
-    <ChannelView
-      workspaceSlug={workspaceSlug}
-      channelId={channel.id}
-      channelName={channel.name ?? project.name}
-      initialMessages={messages}
-      members={members}
-      currentUserId={user.id}
-      initialReplyCounts={replyCounts}
-      initialMentionName={mentionMember?.name ?? mentionMember?.email ?? undefined}
-    />
+    <div className="flex h-full flex-col gap-4">
+      {header}
+      <div className="min-h-0 flex-1">
+        <ChannelView
+          workspaceSlug={workspaceSlug}
+          channelId={channel.id}
+          channelName={channel.name ?? project.name}
+          initialMessages={messages}
+          members={members}
+          currentUserId={user.id}
+          initialReplyCounts={replyCounts}
+          initialMentionName={mentionMember?.name ?? mentionMember?.email ?? undefined}
+          onFileRequest={fileMessagesRequest}
+        />
+      </div>
+      {requestsSection}
+    </div>
   );
 }

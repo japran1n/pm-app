@@ -86,6 +86,7 @@ export function ChannelView({
   initialAttachments,
   initialMentionName,
   initialReadReceipts,
+  onFileRequest,
 }: {
   workspaceSlug: string;
   channelId: string;
@@ -118,6 +119,15 @@ export function ChannelView({
   // shared component that doesn't fetch it (there are none today) simply
   // renders no "Seen by" strip rather than crashing.
   initialReadReceipts?: Record<string, string | null>;
+  // F007 (portal-simplify, AS-012/AS-013): passed only by the portal's
+  // Messages page (app/(portal)/.../conversation/page.tsx) -- forwarded
+  // straight into MessageComposer's own `onFileRequest`, whose doc comment
+  // explains the "checkbox only when set" gating. Every other caller of
+  // this shared component (staff-side chat) leaves it undefined.
+  onFileRequest?: (payload: {
+    title: string;
+    body: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   // Initial page load is newest-first (getChannelMessages, F3), reversed
   // here to oldest-first for top-to-bottom rendering, same convention
@@ -483,6 +493,7 @@ export function ChannelView({
         mentionSuggestions={mentionSuggestions}
         channelId={channelId}
         initialDraft={initialMentionName ? `@${initialMentionName} ` : undefined}
+        onFileRequest={onFileRequest}
       />
     </div>
     {activeThreadId && (

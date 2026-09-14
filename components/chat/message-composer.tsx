@@ -92,6 +92,7 @@ export function MessageComposer({
   mentionSuggestions,
   channelId,
   initialDraft,
+  onFileRequest,
 }: {
   onSend: (bodyJson: JSONContent, attachmentIds?: string[]) => Promise<{ ok: boolean; error?: string }>;
   onTyping?: () => void;
@@ -106,6 +107,20 @@ export function MessageComposer({
   // mechanism" the feature asked for, not a full mention-suggestion
   // auto-resolve on load.
   initialDraft?: string;
+  // F007 (portal-simplify, AS-012/AS-013): when set, this composer -- the
+  // portal's Messages page -- gains a "This is a request for new work"
+  // checkbox. Only the portal Messages page passes this prop (see
+  // ChannelView's own `onFileRequest` doc comment); every other caller of
+  // this shared composer (staff chat, portal task-thread) leaves it
+  // undefined and renders exactly as before -- no checkbox, no behaviour
+  // change, per this feature's "no change to team-side" requirement.
+  // Title is derived from the first line of the composed text and the full
+  // text is kept as the description, per the clarified spec, since the
+  // rich-text composer has no separate title field of its own.
+  onFileRequest?: (payload: {
+    title: string;
+    body: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const richText = useRichTextModule();
   const [plainValue, setPlainValue] = useState(initialDraft ?? "");
@@ -114,6 +129,7 @@ export function MessageComposer({
   );
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isRequest, setIsRequest] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -218,6 +234,33 @@ export function MessageComposer({
     const hasAttachments = pendingAttachments.length > 0;
     if (!hasContent && !hasAttachments) return;
 
+    if (isRequest && onFileRequest) {
+      // AS-012/AS-013: filing a request has no attachments/rich-formatting
+      // concept of its own (client_requests is a plain title+body row), so
+      // this branch never reaches the ordinary sendMessage/onSend path
+      // below -- only plain text is extracted and handed to the request
+      // action. The title is the first line, the full text stays as the
+      // body/description, per the clarified spec.
+      const fullText = (
+        useRichEditor ? extractPlainText(richValueRef.current) : plainValue
+      ).trim();
+      if (!fullText) return;
+      const title = (fullText.split("\n")[0] ?? fullText).slice(0, 200);
+      setError(null);
+      startTransition(async () => {
+        const result = await onFileRequest({ title, body: fullText });
+        if (result.ok) {
+          setPlainValue("");
+          setRichValue(EMPTY_DOC);
+          richValueRef.current = EMPTY_DOC;
+          setIsRequest(false);
+        } else {
+          setError(result.error ?? "Something went wrong. Please try again.");
+        }
+      });
+      return;
+    }
+
     // F123: `richValueRef.current` is Tiptap's live JSONContent, whose
     // nested `attrs` objects cross the sendMessage server-action boundary
     // as temporary client references rather than plain data (React RSC
@@ -249,6 +292,18 @@ export function MessageComposer({
 
   return (
     <div ref={composerRef} className="border-t p-3">
+      {onFileRequest && (
+        <label className="mb-2 flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={isRequest}
+            onChange={(e) => setIsRequest(e.target.checked)}
+            disabled={disabled || isPending}
+            className="size-3.5 rounded border-input"
+          />
+          This is a request for new work
+        </label>
+      )}
       {pendingAttachments.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
           {pendingAttachments.map((a) => (
