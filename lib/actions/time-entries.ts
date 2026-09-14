@@ -17,7 +17,10 @@ import {
 } from "@/lib/auth/require-membership";
 import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
 import { isProjectVisibleToCaller } from "@/lib/actions/project-visibility";
-import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
+import {
+  revalidatePortalProject,
+  extractWorkspaceSlug,
+} from "@/lib/actions/portal-revalidate";
 
 export type LogTimeEntryResult =
   | {
@@ -122,9 +125,7 @@ export async function logTimeEntry(
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
   const workspaceSlugRaw = projectRow?.workspaces;
-  const workspaceSlug = Array.isArray(workspaceSlugRaw)
-    ? workspaceSlugRaw[0]?.slug
-    : workspaceSlugRaw?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Task not found." };
@@ -553,9 +554,7 @@ export async function editTimeEntry(
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
   const workspaceSlugRaw = projectRow?.workspaces;
-  const workspaceSlug = Array.isArray(workspaceSlugRaw)
-    ? workspaceSlugRaw[0]?.slug
-    : workspaceSlugRaw?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -735,9 +734,7 @@ export async function setTimeEntryCategory(
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
   const workspaceSlugRaw = projectRow?.workspaces;
-  const workspaceSlug = Array.isArray(workspaceSlugRaw)
-    ? workspaceSlugRaw[0]?.slug
-    : workspaceSlugRaw?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };
@@ -875,9 +872,7 @@ export async function deleteTimeEntry(
   const projectRow = Array.isArray(project) ? project[0] : project;
   const workspaceId = projectRow?.workspace_id;
   const workspaceSlugRaw = projectRow?.workspaces;
-  const workspaceSlug = Array.isArray(workspaceSlugRaw)
-    ? workspaceSlugRaw[0]?.slug
-    : workspaceSlugRaw?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspaceSlugRaw);
 
   if (!workspaceId) {
     return { ok: false, error: "Time entry not found." };

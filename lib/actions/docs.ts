@@ -44,16 +44,19 @@ function revalidateDocs() {
   }
 }
 
-// F004c (AS-006): unlike revalidateDocs' broad `/w` fallback (this file's
-// own documented reason: the action layer here never loads a
+// F004c/F004d (AS-006): unlike revalidateDocs' broad `/w` fallback (this
+// file's own documented reason: the action layer here never loads a
 // workspaceSlug), the portal path DOES need the real slug + projectId, so
 // this is a small extra lookup keyed off the doc's own row — one query,
-// gated on the doc's CURRENT `client_visible` value (checked AFTER the
-// write, so this also correctly fires when a share toggle just turned
-// visibility off, not only on).
+// gated on the doc's CURRENT `client_visible` value by default. Callers that
+// know the visibility flag just flipped FROM visible (e.g. unsharing a doc)
+// must pass `force: true` so the portal still revalidates even though the
+// doc's row now reads `client_visible: false` — otherwise the stale
+// "still shared" version would keep serving from cache.
 async function revalidatePortalForDoc(
   supabase: Awaited<ReturnType<typeof createClient>>,
   docId: string,
+  options: { force?: boolean } = {},
 ): Promise<void> {
   const { data: docRow, error } = await supabase
     .from("docs")
@@ -61,7 +64,7 @@ async function revalidatePortalForDoc(
     .eq("id", docId)
     .maybeSingle();
 
-  if (error || !docRow?.client_visible || !docRow.project_id) {
+  if (error || !docRow?.project_id || (!docRow.client_visible && !options.force)) {
     return;
   }
 
@@ -398,6 +401,17 @@ export async function setDocClientVisibility(
     return { ok: false, error: "You must be signed in." };
   }
 
+  // F004d (AS-006): read the PREVIOUS visibility before the write so we can
+  // still revalidate the portal on unshare — after the update the row will
+  // read `client_visible: false` and the lookup-based gate alone would skip
+  // the revalidate entirely, leaving the portal serving a stale shared copy.
+  const { data: previousRow } = await supabase
+    .from("docs")
+    .select("client_visible")
+    .eq("id", parsed.data.docId)
+    .maybeSingle();
+  const wasVisible = previousRow?.client_visible === true;
+
   const { error } = await supabase
     .from("docs")
     .update({ client_visible: parsed.data.visible, updated_by: user.id })
@@ -409,7 +423,9 @@ export async function setDocClientVisibility(
   }
 
   revalidateDocs();
-  await revalidatePortalForDoc(supabase, parsed.data.docId);
+  await revalidatePortalForDoc(supabase, parsed.data.docId, {
+    force: wasVisible || parsed.data.visible,
+  });
 
   return { ok: true, data: { docId: parsed.data.docId, clientVisible: parsed.data.visible } };
 }

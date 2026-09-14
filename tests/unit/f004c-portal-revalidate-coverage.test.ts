@@ -479,6 +479,58 @@ describe("F004c / AS-006: docs.ts's setDocClientVisibility revalidates the porta
       revalidatePath.mock.calls.some((call) => String(call[0]).startsWith("/portal/")),
     ).toBe(false);
   });
+
+  // F004d (AS-006 remediation): unsharing a previously-shared doc must still
+  // revalidate the portal, even though the row now reads
+  // `client_visible: false` AFTER the write — the pre-write read is what
+  // must gate this, not the post-write one.
+  function mockDocsSupabaseTransition(previousVisible: boolean, nextVisible: boolean) {
+    let selectCallCount = 0;
+    return {
+      auth: { getUser: vi.fn(async () => ({ data: { user: currentUser } })) },
+      from: vi.fn((table: string) => {
+        if (table === "docs") {
+          return {
+            update: vi.fn(() => ({
+              eq: vi.fn(async () => ({ error: null })),
+            })),
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => {
+                  selectCallCount += 1;
+                  const clientVisible = selectCallCount === 1 ? previousVisible : nextVisible;
+                  return {
+                    data: {
+                      project_id: PROJECT_ID,
+                      client_visible: clientVisible,
+                      projects: { workspaces: { slug: WORKSPACE_SLUG } },
+                    },
+                    error: null,
+                  };
+                }),
+              })),
+            })),
+          };
+        }
+        throw new Error(`unexpected table: ${table}`);
+      }),
+    };
+  }
+
+  it("test_AS_006_setDocClientVisibility_revalidates_portal_when_unsharing", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/supabase/server", () => ({
+      createClient: vi.fn(async () => mockDocsSupabaseTransition(true, false)),
+    }));
+    const { setDocClientVisibility } = await import("@/lib/actions/docs");
+
+    const result = await setDocClientVisibility("00000000-0000-4000-8000-0000000000d1", false);
+    expect(result.ok).toBe(true);
+    expect(revalidatePath).toHaveBeenCalledWith(
+      `/portal/${WORKSPACE_SLUG}/p/${PROJECT_ID}`,
+      "layout",
+    );
+  });
 });
 
 // ---------------------------------------------------------------------

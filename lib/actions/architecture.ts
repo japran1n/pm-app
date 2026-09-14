@@ -102,9 +102,7 @@ export async function createPage(
     | { slug: string }
     | { slug: string }[]
     | null;
-  const createPageWorkspaceSlug = Array.isArray(createPageWorkspace)
-    ? createPageWorkspace[0]?.slug
-    : createPageWorkspace?.slug;
+  const createPageWorkspaceSlug = extractWorkspaceSlug(createPageWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -303,9 +301,7 @@ export async function changePageKind(
   const changePageKindWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const changePageKindWorkspaceSlug = Array.isArray(changePageKindWorkspace)
-    ? changePageKindWorkspace[0]?.slug
-    : changePageKindWorkspace?.slug;
+  const changePageKindWorkspaceSlug = extractWorkspaceSlug(changePageKindWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -408,9 +404,7 @@ export async function renamePage(
   const renamePageWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const renamePageWorkspaceSlug = Array.isArray(renamePageWorkspace)
-    ? renamePageWorkspace[0]?.slug
-    : renamePageWorkspace?.slug;
+  const renamePageWorkspaceSlug = extractWorkspaceSlug(renamePageWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -509,9 +503,7 @@ export async function deletePage(
   const deletePageWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const deletePageWorkspaceSlug = Array.isArray(deletePageWorkspace)
-    ? deletePageWorkspace[0]?.slug
-    : deletePageWorkspace?.slug;
+  const deletePageWorkspaceSlug = extractWorkspaceSlug(deletePageWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -611,9 +603,7 @@ export async function createSection(
     | { slug: string }
     | { slug: string }[]
     | null;
-  const createSectionWorkspaceSlug = Array.isArray(createSectionWorkspace)
-    ? createSectionWorkspace[0]?.slug
-    : createSectionWorkspace?.slug;
+  const createSectionWorkspaceSlug = extractWorkspaceSlug(createSectionWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -791,9 +781,7 @@ export async function deleteSection(
   const deleteSectionWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const deleteSectionWorkspaceSlug = Array.isArray(deleteSectionWorkspace)
-    ? deleteSectionWorkspace[0]?.slug
-    : deleteSectionWorkspace?.slug;
+  const deleteSectionWorkspaceSlug = extractWorkspaceSlug(deleteSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -908,9 +896,7 @@ export async function renameSection(
   const renameSectionWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const renameSectionWorkspaceSlug = Array.isArray(renameSectionWorkspace)
-    ? renameSectionWorkspace[0]?.slug
-    : renameSectionWorkspace?.slug;
+  const renameSectionWorkspaceSlug = extractWorkspaceSlug(renameSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1022,7 +1008,7 @@ export async function reorderSections(
       }
     ).projects;
     const workspace = projects?.workspaces;
-    const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+    const slug = extractWorkspaceSlug(workspace);
     if (slug) {
       reorderSectionsPortalTargets.set(taskRow.project_id, slug);
     }
@@ -1165,9 +1151,7 @@ export async function moveSectionToPage(
   const moveSectionWorkspace = (
     sectionRow as { projects?: { workspaces?: { slug: string } | { slug: string }[] | null } }
   ).projects?.workspaces;
-  const moveSectionWorkspaceSlug = Array.isArray(moveSectionWorkspace)
-    ? moveSectionWorkspace[0]?.slug
-    : moveSectionWorkspace?.slug;
+  const moveSectionWorkspaceSlug = extractWorkspaceSlug(moveSectionWorkspace);
 
   const membership = await requireActiveMembership(admin, sectionWorkspaceId, user.id);
   if (!membership.ok || !canWrite({ role: membership.role })) {
@@ -1268,7 +1252,7 @@ export async function reorderPages(
       }
     ).projects;
     const workspace = projects?.workspaces;
-    const slug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+    const slug = extractWorkspaceSlug(workspace);
     if (slug) {
       reorderPagesPortalTargets.set(taskRow.project_id, slug);
     }
@@ -1402,11 +1386,9 @@ export async function createComponentFromSection(
   const createComponentFromSectionWorkspace = (
     taskRow as { projects: { workspaces: { slug: string } | { slug: string }[] | null } }
   ).projects.workspaces;
-  const createComponentFromSectionWorkspaceSlug = Array.isArray(
+  const createComponentFromSectionWorkspaceSlug = extractWorkspaceSlug(
     createComponentFromSectionWorkspace,
-  )
-    ? createComponentFromSectionWorkspace[0]?.slug
-    : createComponentFromSectionWorkspace?.slug;
+  );
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1552,9 +1534,7 @@ export async function createComponent(
     | { slug: string }
     | { slug: string }[]
     | null;
-  const createComponentWorkspaceSlug = Array.isArray(createComponentWorkspace)
-    ? createComponentWorkspace[0]?.slug
-    : createComponentWorkspace?.slug;
+  const createComponentWorkspaceSlug = extractWorkspaceSlug(createComponentWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -1698,9 +1678,7 @@ export async function linkComponentToSection(
     | { slug: string }
     | { slug: string }[]
     | null;
-  const linkComponentWorkspaceSlug = Array.isArray(linkComponentWorkspace)
-    ? linkComponentWorkspace[0]?.slug
-    : linkComponentWorkspace?.slug;
+  const linkComponentWorkspaceSlug = extractWorkspaceSlug(linkComponentWorkspace);
 
   const membership = await requireActiveMembership(
     admin,
@@ -1814,9 +1792,7 @@ export async function renameComponent(
       projects: { workspaces: { slug: string } | { slug: string }[] | null };
     }
   ).projects.workspaces;
-  const renameComponentWorkspaceSlug = Array.isArray(renameComponentWorkspace)
-    ? renameComponentWorkspace[0]?.slug
-    : renameComponentWorkspace?.slug;
+  const renameComponentWorkspaceSlug = extractWorkspaceSlug(renameComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -1921,9 +1897,7 @@ export async function unlinkComponentFromSection(
       projects: { workspaces: { slug: string } | { slug: string }[] | null };
     }
   ).projects.workspaces;
-  const unlinkComponentWorkspaceSlug = Array.isArray(unlinkComponentWorkspace)
-    ? unlinkComponentWorkspace[0]?.slug
-    : unlinkComponentWorkspace?.slug;
+  const unlinkComponentWorkspaceSlug = extractWorkspaceSlug(unlinkComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -2020,9 +1994,7 @@ export async function deleteComponent(
       projects: { workspaces: { slug: string } | { slug: string }[] | null };
     }
   ).projects.workspaces;
-  const deleteComponentWorkspaceSlug = Array.isArray(deleteComponentWorkspace)
-    ? deleteComponentWorkspace[0]?.slug
-    : deleteComponentWorkspace?.slug;
+  const deleteComponentWorkspaceSlug = extractWorkspaceSlug(deleteComponentWorkspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -2156,7 +2128,7 @@ export async function setPageClientVisibility(
   }
 
   const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
-  const workspaceSlug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
@@ -2312,7 +2284,7 @@ export async function setSectionClientVisibility(
   }
 
   const workspace = projectRow?.workspaces as { slug: string } | { slug: string }[] | null;
-  const workspaceSlug = Array.isArray(workspace) ? workspace[0]?.slug : workspace?.slug;
+  const workspaceSlug = extractWorkspaceSlug(workspace);
 
   const membership = await requireActiveMembership(admin, workspaceId, user.id);
 
