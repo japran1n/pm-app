@@ -24,6 +24,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -187,6 +188,10 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       projectId = proj.id;
       createdProjectIds.push(projectId);
+
+      // status_set_v2: this suite uses the legacy names literally, so
+      // seed them as project-owned columns (pattern A).
+      await seedLegacyStatusColumns(adminClient, projectId);
     });
 
     afterAll(async () => {

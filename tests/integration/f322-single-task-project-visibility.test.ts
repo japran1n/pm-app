@@ -33,6 +33,7 @@ import {
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { poolUserId } from "../helpers/auth";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -192,6 +193,12 @@ describe.skipIf(!haveAdminCreds)(
       }
       privateProjectId = privProj.id;
       createdProjectIds.push(privateProjectId);
+
+      // status_set_v2: this suite uses the legacy status names literally
+      // ("in_progress", "in_review"), so seed them as project-owned
+      // columns (pattern A).
+      await seedLegacyStatusColumns(adminClient, publicProjectId);
+      await seedLegacyStatusColumns(adminClient, privateProjectId);
 
       // Only insiderUserId has an explicit project_members row —
       // outsiderUserId is deliberately never added. ownerUserId needs none

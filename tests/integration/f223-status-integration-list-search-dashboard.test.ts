@@ -25,6 +25,10 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  seedLegacyStatusColumns,
+  pruneStatusColumnsExcept,
+} from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -168,8 +172,17 @@ describe.skipIf(!haveAdminCreds)(
       projectId = project.id;
       createdProjectIds.push(projectId);
 
-      // The creation trigger seeds the default four — RENAME two, ADD one,
-      // DELETE none (deleting is a separate feature's concern).
+      // status_set_v2: the trigger now seeds the 11-column v2 set, but
+      // this suite's renames below assume exactly the legacy four in
+      // position order — recreate that shape (pattern A + prune).
+      await seedLegacyStatusColumns(adminClient, projectId);
+      await pruneStatusColumnsExcept(adminClient, projectId, [
+        "todo",
+        "in_progress",
+        "in_review",
+        "done",
+      ]);
+
       const { data: seededCols, error: seededColsErr } = await adminClient
         .from("project_statuses")
         .select("id, name, position")
@@ -245,6 +258,15 @@ describe.skipIf(!haveAdminCreds)(
       }
       secondProjectId = secondProject.id;
       createdProjectIds.push(secondProjectId);
+
+      // status_set_v2: same legacy-four reshaping for the second project.
+      await seedLegacyStatusColumns(adminClient, secondProjectId);
+      await pruneStatusColumnsExcept(adminClient, secondProjectId, [
+        "todo",
+        "in_progress",
+        "in_review",
+        "done",
+      ]);
 
       const { data: secondCols, error: secondColsErr } = await adminClient
         .from("project_statuses")
@@ -409,10 +431,11 @@ describe.skipIf(!haveAdminCreds)(
         "Complete",
         "Blocked",
       ]);
-      // position order preserved (AS-416 continuity) — the seeded four
-      // default to 1000/2000/3000/4000 (seed_default_project_statuses),
-      // the added column sorts last at its own explicit position: 5000.
-      expect(columns.map((c) => c.position)).toEqual([1000, 2000, 3000, 4000, 5000]);
+      // position order preserved (AS-416 continuity) — the legacy four
+      // are seeded by tests/helpers/legacy-status-columns.ts at
+      // 100/200/300/400, the added column sorts last at its own explicit
+      // position: 5000.
+      expect(columns.map((c) => c.position)).toEqual([100, 200, 300, 400, 5000]);
       // Real colours/categories come through, not a fixed map.
       const shipped = columns.find((c) => c.name === "Shipped");
       expect(shipped?.category).toBe("done");

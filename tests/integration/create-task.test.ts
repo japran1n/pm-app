@@ -49,6 +49,7 @@ if (process.env.CI && !haveAdminCreds) {
 let currentTestUserId: string | null = null;
 
 import { vi } from "vitest";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 vi.mock("next/cache", () => ({
   revalidatePath: () => {
@@ -141,6 +142,10 @@ describe.skipIf(!haveAdminCreds)(
       }
       projectId = proj.id;
       createdProjectIds.push(projectId);
+
+      // status_set_v2 seeds v2 default columns; this suite asserts the
+      // legacy names literally, so seed them as project-owned columns.
+      await seedLegacyStatusColumns(adminClient, projectId);
     });
 
     beforeEach(() => {

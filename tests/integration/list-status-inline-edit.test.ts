@@ -32,6 +32,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -139,6 +140,10 @@ describe.skipIf(!haveAdminCreds)("List view status dropdown (F057: AS-093)", () 
       throw new Error(`Failed to seed project: ${projectErr?.message}`);
     }
     projectId = project.id;
+
+    // status_set_v2: this suite uses the legacy status names literally,
+    // so seed them as project-owned columns (pattern A).
+    await seedLegacyStatusColumns(adminClient, projectId);
 
     const { data: task, error: taskErr } = await adminClient
       .from("tasks")

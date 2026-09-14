@@ -188,16 +188,18 @@ describe.skipIf(!haveAdminCreds)(
       const { addColumn } = await import("@/lib/actions/statuses");
       await signInAs(OWNER);
 
+      // status_set_v2: "Blocked" is now one of the seeded v2 defaults, so
+      // add a name that is not in the default set.
       const result = await addColumn({
         projectId,
-        name: "Blocked",
+        name: "On Hold",
         color: "#ef4444",
         category: "in_progress",
       });
 
       expect(result.ok).toBe(true);
       if (!result.ok) return;
-      expect(result.data.name).toBe("Blocked");
+      expect(result.data.name).toBe("On Hold");
       expect(result.data.color).toBe("#ef4444");
       expect(result.data.category).toBe("in_progress");
 
@@ -206,7 +208,7 @@ describe.skipIf(!haveAdminCreds)(
         .select("id, name, color, category")
         .eq("id", result.data.id)
         .single();
-      expect(row?.name).toBe("Blocked");
+      expect(row?.name).toBe("On Hold");
       expect(row?.color).toBe("#ef4444");
       expect(row?.category).toBe("in_progress");
     });
@@ -447,14 +449,15 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       createdProjectIds.push(proj.id);
 
-      // Delete three of the seeded default four, leaving exactly one.
+      // Delete all but one of the seeded defaults (status_set_v2: 11
+      // columns), leaving exactly one.
       const { data: statuses } = await adminClient
         .from("project_statuses")
         .select("id")
         .eq("project_id", proj.id)
         .order("position", { ascending: true });
-      expect(statuses?.length).toBe(4);
-      const toDelete = (statuses ?? []).slice(0, 3).map((s) => s.id);
+      expect(statuses?.length).toBe(11);
+      const toDelete = (statuses ?? []).slice(0, -1).map((s) => s.id);
       const { error: deleteErr } = await adminClient
         .from("project_statuses")
         .delete()
@@ -501,7 +504,8 @@ describe.skipIf(!haveAdminCreds)(
         .select("id")
         .eq("project_id", proj.id)
         .order("position", { ascending: true });
-      const toDelete = (statuses ?? []).slice(0, 3).map((s) => s.id);
+      // status_set_v2: delete all seeded defaults but one.
+      const toDelete = (statuses ?? []).slice(0, -1).map((s) => s.id);
       await adminClient.from("project_statuses").delete().in("id", toDelete);
 
       const { data: remaining } = await adminClient
@@ -596,7 +600,8 @@ describe.skipIf(!haveAdminCreds)(
         .from("project_statuses")
         .select("id")
         .eq("project_id", proj.id);
-      expect(seeded?.length).toBe(4);
+      // status_set_v2: default seeded set is 11 columns.
+      expect(seeded?.length).toBe(11);
 
       // Hard delete the project itself (not via createdProjectIds/afterAll
       // — this IS the assertion, so it must run and be checked here, not
@@ -642,7 +647,8 @@ describe.skipIf(!haveAdminCreds)(
         .select("id")
         .eq("project_id", proj.id)
         .order("position", { ascending: true });
-      const toDelete = (statuses ?? []).slice(0, 3).map((s) => s.id);
+      // status_set_v2: delete all seeded defaults but one.
+      const toDelete = (statuses ?? []).slice(0, -1).map((s) => s.id);
       await adminClient.from("project_statuses").delete().in("id", toDelete);
 
       const { data: remaining } = await adminClient

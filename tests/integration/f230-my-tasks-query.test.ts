@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -199,6 +200,12 @@ describe.skipIf(!haveAdminCreds)(
       archivedProjectId = archivedProject.id;
       createdProjectIds.push(archivedProjectId);
 
+      // status_set_v2: this suite uses legacy names ("todo") literally, so
+      // seed the legacy four on each project (pattern A).
+      await seedLegacyStatusColumns(adminClient, visibleProjectId);
+      await seedLegacyStatusColumns(adminClient, privateProjectId);
+      await seedLegacyStatusColumns(adminClient, archivedProjectId);
+
       // Give the private project's OTHER member an explicit membership row
       // (irrelevant to `memberUserId`, just realistic seed data).
       await adminClient.from("project_members").insert({
@@ -282,6 +289,10 @@ describe.skipIf(!haveAdminCreds)(
         .select("id")
         .eq("project_id", visibleProjectId)
         .eq("category", "done")
+        // status_set_v2: multiple done-category columns now exist; pick
+        // the first by position.
+        .order("position", { ascending: true })
+        .limit(1)
         .single();
       if (doneColErr || !doneCol) {
         throw new Error(`Failed to find seeded done column: ${doneColErr?.message}`);

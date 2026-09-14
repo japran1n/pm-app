@@ -34,6 +34,13 @@ const taskDetailSheetSource = readFileSync(
   "utf-8",
 );
 
+const taskDetailSectionsSource = readFileSync(
+  fileURLToPath(
+    new URL("../../components/task/task-detail-sections.tsx", import.meta.url),
+  ),
+  "utf-8",
+);
+
 const MEMBERS: TimeTrackingMember[] = [
   { userId: "u1", email: "alice@example.com", name: "Alice Anderson" },
 ];
@@ -52,11 +59,15 @@ function renderSheet(timeEntries: TimeEntry[]) {
 
 describe("TaskDetailSheet wires timeEntries into TimeTracking (AS-171)", () => {
   it("imports and renders <TimeTracking> with the timeEntries prop, inside the sheet", () => {
-    expect(taskDetailSheetSource).toMatch(
-      /import\s*\{\s*\n?\s*TimeTracking,/,
-    );
-    expect(taskDetailSheetSource).toMatch(/<TimeTracking/);
+    // ARCH-005: the sheet's feature panels were extracted into
+    // TaskDetailSections — the sheet threads timeEntries through it, and
+    // the sections component imports and renders <TimeTracking>.
     expect(taskDetailSheetSource).toMatch(/timeEntries=\{timeEntries\}/);
+    expect(taskDetailSectionsSource).toMatch(
+      /import\s*\{[\s\S]*?\bTimeTracking,/,
+    );
+    expect(taskDetailSectionsSource).toMatch(/<TimeTracking/);
+    expect(taskDetailSectionsSource).toMatch(/timeEntries=\{timeEntries\}/);
   });
 });
 

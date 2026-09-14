@@ -172,15 +172,21 @@ describe.skipIf(!haveAdminCreds)(
       // project creation; this adds one more so the test proves createTask
       // resolves against ANY real project_statuses row, not just the
       // original four literal values.
+      // status_set_v2 also seeds an "In Design" default column, so upsert
+      // on (project_id, name) instead of a bare insert (same fix as
+      // f221-board-custom-columns.test.ts).
       const { error: columnErr } = await adminClient
         .from("project_statuses")
-        .insert({
-          project_id: projectId,
-          name: customColumnName,
-          color: "#a855f7",
-          category: "in_progress",
-          position: 1500,
-        });
+        .upsert(
+          {
+            project_id: projectId,
+            name: customColumnName,
+            color: "#a855f7",
+            category: "in_progress",
+            position: 1500,
+          },
+          { onConflict: "project_id,name" },
+        );
       if (columnErr) {
         throw new Error(`Failed to seed custom column: ${columnErr.message}`);
       }

@@ -21,6 +21,7 @@ import {
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { poolUserId, getPoolSession } from "../helpers/auth";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -52,6 +53,22 @@ if (process.env.CI && !haveAdminCreds) {
 }
 
 const DEFAULT_FOUR = ["todo", "in_progress", "in_review", "done"];
+
+// status_set_v2 (20261125010000): the default seeded column set for new
+// projects is now the 11-column v2 set, in position order.
+const DEFAULT_V2 = [
+  "Backlog",
+  "To Do",
+  "Blocked",
+  "Canceled",
+  "In Design",
+  "In Dev",
+  "QA by Dev",
+  "QA by Design",
+  "Awaiting Client",
+  "Approved",
+  "Completed",
+];
 
 describe.skipIf(!haveAdminCreds)(
   "F218 project_statuses (AS-403, AS-407, AS-408)",
@@ -142,7 +159,7 @@ describe.skipIf(!haveAdminCreds)(
       }
     });
 
-    it("AS-407: a new project starts with the default four columns", async () => {
+    it("AS-407: a new project starts with the default seeded columns (v2 set)", async () => {
       const { data: proj, error } = await adminClient
         .from("projects")
         .insert({
@@ -165,9 +182,11 @@ describe.skipIf(!haveAdminCreds)(
         .order("position", { ascending: true });
 
       expect(statusErr).toBeNull();
-      expect(statuses?.map((s) => s.name)).toEqual(DEFAULT_FOUR);
-      expect(statuses?.find((s) => s.name === "done")?.category).toBe("done");
-      expect(statuses?.find((s) => s.name === "todo")?.category).toBe(
+      expect(statuses?.map((s) => s.name)).toEqual(DEFAULT_V2);
+      expect(statuses?.find((s) => s.name === "Completed")?.category).toBe(
+        "done",
+      );
+      expect(statuses?.find((s) => s.name === "To Do")?.category).toBe(
         "not_started",
       );
     });
@@ -219,7 +238,8 @@ describe.skipIf(!haveAdminCreds)(
 
       expect(aStatuses?.map((s) => s.name)).toContain("blocked");
       expect(bStatuses?.map((s) => s.name)).not.toContain("blocked");
-      expect(bStatuses?.length).toBe(4);
+      // status_set_v2: default seeded set is 11 columns.
+      expect(bStatuses?.length).toBe(DEFAULT_V2.length);
     });
 
     it("AS-408: existing tasks migrate to the default columns with status preserved exactly", async () => {
@@ -235,6 +255,10 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       if (!proj) throw new Error("Failed to create test project");
       createdProjectIds.push(proj.id);
+
+      // status_set_v2: this test asserts the legacy names literally, so
+      // seed them as project-owned columns (pattern A).
+      await seedLegacyStatusColumns(adminClient, proj.id);
 
       const inserted: Record<string, string> = {};
       for (const status of DEFAULT_FOUR) {
@@ -290,6 +314,9 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       if (!proj) throw new Error("Failed to create test project");
       createdProjectIds.push(proj.id);
+
+      // status_set_v2: legacy names used literally below (pattern A).
+      await seedLegacyStatusColumns(adminClient, proj.id);
 
       const { data: task } = await adminClient
         .from("tasks")

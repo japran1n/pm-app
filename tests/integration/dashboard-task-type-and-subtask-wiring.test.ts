@@ -212,13 +212,17 @@ describe.skipIf(!haveAdminCreds)(
       expect(withType?.taskType?.color).toBe("#f97316");
     });
 
-    it("test_AS_dashboard_type_column_getWorkspaceListTasks_returns_null_taskType_when_unset", async () => {
+    it("test_AS_dashboard_type_column_getWorkspaceListTasks_returns_default_delivery_taskType_when_unset", async () => {
       const { getWorkspaceListTasks } = await import("@/lib/queries/tasks");
       const rows = await getWorkspaceListTasks(workspaceId);
 
       const parent = rows.find((t) => t.id === parentTaskId);
       expect(parent).toBeDefined();
-      expect(parent?.taskType ?? null).toBe(null);
+      // F116 (20261104010000): tasks inserted without a task_type_id get
+      // the workspace's system 'delivery' type via the BEFORE INSERT
+      // trigger — "unset" no longer round-trips as null.
+      expect(parent?.taskType?.name).toBe("Delivery");
+      expect(parent?.taskType?.id).not.toBe(taskTypeId);
     });
 
     it("test_AS_dashboard_subtask_nesting_getWorkspaceListTasks_carries_parentTaskId_through_into_TaskCardTask", async () => {

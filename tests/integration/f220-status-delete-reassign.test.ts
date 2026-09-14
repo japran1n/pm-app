@@ -407,7 +407,8 @@ describe.skipIf(!haveAdminCreds)(
 
     it("AS-415: the last-column guard still holds when going through the reassign-and-delete RPC", async () => {
       const created = await createProjectWithFourColumns("Lone Column Target");
-      const toDelete = created.statuses.slice(0, 3).map((s) => s.id);
+      // status_set_v2: delete all seeded defaults but one.
+      const toDelete = created.statuses.slice(0, -1).map((s) => s.id);
       const { error: deleteErr } = await adminClient
         .from("project_statuses")
         .delete()
@@ -458,7 +459,8 @@ describe.skipIf(!haveAdminCreds)(
 
     it("regression: hard-deleting a project with seeded columns still succeeds (the new RPC/migration did not reintroduce the cascade-delete blocker)", async () => {
       const created = await createProjectWithFourColumns("Hard Delete Target");
-      expect(created.statuses.length).toBe(4);
+      // status_set_v2: default seeded set is 11 columns.
+      expect(created.statuses.length).toBe(11);
 
       const { error: deleteProjectError } = await adminClient
         .from("projects")

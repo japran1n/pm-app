@@ -19,6 +19,7 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 import { poolUserId, getPoolSession } from "../helpers/auth";
 
 function loadDotEnv() {
@@ -150,11 +151,16 @@ describe.skipIf(!haveAdminCreds)(
       projectId = proj.id;
       createdProjectIds.push(projectId);
 
+      // status_set_v2: the fixtures below use the legacy "todo" name
+      // literally, so seed the legacy columns (pattern A).
+      await seedLegacyStatusColumns(adminClient, projectId);
+
+      // tasks has author_id (not created_by).
       const { data: tasks, error: tasksErr } = await adminClient
         .from("tasks")
         .insert([
-          { project_id: projectId, title: "Task A", status: "todo", created_by: ownerUserId },
-          { project_id: projectId, title: "Task B", status: "todo", created_by: ownerUserId },
+          { project_id: projectId, title: "Task A", status: "todo", author_id: ownerUserId },
+          { project_id: projectId, title: "Task B", status: "todo", author_id: ownerUserId },
         ])
         .select("id");
       if (tasksErr || !tasks) throw new Error(`Failed to create tasks: ${tasksErr?.message}`);

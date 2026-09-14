@@ -36,6 +36,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 import {
   createClient as createSupabaseJsClient,
   type SupabaseClient,
@@ -159,6 +160,10 @@ describe.skipIf(!haveAdminCreds)(
       projectId = proj.id;
       projectKey = proj.key;
       createdProjectIds.push(projectId);
+
+      // status_set_v2: this suite uses the legacy status names literally,
+      // so seed them as project-owned columns (pattern A).
+      await seedLegacyStatusColumns(adminClient, projectId);
 
       memberClient = createSupabaseJsClient(SUPABASE_URL!, PUBLISHABLE_KEY!);
       const { error: signInErr } = await memberClient.auth.signInWithPassword({

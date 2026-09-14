@@ -29,6 +29,7 @@ import {
   createClient as createSupabaseJsClient,
   type SupabaseClient,
 } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -162,6 +163,11 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       if (activeProjectErr || !activeProject) throw new Error(`Failed to seed active project: ${activeProjectErr?.message}`);
       activeProjectId = activeProject.id;
+
+      // status_set_v2: the AS-034 fixture uses the legacy "todo"/"done"
+      // names literally, so seed them as project-owned columns (pattern A)
+      // so done-detection resolves against a real "done"-category column.
+      await seedLegacyStatusColumns(adminClient, activeProjectId);
 
       const { data: deletedProject, error: deletedProjectErr } = await adminClient
         .from("projects")

@@ -32,6 +32,10 @@ import {
   vi,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  seedLegacyStatusColumns,
+  pruneStatusColumnsExcept,
+} from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -285,6 +289,25 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       createdProjectIds.push(proj.id);
 
+      // status_set_v2: the seeded defaults are now the 11-column v2 set.
+      // This test renames the legacy four literally, so recreate that
+      // shape (pattern A + prune). The helper seeds in_review with
+      // #8b5cf6, which is not in the approved column palette updateColumn
+      // enforces — restore the recoloured default (#d97706) so the
+      // renames below go through the real action.
+      await seedLegacyStatusColumns(adminClient, proj.id);
+      await pruneStatusColumnsExcept(adminClient, proj.id, [
+        "todo",
+        "in_progress",
+        "in_review",
+        "done",
+      ]);
+      await adminClient
+        .from("project_statuses")
+        .update({ color: "#d97706" })
+        .eq("project_id", proj.id)
+        .eq("name", "in_review");
+
       const defaultColumns = await getProjectColumns(proj.id);
       expect(defaultColumns.length).toBe(4);
       const byName = new Map(defaultColumns.map((c) => [c.name, c]));
@@ -342,7 +365,8 @@ describe.skipIf(!haveAdminCreds)(
         .from("project_statuses")
         .select("id")
         .eq("project_id", cascadeProjectId);
-      expect(seededColumns?.length).toBe(4);
+      // status_set_v2: default seeded set is 11 columns.
+      expect(seededColumns?.length).toBe(11);
 
       const { error: deleteErr } = await adminClient
         .from("projects")

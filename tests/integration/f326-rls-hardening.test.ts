@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { poolUserId, getPoolSession } from "../helpers/auth";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -121,6 +122,10 @@ describe.skipIf(!haveAdminCreds)("F326 RLS hardening (AS-414, AS-434)", () => {
     if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
     projectId = proj.id;
     createdProjectIds.push(projectId);
+
+    // status_set_v2: this suite looks up columns by the legacy names
+    // ("todo", "in_review") literally, so seed them (pattern A).
+    await seedLegacyStatusColumns(adminClient, projectId);
 
     // Guest needs an explicit project_members row to see a workspace-
     // visible project's columns at all -- give it one so the SELECT

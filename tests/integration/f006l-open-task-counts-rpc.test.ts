@@ -19,6 +19,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 import {
   createClient as createSupabaseJsClient,
   type SupabaseClient,
@@ -126,6 +127,11 @@ describe.skipIf(!haveCreds)("get_open_task_counts RPC (F006l: AS-007/B2)", () =>
       .single();
     if (disabledErr || !disabledProject) throw new Error(`disabled project: ${disabledErr?.message}`);
     disabledProjectId = disabledProject.id;
+
+    // status_set_v2: the fixtures below use the legacy "todo" name
+    // literally, so seed the legacy columns on both projects (pattern A).
+    await seedLegacyStatusColumns(admin, enabledProjectId);
+    await seedLegacyStatusColumns(admin, disabledProjectId);
 
     // Two open (non-done) tasks on the disabled project: one client-visible,
     // one not.

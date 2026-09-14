@@ -15,6 +15,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -194,12 +195,23 @@ describe.skipIf(!haveAdminCreds)(
         .from("project_members")
         .insert({ project_id: privateProjectId, user_id: viewerUserId });
 
-      // Rename project A's done column.
+      // status_set_v2: this suite uses legacy names ("todo",
+      // "in_progress") literally, so seed the legacy four on each
+      // project (pattern A).
+      await seedLegacyStatusColumns(adminClient, projectAId);
+      await seedLegacyStatusColumns(adminClient, projectBId);
+      await seedLegacyStatusColumns(adminClient, archivedProjectId);
+      await seedLegacyStatusColumns(adminClient, privateProjectId);
+
+      // Rename project A's done column (first by position — v2 also
+      // seeds done-category columns).
       const { data: doneColA, error: doneColAErr } = await adminClient
         .from("project_statuses")
         .select("id")
         .eq("project_id", projectAId)
         .eq("category", "done")
+        .order("position", { ascending: true })
+        .limit(1)
         .single();
       if (doneColAErr || !doneColA) throw new Error(`Failed to find project A done column: ${doneColAErr?.message}`);
       await adminClient.from("project_statuses").update({ name: "Shipped" }).eq("id", doneColA.id);
