@@ -24,6 +24,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { isClient } from "@/lib/auth/permissions";
@@ -31,6 +32,7 @@ import { addComment } from "@/lib/actions/comments";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 type PortalApprovalResult =
   | { ok: true; data: { taskId: string } }
@@ -147,10 +149,7 @@ async function notifyPortalTaskDecision(params: {
 }
 
 async function requireClientCaller(workspaceId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false as const, error: "You must be signed in." };
@@ -360,10 +359,7 @@ const decideApprovalSchema = z
     }
   });
 
-export type DecideApprovalResult =
-  | {
-      ok: true;
-      data: {
+export type DecideApprovalResult = ActionResult<{
         requestId: string;
         state: string;
         decidedAt: string;
@@ -373,9 +369,7 @@ export type DecideApprovalResult =
         // portal card SAY the work was created without ever forming a
         // link to it (approval-card.tsx never renders it as a link).
         resultingTaskId: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 function friendlyDecideApprovalError(message: string): string {
   // The RPC's own exception text (20260916010000/20260920010000) is
@@ -443,9 +437,7 @@ export async function decideApproval(
   };
 }
 
-export type NudgeApprovalOwnerResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type NudgeApprovalOwnerResult = ActionOutcome;
 
 const nudgeApprovalOwnerSchema = z.object({
   requestId: z.string().uuid("Invalid approval request."),
@@ -478,10 +470,7 @@ export async function nudgeApprovalOwner(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid request." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

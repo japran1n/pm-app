@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
+import {
+  extensionOptions,
+  withExtensionAuth,
+  type ExtensionAuthContext,
+} from "@/lib/api/extension-auth";
 // F334 (M17 scrutiny BLOCKER-3): import the plain, non-"use server" upload
 // implementation directly, NOT through lib/actions/attachments.ts. That
 // file's only exported upload surface is now the FormData-taking
@@ -49,115 +53,72 @@ import { MAX_ATTACHMENT_SIZE_BYTES } from "@/lib/validation/attachments";
 // same reason every other boundary in this mission has one: a buggy or
 // bypassed client must not be able to smuggle an oversized file through.
 //
-// Auth: identical bearer-JWT pattern to F292/F293's routes (duplicated, not
-// shared — same rationale documented in F293's context route).
-// CORS: identical EXTENSION_ID-scoped allowlist as F292/F293's routes.
+// Auth / CORS / rate limiting: shared withExtensionAuth wrapper
+// (lib/api/extension-auth.ts) — the previously-triplicated bearer-JWT +
+// EXTENSION_ID CORS preamble (audit ARCH-008), plus a per-user limit of
+// 30 uploads per hour (audit ARCH-007).
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = process.env.EXTENSION_ID
-    ? `chrome-extension://${process.env.EXTENSION_ID}`
-    : null;
+const METHODS = "POST, OPTIONS";
 
-  if (!allowedOrigin || origin !== allowedOrigin) {
-    return {};
-  }
+export const OPTIONS = extensionOptions(METHODS);
 
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    Vary: "Origin",
-  };
-}
+export const POST = withExtensionAuth(
+  {
+    methods: METHODS,
+    rateLimit: { bucket: "attachments_post", limit: 30, windowSeconds: 3600 },
+  },
+  async (request: NextRequest, { user, headers }: ExtensionAuthContext) => {
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return NextResponse.json(
+        { error: "Request body must be multipart form data." },
+        { status: 400, headers },
+      );
+    }
 
-export async function OPTIONS(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
-}
+    const taskId = formData.get("taskId");
+    const file = formData.get("file");
 
-export async function POST(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  const headers = corsHeaders(origin);
+    if (typeof taskId !== "string" || !(file instanceof File)) {
+      return NextResponse.json(
+        { error: "Invalid upload request." },
+        { status: 400, headers },
+      );
+    }
 
-  const authHeader = request.headers.get("authorization") ?? "";
-  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const token = bearerMatch?.[1]?.trim();
+    // AS-566: reject an oversized file with a message naming the actual
+    // limit, before ever calling Storage — same early-return convention
+    // uploadAttachmentForUser's Zod schema already enforces (this explicit
+    // check here just gives a clearer, faster-failing message at the route
+    // boundary; uploadAttachmentForUser re-validates the same limit itself).
+    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+      return NextResponse.json(
+        {
+          error: `File must be ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB or smaller.`,
+        },
+        { status: 400, headers },
+      );
+    }
 
-  if (!token) {
+    const arrayBuffer = await file.arrayBuffer();
+
+    const result = await uploadAttachmentForUser(user.id, {
+      taskId,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      arrayBuffer,
+    });
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400, headers });
+    }
+
     return NextResponse.json(
-      { error: "Missing or invalid Authorization header." },
-      { status: 401, headers },
+      { attachment: result.data },
+      { status: 201, headers },
     );
-  }
-
-  const authClient = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-
-  const {
-    data: { user },
-    error: authError,
-  } = await authClient.auth.getUser(token);
-
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: "Invalid or expired session. Reconnect the extension." },
-      { status: 401, headers },
-    );
-  }
-
-  let formData: FormData;
-  try {
-    formData = await request.formData();
-  } catch {
-    return NextResponse.json(
-      { error: "Request body must be multipart form data." },
-      { status: 400, headers },
-    );
-  }
-
-  const taskId = formData.get("taskId");
-  const file = formData.get("file");
-
-  if (typeof taskId !== "string" || !(file instanceof File)) {
-    return NextResponse.json(
-      { error: "Invalid upload request." },
-      { status: 400, headers },
-    );
-  }
-
-  // AS-566: reject an oversized file with a message naming the actual
-  // limit, before ever calling Storage — same early-return convention
-  // uploadAttachmentForUser's Zod schema already enforces (this explicit
-  // check here just gives a clearer, faster-failing message at the route
-  // boundary; uploadAttachmentForUser re-validates the same limit itself).
-  if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
-    return NextResponse.json(
-      {
-        error: `File must be ${MAX_ATTACHMENT_SIZE_BYTES / (1024 * 1024)}MB or smaller.`,
-      },
-      { status: 400, headers },
-    );
-  }
-
-  const arrayBuffer = await file.arrayBuffer();
-
-  const result = await uploadAttachmentForUser(user.id, {
-    taskId,
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type,
-    arrayBuffer,
-  });
-
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 400, headers });
-  }
-
-  return NextResponse.json(
-    { attachment: result.data },
-    { status: 201, headers },
-  );
-}
+  },
+);

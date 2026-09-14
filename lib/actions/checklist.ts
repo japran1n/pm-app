@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addChecklistItemSchema,
@@ -14,6 +14,7 @@ import {
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { calculatePosition } from "@/lib/board/position";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F152: checklist item actions (AS-270, AS-271).
 //
@@ -149,19 +150,14 @@ async function revalidateWorkspace(
   }
 }
 
-export type AddChecklistItemResult =
-  | {
-      ok: true;
-      data: {
+export type AddChecklistItemResult = ActionResult<{
         id: string;
         taskId: string;
         content: string;
         isChecked: boolean;
         position: number;
         createdAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Adds a checklist item to a task (write-path setup for AS-269 — the read
 // side lives in F153's checklist UI). Pattern mirrors addComment
@@ -184,10 +180,7 @@ export async function addChecklistItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -290,17 +283,12 @@ export async function addChecklistItem(
   };
 }
 
-export type ToggleChecklistItemResult =
-  | {
-      ok: true;
-      data: {
+export type ToggleChecklistItemResult = ActionResult<{
         id: string;
         isChecked: boolean;
         checkedBy: string | null;
         checkedAt: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Checks/unchecks a checklist item (AS-270: must persist immediately and
 // survive a reload). This is the highest-frequency mutation in this
@@ -334,10 +322,7 @@ export async function toggleChecklistItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -413,9 +398,7 @@ export async function toggleChecklistItem(
   };
 }
 
-export type RenameChecklistItemResult =
-  | { ok: true; data: { id: string; content: string } }
-  | { ok: false; error: string };
+export type RenameChecklistItemResult = ActionResult<{ id: string; content: string }>;
 
 // Renames (edits the text of) a checklist item (AS-271).
 export async function renameChecklistItem(
@@ -432,10 +415,7 @@ export async function renameChecklistItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -490,9 +470,7 @@ export async function renameChecklistItem(
   return { ok: true, data: { id: updated.id, content: updated.content } };
 }
 
-export type ReorderChecklistItemResult =
-  | { ok: true; data: { id: string; position: number } }
-  | { ok: false; error: string };
+export type ReorderChecklistItemResult = ActionResult<{ id: string; position: number }>;
 
 // Persists a checklist item's new `position` after a drag-and-drop
 // reorder (AS-271). Mirrors reorderTask's division of responsibility
@@ -519,10 +497,7 @@ export async function reorderChecklistItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {
@@ -575,9 +550,7 @@ export async function reorderChecklistItem(
   return { ok: true, data: { id: updated.id, position: updated.position } };
 }
 
-export type DeleteChecklistItemResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteChecklistItemResult = ActionResult<{ id: string }>;
 
 // Hard-deletes a checklist item (AS-271). checklist_items has no
 // deleted_at column (F151's migration deliberately omitted one), so
@@ -602,10 +575,7 @@ export async function deleteChecklistItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return {

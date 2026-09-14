@@ -271,6 +271,16 @@ function ScopeTab({
   canManage: boolean;
 }) {
   const [items, setItems] = useState(initialItems);
+  // ARCH-009: re-sync from fresh server props the instant a
+  // revalidate/router.refresh() delivers them, using the repo's render-time
+  // "adjusting state when a prop changes" convention (same as
+  // components/workspace/task-type-manager.tsx) — previously this tab kept
+  // showing the first render's snapshot forever.
+  const [syncedInitialItems, setSyncedInitialItems] = useState(initialItems);
+  if (initialItems !== syncedInitialItems) {
+    setSyncedInitialItems(initialItems);
+    setItems(initialItems);
+  }
   const [newTitle, setNewTitle] = useState("");
   const [isAdding, startAddTransition] = useTransition();
 
@@ -793,6 +803,13 @@ function AssumptionsTab({
   canManage: boolean;
 }) {
   const [assumptions, setAssumptions] = useState(initialAssumptions);
+  // ARCH-009: same render-time re-sync convention as ScopeTab above.
+  const [syncedInitialAssumptions, setSyncedInitialAssumptions] =
+    useState(initialAssumptions);
+  if (initialAssumptions !== syncedInitialAssumptions) {
+    setSyncedInitialAssumptions(initialAssumptions);
+    setAssumptions(initialAssumptions);
+  }
   const [newText, setNewText] = useState("");
   const [isAdding, startAddTransition] = useTransition();
   const [quoteRequest, setQuoteRequest] = useState<TeamClientRequest | null>(null);

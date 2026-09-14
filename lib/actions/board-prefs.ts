@@ -18,7 +18,7 @@ import { logger } from "@/lib/observability/logger";
 // persisted grouping/collapse state instead of flashing the default and
 // then correcting itself client-side.
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   SWIMLANE_GROUP_BY_PREF_VALUES,
   type SwimlaneGroupByPref,
@@ -43,10 +43,7 @@ const DEFAULT_PREFS: BoardSwimlanePrefs = {
 export async function getBoardSwimlanePrefs(
   projectId: string,
 ): Promise<GetBoardSwimlanePrefsResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -100,10 +97,7 @@ export async function upsertBoardSwimlanePrefs(
     return { ok: false, error: "Nothing to update." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

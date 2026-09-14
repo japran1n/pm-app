@@ -26,9 +26,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionOutcome, type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { writeAudit } from "@/lib/activity/audit";
 import {
   createMetricSchema,
@@ -187,7 +187,7 @@ async function revalidateMeasurementSettings(workspaceSlug: string, projectId: s
 // createMetric
 // ---------------------------------------------------------------------
 
-export type MetricActionResult = { ok: true; data: ProjectMetric } | { ok: false; error: string };
+export type MetricActionResult = ActionResult<ProjectMetric>;
 
 const createMetricImpl = withAuthz(
   createMetricSchema,
@@ -492,9 +492,7 @@ export async function restoreMetric(input: {
 // reorderMetrics — same plain-integer swap as reorderDeliverables.
 // ---------------------------------------------------------------------
 
-export type ReorderMetricResult =
-  | { ok: true; data: { moved: { id: string; position: number }; swappedWith: { id: string; position: number } | null } }
-  | { ok: false; error: string };
+export type ReorderMetricResult = ActionResult<{ moved: { id: string; position: number }; swappedWith: { id: string; position: number } | null }>;
 
 const reorderMetricImpl = withAuthz(
   reorderMetricSchema,
@@ -586,7 +584,7 @@ function toSnapshotData(row: {
   };
 }
 
-export type SnapshotActionResult = { ok: true; data: MetricSnapshot } | { ok: false; error: string };
+export type SnapshotActionResult = ActionResult<MetricSnapshot>;
 
 const createSnapshotImpl = withAuthz(
   createSnapshotSchema,
@@ -804,9 +802,7 @@ export async function restoreSnapshot(input: {
 // framing.
 // ---------------------------------------------------------------------
 
-export type FreezeBaselineResult =
-  | { ok: true; data: { projectId: string; baselineFrozenAt: string } }
-  | { ok: false; error: string };
+export type FreezeBaselineResult = ActionResult<{ projectId: string; baselineFrozenAt: string }>;
 
 const freezeBaselineImpl = withAuthz(
   freezeBaselineSchema,
@@ -923,9 +919,7 @@ async function loadImprovementExtra(
   };
 }
 
-export type ImprovementActionResult =
-  | { ok: true; data: ProjectImprovement }
-  | { ok: false; error: string };
+export type ImprovementActionResult = ActionResult<ProjectImprovement>;
 
 const createImprovementImpl = withAuthz(
   createImprovementSchema,
@@ -1037,9 +1031,7 @@ export async function updateImprovement(input: {
   return updateImprovementImpl(input);
 }
 
-export type DeleteImprovementResult =
-  | { ok: true; data: { id: string; restore: ProjectImprovement } }
-  | { ok: false; error: string };
+export type DeleteImprovementResult = ActionResult<{ id: string; restore: ProjectImprovement }>;
 
 const deleteImprovementImpl = withAuthz(
   deleteImprovementSchema,
@@ -1246,9 +1238,7 @@ export async function reorderImprovements(
 // task attachments.
 // ---------------------------------------------------------------------
 
-export type UploadImprovementImageResult =
-  | { ok: true; data: ProjectImprovement }
-  | { ok: false; error: string };
+export type UploadImprovementImageResult = ActionResult<ProjectImprovement>;
 
 export async function uploadImprovementImage(formData: FormData): Promise<UploadImprovementImageResult> {
   const improvementIdRaw = formData.get("improvementId");
@@ -1276,10 +1266,7 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
     return { ok: false, error: "That file type isn't supported." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to upload a file." };
   }
@@ -1357,9 +1344,7 @@ export async function uploadImprovementImage(formData: FormData): Promise<Upload
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
-export type GetImprovementImageSignedUrlResult =
-  | { ok: true; signedUrl: string }
-  | { ok: false; error: string };
+export type GetImprovementImageSignedUrlResult = ActionOutcome<{ signedUrl: string }>;
 
 export async function getImprovementImageSignedUrl(
   improvementId: string,
@@ -1372,10 +1357,7 @@ export async function getImprovementImageSignedUrl(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid improvement." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in." };
   }

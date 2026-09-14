@@ -7,11 +7,13 @@
 
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { serverEnv } from "@/lib/env";
 
 export function createAdminClient() {
+  const env = serverEnv();
   return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!,
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SECRET_KEY,
     {
       auth: {
         autoRefreshToken: false,

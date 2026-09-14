@@ -18,6 +18,7 @@ import Link from "next/link";
 import { ArrowLeft, Clock, FolderKanban, ListChecks } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getWorkspaceMembers } from "@/lib/queries/members";
 import { getProjectsForMember } from "@/lib/queries/team";
 import { getMyTasks } from "@/lib/queries/my-tasks";
@@ -25,7 +26,6 @@ import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import {
   canViewMembersList,
   canViewTeamMemberTaskDetail,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -39,33 +39,21 @@ export default async function TeamMemberProfilePage({
   const { workspaceSlug, userId: targetUserId } = await params;
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
+
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: callerMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const callerRole = (callerMembership?.role ?? "guest") as WorkspaceRole;
+  const { user, workspace, role: callerRole } = ctx;
 
   if (!canViewMembersList({ role: callerRole })) {
     redirect(`/w/${workspaceSlug}`);

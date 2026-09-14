@@ -31,19 +31,7 @@ import type {
 } from "@/lib/queries/deliverables";
 import { DeliverableUpload } from "@/components/portal/deliverable-upload";
 import { cn } from "@/lib/utils";
-
-// `dueAt` is a plain `YYYY-MM-DD` date column; `deliveredAt`/`acceptedAt`
-// are `timestamptz` columns and already carry a time component — only
-// the former needs a synthetic `T00:00:00Z` appended to parse as UTC
-// midnight rather than the browser's local timezone.
-function formatDate(iso: string): string {
-  const isoWithTime = iso.includes("T") ? iso : `${iso}T00:00:00Z`;
-  return new Date(isoWithTime).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
+import { formatDayMonthUTC } from "@/lib/format";
 
 function isPastDue(dueAt: string | null, today: string): boolean {
   return Boolean(dueAt && dueAt < today);
@@ -87,7 +75,7 @@ export function DeliverableRow({
             {deliverable.state === "waived"
               ? "Waived"
               : deliverable.acceptedAt
-                ? `Accepted ${formatDate(deliverable.acceptedAt)}`
+                ? `Accepted ${formatDayMonthUTC(deliverable.acceptedAt)}`
                 : "Accepted"}
           </span>
         </div>
@@ -121,7 +109,7 @@ export function DeliverableRow({
         <div className="flex flex-col items-end gap-1 text-right">
           <span className={cn("text-xs font-medium", pastDue ? "text-status-blocked" : "text-muted-foreground")}>
             {deliverable.dueAt
-              ? `${pastDue ? "Was due" : "Due"} ${formatDate(deliverable.dueAt)}`
+              ? `${pastDue ? "Was due" : "Due"} ${formatDayMonthUTC(deliverable.dueAt)}`
               : "No due date"}
           </span>
           <span className="text-xs text-muted-foreground">{KIND_LABEL[deliverable.kind]}</span>
@@ -140,7 +128,7 @@ export function DeliverableRow({
       {isDelivered ? (
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Clock className="size-4" aria-hidden="true" />
-          Waiting for us to check it{deliveredAt ? ` (sent ${formatDate(deliveredAt)})` : ""}.
+          Waiting for us to check it{deliveredAt ? ` (sent ${formatDayMonthUTC(deliveredAt)})` : ""}.
         </p>
       ) : (
         <DeliverableUpload

@@ -14,10 +14,9 @@ import {
   PORTAL_PREVIEW_LABEL_COOKIE,
   PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
 } from "@/lib/portal/preview-cookies";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
-export type SignInResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type SignInResult = ActionOutcome;
 
 // Requests a Supabase Auth magic link for the given email (AS-002).
 //
@@ -140,9 +139,7 @@ export async function signOut(workspaceSlug?: string): Promise<never> {
 // containing "@" is always treated as an email and never touches the
 // admin client.
 
-export type PasswordSignInResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type PasswordSignInResult = ActionOutcome;
 
 function usernameLoginEnabled(): boolean {
   if (process.env.ALLOW_USERNAME_LOGIN === "true") return true;

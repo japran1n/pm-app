@@ -20,6 +20,29 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "3mb",
     },
   },
+  // Audit NX-001: baseline security headers. A full CSP is deferred until the
+  // inline theme script in app/layout.tsx carries a per-request nonce
+  // (audit NX-002) — shipping CSP before that would require 'unsafe-inline'.
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains",
+          },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

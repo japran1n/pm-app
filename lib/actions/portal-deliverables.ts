@@ -36,7 +36,7 @@
 // 'delivered' at all until the RPC does).
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -51,13 +51,12 @@ import type { DeliverableState } from "@/lib/queries/deliverables";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
 import { createNotification } from "@/lib/notifications/create-notification";
 import { getPortalEventRecipients } from "@/lib/notifications/portal-recipients";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const ATTACHMENTS_BUCKET = "task-attachments";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type DeliverPortalDeliverableResult =
-  | { ok: true; data: { id: string; state: DeliverableState } }
-  | { ok: false; error: string };
+export type DeliverPortalDeliverableResult = ActionResult<{ id: string; state: DeliverableState }>;
 
 // Takes a FormData for the same reason `uploadAttachment` does — Server
 // Actions receive `File` objects through FormData, not plain arguments.
@@ -90,10 +89,7 @@ export async function deliverPortalDeliverable(
     return { ok: false, error: "Choose a file to send." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to send a file." };

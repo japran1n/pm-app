@@ -64,13 +64,13 @@ const PASSWORD = "Test-password-1!";
 describe.skipIf(!haveCreds)("client chat channel access (F116)", () => {
   let admin: SupabaseClient;
   let clientSession: SupabaseClient;
-  let otherClientSession: SupabaseClient;
+  let _otherClientSession: SupabaseClient;
   let viewerSession: SupabaseClient;
   let memberSession: SupabaseClient;
 
   let workspaceId: string;
   let projectAId: string; // clientSession's own project
-  let projectBId: string; // otherClientSession's own project
+  let projectBId: string; // _otherClientSession's own project
   let ownerId: string;
   let memberId: string;
   let viewerId: string;
@@ -205,7 +205,7 @@ describe.skipIf(!haveCreds)("client chat channel access (F116)", () => {
     memberSession = await signIn(memberUser.email);
     viewerSession = await signIn(viewerUser.email);
     clientSession = await signIn(clientUser.email);
-    otherClientSession = await signIn(otherClientUser.email);
+    _otherClientSession = await signIn(otherClientUser.email);
   }, 60_000);
 
   afterAll(async () => {

@@ -32,11 +32,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
     >
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;if(t==='light'){d.classList.remove('dark');d.removeAttribute('data-theme')}else{d.classList.add('dark');d.setAttribute('data-theme','dark')}}catch(e){}})();`,
-          }}
-        />
+        {/* No-FOUC theme bootstrap (audit NX-002/AS-148): an external
+            blocking script instead of an inline raw-HTML one —
+            CSP-compatible, and keeps app/ free of raw-HTML sinks. */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts -- must run before first paint */}
+        <script src="/theme-init.js" />
       </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <ThemeProvider

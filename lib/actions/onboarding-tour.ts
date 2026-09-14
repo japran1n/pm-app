@@ -16,10 +16,9 @@ import { logger } from "@/lib/observability/logger";
 // row), generic user-facing errors with details only logged server-side.
 
 import { getCurrentUser } from "@/lib/auth/current-user";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
-export type GetTourStatusResult =
-  | { ok: true; dismissed: boolean }
-  | { ok: false; error: string };
+export type GetTourStatusResult = ActionOutcome<{ dismissed: boolean }>;
 
 // Server Component data-loading half (the clarified spec's "server-fetched
 // in the page/layout... passed down as typed props" pattern) — the
@@ -50,9 +49,7 @@ export async function getTourStatus(): Promise<GetTourStatusResult> {
   return { ok: true, dismissed: Boolean(data?.tour_completed_at) };
 }
 
-export type SetTourStatusResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type SetTourStatusResult = ActionOutcome;
 
 // AS-492: called on dismiss/step-through-completion. Persists per user
 // (not per browser/localStorage), so it does not reappear after a reload

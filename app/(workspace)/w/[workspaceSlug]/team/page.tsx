@@ -11,9 +11,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Users } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getWorkspaceMembers } from "@/lib/queries/members";
-import { canViewMembersList, type WorkspaceRole } from "@/lib/auth/permissions";
+import { canViewMembersList} from "@/lib/auth/permissions";
 import { UserAvatar } from "@/components/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
@@ -25,38 +25,26 @@ export default async function TeamPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  const { workspace, role } = ctx;
 
   // Same gate as Settings → Members (AS-222): a guest never sees the
   // workspace's roster.
   if (
     !canViewMembersList({
-      role: (ownMembership?.role ?? "guest") as WorkspaceRole,
+      role,
     })
   ) {
     redirect(`/w/${workspaceSlug}`);

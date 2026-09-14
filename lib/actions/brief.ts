@@ -28,6 +28,7 @@
 
 import { logger } from "@/lib/observability/logger";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { calculatePosition } from "@/lib/board/position";
 import { getBrief } from "@/lib/queries/brief";
 import { buildBriefDocumentContent } from "@/lib/brief/document";
@@ -43,6 +44,7 @@ import {
   revalidatePortalProject,
   extractWorkspaceSlug,
 } from "@/lib/actions/portal-revalidate";
+import type { ActionOutcome, ActionResult } from "@/lib/actions/authz";
 
 // F004c (AS-006): the brief questionnaire is entirely portal-visible (the
 // portal's Questionnaire page renders questions/answers straight from
@@ -92,10 +94,7 @@ async function revalidatePortalForBriefProject(
   }
 }
 
-export type BriefQuestionResult =
-  | {
-      ok: true;
-      data: {
+export type BriefQuestionResult = ActionResult<{
         id: string;
         projectId: string;
         prompt: string;
@@ -105,11 +104,9 @@ export type BriefQuestionResult =
         required: boolean;
         options: string[] | null;
         position: number;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
-export type DeleteBriefQuestionResult = { ok: true } | { ok: false; error: string };
+export type DeleteBriefQuestionResult = ActionOutcome;
 
 const QUESTION_COLUMNS =
   "id, project_id, prompt, category, answer_type, help_text, required, options, position";
@@ -193,10 +190,7 @@ export async function createBriefQuestion(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid question." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to add a question." };
   }
@@ -270,10 +264,7 @@ export async function updateBriefQuestion(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid question." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to edit this question." };
   }
@@ -322,10 +313,7 @@ export async function updateBriefQuestion(
 // (draft section 4.1). No application-side snapshot logic is needed
 // here -- the FK behaviour and the snapshot column already do this.
 export async function deleteBriefQuestion(questionId: string): Promise<DeleteBriefQuestionResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to delete this question." };
   }
@@ -456,10 +444,7 @@ export async function saveBriefAnswer(
   answerText: string | null,
   answerOptions: string[] | null,
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to save an answer." };
   }
@@ -592,10 +577,7 @@ export async function saveBriefAnswer(
 // that also makes "already submitted" naturally idempotent without a
 // second round-trip to check state first.
 export async function submitBrief(briefId: string): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to submit this brief." };
   }
@@ -666,10 +648,7 @@ export async function reorderBriefQuestions(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to reorder questions." };
   }
@@ -720,10 +699,7 @@ export async function generateBriefDocument(
   projectId: string,
   briefId: string,
 ): Promise<{ success: boolean; documentId?: string; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to generate this document." };
   }
@@ -832,10 +808,7 @@ export async function requestBriefApproval(
   projectId: string,
   docId: string,
 ): Promise<RequestBriefApprovalResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to request approval." };
   }
@@ -884,10 +857,7 @@ export type ApproveBriefResult = { success: boolean; error?: string };
 // "RLS gates, action surfaces a generic not-found/not-allowed error"
 // convention every other write in this file follows.
 export async function approveBrief(briefId: string): Promise<ApproveBriefResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to approve this brief." };
   }
@@ -928,10 +898,7 @@ export type WithdrawBriefApprovalResult = { success: boolean; error?: string };
 // guard below is this function's own safety net against a no-op
 // withdrawal silently "succeeding" on a brief that was never approved).
 export async function withdrawBriefApproval(briefId: string): Promise<WithdrawBriefApprovalResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: "You must be signed in to withdraw this approval." };
   }

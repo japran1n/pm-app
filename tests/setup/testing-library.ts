@@ -19,6 +19,43 @@ import { configure } from "@testing-library/dom";
 
 configure({ asyncUtilTimeout: 5000 });
 
+// Audit TST-001: integration suites sign in real users and (some) mutate
+// the database they point at. CI runs them against an ephemeral local
+// stack (`supabase start`, see .github/workflows/ci.yml "W6"); running
+// them locally against the shared hosted project both trips Supabase
+// Auth's sign-in rate limit (mass red suite) and risks mutating real
+// data. Fail fast with an actionable message instead. Explicitly
+// override with ALLOW_HOSTED_TESTS=1 for the few catalog suites that
+// intentionally target the hosted project.
+// lib/env.ts (audit NX-003) validates env at first access instead of
+// letting `process.env.X!` pass undefined through. Unit tests that mock
+// supabase-js never dial these, but the validation still needs values —
+// provide localhost dummies when nothing is configured (also keeps the
+// hosted-project guard below treating this as "local").
+// TEST_SUPABASE_ENV_DUMMY marks that these are placeholders, so live-DB
+// suites (which self-load .env, e.g. tests/unit/fts-tasks.test.ts) can
+// skip instead of dialing a Supabase that isn't there.
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  process.env.TEST_SUPABASE_ENV_DUMMY = "1";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54321";
+}
+process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= "sb_publishable_test_dummy";
+process.env.SUPABASE_SECRET_KEY ??= "sb_secret_test_dummy_key_not_real";
+
+{
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const isLocal =
+    url.includes("localhost") || url.includes("127.0.0.1") || url === "";
+  if (!isLocal && process.env.ALLOW_HOSTED_TESTS !== "1") {
+    throw new Error(
+      `Tests are pointed at a hosted Supabase project (${new URL(url).host}). ` +
+        "Run `supabase start` and export the local stack's env vars " +
+        "(see .github/workflows/ci.yml), or set ALLOW_HOSTED_TESTS=1 to " +
+        "deliberately run against the hosted project.",
+    );
+  }
+}
+
 // F093 follow-up: a jsdom-environment unit test must never open a real
 // WebSocket. jsdom's undici-based WebSocket polyfill throws
 // `TypeError: The "event" argument must be an instance of Event` once a

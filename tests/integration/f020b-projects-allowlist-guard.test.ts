@@ -87,8 +87,8 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
   let viewerSession: SupabaseClient;
   let clientSession: SupabaseClient;
 
-  let clientId: string;
-  let ownerId: string;
+  let _clientId: string;
+  let _ownerId: string;
   const createdUserIds: string[] = [];
 
   beforeAll(async () => {
@@ -110,11 +110,11 @@ describe.skipIf(!haveCreds)("projects: allow-list field-role guard (F020b, AS-04
     };
 
     const owner = await makeUser("owner");
-    ownerId = owner.id;
+    _ownerId = owner.id;
     const memberUser = await makeUser("member");
     const viewerUser = await makeUser("viewer");
     const clientUser = await makeUser("client");
-    clientId = clientUser.id;
+    _clientId = clientUser.id;
 
     const { data: workspace, error: wsErr } = await admin
       .from("workspaces")

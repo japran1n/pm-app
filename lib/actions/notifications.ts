@@ -18,7 +18,7 @@ import { logger } from "@/lib/observability/logger";
 // clarified "client-side for immediate feedback, re-validated by the
 // action's Zod schema server-side" answer — the panel's own optimistic
 // update is never trusted alone.
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import {
   markNotificationReadSchema,
   markAllNotificationsReadSchema,
@@ -27,10 +27,9 @@ import {
   getNotificationsForWorkspace,
   type NotificationListItem,
 } from "@/lib/queries/notifications";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
-export type MarkNotificationReadResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type MarkNotificationReadResult = ActionOutcome;
 
 // AS-386: marks a single notification read. Idempotent — marking an
 // already-read notification read again is a harmless no-op (the UPDATE
@@ -47,10 +46,7 @@ export async function markNotificationRead(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to do that." };
@@ -104,10 +100,7 @@ export async function markAllNotificationsRead(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to do that." };
@@ -135,9 +128,7 @@ export async function markAllNotificationsRead(
   return { ok: true };
 }
 
-export type NotificationSnapshotResult =
-  | { ok: true; list: NotificationListItem[]; unreadCount: number }
-  | { ok: false; error: string };
+export type NotificationSnapshotResult = ActionOutcome<{ list: NotificationListItem[]; unreadCount: number }>;
 
 // F209 (AS-388): a fresh, server-authoritative snapshot of the caller's
 // notification inbox for `workspaceId` — the single source of truth this

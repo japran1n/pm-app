@@ -1,0 +1,9 @@
+
+> pm-app@0.1.0 start
+> next start
+
+▲ Next.js 16.3.1
+- Local:         http://localhost:4123
+- Network:       http://192.168.1.9:4123
+✓ Ready in 82ms
+✓ Running next.config.ts took 18ms

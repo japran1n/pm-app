@@ -38,7 +38,7 @@ vi.mock("next/cache", () => ({
 }));
 
 let insertCalled = false;
-let updateCalled = false;
+let _updateCalled = false;
 let rpcCalled = false;
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -99,7 +99,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           }),
           update: () => ({
             eq: async () => {
-              updateCalled = true;
+              _updateCalled = true;
               return { error: null };
             },
           }),
@@ -126,7 +126,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 describe("F041 viewer-role guard (AS-097)", () => {
   beforeEach(() => {
     insertCalled = false;
-    updateCalled = false;
+    _updateCalled = false;
     rpcCalled = false;
     vi.resetModules();
   });

@@ -67,19 +67,13 @@ import {
   previousMonthKey,
 } from "@/lib/calendar/month-grid";
 import { MyTimeView } from "@/components/time/my-time-view";
-
-function formatDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { toIsoDate } from "@/lib/format";
 
 function addDaysToDateOnly(dateOnly: string, delta: number): string {
   const [year, month, day] = dateOnly.split("-").map((part) => Number.parseInt(part, 10));
   const anchor = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   anchor.setUTCDate(anchor.getUTCDate() + delta);
-  return formatDate(anchor);
+  return toIsoDate(anchor);
 }
 
 const VALID_VIEWS = ["daily", "weekly", "monthly"] as const;
@@ -123,7 +117,7 @@ export default async function MyTimePage({
     ? (query.view as ViewMode)
     : "weekly";
 
-  const today = formatDate(new Date());
+  const today = toIsoDate(new Date());
 
   // Summary cards are always "today / this week / this month" from the
   // real current date, independent of whatever range the toggle below is

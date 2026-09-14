@@ -1,11 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutGrid, Network } from "lucide-react";
+import dynamic from "next/dynamic";
+import { LayoutGrid, Loader2, Network } from "lucide-react";
 
 import type { BoardComponent, BoardPage } from "@/lib/queries/architecture";
 import { ArchitectureBoard } from "@/components/architecture/board";
-import { CanvasBoard } from "@/components/architecture/canvas-board";
+
+// NX-006: CanvasBoard is the only consumer of @xyflow/react — statically
+// importing it here pulled the whole flow-graph library into the shared
+// bundle even for users who never open the canvas view. next/dynamic with
+// `ssr: false` (the same pattern as dashboard-content-lazy.tsx) defers the
+// xyflow chunk until the canvas view actually renders; the skeleton fills
+// the same flex-1 slot so the toggle row doesn't jump while it loads.
+const CanvasBoard = dynamic(
+  () =>
+    import("@/components/architecture/canvas-board").then(
+      (mod) => mod.CanvasBoard,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-border bg-muted/30">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Loading canvas view</span>
+      </div>
+    ),
+  },
+);
 
 type ViewMode = "board" | "canvas";
 

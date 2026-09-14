@@ -1,7 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { canWrite, type WorkspaceRole } from "@/lib/auth/permissions";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
+import { canWrite} from "@/lib/auth/permissions";
 import { getProjectMetricsWithLatestSnapshot, getProjectImprovements } from "@/lib/queries/metrics";
 import { MeasurementPanel } from "@/components/project/measurement-panel";
 import { ProjectSettingsNav } from "@/components/project/project-settings-nav";
@@ -25,23 +26,20 @@ export default async function ProjectMeasurementSettingsPage({
 
   const supabase = await createClient();
 
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -55,19 +53,11 @@ export default async function ProjectMeasurementSettingsPage({
     notFound();
   }
 
-  const [{ data: ownWorkspaceMembership }, metricsResult, improvementsResult] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
+  const [metricsResult, improvementsResult] = await Promise.all([
     getProjectMetricsWithLatestSnapshot(project.id),
     getProjectImprovements(project.id),
   ]);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const canManage = canWrite({ role: workspaceRole });
 
   const metrics = metricsResult.ok ? metricsResult.data : [];

@@ -2,13 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { purgeTrashItemSchema, PURGE_CONFIRMATION_PHRASE } from "@/lib/validation/purge";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { canPurge } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F192 (AS-348, AS-349): permanently (hard-)deletes an already-trashed
 // task or comment, plus every dependent row/Storage object it owns. This
@@ -43,9 +44,7 @@ import { logger } from "@/lib/observability/logger";
 // does that).
 const ATTACHMENTS_BUCKET = "task-attachments";
 
-export type PurgeTrashItemResult =
-  | { ok: true; data: { itemId: string; itemType: "task" | "comment" } }
-  | { ok: false; error: string };
+export type PurgeTrashItemResult = ActionResult<{ itemId: string; itemType: "task" | "comment" }>;
 
 export async function purgeTrashItem(
   itemId: string,
@@ -72,10 +71,7 @@ export async function purgeTrashItem(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to purge an item." };

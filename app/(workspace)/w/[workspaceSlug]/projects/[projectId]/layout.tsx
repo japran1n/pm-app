@@ -16,6 +16,7 @@ import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { ProjectLinkStrip } from "@/components/project/project-link-strip";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { formatHours } from "@/lib/format";
 
 // F030 (AS-038): project detail layout — resolves the project scoped to
 // the active workspace, renders a header (name/description, plus an
@@ -134,11 +135,6 @@ export default async function ProjectDetailLayout({
       {children}
     </div>
   );
-}
-
-function formatHours(minutes: number) {
-  const hours = minutes / 60;
-  return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
 }
 
 // F020 (AS-016, AS-017): the hours-logged line + estimate progress bar

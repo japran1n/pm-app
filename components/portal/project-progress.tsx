@@ -1,26 +1,12 @@
 import type { PortalProject } from "@/lib/queries/portal";
 import { projectHealthLabel } from "@/components/portal/status-label";
+import { formatDateUTC } from "@/lib/format";
 
 const TONE_CLASS: Record<"ok" | "warn" | "crit", string> = {
   ok: "bg-emerald-500/10 text-emerald-700",
   warn: "bg-amber-500/10 text-amber-700",
   crit: "bg-destructive/10 text-destructive",
 };
-
-function formatDate(iso: string): string {
-  // Deliberately locale-fixed rather than using the viewer's locale: this
-  // renders on the server, so a locale-dependent format would differ
-  // between the server-rendered HTML and a client re-render and produce a
-  // hydration mismatch. A day-month-year short form is unambiguous for the
-  // audiences this app targets, unlike a numeric-only format.
-  const date = new Date(`${iso}T00:00:00Z`);
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 // The shared progress readout used by both the portal overview cards and
 // the project page header. A plain div-based bar rather than the app's
@@ -82,7 +68,7 @@ export function ProjectProgress({ project }: { project: PortalProject }) {
         {nextDue ? (
           <span>
             Next: {nextDue.title}
-            {nextDue.dueDate ? ` · ${formatDate(nextDue.dueDate)}` : ""}
+            {nextDue.dueDate ? ` · ${formatDateUTC(nextDue.dueDate)}` : ""}
           </span>
         ) : (
           <span>No upcoming dates</span>

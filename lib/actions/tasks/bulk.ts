@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   bulkUpdateTasksSchema,
@@ -24,16 +24,14 @@ import {
   revalidatePortalProject,
   extractWorkspaceSlug,
 } from "@/lib/actions/portal-revalidate";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // ---------------------------------------------------------------------
 // F186 (AS-337, AS-338, AS-341): bulk field updates from the list view's
 // multi-select (F185's <TaskListTable> row checkboxes + <BulkActionBar>).
 // ---------------------------------------------------------------------
 
-export type BulkUpdateTasksResult =
-  | {
-      ok: true;
-      data: {
+export type BulkUpdateTasksResult = ActionResult<{
         // Ids the update actually applied to. AS-337/AS-338's "N tasks all
         // get updated via one call" is proven by this list matching the
         // caller-permitted subset of the input, not by every input id
@@ -48,9 +46,7 @@ export type BulkUpdateTasksResult =
         // fail the whole batch, or just itself": just itself. See this
         // feature's handoff Decisions Made for the full rationale.
         failedIds: { id: string; reason: string }[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 type BulkTaskAuthContext = {
   workspaceId: string;
@@ -172,10 +168,7 @@ export async function bulkUpdateTasks(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to update tasks." };
@@ -473,10 +466,7 @@ export async function bulkUpdateTasks(
 // inventing a new one).
 // ---------------------------------------------------------------------
 
-export type BulkDeleteTasksResult =
-  | {
-      ok: true;
-      data: {
+export type BulkDeleteTasksResult = ActionResult<{
         // Ids actually soft-deleted (deleted_at set). AS-339's "N tasks
         // all get deleted via one action" is proven by this list matching
         // the caller-permitted subset of the input, not by every input id
@@ -490,9 +480,7 @@ export type BulkDeleteTasksResult =
         // resolves these ids to "PROJECTKEY-number" via formatTaskKey
         // before showing them to the user — never a raw uuid.
         failedIds: { id: string; reason: string }[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // This is a SOFT delete only — sets `deleted_at`, never issues a real
 // DELETE, exactly matching deleteTask's existing single-task convention
@@ -529,10 +517,7 @@ export async function bulkDeleteTasks(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete tasks." };
@@ -662,15 +647,10 @@ export async function bulkDeleteTasks(
   return { ok: true, data: { succeededIds, failedIds } };
 }
 
-export type BulkRestoreTasksResult =
-  | {
-      ok: true;
-      data: {
+export type BulkRestoreTasksResult = ActionResult<{
         succeededIds: string[];
         failedIds: { id: string; reason: string }[];
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Restores a batch of soft-deleted tasks in a single Server Action call
 // (F190/AS-345: "Bulk deletes undo the whole batch in one call" — the

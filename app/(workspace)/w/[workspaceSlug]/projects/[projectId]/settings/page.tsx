@@ -2,12 +2,12 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { buttonVariants } from "@/components/ui/button";
 import {
   canChangeProjectVisibility,
   canManageProjectMembers,
   type ProjectRole,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -80,25 +80,20 @@ export default async function ProjectSettingsPage({
 
   const supabase = await createClient();
 
-  // Perf (W9): auth and the workspace-by-slug lookup are independent of
-  // each other.
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { user, workspace, role: workspaceRole } = ctx;
 
   // RLS-scoped (`projects_select_active_members` -> `is_project_visible_to`):
   // a null result here means either the project doesn't exist, belongs to a
@@ -123,15 +118,8 @@ export default async function ProjectSettingsPage({
 
   // Perf (W9): both depend only on ids already known (workspace.id,
   // project.id, user.id), not on each other's result.
-  const [{ data: ownWorkspaceMembership }, { data: ownProjectMembership }] =
+  const [{ data: ownProjectMembership }] =
     await Promise.all([
-      supabase
-        .from("workspace_members")
-        .select("role")
-        .eq("workspace_id", workspace.id)
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .maybeSingle(),
       supabase
         .from("project_members")
         .select("project_role")
@@ -140,7 +128,6 @@ export default async function ProjectSettingsPage({
         .maybeSingle(),
     ]);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const projectRole = (ownProjectMembership?.project_role ?? null) as ProjectRole;
 
   const canManage = canManageProjectMembers({

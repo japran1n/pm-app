@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import { getWorkspaceTaskTemplates } from "@/lib/queries/templates";
 import { TemplateList } from "@/components/templates/template-list";
 
@@ -27,44 +27,23 @@ export default async function TemplatesPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  // Perf (W9): auth and the workspace-by-slug lookup are independent of
-  // each other.
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
-
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  // Perf (W9): the caller's membership role and the template list both
-  // depend only on `workspace.id`/`user.id` (already known), not on each
-  // other -- fetched in parallel. The guest redirect below still runs
-  // before anything renders.
-  const [{ data: ownMembership }, templates] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
-    getWorkspaceTaskTemplates(workspace.id),
-  ]);
+  const { user, workspace, role } = ctx;
 
-  const role = ownMembership?.role ?? "guest";
+  // The guest redirect below still runs before anything renders.
+  const templates = await getWorkspaceTaskTemplates(workspace.id);
 
   if (role === "guest") {
     redirect(`/w/${workspaceSlug}`);

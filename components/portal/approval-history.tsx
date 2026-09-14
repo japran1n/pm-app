@@ -9,6 +9,7 @@ import type { ApprovalHistoryEntry } from "@/lib/queries/approvals";
 import { EmptyState } from "@/components/empty-state";
 import { History } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format";
 
 const DECISION_TYPE_LABEL: Record<ApprovalHistoryEntry["decisionType"], string> = {
   content: "Content",
@@ -22,14 +23,6 @@ const OUTCOME_LABEL: Record<string, string> = {
   changes_requested: "Changes requested",
   withdrawn: "Withdrawn",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export function ApprovalHistory({ entries }: { entries: ApprovalHistoryEntry[] }) {
   if (entries.length === 0) {

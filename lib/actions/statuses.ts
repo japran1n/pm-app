@@ -34,7 +34,7 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canManageColumns, type WorkspaceRole, type ProjectRole } from "@/lib/auth/permissions";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
@@ -47,6 +47,7 @@ import {
   removeColumnSchema,
   removeColumnWithReassignmentSchema,
 } from "@/lib/validation/statuses";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const PERMISSION_DENIED_ERROR =
   "You don't have permission to manage this project's board columns.";
@@ -185,10 +186,7 @@ async function revalidateProjectSettings(workspaceSlug: string, projectId: strin
   }
 }
 
-export type ColumnActionResult =
-  | {
-      ok: true;
-      data: {
+export type ColumnActionResult = ActionResult<{
         id: string;
         name: string;
         color: string;
@@ -196,9 +194,7 @@ export type ColumnActionResult =
         position: number;
         clientDescription: string | null;
         clientBucket: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // AS-404: an admin (or project lead) can add a board column.
 export async function addColumn(input: {
@@ -212,10 +208,7 @@ export async function addColumn(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid column." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
@@ -310,10 +303,7 @@ export async function updateColumn(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid column." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
@@ -425,10 +415,7 @@ export async function reorderColumn(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid position." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
@@ -492,7 +479,7 @@ export async function reorderColumn(
   };
 }
 
-export type RemoveColumnResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type RemoveColumnResult = ActionResult<{ id: string }>;
 
 // AS-404: an admin (or project lead) can remove a column.
 // AS-415: a project can never be left with zero columns — checked here
@@ -511,10 +498,7 @@ export async function removeColumn(columnId: string): Promise<RemoveColumnResult
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid column." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }
@@ -619,10 +603,7 @@ export async function removeColumnWithReassignment(
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage board columns." };
   }

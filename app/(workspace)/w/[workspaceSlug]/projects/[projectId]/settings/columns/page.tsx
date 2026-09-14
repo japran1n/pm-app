@@ -1,10 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import {
   canManageColumns,
   type ProjectRole,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import { StatusManager, type ProjectColumn } from "@/components/project/status-manager";
 // F002 (missions/20260903-portal): lets this page link to the sibling
@@ -31,27 +31,24 @@ export default async function ProjectColumnsSettingsPage({
 }) {
   const { workspaceSlug, projectId } = await params;
 
-  const supabase = await createClient();
-
   // Perf (W9): auth and the workspace-by-slug lookup are independent of
   // each other -- neither reads a value the other produces.
-  const [
-    {
-      data: { user },
-    },
-    { data: workspace },
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    supabase.from("workspaces").select("id, name").eq("slug", workspaceSlug).maybeSingle(),
-  ]);
+  const supabase = await createClient();
 
-  if (!user) {
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
+
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
+
+  const { user, workspace, role: workspaceRole } = ctx;
 
   const { data: project } = await supabase
     .from("projects")
@@ -71,17 +68,9 @@ export default async function ProjectColumnsSettingsPage({
   // result -- so all three run as one parallel batch instead of three
   // serial round-trips.
   const [
-    { data: ownWorkspaceMembership },
     { data: ownProjectMembership },
     { data: columnsData, error: columnsError },
   ] = await Promise.all([
-    supabase
-      .from("workspace_members")
-      .select("role")
-      .eq("workspace_id", workspace.id)
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .maybeSingle(),
     supabase
       .from("project_members")
       .select("project_role")
@@ -101,7 +90,6 @@ export default async function ProjectColumnsSettingsPage({
       .order("position", { ascending: true }),
   ]);
 
-  const workspaceRole = (ownWorkspaceMembership?.role ?? "guest") as WorkspaceRole;
   const projectRole = (ownProjectMembership?.project_role ?? null) as ProjectRole;
 
   const canManage = canManageColumns({ role: workspaceRole, projectRole });

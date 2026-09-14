@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   editTaskSchema,
@@ -29,11 +29,9 @@ import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferenc
 import { createNotification } from "@/lib/notifications/create-notification";
 import type { Json } from "@/lib/supabase/database.types";
 import { revalidatePortalProject } from "@/lib/actions/portal-revalidate";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type EditTaskResult =
-  | {
-      ok: true;
-      data: {
+export type EditTaskResult = ActionResult<{
         id: string;
         title: string;
         description: string | null;
@@ -58,9 +56,7 @@ export type EditTaskResult =
         // F006c (missions/20260903-portal, AS-013): mirrors pageSlug's
         // own always-present convention above.
         phaseId: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Edits a task's title/description/priority/due date (F037: AS-054,
 // AS-061). Pattern mirrors assignTask above: Zod-validated partial input,
@@ -100,10 +96,7 @@ export async function editTask(
     return { ok: false, error: "No changes to save." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a task." };

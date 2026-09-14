@@ -14,29 +14,25 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { createTimeOffSchema, deleteTimeOffSchema } from "@/lib/validation/time-off";
 import { logger } from "@/lib/observability/logger";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 const NOT_FOUND_ERROR = "Time off entry not found.";
 const PERMISSION_DENIED_ERROR = "You don't have permission to manage this time off entry.";
 
-export type TimeOffEntryResult =
-  | {
-      ok: true;
-      data: {
+export type TimeOffEntryResult = ActionResult<{
         id: string;
         workspaceId: string;
         userId: string;
         startDate: string;
         endDate: string;
         note: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 const SELECT_COLUMNS = "id, workspace_id, user_id, start_date, end_date, note";
 
@@ -67,10 +63,7 @@ export async function createTimeOff(input: unknown): Promise<TimeOffEntryResult>
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid time off entry." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to add time off." };
   }
@@ -117,9 +110,7 @@ export async function createTimeOff(input: unknown): Promise<TimeOffEntryResult>
   };
 }
 
-export type DeleteTimeOffResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteTimeOffResult = ActionResult<{ id: string }>;
 
 // Delete a PTO entry -- its own owner, or an owner/admin of the
 // workspace, per `time_off_entries_delete_own_or_admin`.
@@ -129,10 +120,7 @@ export async function deleteTimeOff(input: unknown): Promise<DeleteTimeOffResult
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid time off entry." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
   if (!user) {
     return { ok: false, error: "You must be signed in to manage time off." };
   }

@@ -1,11 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
-import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/queries/workspaces";
 import {
   canManageProject,
   canDeleteWorkspace,
-  type WorkspaceRole,
 } from "@/lib/auth/permissions";
 import { WorkspaceGeneralForm } from "@/components/workspace/workspace-general-form";
 import { DeleteWorkspaceDialog } from "@/components/workspace/delete-workspace-dialog";
@@ -40,36 +39,22 @@ export default async function WorkspaceSettingsPage({
 }) {
   const { workspaceSlug } = await params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // ARCH-001: caller identity, the workspace-by-slug lookup, and the
+  // caller's own membership role all come from the shared cached helper
+  // (lib/queries/workspaces.ts) instead of three per-page queries.
+  const ctx = await getWorkspaceContext(workspaceSlug);
 
-  if (!user) {
+  if (!ctx.user) {
     redirect("/sign-in");
   }
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id, name, slug, logo_url")
-    .eq("slug", workspaceSlug)
-    .maybeSingle();
-
   // Defensive fallback only — the layout guard above already redirects
   // away when the workspace can't be resolved for this caller.
-  if (!workspace) {
+  if (!ctx.workspace) {
     redirect("/onboarding");
   }
 
-  const { data: ownMembership } = await supabase
-    .from("workspace_members")
-    .select("role")
-    .eq("workspace_id", workspace.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const role = (ownMembership?.role ?? "guest") as WorkspaceRole;
+  const { workspace, role } = ctx;
 
   // F134 (AS-222) convention: a guest cannot reach workspace settings at
   // all, matching the members settings page's own gate — deny, not

@@ -34,6 +34,7 @@ import type { VariantProps } from "class-variance-authority";
 import { createClient } from "@/lib/supabase/client";
 import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
+import { formatDate } from "@/lib/format";
 
 const STATUS_LABEL: Record<PortalRequest["status"], string> = {
   submitted: "Waiting for review",
@@ -58,14 +59,6 @@ const STATUS_BADGE_VARIANT: Record<
   accepted: "success",
   declined: "destructive",
 };
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 // Raw `client_requests` row shape as it arrives over Realtime --
 // snake_case columns, no join to `projects`/`tasks`, so `projectName` and

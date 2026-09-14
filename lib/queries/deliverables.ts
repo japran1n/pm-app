@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PortalQueryResult } from "@/lib/queries/portal";
 import { toUtcDateOnly } from "@/lib/portal/is-past-due";
+import { formatDayMonthUTC } from "@/lib/format";
 
 export type DeliverableKind = "copy" | "image" | "access" | "decision" | "data" | "other";
 export type DeliverableState = "not_started" | "in_progress" | "delivered" | "accepted" | "waived";
@@ -363,14 +364,6 @@ const KIND_NEED_PHRASE: Record<DeliverableKind, string> = {
   other: "the outstanding item",
 };
 
-function formatDateLong(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
-
 // AS-031: the risk banner's own sentence — "The Blogg page cannot be
 // built without its copy, and 18 Nov moves with it." Plain and specific,
 // never blaming: names the worst overdue blocking item and what it
@@ -384,7 +377,7 @@ export function formatDeliverableRiskMessage(params: {
   const need = KIND_NEED_PHRASE[params.kind];
 
   if (params.targetLaunchDate) {
-    return `${subject} cannot be built without ${need}, and ${formatDateLong(params.targetLaunchDate)} moves with it.`;
+    return `${subject} cannot be built without ${need}, and ${formatDayMonthUTC(params.targetLaunchDate)} moves with it.`;
   }
 
   return `${subject} cannot be built without ${need}, and the launch date moves with it.`;

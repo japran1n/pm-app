@@ -11,17 +11,16 @@
 // own RPCs.
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logger } from "@/lib/observability/logger";
 import { flagAssumptionSchema } from "@/lib/validation/project-records";
 import { assertNotPreview } from "@/lib/auth/assert-not-preview";
+import type { ActionResult } from "@/lib/actions/authz";
 
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type FlagAssumptionResult =
-  | { ok: true; data: { id: string; flaggedByClientAt: string } }
-  | { ok: false; error: string };
+export type FlagAssumptionResult = ActionResult<{ id: string; flaggedByClientAt: string }>;
 
 export async function flagAssumption(input: {
   assumptionId: string;
@@ -37,10 +36,7 @@ export async function flagAssumption(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

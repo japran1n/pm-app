@@ -26,7 +26,6 @@ import { cn } from "@/lib/utils";
 import type { ClientHoursWeek } from "@/lib/queries/hours";
 import {
   computeBurndownSeries,
-  isoWeekToMonday,
   formatWeekLabel,
   type BurndownPoint,
 } from "@/lib/hours/burndown-series";

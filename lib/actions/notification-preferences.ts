@@ -12,8 +12,9 @@ import { logger } from "@/lib/observability/logger";
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { updateNotificationPreferencesSchema } from "@/lib/validation/notification-preferences";
+import type { ActionResult } from "@/lib/actions/authz";
 
 export type NotificationPreferences = {
   mentionInApp: boolean;
@@ -98,18 +99,13 @@ const COLUMN_BY_FIELD = {
 const SELECT_COLUMNS =
   "mention_in_app, mention_email, task_assigned_in_app, task_assigned_email, comment_reply_in_app, comment_reply_email, watcher_update_in_app, watcher_update_email, task_due_soon_in_app, task_due_soon_email, email_enabled, chat_dm_in_app, chat_thread_reply_in_app, sound_enabled, sound_volume, sound_only_when_unfocused";
 
-export type GetNotificationPreferencesResult =
-  | { ok: true; data: NotificationPreferences }
-  | { ok: false; error: string };
+export type GetNotificationPreferencesResult = ActionResult<NotificationPreferences>;
 
 // Server Component data-loading helper (the clarified spec's "server-fetched
 // in the page, passed down as typed props" pattern) — the settings page
 // calls this, not the client form.
 export async function getNotificationPreferences(): Promise<GetNotificationPreferencesResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };
@@ -162,9 +158,7 @@ export async function getNotificationPreferences(): Promise<GetNotificationPrefe
   return { ok: true, data: rowToPreferences(data) };
 }
 
-export type UpdateNotificationPreferencesResult =
-  | { ok: true; data: NotificationPreferences }
-  | { ok: false; error: string };
+export type UpdateNotificationPreferencesResult = ActionResult<NotificationPreferences>;
 
 // AS-391/AS-396: persists a partial patch of the caller's own preferences.
 // RLS (notification_preferences_update_own) already rejects any attempt
@@ -183,10 +177,7 @@ export async function updateNotificationPreferences(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in." };

@@ -23,7 +23,8 @@ export const ALLOWED_ATTACHMENT_MIME_TYPES = [
   "image/jpeg",
   "image/gif",
   "image/webp",
-  "image/svg+xml",
+  // Audit ARCH-010: image/svg+xml removed — an uploaded SVG opened from a
+  // signed Storage URL executes embedded script on the Storage origin.
   // PDF
   "application/pdf",
   // Plain text / CSV

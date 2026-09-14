@@ -1,7 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  extensionOptions,
+  withExtensionAuth,
+  type ExtensionAuthContext,
+} from "@/lib/api/extension-auth";
 import { requireActiveMembership } from "@/lib/auth/require-membership";
 import { resolvePeople } from "@/lib/queries/people";
 import type { ProjectVisibility } from "@/lib/actions/project-visibility";
@@ -31,226 +34,179 @@ import { logger } from "@/lib/observability/logger";
 //     filter) and active members (mirrors `lib/queries/members.ts`'s
 //     `getWorkspaceMembers` filter + `resolvePeople` for a display name).
 //
-// Auth (identity resolution): deliberately DUPLICATED from
-// app/api/extension/tasks/route.ts (F292) rather than factored into a
-// shared helper — for exactly two routes, a ~25-line block duplicated
-// verbatim with a comment pointing at its twin is simpler to read and audit
-// than an extra shared-helper module both routes would need to import and
-// keep in sync with; if a third extension route is ever added, that's the
-// point to factor this out for real. See F292's route for the full
-// rationale of *why* this specific approach (anon-key client +
-// `auth.getUser(token)`) is used instead of the cookie-based server client.
-//
-// CORS: same allow-only-the-configured-extension-id policy as F292's route,
-// same `EXTENSION_ID` env var, same rationale (see that route's comment).
+// Auth / CORS / rate limiting (audit ARCH-008): the bearer-JWT identity
+// resolution, EXTENSION_ID-scoped CORS, and the per-user rate limit
+// (audit ARCH-007: 300 reads per user per hour) now live in the shared
+// withExtensionAuth wrapper — lib/api/extension-auth.ts. The old
+// "deliberately duplicated for two routes" comment here predicted its own
+// obsolescence: "if a third extension route is ever added, that's the
+// point to factor this out for real". It was (attachments), so it is.
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  const allowedOrigin = process.env.EXTENSION_ID
-    ? `chrome-extension://${process.env.EXTENSION_ID}`
-    : null;
+const METHODS = "GET, OPTIONS";
 
-  if (!allowedOrigin || origin !== allowedOrigin) {
-    return {};
-  }
+export const OPTIONS = extensionOptions(METHODS);
 
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    Vary: "Origin",
-  };
-}
+export const GET = withExtensionAuth(
+  {
+    methods: METHODS,
+    rateLimit: { bucket: "context_get", limit: 300, windowSeconds: 3600 },
+  },
+  async (
+    request: NextRequest,
+    { user, headers, admin }: ExtensionAuthContext,
+  ) => {
+    const workspaceId = request.nextUrl.searchParams.get("workspaceId");
 
-export async function OPTIONS(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
-}
+    if (!workspaceId) {
+      // AS-557: only workspaces this caller is an ACTIVE member of — same
+      // filter as lib/queries/workspaces.ts's getDefaultWorkspaceSlug.
+      const { data: memberships, error: membershipsError } = await admin
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user.id)
+        .eq("status", "active");
 
-export async function GET(request: NextRequest) {
-  const origin = request.headers.get("origin");
-  const headers = corsHeaders(origin);
+      if (membershipsError) {
+        logger.error("extension/context: failed to look up memberships", { error: membershipsError });
+        return NextResponse.json(
+          { error: "Something went wrong. Please try again in a moment." },
+          { status: 500, headers },
+        );
+      }
 
-  const authHeader = request.headers.get("authorization") ?? "";
-  const bearerMatch = /^Bearer\s+(.+)$/i.exec(authHeader);
-  const token = bearerMatch?.[1]?.trim();
+      const workspaceIds = (memberships ?? []).map((row) => row.workspace_id);
+      if (workspaceIds.length === 0) {
+        return NextResponse.json({ workspaces: [] }, { status: 200, headers });
+      }
 
-  if (!token) {
-    return NextResponse.json(
-      { error: "Missing or invalid Authorization header." },
-      { status: 401, headers },
-    );
-  }
+      const { data: workspaceRows, error: workspacesError } = await admin
+        .from("workspaces")
+        .select("id, name, slug")
+        .in("id", workspaceIds)
+        .order("name", { ascending: true });
 
-  const authClient = createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
+      if (workspacesError) {
+        logger.error("extension/context: failed to look up workspaces", { error: workspacesError });
+        return NextResponse.json(
+          { error: "Something went wrong. Please try again in a moment." },
+          { status: 500, headers },
+        );
+      }
 
-  const {
-    data: { user },
-    error: authError,
-  } = await authClient.auth.getUser(token);
+      return NextResponse.json(
+        { workspaces: workspaceRows ?? [] },
+        { status: 200, headers },
+      );
+    }
 
-  if (authError || !user) {
-    return NextResponse.json(
-      { error: "Invalid or expired session. Reconnect the extension." },
-      { status: 401, headers },
-    );
-  }
+    // AS-557: re-verify the caller is an active member of THIS workspace
+    // before returning anything scoped to it — a non-member gets 403 and
+    // this workspace's projects/members are never queried at all, let alone
+    // returned and filtered client-side.
+    const membership = await requireActiveMembership(admin, workspaceId, user.id);
+    if (!membership.ok) {
+      return NextResponse.json(
+        { error: "You don't have permission to view this workspace." },
+        { status: 403, headers },
+      );
+    }
 
-  const admin = createAdminClient();
-  const workspaceId = request.nextUrl.searchParams.get("workspaceId");
+    const [{ data: projectRows, error: projectsError }, { data: memberRows, error: membersError }, { data: taskTypeRows, error: taskTypesError }] =
+      await Promise.all([
+        admin
+          .from("projects")
+          .select("id, name, visibility")
+          .eq("workspace_id", workspaceId)
+          .is("deleted_at", null)
+          .order("name", { ascending: true }),
+        admin
+          .from("workspace_members")
+          .select("user_id")
+          .eq("workspace_id", workspaceId)
+          .eq("status", "active"),
+        admin
+          .from("task_types")
+          .select("id, name")
+          .eq("workspace_id", workspaceId)
+          .order("name", { ascending: true }),
+      ]);
 
-  if (!workspaceId) {
-    // AS-557: only workspaces this caller is an ACTIVE member of — same
-    // filter as lib/queries/workspaces.ts's getDefaultWorkspaceSlug.
-    const { data: memberships, error: membershipsError } = await admin
-      .from("workspace_members")
-      .select("workspace_id")
-      .eq("user_id", user.id)
-      .eq("status", "active");
-
-    if (membershipsError) {
-      logger.error("extension/context: failed to look up memberships", { error: membershipsError });
+    if (projectsError || membersError || taskTypesError) {
+      logger.error("extension/context: failed to look up projects/members/task-types", { error: projectsError ?? membersError ?? taskTypesError });
       return NextResponse.json(
         { error: "Something went wrong. Please try again in a moment." },
         { status: 500, headers },
       );
     }
 
-    const workspaceIds = (memberships ?? []).map((row) => row.workspace_id);
-    if (workspaceIds.length === 0) {
-      return NextResponse.json({ workspaces: [] }, { status: 200, headers });
-    }
+    const memberUserIds = (memberRows ?? [])
+      .map((row) => row.user_id)
+      .filter((id): id is string => Boolean(id));
+    const people = await resolvePeople(memberUserIds);
 
-    const { data: workspaceRows, error: workspacesError } = await admin
-      .from("workspaces")
-      .select("id, name, slug")
-      .in("id", workspaceIds)
-      .order("name", { ascending: true });
+    const members = memberUserIds.map((id) => {
+      const person = people.get(id);
+      return {
+        id,
+        name: person?.name ?? person?.email ?? "Unknown",
+      };
+    });
 
-    if (workspacesError) {
-      logger.error("extension/context: failed to look up workspaces", { error: workspacesError });
-      return NextResponse.json(
-        { error: "Something went wrong. Please try again in a moment." },
-        { status: 500, headers },
+    // AS-557 (M19 scrutiny BLOCKER-4): `projectRows` above was fetched on the
+    // RLS-bypassing admin client, so it includes EVERY project in the
+    // workspace, including visibility='private' ones the caller may not be a
+    // `project_members` row for. Re-run the same rule
+    // `createTaskForUser` (lib/tasks/create.ts) and `uploadAttachmentForUser`
+    // (lib/attachments/upload.ts) already enforce via
+    // `isProjectVisibleToCaller`, batching the `project_members` lookup into a
+    // single query rather than one round trip per private project.
+    const allProjectRows = projectRows ?? [];
+    const privateProjectIds = allProjectRows
+      .filter((row) => ((row.visibility as ProjectVisibility) ?? "workspace") === "private")
+      .map((row) => row.id);
+
+    let visiblePrivateProjectIds = new Set<string>();
+    if (
+      privateProjectIds.length > 0 &&
+      membership.role !== "owner" &&
+      membership.role !== "admin"
+    ) {
+      const { data: privateMemberRows, error: privateMemberError } = await admin
+        .from("project_members")
+        .select("project_id")
+        .eq("user_id", user.id)
+        .in("project_id", privateProjectIds);
+
+      if (privateMemberError) {
+        logger.error("extension/context: failed to look up project memberships", { error: privateMemberError });
+        return NextResponse.json(
+          { error: "Something went wrong. Please try again in a moment." },
+          { status: 500, headers },
+        );
+      }
+
+      visiblePrivateProjectIds = new Set(
+        (privateMemberRows ?? []).map((row) => row.project_id),
       );
     }
 
+    // isProjectVisibleToCaller's rule, applied per row using the batched
+    // lookup above instead of a per-project query: workspace-visible OR
+    // caller is owner/admin OR caller has an explicit project_members row.
+    const visibleProjectRows = allProjectRows.filter((row) => {
+      const visibility = (row.visibility as ProjectVisibility) ?? "workspace";
+      if (visibility === "workspace") return true;
+      if (membership.role === "owner" || membership.role === "admin") return true;
+      return visiblePrivateProjectIds.has(row.id);
+    });
+
     return NextResponse.json(
-      { workspaces: workspaceRows ?? [] },
+      {
+        projects: visibleProjectRows.map((row) => ({ id: row.id, name: row.name })),
+        members,
+        taskTypes: (taskTypeRows ?? []).map((row) => ({ id: row.id, name: row.name })),
+      },
       { status: 200, headers },
     );
-  }
-
-  // AS-557: re-verify the caller is an active member of THIS workspace
-  // before returning anything scoped to it — a non-member gets 403 and
-  // this workspace's projects/members are never queried at all, let alone
-  // returned and filtered client-side.
-  const membership = await requireActiveMembership(admin, workspaceId, user.id);
-  if (!membership.ok) {
-    return NextResponse.json(
-      { error: "You don't have permission to view this workspace." },
-      { status: 403, headers },
-    );
-  }
-
-  const [{ data: projectRows, error: projectsError }, { data: memberRows, error: membersError }, { data: taskTypeRows, error: taskTypesError }] =
-    await Promise.all([
-      admin
-        .from("projects")
-        .select("id, name, visibility")
-        .eq("workspace_id", workspaceId)
-        .is("deleted_at", null)
-        .order("name", { ascending: true }),
-      admin
-        .from("workspace_members")
-        .select("user_id")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "active"),
-      admin
-        .from("task_types")
-        .select("id, name")
-        .eq("workspace_id", workspaceId)
-        .order("name", { ascending: true }),
-    ]);
-
-  if (projectsError || membersError || taskTypesError) {
-    logger.error("extension/context: failed to look up projects/members/task-types", { error: projectsError ?? membersError ?? taskTypesError });
-    return NextResponse.json(
-      { error: "Something went wrong. Please try again in a moment." },
-      { status: 500, headers },
-    );
-  }
-
-  const memberUserIds = (memberRows ?? [])
-    .map((row) => row.user_id)
-    .filter((id): id is string => Boolean(id));
-  const people = await resolvePeople(memberUserIds);
-
-  const members = memberUserIds.map((id) => {
-    const person = people.get(id);
-    return {
-      id,
-      name: person?.name ?? person?.email ?? "Unknown",
-    };
-  });
-
-  // AS-557 (M19 scrutiny BLOCKER-4): `projectRows` above was fetched on the
-  // RLS-bypassing admin client, so it includes EVERY project in the
-  // workspace, including visibility='private' ones the caller may not be a
-  // `project_members` row for. Re-run the same rule
-  // `createTaskForUser` (lib/tasks/create.ts) and `uploadAttachmentForUser`
-  // (lib/attachments/upload.ts) already enforce via
-  // `isProjectVisibleToCaller`, batching the `project_members` lookup into a
-  // single query rather than one round trip per private project.
-  const allProjectRows = projectRows ?? [];
-  const privateProjectIds = allProjectRows
-    .filter((row) => ((row.visibility as ProjectVisibility) ?? "workspace") === "private")
-    .map((row) => row.id);
-
-  let visiblePrivateProjectIds = new Set<string>();
-  if (
-    privateProjectIds.length > 0 &&
-    membership.role !== "owner" &&
-    membership.role !== "admin"
-  ) {
-    const { data: privateMemberRows, error: privateMemberError } = await admin
-      .from("project_members")
-      .select("project_id")
-      .eq("user_id", user.id)
-      .in("project_id", privateProjectIds);
-
-    if (privateMemberError) {
-      logger.error("extension/context: failed to look up project memberships", { error: privateMemberError });
-      return NextResponse.json(
-        { error: "Something went wrong. Please try again in a moment." },
-        { status: 500, headers },
-      );
-    }
-
-    visiblePrivateProjectIds = new Set(
-      (privateMemberRows ?? []).map((row) => row.project_id),
-    );
-  }
-
-  // isProjectVisibleToCaller's rule, applied per row using the batched
-  // lookup above instead of a per-project query: workspace-visible OR
-  // caller is owner/admin OR caller has an explicit project_members row.
-  const visibleProjectRows = allProjectRows.filter((row) => {
-    const visibility = (row.visibility as ProjectVisibility) ?? "workspace";
-    if (visibility === "workspace") return true;
-    if (membership.role === "owner" || membership.role === "admin") return true;
-    return visiblePrivateProjectIds.has(row.id);
-  });
-
-  return NextResponse.json(
-    {
-      projects: visibleProjectRows.map((row) => ({ id: row.id, name: row.name })),
-      members,
-      taskTypes: (taskTypeRows ?? []).map((row) => ({ id: row.id, name: row.name })),
-    },
-    { status: 200, headers },
-  );
-}
+  },
+);

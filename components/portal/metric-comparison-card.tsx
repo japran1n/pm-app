@@ -40,6 +40,7 @@
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 import type { MetricMeasurementStatus, MetricSnapshot, ProjectMetric } from "@/lib/queries/metrics";
+import { formatDateUTC } from "@/lib/format";
 
 const CHART_WIDTH_PX = 260;
 const ROW_HEIGHT_PX = 24;
@@ -92,28 +93,6 @@ export function computeMetricBarLayout(
 function formatValue(value: number, unit: string | null): string {
   const rounded = Number.isInteger(value) ? String(value) : value.toFixed(1);
   return unit ? `${rounded}${unit}` : rounded;
-}
-
-// F079 (missions/20260903-portal audit, defect 3): `baseline_at` /
-// `measured_at` are genuine `date` columns
-// (20261013010000_f020_metrics_snapshots_improvements_baseline_freeze
-// .sql). The synthetic `T00:00:00Z` was already appended so the Date
-// parses as UTC midnight rather than the browser's local midnight, but
-// `toLocaleDateString` was never told to RENDER in UTC either — without
-// `timeZone: "UTC"` here it still formats that same instant in the
-// browser's own timezone, which is exactly this defect's bug for a
-// caller west of UTC. Matches deliverable-row.tsx's own `formatDate`,
-// which pairs the same synthetic timestamp with the same `timeZone`
-// option.
-function formatDate(dateIso: string): string {
-  const date = new Date(`${dateIso}T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return dateIso;
-  return date.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
 }
 
 const STATUS_LABEL: Record<MetricMeasurementStatus, string> = {
@@ -297,7 +276,7 @@ function MeasuredBullet({
           <span className="w-14 shrink-0 text-muted-foreground">Before</span>
           <span className="font-medium text-foreground">{formatValue(metric.baselineValue!, metric.unit)}</span>
           {metric.baselineAt && (
-            <span className="text-muted-foreground">as of {formatDate(metric.baselineAt)}</span>
+            <span className="text-muted-foreground">as of {formatDateUTC(metric.baselineAt)}</span>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -305,7 +284,7 @@ function MeasuredBullet({
           <span className={`font-medium ${STATUS_TEXT_CLASS[status]}`}>
             {formatValue(snapshot.value, metric.unit)}
           </span>
-          <span className="text-muted-foreground">as of {formatDate(snapshot.measuredAt)}</span>
+          <span className="text-muted-foreground">as of {formatDateUTC(snapshot.measuredAt)}</span>
         </div>
         {metric.targetValue !== null && (
           <div className="flex items-center gap-3">

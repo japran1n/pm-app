@@ -31,15 +31,7 @@ import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 
 import type { PortalOverview } from "@/lib/queries/portal";
-
-function formatDate(iso: string): string {
-  // Same fixed en-GB short form used by the page/project-progress.tsx, for
-  // the same server/client hydration reason.
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
+import { formatDayMonth } from "@/lib/format";
 
 export function PortalOverviewLive({
   workspaceSlug,
@@ -68,7 +60,7 @@ export function PortalOverviewLive({
               >
                 <span className="min-w-0 truncate">{task.title}</span>
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatDate(task.updatedAt)}
+                  {formatDayMonth(task.updatedAt)}
                 </span>
               </Link>
             </li>

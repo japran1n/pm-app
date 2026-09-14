@@ -8,16 +8,12 @@ import {
 } from "@/lib/validation/tasks";
 import { logger } from "@/lib/observability/logger";
 import { requireAssignActionContext, setTaskAssigneesCore, type TaskAssigneesActionResult } from "./shared";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type AssignTaskResult =
-  | {
-      ok: true;
-      data: {
+export type AssignTaskResult = ActionResult<{
         id: string;
         assigneeId: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Assigns (or unassigns) a task (F036: AS-051, AS-052, AS-053). Kept as the
 // single-assignee entry point every existing caller already uses; now

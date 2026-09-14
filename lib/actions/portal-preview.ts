@@ -38,6 +38,7 @@ import {
   PORTAL_PREVIEW_LABEL_COOKIE,
   PORTAL_PREVIEW_CLIENT_MEMBER_COOKIE,
 } from "@/lib/portal/preview-cookies";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 // F024b (AS-053, "the cookies carry no maxAge"): 30 minutes -- enough to
 // actually look at what the client sees, short enough that an admin who
@@ -69,9 +70,7 @@ const startSchema = z.object({
   taskId: z.string().uuid().optional(),
 });
 
-export type StartClientPreviewResult =
-  | { ok: true; redirectTo: string }
-  | { ok: false; error: string };
+export type StartClientPreviewResult = ActionOutcome<{ redirectTo: string }>;
 
 // Returns a redirect target rather than calling `redirect()` itself --
 // the caller (a Client Component form) navigates client-side after a
@@ -99,6 +98,11 @@ export async function startClientPreview(
   const supabase = await createRealSessionClient();
   const {
     data: { user },
+    // ARCH-002: sanctioned direct call — this action must resolve the
+    // previewer's REAL session via `createRealSessionClient`, never the
+    // shared request-cached client that `getCurrentUser()` wraps (which
+    // could be preview-cookie-scoped).
+    // eslint-disable-next-line no-restricted-syntax
   } = await supabase.auth.getUser();
 
   if (!user) {

@@ -27,6 +27,7 @@ import { logger } from "@/lib/observability/logger";
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireWorkspaceAdmin } from "@/lib/auth/require-membership";
 import {
@@ -39,20 +40,16 @@ import {
   reorderTemplateItemSchema,
   applyStatusTemplateSchema,
 } from "@/lib/validation/status-templates";
+import type { ActionOutcome } from "@/lib/actions/authz";
 
 const PERMISSION_DENIED_ERROR =
   "You don't have permission to manage status templates.";
 const GENERIC_ERROR = "Something went wrong. Please try again in a moment.";
 
-export type StatusTemplateActionResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type StatusTemplateActionResult = ActionOutcome;
 
 async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   return user?.id ?? null;
 }
 

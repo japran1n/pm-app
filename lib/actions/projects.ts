@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   archiveProjectSchema,
@@ -18,6 +18,7 @@ import {
 import { canWrite } from "@/lib/auth/permissions";
 import { writeAudit } from "@/lib/activity/audit";
 import type { Database } from "@/lib/supabase/database.types";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F142: `projects.archived_by` (supabase/migrations/
 // 20260822000000_projects_archived_by.sql) is not yet reflected in the
@@ -33,10 +34,7 @@ type ProjectsUpdateWithArchivedBy =
     archived_by?: string | null;
   };
 
-export type CreateProjectResult =
-  | {
-      ok: true;
-      data: {
+export type CreateProjectResult = ActionResult<{
         id: string;
         workspaceId: string;
         name: string;
@@ -45,9 +43,7 @@ export type CreateProjectResult =
         endDate: string | null;
         createdAt: string;
         createdBy: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Creates a project within a workspace (AS-025, AS-026, AS-035, AS-036).
 // Pattern mirrors lib/actions/workspaces.ts: Zod-validated input, membership
@@ -80,10 +76,7 @@ export async function createProject(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to create a project." };
@@ -289,10 +282,7 @@ export async function createProject(
   };
 }
 
-export type EditProjectResult =
-  | {
-      ok: true;
-      data: {
+export type EditProjectResult = ActionResult<{
         id: string;
         workspaceId: string;
         name: string;
@@ -301,9 +291,7 @@ export type EditProjectResult =
         endDate: string | null;
         icon: string | null;
         updatedAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 export type EditProjectUpdates = {
   name?: string;
@@ -340,10 +328,7 @@ export async function editProject(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a project." };
@@ -498,16 +483,11 @@ export async function editProject(
   };
 }
 
-export type ArchiveProjectResult =
-  | {
-      ok: true;
-      data: {
+export type ArchiveProjectResult = ActionResult<{
         id: string;
         workspaceId: string;
         deletedAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Archives (soft-deletes) a project (AS-030, AS-031, AS-032, AS-033).
 // Admin/owner-only — deliberately `requireWorkspaceAdmin`, not
@@ -543,10 +523,7 @@ export async function archiveProject(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to archive a project." };
@@ -683,15 +660,10 @@ export async function archiveProject(
   };
 }
 
-export type RestoreProjectResult =
-  | {
-      ok: true;
-      data: {
+export type RestoreProjectResult = ActionResult<{
         id: string;
         workspaceId: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Restores (un-archives) a project (F143: AS-252, AS-253, AS-255) — the
 // exact inverse of archiveProject above. Admin/owner-only, same gate as
@@ -727,10 +699,7 @@ export async function restoreProject(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to restore a project." };
@@ -886,9 +855,7 @@ type ProjectsUpdateWithSidebarPosition =
     sidebar_position?: number | null;
   };
 
-export type ReorderProjectResult =
-  | { ok: true; data: { order: string[] } }
-  | { ok: false; error: string };
+export type ReorderProjectResult = ActionResult<{ order: string[] }>;
 
 // Moves `projectId` to `newPosition` (a 0-based index) among the OTHER
 // non-deleted projects in its own workspace, then re-sequences every
@@ -913,10 +880,7 @@ export async function reorderProject(
     return { ok: false, error: "Invalid position." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to reorder projects." };

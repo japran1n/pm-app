@@ -21,7 +21,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/observability/logger";
-import { withAuthz } from "@/lib/actions/authz";
+import { type ActionResult, withAuthz } from "@/lib/actions/authz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { writeAudit } from "@/lib/activity/audit";
 import { canManageColumns, canEditTask, type ProjectRole } from "@/lib/auth/permissions";
@@ -181,9 +181,7 @@ async function revalidateProjectSettings(workspaceSlug: string, projectId: strin
   }
 }
 
-export type CustomFieldActionResult =
-  | { ok: true; data: ProjectCustomField }
-  | { ok: false; error: string };
+export type CustomFieldActionResult = ActionResult<ProjectCustomField>;
 
 // AS: an admin/owner (or project lead) can define a custom field on a
 // project.
@@ -267,7 +265,7 @@ export async function createCustomField(input: {
   return createCustomFieldImpl(input);
 }
 
-export type DeleteCustomFieldResult = { ok: true; data: { id: string } } | { ok: false; error: string };
+export type DeleteCustomFieldResult = ActionResult<{ id: string }>;
 
 const deleteCustomFieldImpl = withAuthz(
   deleteCustomFieldSchema,
@@ -313,9 +311,7 @@ export async function deleteCustomField(fieldId: string): Promise<DeleteCustomFi
   return deleteCustomFieldImpl({ fieldId });
 }
 
-export type SetTaskCustomFieldValueResult =
-  | { ok: true; data: { fieldId: string; value: string | null } }
-  | { ok: false; error: string };
+export type SetTaskCustomFieldValueResult = ActionResult<{ fieldId: string; value: string | null }>;
 
 // A task's own value for one of its project's custom fields. Uses
 // `canEditTask` (broader than field-definition management) — same gate

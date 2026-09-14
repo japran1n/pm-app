@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   logTimeEntrySchema,
@@ -21,11 +21,9 @@ import {
   revalidatePortalProject,
   extractWorkspaceSlug,
 } from "@/lib/actions/portal-revalidate";
+import type { ActionResult } from "@/lib/actions/authz";
 
-export type LogTimeEntryResult =
-  | {
-      ok: true;
-      data: {
+export type LogTimeEntryResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -35,9 +33,7 @@ export type LogTimeEntryResult =
         note: string | null;
         createdAt: string;
         workCategory: WorkCategory | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // Logs a manual time entry on a task (F110: AS-161, AS-162, AS-163).
 // Pattern mirrors lib/actions/comments.ts's addComment / lib/actions/
@@ -89,10 +85,7 @@ export async function logTimeEntry(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to log time." };
@@ -230,17 +223,9 @@ export async function logTimeEntry(
   };
 }
 
-export type StartTimerResult =
-  | {
-      ok: true;
-      data: { id: string; taskId: string; userId: string; startedAt: string };
-    }
-  | { ok: false; error: string };
+export type StartTimerResult = ActionResult<{ id: string; taskId: string; userId: string; startedAt: string }>;
 
-export type StopTimerResult =
-  | {
-      ok: true;
-      data: {
+export type StopTimerResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -249,9 +234,7 @@ export type StopTimerResult =
         entryDate: string;
         note: string | null;
         createdAt: string;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // startTimer (F111: AS-164, AS-165, AS-166, AS-168): starts a live timer on
 // `taskId` for the caller. Membership is re-checked server-side the same
@@ -283,10 +266,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
     return { ok: false, error: "A task is required to start a timer." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to start a timer." };
@@ -405,10 +385,7 @@ export async function startTimer(taskId: string): Promise<StartTimerResult> {
 // stale UI, or a duplicate double-click) is an expected, non-exceptional
 // case, not a crash.
 export async function stopTimer(): Promise<StopTimerResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to stop a timer." };
@@ -446,10 +423,7 @@ export async function stopTimer(): Promise<StopTimerResult> {
   };
 }
 
-export type EditTimeEntryResult =
-  | {
-      ok: true;
-      data: {
+export type EditTimeEntryResult = ActionResult<{
         id: string;
         taskId: string;
         userId: string;
@@ -458,9 +432,7 @@ export type EditTimeEntryResult =
         workCategory?: WorkCategory | null;
         entryDate: string;
         note: string | null;
-      };
-    }
-  | { ok: false; error: string };
+      }>;
 
 // editTimeEntry (F112: AS-169). ONLY the entry's own author (caller's
 // user_id matches the row's user_id) may edit — not an admin/owner, not
@@ -501,10 +473,7 @@ export async function editTimeEntry(
     return { ok: false, error: "No changes to save." };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a time entry." };
@@ -655,9 +624,7 @@ export async function editTimeEntry(
   };
 }
 
-export type SetTimeEntryCategoryResult =
-  | { ok: true; data: { id: string; workCategory: WorkCategory | null } }
-  | { ok: false; error: string };
+export type SetTimeEntryCategoryResult = ActionResult<{ id: string; workCategory: WorkCategory | null }>;
 
 // setTimeEntryCategory (F018): the ONE field of a time entry any project
 // team writer may set, not just the entry's own author. editTimeEntry
@@ -684,10 +651,7 @@ export async function setTimeEntryCategory(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a time entry." };
@@ -797,9 +761,7 @@ export async function setTimeEntryCategory(
   };
 }
 
-export type DeleteTimeEntryResult =
-  | { ok: true; data: { id: string } }
-  | { ok: false; error: string };
+export type DeleteTimeEntryResult = ActionResult<{ id: string }>;
 
 // deleteTimeEntry (F112: AS-170). The entry's own author OR a workspace
 // admin/owner may delete — unlike editTimeEntry, an admin override is
@@ -822,10 +784,7 @@ export async function deleteTimeEntry(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a time entry." };

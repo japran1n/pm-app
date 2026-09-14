@@ -9,15 +9,7 @@ import { addComment } from "@/lib/actions/comments";
 import type { PortalComment } from "@/lib/queries/portal";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDateTime } from "@/lib/format";
 
 export function PortalConversation({
   taskId,
@@ -77,7 +69,7 @@ export function PortalConversation({
                     : (comment.authorName ?? teamName)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatTimestamp(comment.createdAt)}
+                  {formatDateTime(comment.createdAt)}
                 </span>
               </div>
               <p className="text-sm whitespace-pre-wrap">{comment.text}</p>

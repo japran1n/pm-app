@@ -23,6 +23,7 @@ import { revalidatePath } from "next/cache";
 import type { JSONContent } from "@tiptap/react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/auth/current-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getThreadMessages, getChannelMessages, getMessageAttachments } from "@/lib/queries/chat";
 import {
@@ -54,6 +55,7 @@ import { autolinkBody } from "@/lib/chat/autolink-body";
 // feature's spec.
 import { extractMentionIds } from "@/lib/notifications/mentions";
 import { createNotification } from "@/lib/notifications/create-notification";
+import type { ActionResult } from "@/lib/actions/authz";
 
 // F11 (docs/advanced-chat-plan.md): a file/image attached to a message.
 // `signedUrl` is minted fresh at read time (never persisted/reused across
@@ -89,17 +91,11 @@ export type ChatMessage = {
   attachments?: ChatMessageAttachment[];
 };
 
-export type SendMessageResult =
-  | { ok: true; data: ChatMessage }
-  | { ok: false; error: string };
+export type SendMessageResult = ActionResult<ChatMessage>;
 
-export type EditMessageResult =
-  | { ok: true; data: { id: string; bodyJson: JSONContent; editedAt: string } }
-  | { ok: false; error: string };
+export type EditMessageResult = ActionResult<{ id: string; bodyJson: JSONContent; editedAt: string }>;
 
-export type DeleteMessageResult =
-  | { ok: true; data: { id: string; deletedAt: string } }
-  | { ok: false; error: string };
+export type DeleteMessageResult = ActionResult<{ id: string; deletedAt: string }>;
 
 function toChatMessage(row: {
   id: string;
@@ -485,10 +481,7 @@ export async function sendMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to send a message." };
@@ -609,10 +602,7 @@ export async function editMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to edit a message." };
@@ -699,10 +689,7 @@ export async function deleteMessage(
     };
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await getCurrentUser();
 
   if (!user) {
     return { ok: false, error: "You must be signed in to delete a message." };
