@@ -185,16 +185,29 @@ describe.skipIf(!haveAdminCreds)(
       projectId = proj.id;
       createdProjectIds.push(projectId);
 
-      // A genuinely custom column (renamed/added, not one of the original
-      // four) — the target for AS-409's "custom column" requirement.
-      const { error: colErr } = await adminClient.from("project_statuses").insert({
-        project_id: projectId,
-        name: "Blocked",
-        color: "#ef4444",
-        category: "in_progress",
-        position: 1500,
-      });
-      if (colErr) throw new Error(`Failed to seed custom column: ${colErr.message}`);
+      // status_set_v2 seeds 11 default columns on every new project, but
+      // this suite's AS-416 order assertions are written against an
+      // exact five-column board (the legacy four + a custom "Blocked").
+      // Upsert the five with the positions the assertions assume, then
+      // drop the v2-seeded rest — never leaving the project column-less,
+      // so the prevent-last-delete trigger is never tripped.
+      const { error: colErr } = await adminClient.from("project_statuses").upsert(
+        [
+          { project_id: projectId, name: "todo", color: "#64748b", category: "not_started", position: 1000 },
+          { project_id: projectId, name: "Blocked", color: "#ef4444", category: "in_progress", position: 1500 },
+          { project_id: projectId, name: "in_progress", color: "#3b82f6", category: "in_progress", position: 2000 },
+          { project_id: projectId, name: "in_review", color: "#8b5cf6", category: "in_progress", position: 3000 },
+          { project_id: projectId, name: "done", color: "#16a34a", category: "done", position: 4000 },
+        ],
+        { onConflict: "project_id,name" },
+      );
+      if (colErr) throw new Error(`Failed to seed columns: ${colErr.message}`);
+      const { error: pruneErr } = await adminClient
+        .from("project_statuses")
+        .delete()
+        .eq("project_id", projectId)
+        .not("name", "in", '("todo","Blocked","in_progress","in_review","done")');
+      if (pruneErr) throw new Error(`Failed to prune seeded columns: ${pruneErr.message}`);
     });
 
     beforeEach(() => {
@@ -424,7 +437,7 @@ describe.skipIf(!haveAdminCreds)(
       if (projErr || !proj) throw new Error(`Failed to create project: ${projErr?.message}`);
       const teardownProjectId = proj.id as string;
 
-      const { error: colErr } = await adminClient.from("project_statuses").insert({
+      const { error: colErr } = await adminClient.from("project_statuses").upsert({
         project_id: teardownProjectId,
         name: "Custom",
         color: "#3b82f6",

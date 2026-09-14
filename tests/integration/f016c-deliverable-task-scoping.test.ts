@@ -164,14 +164,14 @@ describe.skipIf(!haveCreds)(
       const makeBlockedStatus = async (projectId: string) => {
         const { data, error } = await admin
           .from("project_statuses")
-          .insert({
+          .upsert({
             project_id: projectId,
             name: "Blocked",
             color: "#dc2626",
             category: "in_progress",
             client_bucket: "blocked",
             position: 5000,
-          })
+          }, { onConflict: "project_id,name" })
           .select("id, name")
           .single();
         if (error || !data) throw new Error(`blocked status: ${error?.message}`);

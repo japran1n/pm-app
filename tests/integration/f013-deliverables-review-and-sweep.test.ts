@@ -59,6 +59,7 @@ describe.skipIf(!haveCreds)(
     let blockedStatusId: string;
     let blockedStatusName: string;
     let todoStatusId: string;
+    let todoStatusName: string;
 
     const createdUserIds: string[] = [];
     const createdDeliverableIds: string[] = [];
@@ -137,18 +138,20 @@ describe.skipIf(!haveCreds)(
         .select("id, name, category")
         .eq("project_id", projectId);
       if (statusesError || !statuses) throw new Error(`statuses: ${statusesError?.message}`);
-      todoStatusId = statuses.find((s) => s.category === "not_started")!.id;
+      const todoStatus = statuses.find((s) => s.category === "not_started")!;
+      todoStatusId = todoStatus.id;
+      todoStatusName = todoStatus.name;
 
       const { data: blockedStatus, error: blockedStatusError } = await admin
         .from("project_statuses")
-        .insert({
+        .upsert({
           project_id: projectId,
           name: "Blocked",
           color: "#dc2626",
           category: "in_progress",
           client_bucket: "blocked",
           position: 5000,
-        })
+        }, { onConflict: "project_id,name" })
         .select("id, name")
         .single();
       if (blockedStatusError || !blockedStatus) throw new Error(`blocked status: ${blockedStatusError?.message}`);
@@ -214,7 +217,7 @@ describe.skipIf(!haveCreds)(
         .insert({
           project_id: projectId,
           title: `F013 task ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          status: "todo",
+          status: todoStatusName,
           status_id: statusId,
           author_id: ownerId,
         })
@@ -389,7 +392,7 @@ describe.skipIf(!haveCreds)(
       expect(blocked!.status_id).toBe(blockedStatusId);
 
       // A human moves it back out.
-      await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+      await admin.from("tasks").update({ status_id: todoStatusId, status: todoStatusName }).eq("id", taskId);
 
       // The sweep runs again -- same deliverable, still overdue, still
       // blocking, still not accepted/waived. It must not re-block the
@@ -505,7 +508,7 @@ describe.skipIf(!haveCreds)(
         p_decision: "accepted",
         p_note: null,
       });
-      await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+      await admin.from("tasks").update({ status_id: todoStatusId, status: todoStatusName }).eq("id", taskId);
 
       // d2 is still overdue, blocking, and unaccepted -- the next sweep
       // must re-block the task, citing d2.
@@ -546,7 +549,7 @@ describe.skipIf(!haveCreds)(
         .single();
       expect(sweptRow!.swept_at).not.toBeNull();
 
-      await admin.from("tasks").update({ status_id: todoStatusId, status: "todo" }).eq("id", taskId);
+      await admin.from("tasks").update({ status_id: todoStatusId, status: todoStatusName }).eq("id", taskId);
 
       // Due date extended into the future -- swept_at must clear.
       await admin.from("client_deliverables").update({ due_at: "2099-01-01" }).eq("id", d1.id);

@@ -196,6 +196,26 @@ describe.skipIf(!haveAdminCreds)(
       }
       projectId = proj.id;
       createdProjectIds.push(projectId);
+    // status_set_v2 renamed the default columns, but this suite's
+    // assertions use the legacy four names as literal column/status
+    // values. Seed them as this project's own (PM-named) columns so the
+    // exact-name path is exercised end to end, independent of the v2
+    // default seed.
+    {
+      const { error: legacyColErr } = await adminClient
+        .from("project_statuses")
+        .upsert(
+          [
+            { project_id: projectId, name: "todo", color: "#64748b", category: "not_started", position: 100 },
+            { project_id: projectId, name: "in_progress", color: "#3b82f6", category: "in_progress", position: 200 },
+            { project_id: projectId, name: "in_review", color: "#8b5cf6", category: "in_progress", position: 300 },
+            { project_id: projectId, name: "done", color: "#16a34a", category: "done", position: 400 },
+          ],
+          { onConflict: "project_id,name" },
+        );
+      if (legacyColErr) throw new Error(`legacy columns: ${legacyColErr.message}`);
+    }
+
     });
 
     beforeEach(() => {

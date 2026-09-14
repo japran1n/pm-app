@@ -207,14 +207,14 @@ describe.skipIf(!haveCreds)("getPortalPages (F005: AS-014, AS-016)", () => {
     ) => {
       const { data, error } = await admin
         .from("project_statuses")
-        .insert({
+        .upsert({
           project_id: projectAId,
           name,
           color: "#3670e1",
           category,
           client_bucket: clientBucket,
           client_description: clientDescription,
-        })
+        }, { onConflict: "project_id,name" })
         .select("id")
         .single();
       if (error || !data) throw new Error(`status ${name}: ${error?.message}`);
