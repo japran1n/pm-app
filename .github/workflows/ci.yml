@@ -198,6 +198,17 @@ jobs:
         run: npm run test:realtime
 
       - name: End-to-end tests (Playwright)
+        # PLAYWRIGHT_PORT=3000: the local stack's GoTrue redirects every
+        # magic-link verify to its configured site_url
+        # (supabase/config.toml: http://127.0.0.1:3000). With Playwright's
+        # default port 3100 the browser followed verify -> 127.0.0.1:3000
+        # where nothing listened -> net::ERR_CONNECTION_REFUSED on every
+        # sign-in (run 34858850901). Locally this never bit because the
+        # dev server already runs on 3000 and reuseExistingServer picks it
+        # up. Aligning the CI app port with site_url fixes the redirect
+        # chain without touching the stack config.
+        env:
+          PLAYWRIGHT_PORT: "3000"
         run: |
           npx playwright install --with-deps
           npx playwright test
