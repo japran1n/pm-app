@@ -189,6 +189,51 @@ describe("PortalSidebar (F008)", () => {
     expect(html).toContain(">Pages<");
   });
 
+  // F016 (AS-016): M2 scrutiny found the group only expanded for routes
+  // `buildPortalProjectNavItems` happens to list -- `/files` and the
+  // task-detail route `/t/[taskId]` are real routes under this shell with
+  // no nav-item entry of their own, so they never expanded the group.
+  // Fixed by detecting via route PREFIX instead of a per-item lookup.
+  it("test_AS_016_the_project_group_expands_on_the_files_route_with_no_child_marked_current", () => {
+    mockPathname = "/portal/acme/p/proj-1/files";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+    const projectToggles = buttons.filter((tag) => tag.includes('aria-expanded="true"'));
+    expect(projectToggles.length).toBeGreaterThanOrEqual(2);
+
+    const anchors = anchorTags(html);
+    const anyChildCurrent = anchors.some(
+      (tag) =>
+        tag.includes('href="/portal/acme/p/proj-1/') && tag.includes('aria-current="page"'),
+    );
+    expect(anyChildCurrent).toBe(false);
+  });
+
+  it("test_AS_016_the_project_group_expands_on_a_task_detail_route_with_no_child_marked_current", () => {
+    mockPathname = "/portal/acme/p/proj-1/t/abc";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+    const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+    const projectToggles = buttons.filter((tag) => tag.includes('aria-expanded="true"'));
+    expect(projectToggles.length).toBeGreaterThanOrEqual(2);
+
+    const anchors = anchorTags(html);
+    const anyChildCurrent = anchors.some(
+      (tag) =>
+        tag.includes('href="/portal/acme/p/proj-1/') && tag.includes('aria-current="page"'),
+    );
+    expect(anyChildCurrent).toBe(false);
+  });
+
+  it("test_AS_016_the_project_group_does_not_expand_on_for_you_or_conversation", () => {
+    for (const path of ["/portal/acme/p/proj-1/for-you", "/portal/acme/p/proj-1/conversation"]) {
+      mockPathname = path;
+      const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+      const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+      const projectToggles = buttons.filter((tag) => tag.includes("aria-expanded"));
+      expect(projectToggles.every((tag) => tag.includes('aria-expanded="false"'))).toBe(true);
+    }
+  });
+
   it("test_AS_016_the_project_group_is_collapsed_by_default_off_a_child_route", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));

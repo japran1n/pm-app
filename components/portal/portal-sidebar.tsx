@@ -298,12 +298,21 @@ export function PortalSidebar({
   const items = buildPortalNavItems(basePath, forYouBadge);
   const projectItems = buildPortalProjectNavItems(basePath, billingModel);
 
-  // AS-016: the Project group is expanded (and its active child marked
-  // current) on ANY child route, including nested ones (e.g.
-  // `/pages/<id>`) -- `isItemActive` already treats a child's own href as
-  // a prefix match. Off a child route, expansion is whatever the user
-  // last toggled it to (defaults closed).
-  const isOnProjectRoute = projectItems.some((item) => isItemActive(pathname, item));
+  // F016 (portal-simplify, AS-016): the Project group must expand on ANY
+  // route under this project except the three top-level ones (Home
+  // exact, For you, Messages) -- not just the routes `buildPortalProjectNavItems`
+  // happens to list. `/files` and the task-detail route `/t/[taskId]`
+  // are real, reachable routes under this shell (see p/[projectId]/layout.tsx)
+  // that have no Project-group nav row of their own, so the old
+  // `projectItems.some(isItemActive)` check never expanded the group for
+  // them -- M2 scrutiny's own finding. Detecting by ROUTE PREFIX instead
+  // (anything under `basePath` that isn't one of the three top-level
+  // items) covers every current and future child route without needing a
+  // nav-item entry for each one; a matching Project-group item is still
+  // marked current when one exists, and none is when it doesn't (e.g.
+  // `/files`, `/t/abc`).
+  const isOnTopLevelRoute = items.some((item) => isItemActive(pathname, item));
+  const isOnProjectRoute = !isOnTopLevelRoute && pathname.startsWith(`${basePath}/`);
   const [manuallyExpanded, setManuallyExpanded] = useState(false);
   const expanded = isOnProjectRoute || manuallyExpanded;
 
