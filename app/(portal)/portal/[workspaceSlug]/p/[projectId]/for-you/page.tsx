@@ -97,6 +97,12 @@ export default async function PortalForYouPage({
 
   const owners = ownersResult.ok ? ownersResult.data : [];
   const ownerByType = new Map(owners.map((owner) => [owner.decisionType, owner]));
+  // F014 (AS-010): when this read fails, EVERY decision card would
+  // otherwise silently render "No one is assigned to decide this yet" --
+  // indistinguishable from the true "nobody's been assigned" state, and
+  // wrong: someone almost certainly IS the owner, we just couldn't look
+  // it up. Surfaced explicitly instead of disabling actions in silence.
+  const ownersFailed = !ownersResult.ok;
 
   const today = todayIso();
   const openApprovals = approvalsResult.ok ? approvalsResult.data : [];
@@ -132,6 +138,17 @@ export default async function PortalForYouPage({
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2" data-testid="for-you-filter-chips">
             {FILTER_CHIPS.map((chip) => {
+              // F014 (AS-009): a chip's count is only trustworthy when
+              // its own source(s) loaded -- "All" depends on both, so a
+              // single failed source hides its number too rather than
+              // showing a "0" that reads as "nothing outstanding" when
+              // the truth is "we don't know".
+              const countIsKnown =
+                chip.value === "all"
+                  ? approvalsResult.ok && deliverablesResult.ok
+                  : chip.value === "decisions"
+                    ? approvalsResult.ok
+                    : deliverablesResult.ok;
               const count =
                 chip.value === "all"
                   ? counts.all
@@ -157,7 +174,7 @@ export default async function PortalForYouPage({
                   )}
                 >
                   {chip.label}
-                  <span className="font-mono text-xs">{count}</span>
+                  {countIsKnown && <span className="font-mono text-xs">{count}</span>}
                 </Link>
               );
             })}
@@ -180,14 +197,27 @@ export default async function PortalForYouPage({
             />
           )}
 
-          {visibleItems.length === 0 ? (
+          {ownersFailed && visibleItems.some((item) => item.kind === "decision") && (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Couldn't check who can approve"
+              description="We couldn't confirm who owns each decision below, so approve/ask-for-changes actions may be unavailable even for their real owner. Try refreshing the page."
+              testId="for-you-owners-error"
+            />
+          )}
+
+          {/* F014 (AS-011): the positive "nothing is waiting" empty
+              state is a claim about the FULL picture -- it must never
+              show when a source failed to load, since there could be
+              open items we simply couldn't see. */}
+          {visibleItems.length === 0 && approvalsResult.ok && deliverablesResult.ok ? (
             <EmptyState
               icon={CheckCircle2}
               title="Nothing is waiting on you."
               description="The team will let you know when that changes."
               testId="for-you-empty"
             />
-          ) : (
+          ) : visibleItems.length === 0 ? null : (
             <ul className="flex flex-col gap-4" data-testid="for-you-list">
               {visibleItems.map((item) => (
                 <li
