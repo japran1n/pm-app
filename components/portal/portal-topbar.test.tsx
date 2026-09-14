@@ -88,7 +88,7 @@ describe("PortalTopbar (F003)", () => {
 
     mockPathname = "/portal/acme/p/proj-1";
     const overviewHtml = renderToStaticMarkup(createElement(PortalTopbar, baseProps));
-    expect(overviewHtml).toContain("Overview");
+    expect(overviewHtml).toContain("Home");
   });
 
   // F107 round 2: the chip duplicates `LaunchHeadline` on Overview --
@@ -126,7 +126,16 @@ describe("resolvePortalStaticTitle (F006e)", () => {
   const basePath = "/portal/acme/p/proj-1";
 
   it("test_AS_004_titles_the_overview_route_at_the_exact_project_root", () => {
-    expect(resolvePortalStaticTitle(basePath, basePath)).toBe("Overview");
+    expect(resolvePortalStaticTitle(basePath, basePath)).toBe("Home");
+  });
+
+  // F008 (AS-014): Conversation -> Messages, Architecture -> Site map.
+  it("test_AS_014_renames_conversation_to_messages", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/conversation`, basePath)).toBe("Messages");
+  });
+
+  it("test_AS_014_renames_architecture_to_site_map", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/architecture`, basePath)).toBe("Site map");
   });
 
   // Side-effect verification (this feature's own DoD): the eight primary

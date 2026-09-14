@@ -62,19 +62,27 @@ const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
 // `buildPortalNavItems`) so this map covers every route under the shell,
 // not only the ones the sidebar happens to display -- see this file's
 // own header comment for why that distinction is the whole fix.
+// Mission 20260914-portal-simplify, F008 (AS-014): route titles renamed
+// to match the simplified sidebar's labels -- Overview -> Home,
+// Conversation -> Messages, Architecture -> Site map. Old routes
+// (approvals, your-list, requests) are redirect-only as of F009 and never
+// render this shell, but their titles stay mapped in case a stale link
+// resolves before the redirect fires.
 const STATIC_ROUTE_TITLES: Record<string, string> = {
-  "": "Overview",
+  "": "Home",
   approvals: "Approvals",
   "your-list": "Your list",
+  "for-you": "For you",
   pages: "Pages",
   hours: "Hours",
   results: "Results",
   scope: "Scope & decisions",
   site: "Your site",
-  // TEMPORARY (F006e) -- see `buildPortalSecondaryNavItems` in
-  // `portal-sidebar.tsx`. Remove alongside that function.
   files: "Files",
   requests: "Requests",
+  conversation: "Messages",
+  architecture: "Site map",
+  brief: "Questionnaire",
   "how-we-work": "How we work",
 };
 

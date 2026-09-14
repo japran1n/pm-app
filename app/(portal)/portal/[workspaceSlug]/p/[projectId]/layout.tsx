@@ -1,13 +1,13 @@
 import { notFound, redirect } from "next/navigation";
 
 import {
-  getPortalBadgeCounts,
   getPortalCurrentUserProfile,
   getPortalProjects,
 } from "@/lib/queries/portal";
 import { getClientVisiblePortalLinks } from "@/lib/queries/project-site";
+import { getWaitingOnYouCount } from "@/lib/portal/waiting-on-you-count";
 import { createClient } from "@/lib/supabase/server";
-import { PortalSidebar } from "@/components/portal/portal-sidebar";
+import { PortalSidebar, type PortalForYouBadge } from "@/components/portal/portal-sidebar";
 import { PortalTopbar } from "@/components/portal/portal-topbar";
 import { PortalTitleProvider } from "@/components/portal/portal-title-context";
 import type { PortalKeyLink } from "@/components/portal/portal-link-strip";
@@ -64,15 +64,24 @@ export default async function PortalProjectLayout({
   // fabricating a placeholder identity for the sidebar footer.
   if (!user) redirect("/sign-in");
 
-  const [projects, badges, profile, keyLinksResult] = await Promise.all([
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  const [projects, waitingOnYouResult, profile, keyLinksResult] = await Promise.all([
     getPortalProjects(workspace.id),
-    getPortalBadgeCounts(projectId),
+    getWaitingOnYouCount(projectId, todayIso),
     getPortalCurrentUserProfile(user.id),
     getClientVisiblePortalLinks(projectId),
   ]);
 
   const project = projects.find((p) => p.id === projectId);
   if (!project) notFound();
+
+  // F005/F008 (AS-007): the "For you" nav badge's own single source of
+  // truth -- a failed read renders no badge at all, never a fabricated
+  // zero.
+  const forYouBadge: PortalForYouBadge = waitingOnYouResult.ok
+    ? { ok: true, total: waitingOnYouResult.data.total, overdue: waitingOnYouResult.data.overdue }
+    : { ok: false };
 
   // F113 (client-portal-phase-2-plan.md item B): the topbar's fixed
   // Figma/staging/live strip, same place on every route. A failed read
@@ -104,7 +113,7 @@ export default async function PortalProjectLayout({
           projectId={project.id}
           projectName={project.name}
           hasMultipleProjects={projects.length > 1}
-          badges={badges}
+          forYouBadge={forYouBadge}
           billingModel={project.billingModel}
           currentUser={{
             id: user.id,
