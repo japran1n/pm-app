@@ -11,26 +11,57 @@
 // and tests/e2e/f272-two-context-notifications.spec.ts's `loginAs`, the
 // two existing specs this feature was told to follow.
 //
-// AS-029 is explicit that a DOM-only "the row is gone" check is not
-// sufficient — a spec that would still pass after a full page reload
-// does not prove the live, no-reload behaviour components/portal/
-// portal-overview-live.tsx (F008) exists to provide. So this test:
-//   1. Opens the portal overview in one Page ("overviewPage") and leaves
-//      it sitting there, watching, the same way the two-context
-//      notification specs leave the recipient's bell open and watching.
-//   2. Instruments `overviewPage` with a `window`-level sentinel AND a
-//      Playwright `page.on("load")` counter set up before the approval,
-//      so a full navigation/reload of that page — not just a bad final
-//      DOM state — would fail the test.
-//   3. Drives the REAL Approve click from a SECOND Page
-//      ("taskDetailPage"), on the real task detail route
-//      (/portal/<slug>/t/<taskId>), which is where
-//      components/portal/approval-actions.tsx (F005) actually lives —
-//      the overview page has never rendered an Approve button.
-//   4. Asserts the task's row leaves overviewPage's "Waiting on you"
-//      list — live, via F008's Realtime subscription — while
-//      overviewPage's own sentinel/load-counter prove it never
-//      reloaded/navigated to get there.
+// REWRITTEN for missions/20260914-portal-simplify (worker: fix/ci-portal).
+// The original version of this spec asserted against the pre-simplify
+// Overview's own "Waiting on you" list, watched live via a Realtime
+// subscription (`components/portal/portal-overview-live.tsx`,
+// `usePortalOverviewRealtime`). That subscription and its "Waiting on
+// you" card are GONE — removed outright by F018 (portal-simplify
+// handoff, item 1: "prefer removal ... a rewired card would still be a
+// second place answering the same question"). What replaced it, per the
+// mission's plan.md and handoffs F005/F006/F010/F018:
+//   - Home (`p/[projectId]/page.tsx`) now shows one `WaitingOnYouCallout`
+//     ("N things are waiting on you", hidden entirely at 0) sourced from
+//     `getWaitingOnYouCount` (F005) — the SAME helper the "For you" nav
+//     badge reads (F008), so the two numbers can never disagree.
+//   - The per-project sidebar (`components/portal/portal-sidebar.tsx`)
+//     shows a "For you" badge with that same total, rendered by the
+//     Server Component layout that wraps every portal route.
+//   - The "For you" page (`p/[projectId]/for-you`, F006) lists open
+//     decisions via `getOpenApprovalsForClient` — a Server Component,
+//     no client-side realtime of its own (confirmed: F006's own handoff,
+//     "No MCP tools ... no schema or policy change"; nothing under
+//     `for-you/page.tsx` subscribes to anything).
+//   - Approving a decision still goes through `ApprovalCard`
+//     (`components/portal/approval-card.tsx`, used on "For you") or
+//     `PortalApprovalActions` (`components/portal/approval-actions.tsx`,
+//     used on the task detail route) — both call their server action,
+//     then `router.refresh()`. That is the portal's live-update
+//     mechanism now: a Next.js soft refresh of the current route's
+//     Server Component tree (layout + page), which re-fetches
+//     `getOpenApprovalsForClient` (dropping the now-decided item, since
+//     that query only ever returns pending rows) and the sidebar's badge
+//     count — with NO browser navigation and NO full page reload. This
+//     spec proves that refresh is what it claims to be: the row leaves
+//     the open "For you" list AND the sidebar's own "For you" badge count
+//     drops, both without a single `load` event firing on the page.
+//
+// AS-029's original explicit requirement — that a DOM-only "the row is
+// gone" check is insufficient, since a spec that would still pass after a
+// full page reload wouldn't prove any live behaviour — is preserved the
+// same way: a `window`-level sentinel plus a Playwright `page.on("load")`
+// counter, both installed BEFORE the approval, on the SAME page the
+// approval and its live reconciliation both happen on (there is no
+// second, cross-tab page left to watch independently now that the old
+// Realtime-into-Overview path is gone; "For you" itself is where both the
+// list and the sidebar badge live, in the one Server Component tree
+// `router.refresh()` re-renders).
+//
+// Home's callout is also checked, but honestly: it is a Server Component
+// with no client-side subscription of its own, so seeing its count drop
+// requires an actual navigation to Home (a real user action, not a
+// reload of the SAME page) — that assertion is kept separate from, and
+// explicitly NOT claimed as part of, the no-reload proof above.
 //
 // AS-030: fixture workspace/project/client member/task are created in
 // `beforeAll` with a unique per-run suffix and torn down in `afterAll`,
@@ -84,6 +115,8 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
   let projectId: string;
   let taskId: string;
   let taskTitle: string;
+  let approvalId: string;
+  let approvalTitle: string;
   let clientUserId: string;
   let clientEmail: string;
 
@@ -179,11 +212,10 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     // F003b: a SECOND portal-enabled project, shared with the same
     // client, with no tasks of its own. Its only purpose is to keep
     // `getPortalProjects` at length 2 for this fixture, so
-    // `[workspaceSlug]/page.tsx` (F003's project chooser — the only
-    // place "Waiting on you" renders, per AS-018/AS-019) does not take
+    // `[workspaceSlug]/page.tsx` (F003's project chooser) does not take
     // its own single-project shortcut and redirect straight past itself
-    // into `p/[projectId]` before this test ever gets to look at
-    // "Waiting on you". `loginAsClient` below still lands on
+    // into `p/[projectId]` before this test ever gets to log in on the
+    // chooser route. `loginAsClient` below still lands on
     // `/portal/<slug>` (unchanged) precisely because of this second
     // project.
     const { data: secondProj, error: secondProjErr } = await adminClient
@@ -213,10 +245,9 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     }
 
     // `client_visible: true` so RLS (20260902010000/20260902020000)
-    // actually surfaces this row to the client session, and
-    // `pending_client_approval: true` (migration 20260903050000) so it
-    // lands in "Waiting on you" (getPortalOverview's
-    // `isAwaitingReview` predicate, lib/queries/portal.ts).
+    // actually surfaces this row to the client session. This task is the
+    // approval's subject (subject_type: "task" below), which is what
+    // makes `ApprovalCard`'s "Open" link point at the task detail route.
     const { data: task, error: taskErr } = await adminClient
       .from("tasks")
       .insert({
@@ -226,7 +257,6 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
         status: "todo",
         position: 100,
         client_visible: true,
-        pending_client_approval: true,
       })
       .select("id")
       .single();
@@ -235,6 +265,54 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     }
     taskId = task.id;
     createdTaskIds.push(taskId);
+
+    // F007 (missions/20260903-portal)/F005+F006+F010 (portal-simplify):
+    // the "For you" page's decisions list, the "For you" nav badge, and
+    // Home's callout all read `approval_requests` (via
+    // `getOpenApprovalsForClient`/`getWaitingOnYouCount`) — NOT the
+    // task's own `pending_client_approval` flag (that flag only drives
+    // the separate, older `PortalApprovalActions` component on the task
+    // detail route, which F005's own handoff explicitly excluded from
+    // the new shared "waiting on you" count). A real `approval_requests`
+    // row, `state: "pending"`, is what this fixture needs to appear as a
+    // "Decision" on "For you" and to move the badge/callout off zero.
+    approvalTitle = `F011 Portal Approval ${uniqueSuffix}`;
+    const { data: approval, error: approvalErr } = await adminClient
+      .from("approval_requests")
+      .insert({
+        project_id: projectId,
+        subject_type: "task",
+        subject_id: taskId,
+        title: approvalTitle,
+        decision_type: "content",
+        state: "pending",
+        requested_by: clientUserId,
+      })
+      .select("id")
+      .single();
+    if (approvalErr || !approval) {
+      throw new Error(`Failed to create test approval request: ${approvalErr?.message}`);
+    }
+    approvalId = approval.id;
+
+    // `decide_approval_atomic`'s decision-owner check
+    // (`is_project_decision_owner`, 20260925010000/F009b) is separate
+    // from `client_gate` — a decision owner is not necessarily a client
+    // (project_decision_owners carries no role constraint). Making the
+    // client user itself the owner of the "content" decision type on
+    // this project is what lets its own Approve click actually pass that
+    // check, rather than only rendering a disabled "Only <name> can
+    // decide this" button.
+    const { error: ownerErr } = await adminClient
+      .from("project_decision_owners")
+      .insert({
+        project_id: projectId,
+        decision_type: "content",
+        user_id: clientUserId,
+      });
+    if (ownerErr) {
+      throw new Error(`Failed to seed decision owner: ${ownerErr.message}`);
+    }
   });
 
   test.afterAll(async () => {
@@ -296,120 +374,141 @@ test.describe("Client portal: approve a task waiting on the client (F011: AS-029
     // redirecting straight into `p/<projectId>` because this fixture now
     // seeds a SECOND portal-enabled project (see `beforeAll`) — F003's
     // own single-project shortcut only fires when `getPortalProjects`
-    // returns exactly one row. Landing on the chooser is what this test
-    // needs anyway: it is the only place "Waiting on you" renders.
+    // returns exactly one row.
     await page.waitForURL(`**/portal/${workspaceSlug}`, { timeout: 15_000 });
   }
 
-  test("AS-029/AS-030: a client approves a task from the portal and its row leaves 'Waiting on you' live, with no reload of the overview page", async ({
-    browser,
+  test("AS-029/AS-030: a client approves a decision from the portal task page; the row leaves the 'For you' list and the sidebar badge drops live, with no reload", async ({
+    page,
     baseURL,
   }) => {
     test.setTimeout(60_000);
 
-    // Two Pages in the SAME context/session: `overviewPage` is the client
-    // sitting on the portal overview, watching "Waiting on you" — exactly
-    // where AS-029 requires the no-reload proof to hold. `taskDetailPage`
-    // is the same client, in a second tab, driving the real Approve click
-    // from the task detail route (approval-actions.tsx / F005 only
-    // renders there, never on the overview).
-    const context = await browser.newContext();
-    const overviewPage = await context.newPage();
-    const taskDetailPage = await context.newPage();
+    await loginAsClient(page, baseURL!);
 
-    try {
-      await loginAsClient(overviewPage, baseURL!);
+    // AS-029's original wording named the Overview's "Waiting on you"
+    // list; that surface is gone (F018 removed it outright — see the
+    // header comment above). Its replacement for "somewhere the client
+    // sees the pending item and can watch it disappear live" is the
+    // "For you" page (F006) — the one Server-Component route that both
+    // lists this decision AND re-renders (via `router.refresh()`, no
+    // navigation) the moment the decision is made from the SAME page.
+    await page.goto(`${baseURL}/portal/${workspaceSlug}/p/${projectId}/for-you`);
+    await page.waitForURL(
+      `**/portal/${workspaceSlug}/p/${projectId}/for-you`,
+      { timeout: 15_000 },
+    );
 
-      const waitingHeading = overviewPage.getByRole("heading", {
-        name: "Waiting on you",
-      });
-      await expect(waitingHeading).toBeVisible();
+    // The sidebar's own "For you" nav badge starts at a known, non-zero
+    // count for this project (this fixture seeds exactly one pending
+    // decision), so this test can prove the badge actually MOVES rather
+    // than merely "isn't wrong" at some unknown starting value.
+    const forYouNavLink = page.getByRole("link", { name: /^For you/ }).first();
+    const badgeLocator = forYouNavLink.locator("span").last();
+    await expect(async () => {
+      const badgeText = (await badgeLocator.textContent())?.trim();
+      expect(badgeText).toBe("1");
+    }).toPass({ timeout: 15_000 });
 
-      const waitingSection = overviewPage
-        .locator("div")
-        .filter({ has: waitingHeading })
-        .first();
-      const taskLink = waitingSection.getByRole("link", { name: taskTitle });
-      await expect(taskLink).toBeVisible({ timeout: 15_000 });
+    // The card renders the approval's own `title`, not the underlying
+    // task's title (`components/portal/approval-card.tsx`'s `<h3>`) —
+    // this is what identifies the row on "For you".
+    const approvalHeading = page.getByRole("heading", { name: approvalTitle, level: 3 });
+    await expect(approvalHeading).toBeVisible({ timeout: 15_000 });
 
-      // AS-029: instrument `overviewPage` BEFORE the approval happens.
-      // A `window`-level sentinel is wiped by any real navigation/reload
-      // (unlike React state, which a naive "final DOM only" check could
-      // pass even after a reload re-renders the same markup); the
-      // Playwright `load` event counter is the browser-level ground
-      // truth that no navigation occurred, independent of anything the
-      // app's own JS does.
-      await overviewPage.evaluate(() => {
-        (window as unknown as { __f011NoReloadSentinel?: boolean }).__f011NoReloadSentinel = true;
-      });
-      let loadEventCount = 0;
-      overviewPage.on("load", () => {
-        loadEventCount += 1;
-      });
+    // AS-029: instrument the page BEFORE the approval happens. A
+    // `window`-level sentinel is wiped by any real navigation/reload
+    // (unlike React state, which a naive "final DOM only" check could
+    // pass even after a reload re-renders the same markup); the
+    // Playwright `load` event counter is the browser-level ground truth
+    // that no navigation occurred, independent of anything the app's own
+    // JS does. `router.refresh()` (the mechanism both `ApprovalCard` and
+    // `PortalApprovalActions` call after a successful decision) does NOT
+    // fire a `load` event and does NOT touch `window` globals — it is a
+    // React Server Component re-render over the existing document. This
+    // is exactly the distinction this test needs to prove.
+    await page.evaluate(() => {
+      (window as unknown as { __f011NoReloadSentinel?: boolean }).__f011NoReloadSentinel = true;
+    });
+    let loadEventCount = 0;
+    page.on("load", () => {
+      loadEventCount += 1;
+    });
 
-      // Drive the REAL Approve click on the task detail route, in the
-      // second tab — this is components/portal/approval-actions.tsx
-      // (F005), the only place this button renders.
-      //
-      // F003b (missions/20260903-portal): task detail moved from
-      // `/portal/<slug>/t/<taskId>` to
-      // `/portal/<slug>/p/<projectId>/t/<taskId>`, inside the
-      // project-scoped shell. Navigated to directly (not via the old
-      // URL + its redirect) so this test drives the real route, not the
-      // redirect stub left behind at the old location.
-      await taskDetailPage.goto(
-        `${baseURL}/portal/${workspaceSlug}/p/${projectId}/t/${taskId}`,
-      );
-      await taskDetailPage.waitForURL(
-        `**/portal/${workspaceSlug}/p/${projectId}/t/${taskId}`,
-        { timeout: 15_000 },
-      );
+    // Drive the REAL Approve click on the "For you" card
+    // (`components/portal/approval-card.tsx`, F006/F009/F010) — the row
+    // for this fixture's decision.
+    const forYouItem = page
+      .locator("li")
+      .filter({ has: page.getByRole("heading", { name: approvalTitle, level: 3 }) });
+    const approveButton = forYouItem.getByRole("button", { name: "Approve" });
+    await expect(approveButton).toBeVisible({ timeout: 15_000 });
+    await approveButton.click();
 
-      const approveButton = taskDetailPage.getByRole("button", {
-        name: "Approve",
-      });
-      await expect(approveButton).toBeVisible({ timeout: 15_000 });
-      await approveButton.click();
+    // Optimistic settle-in-place confirms the click landed
+    // (approval-card.tsx's own documented "settles IN PLACE ... so a
+    // client who clicks Approve can tell success from a crash") before
+    // this test moves on to the list/badge reconciliation that follows
+    // the server round trip + `router.refresh()`.
+    await expect(forYouItem.getByText(/^Approved on/)).toBeVisible({
+      timeout: 10_000,
+    });
 
-      // Optimistic UI on the detail page confirms the click landed
-      // (F005/AS-012) before this test moves on to asserting the
-      // OTHER page's live reconciliation.
-      await expect(taskDetailPage.getByText("Approved.")).toBeVisible({
-        timeout: 10_000,
-      });
+    // Confirm the approval actually persisted server-side (real write,
+    // not just an optimistic client toggle) before asserting on the
+    // list/badge's live removal.
+    await expect(async () => {
+      const { data, error } = await adminClient
+        .from("approval_requests")
+        .select("state")
+        .eq("id", approvalId)
+        .maybeSingle();
+      if (error) throw error;
+      expect(data?.state).toBe("approved");
+    }).toPass({ timeout: 15_000 });
 
-      // Confirm the approval actually persisted server-side (real write,
-      // not just an optimistic client toggle) before asserting on the
-      // overview page's live removal.
-      await expect(async () => {
-        const { data, error } = await adminClient
-          .from("tasks")
-          .select("pending_client_approval")
-          .eq("id", taskId)
-          .maybeSingle();
-        if (error) throw error;
-        expect(data?.pending_client_approval).toBe(false);
-      }).toPass({ timeout: 15_000 });
+    // The row leaves the open "For you" list — live, via the
+    // `router.refresh()` soft-refresh that re-fetches
+    // `getOpenApprovalsForClient` (now excluding the decided item) — with
+    // NO reload/navigation of this page at any point in this flow. It
+    // moves into "Completed & decision history" instead of vanishing
+    // outright, matching `ApprovalHistory`'s own record of the decision.
+    await expect(approvalHeading).toHaveCount(0, { timeout: 15_000 });
 
-      // The row leaves "Waiting on you" on `overviewPage` — live, via
-      // F008's Realtime subscription (usePortalOverviewRealtime /
-      // PortalOverviewLive) — with NO reload/navigation of that page at
-      // any point in this flow.
-      await expect(taskLink).toHaveCount(0, { timeout: 15_000 });
+    // The sidebar's "For you" badge is part of the same Server Component
+    // layout `router.refresh()` re-renders, so it drops from 1 to
+    // "no badge" (0 renders nothing at all, per `getWaitingOnYouCount`'s
+    // own "undefined, not 0" honesty rule) on the same refresh — proving
+    // the badge and the list can never disagree, exactly per F005's own
+    // stated purpose for this shared helper.
+    await expect(async () => {
+      const badgeText = await badgeLocator.textContent();
+      expect(badgeText?.trim()).not.toBe("1");
+    }).toPass({ timeout: 15_000 });
 
-      // AS-029's explicit requirement: prove the absence of a
-      // navigation/reload event, not merely the final DOM state. If the
-      // app had instead done a full page reload to pick up the change,
-      // both of these would fail.
-      expect(loadEventCount).toBe(0);
-      const sentinelSurvived = await overviewPage.evaluate(
-        () =>
-          (window as unknown as { __f011NoReloadSentinel?: boolean })
-            .__f011NoReloadSentinel === true,
-      );
-      expect(sentinelSurvived).toBe(true);
-    } finally {
-      await context.close();
-    }
+    // AS-029's explicit requirement: prove the absence of a
+    // navigation/reload event, not merely the final DOM state. If the
+    // app had instead done a full page reload to pick up the change,
+    // both of these would fail.
+    expect(loadEventCount).toBe(0);
+    const sentinelSurvived = await page.evaluate(
+      () =>
+        (window as unknown as { __f011NoReloadSentinel?: boolean })
+          .__f011NoReloadSentinel === true,
+    );
+    expect(sentinelSurvived).toBe(true);
+
+    // Separately, and honestly NOT claimed as part of the no-reload
+    // proof above: Home's callout is a plain Server Component with no
+    // subscription of its own (F010/F018), so seeing ITS count reflect
+    // the approval requires an actual navigation there — a real user
+    // action, distinct from a reload of the page this test just proved
+    // never reloaded. `getWaitingOnYouCount` is the exact same helper
+    // the badge above already read, so this is confirming presentation,
+    // not a second source of truth.
+    await page.goto(`${baseURL}/portal/${workspaceSlug}/p/${projectId}`);
+    await expect(
+      page.getByText(/things are waiting on you|thing is waiting on you/),
+    ).toHaveCount(0);
   });
 });
