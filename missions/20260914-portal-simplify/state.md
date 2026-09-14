@@ -4,10 +4,10 @@ Phase: RUN (user approved preview + asked to plan and start immediately, 2026-09
 
 | Feature | Status |
 |---|---|
-| F001 | PENDING |
-| F002 | PENDING |
-| F003 | PENDING |
-| F004 | PENDING |
+| F001 | DONE (M1 passed after F004b–d) |
+| F002 | DONE (M1 passed after F004b–d) |
+| F003 | DONE (M1 passed after F004b–d) |
+| F004 | DONE (M1 passed after F004b–d) |
 | F005 | PENDING |
 | F006 | PENDING |
 | F007 | PENDING |
