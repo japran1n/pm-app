@@ -197,20 +197,27 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(
-        "flex shrink-0 items-center rounded-md transition-colors",
-        layout === "desktop" && "w-full",
+        "flex min-w-0 items-center justify-center rounded-md transition-colors",
+        layout === "desktop" && "w-full shrink-0",
+        variant === "secondary" && layout !== "mobile" && "shrink-0",
+        // F020 (portal-simplify, AS-014): the mobile strip's four
+        // top-level rows (Home, For you, Messages, Project) must fit
+        // fully within a 360-375px viewport with no horizontal
+        // clipping. Each row is `flex-1 basis-0 min-w-0` so the four
+        // rows always divide the strip's own width evenly (rather than
+        // `shrink-0`, which let each row keep its natural width and
+        // pushed the last one past the viewport edge) -- combined with
+        // a `h-10` fixed height (>= the 40px tap-target minimum) and
+        // tighter gap/padding than the desktop sizing, and `truncate`
+        // on the label below for any row whose content is still wider
+        // than its evenly-divided share.
+        layout === "mobile" && "h-10 flex-1 basis-0",
         variant === "secondary"
-          ? "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
-          : // F018 (UX validation defect, low): the mobile strip's four
-            // top-level rows (Home, For you, Messages, Project) used the
-            // same desktop `gap-2.5 px-3 py-2 text-sm` sizing, which
-            // doesn't fit all four inside a 375px viewport without
-            // clipping the last one -- tighter gap/padding/type size on
-            // mobile only (`layout === "mobile"`), same icon-plus-label
-            // shape, just smaller, so every row stays fully visible
-            // instead of relying on the scroll affordance to reach it.
-            layout === "mobile"
-            ? "gap-1.5 px-2 py-1.5 text-xs font-medium"
+          ? layout === "mobile"
+            ? "gap-1 px-1.5 text-sm font-medium"
+            : "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
+          : layout === "mobile"
+            ? "gap-1 px-1.5 text-sm font-medium"
             : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
@@ -222,7 +229,7 @@ function NavRow({
       <Icon
         className={cn(
           "shrink-0",
-          variant === "secondary" || layout === "mobile" ? "size-3.5" : "size-4",
+          layout === "mobile" ? "size-3.5" : variant === "secondary" ? "size-3.5" : "size-4",
         )}
         aria-hidden="true"
       />
@@ -256,22 +263,29 @@ function ProjectNavGroup({
   layout: "desktop" | "mobile";
 }) {
   return (
-    <div className={cn(layout === "mobile" && "flex shrink-0 items-center gap-1")}>
+    <div
+      className={cn(
+        layout === "mobile" && "flex min-w-0 flex-1 basis-0 items-center gap-1",
+      )}
+    >
       <button
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
         className={cn(
-          "flex shrink-0 items-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          layout === "desktop" && "w-full",
-          // F018 (UX validation defect, low): same 375px overflow fix as
-          // `NavRow` above -- this button is the fourth top-level row
-          // ("Project") on the mobile strip and was still using the
-          // desktop gap/padding/type size, which is what pushed it past
-          // the viewport edge in the first place.
-          layout === "mobile"
-            ? "gap-1.5 px-2 py-1.5 text-xs"
-            : "gap-2.5 px-3 py-2 text-sm",
+          "flex min-w-0 items-center justify-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          layout === "desktop" && "w-full shrink-0",
+          // F020 (portal-simplify, AS-014): same "fit the 360-375px
+          // mobile strip without clipping" fix as `NavRow` above -- this
+          // is the fourth top-level row ("Project"). `flex-1 basis-0`
+          // (via the wrapping `<div>`, since this row has no children to
+          // its right when collapsed) makes it share the strip's width
+          // evenly with the other three rows instead of keeping its own
+          // natural (wider) size, and the chevron is dropped on mobile
+          // entirely -- collapsed/expanded is already exposed via
+          // `aria-expanded` for assistive tech, so the chevron glyph is
+          // pure decoration this size class can't afford.
+          layout === "mobile" ? "h-10 w-full gap-1 px-1.5 text-sm" : "gap-2.5 px-3 py-2 text-sm",
         )}
       >
         <FolderKanban
@@ -279,14 +293,12 @@ function ProjectNavGroup({
           aria-hidden="true"
         />
         <span className="min-w-0 flex-1 truncate text-left">Project</span>
-        <ChevronDown
-          className={cn(
-            "shrink-0 transition-transform",
-            layout === "mobile" ? "size-3.5" : "size-4",
-            expanded && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
+        {layout === "desktop" && (
+          <ChevronDown
+            className={cn("size-4 shrink-0 transition-transform", expanded && "rotate-180")}
+            aria-hidden="true"
+          />
+        )}
       </button>
 
       {expanded && (
@@ -450,7 +462,7 @@ export function PortalSidebar({
           </div>
         </div>
         <div className="px-3 pb-2">{projectCard}</div>
-        <nav className="flex gap-1 overflow-x-auto px-2 pb-2">
+        <nav className="flex w-full items-center gap-1 overflow-x-auto px-2 pb-2">
           {items.map((item) => (
             <NavRow
               key={item.key}

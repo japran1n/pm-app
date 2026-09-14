@@ -279,6 +279,36 @@ describe("PortalSidebar (F008)", () => {
     expect(mobileHomeAnchor).not.toContain("w-full");
   });
 
+  it("test_AS_014_mobile_top_level_rows_share_width_evenly_with_no_chevron", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+
+    const mobileMarkerIndex = html.indexOf("md:hidden");
+    expect(mobileMarkerIndex).toBeGreaterThan(-1);
+    const mobileHtml = html.slice(mobileMarkerIndex);
+
+    const mobileHomeAnchor = anchorTags(mobileHtml).find((tag) =>
+      tag.includes('href="/portal/acme/p/proj-1"'),
+    );
+    // F020 (AS-014): each of the four top-level rows is `flex-1 basis-0`
+    // so they always divide the mobile strip's width evenly instead of
+    // keeping their own natural (wider) size and clipping the last one.
+    expect(mobileHomeAnchor).toContain("flex-1");
+    expect(mobileHomeAnchor).toContain("basis-0");
+    expect(mobileHomeAnchor).toContain("h-10");
+    expect(mobileHomeAnchor).toContain("text-sm");
+
+    // The "Project" toggle button carries the same compact sizing, and
+    // drops the chevron glyph entirely on mobile (state is still exposed
+    // via `aria-expanded`).
+    const mobileButtons = mobileHtml.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+    const projectButton = mobileButtons.find((tag) => tag.includes(">Project<"));
+    expect(projectButton).toBeDefined();
+    expect(projectButton).toContain("h-10");
+    expect(projectButton).not.toContain("rotate-180");
+    expect(projectButton?.match(/<svg/g)?.length).toBe(1);
+  });
+
   it("renders a nonzero For you badge count using the shared Badge component", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(
