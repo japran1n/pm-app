@@ -31,6 +31,34 @@ import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+// Audit fix: this test renders a tree that also mounts
+// components/task/custom-fields-section.tsx and
+// components/notifications/notification-bell.tsx, both of which call a
+// server action on mount (getCustomFieldsForTaskAction /
+// getNotificationPreferences). Those actions reach
+// lib/supabase/server.ts's createClient(), which calls next/headers's
+// cookies() outside a request scope in Vitest and rejects
+// asynchronously, after this file's own assertions have already run --
+// an unhandled rejection unrelated to what this file actually tests.
+// Mock both action modules the same way notification-bell-panel.test.tsx
+// and the task-detail-sheet unit suites already do.
+vi.mock("@/lib/actions/custom-fields", () => ({
+  getCustomFieldsForTaskAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  setTaskCustomFieldValue: vi.fn().mockResolvedValue({ ok: true }),
+}));
+vi.mock("@/lib/actions/page-links", () => ({
+  getPageLinksForTaskAction: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+  createPageLink: vi.fn(),
+  updatePageLink: vi.fn(),
+  deletePageLink: vi.fn(),
+}));
+vi.mock("@/lib/actions/notification-preferences", () => ({
+  getNotificationPreferences: vi.fn().mockResolvedValue({
+    ok: true,
+    data: { soundEnabled: true, soundVolume: 60, soundOnlyWhenUnfocused: true },
+  }),
+}));
+
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= "https://example.supabase.co";
 process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= "test-publishable-key";
