@@ -12,10 +12,19 @@ import { redirect } from "next/navigation";
 // already relies on.
 export default async function LegacyPortalApprovalsRedirect({
   params,
+  searchParams,
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
+  searchParams: Promise<{ approvalId?: string }>;
 }) {
   const { workspaceSlug, projectId } = await params;
+  // F013 (AS-017): a stale `?approvalId=` on this old URL (e.g. from a
+  // link copied before this feature shipped) must keep pointing at the
+  // same decision, not just at the decisions filter in general.
+  const { approvalId } = await searchParams;
 
-  redirect(`/portal/${workspaceSlug}/p/${projectId}/for-you?filter=decisions`);
+  const query = new URLSearchParams({ filter: "decisions" });
+  if (approvalId) query.set("approvalId", approvalId);
+
+  redirect(`/portal/${workspaceSlug}/p/${projectId}/for-you?${query.toString()}`);
 }

@@ -64,14 +64,13 @@ const CONFIDENCE_LABEL: Record<PortalLaunchConfidence, string> = {
 // own header comment for why that distinction is the whole fix.
 // Mission 20260914-portal-simplify, F008 (AS-014): route titles renamed
 // to match the simplified sidebar's labels -- Overview -> Home,
-// Conversation -> Messages, Architecture -> Site map. Old routes
-// (approvals, your-list, requests) are redirect-only as of F009 and never
-// render this shell, but their titles stay mapped in case a stale link
-// resolves before the redirect fires.
+// Conversation -> Messages, Architecture -> Site map. F013 (AS-017):
+// the old `approvals`, `your-list`, and project-scoped `requests` routes
+// are redirect-only as of F009 and NEVER render this shell (the redirect
+// fires before this component ever mounts), so their titles were dead
+// weight -- removed here rather than kept "just in case".
 const STATIC_ROUTE_TITLES: Record<string, string> = {
   "": "Home",
-  approvals: "Approvals",
-  "your-list": "Your list",
   "for-you": "For you",
   pages: "Pages",
   hours: "Hours",
@@ -79,7 +78,6 @@ const STATIC_ROUTE_TITLES: Record<string, string> = {
   scope: "Scope & decisions",
   site: "Your site",
   files: "Files",
-  requests: "Requests",
   conversation: "Messages",
   architecture: "Site map",
   brief: "Questionnaire",

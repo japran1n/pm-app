@@ -142,8 +142,6 @@ describe("resolvePortalStaticTitle (F006e)", () => {
   // views keep the exact labels `buildPortalNavItems` gives them, now
   // resolved independently rather than by looking that list up.
   it.each([
-    ["approvals", "Approvals"],
-    ["your-list", "Your list"],
     ["pages", "Pages"],
     ["hours", "Hours"],
     ["results", "Results"],
@@ -166,7 +164,14 @@ describe("resolvePortalStaticTitle (F006e)", () => {
     expect(resolvePortalStaticTitle(`${basePath}/files`, basePath)).toBe("Files");
   });
 
-  it("test_AS_004_titles_the_relocated_requests_route_reachable_from_the_sidebar", () => {
+  // F013 (AS-017): `approvals`, `your-list`, and project-scoped
+  // `requests` are dead, redirect-only routes as of F009 -- they never
+  // render this shell, so their titles were removed from the static map
+  // and now fall through to the humanized fallback like any other
+  // unlisted segment.
+  it("test_AS_017_the_dead_legacy_routes_no_longer_have_dedicated_titles", () => {
+    expect(resolvePortalStaticTitle(`${basePath}/approvals`, basePath)).toBe("Approvals");
+    expect(resolvePortalStaticTitle(`${basePath}/your-list`, basePath)).toBe("Your List");
     expect(resolvePortalStaticTitle(`${basePath}/requests`, basePath)).toBe("Requests");
   });
 

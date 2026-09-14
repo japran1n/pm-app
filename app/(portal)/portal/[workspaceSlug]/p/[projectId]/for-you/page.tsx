@@ -20,6 +20,7 @@ import {
 } from "@/lib/portal/build-for-you-items";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { ForYouScrollToItem } from "@/components/portal/for-you-scroll-to-item";
 import { ApprovalCard } from "@/components/portal/approval-card";
 import { ApprovalHistory } from "@/components/portal/approval-history";
 import { DeliverableRow } from "@/components/portal/deliverable-row";
@@ -59,10 +60,10 @@ export default async function PortalForYouPage({
   searchParams,
 }: {
   params: Promise<{ workspaceSlug: string; projectId: string }>;
-  searchParams: Promise<{ filter?: string }>;
+  searchParams: Promise<{ filter?: string; approvalId?: string }>;
 }) {
   const { workspaceSlug, projectId } = await params;
-  const { filter: rawFilter } = await searchParams;
+  const { filter: rawFilter, approvalId: highlightApprovalId } = await searchParams;
   const filter = parseForYouFilter(rawFilter);
 
   const supabase = await createClient();
@@ -110,6 +111,7 @@ export default async function PortalForYouPage({
 
   return (
     <div className="flex flex-col gap-8">
+      {highlightApprovalId && <ForYouScrollToItem targetId={`approval-${highlightApprovalId}`} />}
       <div className="flex flex-col gap-1">
         <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
           For you
@@ -188,7 +190,11 @@ export default async function PortalForYouPage({
           ) : (
             <ul className="flex flex-col gap-4" data-testid="for-you-list">
               {visibleItems.map((item) => (
-                <li key={`${item.kind}-${item.id}`} className="flex flex-col gap-2">
+                <li
+                  key={`${item.kind}-${item.id}`}
+                  id={item.kind === "decision" ? `approval-${item.id}` : undefined}
+                  className="flex flex-col gap-2 scroll-mt-24"
+                >
                   <div className="flex items-center gap-2">
                     <Badge variant={item.kind === "decision" ? "default" : "secondary"}>
                       {item.kind === "decision" ? "Decision" : "Material"}

@@ -106,7 +106,10 @@ export function ApprovalsQueue({
   }
 
   function handleCopyLink(approval: ApprovalsQueueRow) {
-    const url = `${window.location.origin}/portal/${workspaceSlug}/p/${approval.projectId}/approvals?approvalId=${approval.id}`;
+    // F013 (AS-017): the copy-link target is the live "For you" route,
+    // not the dead `approvals` redirect -- `approvalId` is carried
+    // through so For you can scroll to and highlight this row.
+    const url = `${window.location.origin}/portal/${workspaceSlug}/p/${approval.projectId}/for-you?filter=decisions&approvalId=${approval.id}`;
     navigator.clipboard
       .writeText(url)
       .then(() => {

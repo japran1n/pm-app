@@ -30,9 +30,25 @@ describe("F009 / AS-017: legacy project-scoped portal routes redirect", () => {
     await expect(
       LegacyApprovalsRedirect({
         params: Promise.resolve({ workspaceSlug: "acme", projectId: "proj-1" }),
+        searchParams: Promise.resolve({}),
       }),
     ).rejects.toThrow(
       "NEXT_REDIRECT:/portal/acme/p/proj-1/for-you?filter=decisions",
+    );
+  });
+
+  it("test_AS_017_p_approvals_redirect_preserves_approvalId", async () => {
+    const { default: LegacyApprovalsRedirect } = await import(
+      "@/app/(portal)/portal/[workspaceSlug]/p/[projectId]/approvals/page"
+    );
+
+    await expect(
+      LegacyApprovalsRedirect({
+        params: Promise.resolve({ workspaceSlug: "acme", projectId: "proj-1" }),
+        searchParams: Promise.resolve({ approvalId: "appr-9" }),
+      }),
+    ).rejects.toThrow(
+      "NEXT_REDIRECT:/portal/acme/p/proj-1/for-you?filter=decisions&approvalId=appr-9",
     );
   });
 
@@ -75,23 +91,26 @@ describe("F009 / AS-017: legacy project-scoped portal routes redirect", () => {
   });
 });
 
-// Directories that make up the portal's own source tree -- app routes,
-// portal-specific components, and the portal-specific lib helpers. Scoped
-// deliberately (not the whole repo) so a workspace-side `/w/...` link
-// that happens to contain the substring "approvals" (the team's OWN
-// approvals inbox, an unrelated feature) never false-positives this
-// sweep.
-const PORTAL_SOURCE_ROOTS = [
-  "app/(portal)",
-  "components/portal",
-  "lib/portal",
-];
+// F013 (AS-017) widened this sweep from just the portal-specific
+// directories to the app's whole source tree -- the M2 scrutiny finding
+// was that a stale link can live anywhere reachable from the portal
+// (e.g. `components/approvals/approvals-queue.tsx`, a *workspace*
+// component that nonetheless builds a client-facing portal URL), so
+// scoping to `app/(portal)`, `components/portal`, `lib/portal` alone let
+// exactly that kind of offender through. Scanning the whole tree instead
+// and excluding by rule: the workspace-side `/w/...` routes (a
+// literally different, team-facing app section) and the team's OWN
+// "approvals" inbox naming, which share the substring "approvals" with
+// the client-facing portal concept but are a different feature.
+const SOURCE_ROOTS = ["app", "components", "lib"];
+
+const EXCLUDED_DIR_SEGMENTS = new Set(["node_modules", ".next", "(workspace)"]);
 
 const SOURCE_EXTENSIONS = [".ts", ".tsx"];
 
 function walk(dir: string, out: string[]): void {
   for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".next") continue;
+    if (EXCLUDED_DIR_SEGMENTS.has(entry)) continue;
     const full = join(dir, entry);
     const stat = statSync(full);
     if (stat.isDirectory()) {
@@ -106,36 +125,25 @@ function walk(dir: string, out: string[]): void {
   }
 }
 
-// Also sweep the two known non-portal-directory call sites this feature
-// touched, which live outside `PORTAL_SOURCE_ROOTS` but still render
-// portal-facing links (a task-detail component's client-visible approval
-// card affordance, and the change-requests table shared between the
-// workspace side and the portal).
-const EXTRA_FILES = [
-  "components/portal/approval-card.tsx",
-  "components/portal/change-requests-table.tsx",
-  "lib/portal/build-waiting-on-you-items.ts",
-];
-
 // A stale link to a project-scoped `/approvals` or `/your-list` path, or
-// a project-scoped `/requests` path (the workspace-level `/w/.../requests`
-// team inbox is a different, unrelated route and must NOT be flagged).
-// Deliberately narrow to URL-shaped occurrences (a template interpolation
-// or a quoted route literal immediately followed by the segment) so
-// `@/lib/queries/approvals` import specifiers and `ApprovalCard`-style
-// identifiers never false-positive this sweep.
+// a project-scoped `/requests` path. Deliberately requires a `/portal/`
+// prefix somewhere earlier on the same line -- the client-facing portal
+// is the only surface these old routes ever lived under. This is what
+// keeps the team's OWN `/w/${workspaceSlug}/approvals` inbox link (a
+// different, unrelated route this mission never touched -- see
+// `components/nav/app-sidebar.tsx`, `components/brief/
+// brief-approval-status.tsx`) and the workspace-level `/w/.../requests`
+// team inbox out of this sweep now that it scans the whole tree, not
+// just portal-specific directories.
 function hasLegacyRouteLink(source: string, segment: "approvals" | "your-list" | "requests"): boolean {
-  const patterns = [
-    new RegExp(`\\}\\/${segment}(["'\`?]|$)`, "m"),
-    new RegExp(`\\/portal\\/[^"'\`]*\\/${segment}(["'\`?]|$)`, "m"),
-  ];
-  return patterns.some((pattern) => pattern.test(source));
+  const pattern = new RegExp(`\\/portal\\/[^"'\`]*\\/${segment}(["'\`?]|$)`, "m");
+  return pattern.test(source);
 }
 
 describe("F009 / AS-017: no in-app portal link points at the old routes", () => {
   it("test_AS_017_no_portal_source_file_links_to_the_old_approvals_or_your_list_routes", () => {
     const files: string[] = [];
-    for (const root of PORTAL_SOURCE_ROOTS) {
+    for (const root of SOURCE_ROOTS) {
       walk(join(process.cwd(), root), files);
     }
 
@@ -163,7 +171,7 @@ describe("F009 / AS-017: no in-app portal link points at the old routes", () => 
 
   it("test_AS_017_no_portal_source_file_links_to_the_old_project_scoped_requests_route", () => {
     const files: string[] = [];
-    for (const root of PORTAL_SOURCE_ROOTS) {
+    for (const root of SOURCE_ROOTS) {
       walk(join(process.cwd(), root), files);
     }
 
@@ -189,8 +197,22 @@ describe("F009 / AS-017: no in-app portal link points at the old routes", () => 
     expect(offenders).toEqual([]);
   });
 
-  it("test_AS_017_the_extra_non_portal_directory_call_sites_do_not_link_to_the_old_routes", () => {
-    for (const relativePath of EXTRA_FILES) {
+  // F013 (AS-017): with the sweep now covering the whole `app`,
+  // `components`, `lib` tree (see the `SOURCE_ROOTS` comment above), the
+  // specific call sites this feature previously had to name by hand
+  // (a task-detail approval-card affordance, the change-requests table,
+  // and the client that builds the approvals-queue "Copy link" URL) are
+  // covered automatically -- this is a direct regression check on those
+  // exact files so a future refactor that moves them out of `SOURCE_ROOTS`
+  // still catches a reintroduced legacy link.
+  it("test_AS_017_the_known_non_portal_directory_call_sites_do_not_link_to_the_old_routes", () => {
+    const knownCallSites = [
+      "components/portal/approval-card.tsx",
+      "components/portal/change-requests-table.tsx",
+      "lib/portal/build-waiting-on-you-items.ts",
+      "components/approvals/approvals-queue.tsx",
+    ];
+    for (const relativePath of knownCallSites) {
       const source = readFileSync(join(process.cwd(), relativePath), "utf8");
       expect(hasLegacyRouteLink(source, "approvals")).toBe(false);
       expect(hasLegacyRouteLink(source, "your-list")).toBe(false);

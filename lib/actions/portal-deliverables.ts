@@ -313,7 +313,9 @@ export async function deliverPortalDeliverable(
 
   if (workspaceRow?.slug) {
     try {
-      revalidatePath(`/portal/${workspaceRow.slug}/p/${taskRow.project_id}/your-list`, "page");
+      // F013 (AS-017): "your-list" is a dead redirect-only route as of
+      // F009 -- the live materials surface is "for-you".
+      revalidatePath(`/portal/${workspaceRow.slug}/p/${taskRow.project_id}/for-you`, "page");
       revalidatePath(`/portal/${workspaceRow.slug}/p/${taskRow.project_id}`, "layout");
     } catch (revalidateError) {
       logger.error("deliverPortalDeliverable: revalidatePath failed (non-fatal)", {
