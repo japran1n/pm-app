@@ -1,0 +1,17 @@
+-- F012: drop the ambiguous single-arg `cascade_delete_task(uuid)` overload.
+--
+-- 20260819071821_subtask_cascade_delete.sql created
+-- `cascade_delete_task(p_task_id uuid)`. 20260822210000_cascade_delete_task_deleted_by.sql
+-- then added a second overload `cascade_delete_task(p_task_id uuid, p_deleted_by uuid
+-- default null)` instead of replacing the first, so the two overloads have
+-- co-existed live. Any caller passing only `p_task_id` (named-arg RPC call,
+-- e.g. lib/actions/architecture.ts's deletePage/deleteSection before this
+-- migration) is ambiguous between the two overloads and Postgres rejects the
+-- call outright ("function ... is not unique"). deleteTask
+-- (lib/actions/tasks/lifecycle.ts) already always passed both p_task_id and
+-- p_deleted_by, so it never hit the ambiguity.
+--
+-- This migration keeps only the two-arg overload (the superset signature,
+-- since p_deleted_by defaults to null) and drops the single-arg one. Callers
+-- must pass at least p_task_id from here on; p_deleted_by remains optional.
+drop function if exists public.cascade_delete_task(uuid);

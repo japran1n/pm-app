@@ -3869,21 +3869,13 @@ export type Database = {
         Args: { target_workspace_id: string }
         Returns: boolean
       }
-      cascade_delete_task:
-        | {
-            Args: { p_task_id: string }
-            Returns: {
-              deleted_at: string
-              id: string
-            }[]
-          }
-        | {
-            Args: { p_deleted_by?: string; p_task_id: string }
-            Returns: {
-              deleted_at: string
-              id: string
-            }[]
-          }
+      cascade_delete_task: {
+        Args: { p_deleted_by?: string; p_task_id: string }
+        Returns: {
+          deleted_at: string
+          id: string
+        }[]
+      }
       change_workspace_slug_atomic: {
         Args: { p_new_slug: string; p_old_slug: string; p_workspace_id: string }
         Returns: {

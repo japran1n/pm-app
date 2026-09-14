@@ -523,7 +523,7 @@ export async function deletePage(
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
-    { p_task_id: taskId },
+    { p_task_id: taskId, p_deleted_by: user.id },
   );
 
   if (cascadeError || !cascadeResult) {
@@ -801,7 +801,7 @@ export async function deleteSection(
 
   const { data: cascadeResult, error: cascadeError } = await admin.rpc(
     "cascade_delete_task",
-    { p_task_id: taskId },
+    { p_task_id: taskId, p_deleted_by: user.id },
   );
 
   if (cascadeError || !cascadeResult) {
