@@ -142,12 +142,27 @@ function isItemActive(pathname: string, item: PortalNavItem): boolean {
     : pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function NavBadge({ item }: { item: PortalNavItem }) {
+function NavBadge({ item, active }: { item: PortalNavItem; active: boolean }) {
   if (!item.badge) return null;
   return (
     <Badge
       variant={item.badgeTone === "danger" ? "destructive" : "secondary"}
-      className="ml-auto h-5 min-w-5 justify-center px-1 font-mono"
+      className={cn(
+        "ml-auto h-5 min-w-5 justify-center px-1 font-mono",
+        // F018 (UX validation defect, low): the destructive/secondary
+        // variants both derive border+fill+text from `currentColor` at a
+        // low opacity (badge.tsx's own "10% tint" convention), which reads
+        // fine against the page background but loses contrast sitting on
+        // top of THIS row's own solid `bg-primary` active state -- worst
+        // in dark theme, where the danger tint's red text nearly
+        // disappears into the bright primary fill. On the active row the
+        // badge instead borrows `--primary-foreground` (the colour
+        // already guaranteed to read against `--primary`, same token the
+        // row's own label/icon use) for its border and 15%-tint fill,
+        // keeping the pill visible in both themes without needing a
+        // colour that resolves against two different fills at once.
+        active && "!border-primary-foreground/40 !bg-primary-foreground/15 !text-primary-foreground",
+      )}
     >
       {item.badge > 99 ? "99+" : item.badge}
     </Badge>
@@ -186,7 +201,17 @@ function NavRow({
         layout === "desktop" && "w-full",
         variant === "secondary"
           ? "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
-          : "gap-2.5 px-3 py-2 text-sm font-medium",
+          : // F018 (UX validation defect, low): the mobile strip's four
+            // top-level rows (Home, For you, Messages, Project) used the
+            // same desktop `gap-2.5 px-3 py-2 text-sm` sizing, which
+            // doesn't fit all four inside a 375px viewport without
+            // clipping the last one -- tighter gap/padding/type size on
+            // mobile only (`layout === "mobile"`), same icon-plus-label
+            // shape, just smaller, so every row stays fully visible
+            // instead of relying on the scroll affordance to reach it.
+            layout === "mobile"
+            ? "gap-1.5 px-2 py-1.5 text-xs font-medium"
+            : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
           : variant === "secondary"
@@ -195,11 +220,14 @@ function NavRow({
       )}
     >
       <Icon
-        className={variant === "secondary" ? "size-3.5 shrink-0" : "size-4 shrink-0"}
+        className={cn(
+          "shrink-0",
+          variant === "secondary" || layout === "mobile" ? "size-3.5" : "size-4",
+        )}
         aria-hidden="true"
       />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      <NavBadge item={item} />
+      <NavBadge item={item} active={active} />
     </Link>
   );
 }
@@ -234,14 +262,29 @@ function ProjectNavGroup({
         aria-expanded={expanded}
         onClick={onToggle}
         className={cn(
-          "flex shrink-0 items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "flex shrink-0 items-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
           layout === "desktop" && "w-full",
+          // F018 (UX validation defect, low): same 375px overflow fix as
+          // `NavRow` above -- this button is the fourth top-level row
+          // ("Project") on the mobile strip and was still using the
+          // desktop gap/padding/type size, which is what pushed it past
+          // the viewport edge in the first place.
+          layout === "mobile"
+            ? "gap-1.5 px-2 py-1.5 text-xs"
+            : "gap-2.5 px-3 py-2 text-sm",
         )}
       >
-        <FolderKanban className="size-4 shrink-0" aria-hidden="true" />
+        <FolderKanban
+          className={cn("shrink-0", layout === "mobile" ? "size-3.5" : "size-4")}
+          aria-hidden="true"
+        />
         <span className="min-w-0 flex-1 truncate text-left">Project</span>
         <ChevronDown
-          className={cn("size-4 shrink-0 transition-transform", expanded && "rotate-180")}
+          className={cn(
+            "shrink-0 transition-transform",
+            layout === "mobile" ? "size-3.5" : "size-4",
+            expanded && "rotate-180",
+          )}
           aria-hidden="true"
         />
       </button>

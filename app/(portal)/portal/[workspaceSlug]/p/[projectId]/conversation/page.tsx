@@ -101,7 +101,15 @@ export default async function PortalConversationPage({
   // replacing the bespoke p-4/pb-0 this route had drifted to.
   const header = (
     <div className="flex flex-col gap-1 p-6 pt-4 lg:p-8 lg:pt-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Messages</h1>
+      {/* F018 (UX validation defect, cosmetic): the topbar already prints
+          this route's title ("Messages", `portal-topbar.tsx`'s own
+          `STATIC_ROUTE_TITLES` map) above this page's content -- this was
+          a second, visually duplicate "Messages" directly below it. Kept
+          as an `sr-only` heading (not deleted outright) so the page still
+          has its own accessible `<h1>` for screen readers/landmark
+          navigation, matching the sibling routes that render no visible
+          body title at all (pages/hours/results/scope/site/architecture). */}
+      <h1 className="sr-only">Messages</h1>
       <p className="text-sm text-muted-foreground">
         Talk to the team, or ask for something new.
       </p>

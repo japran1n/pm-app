@@ -127,9 +127,13 @@ export default async function PortalForYouPage({
     <div className="flex flex-col gap-8">
       {highlightApprovalId && <ForYouScrollToItem targetId={`approval-${highlightApprovalId}`} />}
       <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-          For you
-        </h1>
+        {/* F018 (UX validation defect, cosmetic): same duplicate-title fix
+            as conversation/page.tsx -- the topbar already renders "For
+            you" for this route (`portal-topbar.tsx`'s
+            `STATIC_ROUTE_TITLES`), so this body heading is `sr-only`
+            rather than a second visible "For you", matching the sibling
+            routes that render no visible body title. */}
+        <h1 className="sr-only">For you</h1>
         <p className="text-sm text-muted-foreground">
           Everything the team needs from you, soonest first.
         </p>

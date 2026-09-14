@@ -1,69 +1,36 @@
-// F008 (AS-018, AS-019, AS-020, AS-024): live "Waiting on you" and
-// "Delivered this week" regions for the client portal overview
-// (app/(portal)/portal/[workspaceSlug]/page.tsx), extracted out of that
-// RSC into the smallest possible Client Component boundary -- the page
-// itself stays server-rendered and keeps its RLS-scoped queries (those
-// define what a client is even allowed to see; converting the whole page
-// to a client component would lose that), and is only ever seeded here
-// via `initialOverview` props.
+// F008 (missions/20260903-portal): originally a live "Waiting on you" +
+// "Delivered this week" pair for the client portal overview. Mission
+// 20260914-portal-simplify, F018 (UX validation defect, AS-007/AS-018):
+// the "Waiting on you" card's own empty state ("Nothing waiting on you
+// right now.") sat directly beneath Home's new `WaitingOnYouCallout`
+// ("N things are waiting on you") -- the same fact stated twice, and
+// contradicting each other whenever the callout had a nonzero count (the
+// callout counts approvals + overdue deliverables project-wide via
+// `getWaitingOnYouCount`; this card only ever showed
+// `pending_client_approval` tasks, a different, narrower set). F010's own
+// callout, plus the "For you" page it links to, already cover "what does
+// the client need to do" -- this card is removed outright rather than
+// reconciled to `getWaitingOnYouCount`, per this feature's own "prefer
+// removal" instruction. `PortalOverviewLive` is only ever mounted from
+// the per-project Overview page (p/[projectId]/page.tsx); the
+// workspace-chooser page never imported it (it reads
+// `overview.waitingOnYou` directly for its own per-card badge count), so
+// nothing else observes this card's removal.
 //
-// Follows the same "server-seeded state + realtime reconciler" shape as
-// components/task/task-list-table.tsx's useListRealtime wiring: this
-// component owns local `useState` initialized from the server props, a
-// realtime hook feeds raw postgres_changes events in, and every event is
-// run through F007's pure `reconcilePortalRealtimeTask` before being
-// applied -- so the client_visible/deleted_at/pending_client_approval
-// membership rule is enforced in exactly one place (AS-020), never
-// re-derived here.
-//
-// "Waiting on you" (AS-018, AS-019): surfacePredicate is
-// `pending_client_approval === true`, matching those assertions' text
-// exactly (they don't mention the task's board-column category). This is
-// a deliberate, narrower rule than the server query's own
-// `isAwaitingReview && category !== "done"` (lib/queries/portal.ts,
-// getPortalOverview) -- the server-computed `category` (done/in_progress/
-// not_started) comes from a join with `project_statuses` keyed by
-// `status_id`, and a `tasks` Realtime payload never carries that joined
-// column. Re-deriving it client-side would mean carrying a second copy of
-// `project_statuses` into this component and keeping it in sync with its
-// own Realtime stream -- out of scope for what AS-018/AS-019 actually ask
-// for. In the rare case a task is marked done AND its
-// `pending_client_approval` flag is still true, this list would show it
-// live where a full page load wouldn't; that is flagged in this feature's
-// handoff as out-of-scope follow-up work, not silently "fixed" by
-// inventing an assertion nobody wrote.
-//
-// "Delivered this week" is NOT assigned any assertion in this feature
-// (only AS-018/AS-019/AS-020/AS-024 are). It is intentionally left
-// UN-reconciled here rather than wired to a best-effort predicate: like
-// "Waiting on you"'s category gap above, "delivered" requires the same
-// `project_statuses` category join AND a "was this task's `updated_at`
-// within the last 7 days AS OF NOW" check that only makes sense evaluated
-// against wall-clock time, which is exactly the kind of computation that
-// silently drifts client-side. Attempting to synthesize category from a
-// bare `tasks` Realtime row would risk exactly what the spec warned
-// against -- a stale-window or wrongly-categorized row appearing without
-// the server ever having computed it that way. The safe, honest choice is
-// to leave this list as the server-rendered snapshot until the page is
-// next loaded; see this feature's handoff for the out-of-scope follow-up
-// that would properly wire it (forwarding category via a view, or a
-// second query on each `tasks` UPDATE).
+// The realtime wiring that fed the removed card (`usePortalOverviewRealtime`,
+// the `pending_client_approval` reconcile predicate) is removed with it --
+// there is nothing left on this page for it to feed. What remains is the
+// "Delivered this week" list, kept as the same read-only server-rendered
+// snapshot it always was (it was never wired to realtime -- see the
+// pre-F018 history of this file for why: it would need a
+// `project_statuses` category join and a wall-clock "within the last 7
+// days" check that only makes sense evaluated server-side).
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { CheckCircle2, Clock3 } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
-import type {
-  PortalOverview,
-  PortalOverviewTask,
-} from "@/lib/queries/portal";
-import { reconcilePortalRealtimeTask } from "@/lib/portal/reconcile-portal-realtime-task";
-import {
-  usePortalOverviewRealtime,
-  type PortalOverviewRealtimeEvent,
-} from "@/components/portal/use-portal-overview-realtime";
-import type { PortalOverviewRealtimeRow } from "@/lib/portal/subscribe-portal-overview-realtime";
+import type { PortalOverview } from "@/lib/queries/portal";
 
 function formatDate(iso: string): string {
   // Same fixed en-GB short form used by the page/project-progress.tsx, for
@@ -74,176 +41,40 @@ function formatDate(iso: string): string {
   });
 }
 
-function toOverviewTask(
-  row: PortalOverviewRealtimeRow,
-  projectNameById: Map<string, string>,
-): PortalOverviewTask {
-  return {
-    id: row.id,
-    title: row.title,
-    projectId: row.project_id,
-    projectName: projectNameById.get(row.project_id) ?? "",
-    dueDate: row.due_date,
-    updatedAt: row.updated_at,
-  };
-}
-
-function waitingOnYouPredicate(
-  row: PortalOverviewRealtimeRow,
-  projectId: string | null,
-): boolean {
-  // AS-018, AS-019 -- see this file's header comment for why this doesn't
-  // also check the task's status category.
-  //
-  // F009 (missions/20260903-portal): the subscription itself
-  // (subscribe-portal-overview-realtime.ts) binds on `tasks` with no row
-  // filter -- workspace-wide, because RLS is what actually scopes what
-  // reaches this client, the same shape used for the multi-project
-  // chooser page. When this component is mounted PROJECT-scoped (the
-  // per-project shell, `projectId` set), a task belonging to a different
-  // project in the same workspace must not be admitted into this list
-  // just because it happens to pass the pending_client_approval check --
-  // exactly the leak this feature's own amendment named ("its strip can
-  // surface another project's rows"). `reconcile-portal-realtime-task.ts`
-  // already anticipated this exact parameter (see that file's own header
-  // comment, "or 'belongs to this project' for the project page (F009)").
-  if (projectId !== null && row.project_id !== projectId) return false;
-  return row.pending_client_approval === true;
-}
-
 export function PortalOverviewLive({
-  workspaceId,
   workspaceSlug,
   initialOverview,
-  waitingOnYouFailed = false,
-  projectId = null,
 }: {
-  workspaceId: string;
   workspaceSlug: string;
   initialOverview: PortalOverview;
-  /** F006f (missions/20260903-portal, AS-002): true when the server-side
-   * read this list's initial "Waiting on you" rows came from failed.
-   * `initialOverview.waitingOnYou` is `[]` in that case too (there was
-   * nothing to seed with), which is indistinguishable from a genuine
-   * "nothing waiting" empty state unless this flag says otherwise --
-   * defaults to false so the workspace-chooser page (which always has a
-   * real, successfully-fetched `PortalOverview`) is unaffected. Gated on
-   * the list still being empty: once a live event adds a real row, the
-   * caveat is moot and the list itself is the honest answer again. */
-  waitingOnYouFailed?: boolean;
-  /** F009 (missions/20260903-portal): when set, scopes both the initial
-   * "Waiting on you" seed (the caller's own responsibility -- see
-   * p/[projectId]/page.tsx) and every live Realtime event admitted into
-   * that list to this one project. `null` (the default) keeps this
-   * component's pre-existing workspace-wide behaviour for the multi-
-   * project chooser page, which has no single project to scope to. */
-  projectId?: string | null;
 }) {
-  const [waitingOnYou, setWaitingOnYou] = useState<PortalOverviewTask[]>(
-    initialOverview.waitingOnYou,
-  );
   const deliveredThisWeek = initialOverview.deliveredThisWeek;
 
-  const projectNameById = new Map(
-    initialOverview.waitingOnYou
-      .concat(initialOverview.deliveredThisWeek)
-      .map((task) => [task.projectId, task.projectName] as const),
-  );
-
-  usePortalOverviewRealtime(workspaceId, (event: PortalOverviewRealtimeEvent) => {
-    setWaitingOnYou((current) => {
-      const currentAsRows = current.map(
-        (task): PortalOverviewRealtimeRow => ({
-          id: task.id,
-          title: task.title,
-          project_id: task.projectId,
-          due_date: task.dueDate,
-          updated_at: task.updatedAt,
-          pending_client_approval: true,
-          // AS-020: every row already in this list passed the
-          // client_visible/deleted_at membership predicate when it was
-          // added (either by the server seed or a prior reconcile pass),
-          // so it's re-asserted here rather than re-derived.
-          client_visible: true,
-          deleted_at: null,
-        }),
-      );
-
-      const next = reconcilePortalRealtimeTask(
-        currentAsRows,
-        event,
-        (row) => waitingOnYouPredicate(row, projectId),
-      );
-
-      return next.map((row) => toOverviewTask(row, projectNameById));
-    });
-  }, projectId);
-
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-        <div className="flex items-center gap-2">
-          <Clock3
-            aria-hidden="true"
-            className="size-4 text-amber-600"
-          />
-          <h2 className="text-sm font-semibold">Waiting on you</h2>
-        </div>
-        {waitingOnYou.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {waitingOnYouFailed
-              ? "We couldn't load this. Try refreshing the page."
-              : "Nothing waiting on you right now."}
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {waitingOnYou.map((task) => (
-              <li key={task.id}>
-                <Link
-                  href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
-                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
-                >
-                  <span className="min-w-0 truncate">{task.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {task.projectName}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
+      <div className="flex items-center gap-2">
+        <CheckCircle2 aria-hidden="true" className="size-4 text-emerald-600" />
+        <h2 className="text-sm font-semibold">Delivered this week</h2>
       </div>
-
-      <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
-        <div className="flex items-center gap-2">
-          <CheckCircle2
-            aria-hidden="true"
-            className="size-4 text-emerald-600"
-          />
-          <h2 className="text-sm font-semibold">Delivered this week</h2>
-        </div>
-        {deliveredThisWeek.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nothing delivered in the last 7 days.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {deliveredThisWeek.map((task) => (
-              <li key={task.id}>
-                <Link
-                  href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
-                  className="hover-surface flex items-center justify-between gap-3 rounded-md px-2 py-1.5 -mx-2 text-sm"
-                >
-                  <span className="min-w-0 truncate">{task.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {formatDate(task.updatedAt)}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {deliveredThisWeek.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nothing delivered in the last 7 days.</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {deliveredThisWeek.map((task) => (
+            <li key={task.id}>
+              <Link
+                href={`/portal/${workspaceSlug}/p/${task.projectId}/t/${task.id}`}
+                className="hover-surface -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm"
+              >
+                <span className="min-w-0 truncate">{task.title}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {formatDate(task.updatedAt)}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

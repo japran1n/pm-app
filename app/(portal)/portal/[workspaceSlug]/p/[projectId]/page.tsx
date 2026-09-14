@@ -385,11 +385,8 @@ export default async function PortalOverviewPage({
             wide content. */}
         <div className="flex min-w-0 flex-col gap-8 lg:col-span-2">
           <PortalOverviewLive
-            workspaceId={workspace.id}
             workspaceSlug={workspace.slug}
             initialOverview={projectScopedOverview}
-            waitingOnYouFailed={!waitingOnYouResult.ok}
-            projectId={project.id}
           />
 
           {hasActivity && activity && (
