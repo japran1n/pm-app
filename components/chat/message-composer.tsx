@@ -22,6 +22,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Loader2, SendHorizonal, Paperclip, X } from "lucide-react";
 import type { JSONContent } from "@tiptap/react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -235,17 +236,40 @@ export function MessageComposer({
     if (!hasContent && !hasAttachments) return;
 
     if (isRequest && onFileRequest) {
-      // AS-012/AS-013: filing a request has no attachments/rich-formatting
-      // concept of its own (client_requests is a plain title+body row), so
-      // this branch never reaches the ordinary sendMessage/onSend path
-      // below -- only plain text is extracted and handed to the request
-      // action. The title is the first line, the full text stays as the
-      // body/description, per the clarified spec.
+      // F015 (portal-simplify, AS-012): a request queued with attachments
+      // would otherwise silently drop them -- client_requests has no
+      // attachment concept of its own, and the ordinary onSend path
+      // (which DOES persist chat attachments) is never reached from this
+      // branch. Blocking (over silently carrying them into the message
+      // path, or into the request's body as a note) is the option this
+      // feature's spec picked -- an explicit, actionable error beats a
+      // silent drop.
+      if (pendingAttachments.length > 0) {
+        setError("Attachments can't be added to a request yet — send them as a message.");
+        return;
+      }
+
+      // AS-012/AS-013: filing a request has no rich-formatting concept of
+      // its own (client_requests is a plain title+body row), so this
+      // branch never reaches the ordinary sendMessage/onSend path below --
+      // only plain text is extracted and handed to the request action.
+      // The title is the first line, the full text stays as the
+      // body/description, per the clarified spec. `mentionSuggestions` is
+      // reused (the same list the rich editor renders "@Name" pills from)
+      // so a mention in a request resolves to the person's real name
+      // here too, not the raw user id `extractPlainText`'s id-only
+      // fallback would otherwise produce.
+      const resolveLabel = (userId: string) =>
+        mentionSuggestions?.find((m) => m.id === userId)?.label ?? null;
       const fullText = (
-        useRichEditor ? extractPlainText(richValueRef.current) : plainValue
+        useRichEditor
+          ? extractPlainText(richValueRef.current, resolveLabel)
+          : plainValue
       ).trim();
       if (!fullText) return;
-      const title = (fullText.split("\n")[0] ?? fullText).slice(0, 200);
+      const firstLine = (fullText.split("\n")[0] ?? fullText).trim();
+      const title = firstLine.slice(0, 200);
+      const titleWasTruncated = firstLine.length > title.length;
       setError(null);
       startTransition(async () => {
         const result = await onFileRequest({ title, body: fullText });
@@ -254,6 +278,11 @@ export function MessageComposer({
           setRichValue(EMPTY_DOC);
           richValueRef.current = EMPTY_DOC;
           setIsRequest(false);
+          toast.success(
+            titleWasTruncated
+              ? "Request sent — the title was shortened to fit the length limit."
+              : "Request sent",
+          );
         } else {
           setError(result.error ?? "Something went wrong. Please try again.");
         }

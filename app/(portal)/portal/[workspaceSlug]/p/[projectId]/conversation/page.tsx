@@ -105,9 +105,15 @@ export default async function PortalConversationPage({
     </div>
   );
 
+  // F015 (portal-simplify, AS-012): with an unbounded requests list this
+  // section could grow tall enough to push the chat + composer off
+  // screen entirely on a long-running project. Capped at its own
+  // max-height with its own internal scroll, same "each region scrolls
+  // itself" pattern `ChannelView`'s message list already uses, so the
+  // conversation above always stays visible.
   const requestsSection = (
-    <div className="flex flex-col gap-3 p-4">
-      <h2 className="text-sm font-medium text-muted-foreground">
+    <div className="flex max-h-64 flex-col gap-3 overflow-y-auto p-4">
+      <h2 className="sticky top-0 bg-background text-sm font-medium text-muted-foreground">
         Your requests
       </h2>
       <RequestList requests={requests} projectId={project.id} />
