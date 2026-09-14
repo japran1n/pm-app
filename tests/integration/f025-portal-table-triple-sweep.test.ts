@@ -120,6 +120,11 @@ type TableFixture = {
   ) => Promise<{ visible: FixtureRow; hidden: FixtureRow }>;
   /** Column selected back over REST to find the marker. */
   markerColumn: string;
+  /** Query-string filter identifying this project's rows over REST.
+   * Defaults to `project_id=eq.<projectId>` when omitted -- only
+   * `page_links` (keyed on `task_id`, no `project_id` column) needs to
+   * override this. */
+  restFilter?: (projectId: string) => string;
   /** The app query function this table's own portal page calls, or null
    * if none exists yet (see file header). */
   rpc: null | ((projectId: string) => Promise<unknown>);
@@ -130,6 +135,11 @@ type TableFixture = {
     id: string,
     value: boolean,
   ) => Promise<void>;
+  /** Extra teardown beyond deleting the two fixture rows themselves --
+   * only `page_links` needs this, to remove the task it created to hang
+   * the links off of (otherwise that task leaks into the `tasks`
+   * fixture's own count check later in the same suite run). */
+  cleanup?: (admin: SupabaseClient) => Promise<void>;
 };
 
 describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)", () => {
@@ -236,7 +246,14 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
   let getClientVisiblePortalLinks: typeof import("@/lib/queries/project-site").getClientVisiblePortalLinks;
   let getClientVisiblePortalAccounts: typeof import("@/lib/queries/project-site").getClientVisiblePortalAccounts;
   let getClientVisibleDocs: typeof import("@/lib/queries/docs").getClientVisibleDocs;
+  let getClientVisiblePageLinksByTaskIds: typeof import(
+    "@/lib/queries/page-links"
+  ).getClientVisiblePageLinksByTaskIds;
   let TABLE_FIXTURES: Record<string, TableFixture>;
+  // page_links is keyed on task_id, not project_id -- the fixture's own
+  // insert() stashes the task id it created here so restFilter/rpc can
+  // find it.
+  let pageLinksTaskId = "";
 
   beforeAll(async () => {
     ({ getProjectPhases } = await import("@/lib/queries/portal"));
@@ -250,6 +267,7 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       "@/lib/queries/project-site"
     ));
     ({ getClientVisibleDocs } = await import("@/lib/queries/docs"));
+    ({ getClientVisiblePageLinksByTaskIds } = await import("@/lib/queries/page-links"));
 
     TABLE_FIXTURES = {
     project_phases: {
@@ -447,6 +465,57 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
         return { visible: { id: v!.id, marker: vMarker }, hidden: { id: h!.id, marker: hMarker } };
       },
     },
+    page_links: {
+      markerColumn: "label",
+      restFilter: () => `task_id=eq.${pageLinksTaskId}`,
+      rpc: async () => {
+        activeSession = clientSession;
+        const result = await getClientVisiblePageLinksByTaskIds([pageLinksTaskId]);
+        return result.ok ? (result.data.get(pageLinksTaskId) ?? []) : result;
+      },
+      insert: async (a, pid, ctx) => {
+        const vMarker = marker("page_links", "visible");
+        const hMarker = marker("page_links", "hidden");
+        const { data: task } = await a
+          .from("tasks")
+          .insert({
+            project_id: pid,
+            title: `F025 page_links page ${Math.random().toString(36).slice(2, 8)}`,
+            status: "todo",
+            author_id: ctx.userId,
+            client_visible: true,
+          })
+          .select("id")
+          .single();
+        pageLinksTaskId = task!.id;
+        const { data: v } = await a
+          .from("page_links")
+          .insert({
+            task_id: pageLinksTaskId,
+            kind: "other",
+            label: vMarker,
+            url: "https://example.com/v",
+            client_visible: true,
+          })
+          .select("id")
+          .single();
+        const { data: h } = await a
+          .from("page_links")
+          .insert({
+            task_id: pageLinksTaskId,
+            kind: "other",
+            label: hMarker,
+            url: "https://example.com/h",
+            client_visible: false,
+          })
+          .select("id")
+          .single();
+        return { visible: { id: v!.id, marker: vMarker }, hidden: { id: h!.id, marker: hMarker } };
+      },
+      cleanup: async (a) => {
+        await a.from("tasks").delete().eq("id", pageLinksTaskId);
+      },
+    },
     docs: {
       markerColumn: "title",
       // F025e: getClientVisibleDocs (lib/queries/docs.ts) is the
@@ -591,6 +660,7 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
     project_improvements: null,
     project_links: null,
     project_accounts: null,
+    page_links: null,
     docs: null,
     tasks: null,
   })) {
@@ -604,7 +674,8 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
 
       try {
         // 1. Direct select over REST, as the real client session.
-        const restUrl = `${SUPABASE_URL}/rest/v1/${table}?project_id=eq.${projectId}&select=${cfg.markerColumn}`;
+        const filter = cfg.restFilter ? cfg.restFilter(projectId) : `project_id=eq.${projectId}`;
+        const restUrl = `${SUPABASE_URL}/rest/v1/${table}?${filter}&select=${cfg.markerColumn}`;
         const selectRes = await fetch(restUrl, {
           headers: {
             apikey: PUBLISHABLE_KEY!,
@@ -647,6 +718,7 @@ describe.skipIf(!haveCreds)("F025: per-table client-visible leak sweep (AS-054)"
       } finally {
         await admin.from(table).delete().eq("id", visible.id);
         await admin.from(table).delete().eq("id", hidden.id);
+        if (cfg.cleanup) await cfg.cleanup(admin);
       }
     });
   }
