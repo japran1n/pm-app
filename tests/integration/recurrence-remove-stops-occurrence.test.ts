@@ -25,6 +25,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -159,6 +160,11 @@ describe.skipIf(!haveAdminCreds)(
       }
       projectId = proj.id;
       createdProjectIds.push(projectId);
+
+      // status_set_v2 seeds v2-named default columns; this suite uses
+      // the legacy in_progress/done names as literal status values
+      // (moveTaskStatus requires an exact project_statuses.name match).
+      await seedLegacyStatusColumns(adminClient, projectId);
     });
 
     beforeEach(() => {

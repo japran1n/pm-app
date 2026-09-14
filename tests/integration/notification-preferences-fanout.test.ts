@@ -14,6 +14,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -89,6 +90,11 @@ describe.skipIf(!haveAdminCreds)(
         .single();
       if (projectErr || !project) throw new Error(`Failed to create project: ${projectErr?.message}`);
       projectId = project.id;
+
+      // status_set_v2 seeds v2-named default columns; this suite uses
+      // legacy todo/in_progress names as literal status values
+      // (moveTaskStatus requires an exact project_statuses.name match).
+      await seedLegacyStatusColumns(adminClient, projectId);
 
       async function createActiveMember(label: string) {
         const email = `f211-${label}-${uniqueSuffix}@example.com`;

@@ -27,6 +27,7 @@ import {
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { poolUserId } from "../helpers/auth";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -150,6 +151,13 @@ describe.skipIf(!haveAdminCreds)(
       }
       projectId = proj.id;
       createdProjectIds.push(projectId);
+
+      // status_set_v2 seeds v2-named default columns; this suite uses
+      // the legacy "todo" name as a literal status value/default
+      // (createTaskFromTemplate resolves it via resolveProjectStatusName,
+      // which requires an exact project_statuses.name match to resolve
+      // to "todo" rather than its v2 rename "To Do").
+      await seedLegacyStatusColumns(adminClient, projectId);
     });
 
     beforeEach(() => {

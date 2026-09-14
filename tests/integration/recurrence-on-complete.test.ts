@@ -16,6 +16,7 @@ import {
   it,
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { seedLegacyStatusColumns } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -177,6 +178,14 @@ describe.skipIf(!haveAdminCreds)(
       }
       archivedProjectId = archivedProj.id;
       createdProjectIds.push(archivedProjectId);
+
+      // status_set_v2 seeds every new project with the 11 v2-named
+      // default columns; this suite's assertions use the legacy
+      // todo/in_progress/in_review/done names as literal status values
+      // (moveTaskStatus requires an exact project_statuses.name match —
+      // see F221/AS-409), so seed the legacy four onto both projects.
+      await seedLegacyStatusColumns(adminClient, projectId);
+      await seedLegacyStatusColumns(adminClient, archivedProjectId);
     });
 
     beforeEach(() => {
