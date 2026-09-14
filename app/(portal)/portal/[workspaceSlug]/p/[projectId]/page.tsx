@@ -315,7 +315,7 @@ export default async function PortalOverviewPage({
 
       <RiskBanner
         risks={risks}
-        yourListHref={`/portal/${workspace.slug}/p/${project.id}/your-list`}
+        yourListHref={`/portal/${workspace.slug}/p/${project.id}/for-you?filter=materials`}
       />
 
       {/* F107 (2.2): "what do you need from me?" answered second, as a

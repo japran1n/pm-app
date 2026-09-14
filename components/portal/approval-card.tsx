@@ -518,7 +518,7 @@ export function ApprovalCard({
               )}
               {!ownerName && (
                 <Link
-                  href={`/portal/${workspaceSlug}/p/${projectId}/approvals`}
+                  href={`/portal/${workspaceSlug}/p/${projectId}/for-you?filter=decisions`}
                   className="font-medium text-primary hover:underline"
                 >
                   See who to raise it with

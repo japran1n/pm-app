@@ -122,7 +122,7 @@ export function ChangeRequestsTable({
                 workspaceSlug &&
                 projectId && (
                   <Link
-                    href={`/portal/${workspaceSlug}/p/${projectId}/approvals`}
+                    href={`/portal/${workspaceSlug}/p/${projectId}/for-you?filter=decisions`}
                     className="text-xs font-medium text-primary underline underline-offset-2"
                   >
                     Review this quote

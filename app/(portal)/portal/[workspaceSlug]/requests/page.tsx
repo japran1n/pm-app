@@ -8,6 +8,11 @@ import { createClient } from "@/lib/supabase/server";
 // stays at the old `/portal/<slug>/requests` location as a redirect only
 // — same reasoning and same one-project/else-chooser rule as the sibling
 // left behind at `/portal/<slug>/files/page.tsx`.
+//
+// Mission 20260914-portal-simplify, F009 (AS-017): the project-scoped
+// destination is now `p/[projectId]/conversation` ("Messages", which
+// folds requests in — F007), not `p/[projectId]/requests` (itself now a
+// redirect, see that file's own comment).
 export default async function LegacyPortalRequestsRedirect({
   params,
 }: {
@@ -27,7 +32,7 @@ export default async function LegacyPortalRequestsRedirect({
   const projects = await getPortalProjects(workspace.id);
 
   if (projects.length === 1) {
-    redirect(`/portal/${workspace.slug}/p/${projects[0].id}/requests`);
+    redirect(`/portal/${workspace.slug}/p/${projects[0].id}/conversation`);
   }
 
   redirect(`/portal/${workspace.slug}`);

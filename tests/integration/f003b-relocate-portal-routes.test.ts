@@ -280,20 +280,24 @@ describe.skipIf(!haveCreds)(
       expect(html).toContain("No files yet");
     });
 
-    it("test_AS_004_the_relocated_requests_route_renders_for_a_client_of_a_portal_enabled_project", async () => {
+    // Mission 20260914-portal-simplify, F009 (AS-017): "Requests" was
+    // folded into "Messages" (F007) -- the project-scoped
+    // `p/[projectId]/requests` route is now itself a redirect, not a
+    // rendered page. This test asserts that redirect target directly
+    // rather than any rendered markup.
+    it("test_AS_017_the_project_scoped_requests_route_redirects_to_conversation", async () => {
       activeSession = clientSession;
       const { default: PortalRequestsPage } = await import(
         "@/app/(portal)/portal/[workspaceSlug]/p/[projectId]/requests/page"
       );
 
-      const element = await PortalRequestsPage({
-        params: Promise.resolve({ workspaceSlug, projectId: enabledProjectId }),
-      });
-      expect(notFoundMock).not.toHaveBeenCalled();
-
-      const { renderToStaticMarkup } = await import("react-dom/server");
-      const html = renderToStaticMarkup(element);
-      expect(html).toContain("Your requests");
+      await expect(
+        PortalRequestsPage({
+          params: Promise.resolve({ workspaceSlug, projectId: enabledProjectId }),
+        }),
+      ).rejects.toThrow(
+        `NEXT_REDIRECT:/portal/${workspaceSlug}/p/${enabledProjectId}/conversation`,
+      );
     });
 
     it("test_AS_004_the_relocated_task_detail_route_renders_the_real_task_for_a_client_of_a_portal_enabled_project", async () => {
@@ -371,7 +375,11 @@ describe.skipIf(!haveCreds)(
       );
     });
 
-    it("test_AS_004_the_old_requests_url_redirects_a_single_project_client_into_the_relocated_route", async () => {
+    // Mission 20260914-portal-simplify, F009 (AS-017): the legacy
+    // workspace-level requests URL now lands on the project-scoped
+    // Messages route ("Requests" folded into "Messages", F007), not the
+    // project-scoped `requests` route (itself now a redirect).
+    it("test_AS_017_the_old_requests_url_redirects_a_single_project_client_into_conversation", async () => {
       activeSession = clientSession;
       const { default: LegacyPortalRequestsRedirect } = await import(
         "@/app/(portal)/portal/[workspaceSlug]/requests/page"
@@ -380,7 +388,7 @@ describe.skipIf(!haveCreds)(
       await expect(
         LegacyPortalRequestsRedirect({ params: Promise.resolve({ workspaceSlug }) }),
       ).rejects.toThrow(
-        `NEXT_REDIRECT:/portal/${workspaceSlug}/p/${enabledProjectId}/requests`,
+        `NEXT_REDIRECT:/portal/${workspaceSlug}/p/${enabledProjectId}/conversation`,
       );
     });
 

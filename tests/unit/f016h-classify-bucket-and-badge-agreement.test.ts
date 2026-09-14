@@ -10,7 +10,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { classifyBucket } from "@/app/(portal)/portal/[workspaceSlug]/p/[projectId]/your-list/page";
+// Mission 20260914-portal-simplify, F009: `your-list/page.tsx` is now a
+// redirect-only route (folded into "For you", F006) -- `classifyBucket`
+// moved to `lib/portal/classify-deliverable-bucket.ts`, see that file's
+// own header comment.
+import { classifyBucket } from "@/lib/portal/classify-deliverable-bucket";
 import {
   getDeliverablesPastDueCount,
   type PortalDeliverable,

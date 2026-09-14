@@ -353,7 +353,7 @@ describe("ApprovalCard (F009)", () => {
 
     expect(
       screen.getByRole("link", { name: /see who to raise it with/i }),
-    ).toHaveAttribute("href", "/portal/acme/p/project-1/approvals");
+    ).toHaveAttribute("href", "/portal/acme/p/project-1/for-you?filter=decisions");
   });
 
   // F110 (missions/20260903-portal, plan section 3.5): the age bar's

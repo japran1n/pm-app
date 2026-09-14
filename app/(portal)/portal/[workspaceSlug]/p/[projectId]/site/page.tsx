@@ -118,15 +118,16 @@ export default async function PortalSitePage({
         <ProjectGuidesList guides={guides} />
       </section>
 
-      {/* F023's own spec: Files (relocated by F003b) and Requests both
-          "were deliberately left out of the sidebar's eight views" and
-          belong here. `Files` was a TEMPORARY secondary sidebar entry
-          (F006e) tagged for removal the moment this feature lands (see
+      {/* F023's own spec: Files (relocated by F003b) was "deliberately
+          left out of the sidebar's eight views" and belongs here. `Files`
+          was a TEMPORARY secondary sidebar entry (F006e) tagged for
+          removal the moment this feature lands (see
           components/portal/portal-sidebar.tsx's own comment) -- its one
-          entry point now lives here instead. Requests already has a
-          permanent home in "Scope & decisions" (F016) and stays in the
-          sidebar; this is a second, convenient entry point, not its only
-          one. */}
+          entry point now lives here instead.
+          Mission 20260914-portal-simplify, F009 (AS-017): the second
+          "Requests" entry point here now points at "Messages"
+          (`/conversation`, which folds requests in -- F007), since the
+          old `/requests` route is itself a redirect now. */}
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">More</h2>
         <div className="flex flex-wrap gap-2">
@@ -139,12 +140,12 @@ export default async function PortalSitePage({
             Files
           </Link>
           <Link
-            href={`${basePath}/requests`}
+            href={`${basePath}/conversation`}
             className="hover-surface flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-            data-testid="site-view-requests-link"
+            data-testid="site-view-messages-link"
           >
             <Inbox className="size-4 text-muted-foreground" aria-hidden="true" />
-            Requests
+            Messages
           </Link>
         </div>
       </section>

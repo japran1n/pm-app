@@ -82,7 +82,12 @@ export function buildWaitingOnYouItems({
   todayIso: string;
 }): WaitingOnYouItem[] {
   const basePath = `/portal/${workspaceSlug}/p/${projectId}`;
-  const approvalsHref = `${basePath}/approvals`;
+  // Mission 20260914-portal-simplify, F009 (AS-017): "Approvals"/"Your
+  // list" are folded into "For you" (F006) -- this block's own links
+  // point straight at the new route (with the matching filter chip
+  // preselected) rather than through the old routes' redirects.
+  const approvalsHref = `${basePath}/for-you?filter=decisions`;
+  const materialsHref = `${basePath}/for-you?filter=materials`;
   const siteHref = `${basePath}/site`;
   const briefHref = `${basePath}/brief`;
   const items: WaitingOnYouItem[] = [];
@@ -134,7 +139,7 @@ export function buildWaitingOnYouItems({
       key: `deliverable:${deliverable.id}`,
       kind: "deliverable",
       title: deliverable.title,
-      href: `${basePath}/your-list`,
+      href: materialsHref,
       daysWaiting: daysBetween(deliverable.dueAt as string, todayIso),
       actionLabel: "Open",
     });

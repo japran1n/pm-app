@@ -151,7 +151,7 @@ describe("buildWaitingOnYouItems", () => {
         key: "approval:approval-2",
         kind: "approval",
         title: "Approve style guide",
-        href: "/portal/acme/p/project-1/approvals",
+        href: "/portal/acme/p/project-1/for-you?filter=decisions",
       }),
     ]);
   });
@@ -176,7 +176,7 @@ describe("buildWaitingOnYouItems", () => {
       key: "deliverable:d-overdue",
       kind: "deliverable",
       title: "Logo files",
-      href: "/portal/acme/p/project-1/your-list",
+      href: "/portal/acme/p/project-1/for-you?filter=materials",
     });
   });
 
