@@ -28,7 +28,7 @@
 // KIND_ROWS.email wiring, and the "In-app / Email" grid header already
 // exist below and only need the flag, not a UI rebuild.
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { toast } from "sonner";
 import { Volume2 } from "lucide-react";
 
@@ -125,15 +125,49 @@ export function NotificationPreferencesForm({
 
   // Feature request: desktop/browser notifications toggle. Local-only
   // state (see lib/notifications/browser-notify.ts's own doc comment for
-  // why this isn't a server-persisted column). Lazy initializers (not
-  // useEffect+setState) -- same convention lib/hooks/use-recent-items.ts
-  // documents for its own localStorage read: each getter already guards on
-  // `typeof window === "undefined"`, so these read real per-browser state
-  // on first client render without an extra effect-triggered re-render.
+  // why this isn't a server-persisted column).
+  //
+  // F274 follow-up: this used to read `isDesktopNotificationSupported()`
+  // etc. via lazy `useState(() => ...)` initializers. Those getters branch
+  // on `typeof window !== "undefined"`, which is exactly the SSR/client
+  // branch React's hydration-mismatch warning calls out by name: this
+  // component is SSR'd (server: window is undefined -> desktopSupported
+  // false, the whole "Enable desktop notifications" block renders absent
+  // from the server HTML), then hydrates in a real browser where the same
+  // initializer now runs with `window` defined and returns true --
+  // conjuring the entire block into existence only on the client. React
+  // detects the server/client markup mismatch, throws an uncaught
+  // "Hydration failed" error in the browser, and discards + resynthesizes
+  // this Suspense boundary's whole subtree client-side-only to recover.
+  // That teardown/remount race is what made the avatar upload input's
+  // change handler intermittently miss the file Playwright had just set
+  // (AS-205) -- a real bug, not a copy-drift issue in the test.
+  //
+  // Fix: `useSyncExternalStore` is the pattern React itself documents for
+  // exactly this "value differs between server and client, and isn't
+  // owned by React state" case -- its `getServerSnapshot` argument renders
+  // the deterministic SSR-safe default (matching what the server actually
+  // sent down), and its `getSnapshot` argument supplies the real browser
+  // value once mounted, with React handling the "re-read after hydration"
+  // step itself. This is the one of the three browser reads that actually
+  // changes *markup structure* (the whole "Enable desktop notifications"
+  // block is conditionally rendered on it) -- the only one capable of
+  // producing the "Hydration failed" uncaught error seen above, as opposed
+  // to a same-structure attribute mismatch (which React reconciles as a
+  // patch, not a subtree teardown).
+  const desktopSupported = useSyncExternalStore(
+    () => () => {},
+    isDesktopNotificationSupported,
+    () => false,
+  );
+  // These two only ever affect attribute-level state (a switch's `checked`
+  // prop, some copy) on a block that's otherwise identical between server
+  // and client -- a plain lazy initializer is fine here (no full-subtree
+  // hydration failure is possible from an attribute diff), and keeps the
+  // update-on-toggle code below simple.
   const [desktopEnabled, setDesktopEnabledState] = useState(() =>
     isDesktopNotificationsEnabled(),
   );
-  const [desktopSupported] = useState(() => isDesktopNotificationSupported());
   const [desktopPermission, setDesktopPermission] = useState<
     NotificationPermission | "unsupported"
   >(() => getDesktopNotificationPermission());

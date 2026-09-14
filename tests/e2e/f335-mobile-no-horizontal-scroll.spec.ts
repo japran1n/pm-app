@@ -351,7 +351,13 @@ test.describe("AS-517: no primary view scrolls horizontally on a phone", () => {
     const navButton = page.getByRole("button", { name: "Open navigation" });
     await expect(navButton).toBeVisible();
     await navButton.click();
-    await expect(page.getByRole("group", { name: "Theme" })).toBeVisible();
+    // The mobile sheet's theme control is a single icon button
+    // (components/ui/theme-toggle.tsx), not a grouped control — there is
+    // no `role="group"` wrapper anywhere in the sidebar. Assert against
+    // the actual accessible name the button exposes.
+    await expect(
+      page.getByRole("button", { name: "Toggle theme" }),
+    ).toBeVisible();
 
     await assertNoHorizontalPageScroll(page, "dashboard with mobile nav open");
   });
