@@ -197,20 +197,30 @@ function NavRow({
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
       className={cn(
-        "flex shrink-0 items-center rounded-md transition-colors",
-        layout === "desktop" && "w-full",
+        "flex items-center rounded-md transition-colors",
+        layout === "desktop" && "w-full shrink-0",
+        variant === "secondary" && layout !== "mobile" && "shrink-0",
+        // F020b (portal-simplify, AS-014, UX-validator followup): the
+        // first F020 pass made the four mobile top-level rows
+        // `flex-1 basis-0` so they'd divide the strip's width evenly --
+        // that DID stop the clipping, but it also meant a short label
+        // ("Home") was stretched into a wide slot while a longer one
+        // ("Messages") was squeezed into the same slot and `truncate`d,
+        // so labels stopped rendering in full. Rows now size to their
+        // own content (`shrink-0`, no `truncate`) with a tight
+        // `gap-0.5 px-2`, and the icon is hidden below the `sm`
+        // breakpoint (`hidden sm:block`) -- labels alone, at `text-sm`,
+        // are the ~300px four labels need at 360px; dropping the icon
+        // (not the label -- an icon-only "Home" would fail the "keep
+        // labels" requirement) is what buys back the room the wider
+        // `text-sm` type costs versus the old icon+`text-xs` rows.
+        layout === "mobile" && "h-10 shrink-0",
         variant === "secondary"
-          ? "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
-          : // F018 (UX validation defect, low): the mobile strip's four
-            // top-level rows (Home, For you, Messages, Project) used the
-            // same desktop `gap-2.5 px-3 py-2 text-sm` sizing, which
-            // doesn't fit all four inside a 375px viewport without
-            // clipping the last one -- tighter gap/padding/type size on
-            // mobile only (`layout === "mobile"`), same icon-plus-label
-            // shape, just smaller, so every row stays fully visible
-            // instead of relying on the scroll affordance to reach it.
-            layout === "mobile"
-            ? "gap-1.5 px-2 py-1.5 text-xs font-medium"
+          ? layout === "mobile"
+            ? "gap-1 px-2 text-sm font-medium"
+            : "gap-2 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.07em]"
+          : layout === "mobile"
+            ? "gap-0.5 px-2 text-sm font-medium"
             : "gap-2.5 px-3 py-2 text-sm font-medium",
         active
           ? "bg-primary text-primary-foreground"
@@ -222,11 +232,14 @@ function NavRow({
       <Icon
         className={cn(
           "shrink-0",
-          variant === "secondary" || layout === "mobile" ? "size-3.5" : "size-4",
+          layout === "mobile" && "hidden sm:block",
+          layout === "mobile" ? "size-3.5" : variant === "secondary" ? "size-3.5" : "size-4",
         )}
         aria-hidden="true"
       />
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      <span className={cn("min-w-0 whitespace-nowrap", layout === "desktop" && "flex-1 truncate")}>
+        {item.label}
+      </span>
       <NavBadge item={item} active={active} />
     </Link>
   );
@@ -240,75 +253,84 @@ function NavRow({
 // user"). The button carries `aria-expanded` so its open/closed state is
 // programmatically discoverable, matching `app-sidebar.tsx`'s own
 // disclosure convention.
-function ProjectNavGroup({
-  projectItems,
-  pathname,
+function ProjectToggleButton({
   expanded,
   onToggle,
+  layout,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  layout: "desktop" | "mobile";
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      className={cn(
+        "flex items-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        layout === "desktop" && "w-full shrink-0",
+        // F020b (portal-simplify, AS-014, UX-validator followup): the
+        // button itself is one of the four content-sized mobile rows
+        // now (see `NavRow`'s own note) -- no more `flex-1`/`w-full`, no
+        // more inline children next to it (see `ProjectChildrenPanel`
+        // below, rendered as its own row under the whole nav strip
+        // instead of squeezed into this same row when expanded). The
+        // chevron stays dropped on mobile: `aria-expanded` already
+        // exposes open/closed state to assistive tech, and the label
+        // needs the room more than the glyph does at this width.
+        layout === "mobile" ? "h-10 shrink-0 gap-0.5 px-2 text-sm" : "gap-2.5 px-3 py-2 text-sm",
+      )}
+    >
+      <FolderKanban
+        className={cn("shrink-0", layout === "mobile" && "hidden sm:block", layout === "mobile" ? "size-3.5" : "size-4")}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 whitespace-nowrap text-left">Project</span>
+      {layout === "desktop" && (
+        <ChevronDown
+          className={cn("size-4 shrink-0 transition-transform", expanded && "rotate-180")}
+          aria-hidden="true"
+        />
+      )}
+    </button>
+  );
+}
+
+// F020b (portal-simplify, AS-014, UX-validator followup): on mobile the
+// Project group's children never render inline in the same horizontal
+// row as the four top-level items -- doing so squeezed the "Project"
+// button itself down to an icon once children were inserted next to it.
+// Rendered as its own full-width, wrapping panel below the top-level
+// row instead, so opening the group can never re-flow (or clip) the row
+// above it.
+function ProjectChildrenPanel({
+  projectItems,
+  pathname,
   onNavigate,
   layout,
 }: {
   projectItems: PortalNavItem[];
   pathname: string;
-  expanded: boolean;
-  onToggle: () => void;
   onNavigate?: () => void;
   layout: "desktop" | "mobile";
 }) {
   return (
-    <div className={cn(layout === "mobile" && "flex shrink-0 items-center gap-1")}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className={cn(
-          "flex shrink-0 items-center rounded-md font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          layout === "desktop" && "w-full",
-          // F018 (UX validation defect, low): same 375px overflow fix as
-          // `NavRow` above -- this button is the fourth top-level row
-          // ("Project") on the mobile strip and was still using the
-          // desktop gap/padding/type size, which is what pushed it past
-          // the viewport edge in the first place.
-          layout === "mobile"
-            ? "gap-1.5 px-2 py-1.5 text-xs"
-            : "gap-2.5 px-3 py-2 text-sm",
-        )}
-      >
-        <FolderKanban
-          className={cn("shrink-0", layout === "mobile" ? "size-3.5" : "size-4")}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 flex-1 truncate text-left">Project</span>
-        <ChevronDown
-          className={cn(
-            "shrink-0 transition-transform",
-            layout === "mobile" ? "size-3.5" : "size-4",
-            expanded && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
-      </button>
-
-      {expanded && (
-        <div
-          className={cn(
-            layout === "desktop"
-              ? "flex flex-col gap-0.5 pl-2"
-              : "flex shrink-0 items-center gap-1",
-          )}
-        >
-          {projectItems.map((item) => (
-            <NavRow
-              key={item.key}
-              item={item}
-              active={isItemActive(pathname, item)}
-              variant="secondary"
-              layout={layout}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </div>
+    <div
+      className={cn(
+        layout === "desktop" ? "flex flex-col gap-0.5 pl-2" : "flex flex-wrap gap-1",
       )}
+    >
+      {projectItems.map((item) => (
+        <NavRow
+          key={item.key}
+          item={item}
+          active={isItemActive(pathname, item)}
+          variant="secondary"
+          layout={layout}
+          onNavigate={onNavigate}
+        />
+      ))}
     </div>
   );
 }
@@ -419,13 +441,10 @@ export function PortalSidebar({
             <NavRow key={item.key} item={item} active={isItemActive(pathname, item)} />
           ))}
 
-          <ProjectNavGroup
-            projectItems={projectItems}
-            pathname={pathname}
-            expanded={expanded}
-            onToggle={toggleProject}
-            layout="desktop"
-          />
+          <ProjectToggleButton expanded={expanded} onToggle={toggleProject} layout="desktop" />
+          {expanded && (
+            <ProjectChildrenPanel projectItems={projectItems} pathname={pathname} layout="desktop" />
+          )}
         </nav>
 
         <div className="flex flex-col gap-3 border-t border-sidebar-border p-3">
@@ -450,7 +469,7 @@ export function PortalSidebar({
           </div>
         </div>
         <div className="px-3 pb-2">{projectCard}</div>
-        <nav className="flex gap-1 overflow-x-auto px-2 pb-2">
+        <nav className="flex w-full items-center gap-1 overflow-x-auto px-2 pb-2">
           {items.map((item) => (
             <NavRow
               key={item.key}
@@ -459,14 +478,16 @@ export function PortalSidebar({
               layout="mobile"
             />
           ))}
-          <ProjectNavGroup
-            projectItems={projectItems}
-            pathname={pathname}
-            expanded={expanded}
-            onToggle={toggleProject}
-            layout="mobile"
-          />
+          <ProjectToggleButton expanded={expanded} onToggle={toggleProject} layout="mobile" />
         </nav>
+        {expanded && (
+          // F020b: the Project group's children render in their own
+          // panel below the top-level row, never inline in it -- see
+          // `ProjectChildrenPanel`'s own note.
+          <div className="border-t border-sidebar-border px-2 pb-2 pt-2">
+            <ProjectChildrenPanel projectItems={projectItems} pathname={pathname} layout="mobile" />
+          </div>
+        )}
       </div>
     </>
   );

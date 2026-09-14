@@ -279,6 +279,70 @@ describe("PortalSidebar (F008)", () => {
     expect(mobileHomeAnchor).not.toContain("w-full");
   });
 
+  it("test_AS_014_mobile_top_level_rows_size_to_content_with_full_labels_and_no_chevron", () => {
+    mockPathname = "/portal/acme/p/proj-1";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+
+    const mobileMarkerIndex = html.indexOf("md:hidden");
+    expect(mobileMarkerIndex).toBeGreaterThan(-1);
+    const mobileHtml = html.slice(mobileMarkerIndex);
+
+    // F020b (AS-014, UX-validator followup): mobile rows size to their
+    // own content -- no `flex-1`/`basis-0` (which stretched short labels
+    // and squeezed/truncated longer ones) and no `truncate` on the
+    // label, so all four labels render in full at 360px.
+    for (const label of ["Home", "For you", "Messages"]) {
+      expect(mobileHtml).toContain(`>${label}<`);
+    }
+    const mobileHomeAnchor = anchorTags(mobileHtml).find((tag) =>
+      tag.includes('href="/portal/acme/p/proj-1"'),
+    );
+    expect(mobileHomeAnchor).not.toContain("flex-1");
+    expect(mobileHomeAnchor).not.toContain("basis-0");
+    expect(mobileHomeAnchor).toContain("h-10");
+    expect(mobileHomeAnchor).toContain("text-sm");
+    expect(mobileHomeAnchor).toContain("shrink-0");
+
+    const mobileForYouAnchor = anchorTags(mobileHtml).find((tag) =>
+      tag.includes('href="/portal/acme/p/proj-1/for-you"'),
+    );
+    expect(mobileForYouAnchor).not.toContain("truncate");
+
+    // The "Project" toggle button carries the same content-sized mobile
+    // classes, and drops the chevron glyph entirely on mobile (state is
+    // still exposed via `aria-expanded`).
+    const mobileButtons = mobileHtml.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+    const projectButton = mobileButtons.find((tag) => tag.includes(">Project<"));
+    expect(projectButton).toBeDefined();
+    expect(projectButton).toContain("h-10");
+    expect(projectButton).not.toContain("flex-1");
+    expect(projectButton).not.toContain("basis-0");
+    expect(projectButton).not.toContain("rotate-180");
+    expect(projectButton?.match(/<svg/g)?.length).toBe(1);
+  });
+
+  it("test_AS_014_mobile_project_children_render_in_a_separate_panel_below_the_row", () => {
+    mockPathname = "/portal/acme/p/proj-1/results";
+    const html = renderToStaticMarkup(createElement(PortalSidebar, baseProps));
+
+    const mobileMarkerIndex = html.indexOf("md:hidden");
+    expect(mobileMarkerIndex).toBeGreaterThan(-1);
+    const mobileHtml = html.slice(mobileMarkerIndex);
+
+    // The Project button and its expanded children must NOT share a
+    // parent with the other three top-level rows (that inline layout is
+    // what squeezed "Project" down to an icon once children appeared).
+    const topLevelRowIndex = mobileHtml.indexOf("overflow-x-auto");
+    const navCloseIndex = mobileHtml.indexOf("</nav>", topLevelRowIndex);
+    const topLevelRowHtml = mobileHtml.slice(topLevelRowIndex, navCloseIndex);
+    expect(topLevelRowHtml).not.toContain(">Site map<");
+
+    // The children panel appears as its own container after the
+    // top-level row closes.
+    const afterTopLevelRow = mobileHtml.slice(navCloseIndex);
+    expect(afterTopLevelRow).toContain(">Site map<");
+  });
+
   it("renders a nonzero For you badge count using the shared Badge component", () => {
     mockPathname = "/portal/acme/p/proj-1";
     const html = renderToStaticMarkup(
