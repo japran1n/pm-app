@@ -48,7 +48,13 @@ jobs:
         run: npx next typegen
 
       - name: Type-check
+        # The repo outgrew Node's default old-space heap on the hosted
+        # runner — tsc dies with "Ineffective mark-compacts near heap
+        # limit" (runs 34783726179, 34841937567) while passing locally.
+        # 6 GB fits comfortably inside ubuntu-latest's memory.
         run: npx tsc --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Lint
         run: npx eslint .
