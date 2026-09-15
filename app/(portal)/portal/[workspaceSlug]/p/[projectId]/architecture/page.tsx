@@ -2,7 +2,12 @@ import { LayoutTemplate } from "lucide-react";
 
 import { getArchitectureBoardForClient } from "@/lib/queries/architecture";
 import { EmptyState } from "@/components/empty-state";
-import { ClientArchitectureBoard } from "@/components/architecture/client-board";
+// ClientArchitectureBoard (components/architecture/client-board.tsx) is
+// the flat column view; ClientArchitectureBoardView (F2,
+// 20260915-status-sitemap-audit, AS-7/AS-9) composes it with the new
+// read-only tree view and the trimmed Components panel, defaulting to the
+// tree view like the workspace board's own default.
+import { ClientArchitectureBoardView } from "@/components/architecture/client-view-toggle";
 
 // Mission 20260910-182104, F037 (AS-091, AS-098): the portal's read-only
 // Architecture route. Server Component, same access pattern every
@@ -39,7 +44,7 @@ export default async function PortalArchitecturePage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <ClientArchitectureBoard pages={board.pages} components={board.components} />
+      <ClientArchitectureBoardView pages={board.pages} components={board.components} />
     </div>
   );
 }

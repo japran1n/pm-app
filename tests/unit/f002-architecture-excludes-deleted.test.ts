@@ -11,13 +11,13 @@
 // chain method disappeared.
 
 import { describe, expect, it, vi } from "vitest";
-import { applyFilters, eqFilter, isNullFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
+import { applyFilters, eqFilter, inFilter, isNullFilter, type Row } from "@/tests/unit/helpers/query-filter-mock";
 
 vi.mock("server-only", () => ({}));
 
 let taskRows: Row[];
 const componentRows: Row[] = [
-  { id: "comp-1", name: "Hero", description: null, position: 0 },
+  { id: "comp-1", name: "Hero", description: null, position: 0, project_id: "proj-1" },
 ];
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -49,10 +49,26 @@ vi.mock("@/lib/supabase/server", () => ({
         };
       }
       if (table === "page_components") {
+        // 20260915-status-sitemap-audit, F2 (AS-6): the real query is now
+        // select().eq("project_id", ...).in("id", referencedComponentIds)
+        // -- both filters genuinely applied here (not stubbed to just
+        // echo back every row) so this mock can't silently mask a
+        // regression in either filter.
         return {
-          select: vi.fn(() => ({
-            eq: vi.fn(async () => ({ data: componentRows, error: null })),
-          })),
+          select: vi.fn(() => {
+            const filters: Array<(row: Row) => boolean> = [];
+            return {
+              eq: vi.fn((col: string, val: unknown) => {
+                filters.push(eqFilter(col, val));
+                return {
+                  in: vi.fn(async (inCol: string, vals: readonly unknown[]) => ({
+                    data: applyFilters(componentRows, [...filters, inFilter(inCol, vals)]),
+                    error: null,
+                  })),
+                };
+              }),
+            };
+          }),
         };
       }
       throw new Error(`unexpected table: ${table}`);
