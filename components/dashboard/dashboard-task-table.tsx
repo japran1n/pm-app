@@ -1,12 +1,22 @@
 // F078 (AS-134): the dashboard's task table — workspace-wide (across ALL
 // of the workspace's projects), not project-scoped like F053/F054's list
 // view. Reuses `<ListFilters>` (components/task/list-filters.tsx, F054)
-// and `<TaskListTable>` (components/task/task-list-table.tsx, F053)
-// completely unmodified: `<ListFilters>` only ever writes
-// status/priority/assigneeId into the current pathname's URL query string
-// and knows nothing about project vs. workspace scope, and
-// `<TaskListTable>` only ever renders whatever `TaskCardTask[]` it's
-// handed — neither needed a single line changed to work here.
+// and `<TaskListTable>` (components/task/task-list-table.tsx, F053):
+// `<ListFilters>` only ever writes status/priority/assigneeId into the
+// current pathname's URL query string and knows nothing about project vs.
+// workspace scope, and `<TaskListTable>` only ever renders whatever
+// `TaskCardTask[]` it's handed.
+//
+// F1 (status-sitemap-audit mission, AS-1): one exception to the
+// "unmodified" note above — this Server Component now also batch-fetches
+// each DISTINCT project's real `project_statuses` columns
+// (lib/queries/statuses.ts's getProjectColumns) for the tasks it fetched,
+// and passes the resulting per-project map down as `statusOptionsByProject`
+// so a bulk status change over a selection spanning multiple projects can
+// offer/verify each task's own project's real statuses, mirroring
+// my-tasks/page.tsx's own per-project batch pattern — one query per
+// distinct project touched by the current page of results, never one
+// query per task.
 //
 // Server Component (clarified spec's "Server Component for data-fetching,
 // thin Client Component only for the interactive part") — this component
@@ -24,6 +34,11 @@
 
 import { getWorkspaceListTasks } from "@/lib/queries/tasks";
 import { getWorkspaceMembers } from "@/lib/queries/members";
+// F1 (status-sitemap-audit mission, AS-1): same batched-per-distinct-
+// project-id query my-tasks/page.tsx already uses for its own
+// `statusOptionsByProject` map — see that page's own doc comment.
+import { createClient } from "@/lib/supabase/server";
+import { statusLabelFor } from "@/lib/task-colors";
 // Portal-parity fix: the dashboard's Type column was always empty because
 // this Server Component never fetched the workspace's task types (the
 // per-project List page always has, via getTaskTypes — see that page's own
@@ -102,6 +117,49 @@ export async function DashboardTaskTable({
     getWorkspaceMembers(workspaceId),
     getTaskTypes(workspaceId),
   ]);
+
+  // F1 (status-sitemap-audit mission, AS-1): resolve every distinct
+  // project's real `project_statuses` columns in ONE batched query,
+  // covering every project this page's (already status/priority/assignee/
+  // flag-filtered) result set touches — never a query per task, mirroring
+  // my-tasks/page.tsx's own `statusOptionsByProject` build exactly.
+  const distinctProjectIds = Array.from(
+    new Set(
+      tasks
+        .map((task) => task.projectId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const statusOptionsByProject = new Map<
+    string,
+    {
+      value: string;
+      label: string;
+      color: string;
+      category?: string | null;
+      displayGroup?: string | null;
+    }[]
+  >();
+  if (distinctProjectIds.length > 0) {
+    const supabase = await createClient();
+    const { data: columnRows } = await supabase
+      .from("project_statuses")
+      .select("project_id, name, color, category, display_group, position")
+      .in("project_id", distinctProjectIds)
+      .order("position", { ascending: true });
+
+    for (const row of columnRows ?? []) {
+      const list = statusOptionsByProject.get(row.project_id) ?? [];
+      list.push({
+        value: row.name,
+        label: statusLabelFor(row.name),
+        color: row.color,
+        category: row.category,
+        displayGroup: row.display_group,
+      });
+      statusOptionsByProject.set(row.project_id, list);
+    }
+  }
   const assigneeOptions = members.active.map((member) => ({
     id: member.userId,
     label: member.name ?? member.email ?? member.userId,
@@ -135,6 +193,7 @@ export async function DashboardTaskTable({
         clearFiltersHref={clearFiltersHref}
         timezone={timezone}
         taskTypeOptions={taskTypes}
+        statusOptionsByProject={statusOptionsByProject}
       />
     </div>
   );

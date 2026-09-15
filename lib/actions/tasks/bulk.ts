@@ -18,6 +18,9 @@ import {
 import { computeFanoutRecipients } from "@/lib/notifications/fanout";
 import { filterRecipientsByInAppPreference } from "@/lib/notifications/preferences";
 import { createNotification } from "@/lib/notifications/create-notification";
+import { isDoneStatus } from "@/lib/tasks/blocked-guard";
+import { generateNextOccurrence } from "@/lib/recurrence/generate-next-occurrence";
+import { getCurrentUserTimezone } from "@/lib/queries/profile";
 import { revalidateWorkspaceForTaskAssignment } from "./shared";
 import { restoreTask } from "./lifecycle";
 import {
@@ -256,16 +259,70 @@ export async function bulkUpdateTasks(
     return { ok: true, data: { succeededIds: [], failedIds } };
   }
 
+  // F1 (status-sitemap-audit mission, AS-2): before writing a status
+  // change, verify the target name exists in EACH affected task's own
+  // project's `project_statuses` — mirrors moveTaskStatus's own existence
+  // check (lib/actions/tasks/ordering.ts), which exists because the DB
+  // trigger that derives `status_id` from `(project_id, name)`
+  // (`sync_task_status_and_status_id`) fails silently (leaves status_id
+  // null) for an unmatched name rather than raising. Batched per DISTINCT
+  // project id touched by this call (never one query per task) — the
+  // target name is the SAME single value for the whole batch (`updates`
+  // has one `status` field, not one per task), so the only thing that can
+  // vary per task is which project it belongs to.
+  const targetStatusName =
+    "status" in parsed.data.updates ? parsed.data.updates.status : undefined;
+  // projectId -> the matched column's category, only for projects where
+  // `targetStatusName` actually exists. A task whose project's id is NOT a
+  // key of this map gets excluded below instead of silently orphaning
+  // `status_id`.
+  const categoryByProjectIdForTargetStatus = new Map<string, string | null>();
+  if (targetStatusName !== undefined) {
+    const distinctProjectIdsForStatus = new Set(
+      allowedIds
+        .map((id) => contexts.get(id)?.projectId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    if (distinctProjectIdsForStatus.size > 0) {
+      const { data: matchingStatusRows } = await admin
+        .from("project_statuses")
+        .select("project_id, category")
+        .in("project_id", [...distinctProjectIdsForStatus])
+        .eq("name", targetStatusName);
+      for (const row of matchingStatusRows ?? []) {
+        categoryByProjectIdForTargetStatus.set(
+          row.project_id as string,
+          (row.category as string | null) ?? null,
+        );
+      }
+    }
+    for (let i = allowedIds.length - 1; i >= 0; i -= 1) {
+      const id = allowedIds[i];
+      const context = contexts.get(id);
+      if (!context || !categoryByProjectIdForTargetStatus.has(context.projectId)) {
+        allowedIds.splice(i, 1);
+        failedIds.push({
+          id,
+          reason: "That status doesn't exist on this task's project.",
+        });
+      }
+    }
+  }
+
+  if (allowedIds.length === 0) {
+    return { ok: true, data: { succeededIds: [], failedIds } };
+  }
+
   // Build the update payload from only the fields present in `updates` —
   // same "only present fields are applied" convention as editTask.
   const updatePayload: {
-    status?: "todo" | "in_progress" | "in_review" | "done";
+    status?: string;
     assignee_id?: string | null;
     priority?: "urgent" | "high" | "medium" | "low" | "backlog" | null;
     due_date?: string | null;
   } = {};
-  if ("status" in parsed.data.updates) {
-    updatePayload.status = parsed.data.updates.status;
+  if (targetStatusName !== undefined) {
+    updatePayload.status = targetStatusName;
   }
   if ("assigneeId" in parsed.data.updates) {
     updatePayload.assignee_id = parsed.data.updates.assigneeId;
@@ -292,11 +349,19 @@ export async function bulkUpdateTasks(
 
   // The one real write: a single `UPDATE ... WHERE id = ANY(allowedIds)`
   // statement, per this feature's Clarified performance-budget answer.
+  // F1 (AS-3): the extra columns beyond status/assignee_id/priority/
+  // due_date (project_id, title, description, description_json,
+  // estimate_minutes, recurrence, recurrence_parent_id, task_type_id) are
+  // exactly `SourceTaskForRecurrence`'s shape — selected here, in the SAME
+  // round trip as the write itself, so the recurrence side effect below
+  // never needs a second per-task fetch.
   const { data: updatedRows, error: updateError } = await admin
     .from("tasks")
     .update(updatePayload)
     .in("id", allowedIds)
-    .select("id, status, assignee_id, priority, due_date");
+    .select(
+      "id, status, assignee_id, priority, due_date, project_id, title, description, description_json, estimate_minutes, recurrence, recurrence_parent_id, task_type_id",
+    );
 
   if (updateError) {
     logger.error("bulkUpdateTasks: update failed", { error: updateError });
@@ -437,6 +502,71 @@ export async function bulkUpdateTasks(
     }
   } catch (fanoutError) {
     logger.error("bulkUpdateTasks: notification fan-out failed (non-fatal)", { error: fanoutError });
+  }
+
+  // F1 (status-sitemap-audit mission, AS-3): a recurring task that just
+  // transitioned into a done-category status generates its next
+  // occurrence, exactly like moveTaskStatus does (lib/actions/tasks/
+  // ordering.ts) — same helpers (`isDoneStatus` + `generateNextOccurrence`),
+  // no reimplementation. Purely additive: a failure or legitimate no-op
+  // here never turns the bulk update itself into a failure, and this
+  // never blocks/queries per row beyond the one-time timezone lookup
+  // below plus one insert per ACTUALLY-recurring task that ACTUALLY moved
+  // into a done column (inherent to generating N new task rows, not a
+  // violation of this file's "batch, don't loop" convention for its own
+  // reads/writes).
+  if (targetStatusName !== undefined) {
+    try {
+      const recurringDoneRows = (updatedRows ?? []).filter((row) => {
+        const context = contexts.get(row.id as string);
+        if (!context) return false;
+        const category = categoryByProjectIdForTargetStatus.get(
+          context.projectId,
+        );
+        return (
+          Boolean(row.recurrence) &&
+          isDoneStatus(row.status as string, category ?? undefined)
+        );
+      });
+
+      if (recurringDoneRows.length > 0) {
+        const timezone = await getCurrentUserTimezone(supabase);
+        for (const row of recurringDoneRows) {
+          try {
+            await generateNextOccurrence(
+              admin,
+              {
+                id: row.id as string,
+                project_id: row.project_id as string,
+                title: row.title as string,
+                description: row.description as string | null,
+                description_json: row.description_json,
+                priority: row.priority as string | null,
+                estimate_minutes: row.estimate_minutes as number | null,
+                due_date: row.due_date as string | null,
+                recurrence: row.recurrence,
+                recurrence_parent_id: row.recurrence_parent_id as
+                  | string
+                  | null,
+                task_type_id: row.task_type_id as string,
+              },
+              user.id,
+              timezone,
+            );
+          } catch (recurrenceError) {
+            logger.error(
+              "bulkUpdateTasks: generateNextOccurrence failed (non-fatal)",
+              { error: recurrenceError, taskId: row.id },
+            );
+          }
+        }
+      }
+    } catch (recurrenceBatchError) {
+      logger.error(
+        "bulkUpdateTasks: recurrence side effect failed (non-fatal)",
+        { error: recurrenceBatchError },
+      );
+    }
   }
 
   for (const workspaceId of distinctWorkspaceIds) {

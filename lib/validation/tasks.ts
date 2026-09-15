@@ -506,9 +506,21 @@ export const bulkUpdateTasksSchema = z
       .max(200, "You can update at most 200 tasks at once."),
     updates: z
       .object({
-        // Matches `tasks_status_check` — same fixed 4-value set as
+        // F1 (status-sitemap-audit mission, AS-1/AS-2): `tasks_status_check`
+        // was dropped once board columns became per-project
+        // (`project_statuses`, F221) — this now accepts any non-empty
+        // column NAME up to the same length moveTaskStatusSchema allows,
+        // mirroring that schema exactly. bulkUpdateTasks itself (lib/
+        // actions/tasks/bulk.ts) re-verifies the name against each
+        // affected task's own project's real `project_statuses` rows
+        // before writing, since a plain string schema can't know that —
+        // same division of responsibility as moveTaskStatus/
         // moveTaskStatusSchema.
-        status: z.enum(["todo", "in_progress", "in_review", "done"]),
+        status: z
+          .string()
+          .trim()
+          .min(1, "Status is required.")
+          .max(100, "Status must be 100 characters or fewer."),
         // null explicitly means "unassign", same convention as
         // assignTaskSchema's assigneeId.
         assigneeId: z.string().uuid("Invalid assignee.").nullable(),

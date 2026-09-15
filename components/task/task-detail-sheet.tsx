@@ -378,6 +378,7 @@ export function TaskDetailSheet({
   currentUserRole,
   timezone,
   onOpenTask,
+  statusOptions,
 }: {
   /** The task to display, or null (empty state) if none is loaded. */
   task: TaskDetailSheetTask | null;
@@ -448,6 +449,21 @@ export function TaskDetailSheet({
    * other open path (a plain card click, a `?taskId=`-only deep-link) —
    * CommentList's default behavior (no scroll/highlight) is unchanged. */
   highlightCommentId?: string | null;
+  /** F1 (status-sitemap-audit mission, AS-4): this task's own project's
+   * real `project_statuses` columns (lib/queries/statuses.ts's
+   * getProjectColumns), passed straight through to <TaskDetailFields>'s
+   * status picker — same data shape/source Board's `columns` prop and the
+   * List view's `statusOptions` prop already use. Undefined (a caller
+   * that hasn't been updated, e.g. an existing test) falls back to
+   * TaskDetailFields's own legacy STATUS_LABELS-derived default so this
+   * Sheet still renders rather than crashing. */
+  statusOptions?: {
+    value: string;
+    label: string;
+    color: string;
+    category?: string | null;
+    displayGroup?: string | null;
+  }[];
 }) {
   // F246 (AS-473): derives the current workspace slug from the URL
   // itself (`/w/{slug}/...`, this sheet's caller is always mounted
@@ -938,6 +954,7 @@ export function TaskDetailSheet({
                 canEdit={canEdit}
                 editDisabledTitle={editDisabledTitle}
                 timezone={timezone}
+                statusOptions={statusOptions}
                 assigneeField={
                   /* UX audit (Nalaz 2): Assignees shared the same
                      1-column width as every other field in the metadata

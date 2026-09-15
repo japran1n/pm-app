@@ -132,6 +132,7 @@ export function TaskListTable({
   timezone,
   statusOptions,
   projectId,
+  statusOptionsByProject,
   taskTypeOptions = [],
   savedViews = [],
 }: {
@@ -205,6 +206,27 @@ export function TaskListTable({
    * it omits this prop and this table's Realtime subscription is a
    * documented no-op for that caller — see this feature's handoff. */
   projectId?: string;
+  /** F1 (status-sitemap-audit mission, AS-1): projectId -> that project's
+   * real `project_statuses` columns, covering every project touched by
+   * the CURRENT selection — passed straight through to <BulkStatusAction>
+   * so a selection spanning multiple projects (only possible from the
+   * workspace-wide dashboard table, which has no single `statusOptions`
+   * of its own) can still offer/verify each task's own project's real
+   * statuses, mirroring my-tasks/page.tsx's `statusOptionsByProject`
+   * pattern. Omitted (the per-project List view's normal case) falls back
+   * to synthesizing a one-entry map from `projectId`/`statusOptions`
+   * below, so the single-project caller doesn't have to build a map of
+   * its own just to wrap one array. */
+  statusOptionsByProject?: Map<
+    string,
+    {
+      value: string;
+      label: string;
+      color: string;
+      category?: string | null;
+      displayGroup?: string | null;
+    }[]
+  >;
   /** Follow-up (manual view membership): the project's saved list views,
    * offered as targets for the row's "Add to view" menu. Defaults to
    * empty, in which case that affordance renders nothing (same "empty
@@ -246,6 +268,33 @@ export function TaskListTable({
   // matched (AS-335) without this component needing to know anything
   // about filters itself.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // F1 (status-sitemap-audit mission, AS-1): taskId -> that task's own
+  // project id, for <BulkStatusAction>'s per-project resolution. Falls
+  // back to this table's own single `projectId` prop for a row that
+  // doesn't carry its own `projectId` yet (the per-project List view's
+  // normal case — every row already belongs to that one project).
+  const taskProjectIds = useMemo(
+    () =>
+      new Map<string, string | undefined>(
+        tasks.map((task) => [task.id, task.projectId ?? projectId]),
+      ),
+    [tasks, projectId],
+  );
+
+  // F1 (AS-1): projectId -> real status options, for <BulkStatusAction>.
+  // Prefers the caller-supplied multi-project map (the workspace-wide
+  // dashboard table); otherwise synthesizes a one-entry map from this
+  // table's own single-project `statusOptions`/`projectId` props (the
+  // per-project List view's normal case), so that caller doesn't have to
+  // build a map of its own just to wrap one array.
+  const bulkStatusOptionsByProject = useMemo(() => {
+    if (statusOptionsByProject) return statusOptionsByProject;
+    if (projectId && statusOptions && statusOptions.length > 0) {
+      return new Map([[projectId, statusOptions]]);
+    }
+    return undefined;
+  }, [statusOptionsByProject, projectId, statusOptions]);
   // Anchor row for shift-click range selection — the last row clicked
   // WITHOUT the shift key held, per the standard "click A, shift-click B,
   // everything between A and B (inclusive) gets selected" file-manager
@@ -949,6 +998,18 @@ export function TaskListTable({
       currentUserRole={taskDetailSheet.currentUserRole}
       timezone={timezone}
       onOpenTask={taskDetailSheet.openTask}
+      // F1 (status-sitemap-audit mission, AS-4): resolved from the SAME
+      // per-project map <BulkStatusAction> uses above — the open task's
+      // own project's real statuses, whichever of the two callers
+      // (single-project List view, multi-project dashboard table) this
+      // table is rendered by.
+      statusOptions={
+        taskDetailSheet.task
+          ? bulkStatusOptionsByProject?.get(
+              taskProjectIds.get(taskDetailSheet.task.id) ?? "",
+            )
+          : undefined
+      }
     />
 
     {/* F185 (AS-336/342): only rendered while the selection is non-empty;
@@ -958,6 +1019,8 @@ export function TaskListTable({
       <BulkStatusAction
         selectedIds={Array.from(selectedIds)}
         onDone={clearSelection}
+        taskProjectIds={taskProjectIds}
+        statusOptionsByProject={bulkStatusOptionsByProject}
       />
       {/* F002 (AS-013): projectId is optional on this component's own
           props (some non-project-scoped future caller could omit it) —

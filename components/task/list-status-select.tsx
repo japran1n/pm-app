@@ -71,7 +71,11 @@ function StatusIconGlyph({ icon: Icon, color }: { icon: LucideIcon; color: strin
 // already is (see this file's option prop doc comment below) — the
 // value only ever flows into `moveTaskStatus`, whose schema accepts any
 // non-empty string.
-const DEFAULT_STATUS_OPTIONS: {
+// F1 (status-sitemap-audit mission, AS-1): exported so
+// bulk-status-action.tsx can fall back to the SAME "current default set"
+// constant instead of keeping (or reinventing) a second, driftable copy —
+// see that component's own doc comment for when its fallback applies.
+export const DEFAULT_STATUS_OPTIONS: {
   value: TaskCardTask["status"];
   label: string;
   color: string;
