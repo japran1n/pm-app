@@ -48,6 +48,7 @@ type TasksChain = {
 type ComponentsChain = {
   select: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
+  in: ReturnType<typeof vi.fn>;
 };
 
 let tasksQuery: TasksChain;
@@ -95,14 +96,31 @@ beforeEach(() => {
   selectSpy.mockReturnValue(tasksChain);
   tasksQuery = tasksChain;
 
+  // 20260915-status-sitemap-audit, F2 (AS-6): the team read stays
+  // `select().eq("project_id", ...)` (awaited directly), but the client
+  // read is now sequential -- `select().eq("project_id", ...).in("id",
+  // referencedComponentIds)`. `eq` here returns an object that is BOTH
+  // thenable (so the team path's direct `await ...eq(...)` keeps working)
+  // AND chainable via `.in(...)` (so the client path's extra scoping
+  // filter is genuinely exercised, not stubbed away).
   const componentsSelectSpy = vi.fn();
-  const componentsEqSpy = vi.fn();
+  const componentsInSpy = vi.fn((_col: string, ids: readonly unknown[]) =>
+    Promise.resolve({
+      data: componentRows.filter((row) => ids.includes(row.id)),
+      error: null,
+    }),
+  );
+  const componentsEqSpy = vi.fn(() => ({
+    then: (onFulfilled: (v: unknown) => unknown) =>
+      Promise.resolve({ data: componentRows, error: null }).then(onFulfilled),
+    in: componentsInSpy,
+  }));
   const componentsChain: ComponentsChain = {
     select: componentsSelectSpy,
     eq: componentsEqSpy,
+    in: componentsInSpy,
   };
   componentsSelectSpy.mockReturnValue(componentsChain);
-  componentsEqSpy.mockImplementation(() => Promise.resolve({ data: componentRows, error: null }));
   componentsQuery = componentsChain;
 
   fromMock = vi.fn((table: string) => {
@@ -185,13 +203,25 @@ describe("F004: getArchitectureBoardForClient", () => {
     expect(tasksQuery.eq).toHaveBeenCalledWith("client_visible", true);
   });
 
-  it("test_AS_board_client_read_still_includes_zero_instance_components", async () => {
+  // 20260915-status-sitemap-audit, F2 (AS-6): unlike the team-side board
+  // (which lists every project component, including zero-instance ones),
+  // the client read must never fetch/return a component that isn't
+  // referenced by any of the sections it actually returned -- an
+  // internal-only, unused component must not be named or counted for the
+  // client at all.
+  it("test_AS_006_client_read_excludes_a_component_not_referenced_by_any_returned_section", async () => {
     const result = await getArchitectureBoardForClient(PROJECT_ID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
     const componentsById = new Map(result.data.components.map((c) => [c.id, c]));
-    expect(componentsById.get(COMPONENT_2)?.instanceCount).toBe(0);
+    // COMPONENT_1 is linked to two client-visible sections -- present with
+    // its real instance count.
+    expect(componentsById.get(COMPONENT_1)?.instanceCount).toBe(2);
+    // COMPONENT_2 ("Unused banner") isn't linked to any returned section --
+    // it must not appear in the client-scoped result at all.
+    expect(componentsById.has(COMPONENT_2)).toBe(false);
+    expect(componentsQuery.in).toHaveBeenCalledWith("id", [COMPONENT_1]);
   });
 });
 

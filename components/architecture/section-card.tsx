@@ -48,6 +48,7 @@ import { ComponentPicker } from "@/components/architecture/component-picker";
 import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
 import { SectionClientVisibilityToggle } from "@/components/architecture/section-client-visibility-toggle";
+import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
 
 export function SectionCard({
   section,
@@ -166,11 +167,7 @@ export function SectionCard({
       // when reading a sitemap than "which component renders it".
       className={cn(
         "group relative w-full rounded-md border bg-card p-3 shadow-xs transition-colors",
-        section.kind === "cms"
-          ? "border-cms-border hover:border-cms-border-hover hover:bg-cms/10"
-          : section.component
-            ? "border-component-border hover:border-component-border-hover hover:bg-component/10"
-            : "hover:border-border-control-hover",
+        sectionKindAccentClassName(section),
       )}
     >
       <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

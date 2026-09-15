@@ -234,23 +234,31 @@ export async function getArchitectureBoard(
 // components are dropped from the board's instance counts for free; no
 // separate "components only for returned pages" filter is needed on the
 // `page_components` query itself.
+//
+// 20260915-status-sitemap-audit, F2 (AS-6): the `page_components` query
+// used to select every component row for the whole project, unscoped --
+// identical to the unfiltered team-side query. That was harmless only so
+// long as the portal discarded the `components` array outright
+// (components/architecture/client-board.tsx used to `void components`).
+// The moment a Components panel renders that array to the client (F2's
+// own AS-9), an internal-only component that's only ever linked to
+// hidden/non-client-visible sections would leak its name and existence.
+// Fixed by making the two queries sequential (not Promise.all) and
+// deriving the allowed component id set from the ALREADY client-visible-
+// filtered, non-deleted task rows above -- a component is only fetched
+// when at least one *returned* section links to it, never "every
+// component in the project."
 export async function getArchitectureBoardForClient(
   projectId: string,
 ): Promise<PortalQueryResult<ArchitectureBoard>> {
   const supabase = await createClient();
 
-  const [tasksResult, componentsResult] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select(TASK_COLUMNS)
-      .eq("project_id", projectId)
-      .eq("client_visible", true)
-      .is("deleted_at", null),
-    supabase
-      .from("page_components")
-      .select(COMPONENT_COLUMNS)
-      .eq("project_id", projectId),
-  ]);
+  const tasksResult = await supabase
+    .from("tasks")
+    .select(TASK_COLUMNS)
+    .eq("project_id", projectId)
+    .eq("client_visible", true)
+    .is("deleted_at", null);
 
   if (tasksResult.error) {
     logger.error("getArchitectureBoardForClient: failed to load tasks", {
@@ -258,6 +266,29 @@ export async function getArchitectureBoardForClient(
     });
     return { ok: false, error: tasksResult.error.message };
   }
+
+  const taskRows = (tasksResult.data ?? []) as TaskRow[];
+
+  // AS-6: the set of component ids referenced by at least one returned
+  // (client-visible, non-deleted) section -- computed from the row set
+  // above, not from a separate unscoped project-wide query.
+  const referencedComponentIds = Array.from(
+    new Set(
+      taskRows
+        .map((row) => row.component_id)
+        .filter((id): id is string => id !== null),
+    ),
+  );
+
+  if (referencedComponentIds.length === 0) {
+    return { ok: true, data: buildBoardFromRows(taskRows, []) };
+  }
+
+  const componentsResult = await supabase
+    .from("page_components")
+    .select(COMPONENT_COLUMNS)
+    .eq("project_id", projectId)
+    .in("id", referencedComponentIds);
 
   if (componentsResult.error) {
     logger.error("getArchitectureBoardForClient: failed to load components", {
@@ -269,7 +300,7 @@ export async function getArchitectureBoardForClient(
   return {
     ok: true,
     data: buildBoardFromRows(
-      (tasksResult.data ?? []) as TaskRow[],
+      taskRows,
       (componentsResult.data ?? []) as ComponentRow[],
     ),
   };
