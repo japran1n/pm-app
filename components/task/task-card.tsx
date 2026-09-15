@@ -115,6 +115,17 @@ export type TaskCardTask = {
   // "safe default" convention in this type.
   projectKey?: string;
   number?: number;
+  // F1 (status-sitemap-audit mission, AS-1): this task's own project id —
+  // needed by a multi-project row set (the workspace-wide dashboard table,
+  // components/dashboard/dashboard-task-table.tsx) so a bulk status change
+  // over a selection spanning several projects can resolve each task's own
+  // project's real `project_statuses` options, mirroring the per-project
+  // options map my-tasks/page.tsx already builds for MyTaskStatusCell.
+  // Optional so a caller that hasn't been updated (existing tests, the
+  // project-scoped board/list queries which already know their single
+  // project id via a separate prop) still renders — same "safe default"
+  // convention as `projectKey`/`number` above.
+  projectId?: string;
   // F150 (AS-275): how many live children (subtasks) this task has, if
   // any. Selected via the board query's own single aggregate query
   // (lib/queries/tasks.ts's getProjectBoardTasks) — never a per-card

@@ -553,7 +553,11 @@ export async function getWorkspaceListTasks(
       // view (getProjectListTasks) already has — see this feature's
       // handoff for why the dashboard table silently rendered an empty
       // Type column before this.
-      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, blocked_reason, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
+      // F1 (status-sitemap-audit mission, AS-1): `project_id` added so the
+      // dashboard's multi-project bulk status action can resolve each
+      // task's own project's real `project_statuses` options — see
+      // TaskCardTask.projectId's own doc comment.
+      "id, title, status, status_id, priority, assignee_id, due_date, position, updated_at, created_at, number, estimate_minutes, recurrence, parent_task_id, task_type_id, client_visible, pending_client_approval, blocked_reason, project_id, projects!inner(key, workspace_id, deleted_at), task_assignees(user_id), project_statuses(category), task_types(id, name, color)",
     )
     .in("project_id", projectIds)
     .eq("projects.workspace_id", workspaceId)
@@ -654,6 +658,9 @@ export async function getWorkspaceListTasks(
     // per-row fetch.
     number: task.number,
     projectKey: firstRelated(task.projects)?.key,
+    // F1 (status-sitemap-audit mission, AS-1): see this function's select
+    // above.
+    projectId: task.project_id,
     // F167 follow-up: see this function's select above.
     estimateMinutes: task.estimate_minutes,
     // F161 follow-through (AS-287, AS-288): see getProjectListTasks above

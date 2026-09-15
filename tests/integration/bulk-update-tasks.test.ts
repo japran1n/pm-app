@@ -19,6 +19,7 @@ import {
 } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { poolUserId } from "../helpers/auth";
+import { pruneStatusColumnsExcept } from "../helpers/legacy-status-columns";
 
 function loadDotEnv() {
   const path = join(process.cwd(), ".env");
@@ -49,6 +50,7 @@ if (process.env.CI && !haveAdminCreds) {
 }
 
 let currentTestUserId: string | null = null;
+let mockAdminForClient: SupabaseClient | null = null;
 
 import { vi } from "vitest";
 
@@ -67,11 +69,17 @@ vi.mock("@/lib/supabase/server", () => ({
         },
       }),
     },
+    // F1 (status-sitemap-audit mission, AS-3): `getCurrentUserTimezone`
+    // (lib/queries/profile.ts) reads `profiles.timezone` off this same
+    // request-scoped client — proxied straight to the real admin client,
+    // same pattern tests/integration/recurrence-on-complete.test.ts
+    // already establishes for the identical need.
+    from: (table: string) => mockAdminForClient!.from(table),
   }),
 }));
 
 describe.skipIf(!haveAdminCreds)(
-  "bulkUpdateTasks (F186: AS-337, AS-338, AS-341)",
+  "bulkUpdateTasks (F186: AS-337, AS-338, AS-341; F1 status-sitemap-audit mission: AS-1, AS-2, AS-3)",
   () => {
     let adminClient: SupabaseClient;
     const createdTaskIds: string[] = [];
@@ -86,6 +94,13 @@ describe.skipIf(!haveAdminCreds)(
     // selection" scenario (a task the caller CAN edit and a task they
     // CANNOT, in the same call).
     let privateProjectId: string;
+    // F1 (AS-1, AS-2): a THIRD, workspace-visible project whose real
+    // `project_statuses` are pruned down to a subset that deliberately
+    // does NOT include "In Dev" — lets a single bulkUpdateTasks call span
+    // two projects with genuinely different status sets, proving the
+    // existence check is resolved per TASK'S OWN project, not once for
+    // the whole batch.
+    let limitedStatusProjectId: string;
     let authorUserId: string;
     let memberUserId: string;
     let assigneeUserId: string;
@@ -96,6 +111,7 @@ describe.skipIf(!haveAdminCreds)(
       adminClient = createClient(SUPABASE_URL!, SECRET_KEY!, {
         auth: { autoRefreshToken: false, persistSession: false },
       });
+      mockAdminForClient = adminClient;
 
       const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -154,6 +170,14 @@ describe.skipIf(!haveAdminCreds)(
       }
       // outsiderUserId is deliberately never added to `workspaceId`.
 
+      // F1 (AS-3): deterministic due-date arithmetic for the recurrence
+      // test below — same rationale as recurrence-on-complete.test.ts's
+      // own explicit "UTC" pin for its (non-pooled) member user.
+      await adminClient
+        .from("profiles")
+        .update({ timezone: "UTC" })
+        .eq("id", memberUserId);
+
       const { data: proj, error: projErr } = await adminClient
         .from("projects")
         .insert({
@@ -199,6 +223,32 @@ describe.skipIf(!haveAdminCreds)(
       if (pmErr) {
         throw new Error(`Failed to seed project_members: ${pmErr.message}`);
       }
+
+      // F1 (AS-1, AS-2): third project, workspace-visible (memberUserId
+      // can edit it via plain workspace membership, no project_members row
+      // needed) but pruned down to a status set that does NOT include "In
+      // Dev" — see this suite's own doc comment on
+      // `limitedStatusProjectId` above.
+      const { data: limitedProj, error: limitedProjErr } = await adminClient
+        .from("projects")
+        .insert({
+          workspace_id: workspaceId,
+          name: `F186 Limited-Status Project ${uniqueSuffix}`,
+          created_by: authorUserId,
+        })
+        .select("id")
+        .single();
+      if (limitedProjErr || !limitedProj) {
+        throw new Error(
+          `Failed to create limited-status test project: ${limitedProjErr?.message}`,
+        );
+      }
+      limitedStatusProjectId = limitedProj.id;
+      createdProjectIds.push(limitedStatusProjectId);
+      await pruneStatusColumnsExcept(adminClient, limitedStatusProjectId, [
+        "To Do",
+        "Blocked",
+      ]);
     });
 
     beforeEach(() => {
@@ -206,6 +256,17 @@ describe.skipIf(!haveAdminCreds)(
     });
 
     afterAll(async () => {
+      // F1 (AS-3): any generated occurrence rows (recurrence_parent_id
+      // pointing at a seeded task) are cleaned up too, since they aren't
+      // in `createdTaskIds` — same convention
+      // tests/integration/recurrence-on-complete.test.ts's afterAll
+      // already establishes.
+      if (createdTaskIds.length > 0) {
+        await adminClient
+          .from("tasks")
+          .delete()
+          .in("recurrence_parent_id", createdTaskIds);
+      }
       for (const taskId of createdTaskIds) {
         await adminClient.from("tasks").delete().eq("id", taskId);
       }
@@ -225,9 +286,12 @@ describe.skipIf(!haveAdminCreds)(
       }
     });
 
+    // F1 (status-sitemap-audit mission): default status is "To Do" — one
+    // of the REAL v2 default columns every project is seeded with
+    // (`seed_default_project_statuses`), never the dead legacy "todo".
     async function makeTask(
       targetProjectId: string = projectId,
-      status: string = "todo",
+      status: string = "To Do",
     ): Promise<string> {
       const { data, error } = await adminClient
         .from("tasks")
@@ -255,7 +319,7 @@ describe.skipIf(!haveAdminCreds)(
       currentTestUserId = memberUserId;
 
       const result = await bulkUpdateTasks([taskA, taskB, taskC], {
-        status: "in_progress",
+        status: "In Dev",
       });
 
       expect(result.ok).toBe(true);
@@ -269,7 +333,170 @@ describe.skipIf(!haveAdminCreds)(
         .from("tasks")
         .select("id, status")
         .in("id", [taskA, taskB, taskC]);
-      expect(rows?.every((row) => row.status === "in_progress")).toBe(true);
+      expect(rows?.every((row) => row.status === "In Dev")).toBe(true);
+    });
+
+    it("AS-1/AS-2: a real per-project status name is accepted and keeps status_id in sync with the written name", async () => {
+      const { bulkUpdateTasks } = await import("@/lib/actions/tasks");
+      const taskA = await makeTask();
+
+      currentTestUserId = memberUserId;
+
+      const result = await bulkUpdateTasks([taskA], { status: "In Dev" });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.succeededIds).toEqual([taskA]);
+      expect(result.data.failedIds).toEqual([]);
+
+      const { data: inDevColumn } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("name", "In Dev")
+        .single();
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("status, status_id")
+        .eq("id", taskA)
+        .single();
+      expect(row?.status).toBe("In Dev");
+      // AS-2: `status_id` stays in sync with the real column — never left
+      // null/orphaned by this write.
+      expect(row?.status_id).toBe(inDevColumn?.id);
+    });
+
+    it("AS-2: a target status name that doesn't exist on the task's project is skipped and reported, never orphaning status_id", async () => {
+      const { bulkUpdateTasks } = await import("@/lib/actions/tasks");
+      const taskA = await makeTask(projectId, "To Do");
+
+      const { data: toDoColumnBefore } = await adminClient
+        .from("project_statuses")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("name", "To Do")
+        .single();
+
+      currentTestUserId = memberUserId;
+
+      const result = await bulkUpdateTasks([taskA], {
+        status: "Not A Real Status",
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.succeededIds).toEqual([]);
+      expect(result.data.failedIds).toHaveLength(1);
+      expect(result.data.failedIds[0]?.id).toBe(taskA);
+
+      const { data: row } = await adminClient
+        .from("tasks")
+        .select("status, status_id")
+        .eq("id", taskA)
+        .single();
+      // Untouched: still the original name, still pointing at the SAME
+      // real column id it started on — never rewritten to a name with no
+      // matching `project_statuses` row.
+      expect(row?.status).toBe("To Do");
+      expect(row?.status_id).toBe(toDoColumnBefore?.id);
+    });
+
+    it("AS-1/AS-2: a selection spanning two projects with different status sets applies the change only where the name exists, per task's own project", async () => {
+      const { bulkUpdateTasks } = await import("@/lib/actions/tasks");
+      const taskInFullProject = await makeTask(projectId, "To Do");
+      // `limitedStatusProjectId` was pruned to only "To Do"/"Blocked" —
+      // "In Dev" does not exist there.
+      const taskInLimitedProject = await makeTask(
+        limitedStatusProjectId,
+        "To Do",
+      );
+
+      currentTestUserId = memberUserId;
+
+      const result = await bulkUpdateTasks(
+        [taskInFullProject, taskInLimitedProject],
+        { status: "In Dev" },
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.succeededIds).toEqual([taskInFullProject]);
+      expect(result.data.failedIds).toHaveLength(1);
+      expect(result.data.failedIds[0]?.id).toBe(taskInLimitedProject);
+
+      const { data: rows } = await adminClient
+        .from("tasks")
+        .select("id, status")
+        .in("id", [taskInFullProject, taskInLimitedProject]);
+      const byId = new Map((rows ?? []).map((row) => [row.id, row.status]));
+      expect(byId.get(taskInFullProject)).toBe("In Dev");
+      // The task whose project has no "In Dev" column keeps its original
+      // status — never silently rewritten.
+      expect(byId.get(taskInLimitedProject)).toBe("To Do");
+    });
+
+    it("AS-3: bulk-moving a recurring task into a done-category status generates its next occurrence", async () => {
+      const { bulkUpdateTasks } = await import("@/lib/actions/tasks");
+      const { data: recurringTask, error: recurringTaskErr } = await adminClient
+        .from("tasks")
+        .insert({
+          project_id: projectId,
+          title: `F1 Recurring Task ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          author_id: authorUserId,
+          status: "In Dev",
+          due_date: "2026-09-01",
+          recurrence: { freq: "daily", interval: 1 },
+        })
+        .select("id")
+        .single();
+      if (recurringTaskErr || !recurringTask) {
+        throw new Error(
+          `Failed to seed recurring task: ${recurringTaskErr?.message}`,
+        );
+      }
+      createdTaskIds.push(recurringTask.id);
+
+      currentTestUserId = memberUserId;
+
+      // "Completed" is category 'done' on the real v2 default set — same
+      // done-category transition moveTaskStatus's own AS-315 test drives
+      // via the literal "done" legacy name.
+      const result = await bulkUpdateTasks([recurringTask.id], {
+        status: "Completed",
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.data.succeededIds).toEqual([recurringTask.id]);
+
+      const { data: occurrences } = await adminClient
+        .from("tasks")
+        .select("id, due_date, status, recurrence_parent_id, recurrence")
+        .eq("recurrence_parent_id", recurringTask.id);
+
+      expect(occurrences).toHaveLength(1);
+      expect(occurrences?.[0].due_date).toBe("2026-09-02");
+      // The generated occurrence's initial status is resolved through
+      // resolveProjectStatusName's legacy "todo" -> "To Do" mapping (this
+      // project's real not_started column) — same resolution
+      // generateNextOccurrence always applies, called from bulk the same
+      // way it's called from moveTaskStatus.
+      expect(occurrences?.[0].status).toBe("To Do");
+    });
+
+    it("AS-3 negative: bulk-moving a non-recurring task into a done-category status generates no occurrence", async () => {
+      const { bulkUpdateTasks } = await import("@/lib/actions/tasks");
+      const taskA = await makeTask(projectId, "In Dev");
+
+      currentTestUserId = memberUserId;
+
+      const result = await bulkUpdateTasks([taskA], { status: "Completed" });
+      expect(result.ok).toBe(true);
+
+      const { data: occurrences } = await adminClient
+        .from("tasks")
+        .select("id")
+        .eq("recurrence_parent_id", taskA);
+      expect(occurrences ?? []).toHaveLength(0);
     });
 
     it("AS-338: a single call sets assignee, priority, and due date together", async () => {

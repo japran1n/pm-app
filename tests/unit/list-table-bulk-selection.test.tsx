@@ -64,11 +64,19 @@ afterEach(() => {
   cleanup();
 });
 
+// F1 (status-sitemap-audit mission): a REAL per-project default status
+// name ("To Do", from `seed_default_project_statuses`) — never the dead
+// legacy "todo" this fixture used before that migration shipped.
 function task(id: string, title: string): TaskCardTask {
   return {
     id,
     title,
-    status: "todo",
+    // Cast through the same pre-per-project-columns fixed-4 union every
+    // other real per-project status value already casts through in this
+    // codebase (see list-status-select.tsx's own DEFAULT_STATUS_OPTIONS
+    // doc comment) — the value only ever flows into components that
+    // accept any non-empty string at runtime.
+    status: "To Do" as TaskCardTask["status"],
     priority: null,
     assigneeId: null,
     dueDate: null,
@@ -245,6 +253,66 @@ describe("AS-342: the selection clears (programmatically) — full proof depends
       name: "Select Filtered task one",
     });
     expect(checkbox).not.toBeChecked();
+  });
+});
+
+describe("F1 (status-sitemap-audit mission, AS-1): the bulk status action's trigger renders regardless of whether real per-project status data was passed", () => {
+  // Base UI's Select popup can't be opened in jsdom (see f250-list-inline-
+  // edit.test.tsx's own comment on this exact limitation) — these tests
+  // prove the WIRING (statusOptionsByProject/taskProjectIds threaded
+  // through TaskListTable to <BulkStatusAction> without crashing, trigger
+  // present/enabled once a task is selected), not the dropdown's rendered
+  // option list. The real per-project option CONTENT (never the dead
+  // legacy four) is proven at the action layer instead — see
+  // tests/integration/bulk-update-tasks.test.ts's AS-1/AS-2 tests.
+  it("test_AS_1_bulk_status_trigger_renders_with_a_real_statusOptionsByProject_map", () => {
+    render(
+      createElement(TaskListTable, {
+        tasks: FILTERED_TASKS,
+        assignees: new Map(),
+        timezone: "UTC",
+        projectId: "proj-1",
+        statusOptionsByProject: new Map([
+          [
+            "proj-1",
+            [
+              { value: "To Do", label: "To Do", color: "#64748b" },
+              { value: "In Dev", label: "In Dev", color: "#3b82f6" },
+              { value: "Completed", label: "Completed", color: "#16a34a" },
+            ],
+          ],
+        ]),
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select Filtered task one" }),
+    );
+
+    const trigger = screen.getByRole("combobox", {
+      name: "Set status for selected tasks",
+    });
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).not.toBeDisabled();
+  });
+
+  it("test_AS_1_bulk_status_trigger_still_renders_when_no_per_project_data_is_available", () => {
+    // No `statusOptionsByProject`/`projectId`/`statusOptions` passed at
+    // all — the multi-project dashboard table's shape before this
+    // feature's own per-project batch fetch runs. Falls back to
+    // DEFAULT_STATUS_OPTIONS (the current default set), never crashes,
+    // never falls back to the dead legacy four.
+    renderTable();
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Select Filtered task one" }),
+    );
+
+    const trigger = screen.getByRole("combobox", {
+      name: "Set status for selected tasks",
+    });
+    expect(trigger).toBeInTheDocument();
+    expect(trigger).not.toBeDisabled();
   });
 });
 

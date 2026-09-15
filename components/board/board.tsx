@@ -66,7 +66,12 @@ import { useBoardRealtime } from "@/components/board/use-board-realtime";
 import { useBoardColumnsRealtime } from "@/components/board/use-board-columns-realtime";
 import { reconcileColumn } from "@/lib/board/reconcile-realtime-column";
 import type { BoardColumnDef } from "@/lib/queries/statuses";
-import { STATUS_COLORS, STATUS_LABELS, PRIORITY_LABELS } from "@/lib/task-colors";
+import {
+  STATUS_COLORS,
+  STATUS_LABELS,
+  PRIORITY_LABELS,
+  statusLabelFor,
+} from "@/lib/task-colors";
 import {
   groupTasksIntoSwimlanes,
   SWIMLANE_NONE_KEY,
@@ -231,6 +236,23 @@ export function Board({
   // appears here without a reload.
   const [columns, setColumns] = useState<BoardColumnDef[]>(
     columnsProp ?? DEFAULT_COLUMNS,
+  );
+
+  // F1 (status-sitemap-audit mission, AS-4): the board's own real columns,
+  // reshaped into <TaskDetailSheet>'s statusOptions shape — this board is
+  // always single-project, so every task opened from it shares this same
+  // list, unlike the multi-project List/dashboard tables' per-task
+  // resolution (components/task/task-list-table.tsx).
+  const taskDetailStatusOptions = useMemo(
+    () =>
+      columns.map((column) => ({
+        value: column.name,
+        label: statusLabelFor(column.name),
+        color: column.color,
+        category: column.category,
+        displayGroup: column.displayGroup,
+      })),
+    [columns],
   );
 
   // F135 (AS-231): a viewer/guest can look at the board but must never be
@@ -1209,6 +1231,7 @@ export function Board({
           timezone={timezone}
           onOpenTask={taskDetailSheet.openTask}
           highlightCommentId={requestedCommentId}
+          statusOptions={taskDetailStatusOptions}
         />
       )}
 

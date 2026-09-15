@@ -208,12 +208,27 @@ const TASKS: TaskCardTask[] = [
   },
 ];
 
-async function openSheetAndGetStatusSelect() {
+async function openSheetAndGetStatusSelect(
+  // F1 (status-sitemap-audit mission, AS-4): optional real per-project
+  // columns — omitted (every existing test in this file) falls back to
+  // Board's own DEFAULT_COLUMNS (the legacy todo/in_progress/in_review/
+  // done four, unaffected by this feature), so this file's mocked native
+  // <select>'s literal "todo"/"done"/"in_progress" option values keep
+  // working unchanged.
+  columns?: {
+    id: string;
+    name: string;
+    color: string;
+    category: "not_started" | "in_progress" | "done";
+    position: number;
+  }[],
+) {
   render(
     createElement(Board, {
       projectId: "project-1",
       initialTasks: TASKS,
       timezone: "UTC",
+      columns,
     }),
   );
 
@@ -288,8 +303,14 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
     resolveMoveTaskStatus?.({ ok: false, error: "Network error" });
 
     await waitFor(() => expect(statusSelect.value).toBe("todo"));
+    // F1 (status-sitemap-audit mission): the failure toast's label now
+    // resolves through the SAME shared `lib/task-colors.ts` STATUS_LABELS
+    // (via `resolvedStatusOptions`/`statusOptionByValue`) every other
+    // status surface already uses, instead of this file's own separate,
+    // inconsistently-capitalized local copy ("In progress" vs "In
+    // Progress") — see the audit's own note on this exact drift.
     expect(toastError).toHaveBeenCalledWith(
-      "Failed to set status to In progress",
+      "Failed to set status to In Progress",
     );
   });
 
@@ -338,5 +359,47 @@ describe("TaskDetailSheet status Select optimistic update (F003, AS-005, AS-006)
     expect(toastError).toHaveBeenCalledWith(
       "Failed to set status to Done",
     );
+  });
+
+  // F1 (status-sitemap-audit mission, AS-4): with the board's REAL
+  // per-project columns passed (not the DEFAULT_COLUMNS legacy
+  // four-value fallback every test above exercises), the status Select
+  // offers those real names — proven by successfully changing to one, a
+  // literal a project's own custom column set would actually contain and
+  // the dead legacy STATUS_LABELS map never did.
+  it("test_AS_4_status_select_offers_the_boards_real_per_project_columns_not_the_legacy_four", async () => {
+    (getTaskDetail as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      async (taskId: string) => ({
+        ok: true,
+        data: {
+          task: {
+            id: taskId,
+            title: "Status task",
+            description: null,
+            status: "To Do",
+            priority: null,
+            assigneeId: null,
+            dueDate: null,
+            tags: [],
+          },
+          comments: [],
+          attachments: [],
+          currentUserId: "user-1",
+          currentUserRole: "member",
+        },
+      }),
+    );
+
+    const statusSelect = await openSheetAndGetStatusSelect([
+      { id: "col-1", name: "To Do", color: "#64748b", category: "not_started", position: 1000 },
+      { id: "col-2", name: "In Design", color: "#7c3aed", category: "in_progress", position: 2000 },
+      { id: "col-3", name: "Completed", color: "#16a34a", category: "done", position: 3000 },
+    ]);
+    expect(statusSelect.value).toBe("To Do");
+
+    fireEvent.change(statusSelect, { target: { value: "In Design" } });
+
+    await waitFor(() => expect(statusSelect.value).toBe("In Design"));
+    expect(moveTaskStatus).toHaveBeenCalledWith("t1", "In Design");
   });
 });

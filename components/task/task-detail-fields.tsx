@@ -21,6 +21,12 @@ import { isOverdue } from "@/lib/tasks/is-overdue";
 import { cn } from "@/lib/utils";
 import type { EditTaskUpdates } from "@/lib/validation/tasks";
 import { useBlockedDoneGuard } from "@/components/task/blocked-done-guard";
+// F1 (status-sitemap-audit mission, AS-4): the CURRENT default status set
+// (not the dead legacy 4-value one) — falls back to this only when the
+// caller hasn't supplied real per-project `statusOptions` yet, same
+// convention list-status-select.tsx already establishes for its own
+// prop.
+import { DEFAULT_STATUS_OPTIONS } from "@/components/task/list-status-select";
 // F205 (AS-378): reuses the SAME Server Action F204 built for the comment
 // composer's mention picker (lib/actions/comments.ts's getMentionCandidates
 // is generic over `taskId`, not comment-specific — it already narrows to
@@ -186,6 +192,7 @@ export function TaskDetailFields({
   editDisabledTitle,
   timezone,
   assigneeField,
+  statusOptions,
 }: {
   /** The task whose fields are being edited — non-null by construction:
    * TaskDetailSheet only renders this component once it has a task. */
@@ -205,7 +212,35 @@ export function TaskDetailFields({
    * and slotted into the metadata grid at its original position — see
    * the comment at the render site below. */
   assigneeField: React.ReactNode;
+  /** F1 (status-sitemap-audit mission, AS-4): this task's own project's
+   * real `project_statuses` columns (lib/queries/statuses.ts's
+   * getProjectColumns), threaded through from TaskDetailSheet — same data
+   * shape/source Board's `columns` prop and the List view's
+   * `statusOptions` prop already use (list-status-select.tsx). Undefined
+   * (a caller that hasn't been updated, e.g. an existing test) falls back
+   * to `DEFAULT_STATUS_OPTIONS` below — the CURRENT default status set,
+   * never the dead legacy 4-value one. */
+  statusOptions?: {
+    value: string;
+    label: string;
+    color: string;
+    category?: string | null;
+    displayGroup?: string | null;
+  }[];
 }) {
+  // F1 (status-sitemap-audit mission, AS-4): real per-project statuses
+  // when the caller supplied them, else the current default set — never
+  // the dead legacy 4-value STATUS_LABELS map. Plain derived value, no
+  // memo needed (same convention list-status-select.tsx's own
+  // `optionByValue` uses).
+  const resolvedStatusOptions =
+    statusOptions && statusOptions.length > 0
+      ? statusOptions
+      : DEFAULT_STATUS_OPTIONS;
+  const statusOptionByValue = new Map(
+    resolvedStatusOptions.map((option) => [option.value, option]),
+  );
+
   const [title, setTitle] = useState(task?.title ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   // F236 (AS-453): sibling local state to dueDate above, same "local
@@ -617,10 +652,22 @@ export function TaskDetailFields({
     const currentStatus = confirmedStatus ?? optimisticStatus ?? task.status;
     if (next === currentStatus) return;
 
-    const proceed = await confirmIfMovingToDone(task.id, next);
+    // F1 (status-sitemap-audit mission, AS-4): resolve the target
+    // status's real CATEGORY from `resolvedStatusOptions` so the guard
+    // reacts to a done-CATEGORY status (e.g. "Approved"/"Completed"), not
+    // just the literal string "done" — mirrors list-status-select.tsx's
+    // own per-row resolution.
+    const proceed = await confirmIfMovingToDone(
+      task.id,
+      next,
+      statusOptionByValue.get(next)?.category,
+    );
     if (!proceed) return;
 
-    const nextLabel = STATUS_LABELS[next];
+    const nextLabel =
+      statusOptionByValue.get(next)?.label ??
+      STATUS_LABELS[next as keyof typeof STATUS_LABELS] ??
+      next;
     // F024: clear the confirmed mirror as a plain, non-transition update,
     // BEFORE entering startSaveTransition below — otherwise a stale
     // confirmedStatus from a PRIOR successful save masks this new
@@ -919,15 +966,27 @@ export function TaskDetailFields({
             >
               <SelectValue>
                 {(value: string) =>
+                  statusOptionByValue.get(value)?.label ??
                   STATUS_LABELS[value as keyof typeof STATUS_LABELS] ??
                   value
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
+              {/* F1 (status-sitemap-audit mission, AS-4): the real
+                  per-project statuses (or the current default set —
+                  resolvedStatusOptions's own fallback), never the dead
+                  legacy 4-value STATUS_LABELS map. */}
+              {resolvedStatusOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: option.color }}
+                    />
+                    {option.label}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
