@@ -1,12 +1,65 @@
 # State — 20260915-status-sitemap-audit
 
-Phase: RUN (started 2026-09-15).
+Phase: COMPLETE (2026-09-15).
 
 | Track | Status |
 |---|---|
-| F1 — status surfaces (bulk update + task detail sheet) | IN PROGRESS — worker spawned |
-| F2 — portal Site map parity | IN PROGRESS — worker spawned |
-| DB cleanup + reseed (data op, not a feature) | IN PROGRESS — orchestrator, direct via Supabase MCP |
+| F1 — status surfaces (bulk update + task detail sheet) | DONE — branch `fix/status-surfaces-parity` (commit `318a1254`), merged to `main` locally |
+| F2 — portal Site map parity | DONE — branch `feat/portal-sitemap-parity` (commit `43076eea`), merged to `main` locally |
+| DB cleanup + reseed (data op, not a feature) | DONE — orchestrator, direct via Supabase MCP |
+
+## Final gate (orchestrator, after merging F1 + F2 into `main`)
+
+Both branches merged into `main` with `--no-ff`, zero conflicts (disjoint
+files). Full gate re-run on the merged tree:
+- `npx tsc --noEmit`: clean.
+- `npx eslint .`: clean.
+- `npx vitest run tests/unit`: 423 files / 2717 tests passed, 1 file / 3
+  tests skipped (pre-existing, unrelated).
+- `npm run build` (next build, Turbopack): clean, all routes generated.
+- Hosted integration re-check: `bulk-update-tasks.test.ts` +
+  `move-task-status.test.ts` against the live Supabase project: 19/19 pass.
+
+Not pushed to `origin` and no PR opened — local `main` only, per no explicit
+request to push. Branches `fix/status-surfaces-parity` and
+`feat/portal-sitemap-parity` still exist locally alongside the merge commits.
+
+## Browser verification (2026-09-15, dev server + dev-login)
+
+Logged in as both `demo+owner@goodguys.test` (workspace) and
+`demo+client@goodguys.test` (portal) against the merged `main` build:
+- Workspace List view bulk "Set status" now shows all 11 real project
+  statuses (Backlog…Completed), not the old 4 — confirmed visually.
+- Task Detail Sheet status picker shows the same real 11 statuses with the
+  task's actual status checked — confirmed visually.
+- Portal Site map: tree view renders with folder synthesis (a synthetic
+  "Legal" folder grouping Cookie Policy + Terms of Service), CMS pages tint
+  correctly (Services, Blog), component-linked sections tint green, and the
+  Components panel lists every shared component with correct instance
+  counts (Navigation Bar ×5, Footer ×5, Hero ×3, Card Grid ×2, Stats Bar ×2,
+  Contact Form/Blog Post/Team Bios ×1) — scoped correctly to client-visible
+  sections only (AS-6), confirmed by a since-fixed unused component
+  ("Testimonial Slider") correctly NOT appearing in the client panel.
+
+Found and fixed one gap while verifying: most of the project's 16
+architecture pages/sections were `client_visible = false` (pre-existing data,
+not something either worker introduced), so the newly-built Site map tree
+had almost nothing to show. Set `client_visible = true` on 8 more pages
+(Blog, Contact, Branding, SEO & Marketing, Web Design, Case Study, Cookie
+Policy, Terms of Service) and cascaded it to their direct child sections —
+matching F003's own "sharing a page offers to share its sections too"
+behavior — while deliberately leaving a few pages hidden (Privacy Policy,
+"Om oss", two leftover test-slug pages) so the visibility toggle itself
+stays testable both ways. Also renamed 2 more leftover junk titles found
+only once real content rendered ("Gasdasd" → "Testimonials Carousel").
+
+## Final DB state (verified after the last hosted test run)
+
+`auth.users`=6, `workspaces`=1, `projects`=1, `tasks`=74, orphaned
+(`status_id is null`) tasks=0 — matches the confirmed scope exactly. Ran the
+delete-all-except-kept sweep twice: once right after the initial reseed, and
+again after the F1/F2 workers' and the orchestrator's own hosted test runs
+had (expectedly) added their own throwaway fixtures back in.
 
 ## DB cleanup + reseed — progress (2026-09-15)
 
