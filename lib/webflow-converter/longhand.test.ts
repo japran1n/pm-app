@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { expandDeclaration, isShorthand, splitTop } from './longhand';
+import { parseCss } from './css';
 
 describe('AS-053: margin shorthand 1/2/3/4-value expansion', () => {
   it('test_AS_053_one_value_applies_to_all_sides', () => {
@@ -494,9 +495,29 @@ describe('AS-065: font shorthand expands style/weight/size/line-height/family', 
   });
 
   it('test_AS_065_size_only_no_family_is_kept_as_shorthand_with_warning', () => {
+    // AS-069: the font fallback drops the value rather than re-emitting the
+    // shorthand verbatim — Webflow rejects shorthand declarations outright.
     const result = expandDeclaration('font', 'italic bold');
-    expect(result.decls).toEqual({ font: 'italic bold' });
+    expect(result.decls).toEqual({});
     expect(result.warning).toMatch(/could not expand/i);
+  });
+
+  it('test_AS_065_css4_numeric_weight_450', () => {
+    // Regression for the M2 bug: the weight regex rejected CSS4 numeric
+    // weights that aren't multiples of 100 (this repo's own design system
+    // uses weight 450 for Inter normal text).
+    expect(expandDeclaration('font', '450 14px Inter')).toEqual({
+      decls: {
+        'font-weight': '450',
+        'font-size': '14px',
+        'font-family': 'Inter',
+      },
+    });
+  });
+
+  it('test_AS_065_css4_numeric_weight_350_and_550', () => {
+    expect(expandDeclaration('font', '350 14px Inter').decls['font-weight']).toBe('350');
+    expect(expandDeclaration('font', '550 14px Inter').decls['font-weight']).toBe('550');
   });
 
   it('test_AS_065_global_keyword_on_font_is_dropped_with_warning', () => {
@@ -580,6 +601,17 @@ describe('AS-067: outline shorthand expands color/style/width', () => {
     });
   });
 
+  it('test_AS_067_bare_var_token_goes_to_color_not_width', () => {
+    // Regression for the M2 bug: `outline: solid var(--accent)` must not
+    // misclassify the var() token as a width.
+    expect(expandDeclaration('outline', 'solid var(--accent)')).toEqual({
+      decls: {
+        'outline-style': 'solid',
+        'outline-color': 'var(--accent)',
+      },
+    });
+  });
+
   it('test_AS_067_global_keyword_on_outline_is_dropped_with_warning', () => {
     const result = expandDeclaration('outline', 'initial');
     expect(result.decls).toEqual({});
@@ -628,23 +660,57 @@ describe('AS-055: border shorthand expands to width/style/color on all four side
 
   it('test_AS_055_color_style_width_in_declaration_order', () => {
     // parseBorderParts assigns tokens to the first unfilled matching slot in
-    // declaration order: style keywords -> style, width-shaped tokens ->
-    // width, anything else -> color. A var() token is width-shaped, so it
-    // fills the width slot here, matching the reference prototype exactly.
+    // declaration order: style keywords -> style, width-shaped tokens (a
+    // unit-suffixed length or a named width keyword) -> width, anything
+    // else -> color. A bare var() token has no unit, so it is not
+    // width-shaped and falls into the color slot; "thin" is a named width
+    // keyword and fills the width slot.
     expect(expandDeclaration('border', 'solid var(--accent) thin')).toEqual({
       decls: {
-        'border-top-width': 'var(--accent)',
+        'border-top-width': 'thin',
         'border-top-style': 'solid',
-        'border-top-color': 'thin',
-        'border-right-width': 'var(--accent)',
+        'border-top-color': 'var(--accent)',
+        'border-right-width': 'thin',
         'border-right-style': 'solid',
-        'border-right-color': 'thin',
-        'border-bottom-width': 'var(--accent)',
+        'border-right-color': 'var(--accent)',
+        'border-bottom-width': 'thin',
         'border-bottom-style': 'solid',
-        'border-bottom-color': 'thin',
-        'border-left-width': 'var(--accent)',
+        'border-bottom-color': 'var(--accent)',
+        'border-left-width': 'thin',
         'border-left-style': 'solid',
-        'border-left-color': 'thin',
+        'border-left-color': 'var(--accent)',
+      },
+    });
+  });
+
+  it('test_AS_055_bare_var_token_goes_to_color_not_width', () => {
+    // Regression for the M2 bug: `border: solid var(--accent)` must not
+    // misclassify the var() token as a width.
+    expect(expandDeclaration('border', 'solid var(--accent)')).toEqual({
+      decls: {
+        'border-top-style': 'solid',
+        'border-top-color': 'var(--accent)',
+        'border-right-style': 'solid',
+        'border-right-color': 'var(--accent)',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'var(--accent)',
+        'border-left-style': 'solid',
+        'border-left-color': 'var(--accent)',
+      },
+    });
+  });
+
+  it('test_AS_055_bare_calc_token_goes_to_color_not_width', () => {
+    expect(expandDeclaration('border', 'solid calc(1px + 1px)')).toEqual({
+      decls: {
+        'border-top-style': 'solid',
+        'border-top-color': 'calc(1px + 1px)',
+        'border-right-style': 'solid',
+        'border-right-color': 'calc(1px + 1px)',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'calc(1px + 1px)',
+        'border-left-style': 'solid',
+        'border-left-color': 'calc(1px + 1px)',
       },
     });
   });
@@ -811,6 +877,17 @@ describe('AS-057: border-radius 1/2/3/4-value expansion preserves TL/TR/BR/BL co
   it('recognizes border-radius as a shorthand', () => {
     expect(isShorthand('border-radius')).toBe(true);
   });
+
+  it('test_AS_057_calc_with_slash_is_not_mistaken_for_elliptical_split', () => {
+    const result = expandDeclaration('border-radius', 'calc(100%/2)');
+    expect(result.decls).toEqual({
+      'border-top-left-radius': 'calc(100%/2)',
+      'border-top-right-radius': 'calc(100%/2)',
+      'border-bottom-right-radius': 'calc(100%/2)',
+      'border-bottom-left-radius': 'calc(100%/2)',
+    });
+    expect(result.warning).toBeUndefined();
+  });
 });
 
 describe('AS-069: expandDeclaration dispatches to the correct expander by property name', () => {
@@ -879,5 +956,68 @@ describe('isShorthand returns true for every known shorthand, false for longhand
     ]) {
       expect(isShorthand(prop)).toBe(false);
     }
+  });
+});
+
+describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted verbatim', () => {
+  it('test_AS_069_background_animation_grid_gridtemplate_gridarea_are_warned_and_dropped', () => {
+    for (const prop of ['background', 'animation', 'grid', 'grid-template', 'grid-area']) {
+      const result = expandDeclaration(prop, 'some-value-that-should-never-appear');
+      expect(result.decls).toEqual({});
+      expect(result.warning).toMatch(/not supported/i);
+    }
+  });
+
+  it('test_AS_069_grid_gap_expands_to_row_gap_and_column_gap', () => {
+    expect(expandDeclaration('grid-gap', '10px')).toEqual({
+      decls: { 'row-gap': '10px', 'column-gap': '10px' },
+    });
+    expect(expandDeclaration('grid-gap', '10px 20px')).toEqual({
+      decls: { 'row-gap': '10px', 'column-gap': '20px' },
+    });
+  });
+
+  it('test_AS_069_font_fallback_drops_unexpandable_value_instead_of_reemitting_shorthand', () => {
+    const result = expandDeclaration('font', 'not a valid font shorthand @@@');
+    // Whatever the fallback path does, it must never hand back the raw
+    // shorthand property/value pair verbatim.
+    expect(result.decls).not.toHaveProperty('font');
+  });
+
+  it('test_AS_069_default_branch_never_emits_a_shorthand_key_verbatim', () => {
+    for (const prop of ['background', 'animation', 'grid', 'grid-template', 'grid-area', 'grid-gap']) {
+      const result = expandDeclaration(prop, 'anything');
+      expect(Object.keys(result.decls)).not.toContain(prop);
+    }
+  });
+
+  it('test_AS_069_parseCss_never_surfaces_a_shorthand_key_in_base_or_variant_buckets', () => {
+    const css = `
+      .card {
+        background: red url(x.png) no-repeat;
+        animation: spin 1s linear infinite;
+        grid: auto-flow / 1fr 1fr;
+        grid-template: "a b" 1fr / auto;
+        grid-area: header;
+        grid-gap: 10px 20px;
+        margin: 4px;
+      }
+      @media (max-width: 767px) {
+        .card {
+          background: blue;
+        }
+      }
+    `;
+    const { classes } = parseCss(css);
+    const card = classes.get('card')!;
+    const buckets = [card.base, ...Object.values(card.variants)];
+    for (const bucket of buckets) {
+      for (const key of Object.keys(bucket)) {
+        expect(isShorthand(key)).toBe(false);
+      }
+    }
+    // margin was a legitimately-expandable shorthand — its longhand should
+    // still be present, proving the assertion isn't vacuous.
+    expect(card.base).toHaveProperty('margin-top', '4px');
   });
 });

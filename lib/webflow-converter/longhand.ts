@@ -73,7 +73,8 @@ function box(parts: string[]): [string, string, string, string] {
 }
 
 const isWidth = (t: string): boolean =>
-  NAMED_WIDTHS.has(t) || /^-?[\d.]+([a-z%]+)?$/i.test(t) || /^(calc|var|min|max|clamp)\(/i.test(t);
+  NAMED_WIDTHS.has(t) ||
+  /^-?[\d.]+(px|em|rem|%|vw|vh|vmin|vmax|ch|ex|cm|mm|pt|pc|in|fr)$/i.test(t);
 
 interface BorderParts {
   width?: string;
@@ -95,7 +96,7 @@ function parseBorderParts(value: string): BorderParts {
 function expandBorderRadius(value: string): Record<string, string> {
   // elliptical form "a b / c d" — Webflow stores one value per corner, so we
   // keep the horizontal radii and report the loss upstream.
-  const [horiz] = value.split('/');
+  const [horiz] = splitTop(value, /\//);
   const [tl, tr, br, bl] = box(splitTop(horiz.trim()));
   return {
     'border-top-left-radius': tl,
@@ -111,7 +112,7 @@ function expandFont(value: string): Record<string, string> | null {
   const out: Record<string, string> = {};
   let i = 0;
   const STYLE = /^(italic|oblique|normal)$/i;
-  const WEIGHT = /^(bold|bolder|lighter|normal|[1-9]00)$/i;
+  const WEIGHT = /^(bold|bolder|lighter|normal|[1-9][0-9]{0,2})$/i;
   while (i < parts.length && (STYLE.test(parts[i]) || WEIGHT.test(parts[i]) || /^(small-caps)$/i.test(parts[i]))) {
     if (STYLE.test(parts[i])) out['font-style'] = parts[i];
     else if (WEIGHT.test(parts[i])) out['font-weight'] = parts[i];
@@ -184,7 +185,6 @@ function expandFlex(value: string): Record<string, string> {
     const v = parts[0].toLowerCase();
     if (v === 'none') return { 'flex-grow': '0', 'flex-shrink': '0', 'flex-basis': 'auto' };
     if (v === 'auto') return { 'flex-grow': '1', 'flex-shrink': '1', 'flex-basis': 'auto' };
-    if (v === 'initial') return { 'flex-grow': '0', 'flex-shrink': '1', 'flex-basis': 'auto' };
     if (/^[\d.]+$/.test(v)) return { 'flex-grow': v, 'flex-shrink': '1', 'flex-basis': '0%' };
     return { 'flex-grow': '1', 'flex-shrink': '1', 'flex-basis': parts[0] };
   }
@@ -255,12 +255,13 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'border-radius': {
       const decls = expandBorderRadius(v);
-      return v.includes('/')
+      return splitTop(v, /\//).length > 1
         ? { decls, warning: `"border-radius: ${v}" — elliptical radii flattened to the horizontal values` }
         : { decls };
     }
 
-    case 'gap': {
+    case 'gap':
+    case 'grid-gap': {
       const [row, col] = splitTop(v);
       return { decls: { 'row-gap': row, 'column-gap': col ?? row } };
     }
@@ -321,10 +322,20 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       const decls = expandFont(v);
       return decls
         ? { decls }
-        : { decls: { font: v }, warning: `could not expand "font: ${v}"` };
+        : { decls: {}, warning: `could not expand "font: ${v}"` };
     }
 
+    case 'background':
+    case 'animation':
+    case 'grid':
+    case 'grid-template':
+    case 'grid-area':
+      return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
+
     default:
+      if (isShorthand(p)) {
+        return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
+      }
       return { decls: { [p]: v } };
   }
 }
