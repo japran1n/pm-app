@@ -93,16 +93,24 @@ function parseBorderParts(value: string): BorderParts {
   return out;
 }
 
-function expandBorderRadius(value: string): Record<string, string> {
+function expandBorderRadius(value: string): ExpandResult {
+  if (!value.trim()) {
+    return { decls: {}, warning: 'border-radius: empty value skipped' };
+  }
+  if (value.trimStart().startsWith('/')) {
+    return { decls: {}, warning: 'border-radius: leading-slash form not supported — values skipped' };
+  }
   // elliptical form "a b / c d" — Webflow stores one value per corner, so we
   // keep the horizontal radii and report the loss upstream.
   const [horiz] = splitTop(value, /\//);
   const [tl, tr, br, bl] = box(splitTop(horiz.trim()));
   return {
-    'border-top-left-radius': tl,
-    'border-top-right-radius': tr,
-    'border-bottom-right-radius': br,
-    'border-bottom-left-radius': bl,
+    decls: {
+      'border-top-left-radius': tl,
+      'border-top-right-radius': tr,
+      'border-bottom-right-radius': br,
+      'border-bottom-left-radius': bl,
+    },
   };
 }
 
@@ -137,6 +145,10 @@ const SHORTHANDS = new Set([
   'background', 'font', 'list-style', 'transition', 'animation', 'outline', 'overflow',
   'gap', 'grid-gap', 'grid-template', 'grid-area', 'grid', 'flex', 'flex-flow',
   'place-items', 'place-content', 'place-self',
+  'text-decoration', 'columns', 'mask', 'border-image', 'offset', 'text-emphasis',
+  'scroll-margin', 'scroll-padding', 'grid-column', 'grid-row', 'all', 'container', 'text-wrap',
+  'margin-inline', 'margin-block', 'padding-inline', 'padding-block', 'inset-inline', 'inset-block',
+  'border-inline', 'border-block',
 ]);
 
 export const isShorthand = (prop: string): boolean => SHORTHANDS.has(prop.toLowerCase().trim());
@@ -254,10 +266,11 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     }
 
     case 'border-radius': {
-      const decls = expandBorderRadius(v);
+      const result = expandBorderRadius(v);
+      if (result.warning) return result;
       return splitTop(v, /\//).length > 1
-        ? { decls, warning: `"border-radius: ${v}" — elliptical radii flattened to the horizontal values` }
-        : { decls };
+        ? { decls: result.decls, warning: `"border-radius: ${v}" — elliptical radii flattened to the horizontal values` }
+        : { decls: result.decls };
     }
 
     case 'gap':

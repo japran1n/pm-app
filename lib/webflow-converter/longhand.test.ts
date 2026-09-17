@@ -970,6 +970,38 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     }
   });
 
+  it('test_AS_069_shorthand_vocabulary_whitelist_recognizes_all_missing_properties', () => {
+    // Independent, hardcoded corpus of the F057 shorthand vocabulary. This
+    // list is NOT derived from SHORTHANDS in longhand.ts — if a property is
+    // ever removed from that set, this test must fail.
+    const corpus = [
+      'text-decoration',
+      'columns',
+      'mask',
+      'border-image',
+      'offset',
+      'text-emphasis',
+      'scroll-margin',
+      'scroll-padding',
+      'grid-column',
+      'grid-row',
+      'all',
+      'container',
+      'text-wrap',
+      'margin-inline',
+      'margin-block',
+      'padding-inline',
+      'padding-block',
+      'inset-inline',
+      'inset-block',
+      'border-inline',
+      'border-block',
+    ];
+    for (const prop of corpus) {
+      expect(isShorthand(prop)).toBe(true);
+    }
+  });
+
   it('test_AS_069_grid_gap_expands_to_row_gap_and_column_gap', () => {
     expect(expandDeclaration('grid-gap', '10px')).toEqual({
       decls: { 'row-gap': '10px', 'column-gap': '10px' },
