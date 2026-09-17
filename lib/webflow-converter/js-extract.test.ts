@@ -9,25 +9,40 @@ describe("extractScripts (AS-101, AS-102, AS-103, AS-104, AS-105, AS-134)", () =
     expect(result.warnings).toEqual([]);
   });
 
-  it("warns about external script src and includes no content for it", () => {
+  it("carries the original tag markup for an external script src, alongside an advisory warning", () => {
     const html = `<script src="https://cdn.example.com/foo.js"></script>`;
     const result = extractScripts(html);
-    expect(result.scripts).toEqual([]);
+    expect(result.scripts).toEqual(['<script src="https://cdn.example.com/foo.js"></script>']);
     expect(result.warnings).toEqual([
-      "external script 'https://cdn.example.com/foo.js' not included — add manually in Webflow custom code",
+      "external script 'https://cdn.example.com/foo.js' included in custom code — verify it loads correctly in Webflow",
     ]);
   });
 
-  it("extracts inline scripts and warns about external scripts together", () => {
+  it("extracts inline scripts and carries external scripts together, each with its warning", () => {
     const html = `
       <script src="/vendor.js"></script>
       <script>var x = 1;</script>
     `;
     const result = extractScripts(html);
-    expect(result.scripts).toEqual(["var x = 1;"]);
+    expect(result.scripts).toEqual(['<script src="/vendor.js"></script>', "var x = 1;"]);
     expect(result.warnings).toEqual([
-      "external script '/vendor.js' not included — add manually in Webflow custom code",
+      "external script '/vendor.js' included in custom code — verify it loads correctly in Webflow",
     ]);
+  });
+
+  it("carries interleaved inline and external scripts in source order, with exactly one advisory warning", () => {
+    const html = `<script>A</script><script src="x.js"></script><script>B</script>`;
+    const result = extractScripts(html);
+    expect(result.scripts).toHaveLength(3);
+    expect(result.scripts).toEqual(["A", '<script src="x.js"></script>', "B"]);
+    expect(result.warnings).toHaveLength(1);
+  });
+
+  it("has zero warnings for a plain inline-only case", () => {
+    const html = `<script>A</script><script>B</script>`;
+    const result = extractScripts(html);
+    expect(result.scripts).toEqual(["A", "B"]);
+    expect(result.warnings).toEqual([]);
   });
 
   it("returns an empty scripts array and no warnings when there are no scripts", () => {

@@ -1,9 +1,11 @@
 // Inline script/style extraction for display purposes.
 //
 // Deliberately simpler than the prototype's src/convert.mjs: no GSAP
-// plugin auto-detection, no CDN auto-injection. This is a pure
-// extract-and-warn pass over inline <script> and <style> content — nothing
-// more (per F019's clarified scope).
+// plugin auto-detection, no CDN auto-injection. Inline <script>/<style>
+// content and external <script src> tag markup are carried through in
+// source order; external scripts also get an advisory warning (per F019's
+// clarified scope, amended by F077 to carry rather than skip external
+// scripts).
 
 import { NodeType, parse } from "node-html-parser";
 
@@ -18,10 +20,12 @@ export interface ExtractStylesResult {
 }
 
 /**
- * Extracts inline <script> text content from an HTML fragment. External
- * scripts (with a src attribute) are never fetched or included — they only
- * produce a warning telling the user to add them manually in Webflow.
- * Never throws for expected-bad input.
+ * Extracts <script> tags from an HTML fragment, in source order. Inline
+ * scripts contribute their text content; external scripts (with a src
+ * attribute) are never fetched, but their original tag markup is carried
+ * into the output verbatim, with no allowlist restriction and no stripping.
+ * An advisory warning accompanies each external script — it does not
+ * replace the inclusion. Never throws for expected-bad input.
  */
 export function extractScripts(html: string): ExtractScriptsResult {
   const scripts: string[] = [];
@@ -33,7 +37,8 @@ export function extractScripts(html: string): ExtractScriptsResult {
   for (const el of scriptEls) {
     const src = el.getAttribute("src");
     if (src !== undefined && src.trim() !== "") {
-      warnings.push(`external script '${src}' not included — add manually in Webflow custom code`);
+      warnings.push(`external script '${src}' included in custom code — verify it loads correctly in Webflow`);
+      scripts.push(el.outerHTML);
       continue;
     }
 
