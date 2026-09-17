@@ -111,6 +111,32 @@ describe("convert", () => {
     expect(result.warnings.some((w) => w.includes('CSS class "used" is defined but not used'))).toBe(false);
   });
 
+  it("AS-051: a combo class chain defined in CSS but not carried together by any single element is flagged unused", () => {
+    // .btn.mod is a combo of "btn" + "mod", but no single element carries
+    // both classes at once (they're on two separate divs), so the combo
+    // chain must be reported as unused even though each individual class is.
+    const result = convert(`<div class="btn"></div><div class="mod"></div>`, ".btn{} .mod{} .btn.mod{}");
+
+    expect(result.warnings.some((w) => w.includes("btn.mod") || (w.includes("btn") && w.includes("mod")))).toBe(
+      true,
+    );
+  });
+
+  it("AS-051: a combo class chain carried by a single element is not flagged unused", () => {
+    // Both "btn" and "mod" are carried together by the same element, so the
+    // combo chain .btn.mod counts as used and must not be warned about.
+    const result = convert(`<div class="btn mod"></div>`, ".btn{} .mod{} .btn.mod{}");
+
+    expect(result.warnings.some((w) => w.includes("not used"))).toBe(false);
+  });
+
+  it("AS-114: an unresolved class on a 3rd-level descendant (div > p > span) returns a null payload", () => {
+    const result = convert(`<div><p><span class="deep-ghost">x</span></p></div>`, "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.some((e) => e.includes("deep-ghost"))).toBe(true);
+  });
+
   it("uses extractStyles via convertFromSource for self-contained HTML documents", () => {
     const html = `
       <html>
@@ -138,23 +164,29 @@ describe("convert", () => {
     expect(result.errors).toEqual([]);
   });
 
-  it("returns errors and a null payload when validation fails (AS-119)", () => {
-    // Import validatePayload directly to construct a payload shape known to
-    // fail validation (an invalid Webflow class name), proving convert()'s
-    // null-payload/errors contract mirrors validator.ts's contract exactly.
-    // Wire this through convert() by asserting the invariant it depends on:
-    // whenever validatePayload reports errors, convert() must forward them
-    // with payload: null and never throw.
-    const html = `<div class="wrapper"></div>`;
-    const css = `.wrapper { color: red; }`;
+  it("AS-119: a node referencing a class with no matching style definition produces a null payload", () => {
+    // "ghost" is used in the HTML but never defined in CSS, so the emitted
+    // node references a class with no matching style — validatePayload must
+    // reject it and convert() must return payload: null unconditionally.
+    const result = convert(`<div class="ghost"></div>`, "");
 
-    const result = convert(html, css);
+    expect(result.payload).toBeNull();
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
 
-    if (result.errors.length > 0) {
-      expect(result.payload).toBeNull();
-    } else {
-      expect(result.payload).not.toBeNull();
-    }
+  it("AS-119: empty HTML (no nodes) produces a null payload", () => {
+    const result = convert("", "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.includes("must not be empty"))).toBe(true);
+  });
+
+  it("AS-119: HTML that is only a comment (no real nodes) produces a null payload", () => {
+    const result = convert("<!-- just a comment -->", "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 
   it("includes warnings from CSS parsing in the result", () => {
@@ -293,12 +325,49 @@ describe("convert", () => {
     expect(result.warnings.some((w) => w.includes("not used"))).toBe(false);
   });
 
-  it("AS-011: no Supabase imports anywhere in the webflow-converter module directory", () => {
+  it("AS-011: no Supabase imports anywhere in the webflow-converter module directory or webflow page/component files", () => {
     const dir = join(process.cwd(), "lib", "webflow-converter");
     const files = readdirSync(dir).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
 
     for (const file of files) {
       const contents = readFileSync(join(dir, file), "utf-8");
+      expect(contents.toLowerCase()).not.toContain("supabase");
+    }
+
+    // Extend the scan to app/**/webflow* and components/**/webflow* — the
+    // (possibly not-yet-created) converter page/component files that will
+    // wire this module into the UI. Walk recursively; skip node_modules.
+    const isSourceFile = (name: string) =>
+      (name.endsWith(".ts") || name.endsWith(".tsx")) && !name.endsWith(".test.ts") && !name.endsWith(".test.tsx");
+
+    const collectWebflowFiles = (root: string): string[] => {
+      const results: string[] = [];
+      const walk = (dirPath: string) => {
+        let entries: import("node:fs").Dirent[];
+        try {
+          entries = readdirSync(dirPath, { withFileTypes: true });
+        } catch {
+          return;
+        }
+        for (const entry of entries) {
+          if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+          const fullPath = join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            walk(fullPath);
+          } else if (entry.isFile() && entry.name.toLowerCase().includes("webflow") && isSourceFile(entry.name)) {
+            results.push(fullPath);
+          }
+        }
+      };
+      walk(root);
+      return results;
+    };
+
+    const scanRoots = [join(process.cwd(), "app"), join(process.cwd(), "components")];
+    const webflowFiles = scanRoots.flatMap((root) => collectWebflowFiles(root));
+
+    for (const file of webflowFiles) {
+      const contents = readFileSync(file, "utf-8");
       expect(contents.toLowerCase()).not.toContain("supabase");
     }
   });
