@@ -129,29 +129,29 @@ describe("F014 parseCss", () => {
     expect(button.variants.main_hover).toEqual({ color: "purple" });
   });
 
-  it("test_AS_057_nested_rule_warns_and_does_not_clobber_parent_decls", () => {
+  it("nested_atrule_warns_not_silent: nested_rule_warns_and_does_not_clobber_parent_decls", () => {
     const result = parseCss(".a { color: red; &:hover { color: blue } }");
     const a = result.classes.get("a")!;
     expect(a.base).toEqual({ color: "red" });
     expect(result.warnings.some((w) => /nested CSS/i.test(w))).toBe(true);
   });
 
-  it("test_AS_057_nested_atrule_warns_instead_of_silent_loss", () => {
+  it("nested_atrule_warns_not_silent: nested_atrule_warns_instead_of_silent_loss", () => {
     const result = parseCss(".a{color:red; @media (max-width:767px){color:blue}}");
     expect(result.warnings.length).toBeGreaterThan(0);
   });
 
-  it("test_AS_057_unknown_top_level_atrule_container_warns", () => {
+  it("nested_atrule_warns_not_silent: unknown_top_level_atrule_container_warns", () => {
     const result = parseCss("@container (max-width:500px){ .a{color:red} }");
     expect(result.warnings.some((w) => w.includes("@container is not supported"))).toBe(true);
   });
 
-  it("test_AS_057_unknown_top_level_atrule_page_warns", () => {
+  it("nested_atrule_warns_not_silent: unknown_top_level_atrule_page_warns", () => {
     const result = parseCss("@page{margin:1cm}");
     expect(result.warnings.some((w) => w.includes("@page is not supported"))).toBe(true);
   });
 
-  it("test_AS_057_unknown_top_level_atrule_import_warns", () => {
+  it("nested_atrule_warns_not_silent: unknown_top_level_atrule_import_warns", () => {
     const result = parseCss("@import url(x.css);");
     expect(result.warnings.some((w) => w.includes("@import is not supported"))).toBe(true);
   });
@@ -167,7 +167,7 @@ describe("F014 parseCss", () => {
     expect(result.order).toEqual(["card", "is-featured", "card|is-featured"]);
   });
 
-  it("AS-039: a standalone class and its later combo use produce two separate entries, standalone is not destroyed", () => {
+  it("AS-040: a standalone class and its later combo use produce two separate entries, standalone is not destroyed", () => {
     const result = parseCss(".b { color: red; } .a.b { color: blue; }");
     const standalone = result.classes.get("b")!;
     const combo = result.classes.get("a|b")!;
@@ -178,7 +178,7 @@ describe("F014 parseCss", () => {
     expect(result.classes.size).toBe(3); // "a", "b" (standalone), "a|b" (combo)
   });
 
-  it("AS-039: combo-then-standalone is order-independent, still produces two entries", () => {
+  it("AS-040: combo-then-standalone is order-independent, still produces two entries", () => {
     const result = parseCss(".a.b { color: blue; } .b { color: red; }");
     const standalone = result.classes.get("b")!;
     const combo = result.classes.get("a|b")!;
