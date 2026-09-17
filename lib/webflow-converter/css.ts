@@ -167,9 +167,13 @@ export function parseCss(cssText: string): ParseCssResult {
         // ".a.b.c" -> terminal class is "c", combo'd onto ["a", "b"]
         const target = chain[chain.length - 1];
         const comboOf = chain.length > 1 ? chain.slice(0, -1) : null;
-        // Register every individual chain member as its own standalone class
-        // too, so ".a.b" registers "a" (standalone) distinct from "a|b" (combo).
-        for (const c of chain) ensure(c, c, null);
+        // Register every non-terminal chain member as its own standalone
+        // class too, so ".a.b" registers "a" (standalone) distinct from
+        // "a|b" (combo). The terminal member ("b" here) is NOT registered as
+        // a phantom standalone — it only becomes one if it has its own
+        // explicit ".b {}" rule elsewhere in the CSS, which will call
+        // ensure("b", "b", null) itself when that rule is processed.
+        for (let i = 0; i < chain.length - 1; i++) ensure(chain[i], chain[i], null);
         const classKey = chain.length > 1 ? chain.join("|") : target;
         const rec = ensure(classKey, target, comboOf);
 

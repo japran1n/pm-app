@@ -170,7 +170,10 @@ describe("F014 parseCss", () => {
     expect(combo.name).toBe("is-featured");
     expect(combo.comboOf).toEqual(["card"]);
     expect(combo.base).toEqual({ color: "gold" });
-    expect(result.order).toEqual(["card", "is-featured", "card|is-featured"]);
+    // The terminal class of the chain ("is-featured") is NOT registered as a
+    // phantom standalone — only "card" (base) and the combo entry exist.
+    expect(result.order).toEqual(["card", "card|is-featured"]);
+    expect(result.classes.has("is-featured")).toBe(false);
   });
 
   it("AS-040: a standalone class and its later combo use produce two separate entries, standalone is not destroyed", () => {
@@ -201,10 +204,12 @@ describe("F014 parseCss", () => {
     expect(combo.name).toBe("c");
     expect(combo.comboOf).toEqual(["a", "b"]);
     expect(combo.base).toEqual({ color: "green" });
-    // Each individual chain member is also registered standalone.
+    // Non-terminal chain members are also registered standalone (needed as
+    // bases for sub-combos), but the terminal member ("c") is not — it is
+    // only the combo entry unless it has its own explicit ".c {}" rule.
     expect(result.classes.has("a")).toBe(true);
     expect(result.classes.has("b")).toBe(true);
-    expect(result.classes.has("c")).toBe(true);
+    expect(result.classes.has("c")).toBe(false);
   });
 
   it("AS-040: the same terminal class under two different bases are distinct combo entries", () => {
@@ -216,8 +221,9 @@ describe("F014 parseCss", () => {
     expect(xz.base).toEqual({ color: "red" });
     expect(yz.comboOf).toEqual(["y"]);
     expect(yz.base).toEqual({ color: "blue" });
-    // The standalone "z" (never declared on its own) is still registered but empty.
-    expect(result.classes.get("z")!.base).toEqual({});
+    // "z" is only a combo terminal in both rules, never declared on its own,
+    // so it is not registered as a phantom standalone.
+    expect(result.classes.has("z")).toBe(false);
   });
 
   it("non-class selectors (descendant, id, element, attribute) produce warnings and are skipped", () => {

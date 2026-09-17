@@ -27,6 +27,28 @@ describe("convert", () => {
     expect(result.payload!.payload.styles).toEqual([]);
   });
 
+  it("AS-116: combo .btn.primary produces exactly one style named primary — the combo, not a phantom standalone", () => {
+    const result = convert('<div class="btn primary">x</div>', ".btn.primary { color: red; }");
+    expect(result.payload).not.toBeNull();
+    const primaryStyles = result.payload!.payload.styles.filter((s) => s.name === "primary");
+    expect(primaryStyles).toHaveLength(1);
+    expect(primaryStyles[0].comb).not.toBe("");
+    expect(primaryStyles[0].styleLess).toBe("color: red;");
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("AS-116: when both .primary and .btn.primary exist, two primary styles are valid — one standalone one combo", () => {
+    const result = convert(
+      '<div class="btn primary">x</div><div class="primary">y</div>',
+      ".primary { font-size: 12px; } .btn.primary { color: red; }"
+    );
+    expect(result.payload).not.toBeNull();
+    const primaryStyles = result.payload!.payload.styles.filter((s) => s.name === "primary");
+    expect(primaryStyles).toHaveLength(2);
+    expect(primaryStyles.some((s) => s.comb === "" && s.styleLess.includes("font-size"))).toBe(true);
+    expect(primaryStyles.some((s) => s.comb !== "" && s.styleLess.includes("color"))).toBe(true);
+  });
+
   it("AS-112: empty HTML string returns a null payload with an error (nodes must not be empty)", () => {
     const result = convert("", "");
 
