@@ -54,6 +54,39 @@ export function mapBreakpoint(params: string): BreakpointKey | null {
   const hasMaxWidth = /max-width\s*:\s*[\d.]+px/i.test(q);
   if (hasMinWidth && hasMaxWidth) return null;
 
+  // Reject media types (e.g. "print and (max-width:767px)") — a media-type
+  // restricted rule is not a plain Webflow breakpoint.
+  const mediaTypePattern =
+    /\b(?:all|print|screen|tv|speech|handheld|projection|braille|embossed|tty)\b/i;
+  if (mediaTypePattern.test(q)) return null;
+
+  // Only accept pure width conditions. Anything combined with 'and', or any
+  // non-width media feature, is not a single Webflow breakpoint.
+  const isSimpleMaxWidth =
+    /^\s*\(\s*max-width\s*:\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
+  const isSimpleMinWidth =
+    /^\s*\(\s*min-width\s*:\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
+  const isRangeWidth =
+    /^\s*\(\s*width\s*[<>=]+\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
+  const isBareMaxWidth = /^\s*max-width\s*:\s*\d+(?:\.\d+)?px\s*$/.test(q);
+  const isBareMinWidth = /^\s*min-width\s*:\s*\d+(?:\.\d+)?px\s*$/.test(q);
+  if (
+    !isSimpleMaxWidth &&
+    !isSimpleMinWidth &&
+    !isRangeWidth &&
+    !isBareMaxWidth &&
+    !isBareMinWidth
+  ) {
+    if (/\band\b/.test(q)) return null;
+    if (
+      /orientation|resolution|hover|pointer|aspect-ratio|color|monochrome|scan|grid|update|overflow-block|overflow-inline/.test(
+        q,
+      )
+    ) {
+      return null;
+    }
+  }
+
   // Range syntax: (width <= Npx) or (width < Npx) -> treat like max-width.
   // "< N" is equivalent to "<= N-1".
   const rangeMax = /width\s*(<=?)\s*([\d.]+)px/i.exec(q);

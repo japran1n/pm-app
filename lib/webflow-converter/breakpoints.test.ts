@@ -41,6 +41,18 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('orientation: landscape')).toBeNull();
   });
 
+  it('AS-048: a media-type + width condition combo returns null (not snapped to a breakpoint)', () => {
+    expect(mapBreakpoint('print and (max-width:767px)')).toBeNull();
+    expect(mapBreakpoint('tv and (max-width:479px)')).toBeNull();
+    expect(mapBreakpoint('screen and (max-width:991px)')).toBeNull();
+  });
+
+  it('AS-048: a width condition combined with a non-width feature returns null', () => {
+    expect(
+      mapBreakpoint('(max-width:767px) and (orientation:landscape)'),
+    ).toBeNull();
+  });
+
   it('is case-insensitive and tolerant of extra whitespace', () => {
     expect(mapBreakpoint('MAX-WIDTH:   991px')).toBe('medium');
   });
@@ -71,11 +83,11 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('screen, print')).toBeNull();
   });
 
-  it('AS-048: (width <= 767px) range syntax maps to "small"', () => {
+  it('AS-071: (width <= 767px) range syntax maps to "small"', () => {
     expect(mapBreakpoint('(width <= 767px)')).toBe('small');
   });
 
-  it('AS-048: (width < 768px) range syntax maps to "small" (< N treated as <= N-1)', () => {
+  it('AS-071: (width < 768px) range syntax maps to "small" (< N treated as <= N-1)', () => {
     expect(mapBreakpoint('(width < 768px)')).toBe('small');
   });
 });
