@@ -1,0 +1,100 @@
+import { describe, expect, it } from 'vitest';
+import { BREAKPOINTS, mapBreakpoint, variantKey } from './breakpoints';
+
+describe('mapBreakpoint', () => {
+  it('AS-070: max-width: 991px maps to "medium"', () => {
+    expect(mapBreakpoint('max-width: 991px')).toBe('medium');
+  });
+
+  it('AS-071: max-width: 767px maps to "small"', () => {
+    expect(mapBreakpoint('max-width: 767px')).toBe('small');
+  });
+
+  it('AS-072: max-width: 479px maps to "tiny"', () => {
+    expect(mapBreakpoint('max-width: 479px')).toBe('tiny');
+  });
+
+  it('AS-073: min-width breakpoints map to "large"/"xl"/"xxl"', () => {
+    expect(mapBreakpoint('min-width: 1440px')).toBe('large');
+    expect(mapBreakpoint('min-width: 1920px')).toBe('xl');
+    expect(mapBreakpoint('min-width: 2560px')).toBe('xxl');
+  });
+
+  it('a max-width below the smallest boundary still maps to "tiny"', () => {
+    expect(mapBreakpoint('max-width: 320px')).toBe('tiny');
+  });
+
+  it('a max-width above the largest defined boundary falls back to "medium"', () => {
+    expect(mapBreakpoint('max-width: 1200px')).toBe('medium');
+  });
+
+  it('a min-width above the largest boundary maps to "xxl"', () => {
+    expect(mapBreakpoint('min-width: 3000px')).toBe('xxl');
+  });
+
+  it('a min-width below the smallest defined boundary falls back to "large"', () => {
+    expect(mapBreakpoint('min-width: 1000px')).toBe('large');
+  });
+
+  it('AS-074: an unmappable media query (e.g. print) returns null', () => {
+    expect(mapBreakpoint('print')).toBeNull();
+    expect(mapBreakpoint('orientation: landscape')).toBeNull();
+  });
+
+  it('is case-insensitive and tolerant of extra whitespace', () => {
+    expect(mapBreakpoint('MAX-WIDTH:   991px')).toBe('medium');
+  });
+
+  it('parses fractional pixel values', () => {
+    expect(mapBreakpoint('max-width: 767.5px')).toBe('medium');
+  });
+});
+
+describe('variantKey', () => {
+  it('AS-048: a base breakpoint ("main") with no state returns null (goes in styleLess)', () => {
+    expect(variantKey('main', null)).toBeNull();
+    expect(variantKey('main', undefined)).toBeNull();
+  });
+
+  it('a non-main breakpoint with no state returns the breakpoint key itself', () => {
+    expect(variantKey('medium', null)).toBe('medium');
+    expect(variantKey('small', null)).toBe('small');
+    expect(variantKey('tiny', null)).toBe('tiny');
+    expect(variantKey('large', null)).toBe('large');
+    expect(variantKey('xl', null)).toBe('xl');
+    expect(variantKey('xxl', null)).toBe('xxl');
+  });
+
+  it('"main" combined with a hover state returns "main_hover"', () => {
+    expect(variantKey('main', 'hover')).toBe('main_hover');
+  });
+
+  it('each breakpoint combined with hover returns "<breakpoint>_hover"', () => {
+    expect(variantKey('medium', 'hover')).toBe('medium_hover');
+    expect(variantKey('small', 'hover')).toBe('small_hover');
+    expect(variantKey('tiny', 'hover')).toBe('tiny_hover');
+    expect(variantKey('large', 'hover')).toBe('large_hover');
+    expect(variantKey('xl', 'hover')).toBe('xl_hover');
+    expect(variantKey('xxl', 'hover')).toBe('xxl_hover');
+  });
+
+  it('combines a breakpoint with a non-hover state (e.g. pressed)', () => {
+    expect(variantKey('main', 'pressed')).toBe('main_pressed');
+    expect(variantKey('medium', 'focus')).toBe('medium_focus');
+  });
+});
+
+describe('BREAKPOINTS constant', () => {
+  it('exposes the exact numeric thresholds from the reference prototype', () => {
+    expect(BREAKPOINTS.maxWidth).toEqual([
+      { upTo: 479, key: 'tiny' },
+      { upTo: 767, key: 'small' },
+      { upTo: 991, key: 'medium' },
+    ]);
+    expect(BREAKPOINTS.minWidth).toEqual([
+      { from: 2560, key: 'xxl' },
+      { from: 1920, key: 'xl' },
+      { from: 1440, key: 'large' },
+    ]);
+  });
+});
