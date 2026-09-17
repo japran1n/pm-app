@@ -78,6 +78,15 @@ describe("convertHtmlToWebflow (M4)", () => {
     expect(result.js).toEqual([]);
   });
 
+  it("test_script_closing_tag_in_js_escaped", async () => {
+    const result = await convertHtmlToWebflow({
+      html: "<div>x</div>",
+      css: "",
+      js: "alert('</script><script>evil()')",
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("test_AS_118_conversion_error_from_the_engine_is_surfaced_with_ok_false", async () => {
     const result = await convertHtmlToWebflow({ html: "<!-- just a comment -->", css: "" });
     expect(result.ok).toBe(false);

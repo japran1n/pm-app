@@ -132,4 +132,41 @@ describe("writeToClipboard", () => {
     writeToClipboard([{ mimeType: "text/plain", data: "ok" }]);
     expect(removeSpy).toHaveBeenCalledWith("copy", handler);
   });
+
+  it("test_null_clipboardData_returns_false", () => {
+    vi.spyOn(document, "execCommand").mockImplementation((cmd) => {
+      if (cmd === "copy" && handler) {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          clipboardData: null,
+        } as unknown as ClipboardEvent;
+        handler(mockEvent);
+        return true;
+      }
+      return false;
+    });
+
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: "{}" },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it("test_execCommand_throws_returns_false", () => {
+    vi.spyOn(document, "execCommand").mockImplementation(() => {
+      throw new Error("execCommand failed");
+    });
+
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: "{}" },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it("test_empty_items_returns_false", () => {
+    const addSpy = document.addEventListener as ReturnType<typeof vi.fn>;
+    const result = writeToClipboard([]);
+    expect(result).toBe(false);
+    expect(addSpy).not.toHaveBeenCalled();
+  });
 });

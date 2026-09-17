@@ -38,7 +38,8 @@ export interface ConvertActionResult {
 // action to do it, matching the documented UI contract.
 function withInjectedScript(html: string, js?: string): string {
   if (!js || js.trim() === "") return html;
-  return `${html}\n<script>\n${js}\n</script>`;
+  const safeJs = js.replace(/<\/script>/gi, "<\\/script>");
+  return `${html}\n<script>\n${safeJs}\n</script>`;
 }
 
 export async function convertHtmlToWebflow(input: {
