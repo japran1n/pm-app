@@ -456,6 +456,7 @@ function SidebarContent({
                         : "text-muted-foreground hover:bg-accent",
                     )}
                   >
+                    {/* AS-127: icon stays text-muted-foreground even when active (lower contrast than the active label's text-foreground) -- deliberate visual hierarchy, and text-tertiary-foreground is banned here since this icon is operative, not decorative. */}
                     <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{label}</span>
                     {/* F010: same small-numeric-badge shape as the bell's own

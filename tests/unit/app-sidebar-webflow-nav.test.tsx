@@ -171,6 +171,41 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       expect(link).not.toHaveClass("font-medium");
       expect(link.classList.contains("text-muted-foreground")).toBe(true);
     });
+
+    // F048 (M1 scrutiny-2): F044's clarified spec called for nested-subpath
+    // active highlighting to be covered, but no such case existed -- 10/10
+    // tests stayed green even after adding `exact: true` to the Webflow nav
+    // entry, or replacing the isActive expression with a bare
+    // `pathname === href`. Both mutations collapse prefix matching to exact
+    // matching, so a sub-route under the converter (e.g. its results page)
+    // must be asserted active to catch them.
+    it("desktop: a nested sub-route under the converter (prefix match, not exact) still highlights Webflow as active", () => {
+      currentPath = `${expectedHref}/results`;
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      expect(link).toHaveAttribute("aria-current", "page");
+      expect(link).toHaveClass("font-medium");
+      expect(link.classList.contains("text-muted-foreground")).toBe(false);
+    });
+
+    it("the Webflow item's active-state class token is the same token used by another prefix-matched sidebar item (Projects) at its own active route, confirming shared active-route styling, not a bespoke one-off", () => {
+      // Webflow active via its own sub-route.
+      currentPath = `${expectedHref}/results`;
+      const { unmount } = render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+      const webflowLink = screen.getByRole("link", { name: /^Webflow$/ });
+      const webflowActiveClasses = webflowLink.className;
+      unmount();
+
+      // Projects active via its own sub-route -- same prefix-matching
+      // isActive branch (Projects also carries no `exact: true`).
+      currentPath = `/w/${slug}/projects/some-project-id`;
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+      const projectsLink = screen.getByRole("link", { name: /^Projects$/ });
+      const projectsActiveClasses = projectsLink.className;
+
+      expect(webflowActiveClasses).toBe(projectsActiveClasses);
+    });
   });
 
   describe("AS-007: no per-workspace/role gating -- renders identically for a guest", () => {
@@ -224,6 +259,17 @@ describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug)
       const icon = link.querySelector("svg");
       expect(icon).not.toBeNull();
       expect(icon).toHaveAttribute("aria-hidden", "true");
+    });
+
+    it("active route: the icon carries the permitted text-muted-foreground token, not text-tertiary-foreground (CLAUDE.md bans that token for operative/read-to-operate content)", () => {
+      currentPath = "/w/acme/tools/webflow";
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      const icon = link.querySelector("svg");
+      expect(icon).not.toBeNull();
+      expect(icon).toHaveClass("text-muted-foreground");
+      expect(icon!.classList.contains("text-tertiary-foreground")).toBe(false);
     });
   });
 });
