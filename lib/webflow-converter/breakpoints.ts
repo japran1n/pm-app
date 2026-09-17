@@ -37,91 +37,79 @@ export type BreakpointKey =
  * breakpoint key, or null if the query is unmappable (e.g. "print").
  */
 export function mapBreakpoint(params: string): BreakpointKey | null {
-  let q = params.trim();
+  // Normalize once: lowercase and collapse all whitespace runs to a single
+  // space so the grammar below never has to account for case or spacing.
+  const q = params.trim().toLowerCase().replace(/\s+/g, ' ');
 
-  // Strip a leading "screen"/"only screen"/"all"/"only all" media-type
-  // prefix — these are the default/near-universal media types and are
-  // transparent to Webflow's width-based breakpoints (e.g. Webflow's own
-  // exports emit "screen and (max-width:991px)").
-  q = q.replace(/^(?:only\s+)?(?:screen|all)\s+and\s+/i, '').trim();
-
-  // Reject comma-separated lists (e.g. "screen, print").
+  // Reject comma-separated lists (e.g. "screen, print") up front — the
+  // grammar below has no comma production.
   if (q.includes(',')) return null;
 
-  // Reject negated queries (e.g. "not all and (max-width:767px)").
-  if (/\bnot\b/i.test(q)) return null;
-
-  // Reject 'only' prefix that wasn't already stripped above (e.g.
-  // "only print and (max-width:767px)").
-  if (/^\s*only\b/i.test(q)) return null;
-
-  // Reject compound queries that combine both a min-width and a max-width
-  // condition (a tablet-style range) — not a single Webflow breakpoint.
-  const hasMinWidth = /min-width\s*:\s*[\d.]+px/i.test(q);
-  const hasMaxWidth = /max-width\s*:\s*[\d.]+px/i.test(q);
-  if (hasMinWidth && hasMaxWidth) return null;
-
-  // Reject non-screen media types (e.g. "print and (max-width:767px)") — a
-  // media-type restricted rule is not a plain Webflow breakpoint. "screen"
-  // and "all" were already stripped above when used as a leading prefix.
-  const mediaTypePattern =
-    /\b(?:print|tv|speech|handheld|projection|braille|embossed|tty)\b/i;
-  if (mediaTypePattern.test(q)) return null;
-
-  // Only accept pure width conditions. Anything combined with 'and', or any
-  // non-width media feature, is not a single Webflow breakpoint.
-  const isSimpleMaxWidth =
-    /^\s*\(\s*max-width\s*:\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
-  const isSimpleMinWidth =
-    /^\s*\(\s*min-width\s*:\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
-  const isRangeWidth =
-    /^\s*\(\s*width\s*[<>=]+\s*\d+(?:\.\d+)?px\s*\)\s*$/.test(q);
-  const isBareMaxWidth = /^\s*max-width\s*:\s*\d+(?:\.\d+)?px\s*$/.test(q);
-  const isBareMinWidth = /^\s*min-width\s*:\s*\d+(?:\.\d+)?px\s*$/.test(q);
-  if (
-    !isSimpleMaxWidth &&
-    !isSimpleMinWidth &&
-    !isRangeWidth &&
-    !isBareMaxWidth &&
-    !isBareMinWidth
-  ) {
-    if (/\band\b/.test(q)) return null;
-    if (
-      /orientation|resolution|hover|pointer|aspect-ratio|color|monochrome|scan|grid|update|overflow-block|overflow-inline/.test(
-        q,
-      )
-    ) {
-      return null;
+  // Strip exactly one optional, well-formed media-type prefix. Anything
+  // that isn't one of these exact (space-delimited) prefixes — including a
+  // malformed one like "screenand" with no space — is left untouched and
+  // will fail to match the width-condition grammar below, so it's rejected
+  // rather than silently reinterpreted.
+  const PREFIXES = [
+    'only screen and ',
+    'only all and ',
+    'screen and ',
+    'all and ',
+  ];
+  let condition = q;
+  for (const prefix of PREFIXES) {
+    if (condition.startsWith(prefix)) {
+      condition = condition.slice(prefix.length);
+      break;
     }
   }
 
-  // Range syntax: (width <= Npx) or (width < Npx) -> treat like max-width.
-  // "< N" is equivalent to "<= N-1".
-  const rangeMax = /width\s*(<=?)\s*([\d.]+)px/i.exec(q);
-  if (rangeMax) {
-    const strict = rangeMax[1] === '<';
-    const raw = parseFloat(rangeMax[2]);
-    const px = strict ? raw - 1 : raw;
+  // The remainder must be EXACTLY one width condition — anchored at both
+  // ends — in one of these forms. Each form is also accepted without its
+  // wrapping parens, since callers may pass a bare `@media` params string
+  // (e.g. "max-width: 991px"). Anything else (compound "and" conditions,
+  // non-width features, unmapped media types, negation, stray "only",
+  // malformed prefixes, extra trailing content) has no matching production
+  // and falls through to `null`.
+  const numeric = '(\\d+(?:\\.\\d+)?)px';
+  const maxWidth = new RegExp(
+    `^(?:\\(\\s*max-width\\s*:\\s*${numeric}\\s*\\)|max-width\\s*:\\s*${numeric})$`,
+  );
+  const minWidth = new RegExp(
+    `^(?:\\(\\s*min-width\\s*:\\s*${numeric}\\s*\\)|min-width\\s*:\\s*${numeric})$`,
+  );
+  const widthLe = new RegExp(`^\\(width\\s*<=\\s*${numeric}\\)$`);
+  const widthLt = new RegExp(`^\\(width\\s*<\\s*${numeric}\\)$`);
+  const widthGe = new RegExp(`^\\(width\\s*>=\\s*${numeric}\\)$`);
+  const widthGt = new RegExp(`^\\(width\\s*>\\s*${numeric}\\)$`);
+
+  const matchAndMapMax = (px: number) => {
     const hit = BREAKPOINTS.maxWidth.find((b) => px === b.upTo);
     return hit ? hit.key : null;
-  }
-
-  // Range syntax: (width >= Npx) or (width > Npx) -> min-width ranges are
-  // not currently mapped to a single Webflow breakpoint.
-  if (/width\s*>=?\s*[\d.]+px/i.test(q)) return null;
-
-  const max = /max-width\s*:\s*([\d.]+)px/i.exec(q);
-  if (max) {
-    const px = parseFloat(max[1]);
-    const hit = BREAKPOINTS.maxWidth.find((b) => px === b.upTo);
-    return hit ? hit.key : null;
-  }
-  const min = /min-width\s*:\s*([\d.]+)px/i.exec(q);
-  if (min) {
-    const px = parseFloat(min[1]);
+  };
+  const matchAndMapMin = (px: number) => {
     const hit = BREAKPOINTS.minWidth.find((b) => px === b.from);
     return hit ? hit.key : null;
-  }
+  };
+
+  let m = maxWidth.exec(condition);
+  if (m) return matchAndMapMax(parseFloat(m[1] ?? m[2]));
+
+  m = minWidth.exec(condition);
+  if (m) return matchAndMapMin(parseFloat(m[1] ?? m[2]));
+
+  m = widthLe.exec(condition);
+  if (m) return matchAndMapMax(parseFloat(m[1]));
+
+  m = widthLt.exec(condition);
+  if (m) return matchAndMapMax(parseFloat(m[1]) - 1);
+
+  m = widthGe.exec(condition);
+  if (m) return matchAndMapMin(parseFloat(m[1]));
+
+  m = widthGt.exec(condition);
+  if (m) return null; // no strict min-width boundary is currently mapped
+
   return null;
 }
 
