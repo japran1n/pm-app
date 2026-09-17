@@ -15,7 +15,7 @@
 // inside the portal."
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 const REPO_ROOT = process.cwd();
 
@@ -44,11 +44,13 @@ describe("F004 / AS-008: the converter route never appears under the portal", ()
 
   // --- Failure / side-effect check: a grep-style sweep over every
   // non-test source file that participates in the portal's render tree
-  // (app/(portal), plus the shared components/lib the portal pulls from)
-  // for any textual reference to the converter's route path or its
-  // module paths. If a future feature ever links to the tool from inside
-  // the portal, this fails loudly instead of relying on someone noticing
-  // in review.
+  // (app/(portal), the portal-specific components under components/portal,
+  // and any portal-specific file under lib) for any textual reference to
+  // the converter's route path or its module paths. If a future feature
+  // ever links to the tool from inside the portal -- INCLUDING the
+  // persistent shell nav in components/portal/portal-sidebar.tsx, the gap
+  // M1 scrutiny found in the original app/(portal)-only sweep -- this
+  // fails loudly instead of relying on someone noticing in review.
   it("test_AS_008_no_portal_source_file_references_the_webflow_tool_route_or_its_modules", () => {
     const SOURCE_ROOTS = ["app", "components", "lib"];
     const EXCLUDED_DIR_SEGMENTS = new Set(["node_modules", ".next", "(workspace)"]);
@@ -75,15 +77,36 @@ describe("F004 / AS-008: the converter route never appears under the portal", ()
       walk(join(REPO_ROOT, root));
     }
 
-    // Only files that are themselves inside the portal's own render tree
-    // (app/(portal)/**) are checked for a reference to the tool -- the
-    // workspace-side sidebar (components/nav/app-sidebar.tsx, F003) is
-    // SUPPOSED to link to /w/[workspaceSlug]/tools/webflow; that is a
-    // different, team-facing surface, not the client-facing portal this
-    // assertion is about.
-    const portalFiles = files.filter((f) =>
-      f.includes(join("app", "(portal)")),
-    );
+    // Files that are part of the portal's own render tree:
+    //   - everything under app/(portal)/**
+    //   - everything under components/portal/** (the portal's shared
+    //     shell/nav components, e.g. portal-sidebar.tsx -- M1 scrutiny's
+    //     own gap: the old sweep only walked app/(portal) and missed this
+    //     directory entirely)
+    //   - anything under lib/ whose path itself identifies it as
+    //     portal-specific (path segment or filename containing "portal"),
+    //     e.g. lib/queries/portal.ts, lib/actions/portal-*.ts
+    // The workspace-side sidebar (components/nav/app-sidebar.tsx, F003) is
+    // deliberately EXCLUDED -- it is SUPPOSED to link to
+    // /w/[workspaceSlug]/tools/webflow; that is a different, team-facing
+    // surface, not the client-facing portal this assertion is about.
+    const portalFiles = files.filter((f) => {
+      if (f.includes(join("components", "nav", "app-sidebar"))) return false;
+      if (f.includes(join("app", "(portal)"))) return true;
+      if (f.includes(join("components", "portal"))) return true;
+      if (f.includes(`${join(REPO_ROOT, "lib")}${sep}`)) {
+        const relative = f.slice(REPO_ROOT.length);
+        return relative.toLowerCase().includes("portal");
+      }
+      return false;
+    });
+
+    // Sanity check on the sweep itself: components/portal/portal-sidebar.tsx
+    // must actually be one of the files walked, otherwise this test would
+    // silently pass without ever re-checking the file M1 scrutiny flagged.
+    expect(
+      portalFiles.some((f) => f.endsWith(join("components", "portal", "portal-sidebar.tsx"))),
+    ).toBe(true);
 
     const offenders: string[] = [];
     for (const file of portalFiles) {
