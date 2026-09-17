@@ -1,0 +1,1 @@
+export { writeToClipboard } from "./clipboard";
