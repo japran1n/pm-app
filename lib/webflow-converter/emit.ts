@@ -78,7 +78,6 @@ const PSEUDO_STATE_TO_WEBFLOW: Record<string, string> = {
   focus: "focused",
   pressed: "pressed",
   active: "pressed",
-  placeholder: "nthChild",
 };
 
 const BREAKPOINT_VARIANT_KEYS = new Set(["medium", "small", "tiny", "large", "xl", "xxl"]);
@@ -127,9 +126,25 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
       // Pseudo-state variant keys look like "<breakpoint>_<state>" (e.g.
       // "main_hover"). Map the recognized ones onto Webflow's state slots.
       const underscoreIdx = variantKey.indexOf("_");
+      const breakpointPrefix = underscoreIdx === -1 ? null : variantKey.slice(0, underscoreIdx);
       const state = underscoreIdx === -1 ? variantKey : variantKey.slice(underscoreIdx + 1);
       const webflowKey = PSEUDO_STATE_TO_WEBFLOW[state];
-      if (webflowKey) {
+
+      if (webflowKey && breakpointPrefix && BREAKPOINT_VARIANT_KEYS.has(breakpointPrefix)) {
+        // Webflow's class editor has no per-breakpoint state slots — a
+        // composite key like "medium_hover" would otherwise overwrite the
+        // default-breakpoint state slot. Fold its declarations into the
+        // breakpoint's own styleLess instead, so nothing is lost.
+        const variantsRecord = variants as Record<string, { styleLess: string }>;
+        const existing = variantsRecord[breakpointPrefix]?.styleLess ?? "";
+        const addition = toStyleLess(rec.variants[variantKey]);
+        variantsRecord[breakpointPrefix] = {
+          styleLess: existing ? `${existing} ${addition}` : addition,
+        };
+        warnings.push(
+          `:${state} inside @media blocks is not supported in Webflow's class editor — declarations moved to breakpoint styles (variant "${variantKey}" on .${rec.name})`
+        );
+      } else if (webflowKey) {
         (variants as Record<string, { styleLess: string }>)[webflowKey] = {
           styleLess: toStyleLess(rec.variants[variantKey]),
         };

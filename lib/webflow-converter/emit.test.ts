@@ -147,6 +147,85 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(style.variants.hover?.styleLess).toBe("color: blue;");
   });
 
+  it("test_AS_041_active_pseudo_state_variant_maps_onto_webflow_pressed_slot", () => {
+    const cssMap = parseCss(".btn { color: red; } .btn:active { color: blue; }");
+    const { payload } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect(style.variants.pressed).toBeDefined();
+    expect(style.variants.pressed?.styleLess).toBe("color: blue;");
+  });
+
+  it("test_AS_041_focus_pseudo_state_variant_maps_onto_webflow_focused_slot", () => {
+    const cssMap = parseCss(".btn { color: red; } .btn:focus { color: green; }");
+    const { payload } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect(style.variants.focused).toBeDefined();
+    expect(style.variants.focused?.styleLess).toBe("color: green;");
+  });
+
+  it("test_AS_041_focus_visible_pseudo_state_has_no_webflow_slot_and_warns", () => {
+    const cssMap = parseCss(".btn { color: red; } .btn:focus-visible { color: green; }");
+    const { payload, warnings } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect(style.variants.hover).toBeUndefined();
+    expect(style.variants.focused).toBeUndefined();
+    expect(style.variants.pressed).toBeUndefined();
+    expect((style.variants as Record<string, unknown>).nthChild).toBeUndefined();
+    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+  });
+
+  it("test_AS_041_visited_pseudo_state_has_no_webflow_slot_and_warns", () => {
+    const cssMap = parseCss(".link { color: red; } .link:visited { color: purple; }");
+    const { payload, warnings } = emitWebflow('<a class="link"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "link")!;
+    expect(Object.keys(style.variants)).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+  });
+
+  it("test_AS_041_placeholder_pseudo_state_has_no_webflow_slot_and_warns_not_nthChild", () => {
+    const cssMap = parseCss(".input { color: red; } .input::placeholder { color: gray; }");
+    const { payload, warnings } = emitWebflow('<input class="input">', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "input")!;
+    expect((style.variants as Record<string, unknown>).nthChild).toBeUndefined();
+    expect(Object.keys(style.variants)).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+  });
+
+  it("test_AS_041_before_pseudo_state_has_no_webflow_slot_and_warns", () => {
+    const cssMap = parseCss(".icon { color: red; } .icon::before { content: ''; }");
+    const { payload, warnings } = emitWebflow('<span class="icon"></span>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "icon")!;
+    expect(Object.keys(style.variants)).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+  });
+
+  it("test_AS_041_after_pseudo_state_has_no_webflow_slot_and_warns", () => {
+    const cssMap = parseCss(".icon { color: red; } .icon::after { content: ''; }");
+    const { payload, warnings } = emitWebflow('<span class="icon"></span>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "icon")!;
+    expect(Object.keys(style.variants)).toHaveLength(0);
+    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+  });
+
+  it("test_AS_041_breakpoint_plus_state_collision_moves_declarations_into_breakpoint_styleless_without_losing_default_hover", () => {
+    const cssMap = parseCss(`
+      .btn { color: red; }
+      .btn:hover { color: blue; }
+      @media (max-width: 991px) { .btn:hover { color: green; } }
+    `);
+    const { payload, warnings } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    // Default-breakpoint hover slot is preserved, not overwritten.
+    expect(style.variants.hover).toBeDefined();
+    expect(style.variants.hover?.styleLess).toBe("color: blue;");
+    // The breakpoint+state declarations are folded into the breakpoint's own styleLess.
+    expect(style.variants.medium).toBeDefined();
+    expect(style.variants.medium?.styleLess).toBe("color: green;");
+    expect(
+      warnings.some((w) => w.includes("hover") && w.includes("not supported in Webflow's class editor"))
+    ).toBe(true);
+  });
+
   it("aggregates F012/F014 selector and unsupported-@media warnings into the same warnings list", () => {
     // AS-042: descendant selector rejected. AS-043: id selector rejected.
     const cssMap = parseCss(`
