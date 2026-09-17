@@ -22,6 +22,7 @@ import {
 import { ConverterEditor, useEditorPersistence } from "./converter-editor"
 import { ConverterHelp } from "./converter-help"
 import { ConverterPreview } from "./converter-preview"
+import { ConverterResults } from "./converter-results"
 
 export function ConverterPage() {
   const [html, setHtml] = React.useState("")
@@ -102,12 +103,6 @@ export function ConverterPage() {
           ) : null}
         </div>
 
-        {result && !result.ok ? (
-          <p role="alert" className="text-sm text-destructive">
-            {result.message}
-          </p>
-        ) : null}
-
         {result && result.ok ? (
           <p className="font-mono text-sm text-muted-foreground">
             ✓ {result.stats?.nodeCount ?? 0} elements ·{" "}
@@ -115,6 +110,8 @@ export function ConverterPage() {
             {Math.round(((result.json?.length ?? 0) / 1024) * 10) / 10} KB
           </p>
         ) : null}
+
+        <ConverterResults result={result} />
 
         {/* F033-F036 will use result here */}
         {result && (
