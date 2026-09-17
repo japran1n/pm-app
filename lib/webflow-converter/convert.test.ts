@@ -34,10 +34,9 @@ describe("convert", () => {
     expect(result.payload!.payload.nodes).toEqual([]);
     expect(result.payload!.payload.styles).toEqual([]);
     expect(result.customCode.scripts).toEqual([]);
-    expect(result.customCode.styles).toEqual([]);
   });
 
-  it("extracts scripts and styles from inline blocks (AS-120-adjacent custom code plumbing)", () => {
+  it("extracts scripts from inline blocks, and merges inline <style> CSS into the style model rather than custom code (AS-089)", () => {
     const html = `
       <div class="box"></div>
       <style>.box { color: blue; }</style>
@@ -49,6 +48,40 @@ describe("convert", () => {
     expect(result.customCode.scripts).toEqual(["console.log('hi');"]);
     expect(result.errors).toEqual([]);
     expect(result.payload).not.toBeNull();
+    expect((result.customCode as { styles?: unknown }).styles).toBeUndefined();
+    const boxStyle = result.payload!.payload.styles.find((s) => s.name === "box");
+    expect(boxStyle).toBeDefined();
+    expect(boxStyle!.styleLess).toContain("color: blue");
+  });
+
+  it("AS-089: merges an inline <style> block into the style model when no css argument is passed", () => {
+    const html = `<style>.inline-only{color:red}</style><div class="inline-only"></div>`;
+
+    const result = convert(html, "");
+
+    expect(result.errors).toEqual([]);
+    const style = result.payload!.payload.styles.find((s) => s.name === "inline-only");
+    expect(style).toBeDefined();
+    expect(style!.styleLess).toContain("color: red");
+  });
+
+  it("AS-089: combines a css argument AND inline <style> blocks — both resolve into styles", () => {
+    const html = `<style>.from-inline{color:red}</style><div class="from-arg from-inline"></div>`;
+    const css = `.from-arg{display:block}`;
+
+    const result = convert(html, css);
+
+    expect(result.errors).toEqual([]);
+    const styleNames = result.payload!.payload.styles.map((s) => s.name);
+    expect(styleNames).toContain("from-arg");
+    expect(styleNames).toContain("from-inline");
+  });
+
+  it("AS-051: warns for a CSS class that is defined but never referenced by any node", () => {
+    const result = convert(`<div class="used"></div>`, `.used{color:red} .unused{display:block}`);
+
+    expect(result.warnings.some((w) => w.includes('CSS class "unused" is defined but not used'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('CSS class "used" is defined but not used'))).toBe(false);
   });
 
   it("uses extractStyles via convertFromSource for self-contained HTML documents", () => {

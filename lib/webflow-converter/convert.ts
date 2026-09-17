@@ -19,7 +19,6 @@ export interface ConvertResult {
   errors: string[];
   customCode: {
     scripts: string[];
-    styles: string[];
   };
 }
 
@@ -27,38 +26,54 @@ export interface ConvertResult {
  * Converts an HTML fragment plus a CSS stylesheet's text into a Webflow
  * clipboard payload, running CSS parsing, node/style assembly, custom-code
  * extraction, and validation. Never throws for expected-bad input.
+ *
+ * Inline <style> blocks found in `html` are merged into the CSS parsed
+ * alongside the `css` argument (AS-089) — Webflow has no separate slot for
+ * inline stylesheet text, so it becomes part of the style model rather than
+ * custom code.
  */
 export function convert(html: string, css: string): ConvertResult {
-  const cssResult = parseCss(css ?? "");
-  const emitResult = emitWebflow(html ?? "", cssResult);
-
   const scriptsResult = extractScripts(html ?? "");
   const stylesResult = extractStyles(html ?? "");
 
-  const warnings = Array.from(
-    new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings])
+  const fullCss = [css ?? "", ...stylesResult.styles].join("\n");
+  const cssResult = parseCss(fullCss);
+  const emitResult = emitWebflow(html ?? "", cssResult);
+
+  const warnings = new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings]);
+
+  // AS-051: warn for every CSS class that is defined but never referenced by
+  // any emitted node.
+  const usedClasses = new Set(
+    (emitResult.payload.payload.nodes ?? []).flatMap((n) => n.classes ?? [])
   );
+  for (const [cls] of cssResult.classes) {
+    if (!usedClasses.has(cls)) {
+      warnings.add(`CSS class "${cls}" is defined but not used by any HTML element`);
+    }
+  }
 
   const customCode = {
     scripts: scriptsResult.scripts,
-    styles: stylesResult.styles,
   };
 
   const validation = validatePayload(emitResult.payload.payload);
 
   if (!validation.valid) {
+    for (const w of validation.warnings) warnings.add(w);
     return {
       payload: null,
       errors: validation.errors,
-      warnings: Array.from(new Set([...warnings, ...validation.warnings])),
+      warnings: Array.from(warnings),
       customCode,
     };
   }
 
+  for (const w of validation.warnings) warnings.add(w);
   return {
     payload: emitResult.payload,
     errors: [],
-    warnings: Array.from(new Set([...warnings, ...validation.warnings])),
+    warnings: Array.from(warnings),
     customCode,
   };
 }
@@ -68,7 +83,5 @@ export function convert(html: string, css: string): ConvertResult {
  * inline <style> tags in the HTML itself, then delegates to convert().
  */
 export function convertFromSource(html: string): ConvertResult {
-  const stylesResult = extractStyles(html ?? "");
-  const css = stylesResult.styles.join("\n");
-  return convert(html ?? "", css);
+  return convert(html ?? "", "");
 }
