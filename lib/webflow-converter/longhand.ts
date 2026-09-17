@@ -249,7 +249,7 @@ function expandFont(rawValue: string): ExpandResult | null {
       out['font-weight'] = tok;
       filled.add('weight');
     } else if (/^(small-caps)$/i.test(tok) && !filled.has('variant')) {
-      out['font-variant'] = 'small-caps';
+      out['font-variant-caps'] = 'small-caps';
       filled.add('variant');
     } else if (FONT_STRETCH.has(low) && !filled.has('stretch')) {
       out['font-stretch'] = tok;

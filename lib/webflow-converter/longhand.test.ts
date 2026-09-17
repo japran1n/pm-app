@@ -1099,7 +1099,7 @@ describe('AS-065: font slash normalization, weight 1000, small-caps, and system-
 
   it('test_AS_065_small_caps_sets_font_variant', () => {
     const result = expandDeclaration('font', 'small-caps 16px Inter');
-    expect(result.decls).toMatchObject({ 'font-variant': 'small-caps' });
+    expect(result.decls).toMatchObject({ 'font-variant-caps': 'small-caps' });
   });
 
   it('test_AS_065_system_font_keyword_is_dropped_with_warning', () => {
@@ -1151,6 +1151,18 @@ describe('AS-069: expandDeclaration dispatches to the correct expander by proper
 
   it('test_AS_069_prop_matching_is_case_insensitive_and_trims_whitespace', () => {
     expect(expandDeclaration(' MARGIN ', '1px').decls).toHaveProperty('margin-top');
+  });
+
+  it('font expander with small-caps emits only longhand keys (no font-variant shorthand)', () => {
+    const result = expandDeclaration('font', 'small-caps 16px Arial')
+    // font-variant is a shorthand — must not appear in output
+    expect(result.decls['font-variant']).toBeUndefined()
+    // font-variant-caps is the correct longhand
+    expect(result.decls['font-variant-caps']).toBe('small-caps')
+    // All emitted keys must be non-shorthands
+    for (const key of Object.keys(result.decls)) {
+      expect(isShorthand(key)).toBe(false)
+    }
   });
 });
 

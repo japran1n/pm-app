@@ -379,7 +379,7 @@ describe("AS-135: end-to-end pass-through regression via parseCss", () => {
     expect(hero.base["min-height"]).toBe("50vh");
     expect(hero.base["box-shadow"]).toBe("0 2px 4px rgba(0,0,0,.2)");
     expect(hero.base["color"]).toBe("#333");
-    expect(result.warnings.filter((w) => w.includes("is not a recognized")).length).toBe(0);
+    expect(result.warnings).toHaveLength(0);
   });
 });
 
