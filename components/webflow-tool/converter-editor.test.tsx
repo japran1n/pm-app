@@ -161,7 +161,7 @@ describe("ConverterEditor (F025)", () => {
   // styles/customCode is owned by F031 (see
   // lib/webflow-converter/convert.test.ts and any ConverterPage wiring
   // tests), not by this component, so these tests do not call convert().
-  it("test_AS_015_inline_style_in_html_not_stripped", () => {
+  it("test_AS_015_html_tab_passes_inline_style_unchanged_to_onHtmlChange", () => {
     const { onHtmlChange } = renderEditor()
 
     const textarea = screen.getByLabelText(/html editor/i)
@@ -173,7 +173,7 @@ describe("ConverterEditor (F025)", () => {
     cleanup()
   })
 
-  it("test_AS_016_inline_script_in_html_not_stripped", () => {
+  it("test_AS_016_html_tab_passes_inline_script_unchanged_to_onHtmlChange", () => {
     const { onHtmlChange } = renderEditor()
 
     const textarea = screen.getByLabelText(/html editor/i)
