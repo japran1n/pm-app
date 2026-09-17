@@ -8,7 +8,7 @@
 // warnings/errors on the returned result.
 
 import { parseCss } from "./css";
-import { emitWebflow, type XscpData } from "./emit";
+import { emitWebflow, type XscpData, type XscpPayload } from "./emit";
 import { extractScripts, extractStyles } from "./js-extract";
 import { validatePayload } from "./validator";
 
@@ -57,7 +57,10 @@ export function convert(html: string, css: string): ConvertResult {
     scripts: scriptsResult.scripts,
   };
 
-  const validation = validatePayload(emitResult.payload.payload);
+  const validation = validatePayload({
+    ...emitResult.payload.payload,
+    type: emitResult.payload.type,
+  } as XscpPayload);
 
   if (!validation.valid) {
     for (const w of validation.warnings) warnings.add(w);
