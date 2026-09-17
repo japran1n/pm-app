@@ -189,22 +189,78 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(comboAB.children).toContain(comboABC._id);
   });
 
-  it("AS-117: combo class with undefined base emits a warning and is not emitted as its own combo entry", () => {
-    // .a.b.c defined without .a.b ever being defined in CSS: base can't be
-    // found, so buildStyles() skips the unparented combo entirely instead of
-    // emitting it with comb:"" (which would make it bind like a standalone
-    // class). Since the node still carries class "c" (as part of "a b c"),
-    // the AS-114 stub pass then emits a plain stub style for it — same as
-    // any other class with no matching CSS rule.
+  it("AS-117: combo class with missing intermediate base gets a synthesized stub instead of being dropped", () => {
+    // .a.b.c defined without .a.b ever being defined in CSS: the immediate
+    // base "a.b" has no style of its own, but its own base "a" does — so
+    // buildStyles() synthesizes an empty stub for "a.b" and chains .a.b.c
+    // onto it, instead of dropping .a.b.c's real declarations entirely.
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: yellow; }");
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
-    const comboABC = payload.payload.styles.find((s) => s.name === "c");
+
+    const a = payload.payload.styles.find((s) => s.name === "a" && s.comb === "")!;
+    const stubAB = payload.payload.styles.find((s) => s.name === "b" && s.comb !== "")!;
+    const comboABC = payload.payload.styles.find((s) => s.name === "c")!;
+
+    expect(a).toBeDefined();
+    expect(stubAB).toBeDefined();
+    expect(stubAB.styleLess).toBe("");
+    expect(stubAB.comb).toBe(a._id);
 
     expect(comboABC).toBeDefined();
-    expect(comboABC!.styleLess).toBe("");
-    expect(comboABC!.comb).toBe("");
+    expect(comboABC.styleLess).toBe("color: yellow;");
+    expect(comboABC.comb).toBe(stubAB._id);
+
+    // Every comb reference resolves to an id that actually exists in styles.
+    const ids = new Set(payload.payload.styles.map((s) => s._id));
+    for (const s of payload.payload.styles) {
+      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+    }
+
+    expect(warnings.some((w) => w.includes("has no style definition"))).toBe(false);
+  });
+
+  it("test_AS_117_missing_intermediate_synthesized_no_null_payload_no_errors", () => {
+    // .a{} .a.b.c{} + <div class="a b c"> — combo content must survive and
+    // the payload must not be null.
+    const cssMap = parseCss(".a { color: red; } .a.b.c { color: blue; }");
+    const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
+    expect(payload).not.toBeNull();
+    expect(warnings.some((w) => w.includes("has no style definition"))).toBe(false);
+    const comboABC = payload.payload.styles.find((s) => s.name === "c" && s.styleLess === "color: blue;");
+    expect(comboABC).toBeDefined();
+  });
+
+  it("test_AS_117_four_level_combo_chain_every_comb_resolves_to_an_existing_style", () => {
+    // .a{} .a.b.c{} .a.b.c.d{} — "a.b" is a stale/missing intermediate: it
+    // must be synthesized so that .a.b.c.d's chain through .a.b.c stays
+    // valid, and no comb reference dangles.
+    const cssMap = parseCss(".a { color: red; } .a.b.c { color: green; } .a.b.c.d { color: blue; }");
+    const { payload, warnings } = emitWebflow('<div class="a b c d"></div>', cssMap);
+
+    expect(payload).not.toBeNull();
+    const ids = new Set(payload.payload.styles.map((s) => s._id));
+    for (const s of payload.payload.styles) {
+      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+    }
+    expect(warnings.some((w) => w.includes("references unknown base"))).toBe(false);
+    expect(warnings.some((w) => w.includes("has no style definition"))).toBe(false);
+
+    const comboD = payload.payload.styles.find((s) => s.name === "d")!;
+    const comboC = payload.payload.styles.find((s) => s.name === "c" && s.styleLess === "color: green;")!;
+    expect(comboD.comb).toBe(comboC._id);
+  });
+
+  it("test_AS_117_truly_broken_three_level_chain_gracefully_skips_with_warning_not_null_payload", () => {
+    // .a.b.c.d{} defined alone — none of .a, .a.b, or .a.b.c ever exist as
+    // CSS rules, and the immediate base "a.b.c" has no grandparent "a.b"
+    // registered either, so synthesis is not attempted for this deepest
+    // level: buildStyles() falls back to warn-and-skip. The payload must
+    // still be non-null (AS-114 stub picks up the leftover class).
+    const cssMap = parseCss(".a.b.c.d { color: yellow; }");
+    const { payload, warnings } = emitWebflow('<div class="a b c d"></div>', cssMap);
+
+    expect(payload).not.toBeNull();
     expect(warnings.some((w) => w.includes("has no style definition"))).toBe(true);
-    expect(warnings.some((w) => w.includes('base "a.b"'))).toBe(true);
   });
 
   it("test_AS_117_two_level_combo_chain_still_resolves_correctly", () => {

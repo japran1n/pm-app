@@ -17,6 +17,20 @@ describe("convert", () => {
     expect(result.payload!.payload.styles.length).toBeGreaterThan(0);
   });
 
+  it("AS-117: missing intermediate combo link (.a{} .a.b.c{}) is repaired, not dropped — non-null payload with no errors", () => {
+    const html = `<div class="a b c"></div>`;
+    const css = `.a { color: red; } .a.b.c { color: blue; }`;
+
+    const result = convert(html, css);
+
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
+    const ids = new Set(result.payload!.payload.styles.map((s) => s._id));
+    for (const s of result.payload!.payload.styles) {
+      if (s.comb) expect(ids.has(s.comb)).toBe(true);
+    }
+  });
+
   it("converts class-free HTML only (no CSS) into a valid payload", () => {
     const html = `<div><p>Text</p></div>`;
 

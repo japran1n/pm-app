@@ -114,11 +114,13 @@ function toStyleLess(decls: Record<string, string>): string {
 /** Converts css.ts's parseCss() output into Webflow's WebflowStyle array. */
 export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []): WebflowStyle[] {
   const styles: WebflowStyle[] = [];
+  // Ids are assigned lazily, only when a style is actually pushed to
+  // `styles` (real style or synthesized stub). Pre-registering ids for
+  // every key up front (the old behavior) left stale entries in this map
+  // for combos that ended up skipped — a deeper combo could then resolve
+  // `comb` to an id that was never emitted, producing a dangling reference
+  // the validator rejects (AS-117 blocker B1).
   const idByKey = new Map<string, string>();
-
-  for (const key of cssResult.order) {
-    idByKey.set(key, makeId());
-  }
 
   for (const key of cssResult.order) {
     const rec: ParsedClass = cssResult.classes.get(key)!;
@@ -170,8 +172,43 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
     let comb = "";
     if (rec.comboOf && rec.comboOf.length > 0) {
       const baseKey = rec.comboOf.join("|");
-      const baseId = idByKey.get(baseKey);
-      if (baseId) {
+      let baseId = idByKey.get(baseKey);
+
+      if (baseId === undefined) {
+        // The immediate base never got a style pushed for it (e.g. `.a.b`
+        // has no CSS rule of its own, only `.a` and `.a.b.c` do). Rather
+        // than dropping this combo — which would also orphan any deeper
+        // combo chained off it — synthesize an empty stub style for the
+        // missing intermediate so the chain stays valid end to end.
+        //
+        // Only attempt one level of synthesis: the stub's own base (the
+        // "grandparent") must already have a real or previously-synthesized
+        // style. If that's also missing, the chain is genuinely broken —
+        // fall back to the warn-and-skip behavior instead of synthesizing
+        // an unbounded run of stubs.
+        const grandComboOf = rec.comboOf.slice(0, -1);
+        const grandBaseId = grandComboOf.length > 0 ? idByKey.get(grandComboOf.join("|")) : undefined;
+        const canSynthesize = grandComboOf.length === 0 || grandBaseId !== undefined;
+
+        if (canSynthesize) {
+          const stubId = makeId();
+          styles.push({
+            _id: stubId,
+            name: rec.comboOf[rec.comboOf.length - 1],
+            fake: false,
+            comb: grandBaseId ?? "",
+            namespace: "",
+            categories: [],
+            styleLess: "",
+            variants: {},
+            children: [],
+          });
+          idByKey.set(baseKey, stubId);
+          baseId = stubId;
+        }
+      }
+
+      if (baseId !== undefined) {
         comb = baseId;
       } else {
         warnings.push(
@@ -179,12 +216,18 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
         );
         // Skip this style entirely — emitting with comb:"" would make it
         // look like a standalone style whose declarations bind incorrectly.
+        // Do not leave a stale id registered for this key: a deeper combo
+        // chained off it must not be able to resolve `comb` to a style
+        // that was never pushed.
+        idByKey.delete(key);
         continue;
       }
     }
 
+    const id = makeId();
+    idByKey.set(key, id);
     styles.push({
-      _id: idByKey.get(key)!,
+      _id: id,
       name: rec.name,
       fake: false,
       comb,
