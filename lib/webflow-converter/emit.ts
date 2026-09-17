@@ -153,15 +153,30 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
       }
     }
 
-    // The immediate ancestor in the class chain (the last entry in comboOf)
-    // is this combo's base style; comb stores that base's _id.
-    const immediateBase = rec.comboOf && rec.comboOf.length > 0 ? rec.comboOf[rec.comboOf.length - 1] : null;
+    // The immediate ancestor in the class chain is this combo's base style;
+    // comb stores that base's _id. css.ts keys combos with a pipe-joined
+    // composite of the full chain (e.g. ".a.b" -> "a|b"), so the base for
+    // ".a.b.c" (comboOf === ["a", "b"]) must be looked up by "a|b", not by
+    // the bare last class name — otherwise it resolves to the standalone
+    // ".b" style instead of the ".a.b" combo.
+    let comb = "";
+    if (rec.comboOf && rec.comboOf.length > 0) {
+      const baseKey = rec.comboOf.join("|");
+      const baseId = idByKey.get(baseKey);
+      if (baseId) {
+        comb = baseId;
+      } else {
+        warnings.push(
+          `combo class "${rec.name}" references base "${rec.comboOf.join(".")}" which has no style definition — combo parentage skipped`
+        );
+      }
+    }
 
     styles.push({
       _id: idByKey.get(key)!,
       name: rec.name,
       fake: false,
-      comb: immediateBase ? (idByKey.get(immediateBase) ?? "") : "",
+      comb,
       namespace: "",
       categories: [],
       styleLess: toStyleLess(rec.base),

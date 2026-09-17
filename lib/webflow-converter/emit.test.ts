@@ -139,6 +139,49 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(base.children).toContain(combo._id);
   });
 
+  it("test_AS_117_three_level_combo_chain_resolves_parent_to_composite_base_not_standalone", () => {
+    // .a.b.c must attach to the .a.b combo (composite key "a|b"), not to the
+    // standalone .b style — regression guard for the bare-name lookup bug.
+    const cssMap = parseCss(
+      ".a { color: red; } .b { color: green; } .a.b { color: blue; } .a.b.c { color: yellow; }"
+    );
+    const { payload } = emitWebflow('<div class="a b c"></div>', cssMap);
+    const standaloneB = payload.payload.styles.find((s) => s.name === "b" && s.comb === "")!;
+    const comboAB = payload.payload.styles.find((s) => s.name === "b" && s.comb !== "")!;
+    const comboABC = payload.payload.styles.find((s) => s.name === "c" && s.comb !== "")!;
+
+    expect(standaloneB).toBeDefined();
+    expect(comboAB).toBeDefined();
+    expect(comboABC).toBeDefined();
+
+    // .a.b.c's parent must be the .a.b combo, never the standalone .b.
+    expect(comboABC.comb).toBe(comboAB._id);
+    expect(comboABC.comb).not.toBe(standaloneB._id);
+    expect(comboAB.children).toContain(comboABC._id);
+  });
+
+  it("test_AS_117_combo_with_missing_base_emits_warning_and_has_no_comb", () => {
+    // .a.b.c defined without .a.b ever being defined in CSS: base can't be
+    // found, so a warning is emitted instead of silently falling back.
+    const cssMap = parseCss(".a { color: red; } .a.b.c { color: yellow; }");
+    const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
+    const comboABC = payload.payload.styles.find((s) => s.name === "c")!;
+
+    expect(comboABC).toBeDefined();
+    expect(comboABC.comb).toBe("");
+    expect(warnings.some((w) => w.includes("has no style definition"))).toBe(true);
+    expect(warnings.some((w) => w.includes('base "a.b"'))).toBe(true);
+  });
+
+  it("test_AS_117_two_level_combo_chain_still_resolves_correctly", () => {
+    const cssMap = parseCss(".card { color: red; } .card.is-featured { color: blue; }");
+    const { payload } = emitWebflow('<div class="card is-featured"></div>', cssMap);
+    const base = payload.payload.styles.find((s) => s.name === "card" && s.comb === "")!;
+    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb !== "")!;
+    expect(combo.comb).toBe(base._id);
+    expect(base.children).toContain(combo._id);
+  });
+
   it("test_AS_041_hover_pseudo_state_variant_maps_onto_webflow_hover_slot", () => {
     const cssMap = parseCss(".btn { color: red; } .btn:hover { color: blue; }");
     const { payload } = emitWebflow('<a class="btn"></a>', cssMap);
