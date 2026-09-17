@@ -40,16 +40,39 @@ export function ConverterPage() {
 
   const isEmpty = html.trim() === ""
 
+  // F090 (AS-025): in-flight guard prevents rapid double-submission (both
+  // keyboard shortcut and button click check this ref, not just `loading`
+  // state, since `loading` can be a stale closure snapshot).
+  const inFlight = React.useRef(false)
+  // F090: request-sequence token discards stale/out-of-order responses.
+  const seqRef = React.useRef(0)
+  const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+
   const handleConvert = React.useCallback(async () => {
-    if (html.trim() === "" || loading) return
+    if (html.trim() === "" || inFlight.current) return
+    inFlight.current = true
+    const seq = ++seqRef.current
     setLoading(true)
     try {
       const next = await convertHtmlToWebflow({ html, css, js })
+      if (seqRef.current !== seq) return
       setResult(next)
+    } catch {
+      if (seqRef.current !== seq) return
+      setResult({
+        ok: false,
+        message: "Conversion failed — please try again.",
+        warnings: [],
+        errors: [],
+      })
+      setCopyStatus("idle")
     } finally {
+      inFlight.current = false
       setLoading(false)
     }
-  }, [html, css, js, loading])
+  }, [html, css, js])
 
   function handleCopyWebflow() {
     if (!result?.ok || !result.json) return
@@ -58,13 +81,21 @@ export function ConverterPage() {
       { mimeType: "text/plain", data: result.json },
     ])
     setCopyStatus(ok ? "success" : "error")
-    setTimeout(() => setCopyStatus("idle"), 3000)
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    copyTimeoutRef.current = setTimeout(() => setCopyStatus("idle"), 3000)
   }
+
+  React.useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    }
+  }, [])
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
         event.preventDefault()
+        if (inFlight.current) return
         void handleConvert()
       }
     }
@@ -106,7 +137,7 @@ export function ConverterPage() {
             onClick={() => void handleConvert()}
             disabled={isEmpty || loading}
             title={isEmpty ? "Paste some HTML first." : undefined}
-            aria-label="Convert"
+            aria-busy={loading}
           >
             {loading ? "Converting…" : "Convert"}
             <span className="text-xs opacity-70">⌘⏎</span>
@@ -115,7 +146,7 @@ export function ConverterPage() {
             type="button"
             variant="secondary"
             onClick={handleCopyWebflow}
-            disabled={!result?.ok}
+            disabled={!(result?.ok && (result?.errors?.length ?? 0) === 0)}
             aria-label="Copy for Webflow"
           >
             {copyStatus === "success"
@@ -131,11 +162,25 @@ export function ConverterPage() {
           ) : null}
         </div>
 
+        {copyStatus === "success" ? (
+          <p
+            role="status"
+            className="text-xs text-muted-foreground"
+          >
+            Open the Webflow Designer, click on the canvas to focus it, then
+            press Cmd/Ctrl+V to paste.
+          </p>
+        ) : null}
+
         {result && result.ok ? (
           <p className="font-mono text-sm text-muted-foreground">
             ✓ {result.stats?.nodeCount ?? 0} elements ·{" "}
             {result.stats?.styleCount ?? 0} classes ·{" "}
-            {Math.round(((result.json?.length ?? 0) / 1024) * 10) / 10} KB
+            {(() => {
+              const bytes = new TextEncoder().encode(result.json ?? "").length
+              if (bytes > 0 && bytes < 1024) return "< 1 KB"
+              return `${Math.round((bytes / 1024) * 10) / 10} KB`
+            })()}
           </p>
         ) : null}
 

@@ -119,9 +119,16 @@ describe("ConverterPage (F029)", () => {
   })
 
   it("test_AS_026_shows_stats_on_success", async () => {
+    // Fixture includes a multibyte character ("€" = 3 UTF-8 bytes, 1 UTF-16
+    // code unit) so the assertion only passes if the byte count is computed
+    // via TextEncoder rather than `.length`.
+    const fixture = JSON.stringify({ a: "€".repeat(400) })
+    const expectedBytes = new TextEncoder().encode(fixture).length
+    const expectedKb = Math.round((expectedBytes / 1024) * 10) / 10
+
     mockConvert.mockResolvedValue({
       ok: true,
-      json: JSON.stringify({ a: "b".repeat(1024) }),
+      json: fixture,
       stats: { nodeCount: 3, styleCount: 2 },
     })
     render(<ConverterPage />)
@@ -132,7 +139,22 @@ describe("ConverterPage (F029)", () => {
 
     await waitFor(() => expect(screen.getByText(/3 elements/i)).toBeInTheDocument())
     expect(screen.getByText(/2 classes/i)).toBeInTheDocument()
-    expect(screen.getByText(/KB/)).toBeInTheDocument()
+    expect(screen.getByText(`${expectedKb} KB`, { exact: false })).toBeInTheDocument()
+  })
+
+  it("test_AS_026_shows_less_than_1kb_for_small_payloads", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    expect(await screen.findByText(/< 1 KB/)).toBeInTheDocument()
   })
 
   it("test_AS_028_shows_error_on_failure", async () => {
@@ -156,6 +178,24 @@ describe("ConverterPage (F029)", () => {
     fireEvent.keyDown(window, { key: "Enter", metaKey: true })
 
     await waitFor(() => expect(mockConvert).toHaveBeenCalled())
+  })
+
+  it("test_AS_119_copy_button_disabled_when_ok_but_has_errors", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+      errors: ["Something went wrong."],
+    })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /copy for webflow/i })).toBeDisabled(),
+    )
   })
 
   it("test_AS_033_copy_for_webflow_button_renders", () => {
@@ -248,6 +288,98 @@ describe("ConverterPage (F029)", () => {
 
     expect(
       await screen.findByText(/copy failed — try again/i),
+    ).toBeInTheDocument()
+  })
+
+  it("test_AS_033_paste_instruction_shown_on_success", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    mockWriteToClipboard.mockReturnValue(true)
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+    fireEvent.click(copyButton)
+
+    const status = await screen.findByRole("status")
+    expect(status.textContent).toMatch(/designer/i)
+    expect(status.textContent).toMatch(/paste/i)
+  })
+
+  it("test_AS_033_paste_instruction_absent_before_copy_and_on_copy_failure", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+
+    // Before copying, the instruction is absent.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+
+    // On a failed copy, the instruction remains absent.
+    mockWriteToClipboard.mockReturnValue(false)
+    fireEvent.click(copyButton)
+    await screen.findByText(/copy failed — try again/i)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("test_AS_025_rapid_double_shortcut_fires_one_request", async () => {
+    let resolvePromise: (value: unknown) => void = () => {}
+    mockConvert.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePromise = resolve
+      }),
+    )
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true })
+    fireEvent.keyDown(window, { key: "Enter", metaKey: true })
+
+    await waitFor(() => expect(mockConvert).toHaveBeenCalledTimes(1))
+
+    resolvePromise({ ok: true, json: "{}", stats: { nodeCount: 1, styleCount: 1 } })
+    await waitFor(() => expect(screen.queryByText(/converting/i)).not.toBeInTheDocument())
+    expect(mockConvert).toHaveBeenCalledTimes(1)
+  })
+
+  it("test_server_action_rejection_shows_error", async () => {
+    mockConvert.mockRejectedValue(new Error("boom"))
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    expect(
+      await screen.findByText(/conversion failed — please try again/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /copy for webflow/i }),
+    ).toBeDisabled()
+  })
+
+  it("test_AS_033_converter_verify_box_renders_on_page", () => {
+    render(<ConverterPage />)
+    expect(
+      screen.getByRole("textbox", { name: /paste here to verify clipboard/i }),
     ).toBeInTheDocument()
   })
 })
