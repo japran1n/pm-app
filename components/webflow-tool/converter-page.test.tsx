@@ -42,4 +42,19 @@ describe("ConverterPage (F029)", () => {
 
     expect(iframe.srcdoc).toContain("<p>hello world</p>")
   })
+
+  it("test_AS_022_no_viewport_preset_controls", () => {
+    render(<ConverterPage />)
+
+    // No preset buttons/controls for switching viewport size are rendered.
+    // (The collapsed "How this works" help section documents breakpoint
+    // pixel values as reference text, which is not a viewport control, so
+    // it is deliberately excluded from this check.)
+    expect(
+      screen.queryAllByRole("button", { name: /desktop|tablet|mobile|991|767|479/i }),
+    ).toHaveLength(0)
+    expect(
+      screen.queryAllByRole("tab", { name: /desktop|tablet|mobile|991|767|479/i }),
+    ).toHaveLength(0)
+  })
 })

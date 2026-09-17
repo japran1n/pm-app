@@ -8,7 +8,6 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
 
 import { ConverterEditor } from "./converter-editor"
-import { convert } from "@/lib/webflow-converter/convert"
 
 function renderEditor(overrides: Partial<React.ComponentProps<typeof ConverterEditor>> = {}) {
   const onHtmlChange = vi.fn()
@@ -155,14 +154,14 @@ describe("ConverterEditor (F025)", () => {
     cleanup()
   })
 
-  // F028 (AS-015, AS-016): verify that HTML typed into the HTML tab of this
-  // editor — with no separate CSS/JS tab content — is picked up end-to-end
-  // by convert(). Engine-level coverage for inline <style>/<script> already
-  // exists in lib/webflow-converter/convert.test.ts (see e.g. "AS-089:
-  // merges an inline <style> block..." and the "AS-101 — script passthrough"
-  // describe block); these tests confirm the same HTML-tab-only content the
-  // editor produces is what convert() consumes.
-  it("test_AS_015_inline_style_in_html_tab_is_picked_up_without_css_tab", () => {
+  // F028 (AS-015, AS-016): this component's own responsibility is to not
+  // strip or mangle inline <style>/<script> content typed into the HTML
+  // tab — it just passes the full string through via onHtmlChange. Whether
+  // that string is later fed into convert() and produces the expected
+  // styles/customCode is owned by F031 (see
+  // lib/webflow-converter/convert.test.ts and any ConverterPage wiring
+  // tests), not by this component, so these tests do not call convert().
+  it("test_AS_015_inline_style_in_html_not_stripped", () => {
     const { onHtmlChange } = renderEditor()
 
     const textarea = screen.getByLabelText(/html editor/i)
@@ -171,32 +170,17 @@ describe("ConverterEditor (F025)", () => {
 
     expect(onHtmlChange).toHaveBeenCalledWith(html)
 
-    // Simulate what the parent does with the updated html value: convert()
-    // is called with an empty CSS tab, confirming the inline <style> block
-    // is picked up without needing the CSS tab.
-    const result = convert(html, "")
-    expect(result.payload).not.toBeNull()
-    const style = result.payload!.payload.styles.find((s) => s.name === "box")
-    expect(style?.styleLess).toContain("color: red")
-
     cleanup()
   })
 
-  it("test_AS_016_inline_script_in_html_tab_appears_in_customCode_scripts_without_js_tab", () => {
+  it("test_AS_016_inline_script_in_html_not_stripped", () => {
     const { onHtmlChange } = renderEditor()
 
     const textarea = screen.getByLabelText(/html editor/i)
-    const html = '<script>console.log("hi")</script><div>test</div>'
+    const html = '<script>alert(1)</script><div>test</div>'
     fireEvent.change(textarea, { target: { value: html } })
 
     expect(onHtmlChange).toHaveBeenCalledWith(html)
-
-    // Simulate what the parent does with the updated html value: convert()
-    // is called with an empty JS tab, confirming the inline <script> is
-    // picked up without needing the JS tab.
-    const result = convert(html, "")
-    expect(result.customCode.scripts).toHaveLength(1)
-    expect(result.customCode.scripts[0]).toContain("console.log")
 
     cleanup()
   })

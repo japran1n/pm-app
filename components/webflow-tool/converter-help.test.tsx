@@ -42,9 +42,9 @@ describe("ConverterHelp (F030)", () => {
     expect(screen.getByText(/991px/)).toBeVisible()
     expect(screen.getByText(/767px/)).toBeVisible()
     expect(screen.getByText(/479px/)).toBeVisible()
-    expect(screen.getByText(/1280px/)).toBeVisible()
     expect(screen.getByText(/1440px/)).toBeVisible()
     expect(screen.getByText(/1920px/)).toBeVisible()
+    expect(screen.getByText(/2560px/)).toBeVisible()
 
     cleanup()
   })

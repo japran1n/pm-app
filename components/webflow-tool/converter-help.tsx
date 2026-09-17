@@ -40,13 +40,13 @@ export function ConverterHelp() {
               Portrait (tiny)
             </li>
             <li>
-              <code className="font-mono">min-width: 1280px</code> → Large
+              <code className="font-mono">min-width: 1440px</code> → Large
             </li>
             <li>
-              <code className="font-mono">min-width: 1440px</code> → XL
+              <code className="font-mono">min-width: 1920px</code> → XL
             </li>
             <li>
-              <code className="font-mono">min-width: 1920px</code> → XXL
+              <code className="font-mono">min-width: 2560px</code> → XXL
             </li>
           </ul>
           <p>Other breakpoint values are not converted.</p>
@@ -58,9 +58,9 @@ export function ConverterHelp() {
           </p>
           <p>
             <code className="font-mono">&lt;img&gt;</code> elements become
-            plain Webflow blocks with no <code className="font-mono">src</code>
-            . Swap in the real image from Webflow&apos;s Assets panel after
-            pasting.
+            empty Webflow <code className="font-mono">Image</code> blocks
+            with no <code className="font-mono">src</code>. Add the real
+            source from Webflow&apos;s Assets panel after pasting.
           </p>
         </div>
       </div>
