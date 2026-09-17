@@ -147,14 +147,18 @@ export function parseCss(cssText: string): ParseCssResult {
         const key = computeVariantKey(breakpoint, state);
         const bucket = key === null ? rec.base : (rec.variants[key] ??= {});
 
-        node.walkDecls((decl) => {
-          const { decls, warning } = expandDeclaration(decl.prop, decl.value);
-          if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
-          if (decl.important) {
-            warnings.push(`.${chain.join(".")}: "!important" on ${decl.prop} was dropped`);
+        for (const child of node.nodes ?? []) {
+          if (child.type === "decl") {
+            const { decls, warning } = expandDeclaration(child.prop, child.value);
+            if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
+            if (child.important) {
+              warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
+            }
+            Object.assign(bucket, decls);
+          } else if (child.type === "rule") {
+            warnings.push(`.${chain.join(".")}: nested CSS rules are not supported`);
           }
-          Object.assign(bucket, decls);
-        });
+        }
       }
     });
   };
