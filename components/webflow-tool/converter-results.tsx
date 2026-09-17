@@ -10,6 +10,7 @@
 import * as React from "react"
 
 import type { ConvertActionResult } from "@/lib/actions/webflow-converter"
+import { writeToClipboard } from "@/lib/webflow-converter-client/clipboard"
 
 export interface ConverterResultsProps {
   result: ConvertActionResult | null
@@ -17,8 +18,11 @@ export interface ConverterResultsProps {
 
 const WARNING_PREVIEW_COUNT = 3
 
+type CopyStatus = "idle" | "success" | "error"
+
 export function ConverterResults({ result }: ConverterResultsProps) {
   const [showAllWarnings, setShowAllWarnings] = React.useState(false)
+  const [copyStatus, setCopyStatus] = React.useState<CopyStatus>("idle")
 
   if (!result) return null
 
@@ -28,6 +32,15 @@ export function ConverterResults({ result }: ConverterResultsProps) {
     ? warnings
     : warnings.slice(0, WARNING_PREVIEW_COUNT)
   const hiddenWarningCount = warnings.length - visibleWarnings.length
+
+  const customCode = result.ok ? (result.js?.join("\n\n") ?? "") : ""
+  const hasCustomCode = result.ok && customCode.length > 0
+
+  function handleCopyCustomCode() {
+    const ok = writeToClipboard([{ mimeType: "text/plain", data: customCode }])
+    setCopyStatus(ok ? "success" : "error")
+    setTimeout(() => setCopyStatus("idle"), 3000)
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -59,6 +72,30 @@ export function ConverterResults({ result }: ConverterResultsProps) {
               Show {hiddenWarningCount} more
             </button>
           ) : null}
+        </div>
+      ) : null}
+
+      {hasCustomCode ? (
+        <div data-testid="converter-custom-code" className="flex flex-col gap-2">
+          <label
+            htmlFor="converter-custom-code-pre"
+            className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+          >
+            Paste into Webflow → Page Settings → Before &lt;/body&gt;
+          </label>
+          <pre
+            id="converter-custom-code-pre"
+            className="max-h-64 overflow-auto rounded-md border bg-muted/50 p-3 text-xs"
+          >
+            {customCode}
+          </pre>
+          <button
+            type="button"
+            onClick={handleCopyCustomCode}
+            className="self-start rounded-md border px-3 py-1.5 text-sm font-medium"
+          >
+            {copyStatus === "success" ? "Copied!" : "Copy custom code"}
+          </button>
         </div>
       ) : null}
     </div>
