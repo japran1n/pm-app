@@ -96,4 +96,61 @@ describe("ConverterEditor (F025)", () => {
 
     cleanup()
   })
+
+  it("test_AS_020_clear_all_button_renders", () => {
+    renderEditor()
+
+    expect(screen.getByRole("button", { name: /clear all/i })).toBeInTheDocument()
+
+    cleanup()
+  })
+
+  it("test_AS_020_clicking_clear_all_shows_confirm_dialog", async () => {
+    renderEditor({ html: "a", css: "b", js: "c" })
+
+    fireEvent.click(screen.getByRole("button", { name: /clear all/i }))
+
+    expect(await screen.findByText(/clear all editors\?/i)).toBeInTheDocument()
+
+    cleanup()
+  })
+
+  it("test_AS_020_confirming_clears_all_three_editors", async () => {
+    const { onHtmlChange, onCssChange, onJsChange } = renderEditor({
+      html: "a",
+      css: "b",
+      js: "c",
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /clear all/i }))
+    await screen.findByText(/clear all editors\?/i)
+
+    const confirmButtons = screen.getAllByRole("button", { name: /clear all/i })
+    fireEvent.click(confirmButtons[confirmButtons.length - 1])
+
+    expect(onHtmlChange).toHaveBeenCalledWith("")
+    expect(onCssChange).toHaveBeenCalledWith("")
+    expect(onJsChange).toHaveBeenCalledWith("")
+
+    cleanup()
+  })
+
+  it("test_AS_020_canceling_does_not_clear", async () => {
+    const { onHtmlChange, onCssChange, onJsChange } = renderEditor({
+      html: "a",
+      css: "b",
+      js: "c",
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: /clear all/i }))
+    await screen.findByText(/clear all editors\?/i)
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }))
+
+    expect(onHtmlChange).not.toHaveBeenCalled()
+    expect(onCssChange).not.toHaveBeenCalled()
+    expect(onJsChange).not.toHaveBeenCalled()
+
+    cleanup()
+  })
 })
