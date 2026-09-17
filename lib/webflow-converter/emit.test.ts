@@ -63,9 +63,16 @@ describe("emitWebflow — node walk", () => {
     const { payload } = emitWebflow(html, parseCss(""));
     const node = payload.payload.nodes[0];
     expect(node.data.xattr).toEqual([
+      { name: "id", value: "hero" },
       { name: "data-foo", value: "bar" },
       { name: "data-baz", value: "qux" },
     ]);
+  });
+
+  it("test_AS_091_id_attribute_round_trips_as_xattr_entry", () => {
+    const { payload } = emitWebflow('<section id="hero"></section>', parseCss(""));
+    const node = payload.payload.nodes[0];
+    expect(node.data.xattr).toContainEqual({ name: "id", value: "hero" });
   });
 
   it("test_AS_094_root_node_ordering_preserved", () => {
@@ -121,6 +128,25 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(style.variants.medium?.styleLess).toBe("color: blue;");
   });
 
+  it("test_AS_117_combo_class_input_produces_base_style_children_containing_combo_id", () => {
+    const cssMap = parseCss(".card { color: red; } .card.is-featured { color: blue; }");
+    const { payload } = emitWebflow('<div class="card is-featured"></div>', cssMap);
+    const base = payload.payload.styles.find((s) => s.name === "card" && s.comb === "")!;
+    const combo = payload.payload.styles.find((s) => s.name === "is-featured" && s.comb !== "")!;
+    expect(base).toBeDefined();
+    expect(combo).toBeDefined();
+    expect(combo.comb).toBe(base._id);
+    expect(base.children).toContain(combo._id);
+  });
+
+  it("test_AS_041_hover_pseudo_state_variant_maps_onto_webflow_hover_slot", () => {
+    const cssMap = parseCss(".btn { color: red; } .btn:hover { color: blue; }");
+    const { payload } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect(style.variants.hover).toBeDefined();
+    expect(style.variants.hover?.styleLess).toBe("color: blue;");
+  });
+
   it("aggregates F012/F014 selector and unsupported-@media warnings into the same warnings list", () => {
     // AS-042: descendant selector rejected. AS-043: id selector rejected.
     const cssMap = parseCss(`
@@ -140,5 +166,12 @@ describe("emitWebflowFromSource — convenience wrapper", () => {
     const { payload } = emitWebflowFromSource(html, css);
     expect(payload.payload.nodes[0].classes).toEqual(["card"]);
     expect(payload.payload.styles[0].name).toBe("card");
+  });
+});
+
+describe("emitWebflow — AS-111 XscpData envelope", () => {
+  it("test_AS_111_emitted_payload_includes_webflow_xscpdata_type", () => {
+    const { payload } = emitWebflow('<div class="card"></div>', parseCss(""));
+    expect(payload.type).toBe("@webflow/XscpData");
   });
 });

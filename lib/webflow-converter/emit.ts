@@ -29,6 +29,10 @@ export interface WebflowStyleVariants {
   large?: { styleLess: string };
   xl?: { styleLess: string };
   xxl?: { styleLess: string };
+  hover?: { styleLess: string };
+  focused?: { styleLess: string };
+  pressed?: { styleLess: string };
+  nthChild?: { styleLess: string };
 }
 
 export interface WebflowStyle {
@@ -52,6 +56,7 @@ export interface XscpPayload {
 }
 
 export interface XscpData {
+  type: "@webflow/XscpData";
   payload: XscpPayload;
 }
 
@@ -65,7 +70,18 @@ const SKIPPED_TAGS = new Set(["script", "style", "meta", "head", "link", "title"
 
 // Attributes that are handled separately and must never be duplicated into
 // data.xattr, per AS-093.
-const RESERVED_ATTRS = new Set(["class", "style", "href", "src", "alt", "id", "target"]);
+const RESERVED_ATTRS = new Set(["class", "style", "href", "src", "alt", "target"]);
+
+/** Map of supported pseudo-state parseCss variant suffixes to Webflow's variant slot key. */
+const PSEUDO_STATE_TO_WEBFLOW: Record<string, string> = {
+  hover: "hover",
+  focus: "focused",
+  pressed: "pressed",
+  active: "pressed",
+  placeholder: "nthChild",
+};
+
+const BREAKPOINT_VARIANT_KEYS = new Set(["medium", "small", "tiny", "large", "xl", "xxl"]);
 
 let idCounter = 0;
 
@@ -87,7 +103,7 @@ function toStyleLess(decls: Record<string, string>): string {
 }
 
 /** Converts css.ts's parseCss() output into Webflow's WebflowStyle array. */
-export function buildStyles(cssResult: ParseCssResult): WebflowStyle[] {
+export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []): WebflowStyle[] {
   const styles: WebflowStyle[] = [];
   const idByKey = new Map<string, string>();
 
@@ -99,27 +115,55 @@ export function buildStyles(cssResult: ParseCssResult): WebflowStyle[] {
     const rec: ParsedClass = cssResult.classes.get(key)!;
     const variants: WebflowStyleVariants = {};
     for (const variantKey of Object.keys(rec.variants)) {
-      // Only breakpoint-only variant keys (no "_state" suffix) map onto the
-      // clipboard's per-breakpoint styleLess slots; state variants (e.g.
-      // "main_hover") are out of scope for this feature's variants surface.
-      if (["medium", "small", "tiny", "large", "xl", "xxl"].includes(variantKey)) {
+      // Breakpoint-only variant keys (no "_state" suffix) map onto the
+      // clipboard's per-breakpoint styleLess slots.
+      if (BREAKPOINT_VARIANT_KEYS.has(variantKey)) {
         (variants as Record<string, { styleLess: string }>)[variantKey] = {
           styleLess: toStyleLess(rec.variants[variantKey]),
         };
+        continue;
+      }
+
+      // Pseudo-state variant keys look like "<breakpoint>_<state>" (e.g.
+      // "main_hover"). Map the recognized ones onto Webflow's state slots.
+      const underscoreIdx = variantKey.indexOf("_");
+      const state = underscoreIdx === -1 ? variantKey : variantKey.slice(underscoreIdx + 1);
+      const webflowKey = PSEUDO_STATE_TO_WEBFLOW[state];
+      if (webflowKey) {
+        (variants as Record<string, { styleLess: string }>)[webflowKey] = {
+          styleLess: toStyleLess(rec.variants[variantKey]),
+        };
+      } else {
+        warnings.push(`variant "${variantKey}" on .${rec.name} does not map to a Webflow state — skipped`);
       }
     }
+
+    // The immediate ancestor in the class chain (the last entry in comboOf)
+    // is this combo's base style; comb stores that base's _id.
+    const immediateBase = rec.comboOf && rec.comboOf.length > 0 ? rec.comboOf[rec.comboOf.length - 1] : null;
 
     styles.push({
       _id: idByKey.get(key)!,
       name: rec.name,
       fake: false,
-      comb: rec.comboOf ? rec.comboOf.join("|") : "",
+      comb: immediateBase ? (idByKey.get(immediateBase) ?? "") : "",
       namespace: "",
       categories: [],
       styleLess: toStyleLess(rec.base),
       variants,
       children: [],
     });
+  }
+
+  // Second pass: populate each base style's children with its combos' _ids.
+  for (const style of styles) {
+    if (style.comb) {
+      const base = styles.find((s) => s._id === style.comb);
+      if (base) {
+        base.children = base.children ?? [];
+        if (!base.children.includes(style._id)) base.children.push(style._id);
+      }
+    }
   }
 
   return styles;
@@ -164,6 +208,9 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   const data: Record<string, unknown> = { ...(typeInfo.data ?? {}) };
   if (typeInfo.level !== undefined) data.level = typeInfo.level;
   const xattr = buildXattr(attrs);
+  if (attrs.id) {
+    xattr.unshift({ name: "id", value: attrs.id });
+  }
   if (xattr.length > 0) data.xattr = xattr;
 
   const node: WebflowNode = {
@@ -207,10 +254,11 @@ export function emitWebflow(html: string, cssMap: ParseCssResult): EmitResult {
     if (node) nodes.push(node);
   }
 
-  const styles = buildStyles(cssMap);
+  const styles = buildStyles(cssMap, warnings);
 
   return {
     payload: {
+      type: "@webflow/XscpData",
       payload: {
         nodes,
         styles,
