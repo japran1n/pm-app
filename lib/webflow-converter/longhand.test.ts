@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandDeclaration, isShorthand, PASS_THROUGH, splitTop } from './longhand';
+import { expandDeclaration, isShorthand, isWidth, PASS_THROUGH, splitTop } from './longhand';
 // css-shorthand-properties ships no type declarations.
 const cssShorthandPropsRequire: {
   shorthandProperties?: Record<string, unknown>;
@@ -546,6 +546,57 @@ describe('AS-065: font shorthand expands style/weight/size/line-height/family', 
     expect(result.decls).toEqual({});
     expect(result.warning).toMatch(/dropped/i);
   });
+
+  it('test_AS_065_weight_without_size_keyword_is_rejected', () => {
+    const result = expandDeclaration('font', 'bold Arial');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/expected a length or size keyword/i);
+    expect(result.warning).toMatch(/'Arial'/);
+  });
+
+  it('test_AS_065_style_without_size_keyword_is_rejected', () => {
+    const result = expandDeclaration('font', 'italic Georgia');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/expected a length or size keyword/i);
+    expect(result.warning).toMatch(/'Georgia'/);
+  });
+
+  it('test_AS_065_var_reference_is_rejected_as_font_size', () => {
+    const result = expandDeclaration('font', 'var(--font)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/expected a length or size keyword/i);
+  });
+
+  it('test_AS_065_prefix_loop_is_stateful_normal_normal_sets_style_and_weight', () => {
+    expect(expandDeclaration('font', 'normal normal 14px Arial')).toEqual({
+      decls: {
+        'font-style': 'normal',
+        'font-weight': 'normal',
+        'font-size': '14px',
+        'font-family': 'Arial',
+      },
+    });
+  });
+
+  it('test_AS_065_bold_size_family_expands_correctly', () => {
+    expect(expandDeclaration('font', 'bold 14px Arial')).toEqual({
+      decls: {
+        'font-weight': 'bold',
+        'font-size': '14px',
+        'font-family': 'Arial',
+      },
+    });
+  });
+
+  it('test_AS_065_stretch_size_family_expands_correctly', () => {
+    expect(expandDeclaration('font', 'condensed 14px Arial')).toEqual({
+      decls: {
+        'font-stretch': 'condensed',
+        'font-size': '14px',
+        'font-family': 'Arial',
+      },
+    });
+  });
 });
 
 describe('AS-066: list-style shorthand expands type/position/image', () => {
@@ -948,6 +999,58 @@ describe('AS-055/AS-067: unitless zero is recognized as a width, and outline acc
     const result = expandDeclaration('outline', '2px auto -webkit-focus-ring-color');
     expect(result.decls['outline-style']).toBe('auto');
   });
+
+  it('test_AS_055_svh_width_unit_recognized', () => {
+    expect(expandDeclaration('border', '1svh solid red')).toEqual({
+      decls: {
+        'border-top-width': '1svh',
+        'border-top-style': 'solid',
+        'border-top-color': 'red',
+        'border-right-width': '1svh',
+        'border-right-style': 'solid',
+        'border-right-color': 'red',
+        'border-bottom-width': '1svh',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'red',
+        'border-left-width': '1svh',
+        'border-left-style': 'solid',
+        'border-left-color': 'red',
+      },
+    });
+  });
+
+  it('test_AS_055_cqw_width_unit_recognized', () => {
+    const result = expandDeclaration('border', '1cqw solid blue');
+    expect(result.decls['border-top-width']).toBe('1cqw');
+    expect(result.decls['border-top-style']).toBe('solid');
+    expect(result.decls['border-top-color']).toBe('blue');
+  });
+
+  it('test_AS_055_unrecognized_token_drops_whole_declaration', () => {
+    const result = expandDeclaration('border', '1px solid slid');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/unrecognized token 'slid'/);
+  });
+
+  it('test_AS_055_important_token_drops_whole_declaration', () => {
+    const result = expandDeclaration('border', 'solid !important');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/unrecognized token '!important'/);
+  });
+
+  it('test_AS_055_scientific_notation_width_recognized', () => {
+    const result = expandDeclaration('border', '1e2px solid red');
+    expect(result.decls['border-top-width']).toBe('1e2px');
+    expect(result.decls['border-top-style']).toBe('solid');
+    expect(result.decls['border-top-color']).toBe('red');
+  });
+
+  it('test_AS_056_border_color_never_contains_a_width_token', () => {
+    const result = expandDeclaration('border-color', 'red blue');
+    for (const val of Object.values(result.decls)) {
+      expect(isWidth(val)).toBe(false);
+    }
+  });
 });
 
 describe('FU-M2-16: box helper never emits undefined values', () => {
@@ -1197,6 +1300,58 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
       const { decls, warning } = expandDeclaration(prop, '1 / 3');
       expect(decls).toEqual({});
       expect(warning).toMatch(/not supported/i);
+    }
+  });
+
+  it('test_AS_069_marker_is_not_in_the_allow_list_and_is_warned_and_dropped', () => {
+    const result = expandDeclaration('marker', 'url(#m)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+  });
+
+  it('test_AS_069_position_try_is_not_in_the_allow_list_and_is_warned_and_dropped', () => {
+    const result = expandDeclaration('position-try', 'flip-block');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+  });
+
+  it('test_AS_069_color_is_on_the_allow_list_and_passes_through', () => {
+    expect(expandDeclaration('color', 'red')).toEqual({ decls: { color: 'red' } });
+  });
+
+  it('test_AS_069_display_is_on_the_allow_list_and_passes_through', () => {
+    expect(expandDeclaration('display', 'flex')).toEqual({ decls: { display: 'flex' } });
+  });
+
+  it('test_AS_069_made_up_property_is_warned_and_dropped', () => {
+    const result = expandDeclaration('some-made-up-property', 'x');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+  });
+
+  it('test_AS_069_css_shorthand_properties_vocab_sweep_never_emits_verbatim_or_leaks_unallowed_props', () => {
+    // Every property the independent css-shorthand-properties vocabulary
+    // considers a shorthand, plus marker and position-try (round-6
+    // regressions that previously escaped verbatim because they were not
+    // named in EXTRA_SHORTHANDS), must never be emitted verbatim under its
+    // own shorthand key. Properties with a dedicated expander (e.g.
+    // list-style) legitimately expand into real longhand keys, so only the
+    // shorthand's own key is checked for absence; everything else must
+    // warn-and-drop with empty decls.
+    const IMPLEMENTED = new Set([
+      'margin', 'padding', 'inset', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+      'border-width', 'border-style', 'border-color', 'border-radius', 'gap', 'grid-gap', 'overflow',
+      'place-items', 'place-content', 'place-self', 'transition', 'flex', 'flex-flow', 'outline',
+      'list-style', 'font',
+    ]);
+    for (const prop of [...Object.keys(shorthandProperties), 'marker', 'position-try']) {
+      if (PASS_THROUGH.has(prop)) continue;
+      const result = expandDeclaration(prop, 'test-value');
+      expect(Object.keys(result.decls)).not.toContain(prop);
+      if (!IMPLEMENTED.has(prop)) {
+        expect(result.decls).toEqual({});
+        expect(result.warning).toBeTruthy();
+      }
     }
   });
 

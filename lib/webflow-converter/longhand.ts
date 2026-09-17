@@ -100,13 +100,52 @@ function boxDecls(sides: readonly string[], vals: readonly (string | undefined)[
   return decls;
 }
 
-const isWidth = (t: string): boolean => {
+export const isWidth = (t: string): boolean => {
   if (t === '0') return true;
   return (
     NAMED_WIDTHS.has(t) ||
-    /^-?[\d.]+(px|em|rem|%|vw|vh|vmin|vmax|ch|ex|cm|mm|pt|pc|in|fr)$/i.test(t)
+    /^-?[\d.]+(?:e[-+]?\d+)?(px|em|rem|%|vw|vh|vmin|vmax|svh|lvh|dvh|svw|lvw|dvw|svmin|svmax|lvmin|lvmax|dvmin|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|lh|rlh|cap|ic|rcap|rex|rch|ch|ex|cm|mm|pt|pc|in|Q)$/i.test(t)
   );
 };
+
+// The standard CSS3 extended named colors (plus rebeccapurple).
+const NAMED_COLORS = new Set([
+  'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
+  'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+  'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'cyan', 'darkblue', 'darkcyan',
+  'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta',
+  'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
+  'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet', 'deeppink',
+  'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite', 'forestgreen',
+  'fuchsia', 'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray', 'green', 'greenyellow',
+  'grey', 'honeydew', 'hotpink', 'indianred', 'indigo', 'ivory', 'khaki', 'lavender',
+  'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral', 'lightcyan',
+  'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink', 'lightsalmon',
+  'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey', 'lightsteelblue',
+  'lightyellow', 'lime', 'limegreen', 'linen', 'magenta', 'maroon', 'mediumaquamarine',
+  'mediumblue', 'mediumorchid', 'mediumpurple', 'mediumseagreen', 'mediumslateblue',
+  'mediumspringgreen', 'mediumturquoise', 'mediumvioletred', 'midnightblue', 'mintcream',
+  'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace', 'olive', 'olivedrab', 'orange',
+  'orangered', 'orchid', 'palegoldenrod', 'palegreen', 'paleturquoise', 'palevioletred',
+  'papayawhip', 'peachpuff', 'peru', 'pink', 'plum', 'powderblue', 'purple', 'rebeccapurple',
+  'red', 'rosybrown', 'royalblue', 'saddlebrown', 'salmon', 'sandybrown', 'seagreen',
+  'seashell', 'sienna', 'silver', 'skyblue', 'slateblue', 'slategray', 'slategrey', 'snow',
+  'springgreen', 'steelblue', 'tan', 'teal', 'thistle', 'tomato', 'turquoise', 'violet',
+  'wheat', 'white', 'whitesmoke', 'yellow', 'yellowgreen',
+]);
+
+function isColor(token: string): boolean {
+  const t = token.toLowerCase();
+  const SPECIAL = new Set(['currentcolor', 'transparent', 'invert']);
+  if (SPECIAL.has(t)) return true;
+  if (t.startsWith('#')) return true;
+  if (/^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklch|oklab|color|light-dark)\s*\(/.test(t)) return true;
+  // Named color: known CSS keyword, not a border-style keyword, not a width keyword
+  if (NAMED_COLORS.has(t)) return true;
+  // Vendor-prefixed color keywords, e.g. -webkit-focus-ring-color
+  if (/^-[a-z]+(?:-[a-z]+)*-color$/.test(t)) return true;
+  return false;
+}
 
 interface BorderParts {
   width?: string;
@@ -135,9 +174,13 @@ function parseBorderParts(value: string, styles: Set<string> = BORDER_STYLES): B
     } else if (styles.has(low)) {
       if (style !== undefined) warnings.push(`extra style token '${token}' discarded`);
       else style = token;
-    } else {
+    } else if (isColor(low)) {
       if (color !== undefined) warnings.push(`extra color token '${token}' discarded`);
       else color = token;
+    } else {
+      // Unrecognized token
+      warnings.push(`border: unrecognized token '${token}' — declaration dropped`);
+      return { warnings };
     }
   }
   return { width, style, color, warnings };
@@ -166,8 +209,21 @@ function expandBorderRadius(value: string): ExpandResult {
 
 const SYSTEM_FONT_KEYWORDS = /^(caption|menu|status-bar|icon|message-box|small-caption)$/i;
 
+const FONT_SIZE_KEYWORDS = /^(xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger)$/i;
+const FONT_SIZE_LENGTH = /^-?[\d.]+(px|em|rem|%|vw|vh|vmin|vmax|ch|ex|cm|mm|pt|pc|in|q|svh|lvh|dvh|svw|lvw|dvw|svmin|lvmin|dvmin|svmax|lvmax|dvmax|cqw|cqh|cqi|cqb|cqmin|cqmax|fr)$/i;
+const FONT_SIZE_FUNCTION = /^(calc|clamp|min|max)\(/i;
+
+/** Is this token a valid font-size value (length, absolute/relative keyword, or calc()/clamp()/min()/max())? */
+function isValidFontSizeToken(tok: string): boolean {
+  if (tok === '0') return true;
+  if (FONT_SIZE_KEYWORDS.test(tok)) return true;
+  if (FONT_SIZE_FUNCTION.test(tok)) return true;
+  if (FONT_SIZE_LENGTH.test(tok)) return true;
+  return false;
+}
+
 function expandFont(rawValue: string): ExpandResult | null {
-  // font: [style] [weight] size[/line-height] family
+  // font: [style] [weight] [variant] [stretch] size[/line-height] family
   if (SYSTEM_FONT_KEYWORDS.test(rawValue.trim())) {
     return { decls: {}, warning: `font: system-font keyword '${rawValue.trim()}' not supported` };
   }
@@ -182,18 +238,37 @@ function expandFont(rawValue: string): ExpandResult | null {
     'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed',
     'normal', 'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded',
   ]);
-  while (
-    i < parts.length &&
-    (STYLE.test(parts[i]) || WEIGHT.test(parts[i]) || /^(small-caps)$/i.test(parts[i]) || FONT_STRETCH.has(parts[i].toLowerCase()))
-  ) {
-    if (STYLE.test(parts[i])) out['font-style'] = parts[i];
-    else if (WEIGHT.test(parts[i])) out['font-weight'] = parts[i];
-    else if (/^(small-caps)$/i.test(parts[i])) out['font-variant'] = 'small-caps';
-    else if (FONT_STRETCH.has(parts[i].toLowerCase())) out['font-stretch'] = parts[i];
+  const filled = new Set<'style' | 'weight' | 'variant' | 'stretch'>();
+  while (i < parts.length) {
+    const tok = parts[i];
+    const low = tok.toLowerCase();
+    if (STYLE.test(tok) && !filled.has('style')) {
+      out['font-style'] = tok;
+      filled.add('style');
+    } else if (WEIGHT.test(tok) && !filled.has('weight')) {
+      out['font-weight'] = tok;
+      filled.add('weight');
+    } else if (/^(small-caps)$/i.test(tok) && !filled.has('variant')) {
+      out['font-variant'] = 'small-caps';
+      filled.add('variant');
+    } else if (FONT_STRETCH.has(low) && !filled.has('stretch')) {
+      out['font-stretch'] = tok;
+      filled.add('stretch');
+    } else {
+      break;
+    }
     i++;
   }
   if (i >= parts.length) return null;
-  const sizePart = parts[i++];
+  const sizePart = parts[i];
+  const sizeToCheck = sizePart.includes('/') ? sizePart.split('/')[0] : sizePart;
+  if (!isValidFontSizeToken(sizeToCheck)) {
+    return {
+      decls: {},
+      warning: `font: expected a length or size keyword for font-size but got '${sizePart}' — use individual font-* properties instead`,
+    };
+  }
+  i++;
   if (sizePart.includes('/')) {
     const [size, lh] = sizePart.split('/');
     out['font-size'] = size;
@@ -312,6 +387,67 @@ const EXTRA_SHORTHANDS = new Set([
   'overflow-block', 'overflow-inline',
   'scroll-margin-block', 'scroll-margin-inline',
 ])
+
+// Properties emitted by the expander functions above (the keys of the
+// objects they return) plus PASS_THROUGH plus the common CSS longhand
+// vocabulary. This is the full set of property names expandDeclaration is
+// allowed to emit verbatim via its default branch. Anything else is an
+// unrecognized/unhandled shorthand and must be warned-and-dropped rather
+// than passed through blindly (AS-069).
+const LONGHAND_ALLOW_LIST = new Set<string>([
+  ...PASS_THROUGH,
+  // box rule (margin/padding)
+  'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
+  'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+  // inset
+  'top', 'right', 'bottom', 'left',
+  // border family
+  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
+  'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
+  'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
+  'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius',
+  // gap / overflow / place-*
+  'row-gap', 'column-gap',
+  'overflow-x', 'overflow-y',
+  'align-items', 'justify-items',
+  'align-content', 'justify-content',
+  'align-self', 'justify-self',
+  // transition
+  'transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay',
+  // flex / flex-flow
+  'flex-grow', 'flex-shrink', 'flex-basis',
+  'flex-wrap', 'flex-direction',
+  // outline
+  'outline-width', 'outline-style', 'outline-color',
+  // list-style
+  'list-style-type', 'list-style-position', 'list-style-image',
+  // font
+  'font-style', 'font-weight', 'font-variant', 'font-stretch', 'font-size', 'line-height', 'font-family',
+  // common CSS longhands
+  'color', 'display', 'opacity', 'cursor', 'visibility', 'z-index', 'position',
+  'float', 'clear', 'box-sizing',
+  'text-align', 'text-transform', 'text-indent', 'letter-spacing', 'vertical-align',
+  'word-break', 'word-wrap', 'overflow-wrap', 'text-overflow',
+  'pointer-events', 'user-select', 'resize', 'appearance', 'content',
+  'object-fit', 'object-position', 'table-layout', 'border-collapse', 'border-spacing',
+  'fill', 'stroke', 'stroke-width', 'mix-blend-mode', 'will-change', 'aspect-ratio', 'contain',
+  'transform', 'transform-origin', 'perspective', 'backface-visibility', 'filter', 'backdrop-filter',
+  'clip-path',
+  'outline-offset',
+  'background-attachment', 'background-origin', 'background-clip',
+  'order',
+  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
+  'grid-auto-columns', 'grid-auto-rows', 'grid-auto-flow',
+  'grid-column-start', 'grid-column-end', 'grid-row-start', 'grid-row-end',
+  'gap',
+  'animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay',
+  'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state',
+  'counter-reset', 'counter-increment',
+  'overflow-block', 'overflow-inline',
+  'scroll-margin-top', 'scroll-margin-right', 'scroll-margin-bottom', 'scroll-margin-left',
+  'scroll-padding-top', 'scroll-padding-right', 'scroll-padding-bottom', 'scroll-padding-left',
+  'white-space', 'writing-mode', 'direction', 'zoom',
+]);
 
 /**
  * Expand one box-shorthand declaration (margin, padding, inset).
@@ -482,7 +618,11 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       if (isShorthand(p) || inVocab || inExtra || isVendorShorthand) {
         return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
       }
-      return { decls: { [p]: v } };
+      if (LONGHAND_ALLOW_LIST.has(p)) {
+        return { decls: { [p]: v } };
+      }
+      // Unknown/unrecognized property — likely a shorthand we missed.
+      return { decls: {}, warning: `'${p}' is not a recognized Webflow property — declaration dropped` };
     }
   }
 }
