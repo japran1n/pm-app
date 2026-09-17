@@ -47,14 +47,38 @@ describe("ConverterVerify (F036)", () => {
 
   it("test_AS_036_shows_application_json_with_correct_byte_count", () => {
     render(<ConverterVerify />)
-    const json = '{"test":1}'
+    // Multibyte fixture ("🎉" is 4 bytes in UTF-8 but its string .length is
+    // 2 UTF-16 code units) so this only passes if the byte count comes from
+    // Blob.size, not string.length.
+    const json = '{"emoji":"🎉"}'
+    const expectedBytes = new Blob([json]).size
+    expect(expectedBytes).not.toBe(json.length)
+
     pasteWith(["application/json", "text/plain"], (type) =>
       type === "application/json" ? json : "fallback"
     )
     expect(
-      screen.getByText(`application/json: ${json.length} bytes`)
+      screen.getByText(`application/json: ${expectedBytes} bytes`)
     ).toBeInTheDocument()
     expect(screen.getByText("text/plain: 8 bytes")).toBeInTheDocument()
+    cleanup()
+  })
+
+  it("test_AS_036_shows_present_when_application_json_on_clipboard", () => {
+    render(<ConverterVerify />)
+    pasteWith(["application/json", "text/plain"], () => "{}")
+    expect(
+      screen.getByText("application/json: PRESENT")
+    ).toBeInTheDocument()
+    cleanup()
+  })
+
+  it("test_AS_036_absent_case", () => {
+    render(<ConverterVerify />)
+    pasteWith(["text/plain"], () => "hello")
+    expect(
+      screen.getByText("application/json: NOT PRESENT")
+    ).toBeInTheDocument()
     cleanup()
   })
 })

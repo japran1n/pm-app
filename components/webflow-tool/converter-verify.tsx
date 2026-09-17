@@ -55,6 +55,15 @@ export function ConverterVerify() {
         </p>
       )}
 
+      {hasData && (
+        <p className="font-mono text-sm text-muted-foreground">
+          application/json:{" "}
+          {entries.some((entry) => entry.mimeType === "application/json")
+            ? "PRESENT"
+            : "NOT PRESENT"}
+        </p>
+      )}
+
       {entries.length > 0 && (
         <ul className="flex flex-col gap-1 font-mono text-sm text-muted-foreground">
           {entries.map(({ mimeType, byteLength }) => (
