@@ -57,40 +57,10 @@ export function convert(html: string, css: string): ConvertResult {
     scripts: scriptsResult.scripts,
   };
 
-  // AS-114 requires every node class to resolve to a style entry. When the
-  // caller passes HTML with no backing CSS (or a class the CSS never
-  // defines), that's not a real validation failure worth blocking the copy
-  // over — there's simply nothing to style yet. Validate against a payload
-  // augmented with synthetic `fake: true` placeholder styles for any class
-  // used by a node but not already covered by a real style, so AS-114 never
-  // fires purely for "no CSS was supplied." The synthetic styles are only
-  // used for this validation pass — the payload returned to the caller keeps
-  // the real (possibly empty) styles array untouched.
-  const realStyleNames = new Set(emitResult.payload.payload.styles.map((s) => s.name));
-  const usedClassNames = new Set(usedClasses);
-  const fakeStyles = Array.from(usedClassNames)
-    .filter((cls) => !realStyleNames.has(cls))
-    .map((cls) => ({
-      _id: `fake-${cls}`,
-      name: cls,
-      fake: true,
-      comb: "",
-      namespace: "" as const,
-      categories: [] as [],
-      styleLess: "",
-      variants: {},
-      children: [],
-    }));
-
-  const allowEmptyNodes = (html ?? "").trim() === "";
-  const validation = validatePayload(
-    {
-      ...emitResult.payload.payload,
-      styles: [...emitResult.payload.payload.styles, ...fakeStyles],
-      type: emitResult.payload.type,
-    } as XscpPayload,
-    { allowEmptyNodes }
-  );
+  const validation = validatePayload({
+    ...emitResult.payload.payload,
+    type: emitResult.payload.type,
+  } as XscpPayload);
 
   if (!validation.valid) {
     for (const w of validation.warnings) warnings.add(w);

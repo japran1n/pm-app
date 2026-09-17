@@ -164,10 +164,7 @@ function validateStyles(styles: WebflowStyle[] | null | undefined, errors: strin
  * AS-119: errors always BLOCK the copy. Callers must check `valid` and must
  * not offer any way to copy when `valid` is false.
  */
-export function validatePayload(
-  payload: XscpPayload,
-  opts?: { allowEmptyNodes?: boolean }
-): ValidationResult {
+export function validatePayload(payload: XscpPayload): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -187,7 +184,7 @@ export function validatePayload(
   if (!Array.isArray(payload.nodes)) {
     errors.push("payload.nodes must be an array");
   } else {
-    if (!opts?.allowEmptyNodes && payload.nodes.length === 0) {
+    if (payload.nodes.length === 0) {
       errors.push("payload.nodes must not be empty");
     }
     walkNodes(payload.nodes, errors, warnings, new Set<string>(), new Set<WebflowNode>(), styleNames);

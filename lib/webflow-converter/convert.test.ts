@@ -17,8 +17,8 @@ describe("convert", () => {
     expect(result.payload!.payload.styles.length).toBeGreaterThan(0);
   });
 
-  it("converts HTML only (no CSS) into a valid payload", () => {
-    const html = `<div class="wrapper"><p>Text</p></div>`;
+  it("converts class-free HTML only (no CSS) into a valid payload", () => {
+    const html = `<div><p>Text</p></div>`;
 
     const result = convert(html, "");
 
@@ -27,14 +27,40 @@ describe("convert", () => {
     expect(result.payload!.payload.styles).toEqual([]);
   });
 
-  it("empty HTML string returns an empty (not null/undefined) valid payload", () => {
+  it("AS-112: empty HTML string returns a null payload with an error (nodes must not be empty)", () => {
     const result = convert("", "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.includes("must not be empty"))).toBe(true);
+  });
+
+  it("AS-112: HTML that is only a comment returns a null payload, consistent with empty HTML", () => {
+    const result = convert("<!-- comment -->", "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.some((e) => e.includes("must not be empty"))).toBe(true);
+  });
+
+  it("AS-114: HTML with an unresolved class name (no matching CSS) returns a null payload", () => {
+    const result = convert(`<div class="ghost"></div>`, "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.some((e) => e.includes("ghost"))).toBe(true);
+  });
+
+  it("AS-114: unresolved class at depth 1 also fails, consistent with depth 0", () => {
+    const result = convert(`<div class="outer"><p class="ghost">x</p></div>`, "");
+
+    expect(result.payload).toBeNull();
+    expect(result.errors.some((e) => e.includes("ghost"))).toBe(true);
+  });
+
+  it("AS-112: class-free empty div still passes because it has 1 node", () => {
+    const result = convert(`<div></div>`, "");
 
     expect(result.errors).toEqual([]);
     expect(result.payload).not.toBeNull();
-    expect(result.payload!.payload.nodes).toEqual([]);
-    expect(result.payload!.payload.styles).toEqual([]);
-    expect(result.customCode.scripts).toEqual([]);
   });
 
   it("extracts scripts from inline blocks, and merges inline <style> CSS into the style model rather than custom code (AS-089)", () => {
