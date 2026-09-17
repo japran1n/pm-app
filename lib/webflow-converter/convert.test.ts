@@ -17,6 +17,35 @@ describe("convert", () => {
     expect(result.payload!.payload.styles.length).toBeGreaterThan(0);
   });
 
+  it("AS-089: a malformed inline <style> block does not blank out styles from the css input", () => {
+    const html = `<div class="good">x</div><style>.bad{color:</style>`;
+    const css = `.good { color: red; }`;
+
+    const result = convert(html, css);
+
+    expect(result.payload).not.toBeNull();
+    expect(result.warnings.some((w) => w.toLowerCase().includes("parse error"))).toBe(true);
+    const good = result.payload!.payload.styles.find((s) => s.name === "good");
+    expect(good).toBeDefined();
+    expect(good!.styleLess).toBe("color: red;");
+  });
+
+  it("AS-089: one bad <style> block among several degrades gracefully — the good block's classes still resolve", () => {
+    const html = `<div class="good"></div><div class="bad"></div><style>.bad{color:</style><style>.good{color:red}</style>`;
+
+    const result = convert(html, "");
+
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((w) => w.toLowerCase().includes("parse error"))).toBe(true);
+    const good = result.payload!.payload.styles.find((s) => s.name === "good");
+    const bad = result.payload!.payload.styles.find((s) => s.name === "bad");
+    expect(good).toBeDefined();
+    expect(good!.styleLess).toBe("color: red;");
+    expect(bad).toBeDefined();
+    expect(bad!.styleLess).toBe("");
+  });
+
   it("AS-117: missing intermediate combo link (.a{} .a.b.c{}) is repaired, not dropped — non-null payload with no errors", () => {
     const html = `<div class="a b c"></div>`;
     const css = `.a { color: red; } .a.b.c { color: blue; }`;

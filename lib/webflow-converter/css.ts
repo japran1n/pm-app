@@ -206,3 +206,58 @@ export function parseCss(cssText: string): ParseCssResult {
   walk(root, "main");
   return { classes, order, warnings };
 }
+
+/**
+ * Merge per-variant declaration maps: `b`'s declarations win on conflict
+ * (later source overrides earlier for the same property within a variant).
+ */
+function mergeVariants(
+  a: Record<string, Record<string, string>>,
+  b: Record<string, Record<string, string>>,
+): Record<string, Record<string, string>> {
+  const result: Record<string, Record<string, string>> = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    result[k] = { ...(result[k] ?? {}), ...v };
+  }
+  return result;
+}
+
+/**
+ * Merge multiple independently-parsed ParseCssResult objects into one
+ * (AS-089): parsing each CSS source separately and merging here means a
+ * syntax error in one source only empties that source's own contribution —
+ * classes from the other sources are preserved rather than the whole
+ * combined stylesheet collapsing to an empty class map.
+ *
+ * Classes are merged by their map key (standalone name or "a|b" combo key).
+ * When the same class key appears in more than one source, declarations are
+ * merged with later sources winning on conflicting properties, matching the
+ * "later source wins" semantics a single postcss.parse() over concatenated
+ * text would have produced for non-error input.
+ */
+export function mergeCssResults(results: ParseCssResult[]): ParseCssResult {
+  const merged: ParseCssResult = {
+    classes: new Map(),
+    order: [],
+    warnings: [],
+  };
+  for (const r of results) {
+    merged.warnings.push(...r.warnings);
+    for (const key of r.order) {
+      const incoming = r.classes.get(key)!;
+      if (!merged.classes.has(key)) {
+        merged.order.push(key);
+        merged.classes.set(key, incoming);
+      } else {
+        const existing = merged.classes.get(key)!;
+        merged.classes.set(key, {
+          ...existing,
+          comboOf: existing.comboOf ?? incoming.comboOf,
+          base: { ...existing.base, ...incoming.base },
+          variants: mergeVariants(existing.variants, incoming.variants),
+        });
+      }
+    }
+  }
+  return merged;
+}

@@ -7,7 +7,7 @@
 // Never throws for expected-bad input (AS-141) — problems surface as
 // warnings/errors on the returned result.
 
-import { parseCss } from "./css";
+import { mergeCssResults, parseCss } from "./css";
 import { emitWebflow, type WebflowNode, type XscpData, type XscpPayload } from "./emit";
 import { extractScripts, extractStyles } from "./js-extract";
 import { validatePayload } from "./validator";
@@ -46,8 +46,29 @@ export function convert(html: string, css: string): ConvertResult {
   const scriptsResult = extractScripts(html ?? "");
   const stylesResult = extractStyles(html ?? "");
 
-  const fullCss = [css ?? "", ...stylesResult.styles].join("\n");
-  const cssResult = parseCss(fullCss);
+  // Parse each CSS source independently and merge the results (AS-089): a
+  // syntax error in any single source (the `css` argument or one <style>
+  // block) must not blank out the declarations contributed by the other,
+  // well-formed sources.
+  const cssSources = [css ?? "", ...stylesResult.styles];
+  const cssResult = mergeCssResults(
+    cssSources.map((src, i) => {
+      const result = parseCss(src);
+      if (result.warnings.length > 0 && result.order.length === 0 && src.trim() !== "") {
+        // Disambiguate which source a parse error came from — parseCss()
+        // has no notion of "source index", so relabel here.
+        return {
+          ...result,
+          warnings: result.warnings.map((w) =>
+            w.startsWith("CSS parse error:")
+              ? `CSS parse error in ${i === 0 ? "css input" : "<style> block " + i} : ${w.slice("CSS parse error: ".length)}`
+              : w,
+          ),
+        };
+      }
+      return result;
+    }),
+  );
   const emitResult = emitWebflow(html ?? "", cssResult);
 
   const warnings = new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings]);
