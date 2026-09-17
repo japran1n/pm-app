@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { convert, convertFromSource } from "./convert";
+import type { WebflowNode, WebflowStyle } from "./emit";
 
 describe("convert", () => {
   it("converts simple HTML + CSS into a valid payload with no errors", () => {
@@ -153,6 +154,111 @@ describe("convert", () => {
     // Just assert no exact-duplicate strings exist in the overall warnings.
     expect(new Set(result.warnings).size).toBe(result.warnings.length);
     expect(selectorWarnings.length).toBeGreaterThan(0);
+  });
+
+  it("AS-141: realistic section — nested containers, combo class, hover, two breakpoints", () => {
+    const html = `
+      <section class="hero">
+        <div class="container">
+          <h1 class="hero-title">Hello</h1>
+          <a class="btn btn--primary" href="#">Get Started</a>
+          <ul class="list">
+            <li class="list__item">Item 1</li>
+          </ul>
+        </div>
+      </section>
+    `;
+    const css = `
+      .hero { display: flex; padding: 48px 24px; }
+      .container { max-width: 1200px; margin: 0 auto; }
+      .hero-title { font-size: 48px; color: #111; }
+      .btn { display: inline-block; padding: 12px 24px; }
+      .btn.btn--primary { background-color: #0070f3; color: #fff; }
+      .btn.btn--primary:hover { background-color: #005ac2; }
+      .list { list-style: none; }
+      .list__item { margin-bottom: 8px; }
+      @media (max-width: 991px) {
+        .hero { padding: 32px 16px; }
+      }
+      @media (max-width: 479px) {
+        .hero-title { font-size: 32px; }
+      }
+    `;
+    const result = convert(html, css);
+
+    // No errors
+    expect(result.errors).toHaveLength(0);
+
+    // Payload has correct type envelope
+    expect(result.payload?.type).toBe("@webflow/XscpData");
+
+    // Node count: section > div > (h1 + a + ul > li) = 6 nodes total.
+    const flattenNodes = (nodes: WebflowNode[]): WebflowNode[] =>
+      nodes.flatMap((n) => [n, ...flattenNodes(n.children ?? [])]);
+    const topLevelNodes = result.payload?.payload.nodes ?? [];
+    const allNodes = flattenNodes(topLevelNodes);
+    expect(allNodes.length).toBe(6);
+
+    // Style count: 8 classes defined (hero, container, hero-title, btn,
+    // btn--primary combo, list, list__item — plus the pseudo-state variant
+    // is folded into btn--primary's variants, not a separate style entry).
+    const styles: WebflowStyle[] = result.payload?.payload.styles ?? [];
+    expect(styles.length).toBeGreaterThanOrEqual(7);
+
+    // Combo: btn--primary is a combo of btn; btn.children includes btn--primary._id
+    const btnStyle = styles.find((s) => s.name === "btn" && s.comb === "");
+    const btnPrimaryStyle = styles.find((s) => s.name === "btn--primary" && s.comb !== "");
+    expect(btnStyle).toBeDefined();
+    expect(btnPrimaryStyle).toBeDefined();
+    expect(btnPrimaryStyle?.comb).toBe(btnStyle?._id);
+    expect(btnStyle?.children).toContain(btnPrimaryStyle?._id);
+
+    // Hover variant present on the combo (btn--primary), carrying background-color
+    expect(btnPrimaryStyle?.variants).toBeDefined();
+    expect(btnPrimaryStyle?.variants.hover).toBeDefined();
+    expect(btnPrimaryStyle?.variants.hover?.styleLess).toContain("background-color");
+
+    // Breakpoint variants: hero has a "medium" variant, hero-title has a "tiny" variant
+    const heroStyle = styles.find((s) => s.name === "hero");
+    expect(heroStyle?.variants).toBeDefined();
+    expect(heroStyle?.variants.medium).toBeDefined();
+    expect(heroStyle?.variants.medium?.styleLess).toContain("padding");
+
+    const heroTitleStyle = styles.find((s) => s.name === "hero-title");
+    expect(heroTitleStyle?.variants).toBeDefined();
+    expect(heroTitleStyle?.variants.tiny).toBeDefined();
+    expect(heroTitleStyle?.variants.tiny?.styleLess).toContain("font-size");
+
+    // No shorthand in any emitted styleLess (base or variant slots)
+    const SHORTHANDS = [
+      "font",
+      "background",
+      "border",
+      "margin",
+      "padding",
+      "flex",
+      "grid",
+      "transition",
+      "animation",
+      "outline",
+      "list-style",
+    ];
+    const assertNoShorthand = (styleLess: string | undefined) => {
+      if (!styleLess) return;
+      const props = styleLess
+        .split(";")
+        .map((d: string) => d.split(":")[0].trim())
+        .filter(Boolean);
+      for (const prop of props) {
+        expect(SHORTHANDS).not.toContain(prop);
+      }
+    };
+    for (const style of styles) {
+      assertNoShorthand(style.styleLess);
+      for (const variant of Object.values(style.variants ?? {})) {
+        assertNoShorthand((variant as { styleLess?: string })?.styleLess);
+      }
+    }
   });
 
   it("AS-011: no Supabase imports anywhere in the webflow-converter module directory", () => {
