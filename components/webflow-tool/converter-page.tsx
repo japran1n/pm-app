@@ -18,11 +18,13 @@ import {
   convertHtmlToWebflow,
   type ConvertActionResult,
 } from "@/lib/actions/webflow-converter"
+import { writeToClipboard } from "@/lib/webflow-converter-client/clipboard"
 
 import { ConverterEditor, useEditorPersistence } from "./converter-editor"
 import { ConverterHelp } from "./converter-help"
 import { ConverterPreview } from "./converter-preview"
 import { ConverterResults } from "./converter-results"
+import { ConverterVerify } from "./converter-verify"
 
 export function ConverterPage() {
   const [html, setHtml] = React.useState("")
@@ -30,6 +32,9 @@ export function ConverterPage() {
   const [js, setJs] = React.useState("")
   const [result, setResult] = React.useState<ConvertActionResult | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const [copyStatus, setCopyStatus] = React.useState<
+    "idle" | "success" | "error"
+  >("idle")
 
   useEditorPersistence(html, css, js, setHtml, setCss, setJs)
 
@@ -45,6 +50,16 @@ export function ConverterPage() {
       setLoading(false)
     }
   }, [html, css, js, loading])
+
+  function handleCopyWebflow() {
+    if (!result?.ok || !result.json) return
+    const ok = writeToClipboard([
+      { mimeType: "application/json", data: result.json },
+      { mimeType: "text/plain", data: result.json },
+    ])
+    setCopyStatus(ok ? "success" : "error")
+    setTimeout(() => setCopyStatus("idle"), 3000)
+  }
 
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -96,6 +111,19 @@ export function ConverterPage() {
             {loading ? "Converting…" : "Convert"}
             <span className="text-xs opacity-70">⌘⏎</span>
           </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleCopyWebflow}
+            disabled={!result?.ok}
+            aria-label="Copy for Webflow"
+          >
+            {copyStatus === "success"
+              ? "Copied!"
+              : copyStatus === "error"
+                ? "Copy failed — try again"
+                : "Copy for Webflow"}
+          </Button>
           {isEmpty ? (
             <span className="text-xs text-muted-foreground">
               Paste some HTML first.
@@ -113,10 +141,11 @@ export function ConverterPage() {
 
         <ConverterResults result={result} />
 
-        {/* F033-F036 will use result here */}
         {result && (
           <div data-testid="conversion-result" data-ok={result.ok} />
         )}
+
+        <ConverterVerify />
       </div>
 
       <ConverterHelp />

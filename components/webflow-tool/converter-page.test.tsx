@@ -8,15 +8,21 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import "@testing-library/jest-dom/vitest"
 
 const mockConvert = vi.fn()
+const mockWriteToClipboard = vi.fn()
 
 vi.mock("@/lib/actions/webflow-converter", () => ({
   convertHtmlToWebflow: (...args: unknown[]) => mockConvert(...args),
+}))
+
+vi.mock("../../lib/webflow-converter-client/clipboard", () => ({
+  writeToClipboard: (...args: unknown[]) => mockWriteToClipboard(...args),
 }))
 
 import { ConverterPage } from "./converter-page"
 
 beforeEach(() => {
   mockConvert.mockReset()
+  mockWriteToClipboard.mockReset()
 })
 
 afterEach(() => {
@@ -150,5 +156,98 @@ describe("ConverterPage (F029)", () => {
     fireEvent.keyDown(window, { key: "Enter", metaKey: true })
 
     await waitFor(() => expect(mockConvert).toHaveBeenCalled())
+  })
+
+  it("test_AS_033_copy_for_webflow_button_renders", () => {
+    render(<ConverterPage />)
+    expect(
+      screen.getByRole("button", { name: /copy for webflow/i }),
+    ).toBeInTheDocument()
+  })
+
+  it("test_AS_027_copy_button_disabled_when_no_result", () => {
+    render(<ConverterPage />)
+    expect(
+      screen.getByRole("button", { name: /copy for webflow/i }),
+    ).toBeDisabled()
+  })
+
+  it("test_AS_027_copy_button_disabled_when_result_not_ok", async () => {
+    mockConvert.mockResolvedValue({ ok: false, message: "Conversion failed." })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<!-- comment -->" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    await waitFor(() => expect(screen.getByText(/conversion failed/i)).toBeInTheDocument())
+    expect(
+      screen.getByRole("button", { name: /copy for webflow/i }),
+    ).toBeDisabled()
+  })
+
+  it("test_AS_033_clicking_copy_calls_writeToClipboard_with_json_payload", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: '{"type":"@webflow/XscpData"}',
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    mockWriteToClipboard.mockReturnValue(true)
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+    fireEvent.click(copyButton)
+
+    expect(mockWriteToClipboard).toHaveBeenCalledWith([
+      { mimeType: "application/json", data: '{"type":"@webflow/XscpData"}' },
+      { mimeType: "text/plain", data: '{"type":"@webflow/XscpData"}' },
+    ])
+  })
+
+  it("test_AS_034_shows_copied_on_success", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    mockWriteToClipboard.mockReturnValue(true)
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+    fireEvent.click(copyButton)
+
+    expect(await screen.findByText(/copied!/i)).toBeInTheDocument()
+  })
+
+  it("test_AS_034_shows_error_message_on_failed_copy", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    mockWriteToClipboard.mockReturnValue(false)
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+    fireEvent.click(copyButton)
+
+    expect(
+      await screen.findByText(/copy failed — try again/i),
+    ).toBeInTheDocument()
   })
 })
