@@ -386,68 +386,9 @@ const EXTRA_SHORTHANDS = new Set([
   '-webkit-box-shadow', '-moz-box-shadow',
   'overflow-block', 'overflow-inline',
   'scroll-margin-block', 'scroll-margin-inline',
+  'marker',       // shorthand for marker-start/-mid/-end
+  'position-try', // shorthand for position-try-order/-fallbacks
 ])
-
-// Properties emitted by the expander functions above (the keys of the
-// objects they return) plus PASS_THROUGH plus the common CSS longhand
-// vocabulary. This is the full set of property names expandDeclaration is
-// allowed to emit verbatim via its default branch. Anything else is an
-// unrecognized/unhandled shorthand and must be warned-and-dropped rather
-// than passed through blindly (AS-069).
-const LONGHAND_ALLOW_LIST = new Set<string>([
-  ...PASS_THROUGH,
-  // box rule (margin/padding)
-  'margin-top', 'margin-right', 'margin-bottom', 'margin-left',
-  'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
-  // inset
-  'top', 'right', 'bottom', 'left',
-  // border family
-  'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width',
-  'border-top-style', 'border-right-style', 'border-bottom-style', 'border-left-style',
-  'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color',
-  'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius',
-  // gap / overflow / place-*
-  'row-gap', 'column-gap',
-  'overflow-x', 'overflow-y',
-  'align-items', 'justify-items',
-  'align-content', 'justify-content',
-  'align-self', 'justify-self',
-  // transition
-  'transition-property', 'transition-duration', 'transition-timing-function', 'transition-delay',
-  // flex / flex-flow
-  'flex-grow', 'flex-shrink', 'flex-basis',
-  'flex-wrap', 'flex-direction',
-  // outline
-  'outline-width', 'outline-style', 'outline-color',
-  // list-style
-  'list-style-type', 'list-style-position', 'list-style-image',
-  // font
-  'font-style', 'font-weight', 'font-variant', 'font-stretch', 'font-size', 'line-height', 'font-family',
-  // common CSS longhands
-  'color', 'display', 'opacity', 'cursor', 'visibility', 'z-index', 'position',
-  'float', 'clear', 'box-sizing',
-  'text-align', 'text-transform', 'text-indent', 'letter-spacing', 'vertical-align',
-  'word-break', 'word-wrap', 'overflow-wrap', 'text-overflow',
-  'pointer-events', 'user-select', 'resize', 'appearance', 'content',
-  'object-fit', 'object-position', 'table-layout', 'border-collapse', 'border-spacing',
-  'fill', 'stroke', 'stroke-width', 'mix-blend-mode', 'will-change', 'aspect-ratio', 'contain',
-  'transform', 'transform-origin', 'perspective', 'backface-visibility', 'filter', 'backdrop-filter',
-  'clip-path',
-  'outline-offset',
-  'background-attachment', 'background-origin', 'background-clip',
-  'order',
-  'grid-template-columns', 'grid-template-rows', 'grid-template-areas',
-  'grid-auto-columns', 'grid-auto-rows', 'grid-auto-flow',
-  'grid-column-start', 'grid-column-end', 'grid-row-start', 'grid-row-end',
-  'gap',
-  'animation-name', 'animation-duration', 'animation-timing-function', 'animation-delay',
-  'animation-iteration-count', 'animation-direction', 'animation-fill-mode', 'animation-play-state',
-  'counter-reset', 'counter-increment',
-  'overflow-block', 'overflow-inline',
-  'scroll-margin-top', 'scroll-margin-right', 'scroll-margin-bottom', 'scroll-margin-left',
-  'scroll-padding-top', 'scroll-padding-right', 'scroll-padding-bottom', 'scroll-padding-left',
-  'white-space', 'writing-mode', 'direction', 'zoom',
-]);
 
 /**
  * Expand one box-shorthand declaration (margin, padding, inset).
@@ -618,11 +559,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       if (isShorthand(p) || inVocab || inExtra || isVendorShorthand) {
         return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
       }
-      if (LONGHAND_ALLOW_LIST.has(p)) {
-        return { decls: { [p]: v } };
-      }
-      // Unknown/unrecognized property — likely a shorthand we missed.
-      return { decls: {}, warning: `'${p}' is not a recognized Webflow property — declaration dropped` };
+      return { decls: { [p]: v } };
     }
   }
 }

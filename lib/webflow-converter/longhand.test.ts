@@ -1303,41 +1303,58 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     }
   });
 
-  it('test_AS_069_marker_is_not_in_the_allow_list_and_is_warned_and_dropped', () => {
+  it('test_AS_069_marker_is_a_shorthand_and_is_warned_and_dropped', () => {
     const result = expandDeclaration('marker', 'url(#m)');
     expect(result.decls).toEqual({});
-    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+    expect(result.warning).toMatch(/shorthand/i);
   });
 
-  it('test_AS_069_position_try_is_not_in_the_allow_list_and_is_warned_and_dropped', () => {
+  it('test_AS_069_position_try_is_a_shorthand_and_is_warned_and_dropped', () => {
     const result = expandDeclaration('position-try', 'flip-block');
     expect(result.decls).toEqual({});
-    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+    expect(result.warning).toMatch(/shorthand/i);
   });
 
-  it('test_AS_069_color_is_on_the_allow_list_and_passes_through', () => {
+  it('test_AS_069_color_passes_through', () => {
     expect(expandDeclaration('color', 'red')).toEqual({ decls: { color: 'red' } });
   });
 
-  it('test_AS_069_display_is_on_the_allow_list_and_passes_through', () => {
+  it('test_AS_069_display_passes_through', () => {
     expect(expandDeclaration('display', 'flex')).toEqual({ decls: { display: 'flex' } });
   });
 
-  it('test_AS_069_made_up_property_is_warned_and_dropped', () => {
-    const result = expandDeclaration('some-made-up-property', 'x');
-    expect(result.decls).toEqual({});
-    expect(result.warning).toMatch(/not a recognized Webflow property/i);
+  it('test_AS_069_known_longhands_pass_through_including_width_height_box_shadow', () => {
+    // F072 regression guard: width/height/box-shadow etc. must never be
+    // warned-and-dropped just for being absent from a hardcoded allow-list.
+    for (const [prop, value] of [
+      ['width', '100%'],
+      ['height', '400px'],
+      ['min-width', '10px'],
+      ['max-width', '1200px'],
+      ['min-height', '10px'],
+      ['max-height', '800px'],
+      ['box-shadow', '0 2px 4px rgba(0,0,0,.2)'],
+      ['text-shadow', '1px 1px 2px black'],
+    ] as const) {
+      const result = expandDeclaration(prop, value);
+      expect(result.decls).toEqual({ [prop]: value });
+      expect(result.warning).toBeUndefined();
+    }
   });
 
-  it('test_AS_069_css_shorthand_properties_vocab_sweep_never_emits_verbatim_or_leaks_unallowed_props', () => {
+  it('test_AS_069_made_up_property_passes_through_as_a_longhand', () => {
+    const result = expandDeclaration('some-made-up-property', 'x');
+    expect(result.decls).toEqual({ 'some-made-up-property': 'x' });
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('test_AS_069_css_shorthand_properties_vocab_sweep_never_emits_verbatim_for_known_shorthands', () => {
     // Every property the independent css-shorthand-properties vocabulary
-    // considers a shorthand, plus marker and position-try (round-6
-    // regressions that previously escaped verbatim because they were not
-    // named in EXTRA_SHORTHANDS), must never be emitted verbatim under its
-    // own shorthand key. Properties with a dedicated expander (e.g.
-    // list-style) legitimately expand into real longhand keys, so only the
-    // shorthand's own key is checked for absence; everything else must
-    // warn-and-drop with empty decls.
+    // considers a shorthand, plus marker and position-try, must never be
+    // emitted verbatim under its own shorthand key. Properties with a
+    // dedicated expander (e.g. list-style) legitimately expand into real
+    // longhand keys, so only the shorthand's own key is checked for absence;
+    // unimplemented shorthands must warn-and-drop with empty decls.
     const IMPLEMENTED = new Set([
       'margin', 'padding', 'inset', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
       'border-width', 'border-style', 'border-color', 'border-radius', 'gap', 'grid-gap', 'overflow',
