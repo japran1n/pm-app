@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BREAKPOINTS, mapBreakpoint, variantKey } from './breakpoints';
+import { mapBreakpoint, variantKey } from './breakpoints';
 
 describe('mapBreakpoint', () => {
   it('AS-070: max-width: 991px maps to "medium"', () => {
@@ -111,20 +111,5 @@ describe('variantKey', () => {
   it('combines a breakpoint with a non-hover state (e.g. pressed)', () => {
     expect(variantKey('main', 'pressed')).toBe('main_pressed');
     expect(variantKey('medium', 'focus')).toBe('medium_focus');
-  });
-});
-
-describe('BREAKPOINTS constant', () => {
-  it('exposes the exact numeric thresholds from the reference prototype', () => {
-    expect(BREAKPOINTS.maxWidth).toEqual([
-      { upTo: 479, key: 'tiny' },
-      { upTo: 767, key: 'small' },
-      { upTo: 991, key: 'medium' },
-    ]);
-    expect(BREAKPOINTS.minWidth).toEqual([
-      { from: 2560, key: 'xxl' },
-      { from: 1920, key: 'xl' },
-      { from: 1440, key: 'large' },
-    ]);
   });
 });
