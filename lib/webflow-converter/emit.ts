@@ -31,10 +31,13 @@ export interface WebflowStyleVariants {
   xxl?: { styleLess: string };
   hover?: { styleLess: string };
   focused?: { styleLess: string };
+  "focused-visible"?: { styleLess: string };
   pressed?: { styleLess: string };
   before?: { styleLess: string };
   after?: { styleLess: string };
   nthChild?: { styleLess: string };
+  main_visited?: { styleLess: string };
+  main_placeholder?: { styleLess: string };
 }
 
 export interface WebflowStyle {
@@ -78,11 +81,13 @@ const RESERVED_ATTRS = new Set(["class", "style", "href", "src", "alt", "target"
 const PSEUDO_STATE_TO_WEBFLOW: Record<string, string> = {
   hover: "hover",
   focus: "focused",
-  "focus-visible": "focused",
+  "focus-visible": "focused-visible",
   pressed: "pressed",
   active: "pressed",
   before: "before",
   after: "after",
+  visited: "main_visited",
+  placeholder: "main_placeholder",
 };
 
 const BREAKPOINT_VARIANT_KEYS = new Set(["medium", "small", "tiny", "large", "xl", "xxl"]);
@@ -140,14 +145,10 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
       const webflowKey = PSEUDO_STATE_TO_WEBFLOW[state];
 
       if (webflowKey && breakpointPrefix && BREAKPOINT_VARIANT_KEYS.has(breakpointPrefix)) {
-        // Webflow's class editor has no per-breakpoint state slots. Unlike
-        // the base breakpoint declarations, a pseudo-state's declarations
-        // are conditional on the state (e.g. :hover) and must never be
-        // written into the unconditional breakpoint slot — that would apply
-        // hover-only styling unconditionally. Warn and drop instead.
-        warnings.push(
-          `"${variantKey}" on .${rec.name}: per-breakpoint pseudo-state is not representable in Webflow's class editor — declarations skipped`
-        );
+        // Emit composite key — this IS the real Webflow clipboard variant
+        // key shape (e.g. "medium_hover", "xxl_hover").
+        const compositeKey = `${breakpointPrefix}_${webflowKey}`;
+        variantDecls[compositeKey] = { ...variantDecls[compositeKey], ...rec.variants[variantKey] };
       } else if (webflowKey) {
         variantDecls[webflowKey] = { ...variantDecls[webflowKey], ...rec.variants[variantKey] };
       } else {

@@ -235,12 +235,12 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(style.variants.focused?.styleLess).toBe("color: green;");
   });
 
-  it("test_AS_041_focus_visible_pseudo_state_maps_onto_webflow_focused_slot", () => {
+  it("test_AS_041_focus_visible_pseudo_state_maps_onto_webflow_focused_visible_slot", () => {
     const cssMap = parseCss(".btn { color: red; } .btn:focus-visible { color: green; }");
     const { payload } = emitWebflow('<a class="btn"></a>', cssMap);
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
-    expect(style.variants.focused).toBeDefined();
-    expect(style.variants.focused?.styleLess).toBe("color: green;");
+    expect((style.variants as Record<string, unknown>)["focused-visible"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["focused-visible"]).styleLess).toBe("color: green;");
   });
 
   it("test_AS_041_before_pseudo_state_maps_onto_webflow_before_slot", () => {
@@ -259,21 +259,43 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(style.variants.after?.styleLess).toBeTruthy();
   });
 
-  it("test_AS_041_visited_pseudo_state_has_no_webflow_slot_and_warns", () => {
+  it("test_AS_041_visited_pseudo_state_maps_onto_main_visited_slot", () => {
     const cssMap = parseCss(".link { color: red; } .link:visited { color: purple; }");
-    const { payload, warnings } = emitWebflow('<a class="link"></a>', cssMap);
+    const { payload } = emitWebflow('<a class="link"></a>', cssMap);
     const style = payload.payload.styles.find((s) => s.name === "link")!;
-    expect(Object.keys(style.variants)).toHaveLength(0);
-    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+    expect((style.variants as Record<string, unknown>)["main_visited"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["main_visited"]).styleLess).toBeTruthy();
   });
 
-  it("test_AS_041_placeholder_pseudo_state_has_no_webflow_slot_and_warns_not_nthChild", () => {
+  it("test_AS_041_placeholder_pseudo_state_maps_onto_main_placeholder_slot", () => {
     const cssMap = parseCss(".input { color: red; } .input::placeholder { color: gray; }");
-    const { payload, warnings } = emitWebflow('<input class="input">', cssMap);
+    const { payload } = emitWebflow('<input class="input">', cssMap);
     const style = payload.payload.styles.find((s) => s.name === "input")!;
-    expect((style.variants as Record<string, unknown>).nthChild).toBeUndefined();
-    expect(Object.keys(style.variants)).toHaveLength(0);
-    expect(warnings.some((w) => w.includes("does not map to a Webflow state"))).toBe(true);
+    expect((style.variants as Record<string, unknown>)["main_placeholder"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["main_placeholder"]).styleLess).toBeTruthy();
+  });
+
+  it("test_AS_041_focus_and_focus_visible_both_survive_as_separate_slots", () => {
+    const cssMap = parseCss(".btn { color: black; } .btn:focus { color: red; } .btn:focus-visible { color: blue; }");
+    const { payload } = emitWebflow('<button class="btn"></button>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect(style.variants.focused).toBeDefined();
+    expect(style.variants.focused?.styleLess).toBe("color: red;");
+    expect((style.variants as Record<string, unknown>)["focused-visible"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["focused-visible"]).styleLess).toBe("color: blue;");
+  });
+
+  it("test_AS_041_breakpoint_plus_state_emits_composite_key_not_dropped", () => {
+    const cssMap = parseCss(`
+      .btn { color: red; }
+      @media (max-width: 991px) { .btn:hover { color: green; } }
+    `);
+    const { payload, warnings } = emitWebflow('<a class="btn"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "btn")!;
+    expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
+    // No "not representable" warning
+    expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
   it("test_AS_041_breakpoint_plus_hover_collision_does_not_leak_hover_into_unconditional_breakpoint_slot", () => {
@@ -284,16 +306,15 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     `);
     const { payload, warnings } = emitWebflow('<a class="btn"></a>', cssMap);
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
-    // Default-breakpoint hover slot is preserved, not overwritten.
+    // Default-breakpoint hover slot is preserved
     expect(style.variants.hover).toBeDefined();
     expect(style.variants.hover?.styleLess).toBe("color: blue;");
-    // The per-breakpoint hover has no representable slot — it must not leak
-    // into an unconditional medium.styleLess (no base .btn declarations were
-    // defined inside the @media block, so no medium slot should exist at all).
+    // medium breakpoint hover goes to medium_hover, not medium
     expect(style.variants.medium).toBeUndefined();
-    expect(
-      warnings.some((w) => w.includes("per-breakpoint pseudo-state is not representable in Webflow"))
-    ).toBe(true);
+    expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
+    // No "not representable" warning anymore
+    expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
   it("test_AS_041_two_media_rules_for_same_breakpoint_merge_without_duplicate_or_clobber", () => {
@@ -318,9 +339,11 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     const style = payload.payload.styles.find((s) => s.name === "btn")!;
     expect(style.variants.medium).toBeDefined();
     expect(style.variants.medium?.styleLess).toBe("color: blue;");
-    expect(
-      warnings.some((w) => w.includes("per-breakpoint pseudo-state is not representable in Webflow"))
-    ).toBe(true);
+    // Hover at medium goes to medium_hover
+    expect((style.variants as Record<string, unknown>)["medium_hover"]).toBeDefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["medium_hover"]).styleLess).toBe("color: green;");
+    // No warning about "not representable"
+    expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
   it("aggregates F012/F014 selector and unsupported-@media warnings into the same warnings list", () => {
