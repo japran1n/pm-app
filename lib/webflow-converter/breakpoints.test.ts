@@ -73,6 +73,41 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('MAX-WIDTH:   991px')).toBe('medium');
   });
 
+  it('AS-048: SCREEN AND (MAX-WIDTH:767PX) maps to "small" (uppercase accepted after lowercasing)', () => {
+    expect(mapBreakpoint('SCREEN AND (MAX-WIDTH:767PX)')).toBe('small');
+  });
+
+  it('AS-048: SCREEN AND (MAX-WIDTH:767PX) AND (ORIENTATION:LANDSCAPE) returns null (extra condition rejected)', () => {
+    expect(
+      mapBreakpoint('SCREEN AND (MAX-WIDTH:767PX) AND (ORIENTATION:LANDSCAPE)'),
+    ).toBeNull();
+  });
+
+  it('AS-048: (MAX-WIDTH:767PX) AND (MONOCHROME) returns null', () => {
+    expect(mapBreakpoint('(MAX-WIDTH:767PX) AND (MONOCHROME)')).toBeNull();
+  });
+
+  it('AS-048: (MAX-WIDTH:991PX) AND (MAX-WIDTH:767PX) returns null (compound duplicate condition)', () => {
+    expect(mapBreakpoint('(MAX-WIDTH:991PX) AND (MAX-WIDTH:767PX)')).toBeNull();
+  });
+
+  it('AS-048: "screenand (max-width:991px)" returns null (malformed prefix — no space)', () => {
+    expect(mapBreakpoint('screenand (max-width:991px)')).toBeNull();
+  });
+
+  it('AS-048: (width <= 991px) maps to "medium"', () => {
+    expect(mapBreakpoint('(width <= 991px)')).toBe('medium');
+  });
+
+  it('AS-048: (width >= 1440px) maps to "large"', () => {
+    expect(mapBreakpoint('(width >= 1440px)')).toBe('large');
+  });
+
+  it('AS-048: the grammar guard rejects anything beyond a single width condition, rather than falling through silently', () => {
+    expect(mapBreakpoint('(max-width:767px) and (max-width:767px)')).toBeNull();
+    expect(mapBreakpoint('(max-width:767px) extra-garbage')).toBeNull();
+  });
+
   it('parses fractional pixel values that exactly match a boundary', () => {
     expect(mapBreakpoint('max-width: 767.0px')).toBe('small');
   });
