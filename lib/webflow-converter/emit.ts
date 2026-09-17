@@ -147,7 +147,7 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
       if (webflowKey && breakpointPrefix && BREAKPOINT_VARIANT_KEYS.has(breakpointPrefix)) {
         // Emit composite key — this IS the real Webflow clipboard variant
         // key shape (e.g. "medium_hover", "xxl_hover").
-        const compositeKey = `${breakpointPrefix}_${webflowKey}`;
+        const compositeKey = `${breakpointPrefix}_${webflowKey.replace(/^main_/, "")}`;
         variantDecls[compositeKey] = { ...variantDecls[compositeKey], ...rec.variants[variantKey] };
       } else if (webflowKey) {
         variantDecls[webflowKey] = { ...variantDecls[webflowKey], ...rec.variants[variantKey] };

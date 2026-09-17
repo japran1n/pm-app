@@ -60,6 +60,31 @@ describe("extractScripts (AS-101, AS-102, AS-103, AS-104, AS-105, AS-134)", () =
   it("never throws for malformed input", () => {
     expect(() => extractScripts("<script>not closed")).not.toThrow();
   });
+
+  it("AS-103: script with async, defer, type=module, integrity, crossorigin is carried verbatim", () => {
+    const input =
+      '<script async defer type="module" integrity="sha384-abc" crossorigin="anonymous" src="/a.js"></script>';
+    const result = extractScripts(input);
+    expect(result.scripts).toHaveLength(1);
+    // Must round-trip every attribute exactly — a re-serializing mutant will drop most of them
+    expect(result.scripts[0]).toBe(input);
+  });
+
+  it("AS-103: script with data-* attributes is carried verbatim", () => {
+    const input = '<script src="/b.js" data-env="prod" data-version="42"></script>';
+    const result = extractScripts(input);
+    expect(result.scripts).toHaveLength(1);
+    expect(result.scripts[0]).toBe(input);
+  });
+
+  it("AS-103: script with single-quoted src attribute is carried verbatim", () => {
+    const html = "<html><body><script async src='/c.js'></script></body></html>";
+    const result = extractScripts(html);
+    expect(result.scripts).toHaveLength(1);
+    // The async attribute must be present
+    expect(result.scripts[0]).toContain("async");
+    expect(result.scripts[0]).toContain("src=");
+  });
 });
 
 describe("extractStyles (AS-107, AS-108, AS-109, AS-110)", () => {

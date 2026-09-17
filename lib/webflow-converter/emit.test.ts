@@ -298,6 +298,32 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
   });
 
+  it("test_AS_041_breakpoint_plus_visited_emits_medium_visited_not_medium_main_visited", () => {
+    const cssMap = parseCss(`
+      .link { color: red; }
+      @media (max-width: 991px) { .link:visited { color: purple; } }
+    `);
+    const { payload, warnings } = emitWebflow('<a class="link"></a>', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "link")!;
+    expect((style.variants as Record<string, unknown>)["medium_visited"]).toBeDefined();
+    expect((style.variants as Record<string, unknown>)["medium_main_visited"]).toBeUndefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["medium_visited"]).styleLess).toBeTruthy();
+    expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
+  });
+
+  it("test_AS_041_breakpoint_plus_placeholder_emits_medium_placeholder_not_medium_main_placeholder", () => {
+    const cssMap = parseCss(`
+      .input { color: red; }
+      @media (max-width: 991px) { .input::placeholder { color: gray; } }
+    `);
+    const { payload, warnings } = emitWebflow('<input class="input">', cssMap);
+    const style = payload.payload.styles.find((s) => s.name === "input")!;
+    expect((style.variants as Record<string, unknown>)["medium_placeholder"]).toBeDefined();
+    expect((style.variants as Record<string, unknown>)["medium_main_placeholder"]).toBeUndefined();
+    expect(((style.variants as Record<string, { styleLess: string }>)["medium_placeholder"]).styleLess).toBeTruthy();
+    expect(warnings.some((w) => w.includes("not representable"))).toBe(false);
+  });
+
   it("test_AS_041_breakpoint_plus_hover_collision_does_not_leak_hover_into_unconditional_breakpoint_slot", () => {
     const cssMap = parseCss(`
       .btn { color: red; }
