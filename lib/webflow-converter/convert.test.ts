@@ -52,18 +52,24 @@ describe("convert", () => {
     expect(result.errors.some((e) => e.includes("must not be empty"))).toBe(true);
   });
 
-  it("AS-114: HTML with an unresolved class name (no matching CSS) returns a null payload", () => {
+  it("AS-114: HTML with an unresolved class name (no matching CSS) gets a stub style, not a null payload", () => {
     const result = convert(`<div class="ghost"></div>`, "");
 
-    expect(result.payload).toBeNull();
-    expect(result.errors.some((e) => e.includes("ghost"))).toBe(true);
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
+    const stub = result.payload!.payload.styles.find((s) => s.name === "ghost");
+    expect(stub).toBeDefined();
+    expect(stub!.styleLess).toBe("");
   });
 
-  it("AS-114: unresolved class at depth 1 also fails, consistent with depth 0", () => {
+  it("AS-114: unresolved class at depth 1 also gets a stub style, consistent with depth 0", () => {
     const result = convert(`<div class="outer"><p class="ghost">x</p></div>`, "");
 
-    expect(result.payload).toBeNull();
-    expect(result.errors.some((e) => e.includes("ghost"))).toBe(true);
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
+    const stub = result.payload!.payload.styles.find((s) => s.name === "ghost");
+    expect(stub).toBeDefined();
+    expect(stub!.styleLess).toBe("");
   });
 
   it("AS-112: class-free empty div still passes because it has 1 node", () => {
@@ -140,11 +146,14 @@ describe("convert", () => {
     expect(result.warnings.some((w) => w.includes("not used"))).toBe(false);
   });
 
-  it("AS-114: an unresolved class on a 3rd-level descendant (div > p > span) returns a null payload", () => {
+  it("AS-114: an unresolved class on a 3rd-level descendant (div > p > span) gets a stub style", () => {
     const result = convert(`<div><p><span class="deep-ghost">x</span></p></div>`, "");
 
-    expect(result.payload).toBeNull();
-    expect(result.errors.some((e) => e.includes("deep-ghost"))).toBe(true);
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
+    const stub = result.payload!.payload.styles.find((s) => s.name === "deep-ghost");
+    expect(stub).toBeDefined();
+    expect(stub!.styleLess).toBe("");
   });
 
   it("uses extractStyles via convertFromSource for self-contained HTML documents", () => {
@@ -174,14 +183,15 @@ describe("convert", () => {
     expect(result.errors).toEqual([]);
   });
 
-  it("AS-119: a node referencing a class with no matching style definition produces a null payload", () => {
-    // "ghost" is used in the HTML but never defined in CSS, so the emitted
-    // node references a class with no matching style — validatePayload must
-    // reject it and convert() must return payload: null unconditionally.
+  it("AS-119: a node referencing a class with no matching style definition gets a stub style, so validation still passes", () => {
+    // "ghost" is used in the HTML but never defined in CSS. emitWebflow now
+    // emits a stub style for it (AS-114 fix), so validatePayload finds every
+    // node class resolves to a style and convert() returns a non-null
+    // payload with no errors.
     const result = convert(`<div class="ghost"></div>`, "");
 
-    expect(result.payload).toBeNull();
-    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.payload).not.toBeNull();
+    expect(result.errors).toEqual([]);
   });
 
   it("AS-119: empty HTML (no nodes) produces a null payload", () => {
@@ -416,6 +426,20 @@ describe("convert", () => {
       const result = convert(html, css);
       expect(result.customCode.scripts.length).toBeGreaterThan(0);
       expect(result.customCode.scripts.some((s) => s.includes("console.log"))).toBe(true);
+    });
+  });
+
+  describe("AS-114 — unstyled utility class does not block conversion", () => {
+    it("test_AS_114_convert_with_unstyled_class_returns_no_errors_and_non_null_payload", () => {
+      const html = '<div class="wrapper w-container">hi</div>';
+      const css = ".wrapper { color: red; }";
+      const result = convert(html, css);
+
+      expect(result.errors).toEqual([]);
+      expect(result.payload).not.toBeNull();
+      const styleNames = result.payload!.payload.styles.map((s) => s.name);
+      expect(styleNames).toContain("wrapper");
+      expect(styleNames).toContain("w-container");
     });
   });
 });

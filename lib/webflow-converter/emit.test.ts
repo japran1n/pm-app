@@ -189,15 +189,20 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(comboAB.children).toContain(comboABC._id);
   });
 
-  it("AS-117: combo class with undefined base emits a warning and is skipped from output", () => {
+  it("AS-117: combo class with undefined base emits a warning and is not emitted as its own combo entry", () => {
     // .a.b.c defined without .a.b ever being defined in CSS: base can't be
-    // found, so the unparented combo is skipped entirely instead of being
-    // emitted with comb:"" (which would make it bind like a standalone class).
+    // found, so buildStyles() skips the unparented combo entirely instead of
+    // emitting it with comb:"" (which would make it bind like a standalone
+    // class). Since the node still carries class "c" (as part of "a b c"),
+    // the AS-114 stub pass then emits a plain stub style for it — same as
+    // any other class with no matching CSS rule.
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: yellow; }");
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
     const comboABC = payload.payload.styles.find((s) => s.name === "c");
 
-    expect(comboABC).toBeUndefined();
+    expect(comboABC).toBeDefined();
+    expect(comboABC!.styleLess).toBe("");
+    expect(comboABC!.comb).toBe("");
     expect(warnings.some((w) => w.includes("has no style definition"))).toBe(true);
     expect(warnings.some((w) => w.includes('base "a.b"'))).toBe(true);
   });
@@ -398,5 +403,43 @@ describe("emitWebflow — AS-111 XscpData envelope", () => {
   it("test_AS_111_emitted_payload_includes_webflow_xscpdata_type", () => {
     const { payload } = emitWebflow('<div class="card"></div>', parseCss(""));
     expect(payload.type).toBe("@webflow/XscpData");
+  });
+});
+
+describe("emitWebflow — AS-114 stub styles for classes with no CSS rule", () => {
+  it("test_AS_114_class_with_no_css_rule_gets_stub_style_alongside_styled_class", () => {
+    const cssMap = parseCss(".wrapper { color: red; }");
+    const { payload } = emitWebflow('<div class="wrapper w-container"></div>', cssMap);
+
+    const wrapper = payload.payload.styles.find((s) => s.name === "wrapper");
+    const stub = payload.payload.styles.find((s) => s.name === "w-container");
+
+    expect(wrapper).toBeDefined();
+    expect(wrapper!.styleLess).toBe("color: red;");
+
+    expect(stub).toBeDefined();
+    expect(stub!.styleLess).toBe("");
+    expect(stub!.fake).toBe(false);
+    expect(stub!.comb).toBe("");
+    expect(stub!.variants).toEqual({});
+  });
+
+  it("test_AS_114_class_with_no_css_at_all_gets_a_stub_style", () => {
+    const cssMap = parseCss("");
+    const { payload } = emitWebflow('<div class="js-trigger"></div>', cssMap);
+
+    expect(payload.payload.styles).toHaveLength(1);
+    const stub = payload.payload.styles[0];
+    expect(stub.name).toBe("js-trigger");
+    expect(stub.styleLess).toBe("");
+    expect(stub.fake).toBe(false);
+    expect(stub.comb).toBe("");
+    expect(stub.variants).toEqual({});
+  });
+
+  it("test_AS_114_no_warning_is_emitted_for_a_class_with_no_matching_css_rule", () => {
+    const cssMap = parseCss("");
+    const { warnings } = emitWebflow('<div class="js-trigger"></div>', cssMap);
+    expect(warnings.some((w) => w.toLowerCase().includes("js-trigger"))).toBe(false);
   });
 });

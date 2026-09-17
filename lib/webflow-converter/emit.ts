@@ -281,6 +281,19 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   return node;
 }
 
+/** Recursively walks a node tree, collecting every class name referenced on any node. */
+function collectClasses(nodes: WebflowNode[]): Set<string> {
+  const found = new Set<string>();
+  const visit = (list: WebflowNode[]) => {
+    for (const node of list) {
+      for (const cls of node.classes) found.add(cls);
+      if (node.children.length > 0) visit(node.children);
+    }
+  };
+  visit(nodes);
+  return found;
+}
+
 /**
  * Converts an HTML fragment plus a css.ts parseCss() result into Webflow's
  * XscpData clipboard payload. Never throws for expected-bad input — parse
@@ -302,6 +315,29 @@ export function emitWebflow(html: string, cssMap: ParseCssResult): EmitResult {
   }
 
   const styles = buildStyles(cssMap, warnings);
+
+  // AS-114: every class referenced on a node must resolve to a style
+  // definition. Classes with no matching CSS rule (ubiquitous in pasted
+  // Webflow markup — e.g. `w-container`, `js-trigger`) get a minimal stub
+  // style instead of blocking the copy. No warning — this is normal.
+  const styleNames = new Set(styles.map((s) => s.name));
+  const nodeClasses = collectClasses(nodes);
+  for (const className of nodeClasses) {
+    if (!styleNames.has(className)) {
+      styles.push({
+        _id: makeId(),
+        name: className,
+        fake: false,
+        comb: "",
+        namespace: "",
+        categories: [],
+        styleLess: "",
+        variants: {},
+        children: [],
+      });
+      styleNames.add(className);
+    }
+  }
 
   return {
     payload: {
