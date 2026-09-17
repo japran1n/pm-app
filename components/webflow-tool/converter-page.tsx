@@ -54,6 +54,11 @@ export function ConverterPage() {
     if (html.trim() === "" || inFlight.current) return
     inFlight.current = true
     const seq = ++seqRef.current
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = null
+    }
+    setCopyStatus("idle")
     setLoading(true)
     try {
       const next = await convertHtmlToWebflow({ html, css, js })

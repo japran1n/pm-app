@@ -376,6 +376,34 @@ describe("ConverterPage (F029)", () => {
     ).toBeDisabled()
   })
 
+  it("test_copystatus_reset_on_reconvert", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: "{}",
+      warnings: [],
+      errors: [],
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    mockWriteToClipboard.mockReturnValue(true)
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+    fireEvent.click(copyButton)
+
+    expect(await screen.findByText(/copied!/i)).toBeInTheDocument()
+    expect(await screen.findByRole("status")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    expect(screen.queryByText(/copied!/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
   it("test_AS_033_converter_verify_box_renders_on_page", () => {
     render(<ConverterPage />)
     expect(
