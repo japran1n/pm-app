@@ -16,25 +16,21 @@ export interface ConverterResultsProps {
   result: ConvertActionResult | null
 }
 
-const WARNING_PREVIEW_COUNT = 3
-
 type CopyStatus = "idle" | "success" | "error"
 
 export function ConverterResults({ result }: ConverterResultsProps) {
-  const [showAllWarnings, setShowAllWarnings] = React.useState(false)
   const [copyStatus, setCopyStatus] = React.useState<CopyStatus>("idle")
 
   if (!result) return null
 
   const warnings = result.warnings ?? []
   const hasWarnings = warnings.length > 0
-  const visibleWarnings = showAllWarnings
-    ? warnings
-    : warnings.slice(0, WARNING_PREVIEW_COUNT)
-  const hiddenWarningCount = warnings.length - visibleWarnings.length
+
+  const errors = result.errors ?? []
+  const hasErrors = errors.length > 0
 
   const customCode = result.ok ? (result.js?.join("\n\n") ?? "") : ""
-  const hasCustomCode = result.ok && customCode.length > 0
+  const hasCustomCode = result.ok && customCode.trim().length > 0
 
   function handleCopyCustomCode() {
     const ok = writeToClipboard([{ mimeType: "text/plain", data: customCode }])
@@ -50,6 +46,12 @@ export function ConverterResults({ result }: ConverterResultsProps) {
         </p>
       ) : null}
 
+      {result.ok && hasErrors ? (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          {errors.join(" ")}
+        </p>
+      ) : null}
+
       {hasWarnings ? (
         <div
           data-testid="converter-warnings"
@@ -58,20 +60,11 @@ export function ConverterResults({ result }: ConverterResultsProps) {
           <p className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">
             Warnings
           </p>
-          <ul className="mt-1 list-inside list-disc text-sm text-amber-700 dark:text-amber-300">
-            {visibleWarnings.map((warning, index) => (
+          <ul className="mt-1 max-h-40 list-inside list-disc overflow-y-auto text-sm text-amber-700 dark:text-amber-300">
+            {warnings.map((warning, index) => (
               <li key={index}>{warning}</li>
             ))}
           </ul>
-          {hiddenWarningCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => setShowAllWarnings(true)}
-              className="mt-1 text-xs font-medium text-amber-600 underline hover:no-underline dark:text-amber-400"
-            >
-              Show {hiddenWarningCount} more
-            </button>
-          ) : null}
         </div>
       ) : null}
 
@@ -94,7 +87,11 @@ export function ConverterResults({ result }: ConverterResultsProps) {
             onClick={handleCopyCustomCode}
             className="self-start rounded-md border px-3 py-1.5 text-sm font-medium"
           >
-            {copyStatus === "success" ? "Copied!" : "Copy custom code"}
+            {copyStatus === "success"
+              ? "Copied!"
+              : copyStatus === "error"
+                ? "Copy failed"
+                : "Copy custom code"}
           </button>
         </div>
       ) : null}

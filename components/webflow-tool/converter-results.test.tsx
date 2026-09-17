@@ -79,10 +79,42 @@ describe("ConverterResults (F032)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByText("Non-blocking style warning.")).toBeInTheDocument()
   })
+
+  it("test_AS_120_all_warnings_render_without_cap_or_expander", () => {
+    const warnings = ["w1", "w2", "w3", "w4", "w5"]
+    const result: ConvertActionResult = {
+      ok: true,
+      json: "{}",
+      warnings,
+      errors: [],
+    }
+    render(<ConverterResults result={result} />)
+
+    for (const warning of warnings) {
+      expect(screen.getByText(warning)).toBeInTheDocument()
+    }
+    expect(
+      screen.queryByRole("button", { name: /show \d+ more/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it("test_AS_119_errors_render_even_when_ok_is_true", () => {
+    const result: ConvertActionResult = {
+      ok: true,
+      json: "{}",
+      warnings: [],
+      errors: ["Partial failure: could not convert one node."],
+    }
+    render(<ConverterResults result={result} />)
+
+    expect(
+      screen.getByText("Partial failure: could not convert one node.")
+    ).toBeInTheDocument()
+  })
 })
 
 describe("ConverterResults custom code (F035)", () => {
-  it("test_AS_037_no_copy_custom_code_button_when_js_is_empty", () => {
+  it("test_AS_038_no_copy_custom_code_button_when_js_is_empty", () => {
     const result: ConvertActionResult = {
       ok: true,
       json: "{}",
@@ -100,7 +132,7 @@ describe("ConverterResults custom code (F035)", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("test_AS_037_shows_copy_custom_code_button_when_js_is_non_empty", () => {
+  it("test_AS_038_shows_copy_custom_code_button_when_js_is_non_empty", () => {
     const result: ConvertActionResult = {
       ok: true,
       json: "{}",
@@ -149,7 +181,25 @@ describe("ConverterResults custom code (F035)", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("test_AS_038_clicking_copy_custom_code_calls_writeToClipboard_with_text_plain", () => {
+  it("test_AS_038_no_copy_custom_code_button_when_js_is_whitespace_only", () => {
+    const result: ConvertActionResult = {
+      ok: true,
+      json: "{}",
+      js: ["   ", "\n"],
+      warnings: [],
+      errors: [],
+    }
+    render(<ConverterResults result={result} />)
+
+    expect(
+      screen.queryByRole("button", { name: /copy custom code/i })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId("converter-custom-code")
+    ).not.toBeInTheDocument()
+  })
+
+  it("test_AS_037_clicking_copy_custom_code_calls_writeToClipboard_with_text_plain", () => {
     vi.mocked(writeToClipboard).mockReturnValue(true)
 
     const result: ConvertActionResult = {
