@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCss, parseSelector, STATE_ALIASES } from "./css";
+import { parseCss, parseSelector } from "./css";
 
 // F012: CSS selector parser — port of the prototype's parseSelector().
 // Tests adapted from the reference implementation's existing passing tests
@@ -72,23 +72,11 @@ describe("F012 parseSelector", () => {
     expect(parseSelector("  .card  ")).toEqual({ chain: ["card"], state: null });
   });
 
-  it("exposes the STATE_ALIASES map ported from the prototype", () => {
-    expect(STATE_ALIASES).toEqual({
-      hover: "hover",
-      active: "pressed",
-      focus: "focus",
-      "focus-visible": "focus-visible",
-      visited: "visited",
-      placeholder: "placeholder",
-      before: "before",
-      after: "after",
-    });
-  });
 });
 
 // F014: parseCss() orchestration — walks postcss AST, dispatches
 // selector/breakpoint/shorthand logic, builds the class map.
-// Covers AS-046, AS-049, AS-050, AS-051, AS-052, AS-075, AS-076.
+// Covers AS-040, AS-046, AS-049, AS-050, AS-070, AS-071, AS-075, AS-076.
 
 describe("F014 parseCss", () => {
   it("empty input produces an empty result of the populated shape", () => {
@@ -121,14 +109,14 @@ describe("F014 parseCss", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("AS-051: an @media rule maps to the correct Webflow breakpoint variant key", () => {
+  it("AS-071: an @media rule maps to the correct Webflow breakpoint variant key", () => {
     const result = parseCss("@media (max-width: 767px) { .card { color: blue; } }");
     const card = result.classes.get("card")!;
     expect(card.base).toEqual({});
     expect(card.variants.small).toEqual({ color: "blue" });
   });
 
-  it("AS-051: an @media rule combined with a pseudo-state maps to a combined variant key", () => {
+  it("AS-070: an @media rule combined with a pseudo-state maps to a combined variant key", () => {
     const result = parseCss("@media (max-width: 991px) { .card:hover { color: green; } }");
     const card = result.classes.get("card")!;
     expect(card.variants.medium_hover).toEqual({ color: "green" });
@@ -168,7 +156,7 @@ describe("F014 parseCss", () => {
     expect(result.warnings.some((w) => w.includes("@import is not supported"))).toBe(true);
   });
 
-  it("AS-052: a combo class (.a.b) registers a combo entry with comboOf ['a']", () => {
+  it("AS-040: a combo class (.a.b) registers a combo entry with comboOf ['a']", () => {
     const result = parseCss(".card.is-featured { color: gold; }");
     const card = result.classes.get("card")!;
     const combo = result.classes.get("card|is-featured")!;

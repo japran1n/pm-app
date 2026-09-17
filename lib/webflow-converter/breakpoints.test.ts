@@ -52,6 +52,32 @@ describe('mapBreakpoint', () => {
   it('AS-048: a fractional pixel value that does not exactly match a boundary returns null', () => {
     expect(mapBreakpoint('max-width: 767.5px')).toBeNull();
   });
+
+  it('AS-048: a compound min-width/max-width range query returns null', () => {
+    expect(
+      mapBreakpoint('(min-width:768px) and (max-width:991px)'),
+    ).toBeNull();
+  });
+
+  it('AS-048: a negated query returns null', () => {
+    expect(mapBreakpoint('not all and (max-width:767px)')).toBeNull();
+  });
+
+  it('AS-048: an "only" prefixed query returns null', () => {
+    expect(mapBreakpoint('only screen and (max-width:767px)')).toBeNull();
+  });
+
+  it('AS-048: a comma-separated media query list returns null', () => {
+    expect(mapBreakpoint('screen, print')).toBeNull();
+  });
+
+  it('AS-048: (width <= 767px) range syntax maps to "small"', () => {
+    expect(mapBreakpoint('(width <= 767px)')).toBe('small');
+  });
+
+  it('AS-048: (width < 768px) range syntax maps to "small" (< N treated as <= N-1)', () => {
+    expect(mapBreakpoint('(width < 768px)')).toBe('small');
+  });
 });
 
 describe('variantKey', () => {

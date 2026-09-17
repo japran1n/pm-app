@@ -37,13 +37,45 @@ export type BreakpointKey =
  * breakpoint key, or null if the query is unmappable (e.g. "print").
  */
 export function mapBreakpoint(params: string): BreakpointKey | null {
-  const max = /max-width\s*:\s*([\d.]+)px/i.exec(params);
+  const q = params.trim();
+
+  // Reject comma-separated lists (e.g. "screen, print").
+  if (q.includes(',')) return null;
+
+  // Reject negated queries (e.g. "not all and (max-width:767px)").
+  if (/\bnot\b/i.test(q)) return null;
+
+  // Reject 'only' prefix (e.g. "only screen and (max-width:767px)").
+  if (/^\s*only\b/i.test(q)) return null;
+
+  // Reject compound queries that combine both a min-width and a max-width
+  // condition (a tablet-style range) — not a single Webflow breakpoint.
+  const hasMinWidth = /min-width\s*:\s*[\d.]+px/i.test(q);
+  const hasMaxWidth = /max-width\s*:\s*[\d.]+px/i.test(q);
+  if (hasMinWidth && hasMaxWidth) return null;
+
+  // Range syntax: (width <= Npx) or (width < Npx) -> treat like max-width.
+  // "< N" is equivalent to "<= N-1".
+  const rangeMax = /width\s*(<=?)\s*([\d.]+)px/i.exec(q);
+  if (rangeMax) {
+    const strict = rangeMax[1] === '<';
+    const raw = parseFloat(rangeMax[2]);
+    const px = strict ? raw - 1 : raw;
+    const hit = BREAKPOINTS.maxWidth.find((b) => px === b.upTo);
+    return hit ? hit.key : null;
+  }
+
+  // Range syntax: (width >= Npx) or (width > Npx) -> min-width ranges are
+  // not currently mapped to a single Webflow breakpoint.
+  if (/width\s*>=?\s*[\d.]+px/i.test(q)) return null;
+
+  const max = /max-width\s*:\s*([\d.]+)px/i.exec(q);
   if (max) {
     const px = parseFloat(max[1]);
     const hit = BREAKPOINTS.maxWidth.find((b) => px === b.upTo);
     return hit ? hit.key : null;
   }
-  const min = /min-width\s*:\s*([\d.]+)px/i.exec(params);
+  const min = /min-width\s*:\s*([\d.]+)px/i.exec(q);
   if (min) {
     const px = parseFloat(min[1]);
     const hit = BREAKPOINTS.minWidth.find((b) => px === b.from);
