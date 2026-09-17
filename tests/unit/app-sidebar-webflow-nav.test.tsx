@@ -10,6 +10,14 @@
 // mutation-verified: see the handoff for confirmation that reverting the
 // relevant `app-sidebar.tsx` code turns each test red.
 //
+// Second scrutiny pass (F047, AS-007): every test previously rendered only
+// `workspaceSlug: "acme"` and hardcoded href assertions as literal strings
+// containing "acme". That meant hardcoding the href in app-sidebar.tsx
+// (dropping `${workspaceSlug}` interpolation) left every test green. The
+// suite below is parameterised with `describe.each` over multiple distinct
+// slugs, and every href expectation is derived from the slug variable, so a
+// mutation that drops the interpolation is caught.
+//
 // Switched from `renderToStaticMarkup` to jsdom + @testing-library/react
 // (same pattern as app-sidebar-project-nav-list.test.tsx) specifically so
 // the mobile <Sheet> can be genuinely opened (clicking its hamburger
@@ -21,6 +29,8 @@ import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+const SLUGS = ["acme", "globex"] as const;
 
 let currentPath = "/w/acme";
 vi.mock("next/navigation", () => ({
@@ -50,12 +60,14 @@ afterEach(() => {
   currentPath = "/w/acme";
 });
 
-const baseProps = {
-  workspaceSlug: "acme",
-  workspaces: [{ id: "w1", name: "Acme", slug: "acme" }],
-  currentWorkspaceId: "w1",
-  currentUser: { id: "u1", name: "Test User", email: "test@example.com", avatarUrl: null },
-};
+function makeProps(slug: string) {
+  return {
+    workspaceSlug: slug,
+    workspaces: [{ id: "w1", name: "Acme", slug }],
+    currentWorkspaceId: "w1",
+    currentUser: { id: "u1", name: "Test User", email: "test@example.com", avatarUrl: null },
+  };
+}
 
 // Every nav item link lives inside a <nav data-tour="sidebar-nav">. The
 // desktop <aside> renders one copy; opening the mobile <Sheet> mounts a
@@ -69,13 +81,16 @@ async function openMobileSheet() {
   await screen.findByRole("dialog");
 }
 
-describe("AppSidebar Webflow nav item (F003/F044)", () => {
+describe.each(SLUGS)("AppSidebar Webflow nav item (F003/F044) [slug=%s]", (slug) => {
+  const baseProps = makeProps(slug);
+  const expectedHref = `/w/${slug}/tools/webflow`;
+
   describe("AS-001 / AS-005: Webflow link renders with visible label + correct href, under the correct nav group, on both surfaces", () => {
     it("desktop <aside>: link has the correct href and visible label text (not merely present in the href)", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const link = screen.getByRole("link", { name: /^Webflow$/ });
-      expect(link).toHaveAttribute("href", "/w/acme/tools/webflow");
+      expect(link).toHaveAttribute("href", expectedHref);
       // getByRole("link", {name}) already requires an accessible name
       // match against real text content, not the href -- this second
       // check guards specifically against a regression where the text
@@ -89,7 +104,7 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
 
       const dialog = screen.getByRole("dialog");
       const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
-      expect(link).toHaveAttribute("href", "/w/acme/tools/webflow");
+      expect(link).toHaveAttribute("href", expectedHref);
       expect(link.textContent).toContain("Webflow");
     });
 
@@ -117,7 +132,7 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
 
   describe("AS-006: active-state highlighting is genuinely distinguishable from inactive state, both surfaces", () => {
     it("desktop: active route sets aria-current and the active-only class (font-medium), and omits the inactive-only class (text-muted-foreground) on the LINK element itself", () => {
-      currentPath = "/w/acme/tools/webflow";
+      currentPath = `/w/${slug}/tools/webflow`;
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const link = screen.getByRole("link", { name: /^Webflow$/ });
@@ -136,7 +151,7 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
     });
 
     it("mobile: opening the sheet at the active route shows the same active-only class and omits the inactive-only class on the link", async () => {
-      currentPath = "/w/acme/tools/webflow";
+      currentPath = `/w/${slug}/tools/webflow`;
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
       await openMobileSheet();
 
@@ -148,7 +163,7 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
     });
 
     it("negative case: a different current route leaves the Webflow link inactive -- no aria-current, no font-medium, has text-muted-foreground", () => {
-      currentPath = "/w/acme"; // Dashboard's own route, not Webflow's
+      currentPath = `/w/${slug}`; // Dashboard's own route, not Webflow's
       render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
 
       const link = screen.getByRole("link", { name: /^Webflow$/ });
@@ -163,7 +178,7 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
       render(createElement(AppSidebar, { ...baseProps, isGuest: true }));
 
       const link = screen.getByRole("link", { name: /^Webflow$/ });
-      expect(link).toHaveAttribute("href", "/w/acme/tools/webflow");
+      expect(link).toHaveAttribute("href", expectedHref);
     });
 
     it("mobile: still renders the Webflow link for a guest once the sheet is opened", async () => {
@@ -172,7 +187,18 @@ describe("AppSidebar Webflow nav item (F003/F044)", () => {
 
       const dialog = screen.getByRole("dialog");
       const link = within(dialog).getByRole("link", { name: /^Webflow$/ });
-      expect(link).toHaveAttribute("href", "/w/acme/tools/webflow");
+      expect(link).toHaveAttribute("href", expectedHref);
+    });
+
+    it("desktop: still renders the Webflow link for a standard (non-guest) member with no Webflow-specific flag on the membership", () => {
+      // Regression guard: the item must be unconditional -- it must not be
+      // gated behind any membership flag (guest or otherwise). Render with
+      // a plain, standard member (isGuest: false, no other flags) and
+      // confirm the link is still present.
+      render(createElement(AppSidebar, { ...baseProps, isGuest: false }));
+
+      const link = screen.getByRole("link", { name: /^Webflow$/ });
+      expect(link).toHaveAttribute("href", expectedHref);
     });
   });
 
