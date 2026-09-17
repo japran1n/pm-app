@@ -59,3 +59,106 @@ export function parseSelector(sel: string): ParsedSelector | null {
 }
 
 export { STATE_ALIASES };
+
+// ---------------------------------------------------------------------------
+// F014: parseCss() orchestration — port of the prototype's parseCss() from
+// ~/Desktop/html-to-webflow/src/css.mjs, combining this module's
+// parseSelector, breakpoints.ts's mapBreakpoint/variantKey, and
+// longhand.ts's expandDeclaration into the full CSS -> Webflow style map.
+
+import postcss from "postcss";
+import { expandDeclaration } from "./longhand";
+import { mapBreakpoint, variantKey as computeVariantKey } from "./breakpoints";
+
+/** One parsed CSS class's declarations, keyed by variant. */
+export interface ParsedClass {
+  name: string;
+  /** Declarations for the "main" (non-breakpoint, non-state) variant. */
+  base: Record<string, string>;
+  /** Declarations keyed by variant key, e.g. "medium", "main_hover". */
+  variants: Record<string, Record<string, string>>;
+  /** Name of the class this one is combo'd onto (".a.b" -> b.comboOf === "a"), or null. */
+  comboOf: string | null;
+}
+
+export interface ParseCssResult {
+  classes: Map<string, ParsedClass>;
+  order: string[];
+  warnings: string[];
+}
+
+/**
+ * Parse a stylesheet's text into a Webflow-shaped class map.
+ *
+ * Never throws for expected-bad input (unsupported selectors, unmappable
+ * @media, unexpandable shorthands) — those are reported as warnings.
+ */
+export function parseCss(cssText: string): ParseCssResult {
+  const root = postcss.parse(cssText);
+  const classes = new Map<string, ParsedClass>();
+  const order: string[] = [];
+  const warnings: string[] = [];
+
+  const ensure = (name: string, comboOf: string | null): ParsedClass => {
+    if (!classes.has(name)) {
+      classes.set(name, { name, base: {}, variants: {}, comboOf });
+      order.push(name);
+    }
+    const rec = classes.get(name)!;
+    if (comboOf && !rec.comboOf) rec.comboOf = comboOf;
+    return rec;
+  };
+
+  const walk = (container: import("postcss").Container, breakpoint: string): void => {
+    container.each((node) => {
+      if (node.type === "atrule") {
+        const name = node.name.toLowerCase();
+        if (name === "media") {
+          const bp = mapBreakpoint(node.params);
+          if (!bp) {
+            warnings.push(`@media (${node.params}) does not map to a Webflow breakpoint — skipped`);
+            return;
+          }
+          walk(node as unknown as import("postcss").Container, bp);
+        } else if (name === "supports" || name === "layer") {
+          walk(node as unknown as import("postcss").Container, breakpoint);
+        } else if (name === "keyframes") {
+          warnings.push(`@keyframes "${node.params}" cannot be pasted — move it to page custom code`);
+        } else if (name === "font-face") {
+          warnings.push(`@font-face cannot be pasted — upload the font in Webflow site settings`);
+        }
+        return;
+      }
+      if (node.type !== "rule") return;
+
+      for (const sel of node.selectors) {
+        const parsed = parseSelector(sel);
+        if (!parsed) {
+          warnings.push(`selector "${sel}" is not a plain class selector — skipped (Webflow styles by class)`);
+          continue;
+        }
+        const { chain, state } = parsed;
+        // ".a.b" -> b is a combo class applied on top of a
+        const target = chain[chain.length - 1];
+        const comboOf = chain.length > 1 ? chain[chain.length - 2] : null;
+        for (const c of chain) ensure(c, null);
+        const rec = ensure(target, comboOf);
+
+        const key = computeVariantKey(breakpoint, state);
+        const bucket = key === null ? rec.base : (rec.variants[key] ??= {});
+
+        node.walkDecls((decl) => {
+          const { decls, warning } = expandDeclaration(decl.prop, decl.value);
+          if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
+          if (decl.important) {
+            warnings.push(`.${chain.join(".")}: "!important" on ${decl.prop} was dropped`);
+          }
+          Object.assign(bucket, decls);
+        });
+      }
+    });
+  };
+
+  walk(root, "main");
+  return { classes, order, warnings };
+}

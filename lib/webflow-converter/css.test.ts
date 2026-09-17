@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSelector, STATE_ALIASES } from "./css";
+import { parseCss, parseSelector, STATE_ALIASES } from "./css";
 
 // F012: CSS selector parser — port of the prototype's parseSelector().
 // Tests adapted from the reference implementation's existing passing tests
@@ -83,5 +83,145 @@ describe("F012 parseSelector", () => {
       before: "before",
       after: "after",
     });
+  });
+});
+
+// F014: parseCss() orchestration — walks postcss AST, dispatches
+// selector/breakpoint/shorthand logic, builds the class map.
+// Covers AS-046, AS-049, AS-050, AS-051, AS-052, AS-075, AS-076.
+
+describe("F014 parseCss", () => {
+  it("empty input produces an empty result of the populated shape", () => {
+    const result = parseCss("");
+    expect(result.classes).toBeInstanceOf(Map);
+    expect(result.classes.size).toBe(0);
+    expect(result.order).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("AS-049: a simple class rule produces a styleLess-equivalent base declaration set", () => {
+    const result = parseCss(".card { color: red; }");
+    const card = result.classes.get("card");
+    expect(card).toBeDefined();
+    expect(card!.base).toEqual({ color: "red" });
+    expect(card!.variants).toEqual({});
+    expect(card!.comboOf).toBeNull();
+    expect(result.order).toEqual(["card"]);
+  });
+
+  it("AS-050: shorthand expansion flows through parseCss into longhand declarations", () => {
+    const result = parseCss(".box { margin: 1px 2px 3px 4px; }");
+    const box = result.classes.get("box")!;
+    expect(box.base).toEqual({
+      "margin-top": "1px",
+      "margin-right": "2px",
+      "margin-bottom": "3px",
+      "margin-left": "4px",
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("AS-051: an @media rule maps to the correct Webflow breakpoint variant key", () => {
+    const result = parseCss("@media (max-width: 767px) { .card { color: blue; } }");
+    const card = result.classes.get("card")!;
+    expect(card.base).toEqual({});
+    expect(card.variants.small).toEqual({ color: "blue" });
+  });
+
+  it("AS-051: an @media rule combined with a pseudo-state maps to a combined variant key", () => {
+    const result = parseCss("@media (max-width: 991px) { .card:hover { color: green; } }");
+    const card = result.classes.get("card")!;
+    expect(card.variants.medium_hover).toEqual({ color: "green" });
+  });
+
+  it("a bare pseudo-state (no @media) maps to a main_<state> variant key", () => {
+    const result = parseCss(".button:hover { color: purple; }");
+    const button = result.classes.get("button")!;
+    expect(button.base).toEqual({});
+    expect(button.variants.main_hover).toEqual({ color: "purple" });
+  });
+
+  it("AS-052: a combo class (.a.b) registers b with comboOf 'a'", () => {
+    const result = parseCss(".card.is-featured { color: gold; }");
+    const card = result.classes.get("card")!;
+    const featured = result.classes.get("is-featured")!;
+    expect(card.comboOf).toBeNull();
+    expect(featured.comboOf).toBe("card");
+    expect(featured.base).toEqual({ color: "gold" });
+    expect(result.order).toEqual(["card", "is-featured"]);
+  });
+
+  it("non-class selectors (descendant, id, element, attribute) produce warnings and are skipped", () => {
+    const result = parseCss(`
+      .card h3 { color: red; }
+      #hero { color: red; }
+      div { color: red; }
+      [data-x] { color: red; }
+    `);
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(4);
+    expect(result.warnings[0]).toMatch(/not a plain class selector/);
+    expect(result.warnings.every((w) => w.includes("skipped"))).toBe(true);
+  });
+
+  it("AS-046: !important is stripped from the value, the declaration still applies, and a warning is added", () => {
+    const result = parseCss(".card { color: red !important; }");
+    const card = result.classes.get("card")!;
+    expect(card.base).toEqual({ color: "red" });
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/!important.*color.*dropped/);
+  });
+
+  it("warnings from shorthand expansion aggregate into the overall warnings list", () => {
+    const result = parseCss(`
+      .a { margin: inherit; }
+      .b { border-radius: 4px / 8px; }
+    `);
+    expect(result.warnings).toHaveLength(2);
+    expect(result.warnings[0]).toMatch(/dropped "margin: inherit"/);
+    expect(result.warnings[1]).toMatch(/elliptical radii flattened/);
+  });
+
+  it("AS-075: background-image is passed through untouched, no special-casing", () => {
+    const result = parseCss(`.hero { background-image: url("/img/hero.jpg"); }`);
+    const hero = result.classes.get("hero")!;
+    expect(hero.base["background-image"]).toBe('url("/img/hero.jpg")');
+  });
+
+  it("AS-076: an unmappable @media query (e.g. print) is reported as a warning and skipped", () => {
+    const result = parseCss("@media print { .card { color: red; } }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/does not map to a Webflow breakpoint/);
+  });
+
+  it("@keyframes and @font-face at-rules produce warnings instead of being parsed as classes", () => {
+    const result = parseCss(`
+      @keyframes spin { from { transform: rotate(0deg); } }
+      @font-face { font-family: "Foo"; src: url("/foo.woff2"); }
+    `);
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/@keyframes "spin" cannot be pasted/),
+      expect.stringMatching(/@font-face cannot be pasted/),
+    ]);
+  });
+
+  it("@supports wraps its contents transparently, preserving the outer breakpoint", () => {
+    const result = parseCss(`
+      @supports (display: grid) {
+        @media (max-width: 479px) {
+          .grid { display: grid; }
+        }
+      }
+    `);
+    const grid = result.classes.get("grid")!;
+    expect(grid.variants.tiny).toEqual({ display: "grid" });
+  });
+
+  it("multiple selectors sharing a rule are each parsed independently", () => {
+    const result = parseCss(".a, .b { color: red; }");
+    expect(result.classes.get("a")!.base).toEqual({ color: "red" });
+    expect(result.classes.get("b")!.base).toEqual({ color: "red" });
   });
 });
