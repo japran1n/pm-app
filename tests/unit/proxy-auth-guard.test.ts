@@ -26,4 +26,11 @@ describe("requiresAuth (AS-001: unauthenticated visitor to /w/* is redirected to
   it("AS-001: does not require auth for paths that merely start with 'w' but aren't workspace-scoped", () => {
     expect(requiresAuth("/wildcard")).toBe(false);
   });
+
+  // F043 (AS-004): name the converter-tool route explicitly, rather than
+  // leaving it covered only "by construction" (any nested /w/<slug>/...
+  // path already matching the general workspace-scoped case above).
+  it("AS-004: requires auth for a workspace tool converter route", () => {
+    expect(requiresAuth("/w/acme/tools/webflow")).toBe(true);
+  });
 });
