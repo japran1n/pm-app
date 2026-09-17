@@ -494,11 +494,13 @@ describe('AS-065: font shorthand expands style/weight/size/line-height/family', 
     });
   });
 
-  it('test_AS_065_size_only_no_family_is_kept_as_shorthand_with_warning', () => {
-    // AS-069: the font fallback drops the value rather than re-emitting the
-    // shorthand verbatim — Webflow rejects shorthand declarations outright.
+  it('test_AS_065_size_only_no_family_is_warned_and_dropped_not_kept_as_shorthand', () => {
+    // AS-069 / F051: the font fallback drops the value rather than
+    // re-emitting the shorthand verbatim — Webflow rejects shorthand
+    // declarations outright, so it must never come back as `font: ...`.
     const result = expandDeclaration('font', 'italic bold');
     expect(result.decls).toEqual({});
+    expect(result.decls).not.toHaveProperty('font');
     expect(result.warning).toMatch(/could not expand/i);
   });
 

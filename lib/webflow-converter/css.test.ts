@@ -99,7 +99,7 @@ describe("F014 parseCss", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("AS-049: a simple class rule produces a styleLess-equivalent base declaration set", () => {
+  it("a simple class rule produces a styleLess-equivalent base declaration set", () => {
     const result = parseCss(".card { color: red; }");
     const card = result.classes.get("card");
     expect(card).toBeDefined();
@@ -109,7 +109,7 @@ describe("F014 parseCss", () => {
     expect(result.order).toEqual(["card"]);
   });
 
-  it("AS-050: shorthand expansion flows through parseCss into longhand declarations", () => {
+  it("shorthand expansion flows through parseCss into longhand declarations", () => {
     const result = parseCss(".box { margin: 1px 2px 3px 4px; }");
     const box = result.classes.get("box")!;
     expect(box.base).toEqual({
@@ -219,6 +219,38 @@ describe("F014 parseCss", () => {
     expect(result.warnings.every((w) => w.includes("skipped"))).toBe(true);
   });
 
+  it("AS-042: a descendant selector (.card h3) produces a warning and is not converted into any style", () => {
+    const result = parseCss(".card h3 { color: red; }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/not a plain class selector/);
+    expect(result.warnings[0]).toContain("skipped");
+  });
+
+  it("AS-043: an ID selector (#hero) produces a warning and is not converted into any style", () => {
+    const result = parseCss("#hero { color: red; }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/not a plain class selector/);
+    expect(result.warnings[0]).toContain("skipped");
+  });
+
+  it("AS-044: a combinator selector (a.btn > span) produces a warning and is not converted into any style", () => {
+    const result = parseCss("a.btn > span { color: red; }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/not a plain class selector/);
+    expect(result.warnings[0]).toContain("skipped");
+  });
+
+  it("AS-045: an attribute selector ([data-x]) produces a warning and is not converted into any style", () => {
+    const result = parseCss("[data-x] { color: red; }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/not a plain class selector/);
+    expect(result.warnings[0]).toContain("skipped");
+  });
+
   it("AS-046: !important is stripped from the value, the declaration still applies, and a warning is added", () => {
     const result = parseCss(".card { color: red !important; }");
     const card = result.classes.get("card")!;
@@ -243,7 +275,23 @@ describe("F014 parseCss", () => {
     expect(hero.base["background-image"]).toBe('url("/img/hero.jpg")');
   });
 
-  it("AS-076: an unmappable @media query (e.g. print) is reported as a warning and skipped", () => {
+  it("AS-076: other background-* longhand properties on the same class are unaffected by the presence of background-image", () => {
+    const result = parseCss(`
+      .hero {
+        background-image: url("/img/hero.jpg");
+        background-color: red;
+        background-position: center;
+        background-size: cover;
+      }
+    `);
+    const hero = result.classes.get("hero")!;
+    expect(hero.base["background-image"]).toBe('url("/img/hero.jpg")');
+    expect(hero.base["background-color"]).toBe("red");
+    expect(hero.base["background-position"]).toBe("center");
+    expect(hero.base["background-size"]).toBe("cover");
+  });
+
+  it("AS-048: an unmappable @media query (e.g. print) is reported as a warning and skipped", () => {
     const result = parseCss("@media print { .card { color: red; } }");
     expect(result.classes.size).toBe(0);
     expect(result.warnings).toHaveLength(1);
@@ -258,7 +306,23 @@ describe("F014 parseCss", () => {
     expect(Array.from(result.classes.keys())).toHaveLength(0);
   });
 
-  it("@keyframes and @font-face at-rules produce warnings instead of being parsed as classes", () => {
+  it("AS-049: a @keyframes block produces a warning recommending it be moved to page custom code, and is not converted into any style", () => {
+    const result = parseCss(`@keyframes spin { from { transform: rotate(0deg); } }`);
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/@keyframes "spin" cannot be pasted/);
+    expect(result.warnings[0]).toMatch(/page custom code/);
+  });
+
+  it("AS-050: a @font-face block produces a warning recommending the font be uploaded via Webflow site settings, and is not converted into any style", () => {
+    const result = parseCss(`@font-face { font-family: "Foo"; src: url("/foo.woff2"); }`);
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/@font-face cannot be pasted/);
+    expect(result.warnings[0]).toMatch(/Webflow site settings/);
+  });
+
+  it("@keyframes and @font-face at-rules together each produce their own warning instead of being parsed as classes", () => {
     const result = parseCss(`
       @keyframes spin { from { transform: rotate(0deg); } }
       @font-face { font-family: "Foo"; src: url("/foo.woff2"); }

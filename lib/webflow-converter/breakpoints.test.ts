@@ -36,7 +36,7 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('min-width: 1000px')).toBeNull();
   });
 
-  it('AS-074: an unmappable media query (e.g. print) returns null', () => {
+  it('AS-048: an unmappable media query (e.g. print) returns null', () => {
     expect(mapBreakpoint('print')).toBeNull();
     expect(mapBreakpoint('orientation: landscape')).toBeNull();
   });
@@ -55,7 +55,7 @@ describe('mapBreakpoint', () => {
 });
 
 describe('variantKey', () => {
-  it('AS-048: a base breakpoint ("main") with no state returns null (goes in styleLess)', () => {
+  it('AS-074: a base breakpoint ("main", i.e. no media query) with no state returns null (goes in styleLess as the base/desktop style)', () => {
     expect(variantKey('main', null)).toBeNull();
     expect(variantKey('main', undefined)).toBeNull();
   });
