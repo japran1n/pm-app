@@ -72,13 +72,18 @@ import { mapBreakpoint, variantKey as computeVariantKey } from "./breakpoints";
 
 /** One parsed CSS class's declarations, keyed by variant. */
 export interface ParsedClass {
+  /** Terminal (last) class name in the chain, e.g. ".a.b" -> "b". */
   name: string;
   /** Declarations for the "main" (non-breakpoint, non-state) variant. */
   base: Record<string, string>;
   /** Declarations keyed by variant key, e.g. "medium", "main_hover". */
   variants: Record<string, Record<string, string>>;
-  /** Name of the class this one is combo'd onto (".a.b" -> b.comboOf === "a"), or null. */
-  comboOf: string | null;
+  /**
+   * Ancestor class names for a combo chain, in source order (all chain
+   * members except the terminal one). ".a.b.c" -> c.comboOf === ["a", "b"].
+   * null for a standalone (non-combo) class.
+   */
+  comboOf: string[] | null;
 }
 
 export interface ParseCssResult {
@@ -99,12 +104,17 @@ export function parseCss(cssText: string): ParseCssResult {
   const order: string[] = [];
   const warnings: string[] = [];
 
-  const ensure = (name: string, comboOf: string | null): ParsedClass => {
-    if (!classes.has(name)) {
-      classes.set(name, { name, base: {}, variants: {}, comboOf });
-      order.push(name);
+  // The class map is keyed by chain identity, not just the terminal class
+  // name: a standalone ".b" and a combo ".a.b" describe different rule sets
+  // (base b vs. b-on-top-of-a) and must not collide in the same record.
+  // Standalone key: the class name itself, e.g. "b".
+  // Combo key: the full chain joined by "|", e.g. "a|b" or "a|b|c".
+  const ensure = (mapKey: string, name: string, comboOf: string[] | null): ParsedClass => {
+    if (!classes.has(mapKey)) {
+      classes.set(mapKey, { name, base: {}, variants: {}, comboOf });
+      order.push(mapKey);
     }
-    const rec = classes.get(name)!;
+    const rec = classes.get(mapKey)!;
     if (comboOf && !rec.comboOf) rec.comboOf = comboOf;
     return rec;
   };
@@ -138,14 +148,17 @@ export function parseCss(cssText: string): ParseCssResult {
           continue;
         }
         const { chain, state } = parsed;
-        // ".a.b" -> b is a combo class applied on top of a
+        // ".a.b.c" -> terminal class is "c", combo'd onto ["a", "b"]
         const target = chain[chain.length - 1];
-        const comboOf = chain.length > 1 ? chain[chain.length - 2] : null;
-        for (const c of chain) ensure(c, null);
-        const rec = ensure(target, comboOf);
+        const comboOf = chain.length > 1 ? chain.slice(0, -1) : null;
+        // Register every individual chain member as its own standalone class
+        // too, so ".a.b" registers "a" (standalone) distinct from "a|b" (combo).
+        for (const c of chain) ensure(c, c, null);
+        const classKey = chain.length > 1 ? chain.join("|") : target;
+        const rec = ensure(classKey, target, comboOf);
 
-        const key = computeVariantKey(breakpoint, state);
-        const bucket = key === null ? rec.base : (rec.variants[key] ??= {});
+        const variantKey = computeVariantKey(breakpoint, state);
+        const bucket = variantKey === null ? rec.base : (rec.variants[variantKey] ??= {});
 
         for (const child of node.nodes ?? []) {
           if (child.type === "decl") {

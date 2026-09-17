@@ -148,14 +148,62 @@ describe("F014 parseCss", () => {
     expect(result.warnings.some((w) => /nested CSS/i.test(w))).toBe(true);
   });
 
-  it("AS-052: a combo class (.a.b) registers b with comboOf 'a'", () => {
+  it("AS-052: a combo class (.a.b) registers a combo entry with comboOf ['a']", () => {
     const result = parseCss(".card.is-featured { color: gold; }");
     const card = result.classes.get("card")!;
-    const featured = result.classes.get("is-featured")!;
+    const combo = result.classes.get("card|is-featured")!;
     expect(card.comboOf).toBeNull();
-    expect(featured.comboOf).toBe("card");
-    expect(featured.base).toEqual({ color: "gold" });
-    expect(result.order).toEqual(["card", "is-featured"]);
+    expect(combo.name).toBe("is-featured");
+    expect(combo.comboOf).toEqual(["card"]);
+    expect(combo.base).toEqual({ color: "gold" });
+    expect(result.order).toEqual(["card", "is-featured", "card|is-featured"]);
+  });
+
+  it("AS-039: a standalone class and its later combo use produce two separate entries, standalone is not destroyed", () => {
+    const result = parseCss(".b { color: red; } .a.b { color: blue; }");
+    const standalone = result.classes.get("b")!;
+    const combo = result.classes.get("a|b")!;
+    expect(standalone.base).toEqual({ color: "red" });
+    expect(standalone.comboOf).toBeNull();
+    expect(combo.base).toEqual({ color: "blue" });
+    expect(combo.comboOf).toEqual(["a"]);
+    expect(result.classes.size).toBe(3); // "a", "b" (standalone), "a|b" (combo)
+  });
+
+  it("AS-039: combo-then-standalone is order-independent, still produces two entries", () => {
+    const result = parseCss(".a.b { color: blue; } .b { color: red; }");
+    const standalone = result.classes.get("b")!;
+    const combo = result.classes.get("a|b")!;
+    expect(standalone.base).toEqual({ color: "red" });
+    expect(standalone.comboOf).toBeNull();
+    expect(combo.base).toEqual({ color: "blue" });
+    expect(combo.comboOf).toEqual(["a"]);
+    expect(result.classes.size).toBe(3);
+  });
+
+  it("AS-040: a three-deep combo chain (.a.b.c) preserves all ancestors in comboOf", () => {
+    const result = parseCss(".a.b.c { color: green; }");
+    const combo = result.classes.get("a|b|c")!;
+    expect(combo.name).toBe("c");
+    expect(combo.comboOf).toEqual(["a", "b"]);
+    expect(combo.base).toEqual({ color: "green" });
+    // Each individual chain member is also registered standalone.
+    expect(result.classes.has("a")).toBe(true);
+    expect(result.classes.has("b")).toBe(true);
+    expect(result.classes.has("c")).toBe(true);
+  });
+
+  it("AS-040: the same terminal class under two different bases are distinct combo entries", () => {
+    const result = parseCss(".x.z { color: red; } .y.z { color: blue; }");
+    const xz = result.classes.get("x|z")!;
+    const yz = result.classes.get("y|z")!;
+    expect(xz).not.toBe(yz);
+    expect(xz.comboOf).toEqual(["x"]);
+    expect(xz.base).toEqual({ color: "red" });
+    expect(yz.comboOf).toEqual(["y"]);
+    expect(yz.base).toEqual({ color: "blue" });
+    // The standalone "z" (never declared on its own) is still registered but empty.
+    expect(result.classes.get("z")!.base).toEqual({});
   });
 
   it("non-class selectors (descendant, id, element, attribute) produce warnings and are skipped", () => {
