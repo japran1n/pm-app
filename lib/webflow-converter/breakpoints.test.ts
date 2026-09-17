@@ -41,10 +41,26 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('orientation: landscape')).toBeNull();
   });
 
-  it('AS-048: a media-type + width condition combo returns null (not snapped to a breakpoint)', () => {
+  it('AS-048: a non-screen media-type + width condition combo returns null (not snapped to a breakpoint)', () => {
     expect(mapBreakpoint('print and (max-width:767px)')).toBeNull();
     expect(mapBreakpoint('tv and (max-width:479px)')).toBeNull();
-    expect(mapBreakpoint('screen and (max-width:991px)')).toBeNull();
+  });
+
+  it('AS-048: a "screen and" prefix is transparent and the width condition maps normally', () => {
+    expect(mapBreakpoint('screen and (max-width:991px)')).toBe('medium');
+    expect(mapBreakpoint('screen and (max-width:767px)')).toBe('small');
+  });
+
+  it('AS-048: an "only screen and" prefix is transparent and the width condition maps normally', () => {
+    expect(mapBreakpoint('only screen and (max-width:767px)')).toBe('small');
+  });
+
+  it('AS-048: an "all and" prefix is transparent and the width condition maps normally', () => {
+    expect(mapBreakpoint('all and (max-width:479px)')).toBe('tiny');
+  });
+
+  it('AS-048: a "print" media type prefix returns null (not transparent like screen/all)', () => {
+    expect(mapBreakpoint('print and (max-width:767px)')).toBeNull();
   });
 
   it('AS-048: a width condition combined with a non-width feature returns null', () => {
@@ -75,8 +91,8 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('not all and (max-width:767px)')).toBeNull();
   });
 
-  it('AS-048: an "only" prefixed query returns null', () => {
-    expect(mapBreakpoint('only screen and (max-width:767px)')).toBeNull();
+  it('AS-048: an "only" prefixed non-screen/all query returns null', () => {
+    expect(mapBreakpoint('only print and (max-width:767px)')).toBeNull();
   });
 
   it('AS-048: a comma-separated media query list returns null', () => {

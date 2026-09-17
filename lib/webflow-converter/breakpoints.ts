@@ -37,7 +37,13 @@ export type BreakpointKey =
  * breakpoint key, or null if the query is unmappable (e.g. "print").
  */
 export function mapBreakpoint(params: string): BreakpointKey | null {
-  const q = params.trim();
+  let q = params.trim();
+
+  // Strip a leading "screen"/"only screen"/"all"/"only all" media-type
+  // prefix — these are the default/near-universal media types and are
+  // transparent to Webflow's width-based breakpoints (e.g. Webflow's own
+  // exports emit "screen and (max-width:991px)").
+  q = q.replace(/^(?:only\s+)?(?:screen|all)\s+and\s+/i, '').trim();
 
   // Reject comma-separated lists (e.g. "screen, print").
   if (q.includes(',')) return null;
@@ -45,7 +51,8 @@ export function mapBreakpoint(params: string): BreakpointKey | null {
   // Reject negated queries (e.g. "not all and (max-width:767px)").
   if (/\bnot\b/i.test(q)) return null;
 
-  // Reject 'only' prefix (e.g. "only screen and (max-width:767px)").
+  // Reject 'only' prefix that wasn't already stripped above (e.g.
+  // "only print and (max-width:767px)").
   if (/^\s*only\b/i.test(q)) return null;
 
   // Reject compound queries that combine both a min-width and a max-width
@@ -54,10 +61,11 @@ export function mapBreakpoint(params: string): BreakpointKey | null {
   const hasMaxWidth = /max-width\s*:\s*[\d.]+px/i.test(q);
   if (hasMinWidth && hasMaxWidth) return null;
 
-  // Reject media types (e.g. "print and (max-width:767px)") — a media-type
-  // restricted rule is not a plain Webflow breakpoint.
+  // Reject non-screen media types (e.g. "print and (max-width:767px)") — a
+  // media-type restricted rule is not a plain Webflow breakpoint. "screen"
+  // and "all" were already stripped above when used as a leading prefix.
   const mediaTypePattern =
-    /\b(?:all|print|screen|tv|speech|handheld|projection|braille|embossed|tty)\b/i;
+    /\b(?:print|tv|speech|handheld|projection|braille|embossed|tty)\b/i;
   if (mediaTypePattern.test(q)) return null;
 
   // Only accept pure width conditions. Anything combined with 'and', or any

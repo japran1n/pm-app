@@ -116,6 +116,12 @@ describe("F014 parseCss", () => {
     expect(card.variants.small).toEqual({ color: "blue" });
   });
 
+  it("AS-048: an @media rule with a 'screen' prefix maps to the correct Webflow breakpoint variant key (screen is transparent)", () => {
+    const result = parseCss("@media screen and (max-width: 991px) { .a { color: red; } }");
+    const a = result.classes.get("a")!;
+    expect(a.variants.medium).toEqual({ color: "red" });
+  });
+
   it("AS-070: an @media rule combined with a pseudo-state maps to a combined variant key", () => {
     const result = parseCss("@media (max-width: 991px) { .card:hover { color: green; } }");
     const card = result.classes.get("card")!;
