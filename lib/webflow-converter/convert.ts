@@ -8,7 +8,7 @@
 // warnings/errors on the returned result.
 
 import { parseCss } from "./css";
-import { emitWebflow, type XscpData, type XscpPayload } from "./emit";
+import { emitWebflow, type WebflowNode, type XscpData, type XscpPayload } from "./emit";
 import { extractScripts, extractStyles } from "./js-extract";
 import { validatePayload } from "./validator";
 
@@ -43,12 +43,29 @@ export function convert(html: string, css: string): ConvertResult {
   const warnings = new Set([...emitResult.warnings, ...scriptsResult.warnings, ...stylesResult.warnings]);
 
   // AS-051: warn for every CSS class that is defined but never referenced by
-  // any emitted node.
-  const usedClasses = new Set(
-    (emitResult.payload.payload.nodes ?? []).flatMap((n) => n.classes ?? [])
-  );
-  for (const [cls] of cssResult.classes) {
-    if (!usedClasses.has(cls)) {
+  // any emitted node. Recurses into all descendant nodes, not just the
+  // top-level ones, so a class used only on a deeply nested element is
+  // correctly counted as used. Each node's own class list is tracked
+  // separately (rather than flattened into one global set) so combo class
+  // chains (e.g. "a|b" for ".a.b") can be matched against a single element
+  // that actually carries every class in the chain, not just each class
+  // individually somewhere in the tree.
+  const nodeClassLists: string[][] = [];
+  const collectUsedClasses = (node: WebflowNode): void => {
+    nodeClassLists.push(node.classes ?? []);
+    for (const child of node.children ?? []) collectUsedClasses(child);
+  };
+  for (const node of emitResult.payload.payload.nodes ?? []) {
+    collectUsedClasses(node);
+  }
+  const usedClasses = new Set(nodeClassLists.flat());
+  for (const [cls, parsed] of cssResult.classes) {
+    const chain = parsed.comboOf ? [...parsed.comboOf, parsed.name] : [parsed.name];
+    const isUsed =
+      chain.length > 1
+        ? nodeClassLists.some((classes) => chain.every((c) => classes.includes(c)))
+        : usedClasses.has(parsed.name);
+    if (!isUsed) {
       warnings.add(`CSS class "${cls}" is defined but not used by any HTML element`);
     }
   }

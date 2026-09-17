@@ -285,6 +285,12 @@ describe("convert", () => {
         assertNoShorthand((variant as { styleLess?: string })?.styleLess);
       }
     }
+
+    // AS-051: every defined class is used somewhere in the tree, including
+    // list__item which only appears on a 3rd-level descendant (li inside ul
+    // inside div inside section) — the unused-class check must recurse into
+    // all descendant nodes, not just top-level children.
+    expect(result.warnings.some((w) => w.includes("not used"))).toBe(false);
   });
 
   it("AS-011: no Supabase imports anywhere in the webflow-converter module directory", () => {
