@@ -44,7 +44,7 @@ describe("writeToClipboard", () => {
     expect(clipboardData["application/json"]).toBe(payload);
   });
 
-  it("AS-032: writes text/plain to clipboard", () => {
+  it("writes text/plain to clipboard", () => {
     writeToClipboard([{ mimeType: "text/plain", data: "hello" }]);
     expect(clipboardData["text/plain"]).toBe("hello");
   });
@@ -62,5 +62,74 @@ describe("writeToClipboard", () => {
     document.execCommand = vi.fn().mockReturnValue(false);
     const result = writeToClipboard([{ mimeType: "text/plain", data: "x" }]);
     expect(result).toBe(false);
+  });
+
+  it("AS-032: write only succeeds when the copy event fires synchronously (not an async API)", () => {
+    vi.spyOn(document, "execCommand").mockImplementation(() => true);
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: "{}" },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it("test_setData_throw_returns_false", () => {
+    vi.spyOn(document, "execCommand").mockImplementation((cmd) => {
+      if (cmd === "copy" && handler) {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          clipboardData: {
+            setData: (mime: string) => {
+              if (mime === "application/json") {
+                throw new Error("setData failed");
+              }
+            },
+          },
+        } as unknown as ClipboardEvent;
+        handler(mockEvent);
+        return true;
+      }
+      return false;
+    });
+
+    const result = writeToClipboard([
+      { mimeType: "application/json", data: "{}" },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it("test_listener_removed_in_all_outcomes", () => {
+    const removeSpy = document.removeEventListener as ReturnType<
+      typeof vi.fn
+    >;
+
+    // Success path
+    writeToClipboard([{ mimeType: "text/plain", data: "ok" }]);
+    expect(removeSpy).toHaveBeenCalledWith("copy", handler);
+
+    // No-event path
+    removeSpy.mockClear();
+    vi.spyOn(document, "execCommand").mockImplementation(() => true);
+    writeToClipboard([{ mimeType: "text/plain", data: "ok" }]);
+    expect(removeSpy).toHaveBeenCalledWith("copy", handler);
+
+    // Throw path
+    removeSpy.mockClear();
+    vi.spyOn(document, "execCommand").mockImplementation((cmd) => {
+      if (cmd === "copy" && handler) {
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          clipboardData: {
+            setData: () => {
+              throw new Error("fail");
+            },
+          },
+        } as unknown as ClipboardEvent;
+        handler(mockEvent);
+        return true;
+      }
+      return false;
+    });
+    writeToClipboard([{ mimeType: "text/plain", data: "ok" }]);
+    expect(removeSpy).toHaveBeenCalledWith("copy", handler);
   });
 });
