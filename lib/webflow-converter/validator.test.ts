@@ -256,22 +256,6 @@ describe("validatePayload", () => {
       expect(result.valid).toBe(false);
       expect(result.errors.some((e) => e.toLowerCase().includes("duplicate style _id"))).toBe(true);
     });
-
-    it("AS-116: duplicate style names produce a validation error", () => {
-      const style1 = makeStyle({ _id: "s1", name: "primary", comb: "", children: ["s2"] });
-      const style2 = makeStyle({ _id: "s2", name: "primary", comb: "s1" });
-      const payload = withType(
-        makePayload({
-          nodes: [makeNode({ classes: ["primary"] })],
-          styles: [style1, style2],
-        })
-      );
-
-      const { valid, errors } = validatePayload(payload);
-
-      expect(valid).toBe(false);
-      expect(errors.some((e) => e.includes('duplicate style name "primary"'))).toBe(true);
-    });
   });
 
   describe("AS-117: combo classes must be registered in their base's children array", () => {

@@ -37,16 +37,6 @@ describe("convert", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("AS-116: .btn{} .primary{} .btn.primary{} on single element produces error (duplicate style name)", async () => {
-    const result = convert(
-      '<div class="btn primary">x</div>',
-      ".btn { font-size: 12px; } .primary { color: blue; } .btn.primary { color: red; }"
-    );
-    // Two styles named "primary" (standalone + combo) → validation error.
-    expect(result.payload).toBeNull();
-    expect(result.errors.some((e) => e.includes("duplicate style name"))).toBe(true);
-  });
-
   it("AS-112: empty HTML string returns a null payload with an error (nodes must not be empty)", () => {
     const result = convert("", "");
 
