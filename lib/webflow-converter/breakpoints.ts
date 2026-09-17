@@ -40,14 +40,14 @@ export function mapBreakpoint(params: string): BreakpointKey | null {
   const max = /max-width\s*:\s*([\d.]+)px/i.exec(params);
   if (max) {
     const px = parseFloat(max[1]);
-    const hit = BREAKPOINTS.maxWidth.find((b) => px <= b.upTo);
-    return hit ? hit.key : 'medium';
+    const hit = BREAKPOINTS.maxWidth.find((b) => px === b.upTo);
+    return hit ? hit.key : null;
   }
   const min = /min-width\s*:\s*([\d.]+)px/i.exec(params);
   if (min) {
     const px = parseFloat(min[1]);
-    const hit = BREAKPOINTS.minWidth.find((b) => px >= b.from);
-    return hit ? hit.key : 'large';
+    const hit = BREAKPOINTS.minWidth.find((b) => px === b.from);
+    return hit ? hit.key : null;
   }
   return null;
 }

@@ -141,6 +141,13 @@ describe("F014 parseCss", () => {
     expect(button.variants.main_hover).toEqual({ color: "purple" });
   });
 
+  it("test_AS_057_nested_rule_warns_and_does_not_clobber_parent_decls", () => {
+    const result = parseCss(".a { color: red; &:hover { color: blue } }");
+    const a = result.classes.get("a")!;
+    expect(a.base).toEqual({ color: "red" });
+    expect(result.warnings.some((w) => /nested CSS/i.test(w))).toBe(true);
+  });
+
   it("AS-052: a combo class (.a.b) registers b with comboOf 'a'", () => {
     const result = parseCss(".card.is-featured { color: gold; }");
     const card = result.classes.get("card")!;
@@ -193,6 +200,14 @@ describe("F014 parseCss", () => {
     expect(result.classes.size).toBe(0);
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toMatch(/does not map to a Webflow breakpoint/);
+  });
+
+  it("AS-048: @media (max-width: 1200px) is not a Webflow breakpoint — warns and its rules are skipped, no silent snap to 'medium'", () => {
+    const result = parseCss("@media (max-width: 1200px) { .card { color: red; } }");
+    expect(result.classes.size).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/does not map to a Webflow breakpoint/);
+    expect(Array.from(result.classes.keys())).toHaveLength(0);
   });
 
   it("@keyframes and @font-face at-rules produce warnings instead of being parsed as classes", () => {

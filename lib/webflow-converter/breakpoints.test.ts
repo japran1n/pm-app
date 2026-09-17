@@ -20,20 +20,20 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('min-width: 2560px')).toBe('xxl');
   });
 
-  it('a max-width below the smallest boundary still maps to "tiny"', () => {
-    expect(mapBreakpoint('max-width: 320px')).toBe('tiny');
+  it('AS-048: a max-width that does not exactly match a Webflow boundary returns null (not snapped to "tiny")', () => {
+    expect(mapBreakpoint('max-width: 320px')).toBeNull();
   });
 
-  it('a max-width above the largest defined boundary falls back to "medium"', () => {
-    expect(mapBreakpoint('max-width: 1200px')).toBe('medium');
+  it('AS-048: a max-width above the largest defined boundary returns null (not snapped to "medium")', () => {
+    expect(mapBreakpoint('max-width: 1200px')).toBeNull();
   });
 
-  it('a min-width above the largest boundary maps to "xxl"', () => {
-    expect(mapBreakpoint('min-width: 3000px')).toBe('xxl');
+  it('AS-048: a min-width above the largest boundary returns null (not snapped to "xxl")', () => {
+    expect(mapBreakpoint('min-width: 3000px')).toBeNull();
   });
 
-  it('a min-width below the smallest defined boundary falls back to "large"', () => {
-    expect(mapBreakpoint('min-width: 1000px')).toBe('large');
+  it('AS-048: a min-width below the smallest defined boundary returns null (not snapped to "large")', () => {
+    expect(mapBreakpoint('min-width: 1000px')).toBeNull();
   });
 
   it('AS-074: an unmappable media query (e.g. print) returns null', () => {
@@ -45,8 +45,12 @@ describe('mapBreakpoint', () => {
     expect(mapBreakpoint('MAX-WIDTH:   991px')).toBe('medium');
   });
 
-  it('parses fractional pixel values', () => {
-    expect(mapBreakpoint('max-width: 767.5px')).toBe('medium');
+  it('parses fractional pixel values that exactly match a boundary', () => {
+    expect(mapBreakpoint('max-width: 767.0px')).toBe('small');
+  });
+
+  it('AS-048: a fractional pixel value that does not exactly match a boundary returns null', () => {
+    expect(mapBreakpoint('max-width: 767.5px')).toBeNull();
   });
 });
 
