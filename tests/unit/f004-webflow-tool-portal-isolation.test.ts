@@ -31,7 +31,7 @@ describe("F004 / AS-008: the converter route never appears under the portal", ()
         const stat = statSync(full);
         if (stat.isDirectory()) {
           walk(full);
-        } else if (full.includes(join("tools", "webflow"))) {
+        } else if (full.split(sep).join("/").includes("tools/webflow")) {
           offenders.push(full);
         }
       }
