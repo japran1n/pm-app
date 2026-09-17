@@ -13,6 +13,12 @@
 
 import * as React from "react"
 
+import { Button } from "@/components/ui/button"
+import {
+  convertHtmlToWebflow,
+  type ConvertActionResult,
+} from "@/lib/actions/webflow-converter"
+
 import { ConverterEditor, useEditorPersistence } from "./converter-editor"
 import { ConverterHelp } from "./converter-help"
 import { ConverterPreview } from "./converter-preview"
@@ -21,8 +27,34 @@ export function ConverterPage() {
   const [html, setHtml] = React.useState("")
   const [css, setCss] = React.useState("")
   const [js, setJs] = React.useState("")
+  const [result, setResult] = React.useState<ConvertActionResult | null>(null)
+  const [loading, setLoading] = React.useState(false)
 
   useEditorPersistence(html, css, js, setHtml, setCss, setJs)
+
+  const isEmpty = html.trim() === ""
+
+  const handleConvert = React.useCallback(async () => {
+    if (html.trim() === "" || loading) return
+    setLoading(true)
+    try {
+      const next = await convertHtmlToWebflow({ html, css, js })
+      setResult(next)
+    } finally {
+      setLoading(false)
+    }
+  }, [html, css, js, loading])
+
+  React.useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault()
+        void handleConvert()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [handleConvert])
 
   return (
     <div className="flex h-full flex-col gap-4 p-6 pt-4 lg:p-8 lg:pt-8">
@@ -49,7 +81,46 @@ export function ConverterPage() {
         </div>
       </div>
 
-      {/* F031-F036: Convert button, copy buttons, and results panel go here */}
+      {/* F031-F036 */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => void handleConvert()}
+            disabled={isEmpty || loading}
+            title={isEmpty ? "Paste some HTML first." : undefined}
+            aria-label="Convert"
+          >
+            {loading ? "Converting…" : "Convert"}
+            <span className="text-xs opacity-70">⌘⏎</span>
+          </Button>
+          {isEmpty ? (
+            <span className="text-xs text-muted-foreground">
+              Paste some HTML first.
+            </span>
+          ) : null}
+        </div>
+
+        {result && !result.ok ? (
+          <p role="alert" className="text-sm text-destructive">
+            {result.message}
+          </p>
+        ) : null}
+
+        {result && result.ok ? (
+          <p className="font-mono text-sm text-muted-foreground">
+            ✓ {result.stats?.nodeCount ?? 0} elements ·{" "}
+            {result.stats?.styleCount ?? 0} classes ·{" "}
+            {Math.round(((result.json?.length ?? 0) / 1024) * 10) / 10} KB
+          </p>
+        ) : null}
+
+        {/* F033-F036 will use result here */}
+        {result && (
+          <div data-testid="conversion-result" data-ok={result.ok} />
+        )}
+      </div>
 
       <ConverterHelp />
     </div>

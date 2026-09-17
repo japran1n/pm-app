@@ -57,6 +57,27 @@ describe("convertHtmlToWebflow (M4)", () => {
     });
   });
 
+  it("test_AS_016_js_tab_content_is_injected_as_a_script_block_before_convert", async () => {
+    const result = await convertHtmlToWebflow({
+      html: "<div>hi</div>",
+      css: "",
+      js: 'console.log("test")',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.js).toHaveLength(1);
+    expect(result.js![0]).toContain('console.log("test")');
+  });
+
+  it("test_AS_016_empty_js_leaves_html_unchanged", async () => {
+    const result = await convertHtmlToWebflow({
+      html: "<div>hi</div>",
+      css: "",
+      js: "",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.js).toEqual([]);
+  });
+
   it("test_AS_118_conversion_error_from_the_engine_is_surfaced_with_ok_false", async () => {
     const result = await convertHtmlToWebflow({ html: "<!-- just a comment -->", css: "" });
     expect(result.ok).toBe(false);
