@@ -175,8 +175,11 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
         comb = baseId;
       } else {
         warnings.push(
-          `combo class "${rec.name}" references base "${rec.comboOf.join(".")}" which has no style definition — combo parentage skipped`
+          `combo class "${rec.name}" references base "${rec.comboOf.join(".")}" which has no style definition — cannot emit combo`
         );
+        // Skip this style entirely — emitting with comb:"" would make it
+        // look like a standalone style whose declarations bind incorrectly.
+        continue;
       }
     }
 

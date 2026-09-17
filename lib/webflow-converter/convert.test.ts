@@ -37,16 +37,14 @@ describe("convert", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("AS-116: when both .primary and .btn.primary exist, two primary styles are valid — one standalone one combo", () => {
+  it("AS-116: .btn{} .primary{} .btn.primary{} on single element produces error (duplicate style name)", async () => {
     const result = convert(
-      '<div class="btn primary">x</div><div class="primary">y</div>',
-      ".primary { font-size: 12px; } .btn.primary { color: red; }"
+      '<div class="btn primary">x</div>',
+      ".btn { font-size: 12px; } .primary { color: blue; } .btn.primary { color: red; }"
     );
-    expect(result.payload).not.toBeNull();
-    const primaryStyles = result.payload!.payload.styles.filter((s) => s.name === "primary");
-    expect(primaryStyles).toHaveLength(2);
-    expect(primaryStyles.some((s) => s.comb === "" && s.styleLess.includes("font-size"))).toBe(true);
-    expect(primaryStyles.some((s) => s.comb !== "" && s.styleLess.includes("color"))).toBe(true);
+    // Two styles named "primary" (standalone + combo) → validation error.
+    expect(result.payload).toBeNull();
+    expect(result.errors.some((e) => e.includes("duplicate style name"))).toBe(true);
   });
 
   it("AS-112: empty HTML string returns a null payload with an error (nodes must not be empty)", () => {

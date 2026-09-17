@@ -121,6 +121,20 @@ function validateStyles(styles: WebflowStyle[] | null | undefined, errors: strin
     }
   }
 
+  // AS-116: no two styles may share the same name — validator.ts resolves
+  // style references by name, so a duplicate would be an ambiguous reference.
+  const seenNames = new Map<string, string>(); // name → _id
+  for (const style of styles) {
+    if (!style || typeof style !== "object" || typeof style.name !== "string") continue;
+    if (seenNames.has(style.name)) {
+      errors.push(
+        `duplicate style name "${style.name}" (ids: ${seenNames.get(style.name)}, ${style._id}) — payload would produce ambiguous class references`
+      );
+    } else {
+      seenNames.set(style.name, style._id);
+    }
+  }
+
   for (const style of styles) {
     if (!style || typeof style !== "object") {
       errors.push("Style entry is missing or not an object");

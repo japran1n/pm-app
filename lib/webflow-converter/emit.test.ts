@@ -189,15 +189,15 @@ describe("emitWebflow — CSS to WebflowStyle conversion", () => {
     expect(comboAB.children).toContain(comboABC._id);
   });
 
-  it("test_AS_117_combo_with_missing_base_emits_warning_and_has_no_comb", () => {
+  it("AS-117: combo class with undefined base emits a warning and is skipped from output", () => {
     // .a.b.c defined without .a.b ever being defined in CSS: base can't be
-    // found, so a warning is emitted instead of silently falling back.
+    // found, so the unparented combo is skipped entirely instead of being
+    // emitted with comb:"" (which would make it bind like a standalone class).
     const cssMap = parseCss(".a { color: red; } .a.b.c { color: yellow; }");
     const { payload, warnings } = emitWebflow('<div class="a b c"></div>', cssMap);
-    const comboABC = payload.payload.styles.find((s) => s.name === "c")!;
+    const comboABC = payload.payload.styles.find((s) => s.name === "c");
 
-    expect(comboABC).toBeDefined();
-    expect(comboABC.comb).toBe("");
+    expect(comboABC).toBeUndefined();
     expect(warnings.some((w) => w.includes("has no style definition"))).toBe(true);
     expect(warnings.some((w) => w.includes('base "a.b"'))).toBe(true);
   });
