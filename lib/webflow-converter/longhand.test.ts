@@ -812,3 +812,72 @@ describe('AS-057: border-radius 1/2/3/4-value expansion preserves TL/TR/BR/BL co
     expect(isShorthand('border-radius')).toBe(true);
   });
 });
+
+describe('AS-069: expandDeclaration dispatches to the correct expander by property name', () => {
+  it('test_AS_069_dispatches_box_rule_for_margin_padding_inset', () => {
+    expect(expandDeclaration('margin', '1px').decls).toHaveProperty('margin-top');
+    expect(expandDeclaration('padding', '1px').decls).toHaveProperty('padding-top');
+    expect(expandDeclaration('inset', '1px').decls).toHaveProperty('top');
+  });
+
+  it('test_AS_069_dispatches_border_handler_for_border_family', () => {
+    expect(expandDeclaration('border', '1px solid red').decls).toHaveProperty('border-top-width');
+    expect(expandDeclaration('border-top', '1px solid red').decls).toHaveProperty('border-top-width');
+    expect(expandDeclaration('border-width', '1px').decls).toHaveProperty('border-top-width');
+    expect(expandDeclaration('border-radius', '4px').decls).toHaveProperty('border-top-left-radius');
+  });
+
+  it('test_AS_069_dispatches_gap_overflow_place_handler', () => {
+    expect(expandDeclaration('gap', '1px').decls).toHaveProperty('row-gap');
+    expect(expandDeclaration('overflow', 'hidden').decls).toHaveProperty('overflow-x');
+    expect(expandDeclaration('place-items', 'center').decls).toHaveProperty('align-items');
+  });
+
+  it('test_AS_069_dispatches_flex_handler', () => {
+    expect(expandDeclaration('flex', 'auto').decls).toHaveProperty('flex-grow');
+    expect(expandDeclaration('flex-flow', 'wrap').decls).toHaveProperty('flex-wrap');
+  });
+
+  it('test_AS_069_dispatches_transition_handler', () => {
+    expect(expandDeclaration('transition', 'opacity .2s').decls).toHaveProperty('transition-property');
+  });
+
+  it('test_AS_069_dispatches_font_list_outline_handler', () => {
+    expect(expandDeclaration('font', '14px Arial').decls).toHaveProperty('font-size');
+    expect(expandDeclaration('list-style', 'square').decls).toHaveProperty('list-style-type');
+    expect(expandDeclaration('outline', '2px solid red').decls).toHaveProperty('outline-width');
+  });
+
+  it('test_AS_069_unknown_property_falls_through_to_pass_through_default', () => {
+    expect(expandDeclaration('color', 'blue')).toEqual({ decls: { color: 'blue' } });
+    expect(expandDeclaration('display', 'flex')).toEqual({ decls: { display: 'flex' } });
+  });
+
+  it('test_AS_069_prop_matching_is_case_insensitive_and_trims_whitespace', () => {
+    expect(expandDeclaration(' MARGIN ', '1px').decls).toHaveProperty('margin-top');
+  });
+});
+
+describe('isShorthand returns true for every known shorthand, false for longhands', () => {
+  it('test_isShorthand_true_for_all_known_shorthands', () => {
+    for (const prop of [
+      'margin', 'padding', 'inset', 'border', 'border-top', 'border-right', 'border-bottom',
+      'border-left', 'border-width', 'border-style', 'border-color', 'border-radius',
+      'font', 'list-style', 'transition', 'outline', 'overflow',
+      'gap', 'flex', 'flex-flow', 'place-items', 'place-content', 'place-self',
+    ]) {
+      expect(isShorthand(prop)).toBe(true);
+    }
+  });
+
+  it('test_isShorthand_false_for_known_longhands', () => {
+    for (const prop of [
+      'margin-top', 'padding-left', 'border-top-color', 'border-top-width', 'border-top-style',
+      'flex-grow', 'flex-shrink', 'flex-basis', 'transition-property', 'transition-duration',
+      'font-size', 'font-family', 'list-style-type', 'outline-width', 'row-gap', 'column-gap',
+      'overflow-x', 'align-items', 'justify-content', 'color', 'display', 'top',
+    ]) {
+      expect(isShorthand(prop)).toBe(false);
+    }
+  });
+});
