@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { expandDeclaration, isShorthand, splitTop } from './longhand';
-import { parseCss } from './css';
+// css-shorthand-properties ships no type declarations.
+const cssShorthandPropsRequire: {
+  shorthandProperties?: Record<string, unknown>;
+  default?: { shorthandProperties: Record<string, unknown> };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+} = require('css-shorthand-properties');
+
+const shorthandProperties: Record<string, unknown> =
+  cssShorthandPropsRequire.shorthandProperties ?? cssShorthandPropsRequire.default?.shorthandProperties ?? {};
 
 describe('AS-053: margin shorthand 1/2/3/4-value expansion', () => {
   it('test_AS_053_one_value_applies_to_all_sides', () => {
@@ -892,6 +900,80 @@ describe('AS-057: border-radius 1/2/3/4-value expansion preserves TL/TR/BR/BL co
   });
 });
 
+describe('AS-055/AS-067: unitless zero is recognized as a width, and outline accepts style auto', () => {
+  it('test_AS_055_border_unitless_zero_is_width_not_color', () => {
+    expect(expandDeclaration('border', '0')).toEqual({
+      decls: {
+        'border-top-width': '0',
+        'border-right-width': '0',
+        'border-bottom-width': '0',
+        'border-left-width': '0',
+      },
+    });
+  });
+
+  it('test_AS_067_outline_unitless_zero_is_width', () => {
+    expect(expandDeclaration('outline', '0')).toEqual({
+      decls: {
+        'outline-width': '0',
+      },
+    });
+  });
+
+  it('test_AS_067_outline_style_auto_is_recognized', () => {
+    const result = expandDeclaration('outline', '2px auto -webkit-focus-ring-color');
+    expect(result.decls['outline-style']).toBe('auto');
+  });
+});
+
+describe('FU-M2-16: box helper never emits undefined values', () => {
+  it('test_FU_M2_16_margin_empty_value_never_produces_undefined_decls', () => {
+    const result = expandDeclaration('margin', '');
+    expect(Object.values(result.decls).every((v) => v !== undefined)).toBe(true);
+  });
+});
+
+describe('AS-063: transition unknown token does not overwrite an already-set transition-property', () => {
+  it('test_AS_063_var_token_after_property_does_not_overwrite_property', () => {
+    const result = expandDeclaration('transition', 'opacity .2s var(--ease)');
+    expect(result.decls['transition-property']).toBe('opacity');
+    expect(result.warning).toMatch(/var\(--ease\)/);
+  });
+});
+
+describe('AS-065: font slash normalization, weight 1000, small-caps, and system-font keywords', () => {
+  it('test_AS_065_slash_with_surrounding_spaces_is_normalized', () => {
+    expect(expandDeclaration('font', '16px / 1.5 Arial')).toEqual({
+      decls: {
+        'font-size': '16px',
+        'line-height': '1.5',
+        'font-family': 'Arial',
+      },
+    });
+  });
+
+  it('test_AS_065_weight_1000_is_accepted', () => {
+    expect(expandDeclaration('font', '1000 14px Inter')).toEqual({
+      decls: {
+        'font-weight': '1000',
+        'font-size': '14px',
+        'font-family': 'Inter',
+      },
+    });
+  });
+
+  it('test_AS_065_small_caps_sets_font_variant', () => {
+    const result = expandDeclaration('font', 'small-caps 16px Inter');
+    expect(result.decls).toMatchObject({ 'font-variant': 'small-caps' });
+  });
+
+  it('test_AS_065_system_font_keyword_is_dropped_with_warning', () => {
+    const result = expandDeclaration('font', 'caption');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toBeTruthy();
+  });
+});
+
 describe('AS-069: expandDeclaration dispatches to the correct expander by property name', () => {
   it('test_AS_069_dispatches_box_rule_for_margin_padding_inset', () => {
     expect(expandDeclaration('margin', '1px').decls).toHaveProperty('margin-top');
@@ -1025,33 +1107,40 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     }
   });
 
-  it('test_AS_069_parseCss_never_surfaces_a_shorthand_key_in_base_or_variant_buckets', () => {
-    const css = `
-      .card {
-        background: red url(x.png) no-repeat;
-        animation: spin 1s linear infinite;
-        grid: auto-flow / 1fr 1fr;
-        grid-template: "a b" 1fr / auto;
-        grid-area: header;
-        grid-gap: 10px 20px;
-        margin: 4px;
-      }
-      @media (max-width: 767px) {
-        .card {
-          background: blue;
-        }
-      }
-    `;
-    const { classes } = parseCss(css);
-    const card = classes.get('card')!;
-    const buckets = [card.base, ...Object.values(card.variants)];
-    for (const bucket of buckets) {
-      for (const key of Object.keys(bucket)) {
-        expect(isShorthand(key)).toBe(false);
-      }
+  it('test_AS_069_independent_vocabulary_every_known_shorthand_expands_to_empty_decls_with_warning', () => {
+    // Independent corpus sourced directly from the css-shorthand-properties
+    // package (not from SHORTHANDS in longhand.ts). Every property it
+    // considers a shorthand must never be emitted verbatim by
+    // expandDeclaration — either it has a real expander, or it falls into
+    // the warn-and-drop default branch.
+    for (const prop of Object.keys(shorthandProperties)) {
+      const result = expandDeclaration(prop, 'test');
+      expect(Object.keys(result.decls)).not.toContain(prop);
     }
-    // margin was a legitimately-expandable shorthand — its longhand should
-    // still be present, proving the assertion isn't vacuous.
-    expect(card.base).toHaveProperty('margin-top', '4px');
+  });
+
+  it('test_AS_069_unsupported_shorthands_from_independent_vocabulary_are_dropped_with_warning', () => {
+    // Properties the independent vocabulary considers shorthand but which
+    // longhand.ts has no dedicated expander for must warn-and-drop.
+    const IMPLEMENTED = new Set([
+      'margin', 'padding', 'inset', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
+      'border-width', 'border-style', 'border-color', 'border-radius', 'gap', 'grid-gap', 'overflow',
+      'place-items', 'place-content', 'place-self', 'transition', 'flex', 'flex-flow', 'outline',
+      'list-style', 'font',
+    ]);
+    const unimplemented = Object.keys(shorthandProperties).filter((p) => !IMPLEMENTED.has(p));
+    for (const prop of unimplemented) {
+      const result = expandDeclaration(prop, 'test');
+      expect(result.decls).toEqual({});
+      expect(result.warning).toBeTruthy();
+    }
+  });
+
+  it('test_AS_069_vendor_prefixed_shorthands_are_dropped_not_passed_through', () => {
+    for (const prop of ['-webkit-transition', '-webkit-animation', '-webkit-border-radius']) {
+      const result = expandDeclaration(prop, 'test');
+      expect(result.decls).toEqual({});
+      expect(result.warning).toBeTruthy();
+    }
   });
 });

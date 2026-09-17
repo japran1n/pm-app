@@ -10,6 +10,22 @@
 // (F008) flex / flex-flow. Border, background, grid, etc. are ported by
 // sibling features and are not implemented here.
 
+// css-shorthand-properties ships no type declarations.
+const cssShorthandPropsRequire: {
+  shorthandProperties?: Record<string, unknown>;
+  isShorthand?: (prop: string) => boolean;
+  default?: { shorthandProperties: Record<string, unknown> };
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+} = require('css-shorthand-properties');
+
+const shorthandProperties: Record<string, unknown> =
+  cssShorthandPropsRequire.shorthandProperties ?? cssShorthandPropsRequire.default?.shorthandProperties ?? {};
+
+/** Strip a vendor prefix (-webkit-, -moz-, -ms-, -o-) off a property name. */
+export function stripVendorPrefix(p: string): string {
+  return p.replace(/^-(?:webkit|moz|ms|o)-/, '');
+}
+
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
 
 const BORDER_STYLES = new Set([
@@ -18,6 +34,8 @@ const BORDER_STYLES = new Set([
 ]);
 
 const NAMED_WIDTHS = new Set(['thin', 'medium', 'thick']);
+
+const OUTLINE_STYLES = new Set([...BORDER_STYLES, 'auto']);
 
 export interface ExpandResult {
   decls: Record<string, string>;
@@ -72,9 +90,23 @@ function box(parts: string[]): [string, string, string, string] {
   }
 }
 
-const isWidth = (t: string): boolean =>
-  NAMED_WIDTHS.has(t) ||
-  /^-?[\d.]+(px|em|rem|%|vw|vh|vmin|vmax|ch|ex|cm|mm|pt|pc|in|fr)$/i.test(t);
+/** Build a decls object from side/value pairs, dropping any undefined or empty-string values. */
+function boxDecls(sides: readonly string[], vals: readonly (string | undefined)[], mapKey: (s: string) => string): Record<string, string> {
+  const decls: Record<string, string> = {};
+  sides.forEach((s, i) => {
+    const val = vals[i];
+    if (typeof val === 'string' && val !== '') decls[mapKey(s)] = val;
+  });
+  return decls;
+}
+
+const isWidth = (t: string): boolean => {
+  if (t === '0') return true;
+  return (
+    NAMED_WIDTHS.has(t) ||
+    /^-?[\d.]+(px|em|rem|%|vw|vh|vmin|vmax|ch|ex|cm|mm|pt|pc|in|fr)$/i.test(t)
+  );
+};
 
 interface BorderParts {
   width?: string;
@@ -82,11 +114,11 @@ interface BorderParts {
   color?: string;
 }
 
-function parseBorderParts(value: string): BorderParts {
+function parseBorderParts(value: string, styles: Set<string> = BORDER_STYLES): BorderParts {
   const out: BorderParts = {};
   for (const t of splitTop(value)) {
     const low = t.toLowerCase();
-    if (BORDER_STYLES.has(low) && out.style === undefined) out.style = t;
+    if (styles.has(low) && out.style === undefined) out.style = t;
     else if (isWidth(low) && out.width === undefined) out.width = t;
     else if (out.color === undefined) out.color = t;
   }
@@ -114,16 +146,24 @@ function expandBorderRadius(value: string): ExpandResult {
   };
 }
 
-function expandFont(value: string): Record<string, string> | null {
+const SYSTEM_FONT_KEYWORDS = /^(caption|menu|status-bar|icon|message-box|small-caption)$/i;
+
+function expandFont(rawValue: string): ExpandResult | null {
   // font: [style] [weight] size[/line-height] family
+  if (SYSTEM_FONT_KEYWORDS.test(rawValue.trim())) {
+    return { decls: {}, warning: `font: system-font keyword '${rawValue.trim()}' not supported` };
+  }
+  // Normalize "size / line-height" (with spaces around the slash) to "size/line-height".
+  const value = rawValue.replace(/\s*\/\s*/g, '/');
   const parts = splitTop(value);
   const out: Record<string, string> = {};
   let i = 0;
   const STYLE = /^(italic|oblique|normal)$/i;
-  const WEIGHT = /^(bold|bolder|lighter|normal|[1-9][0-9]{0,2})$/i;
+  const WEIGHT = /^(bold|bolder|lighter|normal|1000|[1-9][0-9]{0,2})$/i;
   while (i < parts.length && (STYLE.test(parts[i]) || WEIGHT.test(parts[i]) || /^(small-caps)$/i.test(parts[i]))) {
     if (STYLE.test(parts[i])) out['font-style'] = parts[i];
     else if (WEIGHT.test(parts[i])) out['font-weight'] = parts[i];
+    else if (/^(small-caps)$/i.test(parts[i])) out['font-variant'] = 'small-caps';
     i++;
   }
   if (i >= parts.length) return null;
@@ -136,7 +176,7 @@ function expandFont(value: string): Record<string, string> | null {
     out['font-size'] = sizePart;
   }
   if (i < parts.length) out['font-family'] = parts.slice(i).join(' ');
-  return Object.keys(out).length ? out : null;
+  return Object.keys(out).length ? { decls: out } : null;
 }
 
 const SHORTHANDS = new Set([
@@ -161,11 +201,13 @@ interface TransitionItem {
 }
 
 /** transition is a comma-list of per-item shorthands. */
-function expandTransition(value: string): Record<string, string> {
+function expandTransition(value: string): ExpandResult {
+  const warnings: string[] = [];
   const items: TransitionItem[] = splitComma(value).map((item) => {
     const parts = splitTop(item);
     const r: TransitionItem = { property: 'all', duration: '0s', timing: 'ease', delay: '0s' };
     let timeSeen = 0;
+    let propertySet = false;
     for (const t of parts) {
       if (/^-?[\d.]+m?s$/i.test(t)) {
         if (timeSeen === 0) r.duration = t;
@@ -176,18 +218,22 @@ function expandTransition(value: string): Record<string, string> {
         /^(cubic-bezier|steps|linear)\(/i.test(t)
       ) {
         r.timing = t;
+      } else if (propertySet || t.startsWith('var(')) {
+        warnings.push(`transition: unrecognized token "${t}" skipped`);
       } else {
         r.property = t;
+        propertySet = true;
       }
     }
     return r;
   });
-  return {
+  const decls = {
     'transition-property': items.map((i) => i.property).join(', '),
     'transition-duration': items.map((i) => i.duration).join(', '),
     'transition-timing-function': items.map((i) => i.timing).join(', '),
     'transition-delay': items.map((i) => i.delay).join(', '),
   };
+  return warnings.length ? { decls, warning: warnings.join('; ') } : { decls };
 }
 
 /** flex: none | auto | initial | <number> | <number> <number> | <number> <number> <basis> */
@@ -225,12 +271,12 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'margin':
     case 'padding': {
       const vals = box(splitTop(v));
-      return { decls: Object.fromEntries(SIDES.map((s, i) => [`${p}-${s}`, vals[i]])) };
+      return { decls: boxDecls(SIDES, vals, (s) => `${p}-${s}`) };
     }
 
     case 'inset': {
       const vals = box(splitTop(v));
-      return { decls: Object.fromEntries(SIDES.map((s, i) => [s, vals[i]])) };
+      return { decls: boxDecls(SIDES, vals, (s) => s) };
     }
 
     case 'border-width':
@@ -238,7 +284,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'border-color': {
       const kind = p.split('-')[1];
       const vals = box(splitTop(v));
-      return { decls: Object.fromEntries(SIDES.map((s, i) => [`border-${s}-${kind}`, vals[i]])) };
+      return { decls: boxDecls(SIDES, vals, (s) => `border-${s}-${kind}`) };
     }
 
     case 'border': {
@@ -298,7 +344,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     }
 
     case 'transition':
-      return { decls: expandTransition(v) };
+      return expandTransition(v);
 
     case 'flex':
       return { decls: expandFlex(v) };
@@ -313,7 +359,7 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     }
 
     case 'outline': {
-      const b = parseBorderParts(v);
+      const b = parseBorderParts(v, OUTLINE_STYLES);
       const decls: Record<string, string> = {};
       if (b.width !== undefined) decls['outline-width'] = b.width;
       if (b.style !== undefined) decls['outline-style'] = b.style;
@@ -332,10 +378,8 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     }
 
     case 'font': {
-      const decls = expandFont(v);
-      return decls
-        ? { decls }
-        : { decls: {}, warning: `could not expand "font: ${v}"` };
+      const result = expandFont(v);
+      return result ?? { decls: {}, warning: `could not expand "font: ${v}"` };
     }
 
     case 'background':
@@ -345,10 +389,15 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'grid-area':
       return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
 
-    default:
+    default: {
       if (isShorthand(p)) {
         return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
       }
+      const bare = stripVendorPrefix(p);
+      if (bare in shorthandProperties || (bare !== p && isShorthand(bare))) {
+        return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
+      }
       return { decls: { [p]: v } };
+    }
   }
 }
