@@ -148,6 +148,26 @@ describe("F014 parseCss", () => {
     expect(result.warnings.some((w) => /nested CSS/i.test(w))).toBe(true);
   });
 
+  it("test_AS_057_nested_atrule_warns_instead_of_silent_loss", () => {
+    const result = parseCss(".a{color:red; @media (max-width:767px){color:blue}}");
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("test_AS_057_unknown_top_level_atrule_container_warns", () => {
+    const result = parseCss("@container (max-width:500px){ .a{color:red} }");
+    expect(result.warnings.some((w) => w.includes("@container is not supported"))).toBe(true);
+  });
+
+  it("test_AS_057_unknown_top_level_atrule_page_warns", () => {
+    const result = parseCss("@page{margin:1cm}");
+    expect(result.warnings.some((w) => w.includes("@page is not supported"))).toBe(true);
+  });
+
+  it("test_AS_057_unknown_top_level_atrule_import_warns", () => {
+    const result = parseCss("@import url(x.css);");
+    expect(result.warnings.some((w) => w.includes("@import is not supported"))).toBe(true);
+  });
+
   it("AS-052: a combo class (.a.b) registers a combo entry with comboOf ['a']", () => {
     const result = parseCss(".card.is-featured { color: gold; }");
     const card = result.classes.get("card")!;
@@ -350,5 +370,29 @@ describe("F014 parseCss", () => {
     const result = parseCss(".a, .b { color: red; }");
     expect(result.classes.get("a")!.base).toEqual({ color: "red" });
     expect(result.classes.get("b")!.base).toEqual({ color: "red" });
+  });
+});
+
+// F058: per-declaration error containment (AS-057, AS-029) — a malformed
+// declaration or an unparseable stylesheet must never throw out of parseCss.
+describe("F058 per-declaration error containment", () => {
+  it("AS-057: an empty border-radius value does not throw and reports a warning", () => {
+    expect(() => parseCss(".a{border-radius: ;}")).not.toThrow();
+    const result = parseCss(".a{border-radius: ;}");
+    expect(result.warnings.some((w) => w.includes("border-radius"))).toBe(true);
+  });
+
+  it("AS-057: a leading-slash border-radius value does not throw and reports a warning", () => {
+    expect(() => parseCss(".a{border-radius: / 4px}")).not.toThrow();
+    const result = parseCss(".a{border-radius: / 4px}");
+    expect(result.warnings.some((w) => w.includes("border-radius"))).toBe(true);
+  });
+
+  it("AS-029: unparseable CSS returns an empty result with a warning instead of throwing", () => {
+    expect(() => parseCss("not valid css {{{{")).not.toThrow();
+    const result = parseCss("not valid css {{{{");
+    expect(result.classes.size).toBe(0);
+    expect(result.order).toEqual([]);
+    expect(result.warnings.some((w) => /CSS parse error/.test(w))).toBe(true);
   });
 });

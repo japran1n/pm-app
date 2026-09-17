@@ -99,7 +99,16 @@ export interface ParseCssResult {
  * @media, unexpandable shorthands) — those are reported as warnings.
  */
 export function parseCss(cssText: string): ParseCssResult {
-  const root = postcss.parse(cssText);
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(cssText);
+  } catch (e) {
+    if (e && typeof e === "object" && "name" in e && (e as { name?: string }).name === "CssSyntaxError") {
+      const reason = (e as { reason?: string }).reason ?? String(e);
+      return { classes: new Map(), order: [], warnings: [`CSS parse error: ${reason}`] };
+    }
+    throw e;
+  }
   const classes = new Map<string, ParsedClass>();
   const order: string[] = [];
   const warnings: string[] = [];
@@ -136,6 +145,13 @@ export function parseCss(cssText: string): ParseCssResult {
           warnings.push(`@keyframes "${node.params}" cannot be pasted — move it to page custom code`);
         } else if (name === "font-face") {
           warnings.push(`@font-face cannot be pasted — upload the font in Webflow site settings`);
+        } else {
+          // count rules inside this at-rule
+          let ruleCount = 0;
+          (node as postcss.AtRule).walkRules(() => {
+            ruleCount++;
+          });
+          warnings.push(`@${(node as postcss.AtRule).name} is not supported — ${ruleCount} rule(s) skipped`);
         }
         return;
       }
@@ -162,14 +178,21 @@ export function parseCss(cssText: string): ParseCssResult {
 
         for (const child of node.nodes ?? []) {
           if (child.type === "decl") {
-            const { decls, warning } = expandDeclaration(child.prop, child.value);
-            if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
-            if (child.important) {
-              warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
+            try {
+              const { decls, warning } = expandDeclaration(child.prop, child.value);
+              if (warning) warnings.push(`.${chain.join(".")}: ${warning}`);
+              if (child.important) {
+                warnings.push(`.${chain.join(".")}: "!important" on ${child.prop} was dropped`);
+              }
+              Object.assign(bucket, decls);
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err);
+              warnings.push(`unexpected error expanding '${child.prop}': ${msg}`);
             }
-            Object.assign(bucket, decls);
           } else if (child.type === "rule") {
             warnings.push(`.${chain.join(".")}: nested CSS rules are not supported`);
+          } else if (child.type === "atrule") {
+            warnings.push(`nested @${child.name} in .${chain.join(".")}: not supported — declarations skipped`);
           }
         }
       }
