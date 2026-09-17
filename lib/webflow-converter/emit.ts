@@ -32,6 +32,8 @@ export interface WebflowStyleVariants {
   hover?: { styleLess: string };
   focused?: { styleLess: string };
   pressed?: { styleLess: string };
+  before?: { styleLess: string };
+  after?: { styleLess: string };
   nthChild?: { styleLess: string };
 }
 
@@ -76,8 +78,11 @@ const RESERVED_ATTRS = new Set(["class", "style", "href", "src", "alt", "target"
 const PSEUDO_STATE_TO_WEBFLOW: Record<string, string> = {
   hover: "hover",
   focus: "focused",
+  "focus-visible": "focused",
   pressed: "pressed",
   active: "pressed",
+  before: "before",
+  after: "after",
 };
 
 const BREAKPOINT_VARIANT_KEYS = new Set(["medium", "small", "tiny", "large", "xl", "xxl"]);
@@ -112,14 +117,18 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
 
   for (const key of cssResult.order) {
     const rec: ParsedClass = cssResult.classes.get(key)!;
-    const variants: WebflowStyleVariants = {};
+
+    // Accumulate per-slot declarations as objects first, and only stringify
+    // once all variant keys for this class have been folded in. This avoids
+    // clobbering an earlier fold into the same slot with a direct assignment,
+    // and lets multiple @media rules for the same breakpoint merge cleanly.
+    const variantDecls: Record<string, Record<string, string>> = {};
+
     for (const variantKey of Object.keys(rec.variants)) {
       // Breakpoint-only variant keys (no "_state" suffix) map onto the
       // clipboard's per-breakpoint styleLess slots.
       if (BREAKPOINT_VARIANT_KEYS.has(variantKey)) {
-        (variants as Record<string, { styleLess: string }>)[variantKey] = {
-          styleLess: toStyleLess(rec.variants[variantKey]),
-        };
+        variantDecls[variantKey] = { ...variantDecls[variantKey], ...rec.variants[variantKey] };
         continue;
       }
 
@@ -131,26 +140,24 @@ export function buildStyles(cssResult: ParseCssResult, warnings: string[] = []):
       const webflowKey = PSEUDO_STATE_TO_WEBFLOW[state];
 
       if (webflowKey && breakpointPrefix && BREAKPOINT_VARIANT_KEYS.has(breakpointPrefix)) {
-        // Webflow's class editor has no per-breakpoint state slots — a
-        // composite key like "medium_hover" would otherwise overwrite the
-        // default-breakpoint state slot. Fold its declarations into the
-        // breakpoint's own styleLess instead, so nothing is lost.
-        const variantsRecord = variants as Record<string, { styleLess: string }>;
-        const existing = variantsRecord[breakpointPrefix]?.styleLess ?? "";
-        const addition = toStyleLess(rec.variants[variantKey]);
-        variantsRecord[breakpointPrefix] = {
-          styleLess: existing ? `${existing} ${addition}` : addition,
-        };
+        // Webflow's class editor has no per-breakpoint state slots. Unlike
+        // the base breakpoint declarations, a pseudo-state's declarations
+        // are conditional on the state (e.g. :hover) and must never be
+        // written into the unconditional breakpoint slot — that would apply
+        // hover-only styling unconditionally. Warn and drop instead.
         warnings.push(
-          `:${state} inside @media blocks is not supported in Webflow's class editor — declarations moved to breakpoint styles (variant "${variantKey}" on .${rec.name})`
+          `"${variantKey}" on .${rec.name}: per-breakpoint pseudo-state is not representable in Webflow's class editor — declarations skipped`
         );
       } else if (webflowKey) {
-        (variants as Record<string, { styleLess: string }>)[webflowKey] = {
-          styleLess: toStyleLess(rec.variants[variantKey]),
-        };
+        variantDecls[webflowKey] = { ...variantDecls[webflowKey], ...rec.variants[variantKey] };
       } else {
         warnings.push(`variant "${variantKey}" on .${rec.name} does not map to a Webflow state — skipped`);
       }
+    }
+
+    const variants: WebflowStyleVariants = {};
+    for (const [slot, decls] of Object.entries(variantDecls)) {
+      (variants as Record<string, { styleLess: string }>)[slot] = { styleLess: toStyleLess(decls) };
     }
 
     // The immediate ancestor in the class chain is this combo's base style;
@@ -215,7 +222,13 @@ function walkElement(el: HTMLElement, ctx: WalkContext): WebflowNode | null {
   const tag = el.tagName ? el.tagName.toLowerCase() : "";
   if (SKIPPED_TAGS.has(tag)) return null;
 
-  const attrs = el.attributes ?? {};
+  // HTML attribute names are case-insensitive; node-html-parser preserves
+  // source case, so build a lowercased lookup map for all subsequent access.
+  const rawAttrs = el.attributes ?? {};
+  const attrs: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rawAttrs)) {
+    attrs[k.toLowerCase()] = v;
+  }
   if (tag === "input" && (attrs.type ?? "").toLowerCase() === "hidden") return null;
 
   if (attrs.style !== undefined && attrs.style.trim() !== "") {
