@@ -530,6 +530,17 @@ describe('AS-065: font shorthand expands style/weight/size/line-height/family', 
     expect(expandDeclaration('font', '550 14px Inter').decls['font-weight']).toBe('550');
   });
 
+  it('test_AS_065_font_stretch_keyword_is_recognized', () => {
+    expect(expandDeclaration('font', 'condensed bold 16px Arial')).toEqual({
+      decls: {
+        'font-stretch': 'condensed',
+        'font-weight': 'bold',
+        'font-size': '16px',
+        'font-family': 'Arial',
+      },
+    });
+  });
+
   it('test_AS_065_global_keyword_on_font_is_dropped_with_warning', () => {
     const result = expandDeclaration('font', 'inherit');
     expect(result.decls).toEqual({});
@@ -611,15 +622,12 @@ describe('AS-067: outline shorthand expands color/style/width', () => {
     });
   });
 
-  it('test_AS_067_bare_var_token_goes_to_color_not_width', () => {
-    // Regression for the M2 bug: `outline: solid var(--accent)` must not
-    // misclassify the var() token as a width.
-    expect(expandDeclaration('outline', 'solid var(--accent)')).toEqual({
-      decls: {
-        'outline-style': 'solid',
-        'outline-color': 'var(--accent)',
-      },
-    });
+  it('test_AS_067_bare_var_token_drops_entire_outline_declaration', () => {
+    // F067: var()/calc() can't be safely classified in the border/outline
+    // kind classifier, so the whole declaration is dropped with a warning.
+    const result = expandDeclaration('outline', 'solid var(--accent)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/var\(\)/);
   });
 
   it('test_AS_067_global_keyword_on_outline_is_dropped_with_warning', () => {
@@ -668,61 +676,25 @@ describe('AS-055: border shorthand expands to width/style/color on all four side
     });
   });
 
-  it('test_AS_055_color_style_width_in_declaration_order', () => {
-    // parseBorderParts assigns tokens to the first unfilled matching slot in
-    // declaration order: style keywords -> style, width-shaped tokens (a
-    // unit-suffixed length or a named width keyword) -> width, anything
-    // else -> color. A bare var() token has no unit, so it is not
-    // width-shaped and falls into the color slot; "thin" is a named width
-    // keyword and fills the width slot.
-    expect(expandDeclaration('border', 'solid var(--accent) thin')).toEqual({
-      decls: {
-        'border-top-width': 'thin',
-        'border-top-style': 'solid',
-        'border-top-color': 'var(--accent)',
-        'border-right-width': 'thin',
-        'border-right-style': 'solid',
-        'border-right-color': 'var(--accent)',
-        'border-bottom-width': 'thin',
-        'border-bottom-style': 'solid',
-        'border-bottom-color': 'var(--accent)',
-        'border-left-width': 'thin',
-        'border-left-style': 'solid',
-        'border-left-color': 'var(--accent)',
-      },
-    });
+  it('test_AS_055_var_token_in_border_drops_entire_declaration', () => {
+    // F067 supersedes the earlier slot-filling heuristic: var()/calc() can't
+    // be safely classified as width/style/color, so the whole declaration
+    // is dropped with a warning rather than guessing a slot for it.
+    const result = expandDeclaration('border', 'solid var(--accent) thin');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/var\(\)/);
   });
 
-  it('test_AS_055_bare_var_token_goes_to_color_not_width', () => {
-    // Regression for the M2 bug: `border: solid var(--accent)` must not
-    // misclassify the var() token as a width.
-    expect(expandDeclaration('border', 'solid var(--accent)')).toEqual({
-      decls: {
-        'border-top-style': 'solid',
-        'border-top-color': 'var(--accent)',
-        'border-right-style': 'solid',
-        'border-right-color': 'var(--accent)',
-        'border-bottom-style': 'solid',
-        'border-bottom-color': 'var(--accent)',
-        'border-left-style': 'solid',
-        'border-left-color': 'var(--accent)',
-      },
-    });
+  it('test_AS_055_bare_var_token_drops_entire_border_declaration', () => {
+    const result = expandDeclaration('border', 'solid var(--accent)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/var\(\)/);
   });
 
-  it('test_AS_055_bare_calc_token_goes_to_color_not_width', () => {
-    expect(expandDeclaration('border', 'solid calc(1px + 1px)')).toEqual({
-      decls: {
-        'border-top-style': 'solid',
-        'border-top-color': 'calc(1px + 1px)',
-        'border-right-style': 'solid',
-        'border-right-color': 'calc(1px + 1px)',
-        'border-bottom-style': 'solid',
-        'border-bottom-color': 'calc(1px + 1px)',
-        'border-left-style': 'solid',
-        'border-left-color': 'calc(1px + 1px)',
-      },
-    });
+  it('test_AS_055_bare_calc_token_drops_entire_border_declaration', () => {
+    const result = expandDeclaration('border', 'solid calc(1px + 1px)');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/calc\(\)/);
   });
 
   it('test_AS_055_global_keyword_on_border_is_dropped_with_warning', () => {
@@ -920,6 +892,58 @@ describe('AS-055/AS-067: unitless zero is recognized as a width, and outline acc
     });
   });
 
+  it('test_AS_055_extra_width_token_discarded_no_garbage_color', () => {
+    const result = expandDeclaration('border', '1px 2px solid');
+    expect(result.decls).toEqual({
+      'border-top-width': '1px',
+      'border-top-style': 'solid',
+      'border-right-width': '1px',
+      'border-right-style': 'solid',
+      'border-bottom-width': '1px',
+      'border-bottom-style': 'solid',
+      'border-left-width': '1px',
+      'border-left-style': 'solid',
+    });
+    expect(result.warning).toMatch(/extra width token '2px' discarded/);
+    expect(result.decls).not.toHaveProperty('border-top-color');
+  });
+
+  it('test_AS_055_var_in_border_drops_declaration_with_warning', () => {
+    const result = expandDeclaration('border', 'var(--w) solid red');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/var\(\)/);
+  });
+
+  it('test_AS_055_unitless_zero_with_style_and_color', () => {
+    expect(expandDeclaration('border', '0 solid red')).toEqual({
+      decls: {
+        'border-top-width': '0',
+        'border-top-style': 'solid',
+        'border-top-color': 'red',
+        'border-right-width': '0',
+        'border-right-style': 'solid',
+        'border-right-color': 'red',
+        'border-bottom-width': '0',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'red',
+        'border-left-width': '0',
+        'border-left-style': 'solid',
+        'border-left-color': 'red',
+      },
+    });
+  });
+
+  it('test_AS_055_bare_zero_is_width_on_all_sides', () => {
+    expect(expandDeclaration('border', '0')).toEqual({
+      decls: {
+        'border-top-width': '0',
+        'border-right-width': '0',
+        'border-bottom-width': '0',
+        'border-left-width': '0',
+      },
+    });
+  });
+
   it('test_AS_067_outline_style_auto_is_recognized', () => {
     const result = expandDeclaration('outline', '2px auto -webkit-focus-ring-color');
     expect(result.decls['outline-style']).toBe('auto');
@@ -930,6 +954,14 @@ describe('FU-M2-16: box helper never emits undefined values', () => {
   it('test_FU_M2_16_margin_empty_value_never_produces_undefined_decls', () => {
     const result = expandDeclaration('margin', '');
     expect(Object.values(result.decls).every((v) => v !== undefined)).toBe(true);
+  });
+});
+
+describe('AS-063: transition drops an item when its duration is unparseable rather than defaulting to 0s', () => {
+  it('test_AS_063_var_duration_token_drops_the_item', () => {
+    const result = expandDeclaration('transition', 'opacity var(--d) ease');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/unresolvable duration token "var\(--d\)" — item dropped/);
   });
 });
 
@@ -1114,6 +1146,7 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     // expandDeclaration — either it has a real expander, it is on the
     // PASS_THROUGH allow-list (Webflow accepts it natively), or it falls
     // into the warn-and-drop default branch.
+    expect(Object.keys(shorthandProperties).length).toBeGreaterThan(10);
     for (const prop of Object.keys(shorthandProperties)) {
       if (PASS_THROUGH.has(prop)) continue;
       const result = expandDeclaration(prop, 'test');
@@ -1148,10 +1181,22 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
   });
 
   it('AS-069: PASS_THROUGH longhands survive expandDeclaration', () => {
-    for (const prop of ['background-position', 'background-size', 'grid-row', 'grid-column']) {
+    for (const prop of ['background-position', 'background-size', 'white-space']) {
       const { decls, warning } = expandDeclaration(prop, 'center');
       expect(decls).toEqual({ [prop]: 'center' });
       expect(warning).toBeUndefined();
+    }
+  });
+
+  it('AS-069: grid-row/grid-column/grid-area are shorthands Webflow rejects, not pass-through', () => {
+    // Webflow's style panel needs grid-column-start/grid-column-end, not the
+    // grid-column shorthand, so these must be caught by isShorthand and
+    // warned-and-dropped rather than passed through verbatim.
+    for (const prop of ['grid-row', 'grid-column', 'grid-area']) {
+      expect(isShorthand(prop)).toBe(true);
+      const { decls, warning } = expandDeclaration(prop, '1 / 3');
+      expect(decls).toEqual({});
+      expect(warning).toMatch(/not supported/i);
     }
   });
 

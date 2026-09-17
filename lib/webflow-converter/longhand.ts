@@ -112,17 +112,35 @@ interface BorderParts {
   width?: string;
   style?: string;
   color?: string;
+  warnings: string[];
 }
 
 function parseBorderParts(value: string, styles: Set<string> = BORDER_STYLES): BorderParts {
-  const out: BorderParts = {};
-  for (const t of splitTop(value)) {
-    const low = t.toLowerCase();
-    if (styles.has(low) && out.style === undefined) out.style = t;
-    else if (isWidth(low) && out.width === undefined) out.width = t;
-    else if (out.color === undefined) out.color = t;
+  const warnings: string[] = [];
+  let width: string | undefined;
+  let style: string | undefined;
+  let color: string | undefined;
+
+  const tokens = splitTop(value);
+  for (const token of tokens) {
+    const low = token.toLowerCase();
+    // var() / calc() — can't classify safely as width/style/color.
+    if (low.startsWith('var(') || low.startsWith('calc(')) {
+      warnings.push(`var()/calc() in border shorthand — use individual border-* properties instead`);
+      return { warnings };
+    }
+    if (token === '0' || isWidth(low)) {
+      if (width !== undefined) warnings.push(`extra width token '${token}' discarded`);
+      else width = token;
+    } else if (styles.has(low)) {
+      if (style !== undefined) warnings.push(`extra style token '${token}' discarded`);
+      else style = token;
+    } else {
+      if (color !== undefined) warnings.push(`extra color token '${token}' discarded`);
+      else color = token;
+    }
   }
-  return out;
+  return { width, style, color, warnings };
 }
 
 function expandBorderRadius(value: string): ExpandResult {
@@ -160,10 +178,18 @@ function expandFont(rawValue: string): ExpandResult | null {
   let i = 0;
   const STYLE = /^(italic|oblique|normal)$/i;
   const WEIGHT = /^(bold|bolder|lighter|normal|1000|[1-9][0-9]{0,2})$/i;
-  while (i < parts.length && (STYLE.test(parts[i]) || WEIGHT.test(parts[i]) || /^(small-caps)$/i.test(parts[i]))) {
+  const FONT_STRETCH = new Set([
+    'ultra-condensed', 'extra-condensed', 'condensed', 'semi-condensed',
+    'normal', 'semi-expanded', 'expanded', 'extra-expanded', 'ultra-expanded',
+  ]);
+  while (
+    i < parts.length &&
+    (STYLE.test(parts[i]) || WEIGHT.test(parts[i]) || /^(small-caps)$/i.test(parts[i]) || FONT_STRETCH.has(parts[i].toLowerCase()))
+  ) {
     if (STYLE.test(parts[i])) out['font-style'] = parts[i];
     else if (WEIGHT.test(parts[i])) out['font-weight'] = parts[i];
     else if (/^(small-caps)$/i.test(parts[i])) out['font-variant'] = 'small-caps';
+    else if (FONT_STRETCH.has(parts[i].toLowerCase())) out['font-stretch'] = parts[i];
     i++;
   }
   if (i >= parts.length) return null;
@@ -203,11 +229,13 @@ interface TransitionItem {
 /** transition is a comma-list of per-item shorthands. */
 function expandTransition(value: string): ExpandResult {
   const warnings: string[] = [];
-  const items: TransitionItem[] = splitComma(value).map((item) => {
+  const items: TransitionItem[] = [];
+  for (const item of splitComma(value)) {
     const parts = splitTop(item);
     const r: TransitionItem = { property: 'all', duration: '0s', timing: 'ease', delay: '0s' };
     let timeSeen = 0;
     let propertySet = false;
+    let dropped = false;
     for (const t of parts) {
       if (/^-?[\d.]+m?s$/i.test(t)) {
         if (timeSeen === 0) r.duration = t;
@@ -218,21 +246,30 @@ function expandTransition(value: string): ExpandResult {
         /^(cubic-bezier|steps|linear)\(/i.test(t)
       ) {
         r.timing = t;
-      } else if (propertySet || t.startsWith('var(')) {
+      } else if ((t.startsWith('var(') || t.startsWith('calc(')) && timeSeen === 0) {
+        // No duration resolved yet and this token can't be parsed as a
+        // time — falling back to a 0s default would silently misrepresent
+        // the declaration, so the whole item is dropped instead.
+        warnings.push(`transition: unresolvable duration token "${t}" — item dropped`);
+        dropped = true;
+        break;
+      } else if (propertySet) {
         warnings.push(`transition: unrecognized token "${t}" skipped`);
       } else {
         r.property = t;
         propertySet = true;
       }
     }
-    return r;
-  });
-  const decls = {
-    'transition-property': items.map((i) => i.property).join(', '),
-    'transition-duration': items.map((i) => i.duration).join(', '),
-    'transition-timing-function': items.map((i) => i.timing).join(', '),
-    'transition-delay': items.map((i) => i.delay).join(', '),
-  };
+    if (!dropped) items.push(r);
+  }
+  const decls: Record<string, string> = items.length
+    ? {
+        'transition-property': items.map((i) => i.property).join(', '),
+        'transition-duration': items.map((i) => i.duration).join(', '),
+        'transition-timing-function': items.map((i) => i.timing).join(', '),
+        'transition-delay': items.map((i) => i.delay).join(', '),
+      }
+    : {};
   return warnings.length ? { decls, warning: warnings.join('; ') } : { decls };
 }
 
@@ -259,9 +296,9 @@ export const PASS_THROUGH = new Set([
   'background-position', 'background-size', 'background-repeat',
   'background-origin', 'background-clip', 'background-attachment',
   'background-color', 'background-image',
-  'grid-row', 'grid-column', 'grid-area',
   'text-decoration-line', 'text-decoration-color',
   'text-decoration-thickness', 'text-decoration-style',
+  'white-space',
 ])
 
 // Real shorthands not in css-shorthand-properties
@@ -272,7 +309,8 @@ const EXTRA_SHORTHANDS = new Set([
   'contain-intrinsic-size', 'font-synthesis',
   'animation-range', 'scroll-timeline', 'view-timeline',
   '-webkit-box-shadow', '-moz-box-shadow',
-  'grid-template-areas',
+  'overflow-block', 'overflow-inline',
+  'scroll-margin-block', 'scroll-margin-inline',
 ])
 
 /**
@@ -310,13 +348,16 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'border': {
       const b = parseBorderParts(v);
+      if (b.width === undefined && b.style === undefined && b.color === undefined && b.warnings.length) {
+        return { decls: {}, warning: b.warnings.join('; ') };
+      }
       const decls: Record<string, string> = {};
       for (const s of SIDES) {
         if (b.width !== undefined) decls[`border-${s}-width`] = b.width;
         if (b.style !== undefined) decls[`border-${s}-style`] = b.style;
         if (b.color !== undefined) decls[`border-${s}-color`] = b.color;
       }
-      return { decls };
+      return b.warnings.length ? { decls, warning: b.warnings.join('; ') } : { decls };
     }
 
     case 'border-top':
@@ -325,11 +366,14 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
     case 'border-left': {
       const side = p.split('-')[1];
       const b = parseBorderParts(v);
+      if (b.width === undefined && b.style === undefined && b.color === undefined && b.warnings.length) {
+        return { decls: {}, warning: b.warnings.join('; ') };
+      }
       const decls: Record<string, string> = {};
       if (b.width !== undefined) decls[`border-${side}-width`] = b.width;
       if (b.style !== undefined) decls[`border-${side}-style`] = b.style;
       if (b.color !== undefined) decls[`border-${side}-color`] = b.color;
-      return { decls };
+      return b.warnings.length ? { decls, warning: b.warnings.join('; ') } : { decls };
     }
 
     case 'border-radius': {
@@ -392,11 +436,14 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'outline': {
       const b = parseBorderParts(v, OUTLINE_STYLES);
+      if (b.width === undefined && b.style === undefined && b.color === undefined && b.warnings.length) {
+        return { decls: {}, warning: b.warnings.join('; ') };
+      }
       const decls: Record<string, string> = {};
       if (b.width !== undefined) decls['outline-width'] = b.width;
       if (b.style !== undefined) decls['outline-style'] = b.style;
       if (b.color !== undefined) decls['outline-color'] = b.color;
-      return { decls };
+      return b.warnings.length ? { decls, warning: b.warnings.join('; ') } : { decls };
     }
 
     case 'list-style': {
