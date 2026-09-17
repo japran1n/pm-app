@@ -371,4 +371,41 @@ describe("convert", () => {
       expect(contents.toLowerCase()).not.toContain("supabase");
     }
   });
+
+  describe("AS-101 — script passthrough in convert()", () => {
+    it("AS-101: external <script src> in HTML is collected in result.customCode.scripts", () => {
+      const html = '<div class="box"></div><script async defer type="module" src="/app.js"></script>';
+      const css = ".box { color: red; }";
+      const result = convert(html, css);
+      expect(result.customCode.scripts.length).toBeGreaterThan(0);
+      // Must carry the multi-attribute tag verbatim
+      const tag = result.customCode.scripts.find((s) => s.includes("src="));
+      expect(tag).toBeDefined();
+      expect(tag).toContain("async");
+      expect(tag).toContain("defer");
+      expect(tag).toContain('type="module"');
+      expect(tag).toContain("src=");
+    });
+
+    it("AS-101: multiple external scripts are all collected, none filtered out", () => {
+      const html = [
+        '<script src="/a.js"></script>',
+        '<div class="box"></div>',
+        '<script defer src="/b.js"></script>',
+      ].join("");
+      const css = ".box { color: red; }";
+      const result = convert(html, css);
+      expect(result.customCode.scripts.length).toBe(2);
+      expect(result.customCode.scripts.some((s) => s.includes("/a.js"))).toBe(true);
+      expect(result.customCode.scripts.some((s) => s.includes("/b.js"))).toBe(true);
+    });
+
+    it("AS-101: inline <script> body is collected separately from external scripts", () => {
+      const html = '<div class="box"></div><script>console.log("hi")</script>';
+      const css = ".box { color: red; }";
+      const result = convert(html, css);
+      expect(result.customCode.scripts.length).toBeGreaterThan(0);
+      expect(result.customCode.scripts.some((s) => s.includes("console.log"))).toBe(true);
+    });
+  });
 });

@@ -31,6 +31,16 @@ export interface ConvertResult {
  * alongside the `css` argument (AS-089) — Webflow has no separate slot for
  * inline stylesheet text, so it becomes part of the style model rather than
  * custom code.
+ *
+ * AS-101: the conversion output includes all scripts found in the HTML
+ * input and the JS-tab input, combined into a single custom-code output.
+ * This function has no separate `js` parameter — by design (M3 engine
+ * scope decision) the UI layer (M5) appends the JS-tab content to `html`
+ * as one or more <script> blocks before calling convert(). The engine
+ * itself only ever sees <script> tags embedded in `html` and treats every
+ * one of them (inline body or external `src`) as custom code via
+ * extractScripts(), so JS-tab content is processed transparently through
+ * the same path as scripts already present in the HTML.
  */
 export function convert(html: string, css: string): ConvertResult {
   const scriptsResult = extractScripts(html ?? "");
