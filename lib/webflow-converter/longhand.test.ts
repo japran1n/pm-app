@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandDeclaration, isShorthand, splitTop } from './longhand';
+import { expandDeclaration, isShorthand, PASS_THROUGH, splitTop } from './longhand';
 // css-shorthand-properties ships no type declarations.
 const cssShorthandPropsRequire: {
   shorthandProperties?: Record<string, unknown>;
@@ -1111,9 +1111,11 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
     // Independent corpus sourced directly from the css-shorthand-properties
     // package (not from SHORTHANDS in longhand.ts). Every property it
     // considers a shorthand must never be emitted verbatim by
-    // expandDeclaration — either it has a real expander, or it falls into
-    // the warn-and-drop default branch.
+    // expandDeclaration — either it has a real expander, it is on the
+    // PASS_THROUGH allow-list (Webflow accepts it natively), or it falls
+    // into the warn-and-drop default branch.
     for (const prop of Object.keys(shorthandProperties)) {
+      if (PASS_THROUGH.has(prop)) continue;
       const result = expandDeclaration(prop, 'test');
       expect(Object.keys(result.decls)).not.toContain(prop);
     }
@@ -1121,14 +1123,15 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
 
   it('test_AS_069_unsupported_shorthands_from_independent_vocabulary_are_dropped_with_warning', () => {
     // Properties the independent vocabulary considers shorthand but which
-    // longhand.ts has no dedicated expander for must warn-and-drop.
+    // longhand.ts has no dedicated expander for must warn-and-drop, unless
+    // they are on the PASS_THROUGH allow-list.
     const IMPLEMENTED = new Set([
       'margin', 'padding', 'inset', 'border', 'border-top', 'border-right', 'border-bottom', 'border-left',
       'border-width', 'border-style', 'border-color', 'border-radius', 'gap', 'grid-gap', 'overflow',
       'place-items', 'place-content', 'place-self', 'transition', 'flex', 'flex-flow', 'outline',
       'list-style', 'font',
     ]);
-    const unimplemented = Object.keys(shorthandProperties).filter((p) => !IMPLEMENTED.has(p));
+    const unimplemented = Object.keys(shorthandProperties).filter((p) => !IMPLEMENTED.has(p) && !PASS_THROUGH.has(p));
     for (const prop of unimplemented) {
       const result = expandDeclaration(prop, 'test');
       expect(result.decls).toEqual({});
@@ -1142,5 +1145,72 @@ describe('AS-069: unimplemented shorthands are warned-and-dropped, never emitted
       expect(result.decls).toEqual({});
       expect(result.warning).toBeTruthy();
     }
+  });
+
+  it('AS-069: PASS_THROUGH longhands survive expandDeclaration', () => {
+    for (const prop of ['background-position', 'background-size', 'grid-row', 'grid-column']) {
+      const { decls, warning } = expandDeclaration(prop, 'center');
+      expect(decls).toEqual({ [prop]: 'center' });
+      expect(warning).toBeUndefined();
+    }
+  });
+
+  it('AS-069: EXTRA_SHORTHANDS are warned-and-dropped', () => {
+    for (const prop of ['overscroll-behavior', 'border-inline-start', 'border-inline-end',
+                         'border-block-start', 'border-block-end', '-webkit-box-shadow']) {
+      const { decls, warning } = expandDeclaration(prop, 'test');
+      expect(decls).toEqual({});
+      expect(warning).toMatch(/shorthand/);
+    }
+  });
+});
+
+describe('AS-062: flex-flow unrecognized token does not overwrite flex-direction', () => {
+  it('test_AS_062_unknown_token_is_warned_and_does_not_overwrite_flex_direction', () => {
+    const result = expandDeclaration('flex-flow', 'row wrap extra');
+    expect(result.decls).toEqual({ 'flex-wrap': 'wrap', 'flex-direction': 'row' });
+    expect(result.warning).toMatch(/extra/);
+  });
+});
+
+describe('AS-066: list-style unrecognized token does not overwrite list-style-type', () => {
+  it('test_AS_066_unknown_token_is_warned_and_does_not_overwrite_list_style_type', () => {
+    const result = expandDeclaration('list-style', 'disc foo bar');
+    expect(result.decls).toEqual({ 'list-style-type': 'disc' });
+    expect(result.warning).toMatch(/unrecognized/);
+  });
+});
+
+describe('AS-058/AS-059/AS-060/AS-061/AS-063: empty values are warned-and-dropped, never emitted as undefined', () => {
+  it('test_AS_058_gap_empty_value_is_warned_and_dropped', () => {
+    const result = expandDeclaration('gap', '');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/empty value skipped/);
+  });
+
+  it('test_AS_059_overflow_empty_value_is_warned_and_dropped', () => {
+    const result = expandDeclaration('overflow', '');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/empty value skipped/);
+  });
+
+  it('test_AS_060_place_items_content_self_empty_value_is_warned_and_dropped', () => {
+    for (const prop of ['place-items', 'place-content', 'place-self']) {
+      const result = expandDeclaration(prop, '');
+      expect(result.decls).toEqual({});
+      expect(result.warning).toMatch(/empty value skipped/);
+    }
+  });
+
+  it('test_AS_061_flex_empty_value_is_warned_and_dropped', () => {
+    const result = expandDeclaration('flex', '');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/empty value skipped/);
+  });
+
+  it('test_AS_063_transition_empty_value_is_warned_and_dropped', () => {
+    const result = expandDeclaration('transition', '');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/empty value skipped/);
   });
 });

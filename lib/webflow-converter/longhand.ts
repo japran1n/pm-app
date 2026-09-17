@@ -254,6 +254,27 @@ function expandFlex(value: string): Record<string, string> {
   return { 'flex-grow': parts[0], 'flex-shrink': parts[1], 'flex-basis': parts[2] };
 }
 
+// Properties Webflow accepts natively — must NEVER be warn-and-dropped
+export const PASS_THROUGH = new Set([
+  'background-position', 'background-size', 'background-repeat',
+  'background-origin', 'background-clip', 'background-attachment',
+  'background-color', 'background-image',
+  'grid-row', 'grid-column', 'grid-area',
+  'text-decoration-line', 'text-decoration-color',
+  'text-decoration-thickness', 'text-decoration-style',
+])
+
+// Real shorthands not in css-shorthand-properties
+const EXTRA_SHORTHANDS = new Set([
+  'overscroll-behavior',
+  'border-inline-start', 'border-inline-end',
+  'border-block-start', 'border-block-end',
+  'contain-intrinsic-size', 'font-synthesis',
+  'animation-range', 'scroll-timeline', 'view-timeline',
+  '-webkit-box-shadow', '-moz-box-shadow',
+  'grid-template-areas',
+])
+
 /**
  * Expand one box-shorthand declaration (margin, padding, inset).
  * @returns {{decls: Object<string,string>, warning?: string}}
@@ -321,41 +342,52 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'gap':
     case 'grid-gap': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [row, col] = splitTop(v);
       return { decls: { 'row-gap': row, 'column-gap': col ?? row } };
     }
 
     case 'overflow': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [x, y] = splitTop(v);
       return { decls: { 'overflow-x': x, 'overflow-y': y ?? x } };
     }
 
     case 'place-items': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [a, j] = splitTop(v);
       return { decls: { 'align-items': a, 'justify-items': j ?? a } };
     }
     case 'place-content': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [a, j] = splitTop(v);
       return { decls: { 'align-content': a, 'justify-content': j ?? a } };
     }
     case 'place-self': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       const [a, j] = splitTop(v);
       return { decls: { 'align-self': a, 'justify-self': j ?? a } };
     }
 
-    case 'transition':
+    case 'transition': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       return expandTransition(v);
+    }
 
-    case 'flex':
+    case 'flex': {
+      if (!v) return { decls: {}, warning: `${p}: empty value skipped` };
       return { decls: expandFlex(v) };
+    }
 
     case 'flex-flow': {
       const decls: Record<string, string> = {};
+      const warnings: string[] = [];
       for (const t of splitTop(v)) {
         if (/^(wrap|nowrap|wrap-reverse)$/i.test(t)) decls['flex-wrap'] = t;
-        else decls['flex-direction'] = t;
+        else if (/^(row|row-reverse|column|column-reverse)$/i.test(t)) decls['flex-direction'] = t;
+        else warnings.push(`flex-flow: unrecognized token "${t}" skipped`);
       }
-      return { decls };
+      return warnings.length ? { decls, warning: warnings.join('; ') } : { decls };
     }
 
     case 'outline': {
@@ -369,12 +401,14 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'list-style': {
       const decls: Record<string, string> = {};
+      const warnings: string[] = [];
       for (const t of splitTop(v)) {
         if (/^(inside|outside)$/i.test(t)) decls['list-style-position'] = t;
         else if (/^(url|linear-gradient)\(/i.test(t)) decls['list-style-image'] = t;
-        else decls['list-style-type'] = t;
+        else if (decls['list-style-type'] === undefined) decls['list-style-type'] = t;
+        else warnings.push(`list-style: unrecognized token "${t}" skipped`);
       }
-      return { decls };
+      return warnings.length ? { decls, warning: warnings.join('; ') } : { decls };
     }
 
     case 'font': {
@@ -390,11 +424,15 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
 
     default: {
-      if (isShorthand(p)) {
-        return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
+      // Check pass-through first — these are always emitted verbatim
+      if (PASS_THROUGH.has(p)) {
+        return { decls: { [p]: v } };
       }
       const bare = stripVendorPrefix(p);
-      if (bare in shorthandProperties || (bare !== p && isShorthand(bare))) {
+      const inVocab = bare in shorthandProperties;
+      const inExtra = EXTRA_SHORTHANDS.has(p) || EXTRA_SHORTHANDS.has(bare);
+      const isVendorShorthand = bare !== p && isShorthand(bare);
+      if (isShorthand(p) || inVocab || inExtra || isVendorShorthand) {
         return { decls: {}, warning: `shorthand '${p}' is not supported — write longhands instead` };
       }
       return { decls: { [p]: v } };
