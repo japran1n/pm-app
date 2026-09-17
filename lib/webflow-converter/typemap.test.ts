@@ -76,4 +76,54 @@ describe("getWebflowType", () => {
     expect(getWebflowType("span")).toMatchObject({ type: "Block", tag: "span", data: { text: true } });
     expect(getWebflowType("strong")).toMatchObject({ type: "Block", tag: "strong" });
   });
+
+  // AS-082: <a> with only text content -> Link
+  it("test_AS_082_a_with_text_only_converts_to_link", () => {
+    const result = getWebflowType("a", { hasElementChildren: false, attrs: {} });
+    expect(result.type).toBe("Link");
+    expect(result.tag).toBe("a");
+  });
+
+  it("test_AS_082_a_with_href_target_rel_carries_link_data", () => {
+    const result = getWebflowType("a", {
+      hasElementChildren: false,
+      attrs: { href: "https://example.com", target: "_blank", rel: "noopener" },
+    });
+    expect(result.type).toBe("Link");
+    expect(result.data?.link).toMatchObject({ url: "https://example.com", target: "_blank", mode: "external" });
+  });
+
+  // AS-083: <a> with element children -> Link Block
+  it("test_AS_083_a_with_element_children_converts_to_link_block", () => {
+    const result = getWebflowType("a", { hasElementChildren: true, attrs: { href: "/about" } });
+    expect(result.type).toBe("LinkBlock");
+    expect(result.tag).toBe("a");
+    expect(result.data?.link).toMatchObject({ url: "/about" });
+  });
+
+  // AS-084: <button> -> Webflow Button-equivalent with warning
+  it("test_AS_084_button_converts_to_link_button_with_warning", () => {
+    const result = getWebflowType("button");
+    expect(result.type).toBe("Link");
+    expect(result.tag).toBe("a");
+    expect(result.data?.button).toBe(true);
+    expect(result.warning).toContain("Submit button");
+  });
+
+  // AS-085 / AS-133: <form>/<input>/<textarea>/<select> -> Block with rebuild-in-Designer warning
+  it("test_AS_085_form_converts_to_block_with_warning", () => {
+    const result = getWebflowType("form");
+    expect(result.type).toBe("Block");
+    expect(result.tag).toBe("div");
+    expect(result.warning).toContain("rebuild forms in the Designer");
+  });
+
+  it("test_AS_085_form_control_descendants_convert_to_block_with_warning", () => {
+    for (const tag of ["input", "textarea", "select"]) {
+      const result = getWebflowType(tag);
+      expect(result.type).toBe("Block");
+      expect(result.tag).toBe("div");
+      expect(result.warning).toContain("rebuild forms in the Designer");
+    }
+  });
 });
