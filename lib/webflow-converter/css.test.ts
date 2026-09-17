@@ -367,6 +367,22 @@ describe("F014 parseCss", () => {
   });
 });
 
+describe("AS-135: end-to-end pass-through regression via parseCss", () => {
+  it("width/height/box-shadow longhands survive full parseCss pipeline with no unrecognized-property warnings", () => {
+    const result = parseCss(
+      '.hero{width:100%;height:400px;max-width:1200px;min-height:50vh;box-shadow:0 2px 4px rgba(0,0,0,.2);color:#333;}'
+    );
+    const hero = result.classes.get("hero")!;
+    expect(hero.base["width"]).toBe("100%");
+    expect(hero.base["height"]).toBe("400px");
+    expect(hero.base["max-width"]).toBe("1200px");
+    expect(hero.base["min-height"]).toBe("50vh");
+    expect(hero.base["box-shadow"]).toBe("0 2px 4px rgba(0,0,0,.2)");
+    expect(hero.base["color"]).toBe("#333");
+    expect(result.warnings.filter((w) => w.includes("is not a recognized")).length).toBe(0);
+  });
+});
+
 // F058: per-declaration error containment (AS-057, AS-029) — a malformed
 // declaration or an unparseable stylesheet must never throw out of parseCss.
 describe("F058 per-declaration error containment", () => {

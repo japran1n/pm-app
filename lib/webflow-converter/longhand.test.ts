@@ -1398,6 +1398,44 @@ describe('AS-066: list-style unrecognized token does not overwrite list-style-ty
   });
 });
 
+describe('AS-135: pass-through regression — common CSS spec longhands must survive expandDeclaration', () => {
+  // These properties are sourced from the CSS specification's property list
+  // (MDN/W3C longhand property names), NOT from PASS_THROUGH or any other
+  // internal set in longhand.ts. If pass-through is ever narrowed to a
+  // hardcoded allow-list that omits one of these, this test must fail.
+  it('test_AS_135_box_sizing_dimension_longhands_pass_through_no_warning', () => {
+    for (const prop of ['width', 'height', 'min-width', 'max-width', 'min-height', 'max-height']) {
+      const result = expandDeclaration(prop, '100px');
+      expect(result.decls).toEqual({ [prop]: '100px' });
+      expect(result.warning).toBeUndefined();
+    }
+  });
+
+  it('test_AS_135_shadow_longhands_pass_through_no_warning', () => {
+    for (const prop of ['box-shadow', 'text-shadow']) {
+      const result = expandDeclaration(prop, '0 2px 4px rgba(0,0,0,.2)');
+      expect(result.decls).toEqual({ [prop]: '0 2px 4px rgba(0,0,0,.2)' });
+      expect(result.warning).toBeUndefined();
+    }
+  });
+
+  it('test_AS_135_3d_and_pointer_interaction_longhands_pass_through_no_warning', () => {
+    for (const prop of ['transform-style', 'touch-action', 'isolation']) {
+      const result = expandDeclaration(prop, 'auto');
+      expect(result.decls).toEqual({ [prop]: 'auto' });
+      expect(result.warning).toBeUndefined();
+    }
+  });
+
+  it('test_AS_135_misc_ui_longhands_pass_through_no_warning', () => {
+    for (const prop of ['caret-color', 'accent-color', 'tab-size', 'scroll-behavior']) {
+      const result = expandDeclaration(prop, 'auto');
+      expect(result.decls).toEqual({ [prop]: 'auto' });
+      expect(result.warning).toBeUndefined();
+    }
+  });
+});
+
 describe('AS-058/AS-059/AS-060/AS-061/AS-063: empty values are warned-and-dropped, never emitted as undefined', () => {
   it('test_AS_058_gap_empty_value_is_warned_and_dropped', () => {
     const result = expandDeclaration('gap', '');
