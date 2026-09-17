@@ -6,9 +6,9 @@
 // This module ports the box rule shorthands (margin, padding, inset — the
 // CSS 1/2/3/4-value expansion) from F005, plus the global -keyword guard
 // that applies to any shorthand, and (F007) the 1-or-2-value pair
-// shorthands: gap, overflow, place-items, place-content, place-self. Border,
-// flex, transition, etc. are ported by sibling features and are not
-// implemented here.
+// shorthands: gap, overflow, place-items, place-content, place-self, and
+// (F008) flex / flex-flow. Border, background, grid, etc. are ported by
+// sibling features and are not implemented here.
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
 
@@ -221,6 +221,45 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
       return { decls: Object.fromEntries(SIDES.map((s, i) => [s, vals[i]])) };
     }
 
+    case 'border-width':
+    case 'border-style':
+    case 'border-color': {
+      const kind = p.split('-')[1];
+      const vals = box(splitTop(v));
+      return { decls: Object.fromEntries(SIDES.map((s, i) => [`border-${s}-${kind}`, vals[i]])) };
+    }
+
+    case 'border': {
+      const b = parseBorderParts(v);
+      const decls: Record<string, string> = {};
+      for (const s of SIDES) {
+        if (b.width !== undefined) decls[`border-${s}-width`] = b.width;
+        if (b.style !== undefined) decls[`border-${s}-style`] = b.style;
+        if (b.color !== undefined) decls[`border-${s}-color`] = b.color;
+      }
+      return { decls };
+    }
+
+    case 'border-top':
+    case 'border-right':
+    case 'border-bottom':
+    case 'border-left': {
+      const side = p.split('-')[1];
+      const b = parseBorderParts(v);
+      const decls: Record<string, string> = {};
+      if (b.width !== undefined) decls[`border-${side}-width`] = b.width;
+      if (b.style !== undefined) decls[`border-${side}-style`] = b.style;
+      if (b.color !== undefined) decls[`border-${side}-color`] = b.color;
+      return { decls };
+    }
+
+    case 'border-radius': {
+      const decls = expandBorderRadius(v);
+      return v.includes('/')
+        ? { decls, warning: `"border-radius: ${v}" — elliptical radii flattened to the horizontal values` }
+        : { decls };
+    }
+
     case 'gap': {
       const [row, col] = splitTop(v);
       return { decls: { 'row-gap': row, 'column-gap': col ?? row } };
@@ -246,6 +285,18 @@ export function expandDeclaration(prop: string, value: string): ExpandResult {
 
     case 'transition':
       return { decls: expandTransition(v) };
+
+    case 'flex':
+      return { decls: expandFlex(v) };
+
+    case 'flex-flow': {
+      const decls: Record<string, string> = {};
+      for (const t of splitTop(v)) {
+        if (/^(wrap|nowrap|wrap-reverse)$/i.test(t)) decls['flex-wrap'] = t;
+        else decls['flex-direction'] = t;
+      }
+      return { decls };
+    }
 
     case 'outline': {
       const b = parseBorderParts(v);

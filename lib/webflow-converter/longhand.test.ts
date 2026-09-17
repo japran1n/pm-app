@@ -334,3 +334,481 @@ describe('splitTop', () => {
     expect(splitTop('1px var(--a, 2px) 3px')).toEqual(['1px', 'var(--a, 2px)', '3px']);
   });
 });
+
+describe('AS-061: flex shorthand expansion (none/auto/single/2-value/3-value forms)', () => {
+  it('test_AS_061_none_keyword', () => {
+    expect(expandDeclaration('flex', 'none').decls).toEqual({
+      'flex-grow': '0',
+      'flex-shrink': '0',
+      'flex-basis': 'auto',
+    });
+  });
+
+  it('test_AS_061_auto_keyword', () => {
+    expect(expandDeclaration('flex', 'auto').decls).toEqual({
+      'flex-grow': '1',
+      'flex-shrink': '1',
+      'flex-basis': 'auto',
+    });
+  });
+
+  it('test_AS_061_initial_keyword_is_caught_by_global_keyword_guard', () => {
+    // "initial" is a CSS-wide global keyword, so — like the reference
+    // prototype — it's dropped by the shorthand's global-keyword guard
+    // before expandFlex ever sees it.
+    const r = expandDeclaration('flex', 'initial');
+    expect(r.decls).toEqual({});
+    expect(r.warning).toMatch(/dropped/);
+  });
+
+  it('test_AS_061_single_unitless_number_is_grow', () => {
+    expect(expandDeclaration('flex', '2').decls).toEqual({
+      'flex-grow': '2',
+      'flex-shrink': '1',
+      'flex-basis': '0%',
+    });
+  });
+
+  it('test_AS_061_single_value_basis_length', () => {
+    expect(expandDeclaration('flex', '30px').decls).toEqual({
+      'flex-grow': '1',
+      'flex-shrink': '1',
+      'flex-basis': '30px',
+    });
+  });
+
+  it('test_AS_061_two_values_grow_shrink', () => {
+    expect(expandDeclaration('flex', '2 3').decls).toEqual({
+      'flex-grow': '2',
+      'flex-shrink': '3',
+      'flex-basis': '0%',
+    });
+  });
+
+  it('test_AS_061_two_values_grow_basis', () => {
+    expect(expandDeclaration('flex', '2 30px').decls).toEqual({
+      'flex-grow': '2',
+      'flex-shrink': '1',
+      'flex-basis': '30px',
+    });
+  });
+
+  it('test_AS_061_three_values_grow_shrink_basis', () => {
+    expect(expandDeclaration('flex', '2 1 30px').decls).toEqual({
+      'flex-grow': '2',
+      'flex-shrink': '1',
+      'flex-basis': '30px',
+    });
+  });
+
+  it('test_AS_061_recognizes_flex_as_shorthand', () => {
+    expect(isShorthand('flex')).toBe(true);
+  });
+
+  it('test_AS_061_global_keyword_is_dropped_with_warning', () => {
+    const r = expandDeclaration('flex', 'inherit');
+    expect(r.decls).toEqual({});
+    expect(r.warning).toMatch(/dropped/);
+  });
+});
+
+describe('AS-062: flex-flow shorthand expansion', () => {
+  it('test_AS_062_direction_only', () => {
+    expect(expandDeclaration('flex-flow', 'column').decls).toEqual({
+      'flex-direction': 'column',
+    });
+  });
+
+  it('test_AS_062_wrap_only', () => {
+    expect(expandDeclaration('flex-flow', 'wrap').decls).toEqual({
+      'flex-wrap': 'wrap',
+    });
+  });
+
+  it('test_AS_062_direction_and_wrap', () => {
+    expect(expandDeclaration('flex-flow', 'row-reverse wrap-reverse').decls).toEqual({
+      'flex-direction': 'row-reverse',
+      'flex-wrap': 'wrap-reverse',
+    });
+  });
+
+  it('test_AS_062_wrap_and_direction_order_independent', () => {
+    expect(expandDeclaration('flex-flow', 'nowrap column-reverse').decls).toEqual({
+      'flex-wrap': 'nowrap',
+      'flex-direction': 'column-reverse',
+    });
+  });
+
+  it('test_AS_062_recognizes_flex_flow_as_shorthand', () => {
+    expect(isShorthand('flex-flow')).toBe(true);
+  });
+
+  it('test_AS_062_global_keyword_is_dropped_with_warning', () => {
+    const r = expandDeclaration('flex-flow', 'unset');
+    expect(r.decls).toEqual({});
+    expect(r.warning).toMatch(/dropped/);
+  });
+});
+
+describe('AS-065: font shorthand expands style/weight/size/line-height/family', () => {
+  it('test_AS_065_size_and_family_only', () => {
+    expect(expandDeclaration('font', '14px Arial')).toEqual({
+      decls: {
+        'font-size': '14px',
+        'font-family': 'Arial',
+      },
+    });
+  });
+
+  it('test_AS_065_size_slash_line_height_and_family', () => {
+    expect(expandDeclaration('font', '14px/1.5 Arial, sans-serif')).toEqual({
+      decls: {
+        'font-size': '14px',
+        'line-height': '1.5',
+        'font-family': 'Arial, sans-serif',
+      },
+    });
+  });
+
+  it('test_AS_065_style_weight_size_line_height_family', () => {
+    expect(expandDeclaration('font', 'italic bold 16px/1.4 Georgia, serif')).toEqual({
+      decls: {
+        'font-style': 'italic',
+        'font-weight': 'bold',
+        'font-size': '16px',
+        'line-height': '1.4',
+        'font-family': 'Georgia, serif',
+      },
+    });
+  });
+
+  it('test_AS_065_numeric_weight_and_normal_style', () => {
+    expect(expandDeclaration('font', 'normal 700 12px "Helvetica Neue"')).toEqual({
+      decls: {
+        'font-style': 'normal',
+        'font-weight': '700',
+        'font-size': '12px',
+        'font-family': '"Helvetica Neue"',
+      },
+    });
+  });
+
+  it('test_AS_065_size_only_no_family_is_kept_as_shorthand_with_warning', () => {
+    const result = expandDeclaration('font', 'italic bold');
+    expect(result.decls).toEqual({ font: 'italic bold' });
+    expect(result.warning).toMatch(/could not expand/i);
+  });
+
+  it('test_AS_065_global_keyword_on_font_is_dropped_with_warning', () => {
+    const result = expandDeclaration('font', 'inherit');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+});
+
+describe('AS-066: list-style shorthand expands type/position/image', () => {
+  it('test_AS_066_type_only', () => {
+    expect(expandDeclaration('list-style', 'square')).toEqual({
+      decls: { 'list-style-type': 'square' },
+    });
+  });
+
+  it('test_AS_066_type_and_position', () => {
+    expect(expandDeclaration('list-style', 'disc inside')).toEqual({
+      decls: {
+        'list-style-type': 'disc',
+        'list-style-position': 'inside',
+      },
+    });
+  });
+
+  it('test_AS_066_type_position_and_url_image', () => {
+    expect(expandDeclaration('list-style', 'square outside url(bullet.png)')).toEqual({
+      decls: {
+        'list-style-type': 'square',
+        'list-style-position': 'outside',
+        'list-style-image': 'url(bullet.png)',
+      },
+    });
+  });
+
+  it('test_AS_066_none_treated_as_type', () => {
+    expect(expandDeclaration('list-style', 'none')).toEqual({
+      decls: { 'list-style-type': 'none' },
+    });
+  });
+
+  it('test_AS_066_global_keyword_on_list_style_is_dropped_with_warning', () => {
+    const result = expandDeclaration('list-style', 'unset');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+});
+
+describe('AS-067: outline shorthand expands color/style/width', () => {
+  it('test_AS_067_width_style_color', () => {
+    expect(expandDeclaration('outline', '2px solid red')).toEqual({
+      decls: {
+        'outline-width': '2px',
+        'outline-style': 'solid',
+        'outline-color': 'red',
+      },
+    });
+  });
+
+  it('test_AS_067_style_only', () => {
+    expect(expandDeclaration('outline', 'dotted')).toEqual({
+      decls: { 'outline-style': 'dotted' },
+    });
+  });
+
+  it('test_AS_067_named_width_and_style', () => {
+    expect(expandDeclaration('outline', 'thick dashed')).toEqual({
+      decls: {
+        'outline-width': 'thick',
+        'outline-style': 'dashed',
+      },
+    });
+  });
+
+  it('test_AS_067_color_keyword_and_style', () => {
+    expect(expandDeclaration('outline', 'solid red')).toEqual({
+      decls: {
+        'outline-style': 'solid',
+        'outline-color': 'red',
+      },
+    });
+  });
+
+  it('test_AS_067_global_keyword_on_outline_is_dropped_with_warning', () => {
+    const result = expandDeclaration('outline', 'initial');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+});
+
+describe('isShorthand recognizes font, list-style, outline', () => {
+  it('recognizes font, list-style, and outline as shorthands', () => {
+    expect(isShorthand('font')).toBe(true);
+    expect(isShorthand('list-style')).toBe(true);
+    expect(isShorthand('outline')).toBe(true);
+  });
+});
+
+describe('AS-055: border shorthand expands to width/style/color on all four sides', () => {
+  it('test_AS_055_width_style_color', () => {
+    expect(expandDeclaration('border', '1px solid red')).toEqual({
+      decls: {
+        'border-top-width': '1px',
+        'border-top-style': 'solid',
+        'border-top-color': 'red',
+        'border-right-width': '1px',
+        'border-right-style': 'solid',
+        'border-right-color': 'red',
+        'border-bottom-width': '1px',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'red',
+        'border-left-width': '1px',
+        'border-left-style': 'solid',
+        'border-left-color': 'red',
+      },
+    });
+  });
+
+  it('test_AS_055_style_only', () => {
+    expect(expandDeclaration('border', 'dashed')).toEqual({
+      decls: {
+        'border-top-style': 'dashed',
+        'border-right-style': 'dashed',
+        'border-bottom-style': 'dashed',
+        'border-left-style': 'dashed',
+      },
+    });
+  });
+
+  it('test_AS_055_color_style_width_in_declaration_order', () => {
+    // parseBorderParts assigns tokens to the first unfilled matching slot in
+    // declaration order: style keywords -> style, width-shaped tokens ->
+    // width, anything else -> color. A var() token is width-shaped, so it
+    // fills the width slot here, matching the reference prototype exactly.
+    expect(expandDeclaration('border', 'solid var(--accent) thin')).toEqual({
+      decls: {
+        'border-top-width': 'var(--accent)',
+        'border-top-style': 'solid',
+        'border-top-color': 'thin',
+        'border-right-width': 'var(--accent)',
+        'border-right-style': 'solid',
+        'border-right-color': 'thin',
+        'border-bottom-width': 'var(--accent)',
+        'border-bottom-style': 'solid',
+        'border-bottom-color': 'thin',
+        'border-left-width': 'var(--accent)',
+        'border-left-style': 'solid',
+        'border-left-color': 'thin',
+      },
+    });
+  });
+
+  it('test_AS_055_global_keyword_on_border_is_dropped_with_warning', () => {
+    const result = expandDeclaration('border', 'inherit');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+
+  it('recognizes border as a shorthand', () => {
+    expect(isShorthand('border')).toBe(true);
+  });
+});
+
+describe('AS-056: border-top/right/bottom/left and border-width/style/color expand per side', () => {
+  it('test_AS_056_border_top_expands_only_top_side', () => {
+    expect(expandDeclaration('border-top', '2px dotted blue')).toEqual({
+      decls: {
+        'border-top-width': '2px',
+        'border-top-style': 'dotted',
+        'border-top-color': 'blue',
+      },
+    });
+  });
+
+  it('test_AS_056_border_right_expands_only_right_side', () => {
+    expect(expandDeclaration('border-right', '1px solid green')).toEqual({
+      decls: {
+        'border-right-width': '1px',
+        'border-right-style': 'solid',
+        'border-right-color': 'green',
+      },
+    });
+  });
+
+  it('test_AS_056_border_bottom_expands_only_bottom_side', () => {
+    expect(expandDeclaration('border-bottom', 'solid')).toEqual({
+      decls: { 'border-bottom-style': 'solid' },
+    });
+  });
+
+  it('test_AS_056_border_left_expands_only_left_side', () => {
+    expect(expandDeclaration('border-left', '3px double')).toEqual({
+      decls: {
+        'border-left-width': '3px',
+        'border-left-style': 'double',
+      },
+    });
+  });
+
+  it('test_AS_056_border_width_1to4_value_box_expansion', () => {
+    expect(expandDeclaration('border-width', '1px 2px 3px 4px')).toEqual({
+      decls: {
+        'border-top-width': '1px',
+        'border-right-width': '2px',
+        'border-bottom-width': '3px',
+        'border-left-width': '4px',
+      },
+    });
+  });
+
+  it('test_AS_056_border_style_1_value_applies_to_all_sides', () => {
+    expect(expandDeclaration('border-style', 'dashed')).toEqual({
+      decls: {
+        'border-top-style': 'dashed',
+        'border-right-style': 'dashed',
+        'border-bottom-style': 'dashed',
+        'border-left-style': 'dashed',
+      },
+    });
+  });
+
+  it('test_AS_056_border_color_2_value_vertical_horizontal', () => {
+    expect(expandDeclaration('border-color', 'red blue')).toEqual({
+      decls: {
+        'border-top-color': 'red',
+        'border-right-color': 'blue',
+        'border-bottom-color': 'red',
+        'border-left-color': 'blue',
+      },
+    });
+  });
+
+  it('test_AS_056_global_keyword_on_border_top_is_dropped_with_warning', () => {
+    const result = expandDeclaration('border-top', 'unset');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+
+  it('recognizes border-top/right/bottom/left and border-width/style/color as shorthands', () => {
+    expect(isShorthand('border-top')).toBe(true);
+    expect(isShorthand('border-right')).toBe(true);
+    expect(isShorthand('border-bottom')).toBe(true);
+    expect(isShorthand('border-left')).toBe(true);
+    expect(isShorthand('border-width')).toBe(true);
+    expect(isShorthand('border-style')).toBe(true);
+    expect(isShorthand('border-color')).toBe(true);
+  });
+});
+
+describe('AS-057: border-radius 1/2/3/4-value expansion preserves TL/TR/BR/BL corner order', () => {
+  it('test_AS_057_one_value_applies_to_all_corners', () => {
+    expect(expandDeclaration('border-radius', '4px')).toEqual({
+      decls: {
+        'border-top-left-radius': '4px',
+        'border-top-right-radius': '4px',
+        'border-bottom-right-radius': '4px',
+        'border-bottom-left-radius': '4px',
+      },
+    });
+  });
+
+  it('test_AS_057_two_values_tl_br_then_tr_bl', () => {
+    expect(expandDeclaration('border-radius', '4px 8px')).toEqual({
+      decls: {
+        'border-top-left-radius': '4px',
+        'border-top-right-radius': '8px',
+        'border-bottom-right-radius': '4px',
+        'border-bottom-left-radius': '8px',
+      },
+    });
+  });
+
+  it('test_AS_057_three_values', () => {
+    expect(expandDeclaration('border-radius', '4px 8px 12px')).toEqual({
+      decls: {
+        'border-top-left-radius': '4px',
+        'border-top-right-radius': '8px',
+        'border-bottom-right-radius': '12px',
+        'border-bottom-left-radius': '8px',
+      },
+    });
+  });
+
+  it('test_AS_057_four_values_top_left_top_right_bottom_right_bottom_left', () => {
+    expect(expandDeclaration('border-radius', '1px 2px 3px 4px')).toEqual({
+      decls: {
+        'border-top-left-radius': '1px',
+        'border-top-right-radius': '2px',
+        'border-bottom-right-radius': '3px',
+        'border-bottom-left-radius': '4px',
+      },
+    });
+  });
+
+  it('test_AS_057_elliptical_radii_flattened_to_horizontal_with_warning', () => {
+    const result = expandDeclaration('border-radius', '4px 8px / 2px 6px');
+    expect(result.decls).toEqual({
+      'border-top-left-radius': '4px',
+      'border-top-right-radius': '8px',
+      'border-bottom-right-radius': '4px',
+      'border-bottom-left-radius': '8px',
+    });
+    expect(result.warning).toMatch(/elliptical/i);
+  });
+
+  it('test_AS_057_global_keyword_on_border_radius_is_dropped_with_warning', () => {
+    const result = expandDeclaration('border-radius', 'inherit');
+    expect(result.decls).toEqual({});
+    expect(result.warning).toMatch(/dropped/i);
+  });
+
+  it('recognizes border-radius as a shorthand', () => {
+    expect(isShorthand('border-radius')).toBe(true);
+  });
+});
