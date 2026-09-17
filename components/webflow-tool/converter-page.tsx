@@ -14,6 +14,7 @@
 import * as React from "react"
 
 import { ConverterEditor, useEditorPersistence } from "./converter-editor"
+import { ConverterHelp } from "./converter-help"
 import { ConverterPreview } from "./converter-preview"
 
 export function ConverterPage() {
@@ -49,6 +50,8 @@ export function ConverterPage() {
       </div>
 
       {/* F031-F036: Convert button, copy buttons, and results panel go here */}
+
+      <ConverterHelp />
     </div>
   )
 }
