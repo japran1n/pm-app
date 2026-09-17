@@ -22,6 +22,7 @@ import {
   CheckSquare,
   Eye,
   HelpCircle,
+  Code2,
 } from "lucide-react";
 
 import { useMembership } from "@/components/auth/membership-provider";
@@ -149,6 +150,13 @@ function navGroups(
     // unreadCount, which chat-nav-list.tsx already treats as the
     // source of truth for "unread" there).
     { href: `/w/${workspaceSlug}/chat`, label: "Chat", icon: MessageCircle, badge: chatUnreadBadge ?? countBadge(chatUnreadCount) },
+    // F003 (AS-001, AS-005, AS-006, AS-007): "Webflow" nav item linking to
+    // the converter tool (F002, app/(workspace)/w/[workspaceSlug]/tools/webflow).
+    // Placed at the same top-level tier as Dashboard/My Tasks/Projects/Chat
+    // per this feature's own Draft scope -- not gated on role/guest/hasClient
+    // (AS-007: always renders, no per-workspace conditional), same pattern
+    // as Dashboard/My Tasks/Projects/Chat above.
+    { href: `/w/${workspaceSlug}/tools/webflow`, label: "Webflow", icon: Code2 },
   ];
 
   // F241: Calendar is a workspace-wide, RLS-scoped view with no guest gate
