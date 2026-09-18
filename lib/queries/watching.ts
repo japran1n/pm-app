@@ -104,15 +104,12 @@ export async function getWatchedTasksForUser(
     (projectRows ?? []).map((project) => [project.id, project.name]),
   );
 
-  // Latest activity row per watched task -- one query, newest-first, then
-  // "first row per task id wins" in JS (same reduce technique
-  // getProjectHealthInputs uses for its own "first active phase per
-  // project" grouping just above in this file's sibling module).
+  // Latest activity row per watched task — one RPC call using DISTINCT ON
+  // (task_id) in Postgres, which is far cheaper than fetching all rows and
+  // grouping in JS. The function runs with security invoker so RLS on
+  // task_activity still applies.
   const { data: activityRows, error: activityError } = await supabase
-    .from("task_activity")
-    .select("task_id, kind, field, old_value, new_value, actor_id, created_at")
-    .in("task_id", tasks.map((task) => task.id))
-    .order("created_at", { ascending: false });
+    .rpc("get_latest_task_activity", { task_ids: tasks.map((task) => task.id) });
 
   if (activityError) {
     logger.error("getWatchedTasksForUser: activity query failed", { error: activityError });
@@ -127,12 +124,11 @@ export async function getWatchedTasksForUser(
     actor_id: string | null;
     created_at: string;
   };
-  const latestActivityByTask = new Map<string, ActivityRow>();
-  for (const row of (activityRows ?? []) as ActivityRow[]) {
-    if (!latestActivityByTask.has(row.task_id)) {
-      latestActivityByTask.set(row.task_id, row);
-    }
-  }
+  // The RPC already returns one row per task_id (DISTINCT ON), so a simple
+  // Map build is all that is needed — no JS-side "first row wins" loop.
+  const latestActivityByTask = new Map<string, ActivityRow>(
+    (activityRows ?? []).map((row: ActivityRow) => [row.task_id, row]),
+  );
 
   const actorIds = Array.from(
     new Set(
