@@ -29,7 +29,7 @@ import { Clock } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceMembers } from "@/lib/queries/members";
-import { getWorkspaceTimeByPerson, getPersonTimeDaily } from "@/lib/queries/time-entries";
+import { getWorkspaceTimeByPerson, getWorkspaceTimeByPersonAndDay } from "@/lib/queries/time-entries";
 import { getPeriodShortcuts } from "@/lib/time/period-shortcuts";
 import { buildTeamHeatmapGrid, type PersonDayMinutes } from "@/lib/time/team-heatmap-data";
 import { TeamHeatmap } from "@/components/time/team-heatmap";
@@ -92,29 +92,16 @@ export default async function TimeReportPage({
   let loadError = false;
 
   try {
-    [members, totals] = await Promise.all([
+    // P2-19: all three queries run in parallel. `getWorkspaceTimeByPersonAndDay`
+    // is a single RPC call that replaces the N-serial-per-member fan-out; it
+    // joins workspace_members server-side and limits rows to staff roles
+    // ('owner', 'admin', 'member') — client and guest members are filtered
+    // out by the RPC itself.
+    [members, totals, dailyByPerson] = await Promise.all([
       getWorkspaceMembers(workspace.id),
       getWorkspaceTimeByPerson(workspace.id, startDate, endDate),
+      getWorkspaceTimeByPersonAndDay(workspace.id, startDate, endDate),
     ]);
-
-    // No single workspace-wide "by person AND day" RPC exists yet (only
-    // `get_workspace_time_by_person_and_project`, grouped by project, not
-    // day) — see lib/time/team-heatmap-data.ts's header comment. One
-    // `getPersonTimeDaily` call per active member, bounded by the same
-    // member list already loaded above for the per-person table.
-    if (members) {
-      const perPersonDaily = await Promise.all(
-        members.active.map(async (member) => {
-          const days = await getPersonTimeDaily(member.userId, startDate, endDate);
-          return days.map((d) => ({
-            userId: member.userId,
-            entryDate: d.entryDate,
-            totalMinutes: d.totalMinutes,
-          }));
-        }),
-      );
-      dailyByPerson = perPersonDaily.flat();
-    }
   } catch (error) {
     logger.error("TimeReportPage: failed to load time report", { error: error });
     loadError = true;

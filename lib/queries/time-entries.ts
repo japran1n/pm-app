@@ -533,6 +533,58 @@ export async function getMyTimeEntriesInRange(
   });
 }
 
+export type WorkspaceTimeByPersonAndDay = {
+  userId: string;
+  entryDate: string;
+  totalMinutes: number;
+  billableMinutes: number;
+};
+
+// getWorkspaceTimeByPersonAndDay (P2-19): single-query replacement for the
+// per-member `getPersonTimeDaily` fan-out on the team time report page.
+// Wraps the `get_workspace_time_by_person_and_day` RPC
+// (supabase/migrations/20261127100000_get_workspace_time_by_person_and_day_rpc.sql).
+// The RPC's workspace_members join limits rows to staff roles only
+// ('owner', 'admin', 'member') — client and guest members are excluded from
+// the team heatmap by the RPC itself, not by post-processing in the page.
+// Uses the request-scoped (RLS-respecting) client; security invoker so RLS
+// on time_entries and tasks applies as for any direct SELECT.
+export async function getWorkspaceTimeByPersonAndDay(
+  workspaceId: string,
+  from: string,
+  to: string,
+): Promise<WorkspaceTimeByPersonAndDay[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc(
+    "get_workspace_time_by_person_and_day",
+    {
+      p_workspace_id: workspaceId,
+      p_from: from,
+      p_to: to,
+    },
+  );
+
+  if (error || !data) {
+    if (error) {
+      logger.error("getWorkspaceTimeByPersonAndDay: rpc failed", { error: error });
+    }
+    return [];
+  }
+
+  return (data as Array<{
+    user_id: string;
+    entry_date: string;
+    total_minutes: number;
+    billable_minutes: number;
+  }>).map((row) => ({
+    userId: row.user_id,
+    entryDate: row.entry_date,
+    totalMinutes: Number(row.total_minutes ?? 0),
+    billableMinutes: Number(row.billable_minutes ?? 0),
+  }));
+}
+
 export type PersonEstimateVsLogged = {
   userId: string;
   estimateMinutes: number;
