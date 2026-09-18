@@ -110,6 +110,14 @@ export async function createProject(
     };
   }
 
+  // Guests are project-scoped contributors; they cannot create new projects.
+  if (membership.role === "guest") {
+    return {
+      ok: false,
+      error: "Guests cannot create projects.",
+    };
+  }
+
   // AS-036: created_by is set here from the server-verified caller id, never
   // trusted from client input. created_at is left to the column default
   // (supabase/migrations/20260818004413_create_projects.sql sets `default
@@ -366,7 +374,7 @@ export async function editProject(
   // AS-035's start/end ordering constraint.
   const { data: existing, error: fetchError } = await admin
     .from("projects")
-    .select("id, workspace_id, name, description, start_date, end_date, deleted_at")
+    .select("id, workspace_id, name, description, start_date, end_date, deleted_at, visibility")
     .eq("id", projectId)
     .eq("workspace_id", workspaceId)
     .is("deleted_at", null)
@@ -374,6 +382,24 @@ export async function editProject(
 
   if (fetchError || !existing) {
     return { ok: false, error: "Project not found." };
+  }
+
+  // Verify the caller can actually see this project. For private projects the
+  // caller must have an explicit project_members row; for workspace-visible
+  // projects any active workspace member qualifies (already established above
+  // by requireActiveMembership). Returning "Project not found." rather than a
+  // permission error avoids leaking the existence of projects the caller has
+  // no access to.
+  if (existing.visibility === "private") {
+    const { data: projectMemberRow } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!projectMemberRow) {
+      return { ok: false, error: "Project not found." };
+    }
   }
 
   const nextStartDate =

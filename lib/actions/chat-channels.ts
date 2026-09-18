@@ -250,6 +250,27 @@ export async function addChannelMember(
     return { ok: false, error: "You don't have permission to add members to this channel." };
   }
 
+  // Verify the target user is eligible to be in this channel before inserting:
+  // - project channel → target must have a project_members row for that project
+  // - workspace channel → target must be an active, non-client workspace member
+  const targetUserId = parsed.data.userId;
+  if (channelRow.project_id) {
+    const { data: targetProjectMember } = await admin
+      .from("project_members")
+      .select("user_id")
+      .eq("project_id", channelRow.project_id)
+      .eq("user_id", targetUserId)
+      .maybeSingle();
+    if (!targetProjectMember) {
+      return { ok: false, error: "User cannot be added to this channel." };
+    }
+  } else {
+    const targetMembership = await requireActiveMembership(admin, channelRow.workspace_id, targetUserId);
+    if (!targetMembership.ok || targetMembership.role === "client") {
+      return { ok: false, error: "User cannot be added to this channel." };
+    }
+  }
+
   const { error: insertError } = await admin
     .from("channel_members")
     .insert({ channel_id: parsed.data.channelId, user_id: parsed.data.userId })
