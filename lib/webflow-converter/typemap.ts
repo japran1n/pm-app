@@ -99,9 +99,11 @@ export function getWebflowType(
       return { type: "ListItem", tag: "li" };
 
     case "a":
-      // Link carries text; LinkBlock wraps structure. AS-082 / AS-083.
+      // Webflow has no separate "LinkBlock" node type — every <a> is type
+      // "Link"; data.block ("" | "block") carries the inline-vs-block
+      // distinction. AS-082 / AS-083.
       return hasElementChildren
-        ? { type: "LinkBlock", tag: "a", data: { link: linkData(attrs), block: "block" } }
+        ? { type: "Link", tag: "a", data: { link: linkData(attrs), block: "block" } }
         : { type: "Link", tag: "a", data: { link: linkData(attrs), block: "", text: true } };
 
     case "button":

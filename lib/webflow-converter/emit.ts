@@ -362,7 +362,6 @@ function commonNodeData(): {
   xattr: { name: string; value: string }[];
   search: { exclude: false };
   visibility: { conditions: unknown[]; keepInHtml: { tag: "False"; val: Record<string, never> } };
-  eventIds: never[];
 } {
   return {
     devlink: { runtimeProps: {}, slot: "" },
@@ -371,7 +370,6 @@ function commonNodeData(): {
     xattr: [],
     search: { exclude: false },
     visibility: { conditions: [], keepInHtml: { tag: "False", val: {} } },
-    eventIds: [],
   };
 }
 
@@ -405,15 +403,7 @@ function buildNodeData(
         block: (td.block as string) ?? "",
         text: true,
         button: td.button === true,
-        ...common,
-        xattr,
-      };
-    case "LinkBlock":
-      return {
-        link: td.link ?? { url: "#" },
-        block: (td.block as string) ?? "block",
-        text: true,
-        button: false,
+        eventIds: [],
         ...common,
         xattr,
       };
@@ -439,7 +429,6 @@ function buildNodeData(
         displayName: common.displayName,
         search: common.search,
         visibility: common.visibility,
-        eventIds: common.eventIds,
       };
     case "HtmlEmbed":
       return { html: (td.html as string) ?? "", ...common, xattr };

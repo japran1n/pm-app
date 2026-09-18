@@ -638,8 +638,9 @@ describe("convert", () => {
       expect(anyLiteralClassName).toBe(false);
       expect(Array.from(styleNamesById.values())).toContain("team_component");
 
-      // 3. Every element node's `data` has all seven common keys.
-      const COMMON_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility", "eventIds"];
+      // 3. Every element node's `data` has all six common keys. `eventIds`
+      // is Link-only per ground truth, not part of the common set.
+      const COMMON_KEYS = ["devlink", "displayName", "attr", "xattr", "search", "visibility"];
       for (const node of payload.nodes) {
         if (isTextNode(node)) continue;
         for (const key of COMMON_KEYS) {

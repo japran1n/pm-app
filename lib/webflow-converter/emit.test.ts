@@ -601,7 +601,7 @@ describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
     }
   });
 
-  it("test_wf_json_element_node_data_has_all_seven_common_keys", () => {
+  it("test_wf_json_element_node_data_has_all_six_common_keys", () => {
     const html = '<section class="hero"><div class="inner"></div></section>';
     const { payload } = emitWebflow(html, parseCss(""));
     for (const node of payload.payload.nodes) {
@@ -612,8 +612,39 @@ describe("emitWebflow — ground-truth shape conformance (wf.json)", () => {
       expect(Array.isArray(node.data.xattr)).toBe(true);
       expect(node.data.search).toEqual({ exclude: false });
       expect(node.data.visibility).toEqual({ conditions: [], keepInHtml: { tag: "False", val: {} } });
-      expect(node.data.eventIds).toEqual([]);
     }
+  });
+
+  it("test_wf_json_only_link_nodes_carry_eventIds", () => {
+    // Ground truth: eventIds appears ONLY on Link nodes, not on every element.
+    const html = '<section class="hero"><a class="x" href="/about">go</a></section>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    for (const node of payload.payload.nodes) {
+      if (isTextNode(node)) continue;
+      if (node.type === "Link") {
+        expect(node.data.eventIds).toEqual([]);
+      } else {
+        expect(node.data.eventIds).toBeUndefined();
+      }
+    }
+  });
+
+  it("test_no_emitted_node_has_type_LinkBlock", () => {
+    const html = '<a class="x" href="/about"><span>child</span></a>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    for (const node of payload.payload.nodes) {
+      if (isTextNode(node)) continue;
+      expect(node.type).not.toBe("LinkBlock");
+    }
+  });
+
+  it("test_anchor_with_element_children_emits_Link_type_with_block_data", () => {
+    const html = '<a class="x" href="/about"><span>child</span></a>';
+    const { payload } = emitWebflow(html, parseCss(""));
+    const anchorNode = payload.payload.nodes.find((n) => !isTextNode(n) && (n as { tag?: string }).tag === "a");
+    expect(anchorNode).toBeDefined();
+    expect((anchorNode as { type?: string }).type).toBe("Link");
+    expect((anchorNode as { data?: { block?: string } }).data?.block).toBe("block");
   });
 
   it("test_wf_json_payload_has_expandUserComponents_true", () => {
