@@ -183,9 +183,10 @@ describe("ConverterPage (F029)", () => {
   it("test_AS_119_copy_button_disabled_when_ok_but_has_errors", async () => {
     mockConvert.mockResolvedValue({
       ok: true,
-      json: "{}",
+      json: '{"type":"@webflow/XscpData","payload":{}}',
       stats: { nodeCount: 1, styleCount: 1 },
-      errors: ["Something went wrong."],
+      warnings: [],
+      errors: ["some error"],
     })
     render(<ConverterPage />)
 
@@ -193,9 +194,34 @@ describe("ConverterPage (F029)", () => {
     fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
     fireEvent.click(screen.getByRole("button", { name: /convert/i }))
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /copy for webflow/i })).toBeDisabled(),
-    )
+    // Wait for the conversion to fully complete (loading indicator gone and
+    // stats rendered), so the disabled check below observes the
+    // post-conversion state rather than the transient "loading" disabled
+    // state which is true regardless of `errors`.
+    await waitFor(() => expect(screen.queryByText(/converting/i)).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/1 elements/i)).toBeInTheDocument())
+
+    expect(screen.getByRole("button", { name: /copy for webflow/i })).toBeDisabled()
+  })
+
+  it("test_AS_119_copy_button_enabled_when_ok_and_no_errors", async () => {
+    mockConvert.mockResolvedValue({
+      ok: true,
+      json: '{"type":"@webflow/XscpData","payload":{}}',
+      stats: { nodeCount: 1, styleCount: 1 },
+      warnings: [],
+      errors: [],
+    })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    await waitFor(() => expect(screen.queryByText(/converting/i)).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/1 elements/i)).toBeInTheDocument())
+
+    expect(screen.getByRole("button", { name: /copy for webflow/i })).not.toBeDisabled()
   })
 
   it("test_AS_033_copy_for_webflow_button_renders", () => {
