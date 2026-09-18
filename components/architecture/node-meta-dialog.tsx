@@ -185,7 +185,7 @@ export function NodeMetaDialog({
               className="text-sm"
               disabled={isPending || keywords.length >= 30}
             />
-            <p className="text-xs text-muted-foreground">{keywords.length}/30</p>
+            <p className="font-mono text-xs tabular-nums text-muted-foreground">{keywords.length}/30</p>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Copy status</Label>
