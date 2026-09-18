@@ -23,11 +23,23 @@ export default async function OnboardingPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user) {
-    const slug = await getDefaultWorkspaceSlug(supabase, user.id);
-    if (slug) {
-      redirect(`/w/${slug}`);
+  // Auth guard: this page has no other membership/role check standing
+  // between it and the public internet, so a logged-out visitor hitting
+  // this URL directly must not see the (agency-only) create-workspace
+  // form.
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const defaultWorkspace = await getDefaultWorkspaceSlug(supabase, user.id);
+  if (defaultWorkspace) {
+    // Same client-vs-agency split as the auth callback route: a portal
+    // client who already has an active (activated) membership belongs in
+    // their portal, not the agency "create your workspace" flow.
+    if (defaultWorkspace.role === "client") {
+      redirect(`/portal/${defaultWorkspace.slug}`);
     }
+    redirect(`/w/${defaultWorkspace.slug}`);
   }
 
   return (

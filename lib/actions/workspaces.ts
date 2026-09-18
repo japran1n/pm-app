@@ -80,6 +80,11 @@ export async function createWorkspace(
   _prevState: CreateWorkspaceResult | null,
   formData: FormData,
 ): Promise<CreateWorkspaceResult> {
+  const allowCreation = process.env.ALLOW_WORKSPACE_CREATION !== "false";
+  if (!allowCreation) {
+    return { ok: false, error: "Workspace creation is disabled." };
+  }
+
   const parsed = createWorkspaceSchema.safeParse({
     name: formData.get("name"),
   });
