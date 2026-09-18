@@ -1,0 +1,128 @@
+{
+  "a1_afterConvert": {
+    "copyText": "Copy for Webflow",
+    "copyDisabled": false,
+    "convDisabled": false,
+    "alerts": [],
+    "statuses": [],
+    "stats": "✓ 7 elements · 7 classes · 2.4 KB",
+    "warnings": [],
+    "customCode": false
+  },
+  "a1_previewRendered": {
+    "hasHero": false
+  },
+  "a1_afterCopy": {
+    "copyText": "Copied!",
+    "copyDisabled": false,
+    "convDisabled": false,
+    "alerts": [],
+    "statuses": [
+      "Open the Webflow Designer, click on the canvas to focus it, then press Cmd/Ctrl+V to paste."
+    ],
+    "stats": "✓ 7 elements · 7 classes · 2.4 KB",
+    "warnings": [],
+    "customCode": false
+  },
+  "a1_clipboard": {
+    "types": [
+      "text/plain"
+    ]
+  },
+  "o1_afterHtmlEdit": {
+    "copyText": "Copy for Webflow",
+    "copyDisabled": true,
+    "convDisabled": false,
+    "alerts": [],
+    "statuses": [],
+    "stats": null,
+    "warnings": [],
+    "customCode": false
+  },
+  "o1_beforeCssEdit": {
+    "stats": "✓ 2 elements · 4 classes · 1.2 KB",
+    "copyDisabled": false
+  },
+  "o1_afterCssEdit": {
+    "copyText": "Copy for Webflow",
+    "copyDisabled": true,
+    "convDisabled": false,
+    "alerts": [],
+    "statuses": [],
+    "stats": null,
+    "warnings": [],
+    "customCode": false
+  },
+  "a2": [
+    {
+      "input": "(empty)",
+      "copyText": "Copy for Webflow",
+      "copyDisabled": true,
+      "convDisabled": true,
+      "alerts": [],
+      "statuses": [],
+      "stats": null,
+      "warnings": [],
+      "customCode": false
+    },
+    {
+      "input": "just plain text with no tags",
+      "copyText": "Copy for Webflow",
+      "copyDisabled": true,
+      "convDisabled": false,
+      "alerts": [
+        "No convertible elements found. Paste HTML that contains at least one visible element."
+      ],
+      "statuses": [],
+      "stats": null,
+      "warnings": [],
+      "customCode": false
+    },
+    {
+      "input": "<<<<>>>>",
+      "copyText": "Copy for Webflow",
+      "copyDisabled": true,
+      "convDisabled": false,
+      "alerts": [
+        "No convertible elements found. Paste HTML that contains at least one visible element."
+      ],
+      "statuses": [],
+      "stats": null,
+      "warnings": [],
+      "customCode": false
+    },
+    {
+      "input": "<!-- only a comment -->",
+      "copyText": "Copy for Webflow",
+      "copyDisabled": true,
+      "convDisabled": false,
+      "alerts": [
+        "No convertible elements found. Paste HTML that contains at least one visible element."
+      ],
+      "statuses": [],
+      "stats": null,
+      "warnings": [],
+      "customCode": false
+    }
+  ],
+  "a3": {
+    "copyText": "Copy for Webflow",
+    "copyDisabled": false,
+    "convDisabled": false,
+    "alerts": [],
+    "statuses": [],
+    "stats": "✓ 2 elements · 4 classes · 1 KB",
+    "warnings": [
+      "Class name 'md:w-1/2' contains characters not supported in Webflow (Tailwind variant) — converted as stub",
+      "Class name 'w-[32px]' contains characters not supported in Webflow (Tailwind variant) — converted as stub"
+    ],
+    "customCode": false
+  },
+  "a3_payload": [
+    "text/plain"
+  ],
+  "a3_clipboard": {
+    "nonNull": false,
+    "rootClasses": null
+  }
+}

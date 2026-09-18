@@ -1,0 +1,278 @@
+{
+  "previewShot": "r3-10-happy-preview.png",
+  "verifyBoxText": [
+    "application/json: PRESENT",
+    "text/plain: 1075 bytes",
+    "application/json: 1075 bytes"
+  ],
+  "a6_busySamples": [
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    },
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    },
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    },
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    },
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    },
+    {
+      "busy": "true",
+      "convText": "Converting…⌘⏎",
+      "convDisabled": true,
+      "copyDisabled": true
+    }
+  ],
+  "a6_busyCount": 7,
+  "a6_allBusyCopyDisabled": true,
+  "a6_final": {
+    "busy": "false",
+    "convText": "Convert⌘⏎",
+    "convDisabled": false,
+    "copyDisabled": false
+  },
+  "a5": {
+    "present": true,
+    "label": "Paste into Webflow → Page Settings → Before </body>\n<script src=\"https://cdn.jsdelivr.net/",
+    "preTabIndex": 0,
+    "scrollHeight": 1048,
+    "clientHeight": 254,
+    "hasSrc": true,
+    "hasInline": true,
+    "copyBtn": [
+      "Copy custom code"
+    ]
+  },
+  "a5_scrollTop": 222,
+  "a4_tabOrder": [
+    {
+      "tag": "BUTTON",
+      "role": "tab",
+      "name": "JS (has content)",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0 0 0 "
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Clear all",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "DIV",
+      "role": "tabpanel",
+      "name": "<script src=\"https://cdn.jsdelivr.net/npm/gsa",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "TEXTAREA",
+      "role": null,
+      "name": "JS editor",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 1px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "IFRAME",
+      "role": null,
+      "name": "",
+      "tabIndex": 0,
+      "focusVisible": false,
+      "outline": "none 3px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Convert⌘⏎",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Copy for Webflow",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "PRE",
+      "role": null,
+      "name": "<script src=\"https://cdn.jsdelivr.net/npm/gsa",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Copy custom code",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "DIV",
+      "role": "textbox",
+      "name": "Paste here to verify clipboard",
+      "tabIndex": -1,
+      "focusVisible": true,
+      "outline": "none 1px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(255, 255"
+    },
+    {
+      "tag": "SUMMARY",
+      "role": null,
+      "name": "How this works",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "NEXTJS-PORTAL",
+      "role": null,
+      "name": "",
+      "tabIndex": -1,
+      "focusVisible": false,
+      "outline": "none 3px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BODY",
+      "role": null,
+      "name": "((e, i, s, u, m, a, l, h)=>{\n    let d = docu",
+      "tabIndex": -1,
+      "focusVisible": false,
+      "outline": "none 3px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "M7M78 UX3",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Toggle theme",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "BUTTON",
+      "role": null,
+      "name": "Notifications",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "none 3px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "Dashboard",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "My Tasks",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "Projects",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "Chat",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "Webflow",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "role": null,
+      "name": "Planner",
+      "tabIndex": 0,
+      "focusVisible": true,
+      "outline": "auto 1px",
+      "boxShadow": "none"
+    }
+  ],
+  "a4_allFocusVisible": false,
+  "a4_ringPresent": 18,
+  "a4_warnScroll": {
+    "found": true,
+    "tabIndex": 0,
+    "isActive": true,
+    "scrollHeight": 223,
+    "clientHeight": 160,
+    "scrollTop": 0
+  },
+  "a4_warnScrollTopAfter": 63
+}
