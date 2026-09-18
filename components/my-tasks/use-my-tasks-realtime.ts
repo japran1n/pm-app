@@ -44,6 +44,7 @@ import { useEffect, useRef } from "react";
 import type { RealtimePostgresChangesPayload, SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import { acquireSharedTopicChannel } from "@/lib/realtime/shared-topic-channel";
 
 export type MyTasksRealtimeTaskRow = {
@@ -271,19 +272,14 @@ export function useMyTasksRealtime({
     if (!userId) return;
 
     const supabase = createClient();
-    const unsubscribe = subscribeToMyTasksRealtime(
-      supabase,
-      userId,
-      {
-        onAssigned,
-        onUnassigned,
-        onUpdate,
-        onDelete,
-      },
-      trackedTaskIdsRef.current,
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToMyTasksRealtime(
+        client,
+        userId,
+        { onAssigned, onUnassigned, onUpdate, onDelete },
+        trackedTaskIdsRef.current,
+      ),
     );
-
-    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 }

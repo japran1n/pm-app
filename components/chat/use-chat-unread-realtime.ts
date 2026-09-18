@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToChatUnreadRealtime,
   type ChatUnreadRealtimeEvent,
@@ -31,18 +32,9 @@ export function useChatUnreadRealtime(
     if (!topicKey) return;
 
     const supabase = createClient();
-
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    void supabase.auth.getSession().then(() => {
-      if (cancelled) return;
-      unsubscribe = subscribeToChatUnreadRealtime(supabase, topicKey, onEvent);
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToChatUnreadRealtime(client, topicKey, onEvent),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicKey]);
 }

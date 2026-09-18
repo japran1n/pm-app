@@ -9,6 +9,7 @@
 import { useEffect } from "react";
 
 import { createClient } from "@/lib/supabase/client";
+import { subscribeWhenAuthenticated } from "@/lib/realtime/subscribe-when-authenticated";
 import {
   subscribeToMessageReactionsRealtime,
   type MessageReactionRealtimeEvent,
@@ -24,22 +25,9 @@ export function useMessageReactionsRealtime(
     if (!channelId) return;
 
     const supabase = createClient();
-
-    let cancelled = false;
-    let unsubscribe: (() => void) | null = null;
-    void supabase.auth.getSession().then(() => {
-      if (cancelled) return;
-      unsubscribe = subscribeToMessageReactionsRealtime(
-        supabase,
-        channelId,
-        onChange,
-      );
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
+    return subscribeWhenAuthenticated(supabase, (client) =>
+      subscribeToMessageReactionsRealtime(client, channelId, onChange),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId]);
 }

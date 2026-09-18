@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { formatDistanceToNow } from "date-fns";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceContext } from "@/lib/queries/workspaces";
@@ -305,7 +306,12 @@ export default async function MembersPage({
                             >
                               {initial}
                             </span>
-                            <span className="font-mono">{invite.invitedEmail}</span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-mono">{invite.invitedEmail}</span>
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(invite.createdAt), { addSuffix: true })}
+                              </span>
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
