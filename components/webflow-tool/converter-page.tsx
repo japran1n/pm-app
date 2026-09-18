@@ -87,7 +87,12 @@ export function ConverterPage() {
     ])
     setCopyStatus(ok ? "success" : "error")
     if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
-    copyTimeoutRef.current = setTimeout(() => setCopyStatus("idle"), 3000)
+    // D-N4 (AS-034): only auto-clear the success state. A failure message
+    // ("Copy failed — try again") should stay visible until the user
+    // retries, not silently disappear after 3s.
+    if (ok) {
+      copyTimeoutRef.current = setTimeout(() => setCopyStatus("idle"), 3000)
+    }
   }
 
   React.useEffect(() => {
@@ -151,8 +156,10 @@ export function ConverterPage() {
             type="button"
             variant="secondary"
             onClick={handleCopyWebflow}
-            disabled={!(result?.ok && (result?.errors?.length ?? 0) === 0)}
-            aria-label="Copy for Webflow"
+            disabled={loading || !result?.ok || (result?.errors?.length ?? 0) > 0}
+            // D-N4 (AS-034): no static aria-label so the button's own text
+            // ("Copy failed — try again") is announced by screen readers
+            // instead of being permanently overridden by a fixed label.
           >
             {copyStatus === "success"
               ? "Copied!"
@@ -174,6 +181,16 @@ export function ConverterPage() {
           >
             Open the Webflow Designer, click on the canvas to focus it, then
             press Cmd/Ctrl+V to paste.
+          </p>
+        ) : null}
+
+        {copyStatus === "error" ? (
+          // D-N4 (AS-034): a dedicated live region announces the failure
+          // (the button's own text already shows it visually; this makes
+          // sure screen readers hear it too, since the static aria-label
+          // was removed and role="alert" here proactively announces it).
+          <p role="alert" className="sr-only">
+            Copy failed — try again
           </p>
         ) : null}
 

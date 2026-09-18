@@ -286,9 +286,8 @@ describe("ConverterPage (F029)", () => {
     await waitFor(() => expect(copyButton).not.toBeDisabled())
     fireEvent.click(copyButton)
 
-    expect(
-      await screen.findByText(/copy failed — try again/i),
-    ).toBeInTheDocument()
+    const alertEl = await screen.findByRole("alert")
+    expect(alertEl).toHaveTextContent(/copy failed — try again/i)
   })
 
   it("test_AS_033_paste_instruction_shown_on_success", async () => {
@@ -334,7 +333,8 @@ describe("ConverterPage (F029)", () => {
     // On a failed copy, the instruction remains absent.
     mockWriteToClipboard.mockReturnValue(false)
     fireEvent.click(copyButton)
-    await screen.findByText(/copy failed — try again/i)
+    const alertEl = await screen.findByRole("alert")
+    expect(alertEl).toHaveTextContent(/copy failed — try again/i)
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 
@@ -402,6 +402,47 @@ describe("ConverterPage (F029)", () => {
 
     expect(screen.queryByText(/copied!/i)).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("test_copy_disabled_during_convert", async () => {
+    mockConvert.mockResolvedValueOnce({
+      ok: true,
+      json: "{}",
+      warnings: [],
+      errors: [],
+      stats: { nodeCount: 1, styleCount: 1 },
+    })
+    render(<ConverterPage />)
+
+    const htmlEditor = screen.getAllByLabelText(/html editor/i)[0] as HTMLTextAreaElement
+    fireEvent.change(htmlEditor, { target: { value: "<p>hi</p>" } })
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    const copyButton = await screen.findByRole("button", { name: /copy for webflow/i })
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
+
+    // D-N2 (AS-034): start a second (reconvert) request that stays pending.
+    let resolveSecond: (value: unknown) => void = () => {}
+    mockConvert.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSecond = resolve
+      }),
+    )
+    fireEvent.click(screen.getByRole("button", { name: /convert/i }))
+
+    // While the reconvert is in flight, copy must be disabled even though
+    // `result` still holds the previous successful payload.
+    await waitFor(() => expect(copyButton).toBeDisabled())
+
+    resolveSecond({
+      ok: true,
+      json: "{}",
+      warnings: [],
+      errors: [],
+      stats: { nodeCount: 2, styleCount: 2 },
+    })
+
+    await waitFor(() => expect(copyButton).not.toBeDisabled())
   })
 
   it("test_AS_033_converter_verify_box_renders_on_page", () => {
