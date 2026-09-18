@@ -1,0 +1,89 @@
+- generic [ref=f2e1]:
+  - generic [ref=f2e2]:
+    - heading "Command palette" [level=2] [ref=f2e3]
+    - paragraph [ref=f2e4]: Search or run a command
+  - generic [ref=f2e5]:
+    - heading "Switch project" [level=2] [ref=f2e6]
+    - paragraph [ref=f2e7]: Jump to a project in this workspace
+  - dialog "Welcome to pm-app" [ref=f2e160]:
+    - paragraph [ref=f2e161]: Welcome to pm-app
+    - paragraph [ref=f2e162]: Here's a quick look at where things live. You can skip this at any time.
+    - generic [ref=f2e163]:
+      - button "Skip" [ref=f2e164] [cursor=pointer]
+      - generic [ref=f2e165]:
+        - generic [ref=f2e166]: 1 / 2
+        - button "Next" [ref=f2e167] [cursor=pointer]
+  - generic [ref=f2e8]:
+    - complementary [ref=f2e9]:
+      - generic [ref=f2e10]:
+        - generic [ref=f2e11]:
+          - button "M1UX a 1789664622380-8m0o M1UX a 1789664622380-8m0o" [ref=f2e13] [cursor=pointer]:
+            - img "M1UX a 1789664622380-8m0o" [ref=f2e14]:
+              - generic [aria-hidden] [ref=f2e15]: M1
+            - generic [ref=f2e16]: M1UX a 1789664622380-8m0o
+          - button "Toggle theme" [ref=f2e17] [cursor=pointer]
+          - button "Notifications" [ref=f2e18] [cursor=pointer]
+        - generic [ref=f2e19]:
+          - navigation [ref=f2e20]:
+            - generic [ref=f2e21]:
+              - link "Dashboard" [ref=f2e22] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o
+              - link "My Tasks" [ref=f2e29] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/my-tasks
+              - link "Projects" [ref=f2e34] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/projects
+              - link "Chat" [ref=f2e38] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/chat
+              - link "Webflow" [active] [ref=f2e42] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/tools/webflow
+            - generic [ref=f2e48]:
+              - paragraph [ref=f2e49]: Plan
+              - link "Planner" [ref=f2e50] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/calendar
+              - link "Time" [ref=f2e54] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/time
+            - generic [ref=f2e59]:
+              - paragraph [ref=f2e60]: Team
+              - link "Team" [ref=f2e61] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/team
+              - link "Members" [ref=f2e68] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/settings/members
+            - generic [ref=f2e75]:
+              - paragraph [ref=f2e76]: Other
+              - link "Watching" [ref=f2e77] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/watching
+              - link "Archive" [ref=f2e82] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/archive
+              - link "Templates" [ref=f2e87] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/templates
+              - link "Trash" [ref=f2e93] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/trash
+              - link "How this works" [ref=f2e98] [cursor=pointer]:
+                - /url: /w/m1ux-a-1789664622380-8m0o/help
+          - generic [ref=f2e103]:
+            - button "Projects" [expanded] [ref=f2e104] [cursor=pointer]
+            - generic [ref=f2e109]:
+              - paragraph [ref=f2e110]: No projects yet.
+              - button "New Project" [ref=f2e111] [cursor=pointer]
+        - generic [ref=f2e112]:
+          - link "m1ux-member-1789664622380-8m0o@example.com m1ux-member-1789664622380-8m0o@example.com" [ref=f2e113] [cursor=pointer]:
+            - /url: /w/m1ux-a-1789664622380-8m0o/settings/profile
+            - img "m1ux-member-1789664622380-8m0o@example.com" [ref=f2e114]:
+              - generic [aria-hidden] [ref=f2e115]: M1
+            - generic [ref=f2e116]: m1ux-member-1789664622380-8m0o@example.com
+          - button "Sign out" [ref=f2e117] [cursor=pointer]
+    - main [ref=f2e119]:
+      - generic [ref=f2e120]:
+        - navigation "breadcrumb" [ref=f2e122]:
+          - list [ref=f2e123]:
+            - listitem [ref=f2e124]:
+              - link "M1UX a 1789664622380-8m0o" [disabled] [ref=f2e125]
+        - combobox "Search tasks and projects" [ref=f2e127]
+        - button "What's new, unseen updates" [ref=f2e168] [cursor=pointer]
+        - button "Track Time" [ref=f2e129] [cursor=pointer]
+      - generic [ref=f2e189]:
+        - heading "HTML → Webflow converter" [level=1] [ref=f2e190]
+        - paragraph [ref=f2e191]: Paste HTML, CSS, and JS and convert it into Webflow-ready markup.
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f2e156] [cursor=pointer]
+  - alert [ref=f2e188]: HTML → Webflow converter

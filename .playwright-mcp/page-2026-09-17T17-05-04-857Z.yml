@@ -1,0 +1,92 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - heading "Command palette" [level=2] [ref=f3e3]
+    - paragraph [ref=f3e4]: Search or run a command
+  - generic [ref=f3e5]:
+    - heading "Switch project" [level=2] [ref=f3e6]
+    - paragraph [ref=f3e7]: Jump to a project in this workspace
+  - generic [ref=f3e8]:
+    - complementary [ref=f3e9]:
+      - generic [ref=f3e10]:
+        - generic [ref=f3e11]:
+          - button "M1UX b 1789664622380-8m0o M1UX b 1789664622380-8m0o" [ref=f3e13] [cursor=pointer]:
+            - img "M1UX b 1789664622380-8m0o" [ref=f3e14]:
+              - generic [aria-hidden] [ref=f3e15]: M1
+            - generic [ref=f3e16]: M1UX b 1789664622380-8m0o
+          - button "Toggle theme" [ref=f3e17] [cursor=pointer]
+          - button "Notifications" [ref=f3e18] [cursor=pointer]
+        - generic [ref=f3e19]:
+          - navigation [ref=f3e20]:
+            - generic [ref=f3e21]:
+              - link "Dashboard" [ref=f3e22] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o
+              - link "My Tasks" [ref=f3e29] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/my-tasks
+              - link "Projects" [ref=f3e34] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/projects
+              - link "Chat" [ref=f3e38] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/chat
+              - link "Webflow" [ref=f3e42] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/tools/webflow
+            - generic [ref=f3e48]:
+              - paragraph [ref=f3e49]: Plan
+              - link "Planner" [ref=f3e50] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/calendar
+              - link "Time" [ref=f3e54] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/time
+            - generic [ref=f3e59]:
+              - paragraph [ref=f3e60]: Team
+              - link "Team" [ref=f3e61] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/team
+              - link "Members" [ref=f3e68] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/settings/members
+            - generic [ref=f3e75]:
+              - paragraph [ref=f3e76]: Other
+              - link "Watching" [ref=f3e77] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/watching
+              - link "Archive" [ref=f3e82] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/archive
+              - link "Templates" [ref=f3e87] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/templates
+              - link "Trash" [ref=f3e93] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/trash
+              - link "How this works" [ref=f3e98] [cursor=pointer]:
+                - /url: /w/m1ux-b-1789664622380-8m0o/help
+          - generic [ref=f3e103]:
+            - button "Projects" [expanded] [ref=f3e104] [cursor=pointer]
+            - generic [ref=f3e109]:
+              - paragraph [ref=f3e110]: No projects yet.
+              - button "New Project" [ref=f3e111] [cursor=pointer]
+        - generic [ref=f3e112]:
+          - link "m1ux-member-1789664622380-8m0o@example.com m1ux-member-1789664622380-8m0o@example.com" [ref=f3e113] [cursor=pointer]:
+            - /url: /w/m1ux-b-1789664622380-8m0o/settings/profile
+            - img "m1ux-member-1789664622380-8m0o@example.com" [ref=f3e114]:
+              - generic [aria-hidden] [ref=f3e115]: M1
+            - generic [ref=f3e116]: m1ux-member-1789664622380-8m0o@example.com
+          - button "Sign out" [ref=f3e117] [cursor=pointer]
+    - main [ref=f3e119]:
+      - generic [ref=f3e120]:
+        - navigation "breadcrumb" [ref=f3e122]:
+          - list [ref=f3e123]:
+            - listitem [ref=f3e124]:
+              - link "M1UX b 1789664622380-8m0o" [disabled] [ref=f3e125]
+        - combobox "Search tasks and projects" [ref=f3e127]
+        - button "What's new" [ref=f3e128] [cursor=pointer]
+        - button "Track Time" [ref=f3e129] [cursor=pointer]
+      - generic [ref=f3e130]:
+        - generic [ref=f3e131]:
+          - heading "M1UX b 1789664622380-8m0o" [level=1] [ref=f3e132]
+          - paragraph [ref=f3e133]: An overview of what's happening across your workspace.
+        - generic [ref=f3e143]:
+          - heading "Personal to-dos" [level=2] [ref=f3e144]
+          - paragraph [ref=f3e145]: Visible only to you — not a task, not assigned, not shared.
+          - list [ref=f3e146]:
+            - listitem [ref=f3e147]: Nothing here yet.
+          - generic [ref=f3e148]:
+            - textbox "New personal to-do" [ref=f3e149]:
+              - /placeholder: Add a reminder...
+            - button "Add to-do" [disabled]
+        - link "View projects" [ref=f3e150] [cursor=pointer]:
+          - /url: /w/m1ux-b-1789664622380-8m0o/projects
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=f3e156] [cursor=pointer]

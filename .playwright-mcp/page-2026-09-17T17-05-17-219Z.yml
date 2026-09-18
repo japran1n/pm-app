@@ -1,0 +1,17 @@
+- generic [active] [ref=f5e1]:
+  - generic [ref=f5e6] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=f5e7]
+    - generic [ref=f5e11]:
+      - button "Open issues overlay" [ref=f5e12]:
+        - generic [ref=f5e13]:
+          - generic [aria-hidden] [ref=f5e14]: "-1"
+          - generic [ref=f5e15]: "0"
+      - button "Collapse issues badge" [ref=f5e16]
+  - generic [ref=f5e20]:
+    - paragraph [ref=f5e21]: "404"
+    - heading "Page not found" [level=1] [ref=f5e22]
+    - paragraph [ref=f5e23]: This page doesn't exist, or you don't have access to it.
+    - link "Back to home" [ref=f5e24] [cursor=pointer]:
+      - /url: /
+  - region "Notifications alt+T"
+  - alert [ref=f5e25]

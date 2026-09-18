@@ -40,6 +40,20 @@ export function ConverterPage() {
 
   const isEmpty = html.trim() === ""
 
+  // O1: stale results/copy state must not survive an input edit -- a user
+  // could otherwise copy a payload that no longer matches the editor.
+  function handleHtmlChange(next: string) {
+    setHtml(next)
+    setResult(null)
+    setCopyStatus("idle")
+  }
+
+  function handleCssChange(next: string) {
+    setCss(next)
+    setResult(null)
+    setCopyStatus("idle")
+  }
+
   // F090 (AS-025): in-flight guard prevents rapid double-submission (both
   // keyboard shortcut and button click check this ref, not just `loading`
   // state, since `loading` can be a stale closure snapshot).
@@ -128,12 +142,12 @@ export function ConverterPage() {
             html={html}
             css={css}
             js={js}
-            onHtmlChange={setHtml}
-            onCssChange={setCss}
+            onHtmlChange={handleHtmlChange}
+            onCssChange={handleCssChange}
             onJsChange={setJs}
           />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-h-[250px] min-w-0 flex-1 overflow-hidden">
           <ConverterPreview html={html} css={css} js={js} />
         </div>
       </div>
