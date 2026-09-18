@@ -50,6 +50,9 @@ import { SectionCard } from "@/components/architecture/section-card";
 import { ComponentPanel } from "@/components/architecture/component-panel";
 import { useComponentHover } from "@/lib/architecture/use-component-hover";
 import { SitemapIoDialog } from "@/components/architecture/sitemap-io-dialog";
+import { EstimateChip } from "@/components/architecture/estimate-chip";
+import { computeRollups } from "@/lib/architecture/estimate-rollup";
+import type { ArchitectureNodeDetails, EstimateRollup } from "@/lib/architecture/types";
 
 type NodeActions = {
   onAddChild: (parentSlug: string) => void;
@@ -207,13 +210,15 @@ function SitemapCanvas({
   components,
   projectId,
   projectName,
+  showDetails = false,
   detailsData,
 }: {
   pages: BoardPage[];
   components: BoardComponent[];
   projectId: string;
   projectName: string;
-  detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
+  showDetails?: boolean;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   const { fitBounds } = useReactFlow();
 
@@ -261,13 +266,28 @@ function SitemapCanvas({
     [pages, collapsed, heights],
   );
 
+  // Rollups are computed once per pages/detailsData change, not per node --
+  // computeRollups walks every page/section once and returns a stable Map
+  // that every SitemapNode looks up by id.
+  const rollups = useMemo(
+    () => (showDetails && detailsData ? computeRollups(pages, detailsData) : null),
+    [showDetails, detailsData, pages],
+  );
+
   const computedNodes = useMemo<Node[]>(
     () =>
       layout.nodes.map((node) => ({
         id: node.key || "__root__",
         type: "sitemap",
         position: { x: node.x, y: node.y },
-        data: { node, actions, components } as unknown as Record<string, unknown>,
+        data: {
+          node,
+          actions,
+          components,
+          showDetails,
+          detailsData: detailsData ?? null,
+          rollups,
+        } as unknown as Record<string, unknown>,
         // React Flow keeps a node `visibility: hidden` until its box has
         // been measured; seeding the size the layout already computed
         // lets the first paint show the tree instead of an empty canvas,
@@ -278,7 +298,7 @@ function SitemapCanvas({
         draggable: false,
         connectable: false,
       })),
-    [layout, actions, components],
+    [layout, actions, components, showDetails, detailsData, rollups],
   );
 
   const connectors = useMemo(() => buildConnectors(layout.nodes), [layout]);
@@ -479,7 +499,7 @@ export function CanvasBoard(props: {
   projectId: string;
   projectName: string;
   showDetails?: boolean;
-  detailsData?: import('@/lib/architecture/types').ArchitectureNodeDetails | null;
+  detailsData?: ArchitectureNodeDetails | null;
 }) {
   return (
     <ReactFlowProvider>
