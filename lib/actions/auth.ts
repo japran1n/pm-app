@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 import { createClient, isPortalPreview } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { passwordSignInSchema, signInSchema } from "@/lib/validation/auth";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -49,9 +50,28 @@ export async function signInWithMagicLink(
 
   const supabase = await createClient();
 
+  // P2-1: open self-registration guard. `shouldCreateUser: true`
+  // unconditionally let anyone mint a brand-new account off the sign-in
+  // form. Gate account creation on a pending workspace invite for this
+  // email (admin client, bypassing RLS since `workspace_members` has no
+  // SELECT policy for an anonymous/unrelated caller). Existing accounts
+  // still get their magic link either way — this only blocks *new*
+  // signups for emails with no invite. Never branch the response on the
+  // lookup result: both "pending invite found" and "no invite" return the
+  // same `{ ok: true }`, so this can't be used to enumerate which emails
+  // have an account or a pending invite.
+  const admin = createAdminClient();
+  const { data: pendingInvite } = await admin
+    .from("workspace_members")
+    .select("id")
+    .eq("invited_email", parsed.data.email)
+    .eq("status", "invited")
+    .maybeSingle();
+
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
     options: {
+      shouldCreateUser: pendingInvite !== null,
       emailRedirectTo: `${origin}/auth/callback`,
     },
   });

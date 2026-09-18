@@ -222,6 +222,35 @@ export async function exitClientPreview(
   workspaceSlug: string,
 ): Promise<ExitClientPreviewResult> {
   const cookieStore = await cookies();
+
+  // P2-8: the cookies below are how *this* app stops treating the
+  // request as a preview session, but the underlying Supabase session for
+  // the impersonated client (minted by `mintImpersonationSession`) stays
+  // valid server-side until it naturally expires otherwise -- its access
+  // token could still be replayed directly against Supabase after
+  // "exiting" preview. Read the preview access token straight off the
+  // request cookie (NOT via `createClient()`/`createRealSessionClient()`
+  // -- see lib/supabase/server.ts: the former would hand back the SAME
+  // impersonated session wrapped read-only, fine but indirect, while the
+  // latter deliberately ignores preview cookies and resolves to the
+  // PREVIEWER'S OWN session, which must never be the one revoked here)
+  // before the cookies are cleared, then revoke it server-side through
+  // the admin API. Best-effort: a failure here just means the token
+  // expires naturally at PREVIEW_SESSION_MAX_AGE_SECONDS like before this
+  // fix -- it must never block clearing the cookies and returning the
+  // previewer to their own admin surface.
+  try {
+    const previewAccessToken = cookieStore.get(
+      PORTAL_PREVIEW_ACCESS_COOKIE,
+    )?.value;
+    if (previewAccessToken) {
+      const admin = createAdminClient();
+      await admin.auth.admin.signOut(previewAccessToken, "local");
+    }
+  } catch (error) {
+    logger.error("exitClientPreview: session revocation failed", { error });
+  }
+
   const expired = { path: "/portal" as const, maxAge: 0 };
   cookieStore.set(PORTAL_PREVIEW_ACCESS_COOKIE, "", expired);
   cookieStore.set(PORTAL_PREVIEW_REFRESH_COOKIE, "", expired);

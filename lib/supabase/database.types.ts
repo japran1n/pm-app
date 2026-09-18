@@ -1242,10 +1242,12 @@ export type Database = {
       }
       docs: {
         Row: {
+          archived_by: string | null
           client_visible: boolean
           content: string
           created_at: string
           created_by: string
+          deleted_at: string | null
           doc_kind: string
           folder_id: string | null
           id: string
@@ -1258,10 +1260,12 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          archived_by?: string | null
           client_visible?: boolean
           content?: string
           created_at?: string
           created_by: string
+          deleted_at?: string | null
           doc_kind?: string
           folder_id?: string | null
           id?: string
@@ -1274,10 +1278,12 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          archived_by?: string | null
           client_visible?: boolean
           content?: string
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
           doc_kind?: string
           folder_id?: string | null
           id?: string
