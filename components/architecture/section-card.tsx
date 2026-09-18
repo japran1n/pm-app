@@ -49,15 +49,21 @@ import type { BoardComponent, BoardSection } from "@/lib/queries/architecture";
 import { DeleteSectionButton } from "@/components/architecture/delete-section-button";
 import { SectionClientVisibilityToggle } from "@/components/architecture/section-client-visibility-toggle";
 import { sectionKindAccentClassName } from "@/lib/architecture/section-tint";
+import { EstimateChip } from "@/components/architecture/estimate-chip";
+import type { DisciplineEstimate } from "@/lib/architecture/types";
 
 export function SectionCard({
   section,
   components = [],
   onComponentClick,
+  showDetails = false,
+  estimates,
 }: {
   section: BoardSection;
   components?: BoardComponent[];
   onComponentClick?: (componentId: string) => void;
+  showDetails?: boolean;
+  estimates?: DisciplineEstimate[];
 }) {
   const router = useRouter();
   // Same convention as AddSectionButton (F013): the board route is scoped
@@ -304,6 +310,15 @@ export function SectionCard({
         >
           {section.title}
         </p>
+      )}
+      {showDetails && (
+        <div className="mt-1">
+          <EstimateChip
+            taskId={section.id}
+            taskTitle={section.title}
+            estimates={estimates ?? []}
+          />
+        </div>
       )}
     </div>
   );
